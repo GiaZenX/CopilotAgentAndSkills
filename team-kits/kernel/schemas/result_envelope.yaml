@@ -1,0 +1,38 @@
+# Result envelope: the ONLY thing a specialist hands back to the orchestrator
+# (HARNESS_V2_SPEC.md II.1/II.5). Raw logs are referenced, never inlined.
+schema: result_envelope
+version: 1
+strict: true
+max_serialized_bytes: 4096
+fields:
+  task_id:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  role:
+    type: str
+    required: true
+  status_proposal:
+    type: str
+    required: true
+    enum: [SUBMITTED, FAILED]
+  summary:
+    type: str
+    required: true
+    max_len: 2000
+  outputs:
+    type: list
+    item_type: str
+    required: true
+  evidence:
+    type: list
+    item_type: str
+    required: true
+  scope_touched:
+    type: list
+    item_type: str
+    required: true
+  followups:
+    type: list
+    item_type: str
+    required: true

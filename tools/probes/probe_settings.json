@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [{"type": "command", "command": "python .claude/hooks/probe_hook.py"}]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [{"type": "command", "command": "python .claude/hooks/probe_hook.py"}]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [{"type": "command", "command": "python .claude/hooks/probe_hook.py"}]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [{"type": "command", "command": "python .claude/hooks/probe_hook.py"}]
+      }
+    ],
+    "SubagentStart": [
+      {"hooks": [{"type": "command", "command": "python .claude/hooks/probe_hook.py"}]}
+    ],
+    "SubagentStop": [
+      {"hooks": [{"type": "command", "command": "python .claude/hooks/probe_hook.py"}]}
+    ]
+  }
+}

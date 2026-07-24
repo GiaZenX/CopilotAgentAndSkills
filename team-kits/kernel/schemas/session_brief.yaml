@@ -1,0 +1,43 @@
+# generated/session_brief.yaml content contract (HARNESS_V2_SPEC.md II.5):
+# a new session works from THIS + active items alone -- never from transcripts.
+schema: session_brief
+version: 1
+strict: true
+max_serialized_bytes: 25600
+fields:
+  kit:
+    type: str
+    required: true
+  kit_version:
+    type: str
+    required: true
+  enforcement_mode:
+    type: str
+    required: true
+    enum: [hard, audited]
+  generated_at:
+    # ADDITIVE beyond the II.5 list: staleness marker for a generated artifact
+    type: str
+    required: true
+  active_roots:
+    type: list
+    item_type: dict
+    required: true
+    item_required: [id, title, status, next_step]
+  active_tasks:
+    type: list
+    item_type: dict
+    required: true
+    item_required: [id, status, assigned_role]
+  open_approvals:
+    type: list
+    item_type: dict
+    required: true
+    item_required: [request_id, kind, item]
+  staging_pointers:
+    type: list
+    item_type: str
+    required: true
+  budget_status:
+    type: dict
+    required: true

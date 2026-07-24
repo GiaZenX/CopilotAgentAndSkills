@@ -1,0 +1,34 @@
+# WFR companion YAML (HARNESS_V2_SPEC.md II.2/II.6a): metadata beside a
+# wireframe. A WFR carries NO own APR -- scope_apr_ref is set when the kernel
+# freezes it into design/wireframes/ on scope approval.
+schema: wfr_companion
+version: 1
+strict: true
+fields:
+  id:
+    type: str
+    required: true
+    pattern: '^WFR-\d{4,}$'
+  title:
+    type: str
+    required: true
+  derives_from:
+    type: list
+    item_type: str
+    required: true
+    item_pattern: '^(PR|RQ)-\d{4,}$'
+  revision:
+    type: int
+    required: true
+  diagram_hash:
+    type: str
+    required: true
+    pattern: '^[0-9a-f]{64}$'
+  render_check:
+    type: bool
+    required: true
+  scope_apr_ref:
+    type: str
+    required: true
+    nullable: true
+    pattern: '^APR-\d{4,}$'

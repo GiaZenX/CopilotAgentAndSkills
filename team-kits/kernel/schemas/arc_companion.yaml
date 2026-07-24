@@ -1,0 +1,55 @@
+# ARC companion YAML (HARNESS_V2_SPEC.md II.2/II.6a): the metadata beside an
+# architecture/active/ARC-nnnn.drawio.svg. No own status automaton -- state is
+# location + approval_ref; invalidation rides on the referenced PR/SR revision.
+schema: arc_companion
+version: 1
+strict: true
+fields:
+  id:
+    type: str
+    required: true
+    pattern: '^ARC-\d{4,}$'
+  title:
+    type: str
+    required: true
+  scope:
+    type: str
+    required: true
+  derives_from:
+    # spec II.2 lists [SR/PR]; RQ- is an ADDITIVE extension for research parity
+    # (mirrors the WFR companion, which the spec itself gives [PR/RQ])
+    type: list
+    item_type: str
+    required: true
+    item_pattern: '(SR|PR|RQ)-\d{4,}'
+  revision:
+    type: int
+    required: true
+  approval_ref:
+    type: str
+    required: true
+    nullable: true
+    pattern: '^APR-\d{4,}$'
+  diagram_hash:
+    type: str
+    required: true
+    pattern: '^[0-9a-f]{64}$'
+  assets:
+    # spec: manifest with per-asset hashes OR self-contained
+    type: dict
+    required: true
+    sub_fields:
+      mode:
+        type: str
+        required: true
+        enum: [manifest, self_contained]
+      files:
+        # path -> sha256 of the external asset; REQUIRED in manifest mode
+        type: dict
+        required: false
+        value_pattern: '[0-9a-f]{64}'
+    require_if:
+      - {key: mode, equals: manifest, require: [files]}
+  render_check:
+    type: bool
+    required: true
