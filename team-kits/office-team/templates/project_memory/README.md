@@ -17,5 +17,5 @@ everything else to the owning specialist. Filled YAML state is NEVER overwritten
 
 Repo folders: `inbox/` (user drops, untracked) → `archive/` (system of record, untracked, moves
 only — never deletes) → `outbox/` (drafts the USER sends, untracked). `ledger/` + `reports/` are
-tracked; reports are GENERATED (`scripts/euer_report.py`), the ledger is script-append-only
+tracked; reports are GENERATED (`scripts/euer_report.py`), the ledger is always-validated
 (`scripts/ledger_add.py`).

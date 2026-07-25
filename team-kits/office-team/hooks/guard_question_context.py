@@ -11,6 +11,23 @@ context is either visible TEXT in the SAME message before the question, or lives
 question and its option descriptions — thinking does not count, and "oben" is never a place.
 
 Any uncertainty -> exit 0 (never block legitimate questions).
+
+TWO WARN HEURISTICS ride along (parity risks R2 and R13, user decision "maximal haerten"
+2026-07-24). They share this hook's trigger and would otherwise be two more process spawns per
+question. Both are WARNINGS and exit 0 -- the decision text is explicit that heuristics warn and
+are never fail-closed, "faellt eine Heuristik in der Praxis durch, bleibt die Regel Prosa-Rest":
+
+  R2  a question to the USER that is full of technical vocabulary. The constitution's boundary is
+      product questions to the user, technical ones to the team (rows 8/9); asking the user to
+      pick a database is how a project acquires decisions nobody owns.
+  R13 a MASTERPLAN approval question with no risks/criticism among its options. "Masterplan
+      kritisch pruefen" means the plan is presented WITH its objections; an approval dialog that
+      offers only agreement has already made the decision.
+
+HOW A WARNING REACHES ANYONE, honestly: exit 0 with stderr, plus an audit note. On PreToolUse only
+exit 2 is guaranteed to put text in front of the model, so a warning's visibility is weaker by
+construction -- which is the price of not blocking, and the reason both of these stay heuristics
+rather than becoming rules.
 """
 import os
 import re
@@ -47,6 +64,51 @@ _INVISIBLE_REF_RX = re.compile(
     re.IGNORECASE)
 
 
+# R2: vocabulary that belongs in a decision the TEAM makes. Deliberately narrow and
+# proper-noun-heavy -- "database" alone appears in perfectly good product questions ("should
+# customers see their order history?"), while "Postgres oder MySQL" cannot be anything but a
+# technical choice. Three or more distinct hits before it says anything: one mention is usually
+# context, a cluster is a technical question wearing a product costume.
+_TECH_VOCAB_RX = re.compile(
+    r"\b(?:postgres(?:ql)?|mysql|mariadb|sqlite|mongodb|redis|kafka|rabbitmq"
+    r"|react|vue|svelte|angular|next\.js|nuxt|django|flask|fastapi|rails|spring"
+    r"|docker|kubernetes|k8s|terraform|nginx|apache"
+    r"|rest|graphql|grpc|websocket|microservice[sn]?|monolith"
+    r"|orm|migration[en]?|schema|index(?:ierung)?|sharding|caching"
+    r"|typescript|python|rust|golang|java\b|c\+\+"
+    r"|framework|architektur|architecture|tech[- ]?stack|repository[- ]?pattern)\b",
+    re.IGNORECASE)
+# R13: an approval question about the PLAN itself.
+_MASTERPLAN_RX = re.compile(r"\bmasterplan\b|\bgesamtplan\b|\bplan\s+freigeben\b",
+                            re.IGNORECASE)
+# ...and the shapes that show the plan was presented WITH its objections.
+_CRITIQUE_RX = re.compile(
+    r"\brisik|\brisk|\bkritik|\bcritique|\beinwand|\bobjection|\bbedenken|\bconcern"
+    r"|\boffene\s+frage|\bopen\s+question|\bannahme|\bassumption|\btrade-?off"
+    r"|\bunsicher|\buncertain", re.IGNORECASE)
+
+
+def _warn(kind, message):
+    """Say it and get out of the way. Exit 0 stays exit 0."""
+    _audit.record("guard_question_context", "%s: %s" % (kind, message[:160]))
+    sys.stderr.write("[team-kit note] %s\n" % message)
+
+
+def _advisory_checks(texts):
+    joined = "\n".join(texts)
+    tech = sorted({m.group(0).lower() for m in _TECH_VOCAB_RX.finditer(joined)})
+    if len(tech) >= 3:
+        _warn("R2", "this question asks the USER about technical choices (%s). The constitution's "
+                    "boundary is product questions to the user, technical ones to the team — a "
+                    "user picking a database acquires a decision nobody on the team owns. If it "
+                    "really is a product question (cost, hosting, data location), ignore this."
+              % ", ".join(tech[:5]))
+    if _MASTERPLAN_RX.search(joined) and not _CRITIQUE_RX.search(joined):
+        _warn("R13", "this masterplan approval offers no risks, open questions or objections. "
+                     "\"Masterplan kritisch prüfen\" means presenting the plan WITH what argues "
+                     "against it; a dialog that offers only agreement has already decided.")
+
+
 def main():
     data = _compat.load()  # bytes-level UTF-8 stdin decode — Windows cp1252 stdin turned the
     if data.get("tool_name") != "AskUserQuestion":  # umlaut patterns into dead code (audit)
@@ -64,6 +126,7 @@ def main():
                 texts.append(str(o.get("description") or ""))
     hits = sorted({m.group(0) for t in texts for m in _INVISIBLE_REF_RX.finditer(t)})
     if not hits:
+        _advisory_checks(texts)      # warnings only, and only when nothing is being blocked
         sys.exit(0)
     _audit.record("guard_question_context", "; ".join(hits)[:200])
     sys.stderr.write(

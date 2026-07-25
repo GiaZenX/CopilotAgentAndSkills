@@ -45,7 +45,7 @@ request), steps, owning role, outputs, approval points, exception policy — plu
 ## 2. Hard rules (deterministic where possible)
 
 1. **Single source of truth.** Only the predefined `project_memory/*.yaml`, the filing tree under
-   `archive/`, the append-only `ledger/`, generated `reports/`, drafts under `outbox/`, and the
+   `archive/`, the validated `ledger/`, generated `reports/`, drafts under `outbox/`, and the
    office-developer's `tools/` + rendered `dashboards/`. No
    ad-hoc status/summary files (`guard_no_adhoc`-style discipline; reviews belong in the YAMLs).
 2. **NOTHING is ever sent, posted, published or ordered.** Every outbound artifact is a DRAFT in
@@ -53,12 +53,13 @@ request), steps, owning role, outputs, approval points, exception policy — plu
    the USER sends. Claude settings can deny `mcp__*`; Codex has no exact project-local wildcard
    mapping in permission profiles. Refuse outbound calls, avoid every configured known mutation
    tool, and rely on external per-server/tool restrictions or admin policy for stronger enforcement.
-3. **Ledger is append-only.** Direct Edit/Write on `ledger/*.csv` is blocked (`guard_ledger_direct`)
-   and shell redirects into it trip `guard_fs_tripwire` — entries go through
-   `python scripts/ledger_add.py`, which validates the row (schema, dates, year, arithmetic
-   net×(1+vat)≈gross, duplicates) and refuses bad data. Corrections are explicit reversal entries,
-   never edits (GoBD-inspired; tripwire level — a determined bypass remains possible and would be
-   caught by the report recomputation; this is NOT certified revision-safe archiving).
+3. **Ledger edits are allowed and ALWAYS validation-required** (user decision, V2 I.3/1 —
+   append-only is abolished; git history + Evidence is the audit trail). `python
+   scripts/ledger_add.py` remains the normal write path and validates each row; a direct edit
+   triggers full-file validation (`gate_ledger_valid`), and a failure marks the ledger INVALID —
+   push, merge, reports and dispatch stay blocked until it is corrected. No rollback is claimed;
+   the edit stands as written. Reversal entries remain the right way to correct BOOKED facts.
+   This is NOT certified revision-safe archiving.
 4. **Reports are generated, never written by hand:** `python scripts/euer_report.py` renders the
    quarterly income/expense statement deterministically FROM the ledger (sums cannot drift from
    the data); the bookkeeper adds prose only in the separate `_notes.md`. The Verfahrensdoku
@@ -95,17 +96,17 @@ request), steps, owning role, outputs, approval points, exception policy — plu
 
    | Hook | Blocks / does |
    |---|---|
-   | `guard_agent_spawn` | Claude blocks generic/unnamed spawns, a second manager, missing explicit `run_in_background`, and incomplete work orders; Codex cannot veto `SubagentStart`, so exact-role policy + specialist work-order validation cover that gap |
+   | `guard_agent_spawn` | Claude blocks generic/unnamed spawns, a second manager, missing explicit `run_in_background`, and incomplete work orders; Codex cannot veto `SubagentStart`, so exact-role policy + specialist work-order validation cover that gap. Plus (V2, spec II.4) `gate_dispatch`: no spawn without a valid `HARNESS_DISPATCH` header + live lease — missing task, wrong role, stale root revision, unproven or invalidated approval, open dependency, spent lease, missing `design_ref` for a UI task with a confirmed design; it binds the child's `agent_id` to its task, and returns the task to READY when the platform reports the spawn failed |
    | `gate_subagent_output` | a specialist stopping without its output contract (`summary:` at minimum) — prose-only endings produced work built on air |
    | `gate_proc_approved` | Claude blocks specialist spawns without an APPROVED/ACTIVE `PROC-xxxx` or with a hash mismatch; Codex must run `scripts/proc_hash.py` and refuse delegation before its non-vetoable spawn |
-   | `guard_ledger_direct` | any Edit/Write directly into `ledger/*.csv` — entries go through `scripts/ledger_add.py` |
-   | `gate_filing` | a `filing_log.yaml` entry whose target file does not exist under `archive/` |
-   | `guard_fs_tripwire` | shell delete/move commands targeting `inbox/` or `archive/` paths |
-   | `guard_question_context` | user questions referencing INVISIBLE context ("wie oben zusammengefasst" — thinking/tool calls are unseen); questions must be self-contained or preceded by visible text |
-   | `guard_yaml_valid` | invalid `project_memory/*.yaml` at write time (parse errors, duplicate keys, progress.yaml contract) |
+   | `gate_ledger_valid` | after ANY edit to `ledger/*.csv`: full-file validation (schema, dates, year, net×(1+vat)≈gross, duplicate invoices, `reverses` targets); on failure the ledger is marked INVALID and push/merge/reports/dispatch are refused until fixed |
+   | `gate_filing` | a `filing_log.yaml` entry whose target file does not exist under `archive/`. Plus `gate_write_scope` (V2, II.4 gate 3): ANY tool write into `project_memory/**` (one writer, the kernel; an agent gets only `staging/<its task-id or root-id>/`), a bound specialist writing outside its `allowed_scope`, an UNBOUND subagent writing anything, and from a shell: naming `project_memory` or the enforcement layer in anything but a read-only command (so copying the hooks elsewhere is refused, reading them is not) |
+   | `guard_fs_tripwire` | shell delete/move commands targeting `inbox/` or `archive/` paths. Plus `gate_push_token` (R1): `git push` needs a user approval minted through the approval flow and bound to remote+branch+HEAD — a new commit invalidates it. Plus `gate_shell_hygiene` (R10/R11): destructive `docker` on a FOREIGN compose project or any `prune`; merge/rebase/pull/`reset --hard`/branch-switch on a dirty tree (`git add`/`stash`/`checkout -b` stay open) |
+   | `guard_question_context` | user questions referencing INVISIBLE context ("wie oben zusammengefasst" — thinking/tool calls are unseen); questions must be self-contained or preceded by visible text. Plus `gate_approval` (V2, spec II.2): a question marked `[APR-REQ:<id>]` must match the kernel-generated approval question EXACTLY (text, header, every option) or it is blocked; only the verbatim `Freigeben [code]` label mints the approval |
+   | `guard_yaml_valid` | invalid `project_memory/*.yaml` at write time (parse errors, duplicate keys, progress.yaml contract) Plus `guard_memory_budget` (V2, spec II.5): a MEMORY.md index over 40 lines / 8 KB, a craft topic over 100 lines / 8 KB, any OTHER file in agent-memory over 8 KB, a 21st topic for one role, or ANY project item id in a role's memory — memory holds craft, never project status (put an id in `backticks` to quote it) |
    | `guard_scratchpad_ref` | repo files referencing ephemeral session-scratchpad paths |
    | `guard_harness_selfmod` | Claude hard-blocks edits to `.claude` enforcement; Codex blocks through trusted `PreToolUse` plus read-only permission-profile paths (the Office kit has no CI backstop) |
-   | `notify_agent_events` / `session_status` | (never block) lifecycle audit log / session-start briefing incl. inbox count, due reports, stale compliance entries, kit-update + model/effort nags |
+   | `notify_agent_events` / `session_status` / `kit_trust_state` | (never block) lifecycle audit log / session-start briefing incl. inbox count, due reports, stale compliance entries, kit-update + model/effort nags / records which hook bundle this project trusts in `.claude/kit_state.json` (`restart_required` -> `active`; `hooks_trust_required` when the bundle changed) -- doctor measures `hook_trust` against it |
 
 ## 3. Dialog rule
 
@@ -134,7 +135,8 @@ shop-curator; `full` adds compliance-researcher + marketing-planner + office-dev
 - **bookkeeper:** owns `master_data.yaml` (categories aligned to Anlage-EÜR lines; counterparty
   normalisation) and the ledger CONTENT via `ledger_add.py`; extracts invoice data (e-invoice
   XML first — `scripts/einvoice_extract.py`; PDF/scan fallback with the arithmetic check); writes
-  `reports/*_notes.md` commentary. NO direct ledger writes, like everyone.
+  `reports/*_notes.md` commentary. `ledger_add.py` is the normal write path; a direct edit is
+  allowed and triggers full-file validation (§2.3).
 - **product-editor:** owns `product_catalog.yaml` + `content_guidelines.yaml`; article texts;
   missing-data → supplier query DRAFT in `outbox/product-editor/`. ALL product copy changes flow
   through this role (curator/marketing propose, editor writes).

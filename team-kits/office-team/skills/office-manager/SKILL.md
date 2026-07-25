@@ -54,7 +54,8 @@ policy when stronger enforcement is required.
 ## Files you OWN (write)
 `business_profile.yaml`, `masterplan.md`, `process_definitions.yaml`, `progress.yaml`,
 `changelog.yaml`, `project_config.yaml`. READ everything; never write the specialists' artifacts,
-never edit `ledger/*.csv` (script-only, guarded), never edit generated reports.
+`ledger/*.csv` may be edited but is re-validated in full afterwards (a failure blocks
+commit/push/merge/reports/dispatch until fixed); never edit generated reports.
 
 ## Kit updates
 Same contract as every kit: pending files (`.claude/kit_update_pending.*`) are MERGE tasks — the kit

@@ -33,6 +33,8 @@ from .backlog_types import (
     ACTIVE_DIRS,
     HASHED_FIELDS,
     REQUIRED_FIELDS,
+    TASK_TYPES,
+    TSK_PLAN_FIELDS,
     TransitionError,
     assert_transition,
     format_id,
@@ -111,6 +113,53 @@ class ProjectState:
             )
         return item
 
+    def exists_anywhere(self, item_id: str) -> bool:
+        """True when the id names an item in active/ OR archive/ -- call under the lock."""
+        if os.path.exists(ext_path(self.active_path(item_id))):
+            return True
+        item_type, _ = parse_id(item_id)
+        base = os.path.join(self.root, "archive", item_type)
+        if not os.path.isdir(ext_path(base)):
+            return False
+        for year in sorted(os.listdir(ext_path(base))):
+            if os.path.exists(ext_path(os.path.join(base, year, item_id + ".yaml"))):
+                return True
+        return False
+
+    def _assert_origins_resolve(self, item_type: str, fields: dict) -> None:
+        """A TSK's `derives_from` must name items that EXIST (spec II.2 references).
+
+        This became load-bearing when the dispatch gate started resolving
+        `acceptance_refs` against the origin item: a phantom id, an integer or a
+        free-text note would silently contribute nothing, so a task could look
+        derived while being derived from nothing. Only the CHEAP half lives here
+        -- ids parse and resolve. Whether the origin belongs to this root's tree
+        (BUG.related_pr == root, CR.target_pr == root, EXP->HYP->RQ == root) is a
+        reference-GRAPH question, which spec II.4 assigns to the state validator
+        (gate layer 4) rather than to a hot dispatch path.
+        """
+        if item_type != "TSK" or "derives_from" not in fields:
+            return
+        origins = fields.get("derives_from")
+        origins = origins if isinstance(origins, (list, tuple)) else [origins]
+        for origin in origins:
+            try:
+                parse_id(str(origin))
+            except ValueError:
+                raise StateError(
+                    "derives_from %r is not an item id. Remedy: name the item this "
+                    "task derives from (the PR/RQ, or the BUG/CR/EXP whose criteria "
+                    "it serves) -- free text there means the task's acceptance "
+                    "criteria resolve against nothing." % (origin,)
+                ) from None
+            if not self.exists_anywhere(str(origin)):
+                raise StateError(
+                    "derives_from %s does not exist. Remedy: create the item first, "
+                    "or point at the right one -- a phantom origin contributes no "
+                    "acceptance criteria and the dispatch gate would refuse the "
+                    "task later, with a less obvious message." % origin
+                )
+
     # -- id allocation ---------------------------------------------------------
 
     def _max_number(self, item_type: str) -> int:
@@ -159,6 +208,8 @@ class ProjectState:
                 "Pflichtfelder). Remedy: provide every listed field."
                 % (item_type, ", ".join(missing))
             )
+        _assert_task_type(item_type, fields)
+        self._assert_origins_resolve(item_type, fields)
         with self.lock:
             item_id = self.allocate_id(item_type)
             item = {"id": item_id}
@@ -198,6 +249,27 @@ class ProjectState:
                 % ", ".join(forbidden)
             )
         item = self.read_item(item_id)
+        # the SANCTIONED edit path has to enforce the same vocabulary as capture:
+        # otherwise an orchestrator that hits the capture-time refusal simply
+        # re-types the task afterwards, and the design_ref rule stops applying
+        if "type" in changes:
+            _assert_task_type(item_type, changes)
+        if item_type == "TSK" and item.get("status") != "DRAFT":
+            # ... and closing the vocabulary is not enough on its own: a
+            # vocabulary-LEGAL re-type dodges the design gate just as well, and
+            # widening allowed_scope on a LEASED, BOUND task hands a running
+            # specialist the whole repo. The work-order contract is frozen once
+            # the task leaves DRAFT (see TSK_PLAN_FIELDS).
+            frozen = sorted(set(changes) & TSK_PLAN_FIELDS)
+            if frozen:
+                raise StateError(
+                    "%s is %s -- its work-order fields (%s) are frozen outside "
+                    "DRAFT because gates read them (allowed_scope is the "
+                    "write-scope gate's only input). Remedy: transition the task "
+                    "back to DRAFT to re-plan it, or CANCEL it and create a new "
+                    "one -- re-planning has to be visible, not a field write."
+                    % (item_id, item.get("status"), ", ".join(frozen))
+                )
         hashed = set(HASHED_FIELDS.get(item_type, ()))
         touches_hashed = any(
             key in hashed and item.get(key) != value
@@ -296,6 +368,24 @@ _AUTOMATON_TYPES = frozenset(
 # becomes verified once its referenced check test exists and is collectable
 # (spec II.2 INV.check / review B.2-10)
 _NON_AUTOMATON_INITIAL_STATUS = {"DEC": "VALID", "INV": "unverified"}
+
+
+def _assert_task_type(item_type: str, fields: dict) -> None:
+    """TSK.type must come from the CLOSED vocabulary (backlog_types.TASK_TYPES).
+
+    Called from capture AND from the edit path. The type is a gate input -- the
+    design_ref rule asks "is this a UI task" -- so a free-text value would not
+    fail the check, it would silently skip it (spec II.6).
+    """
+    if item_type != "TSK" or "type" not in fields:
+        return
+    if fields.get("type") not in TASK_TYPES:
+        raise StateError(
+            "unknown TSK type %r. Remedy: use one of %s -- the type is a gate "
+            "input (a UI task needs a design_ref), so a free-text value would "
+            "skip that check instead of failing it."
+            % (fields.get("type"), ", ".join(sorted(TASK_TYPES)))
+        )
 
 
 def _now_iso() -> str:

@@ -27,6 +27,21 @@ project_memory/filing_log.yaml
 project_memory/migration_manifest*.yaml
 
 # session-local kit bookkeeping (session_status owns these; per-machine state, never project state)
+# a crashed ledger write leaves its lock inside the TRACKED ledger/ tree, where it could be
+# committed and would then look like a permanently held lock on every other machine
+ledger/*.csv.lock
+ledger/*.csv.lock.stale-*
+ledger/.*.tmp-*
+
+# the ledger gate's early-warning cache: per machine, regenerated on the next write, and
+# NOT authoritative (the block is decided by re-validating). Tracked, a `git checkout` could
+# resurrect or erase a stale warning from another machine.
+.claude/ledger_state.json
 .claude/kit_last_seen_version
 .claude/kit_update_pending.state
 .claude/project_path.state
+
+# V2 runtime/machine state (spec II.2, II.8): which hook bundle THIS checkout trusts and
+# whether a hook has actually run here. Committing it would let a clone inherit `state: active`
+# with a matching hash and read as trusted before a single hook ran in it.
+.claude/kit_state.json

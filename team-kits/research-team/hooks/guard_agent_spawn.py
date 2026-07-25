@@ -36,10 +36,11 @@ def block(why):
 
 
 def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
+    # BOUNDED read (spec II.4). A raw `json.load(sys.stdin)` will happily buffer a
+    # payload of any size, and an oversized one is the shape that turns a hook into
+    # a memory event rather than a decision. `_compat.load` caps it at STDIN_LIMIT
+    # and exits 2, because a gate that cannot read its input has not judged it.
+    data = _compat.load()
     if data.get("tool_name") not in ("Agent", "Task"):
         sys.exit(0)
     inp = data.get("tool_input") or {}

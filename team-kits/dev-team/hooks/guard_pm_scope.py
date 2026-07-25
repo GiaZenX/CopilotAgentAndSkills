@@ -33,7 +33,11 @@ def block(rel):
         "[team-kit guard] PM blocked from writing '%s'.\n"
         "You are the Project Manager — you do NOT write production code (src/**, tests/**, "
         "frontend/**). Delegate this to the matching specialist subagent; QA gates it. "
-        "You may write project_memory/*.yaml, ./.claude/**, docs/ and plans/.\n" % rel
+        "You may write ./.claude/**, docs/ and plans/. CANONICAL STATE — items, tasks, "
+        "approvals — goes through the KERNEL (`harness capture/transition/approve`), never "
+        "through a direct write: `gate_write_scope` refuses those. This message used to "
+        "advertise `project_memory/*.yaml` as an open door, which sent the lead straight into "
+        "another gate's refusal.\n" % rel
     )
     sys.exit(2)
 

@@ -25,6 +25,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/kit_trust_state.py\""
+          },
+          {
+            "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_status.py\""
           }
         ]
@@ -36,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_no_adhoc.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
           }
         ]
       },
@@ -45,11 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_pm_scope.py\""
-          },
-          {
-            "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_harness_selfmod.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_pm_scope.py"
           }
         ]
       },
@@ -58,16 +58,30 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_git.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_git.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_memory_complete.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_memory_complete.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_pipeline.py\"",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_pipeline.py",
             "timeout": 1800
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_write_scope.py"
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py",
+            "timeout": 60
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py",
+            "timeout": 60
           }
         ]
       },
@@ -76,7 +90,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_agent_spawn.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py"
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       },
@@ -85,22 +103,71 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_question_context.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_question_context.py"
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_write_scope.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_memory_budget.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_harness_selfmod.py"
           }
         ]
       }
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_yaml_valid.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_yaml_valid.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_scratchpad_ref.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_scratchpad_ref.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+          }
+        ]
+      },
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
           }
         ]
       }
@@ -125,7 +192,7 @@
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_subagent_output.py\""
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py"
           }
         ]
       }
@@ -136,6 +203,39 @@
           {
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/auto_dashboard.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+          }
+        ]
+      }
+    ],
+    "PermissionDenied": [
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       }

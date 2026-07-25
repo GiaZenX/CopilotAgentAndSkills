@@ -44,8 +44,17 @@ def main(argv=None) -> int:
     state = ProjectState(args.root)
     try:
         if args.command == "doctor":
-            print(json.dumps(report.doctor(state), indent=2, ensure_ascii=False, default=str))
-            return 0
+            data = report.doctor(state)
+            # Installation defects go to stderr BEFORE the JSON and set the exit code. A comment
+            # in report.py called this "the one place a reader cannot page past", and that was
+            # only true of the dict: doctor printed one JSON blob and always exited 0, so the
+            # loudest thing in the report was a key somewhere in the middle of it. State findings
+            # keep their own channel (`validate` exits 1 on those); this is about the KIT.
+            for finding in data.get("installation_errors") or []:
+                sys.stderr.write("[INSTALLATION] %s: %s -- Remedy: %s\n" % (
+                    finding["item"], finding["message"], finding["remedy"]))
+            print(json.dumps(data, indent=2, ensure_ascii=False, default=str))
+            return 1 if data.get("installation_errors") else 0
         if args.command == "validate":
             findings = report.validate_state(state)
             for finding in findings:

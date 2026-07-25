@@ -18,6 +18,11 @@ sys.path.insert(0, os.path.join(ROOT, "team-kits"))
 from preset_config import UniqueKeyLoader, load_preset_catalog  # noqa: E402
 
 fails = []
+# Budgets that are MEASURED now and become failures in a later phase, so the number is visible
+# while the work that fixes it is still ahead (spec II.5 Kuerzungs-Sequenz: cut only AFTER the
+# replacing gates exist). A warning channel keeps the measuring stick honest without adding red
+# that nobody can act on yet.
+warns = []
 
 
 def rel(p):
@@ -207,6 +212,33 @@ for kit in discover_kits(ROOT):
             fails.append("%s: constitution has %d lines (> 220) — keep the core slim; move role "
                          "mechanics into the role SKILLs (they load only for the affected role)"
                          % (kit, len(lines)))
+        # LEAD INSTRUCTION PACKAGE (spec II.5, <=25 KB). "Das Paket zaehlt ALLES sessionfix
+        # Geladene (agent.md + Lead-SKILL + Verfassung — die Verfassung laedt via Import immer
+        # mit)." This is a CI-side budget, not a hook: nothing writes these files at runtime, and
+        # it belongs beside the line ceiling above. Without it the one budget II.5 names FIRST was
+        # enforced nowhere, and the II.5 shrink sequence had no measuring stick.
+        lead = (json.load(open(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json"),
+                               encoding="utf-8")).get("agent")
+                if os.path.exists(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json")) else None)
+        if lead:
+            package = [cpath,
+                       os.path.join(ROOT, "team-kits", kit, "agents", lead + ".md"),
+                       os.path.join(ROOT, "team-kits", kit, "skills", lead, "SKILL.md")]
+            total = sum(os.path.getsize(p) for p in package if os.path.exists(p))
+            if total > 25 * 1024:
+                # WARNING until phase 3 (II.11/3) does the shrinking; promote to `fails` there.
+                warns.append("%s: lead instruction package is %d bytes (> 25 KB, spec II.5) — "
+                             "agent.md + Lead-SKILL + constitution all load at every session "
+                             "start. Phase 3 (II.11/3) shrinks these; this becomes a hard failure "
+                             "then." % (kit, total))
+            skill = os.path.join(ROOT, "team-kits", kit, "skills", lead, "SKILL.md")
+            if os.path.exists(skill):
+                skill_lines = len(open(skill, encoding="utf-8", errors="ignore")
+                                  .read().splitlines())
+                if skill_lines > 220:
+                    warns.append("%s: lead SKILL has %d lines (> 220) — same interim ceiling as "
+                                 "the constitution; spec II.5 tightens both to 150 once the "
+                                 "replacing gates are in place." % (kit, skill_lines))
 
 # 10) intended-identical hooks/scripts must stay byte-identical across kits (audit finding: a fix
 #    applied in one kit silently diverges the others — exactly the drift class this repo hunts).
@@ -280,9 +312,12 @@ if _tracked is not None:
                                  "(check .gitignore) — CI and fresh clones will disagree "
                                  "with the local hash" % (kit, relp))
 
+for w in warns:
+    print("  [warn] " + w)
 if fails:
     print("VALIDATION FAILED (%d):" % len(fails))
     for f in fails:
         print("  - " + f)
     sys.exit(1)
-print("validate.py: all structural checks passed.")
+print("validate.py: all structural checks passed%s."
+      % (" (%d budget warning(s))" % len(warns) if warns else ""))

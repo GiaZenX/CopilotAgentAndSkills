@@ -21,6 +21,7 @@ Runtime budget: one preview boot + one page load; keep it well under the gate's 
 
 Every kit update OVERWRITES this file (like kit_checks.py), so fixes reach existing projects.
 """
+import hashlib
 import os
 import re
 import socket
@@ -94,6 +95,33 @@ def _terminate_process_tree(proc):
             pass
 
 
+def _file_hash(path):
+    """sha256 of a file, or None when it cannot be read (the caller then says nothing)."""
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()
+    except OSError:
+        return None
+
+
+def _served_index_hash(base):
+    """sha256 of the index the server actually returns, or None when it cannot be fetched.
+
+    None rather than a failure: a project with a custom entry, an auth wall or a redirect is not
+    misconfigured, and this check has nothing to say about it. It speaks only when it can compare
+    two concrete byte strings.
+    """
+    import urllib.error
+    import urllib.request
+    try:
+        with urllib.request.urlopen(base, timeout=5) as response:
+            if response.status != 200:
+                return None
+            return hashlib.sha256(response.read()).hexdigest()
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+
+
 def browser_smoke(root, ok, fail, warn):
     """Entry point for scripts/quality.py's node stage."""
     name = "frontend browser smoke (vite preview + Playwright)"
@@ -148,6 +176,21 @@ def browser_smoke(root, ok, fail, warn):
         if not ready:
             fail(name, "`vite preview` did not become ready on %s" % base)
             return
+
+        # DELIVERY FRESHNESS (parity risk R6): what the server hands out must BE the build output.
+        # A green smoke test against a stale bundle is the worst kind of pass -- it certifies code
+        # that is not the code under review. The failure is silent by nature: a leftover dev server
+        # on the port, a `dist/` from a previous branch, or a service worker replaying a cached
+        # shell all render fine and all lie about what was tested.
+        served_hash = _served_index_hash(base)
+        built_hash = _file_hash(os.path.join(fe, "dist", "index.html"))
+        if served_hash and built_hash and served_hash != built_hash:
+            fail(name, "the server is not serving this build: index.html sha256 %s on disk vs %s "
+                       "served. A pass here would certify a bundle nobody built — rebuild "
+                       "(`npm run build`) and make sure no other server holds the port."
+                 % (built_hash[:12], served_hash[:12]))
+            return
+
         console_errors = []
         try:
             with sync_playwright() as p:

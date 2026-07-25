@@ -12,11 +12,11 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_no_adhoc.py\""
+          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_guidelines.py\""
+          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_guidelines.py"
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:

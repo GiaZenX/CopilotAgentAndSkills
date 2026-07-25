@@ -94,16 +94,23 @@ def test_transition_chain_and_illegal_jump(state):
 
 
 def test_tsk_failed_ready_requires_approved_retry(state):
+    # the origin has to EXIST: `derives_from` is a gate input (the dispatch gate
+    # resolves acceptance_refs against it), so the kernel refuses a phantom id
+    pr = state.capture("PR", {
+        "title": "Root", "class": "normal", "problem": "p", "goal": "g",
+        "acceptance_criteria": [{"id": "AC-1", "text": "works"}], "invariants": [],
+        "out_of_scope": [], "priority": "high",
+    })
     task = state.capture("TSK", {
-        "product_requirement": "PR-0001",
+        "product_requirement": pr["id"],
         "root_revision": 1,
-        "derives_from": "PR-0001",
+        "derives_from": pr["id"],
         "type": "implementation",
         "assigned_role": "backend-developer",
         "acceptance_refs": ["AC-1"],
         "required_inputs": [],
         "allowed_scope": ["src/"],
-        "forbidden_scope": ["project_memory/"],
+        "forbidden_scope": ["secrets/"],
         "expected_outputs": ["src/x.py"],
         "dependencies": [],
     })

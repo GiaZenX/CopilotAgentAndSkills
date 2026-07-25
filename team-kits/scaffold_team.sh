@@ -103,7 +103,7 @@ assert_safe_repo_path "$CFG"
 assert_no_symlink_tree "$KIT" outside
 for relative in \
   AGENTS.md CLAUDE.md AGENTS.override.md .claude/settings.json .claude/agents \
-  .claude/hooks .claude/skills .claude/team_kit_roles.txt .claude/provider_artifacts.json \
+  .claude/hooks .claude/kernel .claude/skills .claude/team_kit_roles.txt .claude/provider_artifacts.json \
   .claude/settings.local.json .claude/kit_version .claude/backups .codex .agents/skills \
   .github/hooks .github/agents; do
   assert_no_symlink_tree "$REPO/$relative"
@@ -204,6 +204,7 @@ backup_local "$REPO/.claude/settings.json" ".claude/settings.json"
 backup_local "$REPO/.claude/settings.local.json" ".claude/settings.local.json"
 backup_local "$REPO/.claude/agents" ".claude/agents"
 backup_local "$REPO/.claude/hooks" ".claude/hooks"
+backup_local "$REPO/.claude/kernel" ".claude/kernel"
 backup_local "$REPO/.claude/skills" ".claude/skills"
 backup_local "$REPO/.claude/team_kit_roles.txt" ".claude/team_kit_roles.txt"
 backup_local "$REPO/.claude/provider_artifacts.json" ".claude/provider_artifacts.json"
@@ -221,7 +222,7 @@ fi
 restore_scaffold_snapshot() {
   local relative target saved parent
   for relative in \
-    CLAUDE.md AGENTS.md .claude/settings.json .claude/agents .claude/hooks .claude/skills \
+    CLAUDE.md AGENTS.md .claude/settings.json .claude/agents .claude/hooks .claude/kernel .claude/skills \
     .claude/team_kit_roles.txt .claude/provider_artifacts.json .claude/kit_version .codex \
     .agents/skills .github/hooks .github/agents; do
     target="$REPO/$relative"
@@ -449,6 +450,19 @@ if [ -d "$KIT/hooks" ]; then
     echo "  [ok] hook: $(basename "$f")"
   done
 fi
+# ...and the V2 state kernel the hooks import. `_kernel.kernel_parents()` names `<repo>/.claude`
+# as the FIRST place it looks and says why: a project must run the kernel its hook bundle was
+# installed with, not whatever version happens to sit in the global staging. Nothing copied it
+# there, so that first candidate never existed and every project silently fell through to
+# ~/.claude/team-kits -- or, on a machine without it, got KernelUnavailable from every integrity
+# gate. It also carries `known_holes.json`, which `harness doctor` needs to report any capability
+# as verified at all.
+if [ -d "$KITS_ROOT/kernel" ]; then
+  rm -rf "$REPO/.claude/kernel"
+  cp -R "$KITS_ROOT/kernel" "$REPO/.claude/kernel"
+  find "$REPO/.claude/kernel" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
+  echo "  [ok] .claude/kernel (V2 state kernel)"
+fi
 # Role skills travel with the team (preloaded into the agents via their `skills:` frontmatter).
 if [ -d "$SKILLS_SRC" ]; then
   mkdir -p "$SKILLS_DST"
@@ -510,6 +524,14 @@ if [ -f "$KIT/VERSION" ]; then
   cp -f "$KIT/VERSION" "$REPO/.claude/kit_version"
   echo "  [ok] .claude/kit_version ($(head -n 1 "$KIT/VERSION"))"
 fi
+
+# Record WHICH hook bundle this project now carries -- the value `harness doctor` measures
+# `hook_trust` against. Nothing wrote it before, so that comparison had no counterpart and
+# `enforcement: hard` was unreachable for a reason nobody could act on. State is
+# `restart_required`: the hooks installed above are not running in the session that ran this
+# script, and only kit_trust_state.py (a SessionStart hook) may flip it to `active`.
+"$PYBIN" "$(cd "$(dirname "$0")" && pwd)/write_kit_state.py" \
+  --repo "$REPO" --kit "$TEAM" --kit-root "$KITS_ROOT" --kit-version "$(head -n 1 "$KIT/VERSION" 2>/dev/null || echo '')"
 
 # Extra providers: the same validated project_config drives exact provider generation/removal.
 "$PYBIN" "$(cd "$(dirname "$0")" && pwd)/gen_provider_artifacts.py" \

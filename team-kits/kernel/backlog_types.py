@@ -307,6 +307,55 @@ HASHED_FIELDS = {
 }
 
 
+# -- TSK.type vocabulary -------------------------------------------------------
+
+# The spec names TSK.type as a required field without fixing its values. Left
+# free-form it is unusable as a GATE input: the design_ref rule (II.6 "UI-Tasks
+# bei vorhandenem bestaetigtem Design ohne design_ref gesperrt") has to decide
+# "is this a UI task", and matching a free-text field against a sample list
+# fails OPEN on every synonym the orchestrator invents ("ui-implementation",
+# "frontend-work", ...). So the vocabulary is CLOSED here and validated at
+# capture: an unknown type is refused early and visibly, instead of quietly
+# skipping a gate later. Widening the list is a spec decision, not a guess at
+# call time.
+TASK_TYPES = frozenset((
+    "analysis",         # read-only investigation (rides an APR.kind: analysis)
+    "design",           # WFR/DSN authoring
+    "architecture",     # ARC authoring
+    "implementation",   # non-UI production code
+    "bugfix",           # BUG is a first-class root type (II.2) and its fix work
+                        # is not "implementation" of a new requirement
+    "ui",               # user-facing surface -- the design_ref-bearing type
+    "test",             # QA/regression work
+    "review",           # audit/review pass
+    "docs",
+    "ops",              # devops/pipeline/release work
+    "research",         # research-kit execution work
+))
+
+# The subset for which a confirmed design makes design_ref mandatory (II.6).
+UI_TASK_TYPES = frozenset(("ui",))
+
+# The work-order contract of a TSK: everything a gate reads to decide what this
+# task may do. FROZEN once the task leaves DRAFT (enforced in the kernel edit
+# path), because these fields are gate INPUTS and a task past DRAFT is either
+# queued, leased or being worked by a live specialist:
+#   * `allowed_scope`/`forbidden_scope` are gate layer 3's only inputs -- widening
+#     them on a LEASED, BOUND task hands a running specialist the whole repo,
+#     with no approval and no revision bump,
+#   * `type` decides whether the design_ref rule applies (II.6),
+#   * `assigned_role` is what the dispatch gate matches the spawn against,
+#   * `acceptance_refs`/`dependencies` are what makes the task checkable at all.
+# Re-planning is legitimate -- it just has to be VISIBLE: bring the task back to
+# DRAFT (or cancel and re-create it), which is a status transition through the
+# automaton rather than a quiet field write.
+TSK_PLAN_FIELDS = frozenset((
+    "product_requirement", "root_revision", "derives_from", "type", "assigned_role",
+    "acceptance_refs", "required_inputs", "allowed_scope", "forbidden_scope",
+    "expected_outputs", "dependencies",
+))
+
+
 # -- V1 -> V2 status mapping (spec II.10; machine-readable, never guess) -------
 
 V1_STATUS_MAPPING = {

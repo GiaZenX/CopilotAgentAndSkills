@@ -805,6 +805,18 @@ Summenfehler → Folge-Workflow blockiert, gültiger Edit → pass, Append-only-
 nachweislich entfernt; nicht klassifizierbare Datei bleibt unberührt + Ask-User-Text;
 gate_memory_complete triggert auf product/active/PR-*.yaml (Lockstep-Regression).
 
+**Paritätsrisiken R1/R3/R5/R6/R10/R11 (Phase 2, Nachtrag 2026-07-25):** `git push` ohne
+geprägtes Push-Token → Block, mit Token → pass, nach neuem Commit → wieder Block
+(HEAD-Bindung macht es einmalig); widerrufenes und abgelaufenes Token → Block;
+handgeschriebene push-APR → Block. PII-Scan: Counterparty-Name in getrackter Datei
+außerhalb ledger/ → Block mit Datei:Zeile, Name nur im Ledger → pass (140-Namen-Vorfall).
+**R5:** entferntes sichtbares UI-Element ohne CR → der UI-Inventar-Snapshot schlägt fehl
+(Snapshot-Muster aus testing_guidelines). **R6:** ausgelieferte index.html ≠ Build-Hash →
+Delivery-Freshness-Fail (grüner Smoke-Test gegen ein veraltetes Bundle zertifiziert Code,
+der nicht der geprüfte ist). Fremdes Docker-Compose-Projekt oder `prune` → Block, Lesen
+(`ps`/`logs`/`inspect`/`build`/`up`) → pass; merge/rebase/pull/`reset --hard`/Branchwechsel
+auf dirty tree → Block, `add`/`stash`/`checkout -b`/`checkout -- <datei>` → pass.
+
 **Neue v2.1-Testfälle:** Lock: zweiter Prozess wartet/blockt; Stale-Lock wird nach TTL
 gebrochen; doctor meldet gehaltenen Lock. ID-Kollision zweier Branches → Merge-Block.
 Out-of-band-Edit an gehashtem Feld → Dispatch/Merge-Block mit Re-Approve-Hinweis.

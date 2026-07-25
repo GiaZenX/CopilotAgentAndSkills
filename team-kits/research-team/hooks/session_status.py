@@ -15,6 +15,7 @@ import time
 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _compat
 from _root import find_repo_root
 from _compat import run_captured
 
@@ -116,10 +117,9 @@ def model_effort_sync_guidance():
 
 
 def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        data = {}
+    # BOUNDED read (spec II.4): a raw `json.load(sys.stdin)` buffers a payload of any size.
+    # `tolerate_overflow=True` because this hook only INFORMS; it must never refuse a call.
+    data = _compat.load(tolerate_overflow=True)
     cwd = find_repo_root(data.get("cwd"))
     is_codex = os.environ.get("TEAM_KIT_PROVIDER", "claude").strip().lower() == "codex"
 

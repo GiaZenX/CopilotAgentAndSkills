@@ -13,6 +13,7 @@ import json
 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _compat
 from _root import find_repo_root
 from _compat import run_captured
 
@@ -20,8 +21,11 @@ from _compat import run_captured
 def main():
     cwd = os.getcwd()
     data = {}
+    # BOUNDED read (spec II.4): a raw `json.load(sys.stdin)` buffers a payload of any
+    # size. `tolerate_overflow=True` because this hook only INFORMS -- refusing a tool
+    # call because a dashboard could not be rendered would be absurd.
+    data = _compat.load(tolerate_overflow=True)
     try:
-        data = json.load(sys.stdin)
         cwd = find_repo_root(data.get("cwd"))
     except Exception:
         pass

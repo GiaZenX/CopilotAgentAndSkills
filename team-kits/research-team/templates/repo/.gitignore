@@ -26,3 +26,8 @@ project_memory/.audit/
 .claude/kit_update_pending.state
 .claude/.gate_pipeline_green
 .claude/project_path.state
+
+# V2 runtime/machine state (spec II.2, II.8): which hook bundle THIS checkout trusts and
+# whether a hook has actually run here. Committing it would let a clone inherit `state: active`
+# with a matching hash and read as trusted before a single hook ran in it.
+.claude/kit_state.json

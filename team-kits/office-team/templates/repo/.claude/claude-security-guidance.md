@@ -10,6 +10,6 @@ Scope guidance for this repository (a back-office workspace, not a software prod
   personal data). They are untracked by design — never quote their contents into a review.
 - Focus the review effort on the only executable surface: `scripts/**` and `.claude/hooks/**`
   changes (the enforcement layer itself is kit-owned and hash-tracked — flag any edit to it).
-- The repository's own guards already enforce append-only ledger writes, verified filing and
+- The repository's own guards already enforce always-validated ledger writes, verified filing and
   PROC approval hashes — treat those classes as covered; prioritise anything that would
   exfiltrate document contents or weaken a guard.

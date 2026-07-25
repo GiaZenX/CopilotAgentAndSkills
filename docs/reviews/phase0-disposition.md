@@ -545,7 +545,7 @@ State-Validator · GS5 CI/Merge · APR2 Zwei-Phasen-Freigabeprotokoll.
 | 46 | Toter Spezialist: 1 Retry, dann eskalieren | dev/AGENTS:213-214 | behalten (Lease-Timeout→READY gated) |
 | 47 | Tech-Debt geflaggt, nie still refactoren | dev/AGENTS:188; res/AGENTS:168-169; arch:66 | behalten |
 | 48 | Flags/Findings verpuffen nicht (TSK oder Skip-Log) | dev/AGENTS:190-194; res/AGENTS:170-172 | durch Gate ersetzt (→Auditor-Routine, II.10a) |
-| 49 | File-Budget harte Grenze | dev/AGENTS:75,192-193; audit:26 | durch Gate ersetzt (→guard_memory_budget/GS4) |
+| 49 | File-Budget harte Grenze | dev/AGENTS:75,192-193; audit:26 | durch Gate ersetzt (→gate_pipeline / `scripts/kit_checks.py` + GS4) — **korrigiert 2026-07-25:** guard_memory_budget deckt NUR agent-memory, nicht das Quelldatei-Budget |
 | 50 | Auditor täglich/PM-getriggert | dev/AGENTS:194; res/AGENTS:172 | bewusst geändert (wöchentlich+ereignisbasiert, APR routine, II.10a) |
 | 51 | Auditor read-only; ein Lauf=ein review_findings-Eintrag | dev/audit:34-36; off/audit:34-36; res/audit:34-36 | bewusst geändert (read-only via APR-Scope+GS3; Evidence statt review_findings, II.10a) |
 | 52 | Artefakte sofort aktuell; derives_from-Impact prüfen | dev/AGENTS:218-219; res/AGENTS:195 | durch Gate ersetzt (→GS4 Referenzgraph/Invalidierung) |

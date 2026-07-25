@@ -42,6 +42,25 @@ for _stream in (sys.stdout, sys.stderr):
         pass  # non-reconfigurable stream (test harness capture) — best effort
 
 
+# BOUNDED stdin (spec II.4: "Hooks lesen stdin BEGRENZT"). An unbounded read makes every hook a
+# memory amplifier for whatever the provider puts in tool_input (a Write of a huge file, a pasted
+# dump). The cap is generous — real payloads carry whole file contents — but finite.
+#
+# Overflow BLOCKS by default, and that default is the whole design. The first cut of this returned
+# a sentinel dict for the caller to notice, which silently disarmed ten shipped guards at once:
+# they all dispatch on `tool_name`, the sentinel has none, so every one of them exited 0 = ALLOW —
+# a 17 MB Write of `.claude/settings.json` walked straight past guard_harness_selfmod. An
+# oversized payload means "this call could not be inspected", and for an integrity gate that must
+# never read as "allowed" (spec II.4 fail-closed). So the SAFE behaviour is what you get by
+# forgetting; comfort hooks (formatting, dashboards, notifications) opt out explicitly and
+# greppably via tolerate_overflow=True.
+STDIN_LIMIT = 16 * 1024 * 1024
+_OVERFLOW_MESSAGE = (
+    "[team-kit guard] Hook payload exceeded the %d-byte stdin bound, so this call could not be "
+    "inspected — refused rather than waved through (spec II.4 bounded read + fail-closed).\n"
+    "Remedy: split the call; a tool payload this large is never a normal delegation.\n"
+)
+
 _PATCH_FILE_RX = re.compile(r"(?m)^\*{3} (Add|Update|Delete) File: (.+?)\s*$")
 _PATCH_MOVE_RX = re.compile(r"(?m)^\*{3} Move to: (.+?)\s*$")
 # providers use different tool vocabularies — normalize the KNOWN aliases to the Claude names
@@ -50,17 +69,42 @@ _TOOL_ALIASES = {"edit": "Edit", "write": "Write", "bash": "Bash", "powershell":
                  "str_replace": "Edit", "create_file": "Write", "shell": "Bash"}
 
 
-def load(stream=None):
-    """Read + normalize the hook payload from stdin. Never raises; returns {} on garbage.
+def load(stream=None, limit=None, tolerate_overflow=False):
+    """Read + normalize the hook payload from stdin. Returns {} on garbage.
 
     stdin is read as BYTES and decoded UTF-8: providers send raw UTF-8, but Windows text-mode
     stdin decodes cp1252 — an audit proved non-ASCII payload content (umlauts in question text,
-    German file paths) arrived as mojibake and pattern matches silently missed."""
+    German file paths) arrived as mojibake and pattern matches silently missed.
+
+    The read is BOUNDED at `limit` bytes, defaulting to STDIN_LIMIT (spec II.4). Beyond it this
+    EXITS 2 with a block message — see STDIN_LIMIT for why that is the default rather than a
+    return value. Comfort hooks pass tolerate_overflow=True and get the `_stdin_overflow`
+    sentinel instead. The limit default is resolved HERE, not in the signature, so the
+    module-level cap stays adjustable at runtime (tests, tuning)."""
+    limit = STDIN_LIMIT if limit is None else limit
+    raw = None
     try:
-        if stream is None and getattr(sys.stdin, "buffer", None) is not None:
-            data = json.loads(sys.stdin.buffer.read().decode("utf-8", "replace"))
+        source = stream if stream is not None else sys.stdin
+        buffer = getattr(source, "buffer", None)
+        if stream is None and buffer is not None:
+            raw = buffer.read(limit + 1)
         else:
-            data = json.load(stream or sys.stdin)
+            # text stream (tests): read(n) counts CHARACTERS, so the encoded result may exceed
+            # the cap slightly — the overflow check below is on bytes and errs toward blocking
+            raw = source.read(limit + 1)
+            if isinstance(raw, str):
+                raw = raw.encode("utf-8", "replace")
+    except Exception:
+        return {}
+    if raw is None:
+        return {}
+    if len(raw) > limit:
+        if not tolerate_overflow:
+            sys.stderr.write(_OVERFLOW_MESSAGE % limit)
+            sys.exit(2)
+        return {"_stdin_overflow": True, "tool_input": {}}
+    try:
+        data = json.loads(raw.decode("utf-8", "replace"))
     except Exception:
         return {}
     if not isinstance(data, dict):
@@ -113,7 +157,9 @@ def file_paths(data):
     if isinstance(data.get("_file_paths"), list) and data["_file_paths"]:
         return [str(p) for p in data["_file_paths"]]
     ti = data.get("tool_input") or {}
-    p = ti.get("file_path") or ti.get("path") or ""
+    # notebook_path: NotebookEdit is a file write like any other, and a guard that does not see it
+    # scopes everything except notebooks
+    p = ti.get("file_path") or ti.get("path") or ti.get("notebook_path") or ""
     return [str(p)] if p else []
 
 

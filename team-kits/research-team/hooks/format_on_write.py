@@ -71,7 +71,10 @@ def fmt(path, cwd):
 
 
 def main():
-    data = _compat.load()
+    # comfort hook (spec II.4: formatting may fail open), so an oversized payload is skipped
+    # rather than blocked — the integrity gates are the ones that must refuse what they cannot
+    # inspect, and they do so by default
+    data = _compat.load(tolerate_overflow=True)
     allowed_roles = {role for role in os.environ.get("TEAM_KIT_AGENT_TYPES", "").split(",")
                      if role}
     if allowed_roles and str(data.get("agent_type") or "") not in allowed_roles:

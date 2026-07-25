@@ -122,7 +122,7 @@ Assert-SafeRepoPath $cfg
 Assert-NoReparseTree $kit -AllowOutsideRepo
 foreach ($relative in @(
         "AGENTS.md", "CLAUDE.md", "AGENTS.override.md", ".claude\settings.json",
-        ".claude\agents", ".claude\hooks", ".claude\skills", ".claude\team_kit_roles.txt",
+        ".claude\agents", ".claude\hooks", ".claude\kernel", ".claude\skills", ".claude\team_kit_roles.txt",
         ".claude\provider_artifacts.json", ".claude\settings.local.json", ".claude\kit_version", ".claude\backups",
         ".codex", ".agents\skills", ".github\hooks", ".github\agents")) {
     Assert-NoReparseTree (Join-Path $repo $relative)
@@ -230,6 +230,7 @@ Backup-Local (Join-Path $repo ".claude\settings.json") ".claude\settings.json"
 Backup-Local (Join-Path $repo ".claude\settings.local.json") ".claude\settings.local.json"
 Backup-Local (Join-Path $repo ".claude\agents") ".claude\agents"
 Backup-Local (Join-Path $repo ".claude\hooks") ".claude\hooks"
+Backup-Local (Join-Path $repo ".claude\kernel") ".claude\kernel"
 Backup-Local (Join-Path $repo ".claude\skills") ".claude\skills"
 Backup-Local (Join-Path $repo ".claude\team_kit_roles.txt") ".claude\team_kit_roles.txt"
 Backup-Local (Join-Path $repo ".claude\provider_artifacts.json") ".claude\provider_artifacts.json"
@@ -246,7 +247,7 @@ if (Test-Path -LiteralPath (Join-Path $repo "AGENTS.override.md")) {
 function Restore-ScaffoldSnapshot {
     $relativePaths = @(
         "CLAUDE.md", "AGENTS.md", ".claude\settings.json", ".claude\agents",
-        ".claude\hooks", ".claude\skills", ".claude\team_kit_roles.txt",
+        ".claude\hooks", ".claude\kernel", ".claude\skills", ".claude\team_kit_roles.txt",
         ".claude\provider_artifacts.json", ".claude\kit_version", ".codex",
         ".agents\skills", ".github\hooks", ".github\agents")
     foreach ($relative in $relativePaths) {
@@ -436,6 +437,23 @@ if (Test-Path $hooksSrc) {
         Write-Host "  [ok] hook: $($_.Name)" -ForegroundColor Green
     }
 }
+# ...and the V2 state kernel the hooks import. `_kernel.kernel_parents()` names `<repo>/.claude`
+# as the FIRST place it looks and says why: a project must run the kernel its hook bundle was
+# installed with, not whatever version happens to sit in the global staging. Nothing copied it
+# there, so that first candidate never existed and every project silently fell through to
+# ~/.claude/team-kits -- or, on a machine without it, got KernelUnavailable from every integrity
+# gate. It also carries `known_holes.json`, which `harness doctor` needs to report any capability
+# as verified at all.
+$kernelSrc = Join-Path (Split-Path -Parent $kit) "kernel"
+if (Test-Path $kernelSrc) {
+    $kernelDst = Join-Path $repo ".claude\kernel"
+    if (Test-Path $kernelDst) { Remove-Item $kernelDst -Recurse -Force }
+    Copy-Item $kernelSrc $kernelDst -Recurse -Force
+    Get-ChildItem -Path $kernelDst -Recurse -Force -Directory |
+        Where-Object { $_.Name -eq "__pycache__" } |
+        ForEach-Object { Remove-Item $_.FullName -Recurse -Force }
+    Write-Host "  [ok] .claude/kernel (V2 state kernel)" -ForegroundColor Green
+}
 # Role skills travel with the team (preloaded into the agents via their `skills:` frontmatter).
 if (Test-Path $skillsSrc) {
     if (-not (Test-Path $skillsDst)) { New-Item -ItemType Directory -Force -Path $skillsDst | Out-Null }
@@ -483,6 +501,16 @@ if (Test-Path $verSrc) {
     Copy-Item $verSrc $kvDst -Force
     Write-Host "  [ok] .claude/kit_version ($newV)" -ForegroundColor Green
 }
+
+# Record WHICH hook bundle this project now carries -- the value `harness doctor` measures
+# `hook_trust` against. Nothing wrote it before, so that comparison had no counterpart and
+# `enforcement: hard` was unreachable for a reason nobody could act on. State is
+# `restart_required`: the hooks installed above are not running in the session that ran this
+# script, and only kit_trust_state.py (a SessionStart hook) may flip it to `active`.
+$kitStateVersion = ""
+if (Test-Path $verSrc) { $kitStateVersion = (Get-Content $verSrc -TotalCount 1) }
+& $providerPython.Source "$PSScriptRoot\write_kit_state.py" --repo $repo --kit $Team --kit-version $kitStateVersion --kit-root (Split-Path -Parent $kit)
+if ($LASTEXITCODE -ne 0) { throw "Could not record the installed hook bundle; backups are under $bdir" }
 
 # Extra providers: Python/PyYAML owns parsing so quoted or block-style valid YAML can never be
 # mistaken for an empty provider set (which would delete provider artifacts).

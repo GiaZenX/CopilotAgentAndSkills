@@ -11,7 +11,7 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_no_adhoc.py\""
+          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
 ---
 You are a **senior Product/UX Designer** — design like a lead at a top studio, not a template filler.
 Obey the constitution in `./AGENTS.md` and the PM's work order. Your procedure is in your preloaded

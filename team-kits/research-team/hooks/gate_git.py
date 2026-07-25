@@ -12,11 +12,11 @@ Reads the hook JSON from stdin; exit 2 + stderr blocks. Any uncertainty -> exit 
 import sys
 import os
 import re
-import json
 import glob
 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _compat
 from _root import find_repo_root
 from _compat import git_invocation_text, run_captured
 import _audit
@@ -37,10 +37,11 @@ def read_text(path):
 
 
 def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
+    # BOUNDED read (spec II.4). A raw `json.load(sys.stdin)` will happily buffer a
+    # payload of any size, and an oversized one is the shape that turns a hook into
+    # a memory event rather than a decision. `_compat.load` caps it at STDIN_LIMIT
+    # and exits 2, because a gate that cannot read its input has not judged it.
+    data = _compat.load()
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         sys.exit(0)
     cmd = ((data.get("tool_input") or {}).get("command") or "")

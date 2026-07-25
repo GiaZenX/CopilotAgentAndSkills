@@ -966,24 +966,50 @@ def test_init_pending_file_written_and_removed(tmp_path):
 
 
 # ---------------- kit mirroring: shared files must stay byte-identical across kits ----------------
+# Hooks that legitimately differ per kit — each one a decision, not an omission. Anything NOT
+# listed here and present in more than one kit must be byte-identical.
+KIT_SPECIFIC_HOOKS = {
+    "session_status.py": "the session briefing names each kit's own artifacts and nags",
+    "format_on_write.py": "formats the languages a kit actually produces",
+    "gate_git.py": "the dev/research merge gates run different pipelines",
+    "gate_memory_complete.py": "role memory differs per kit",
+    "gate_pipeline.py": "the green-tree pipeline is kit-specific",
+}
+
+
 def test_shared_kit_files_identical():
-    shared = [
-        ("hooks", "guard_yaml_valid.py"), ("hooks", "guard_agent_spawn.py"),
-        ("hooks", "notify_agent_events.py"), ("hooks", "guard_scratchpad_ref.py"),
-        ("hooks", "_root.py"), ("hooks", "_audit.py"), ("hooks", "auto_dashboard.py"),
-        ("templates", os.path.join("repo", "scripts", "quality.py")),
-        ("templates", os.path.join("repo", "scripts", "kit_checks.py")),
-        ("templates", os.path.join("repo", "scripts", "retro.py")),
-    ]
-    for sub, name in shared:
-        a = os.path.join(ROOT, "team-kits", "dev-team", sub, name)
-        b = os.path.join(ROOT, "team-kits", "research-team", sub, name)
-        assert open(a, "rb").read() == open(b, "rb").read(), "%s/%s diverged between kits" % (sub, name)
-    for name in ("guard_yaml_valid.py", "guard_agent_spawn.py", "notify_agent_events.py",
-                 "guard_scratchpad_ref.py", "_root.py", "_audit.py"):
-        a = os.path.join(ROOT, "team-kits", "dev-team", "hooks", name)
-        b = os.path.join(ROOT, "team-kits", "office-team", "hooks", name)
-        assert open(a, "rb").read() == open(b, "rb").read(), "hooks/%s diverged (office)" % name
+    """DERIVED, not listed. The old version enumerated six filenames, so every file mirrored after
+    it was written stayed unpinned — `_gate.py`, `_kernel.py`, `_compat.py`, `kit_trust_state.py`
+    and all six V2 gates lived in three unpinned copies. It found nothing when
+    `gate_shell_hygiene.py` actually drifted: a fix limiting the docker rule to DESTRUCTIVE
+    commands reached dev-team and neither mirror, so two kits blocked `docker compose ps`.
+
+    Now the burden is the other way round: a name present in more than one kit is pinned unless
+    KIT_SPECIFIC_HOOKS says why it differs. A new mirrored file is covered the day it ships."""
+    by_name = {}
+    for kit in ("dev-team", "office-team", "research-team"):
+        hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
+        for name in sorted(os.listdir(hooks_dir)):
+            if name.endswith(".py"):
+                with open(os.path.join(hooks_dir, name), "rb") as handle:
+                    by_name.setdefault(name, {})[kit] = handle.read()
+    for name, copies in sorted(by_name.items()):
+        if len(copies) < 2 or name in KIT_SPECIFIC_HOOKS:
+            continue
+        assert len(set(copies.values())) == 1, (
+            "hooks/%s exists in %s and they are NOT identical — either re-mirror it, or add it to "
+            "KIT_SPECIFIC_HOOKS with the reason" % (name, ", ".join(sorted(copies))))
+    # ...and a name on the exception list that has stopped differing is an exception nobody needs
+    for name in sorted(KIT_SPECIFIC_HOOKS):
+        copies = by_name.get(name, {})
+        if len(copies) >= 2:
+            assert len(set(copies.values())) > 1, (
+                "hooks/%s is listed as kit-specific but all copies are identical — drop the "
+                "exception so it stays pinned" % name)
+    for name in ("quality.py", "kit_checks.py", "retro.py"):
+        a = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts", name)
+        b = os.path.join(ROOT, "team-kits", "research-team", "templates", "repo", "scripts", name)
+        assert open(a, "rb").read() == open(b, "rb").read(), "scripts/%s diverged" % name
 
 
 # ---------------- kit_checks: file budget (the anti-monolith gate) ----------------
@@ -2337,11 +2363,15 @@ def test_proc_gate_blocks_tampered_steps(tmp_path):
                     hooks_dir=OFFICE_HOOKS) == 2
 
 
-# ---------------- office kit: ledger guards + scripts ----------------
-def test_guard_ledger_direct_blocks(tmp_path):
-    p = tmp_path / "ledger" / "2026.csv"
-    payload = {"tool_name": "Edit", "tool_input": {"file_path": str(p)}, "cwd": str(tmp_path)}
-    assert run_hook("guard_ledger_direct.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS) == 2
+# ---------------- office kit: ledger scripts ----------------
+def test_the_append_only_guard_is_gone(tmp_path):
+    """User decision I.3/1: append-only is abolished, so `guard_ledger_direct` was DELETED rather
+    than loosened. II.12 asks for exactly this proof ("Append-only-Guard nachweislich entfernt") —
+    a direct ledger edit is now judged by `gate_ledger_valid`, not forbidden."""
+    assert not os.path.exists(os.path.join(OFFICE_HOOKS, "guard_ledger_direct.py"))
+    settings = json.load(open(os.path.join(ROOT, "team-kits", "office-team", "settings",
+                                           "settings.json"), encoding="utf-8"))
+    assert "guard_ledger_direct" not in json.dumps(settings)
 
 
 def _ledger_add(repo, *extra):

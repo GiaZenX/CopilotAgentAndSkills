@@ -8,7 +8,6 @@ archive/, or moving something OUT of archive/, blocks. Reorganisation inside the
 a user-approved migration PROC — if this guard fires on legitimate reorg, that is the signal to
 get the user's OK first, not to work around it. Uncertainty -> exit 0.
 """
-import json
 import os
 import re
 import sys
@@ -24,23 +23,30 @@ DELETE_RX = re.compile(
 MOVE_RX = re.compile(
     r"\b(mv|move|Move-Item|mi|ren|rename|Rename-Item)\b[^\n;|&]*\barchive[/\\]", re.I)
 # shell redirects into the ledger bypass the Edit/Write guard (audit finding: `echo >> ledger/x.csv`)
-LEDGER_REDIRECT_RX = re.compile(r"[>|]\s*\"?[^\s\"|;&]*\bledger[/\\][^\s\"|;&]*\.csv", re.I)
+LEDGER_REDIRECT_RX = re.compile(
+    r"(?:[>|]\s*|\btee\b(?:\s+-\S+)*\s+)\"?[^\s\"|;&]*\bledger[/\\][^\s\"|;&]*\.csv", re.I)
+# The exemption is for INVOKING the script, not for MENTIONING it. A substring test let
+# `echo garbage >> ledger/2026.csv # via ledger_add.py` through -- a comment disabled the rule.
+LEDGER_ADD_RX = re.compile(r"(?:^|[;&|(]|\bpython[0-9.]*\s+|\bpy\s+)\s*\S*ledger_add\.py\b", re.I)
 
 
 def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
+    # BOUNDED read (spec II.4). A raw `json.load(sys.stdin)` will happily buffer a
+    # payload of any size, and an oversized one is the shape that turns a hook into
+    # a memory event rather than a decision. `_compat.load` caps it at STDIN_LIMIT
+    # and exits 2, because a gate that cannot read its input has not judged it.
+    data = _compat.load()
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         sys.exit(0)
     cmd = str((data.get("tool_input") or {}).get("command") or "")
-    if LEDGER_REDIRECT_RX.search(cmd) and "ledger_add.py" not in cmd:
+    if LEDGER_REDIRECT_RX.search(cmd) and not LEDGER_ADD_RX.search(cmd):
         _audit.record("guard_fs_tripwire", "shell redirect into ledger: %s" % cmd[:120])
         sys.stderr.write(
-            "[team-kit guard] Shell writes into ledger/*.csv are BLOCKED — the ledger is "
-            "script-validated and append-only: use `python scripts/ledger_add.py ...` (arithmetic, "
-            "duplicate and year checks) — corrections are reversal entries.\n")
+            "[team-kit guard] A blind shell redirect into ledger/*.csv is BLOCKED — `>>` writes "
+            "whatever it is handed, with no schema, no arithmetic check and no way to tell a row "
+            "from a fragment. Editing the ledger IS allowed (user decision V2 I.3/1): use Edit, or "
+            "`python scripts/ledger_add.py ...` for a new entry. Either way the whole file is "
+            "re-validated afterwards and a failure marks the ledger invalid.\n")
         sys.exit(2)
     if DELETE_RX.search(cmd):
         _audit.record("guard_fs_tripwire", "delete on inbox/archive: %s" % cmd[:120])

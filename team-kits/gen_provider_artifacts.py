@@ -31,7 +31,6 @@ PyYAML is required for project-config parsing.
 import argparse
 import atexit
 import base64
-import hashlib
 import json
 import os
 import re
@@ -299,28 +298,50 @@ def rel_command(command):
 
 
 def hook_bundle_hash(repo):
-    """Hash every installed hook dependency so Codex trust changes when executable code changes."""
-    root = os.path.join(repo, ".claude", "hooks")
-    digest = hashlib.sha256()
-    if not os.path.isdir(root):
+    """Hash every installed hook dependency so Codex trust changes when executable code changes.
+
+    The ALGORITHM lives in `kernel.hashing.hook_bundle_hash` and is shared with `harness doctor`,
+    which used to compute a different hash over this same directory — so doctor's `hook_trust`
+    could never match the value this generator bound Codex to. Only the two guarantees specific to
+    generating a trust binding stay here: a missing directory is fatal (Codex trust must not be
+    bound to nothing), and the tree must be free of reparse points (a junction inside the bundle
+    would let the hashed bytes and the executed bytes diverge).
+    """
+    if not os.path.isdir(os.path.join(repo, ".claude", "hooks")):
         raise SystemExit("Missing .claude/hooks; Codex hook trust cannot be bound to the bundle")
-    assert_tree_no_reparse(repo, ".claude/hooks")
-    for current, dirs, files in os.walk(root):
-        dirs[:] = sorted(directory for directory in dirs if directory != "__pycache__")
-        for filename in sorted(files):
-            if filename.endswith((".pyc", ".pyo")):
-                continue
-            path = os.path.join(current, filename)
-            relative = os.path.relpath(path, root).replace("\\", "/")
-            digest.update(relative.encode("utf-8") + b"\0")
-            with open(path, "rb") as fh:
-                digest.update(fh.read())
-            digest.update(b"\0")
-    return digest.hexdigest()
+    for subtree in kernel_hashing().BUNDLE_SUBTREES:
+        if os.path.isdir(os.path.join(repo, ".claude", subtree)):
+            assert_tree_no_reparse(repo, ".claude/" + subtree)
+    digest = kernel_hashing().hook_bundle_hash(os.path.join(repo, ".claude"))
+    if digest is None:
+        raise SystemExit("Could not hash .claude/hooks; Codex hook trust cannot be bound to it")
+    return digest
+
+
+def kernel_hashing():
+    """The kernel's hashing module, imported from wherever this script is installed.
+
+    This script ships INSIDE `team-kits/`, so the kernel package is its sibling — the same
+    directory the hooks resolve it from. Imported lazily and by path rather than at module scope
+    because the generator is also run straight from the harness checkout.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    if here not in sys.path:
+        sys.path.insert(0, here)
+    from kernel import hashing
+    return hashing
 
 
 def hook_bundle_verifier_b64():
-    """Return trusted inline verifier code; its bytes live in the hook definition Codex hashes."""
+    """Return trusted inline verifier code; its bytes live in the hook definition Codex hashes.
+
+    The one surviving copy of `kernel.hashing.hook_bundle_hash`, and it has to be a copy: Codex
+    hashes these bytes as part of the hook definition, so the verifier cannot import the thing it
+    is verifying. `argv[1]` is the `.claude` DIRECTORY, not the hooks directory — the scope is
+    hooks + kernel (see the canonical function for why). A test runs both over an adversarial tree
+    and fails on any drift; if they ever disagree, every Codex hook refuses with "bundle changed"
+    on a bundle that did not change, and the kit is dead on that provider.
+    """
     code = r'''import hashlib
 import os
 import sys
@@ -328,17 +349,21 @@ import sys
 root, expected = sys.argv[1], sys.argv[2]
 digest = hashlib.sha256()
 try:
-    for current, dirs, files in os.walk(root):
-        dirs[:] = sorted(item for item in dirs if item != "__pycache__")
-        for filename in sorted(files):
-            if filename.endswith((".pyc", ".pyo")):
-                continue
-            path = os.path.join(current, filename)
-            relative = os.path.relpath(path, root).replace(os.sep, "/")
-            digest.update(relative.encode("utf-8") + b"\0")
-            with open(path, "rb") as handle:
-                digest.update(handle.read())
-            digest.update(b"\0")
+    for subtree in ("hooks", "kernel"):
+        base = os.path.join(root, subtree)
+        if not os.path.isdir(base):
+            continue
+        for current, dirs, files in os.walk(base):
+            dirs[:] = sorted(item for item in dirs if item != "__pycache__")
+            for filename in sorted(files):
+                if filename.endswith((".pyc", ".pyo")):
+                    continue
+                path = os.path.join(current, filename)
+                relative = subtree + "/" + os.path.relpath(path, base).replace(os.sep, "/")
+                digest.update(relative.encode("utf-8") + b"\0")
+                with open(path, "rb") as handle:
+                    digest.update(handle.read())
+                digest.update(b"\0")
 except Exception as exc:
     sys.stderr.write("Team-kit hook bundle verification failed: %s\n" % exc)
     sys.exit(2)
@@ -361,6 +386,14 @@ def codex_hook_commands(command, agent_types=(), bundle_hash=""):
     if not match:
         return relative, relative
     script = match.group(1)
+    # ...and whatever follows it. Every V2 gate is now registered as `_gate.py gate_x.py`, and a
+    # translation that kept only the first `.py` would hand Codex a launcher with no gate to run —
+    # which the launcher correctly refuses, so EVERY gated call on that provider would be blocked
+    # by a harness defect. `script` stays the launcher because the root-walk below needs a file
+    # that exists; the argument rides along separately.
+    tail = relative[match.end():].strip().strip("\"'")
+    script_args = " ".join(
+        part for part in re.findall(r"[^\s\"']+\.py", tail) if "/" not in part and "\\" not in part)
     roles = ",".join(sorted(set(agent_types)))
     verifier = hook_bundle_verifier_b64()
     posix_env = ('CLAUDE_PROJECT_DIR="$root" TEAM_KIT_PROVIDER=codex '
@@ -375,9 +408,10 @@ def codex_hook_commands(command, agent_types=(), bundle_hash=""):
              'do root="$(dirname "$root")"; done; '
              'py="$(command -v python3 || command -v python)"; [ -n "$py" ] || exit 1; '
              '"$py" -c "import base64;exec(base64.b64decode(\'%(verify)s\'))" '
-             '"$root/.claude/hooks" "%(hash)s" || exit $?; '
-             '%(env)s "$py" "$root/%(script)s"' % {
+             '"$root/.claude" "%(hash)s" || exit $?; '
+             '%(env)s "$py" "$root/%(script)s"%(args)s' % {
                  "script": script, "env": posix_env, "verify": verifier,
+                 "args": (" " + script_args) if script_args else "",
                  "hash": bundle_hash})
     windows = ('powershell -NoProfile -Command "%(env)s'
                 '$root = git rev-parse --show-toplevel 2>$null; '
@@ -390,10 +424,16 @@ def codex_hook_commands(command, agent_types=(), bundle_hash=""):
                 'if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }; '
                 'if (-not $py) { throw \'Python 3 is required for team-kit hooks\' }; '
                 '$verify = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(\'%(verify)s\')); '
-                '$verify | & $py.Source - (Join-Path $root \'.claude/hooks\') \'%(hash)s\'; '
+                '$verify | & $py.Source - (Join-Path $root \'.claude\') \'%(hash)s\'; '
                 'if ($LASTEXITCODE -ne 0) { exit 2 }; '
-                '& $py.Source (Join-Path $root \'%(script)s\')"'
+                # `powershell -Command` collapses a native child's exit code to 1, and 1 is what
+                # Claude Code and Codex both read as "non-blocking error" = ALLOW. Without this
+                # line every Windows block became a pass — the same failure class the launcher
+                # exists to close, one layer out in the shell.
+                '& $py.Source (Join-Path $root \'%(script)s\')%(args)s; '
+                'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"'
                % {"script": script, "env": windows_env, "verify": verifier,
+                  "args": (" " + script_args) if script_args else "",
                   "hash": bundle_hash})
     return posix, windows
 
@@ -563,6 +603,12 @@ def gen_codex_config(settings, lead, tiers, aliases):
         '".claude/agent-memory" = "read"',
         '".claude/backups" = "read"',
         '".claude/hooks" = "read"',
+        # The kernel the hooks import, and the record `hook_trust` is measured against. The
+        # Claude side of this pair (`guard_harness_selfmod.BLOCKED`) gained both when the scaffold
+        # started installing the kernel into the project; leaving the Codex profile behind would
+        # have made the thin gates read-only and the code they delegate to writable.
+        '".claude/kernel" = "read"',
+        '".claude/kit_state.json" = "read"',
         '".claude/skills" = "read"',
         '".claude/settings.json" = "read"',
         '".claude/settings.local.json" = "read"',

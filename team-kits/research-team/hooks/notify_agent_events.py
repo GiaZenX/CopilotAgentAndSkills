@@ -19,6 +19,7 @@ import time
 
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import _compat
 try:
     from _root import find_repo_root
 except Exception:
@@ -31,10 +32,11 @@ except Exception:
 
 
 def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
+    # BOUNDED read (spec II.4). A raw `json.load(sys.stdin)` will happily buffer a
+    # payload of any size, and an oversized one is the shape that turns a hook into
+    # a memory event rather than a decision. `_compat.load` caps it at STDIN_LIMIT
+    # and returns the overflow sentinel here, because a comfort hook must not refuse a tool call.
+    data = _compat.load(tolerate_overflow=True)
     hev = str(data.get("hook_event_name") or "")
     if hev in ("SubagentStart", "SubagentStop"):
         event = "subagent_start" if hev == "SubagentStart" else "subagent_stop"

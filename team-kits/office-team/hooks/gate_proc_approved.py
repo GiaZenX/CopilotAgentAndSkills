@@ -10,7 +10,6 @@ re-approve, then `python scripts/proc_hash.py PROC-xxxx --update`). Bootstrap ex
 PROC is APPROVED yet (onboarding/filing-plan phase), spawns pass. Uncertainty -> exit 0.
 """
 import hashlib
-import json
 import os
 import re
 import sys
@@ -41,10 +40,11 @@ def steps_hash(steps, yaml_mod):
 
 
 def main():
-    try:
-        data = json.load(sys.stdin)
-    except Exception:
-        sys.exit(0)
+    # BOUNDED read (spec II.4). A raw `json.load(sys.stdin)` will happily buffer a
+    # payload of any size, and an oversized one is the shape that turns a hook into
+    # a memory event rather than a decision. `_compat.load` caps it at STDIN_LIMIT
+    # and exits 2, because a gate that cannot read its input has not judged it.
+    data = _compat.load()
     if data.get("tool_name") not in ("Agent", "Task"):
         sys.exit(0)
     inp = data.get("tool_input") or {}
@@ -61,7 +61,19 @@ def main():
     try:
         doc = yaml.safe_load(open(path, encoding="utf-8", errors="ignore").read()) or {}
     except Exception:
-        sys.exit(0)  # guard_yaml_valid owns broken YAML
+        # NOT exit 0. The delegation this used to make -- "guard_yaml_valid owns broken YAML" --
+        # does not hold at this event: that guard fires when the file is WRITTEN, not when a spawn
+        # is judged, so a registry corrupted by any other route simply disabled this gate. And the
+        # question here is "is this PROC approved", which an unreadable registry cannot answer:
+        # "we cannot tell" and "yes" are the same outcome only if you are willing to ship the
+        # difference. Same reasoning the ledger gate arrived at, one kit over.
+        _audit.record("gate_proc_approved", "unreadable PROC registry")
+        sys.stderr.write(
+            "[team-kit gate] the PROC registry (%s) cannot be parsed, so no spawn can be checked "
+            "against an approved PROC — refused rather than passed (spec II.4 fail-closed). "
+            "Remedy: `git restore %s`, or fix the YAML; `python scripts/proc_hash.py --list` "
+            "shows what the file should contain.\n" % (path, path))
+        sys.exit(2)
     procs = doc.get("processes") or {}
     if not isinstance(procs, dict):
         sys.exit(0)
