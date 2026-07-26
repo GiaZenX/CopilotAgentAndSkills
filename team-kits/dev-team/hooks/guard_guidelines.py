@@ -114,7 +114,7 @@ def main():
                      if role}
     if allowed_roles and str(data.get("agent_type") or "") not in allowed_roles:
         sys.exit(0)
-    if data.get("tool_name") not in ("Edit", "Write"):
+    if data.get("tool_name") not in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         sys.exit(0)
     root = find_repo_root(data.get("cwd"))
     for path in _compat.file_paths(data):

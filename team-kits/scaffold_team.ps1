@@ -509,8 +509,19 @@ if (Test-Path $verSrc) {
 # script, and only kit_trust_state.py (a SessionStart hook) may flip it to `active`.
 $kitStateVersion = ""
 if (Test-Path $verSrc) { $kitStateVersion = (Get-Content $verSrc -TotalCount 1) }
-& $providerPython.Source "$PSScriptRoot\write_kit_state.py" --repo $repo --kit $Team --kit-version $kitStateVersion --kit-root (Split-Path -Parent $kit)
-if ($LASTEXITCODE -ne 0) { throw "Could not record the installed hook bundle; backups are under $bdir" }
+# Invoked from the STAGING this scaffold installed from, not from $PSScriptRoot. The recorder
+# compares the installed bundle against the kit files sitting beside itself and takes no path from
+# its caller -- a `--kit-root` flag was tried and became a one-flag way to bless any tampering, by
+# pointing the "source" at the installation. Running the staging's own copy makes the two agree by
+# construction. A staging too old to carry the recorder simply records nothing, which leaves
+# `hook_trust` unverified: the fail-closed direction.
+$recorder = Join-Path (Split-Path -Parent $kit) "write_kit_state.py"
+if (Test-Path -LiteralPath $recorder) {
+    & $providerPython.Source $recorder --repo $repo --kit $Team --kit-version $kitStateVersion
+    if ($LASTEXITCODE -ne 0) { throw "Could not record the installed hook bundle; backups are under $bdir" }
+} else {
+    Write-Host "  [warn] $recorder is missing -- no hook-bundle trust recorded (harness doctor will report hook_trust: unverified)" -ForegroundColor Yellow
+}
 
 # Extra providers: Python/PyYAML owns parsing so quoted or block-style valid YAML can never be
 # mistaken for an empty provider set (which would delete provider artifacts).

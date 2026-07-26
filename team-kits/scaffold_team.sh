@@ -530,8 +530,17 @@ fi
 # `enforcement: hard` was unreachable for a reason nobody could act on. State is
 # `restart_required`: the hooks installed above are not running in the session that ran this
 # script, and only kit_trust_state.py (a SessionStart hook) may flip it to `active`.
-"$PYBIN" "$(cd "$(dirname "$0")" && pwd)/write_kit_state.py" \
-  --repo "$REPO" --kit "$TEAM" --kit-root "$KITS_ROOT" --kit-version "$(head -n 1 "$KIT/VERSION" 2>/dev/null || echo '')"
+# From the STAGING this scaffold installed from, not from $0's directory. The recorder compares
+# the installed bundle against the kit files beside itself and takes no path from its caller -- a
+# `--kit-root` flag was tried and became a one-flag way to bless any tampering, by pointing the
+# "source" at the installation. A staging too old to carry the recorder records nothing, which
+# leaves `hook_trust` unverified: the fail-closed direction.
+if [ -f "$KITS_ROOT/write_kit_state.py" ]; then
+  "$PYBIN" "$KITS_ROOT/write_kit_state.py" \
+    --repo "$REPO" --kit "$TEAM" --kit-version "$(head -n 1 "$KIT/VERSION" 2>/dev/null || echo '')"
+else
+  echo "  [warn] $KITS_ROOT/write_kit_state.py is missing -- no hook-bundle trust recorded (harness doctor will report hook_trust: unverified)"
+fi
 
 # Extra providers: the same validated project_config drives exact provider generation/removal.
 "$PYBIN" "$(cd "$(dirname "$0")" && pwd)/gen_provider_artifacts.py" \

@@ -115,7 +115,7 @@
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
           {
             "type": "command",
@@ -128,14 +128,6 @@
       {
         "matcher": "Edit|Write|MultiEdit",
         "hooks": [
-          {
-            "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_yaml_valid.py"
-          },
-          {
-            "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_scratchpad_ref.py"
-          },
           {
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_filing.py"
@@ -167,6 +159,19 @@
           {
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_yaml_valid.py"
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_scratchpad_ref.py"
           }
         ]
       }

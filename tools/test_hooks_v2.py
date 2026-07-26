@@ -537,13 +537,22 @@ def test_a_gate_that_does_not_compile_still_blocks(tmp_path, kit):
 def _is_comfort_hook(path):
     """Does this hook OPT OUT of the bounded read — the repo's marker for "cannot refuse a call"?
 
-    Parsed, not searched. A substring test over the whole file is satisfied by the sentence
-    "this gate does not pass tolerate_overflow=True" in a docstring, and a reviewer used exactly
-    that to re-register a blocking gate directly while the suite stayed green."""
+    Three conditions, because the first two versions were each satisfied by something that was not
+    the code: a substring test matched the sentence "this gate does not pass
+    tolerate_overflow=True" in a docstring, and a bare `ast` walk for the keyword matched it on ANY
+    call, including one inside `if False:` or a function nobody calls. So the keyword must sit on
+    a `_compat.load(...)` call, and the file must contain nothing that can refuse — a hook that
+    can exit 2 is not comfort, whatever it passes to whom."""
     with open(path, encoding="utf-8") as handle:
-        tree = ast.parse(handle.read(), filename=path)
-    for node in ast.walk(tree):
+        body = handle.read()
+    if re.search(r"sys\.exit\(2\)|_kernel\.block\(|run_gate\(|fail_closed\(", body):
+        return False
+    for node in ast.walk(ast.parse(body, filename=path)):
         if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr == "load"
+                and isinstance(func.value, ast.Name) and func.value.id == "_compat"):
             continue
         for keyword in node.keywords:
             if (keyword.arg == "tolerate_overflow"
@@ -560,7 +569,12 @@ def _all_registrations(kit):
     settings.json, and fifteen blocking registrations lived in the agents' own frontmatter —
     `guard_no_adhoc` and `guard_guidelines`, for every specialist, on both providers
     (`gen_provider_artifacts.agent_hook_entries` translates them too). Its docstring claimed a new
-    gate was covered the day it ships; for a whole surface it was not."""
+    gate was covered the day it ships; for a whole surface it was not.
+
+    The frontmatter is PARSED as YAML, not scanned line by line. The line-scanning version read
+    exactly one spelling: a reviewer moved a hook back to a direct registration using single
+    quotes, a folded scalar over two lines, or a backslash path — all valid YAML, all still
+    translated by the generator, all invisible here."""
     out = []
     settings = json.load(open(os.path.join(TEAM_KITS, kit, "settings", "settings.json"),
                               encoding="utf-8"))
@@ -569,13 +583,20 @@ def _all_registrations(kit):
             for hook in group.get("hooks") or []:
                 out.append(("settings.json", event, group.get("matcher"),
                             hook.get("command") or ""))
+    yaml = pytest.importorskip("yaml")
     for path in sorted(globmodule.glob(os.path.join(TEAM_KITS, kit, "agents", "*.md"))):
         with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                match = re.search(r'command:\s*"(.+?)"\s*$', line.strip())
-                if match and ".claude/hooks/" in match.group(1):
-                    out.append((os.path.basename(path), "role", None,
-                                match.group(1).replace('\\"', '"')))
+            raw = handle.read()
+        if not raw.startswith("---"):
+            continue
+        front = yaml.safe_load(raw.split("---", 2)[1]) or {}
+        for event, groups in (front.get("hooks") or {}).items():
+            for group in groups if isinstance(groups, list) else []:
+                for hook in (group.get("hooks") or []) if isinstance(group, dict) else []:
+                    command = (hook or {}).get("command") or ""
+                    if ".claude" in command.replace("\\", "/"):
+                        out.append((os.path.basename(path), event,
+                                    (group or {}).get("matcher"), command.replace("\\", "/")))
     return out
 
 
@@ -613,11 +634,11 @@ def test_a_matcher_covers_every_tool_its_hook_accepts(kit):
     source. Claude Code compares matchers per group, so `guard_harness_selfmod` — registered
     `Edit|Write` while accepting MultiEdit — never saw the tool that edits several files at once,
     over `.claude/hooks` and `.claude/kernel`. Fixing that one by hand left the same shape in
-    `guard_yaml_valid` and `guard_scratchpad_ref` in two of three kits, while the third had it
-    right: an omission, not a decision, and exactly what a derived check finds and a hand-fix
-    does not."""
+    `guard_yaml_valid` and `guard_scratchpad_ref` — in ALL THREE kits, which the hand-fix round
+    got wrong in the other direction by claiming one kit had it right. Neither the hole nor its
+    extent was visible without deriving it, which is the point."""
     sys.path.insert(0, TEAM_KITS)
-    from kernel.report import _matches_tool
+    from kernel.report import _invoked_scripts, _matches_tool
     accepted = {}
     for path in sorted(globmodule.glob(os.path.join(TEAM_KITS, kit, "hooks", "*.py"))):
         with open(path, encoding="utf-8") as handle:
@@ -626,30 +647,52 @@ def test_a_matcher_covers_every_tool_its_hook_accepts(kit):
         if found:
             accepted[os.path.basename(path)] = re.findall(r'"([A-Za-z]+)"', found.group(1))
     assert accepted, "%s: no hook states which tools it accepts" % kit
+    checked = 0
     for source, event, matcher, command in _all_registrations(kit):
-        names = re.findall(r"\.claude/hooks/([A-Za-z0-9_]+\.py)", command)
+        # `_invoked_scripts`, not a private regex. The first version searched for
+        # `.claude/hooks/<name>.py` and the GATE ARGUMENT carries no such prefix — so behind the
+        # launcher every target resolved to `_gate.py`, which states no tool set, and the loop
+        # skipped all 112 registrations across the three kits. A test that asserts nothing is the
+        # failure mode this file has a memo about; the fix is the same as everywhere else here,
+        # which is to stop re-reading a format the kernel already reads.
+        names = _invoked_scripts(command)
         target = names[-1] if names else None
-        if not target or target not in accepted or event != "PreToolUse":
+        if not target or target not in accepted or event not in ("PreToolUse", "PostToolUse"):
             continue
         for tool in accepted[target]:
+            checked += 1
             assert _matches_tool(matcher, (tool,)), (
                 "%s/%s: %s accepts %s but its matcher %r never fires for it"
                 % (kit, source, target, tool, matcher))
+    assert checked >= 10, (
+        "%s: only %d matcher/tool pairs were checked — this test used to check ZERO and say so "
+        "nowhere" % (kit, checked))
 
 
-@pytest.mark.parametrize("argument", ["", "../../evil.py", "_kernel.py", "notes.txt",
+@pytest.mark.parametrize("argument", ["", "../evil.py", "sub/evil.py", "_kernel.py", "notes.txt",
                                       "gate_missing.py"])
 def test_the_launcher_runs_nothing_but_a_sibling_gate(tmp_path, argument):
     """The launcher is named in settings.json, which an agent cannot write — but the ARGUMENT
-    travels in the same string, so a launcher that ran any path handed to it would turn one
-    protected file into an arbitrary-script runner. Everything it will not run, it refuses."""
+    travels in the same string, and fifteen of those strings now live in `.claude/agents/*.md`,
+    which `guard_harness_selfmod` deliberately leaves writable. So a launcher that ran any path
+    handed to it would turn one protected file into an arbitrary-script runner.
+
+    THE DECOY HAS TO BE REACHABLE. A first version put `evil.py` one directory too high, so
+    `../../evil.py` was refused with "cannot read" and the basename reduction — the thing under
+    test — was never exercised: deleting `os.path.basename` from the launcher left the whole suite
+    green while `_gate.py ../../evil.py` ran a foreign script. Each decoy below sits exactly where
+    the unreduced path would find it, and the marker proves it stayed unrun."""
     hooks = tmp_path / "hooks"
-    os.makedirs(str(hooks))
+    os.makedirs(str(hooks / "sub"), exist_ok=True)
     shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_gate.py"), str(hooks / "_gate.py"))
-    write(str(tmp_path / "evil.py"), "import sys; sys.exit(0)\n")
+    decoy = "import sys; sys.stderr.write('DECOY RAN\\n'); sys.exit(0)\n"
+    write(str(tmp_path / "evil.py"), decoy)
+    write(str(hooks / "sub" / "evil.py"), decoy)
+    write(str(hooks / "notes.txt"), "not a gate\n")
     argv = [sys.executable, str(hooks / "_gate.py")] + ([argument] if argument else [])
     proc = subprocess.run(argv, input="{}", capture_output=True, text=True)
     assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "DECOY RAN" not in proc.stderr, "%s escaped the hooks directory" % argument
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -3556,18 +3599,29 @@ def test_the_early_warning_cache_is_on_the_enforcement_blocklist():
 
 # -- cross-kit copies must stay byte-identical --------------------------------
 
-@pytest.mark.parametrize("helper", ["_compat.py", "_audit.py", "_kernel.py", "_root.py",
-                                    "guard_harness_selfmod.py", "gate_dispatch.py",
-                                    "gate_approval.py", "gate_write_scope.py",
-                                    "guard_memory_budget.py"])
-def test_shared_helpers_are_identical_across_kits(helper):
+def test_shared_helpers_are_identical_across_kits():
     """Three kits ship the same helpers; a drifted copy means one kit enforces differently than
-    the others without anyone noticing (the phase-0 disposition lists them as cross-kit copies)."""
-    bodies = set()
+    the others without anyone noticing (the phase-0 disposition lists them as cross-kit copies).
+
+    DERIVED from what is actually shipped in all three, not from a list. The listed version named
+    nine files, and everything mirrored after it was written stayed unpinned — including
+    `_gate.py`, the one file whose compile decides ~20 gates, plus `gate_push_token`,
+    `gate_shell_hygiene`, `kit_trust_state` and five more. `tools/test_hooks.py` carries the same
+    rule with the same exception list; this one is the V2 half and asserts the stricter case: a
+    name present in ALL THREE kits."""
+    from test_hooks import KIT_SPECIFIC_HOOKS
+    names = None
     for kit in KITS:
-        with open(os.path.join(TEAM_KITS, kit, "hooks", helper), "rb") as fh:
-            bodies.add(fh.read())
-    assert len(bodies) == 1
+        here = {n for n in os.listdir(os.path.join(TEAM_KITS, kit, "hooks")) if n.endswith(".py")}
+        names = here if names is None else (names & here)
+    shared = sorted(names - set(KIT_SPECIFIC_HOOKS))
+    assert len(shared) >= 19, "only %d hooks are shared across all three kits" % len(shared)
+    for helper in shared:
+        bodies = set()
+        for kit in KITS:
+            with open(os.path.join(TEAM_KITS, kit, "hooks", helper), "rb") as fh:
+                bodies.add(fh.read())
+        assert len(bodies) == 1, "%s has drifted between kits" % helper
 
 
 # -- the lead instruction package (spec II.5) ---------------------------------
@@ -6288,20 +6342,23 @@ def test_trust_cannot_be_reset_by_re_running_the_recorder(tmp_path):
     assert _kit_state(repo)["state"] == "hooks_trust_required", "the reset must not have happened"
     _run_trust_hook(repo)
     assert _kit_state(repo)["state"] == "hooks_trust_required"
-    # ...and NOT via the caller-controlled source either. `--kit-root` was added so the recorder
-    # would stop guessing the staging root — and it silently became the way around the check,
-    # because a source that does not exist was skipped rather than refused. One flag, and the
-    # whole bundle-integrity claim was launderable; a typo reached the same place by accident.
-    for root in (str(tmp_path / "does-not-exist"), str(tmp_path), ""):
+    # ...and NOT by naming a different source. A `--kit-root` flag lived here for one round and
+    # was the second laundering route in a row: `--kit . --kit-root <repo>/.claude` compared the
+    # installed bundle against ITSELF and returned rc 0 over two gates replaced by `sys.exit(0)`.
+    # The source is now this script's own directory and the kit name is a NAME, so every one of
+    # these has to be refused — including the shapes that only became reachable via the flag.
+    for extra in (["--kit-root", str(tmp_path)],          # the flag itself must be gone
+                  ["--kit", "."],                          # ...and the paths it made reachable
+                  ["--kit", ""],
+                  ["--kit", "hooks/.."],
+                  ["--kit", str(repo / ".claude")],
+                  ["--kit", "../dev-team"],
+                  ["--kit", "no-such-kit"]):
         argv = [sys.executable, os.path.join(TEAM_KITS, "write_kit_state.py"),
-                "--repo", str(repo), "--kit", "dev-team"]
-        if root:
-            argv += ["--kit-root", root]
-        else:
-            argv += ["--kit", "no-such-kit"]
+                "--repo", str(repo), "--kit", "dev-team"] + extra
         bypass = subprocess.run(argv, capture_output=True, text=True)
-        assert bypass.returncode == 1, (root, bypass.stdout + bypass.stderr)
-        assert _kit_state(repo)["state"] == "hooks_trust_required", root
+        assert bypass.returncode != 0, (extra, bypass.stdout + bypass.stderr)
+        assert _kit_state(repo)["state"] == "hooks_trust_required", extra
 
 
 def test_a_stranger_in_the_hook_directory_is_named(tmp_path):
@@ -6315,7 +6372,7 @@ def test_a_stranger_in_the_hook_directory_is_named(tmp_path):
     write(os.path.join(hooks, "yaml.py"), "SAFE_LOAD = None\n")
     proc = subprocess.run(
         [sys.executable, os.path.join(TEAM_KITS, "write_kit_state.py"),
-         "--repo", str(repo), "--kit", "dev-team", "--kit-root", TEAM_KITS],
+         "--repo", str(repo), "--kit", "dev-team"],
         capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert "hooks/yaml.py" in proc.stderr, proc.stderr

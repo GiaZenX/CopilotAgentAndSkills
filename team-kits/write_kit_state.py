@@ -35,6 +35,7 @@ Usage:  python team-kits/write_kit_state.py --repo <path> --kit <name> [--kit-ve
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 
@@ -62,14 +63,19 @@ def main(argv=None):
     parser.add_argument("--repo", required=True)
     parser.add_argument("--kit", required=True)
     parser.add_argument("--kit-version", default="")
-    # The staging root the scaffold actually copied FROM. Passed rather than derived from this
-    # script's own location: the two are the same in production and are not in a test harness (or
-    # a side-by-side RC), and a comparison against the wrong source reports every file as
-    # tampered — which then aborts an install that was perfectly fine.
-    parser.add_argument("--kit-root", default="")
     args = parser.parse_args(argv)
 
-    here = args.kit_root or os.path.dirname(os.path.abspath(__file__))
+    # THE SOURCE IS THIS SCRIPT'S OWN LOCATION, and nothing the caller says can move it. A
+    # `--kit-root` flag existed here for exactly one round and was the second bypass in a row:
+    # `--kit . --kit-root <repo>/.claude` compared the installed bundle against ITSELF and blessed
+    # any tampering at all, rc 0. The function's honest question is "does the installation match
+    # the kit", and a caller-supplied answer to "which kit" turns it into "does the installation
+    # match whatever you point at". The scaffold therefore invokes the recorder that lives IN the
+    # staging it installed from, so the two agree by construction rather than by argument.
+    here = os.path.dirname(os.path.abspath(__file__))
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", args.kit or ""):
+        sys.stderr.write("[write_kit_state] --kit %r is not a kit name\n" % args.kit)
+        return 1
     hashing = kernel_hashing()
     claude_dir = os.path.join(args.repo, ".claude")
     digest = hashing.hook_bundle_hash(claude_dir)
@@ -91,14 +97,12 @@ def main(argv=None):
         modified = hashing.modified_bundle_files(os.path.join(here, args.kit, "hooks"),
                                                  os.path.join(here, "kernel"), claude_dir)
     except hashing.BundleSourceMissing as exc:
-        # A comparison that could not be MADE must not read as a comparison that passed. The
-        # `--kit-root` this runs against is caller-controlled, so skipping an absent source
-        # silently turned one flag into a way to bless any bundle at all — and a typo reached the
-        # same place by accident.
+        # A comparison that could not be MADE must not read as a comparison that passed — the
+        # first version skipped an absent source and returned "no differences".
         sys.stderr.write(
-            "[write_kit_state] %s. Refusing to record trust: without the kit's own files there "
-            "is nothing to check the installed bundle against. Remedy: pass the staging root the "
-            "scaffold installed from via --kit-root.\n" % exc)
+            "[write_kit_state] %s. Refusing to record trust: without the kit's own files there is "
+            "nothing to check the installed bundle against. Remedy: run the copy of this script "
+            "that lives in the staging the scaffold installed from.\n" % exc)
         return 1
     if modified:
         sys.stderr.write(

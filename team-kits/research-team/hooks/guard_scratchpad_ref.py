@@ -59,7 +59,7 @@ def check(path, root):
 
 def main():
     data = _compat.load()
-    if data.get("tool_name") not in ("Edit", "Write", "MultiEdit"):
+    if data.get("tool_name") not in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         sys.exit(0)
     root = find_repo_root(data.get("cwd"))
     for path in _compat.file_paths(data):

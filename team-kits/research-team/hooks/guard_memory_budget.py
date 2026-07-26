@@ -58,7 +58,7 @@ import _compat  # noqa: E402
 HOOK = "guard_memory_budget"
 # NotebookEdit is deliberately ABSENT: a notebook is not a craft topic, and including it meant a
 # tool that could trip the topic COUNT while its content was never modelled -- half a rule.
-FILE_TOOLS = ("Edit", "Write", "MultiEdit")
+FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 MEMORY_DIR = "agent-memory"
 # ONE definition. Promoting `.markdown`/`.mdx` to craft topics in the BUDGETS table while
 # `_check_count` still globbed `**/*.md` silently switched the 20-topic cap off: 20 `.markdown`

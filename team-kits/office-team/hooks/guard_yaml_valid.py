@@ -136,7 +136,7 @@ def check(path):
 
 def main():
     data = _compat.load()
-    if data.get("tool_name") not in ("Edit", "Write", "MultiEdit"):
+    if data.get("tool_name") not in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         sys.exit(0)
     for path in _compat.file_paths(data):
         check(path)

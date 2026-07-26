@@ -107,12 +107,13 @@ def modified_bundle_files(kit_dir: str, kernel_dir: str, claude_dir: str):
     modified = []
     for subtree, root, flat in (("hooks", kit_dir, True), ("kernel", kernel_dir, False)):
         if not os.path.isdir(root):
-            # Missing source + NOTHING INSTALLED is not a hole: a staging that ships no kernel
-            # installed no kernel, and there is nothing to be wrong about. Missing source while
-            # something IS installed is the dangerous half, and the only one worth refusing —
-            # keyed on what is on disk rather than on a flag, because the flag is the input an
-            # attacker controls. A blanket refusal was tried first and broke every install from a
-            # staging without that subtree, which is a different way of being wrong.
+            # Keyed on WHAT IS INSTALLED, not on what was asked for. Missing source while
+            # something is installed is the dangerous half: it is the shape in which "could not
+            # compare" used to be reported as "compared, all equal". Missing source with nothing
+            # installed is a kit that ships no such subtree, and there is nothing to be wrong
+            # about. (In practice the recorder cannot even start without a kernel beside it, so
+            # that second branch is defensive rather than load-bearing — it is kept because the
+            # condition should describe the situation, not the current call graph.)
             if os.path.isdir(os.path.join(claude_dir, subtree)):
                 raise BundleSourceMissing(
                     "%s/ is installed but there is no source to compare it against at %s — "
@@ -146,7 +147,11 @@ def strangers_in_the_bundle(claude_dir: str, kit_dir: str, kernel_dir: str):
         installed_root = os.path.join(claude_dir, subtree)
         if not os.path.isdir(installed_root):
             continue
-        for relative, _path in _bundle_files(installed_root, subtree == "hooks"):
+        # NOT flat, even for `hooks`: `modified_bundle_files` is flat because the scaffold
+        # installs only top-level files, but a STRANGER can be a package — and
+        # `hooks/yaml/__init__.py` shadows PyYAML for the kernel exactly as `hooks/yaml.py` does,
+        # while a flat scan cannot see it.
+        for relative, _path in _bundle_files(installed_root, False):
             name = subtree + "/" + relative
             if name not in known:
                 found.append(name)

@@ -68,7 +68,7 @@ def main():
     data = _compat.load()
     if data.get("agent_id"):
         sys.exit(0)  # settings.json hooks also fire for subagents; only gate the PM (main agent)
-    if data.get("tool_name") not in ("Edit", "Write"):
+    if data.get("tool_name") not in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         sys.exit(0)
     root = find_repo_root(data.get("cwd"))
     # iterate EVERY touched file (a Codex apply_patch is one call with many files) — the first
