@@ -77,15 +77,44 @@ def main(argv=None):
         sys.stderr.write("[write_kit_state] --kit %r is not a kit name\n" % args.kit)
         return 1
     hashing = kernel_hashing()
+
+    # ...AND THE KIT BESIDE US MUST BE A KIT. `here` is only "where this file sits", which an
+    # attacker moves by running a copy of it next to a tree they authored — the third form of the
+    # same laundering: `mkdir <staging>/x/hooks` with an empty directory made every installed gate
+    # a mere "stranger" and recorded trust, and a mirror of the TAMPERED bundle under a real kit
+    # name did it without a word on stderr. So the source must carry the stamp `bump_kit_version`
+    # writes over every kit file, and it must still hash to it.
+    #
+    # This does not make the recorder unforgeable — an attacker who can run scripts can also
+    # regenerate a stamp, and `tools/conftest.py` now carries a `known_hole` saying exactly that,
+    # so `harness doctor` reports `hook_trust` as unverified rather than claiming otherwise. What
+    # it does is make every careless and every cheap route fail closed.
+    kit_dir = os.path.join(here, args.kit)
+    recorded = hashing.recorded_kit_hash(kit_dir)
+    if recorded is None:
+        sys.stderr.write(
+            "[write_kit_state] %s carries no VERSION stamp, so it is not a kit this harness "
+            "built — refusing to record trust against it.\n" % kit_dir)
+        return 1
+    if hashing.kit_hash(kit_dir) != recorded:
+        sys.stderr.write(
+            "[write_kit_state] %s does not hash to the `content:` in its own VERSION — the kit "
+            "source has been edited since it was stamped. Remedy: re-install the harness "
+            "(`install.ps1`/`install.sh`).\n" % kit_dir)
+        return 1
+
     claude_dir = os.path.join(args.repo, ".claude")
     digest = hashing.hook_bundle_hash(claude_dir)
     if digest is None:
         # No bundle, no trust record. Writing a state with a null hash would give
         # `_hook_bundle_trust` something to read and nothing to compare, which is the shape that
         # produced "verified" from an empty project in the first place.
+        # rc 2, not 0. Both scaffolds only check `rc != 0`, so "I recorded nothing" used to read
+        # to them as "recorded" — and `--repo <proj>/.claude` reached this branch by a plausible
+        # typo, leaving a scaffold that reported success over a project with no trust record.
         sys.stderr.write("[write_kit_state] no enforcement bundle under %s — nothing recorded\n"
                          % claude_dir)
-        return 0
+        return 2
 
     # IT MUST BE THE KIT'S BUNDLE, not merely whatever is on disk. Recording trust is otherwise an
     # ordinary shell command: edit a hook, let the next session drop to `hooks_trust_required`,

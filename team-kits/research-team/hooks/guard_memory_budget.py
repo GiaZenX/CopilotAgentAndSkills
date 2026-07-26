@@ -56,8 +56,14 @@ import re  # noqa: E402
 import _compat  # noqa: E402
 
 HOOK = "guard_memory_budget"
-# NotebookEdit is deliberately ABSENT: a notebook is not a craft topic, and including it meant a
-# tool that could trip the topic COUNT while its content was never modelled -- half a rule.
+# NotebookEdit was deliberately ABSENT, on the grounds that a notebook is not a craft topic and
+# would trip the topic COUNT while its content was never modelled. It is back, because the
+# reason did not survive contact with the rule that put it there: a guard reading
+# `_compat.file_paths()` is asking about a FILE BEING WRITTEN, and that helper resolves
+# `notebook_path` like any other. The half-rule is real and unchanged -- `_resulting_text`
+# returns None for a notebook, so size and IDs stay unmodelled -- but a `.ipynb` under
+# `agent-memory/` is a memory file whether or not this hook can read it, and the count is the
+# half that works. Modelling notebook content is phase 3.
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 MEMORY_DIR = "agent-memory"
 # ONE definition. Promoting `.markdown`/`.mdx` to craft topics in the BUDGETS table while

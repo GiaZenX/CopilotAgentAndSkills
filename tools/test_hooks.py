@@ -1842,6 +1842,33 @@ def test_gen_provider_artifacts(tmp_path):
     txt = json.dumps(hooks)
     assert "apply_patch" in txt                      # Edit|Write matchers translated
     assert "Agent|Task" not in txt                   # spawn guard deliberately not registered
+    # ...and the TRIPLE, not two independent substrings. `"apply_patch" in txt` plus
+    # `"guard_pm_scope.py" in txt` both stayed green while guard_pm_scope lost its apply_patch
+    # matcher entirely — widening its Claude matcher to `Edit|Write|MultiEdit|NotebookEdit` fell
+    # through a string lookup and was emitted verbatim, so the lead's write-scope veto never fired
+    # on Codex again. Two strings in one file prove nothing about each other.
+    # The GATE behind the launcher has to count, not just `_gate.py`: a plain
+    # `.claude/hooks/<name>.py` search sees only the launcher, which is exactly how the equivalent
+    # check in the V2 suite came to assert nothing at all. `report._invoked_scripts` cannot be
+    # reused here — these are Codex shell one-liners that invoke `"$py"`, not `python`, so it
+    # finds no interpreter and returns nothing (worth knowing: doctor's wiring reader is
+    # Claude-settings-shaped by construction).
+    def scripts_in(command):
+        found = re.findall(r"[A-Za-z0-9_]+\.py", command.replace("\\", "/"))
+        return [name for name in found if name != "_gate.py"] or found
+    triples = {(event, group.get("matcher", ""), script)
+               for event, groups in hooks["hooks"].items()
+               for group in groups
+               for hook in group.get("hooks", [])
+               for script in scripts_in(hook.get("command", ""))}
+    for script in ("guard_pm_scope.py", "guard_harness_selfmod.py"):
+        assert ("PreToolUse", "apply_patch", script) in triples, (
+            "%s has no PreToolUse/apply_patch registration on Codex: %s"
+            % (script, sorted(triples)))
+    # every generated matcher must be one Codex actually knows, or it is a dead entry that reads
+    # as enforcement in any audit of this file
+    for _event, matcher, _script in triples:
+        assert matcher in ("", "*", "Bash", "apply_patch") or matcher.startswith("mcp__"), matcher
     # Codex may inherit a stale Claude variable from the parent shell. Every generated
     # command must overwrite it with the root it just resolved before running a shared hook.
     assert 'CLAUDE_PROJECT_DIR=\\"$root\\"' in txt

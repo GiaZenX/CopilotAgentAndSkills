@@ -5,4 +5,4 @@ change what doctor believes. Deleting the sidecar cost every capability; emptyin
 used to silence every asserted hole for free, which made the cheapest tamper the
 profitable one. Now any deviation lands in the same place: `known_holes_source: null`.
 """
-KNOWN_HOLES_SHA256 = '5f289f1d395ee1fc00fdf26da5fa37ef47efa08b2835d1f9e2adb6fd27ace0fb'
+KNOWN_HOLES_SHA256 = '629b72f4f52592b65c3a723e0e630d2fdc7e4577834cee2f8f84cd5626006af0'

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Edit|Write) — no production code in a language before its coding guidelines exist.
+PreToolUse(Edit|Write|MultiEdit|NotebookEdit) — no production code in a language before its coding guidelines exist.
 
 Closes the "code written against empty guidelines" gap deterministically and BEFORE the work
 (not just at the merge gate). Lives in the code-writers' frontmatter (it must fire for the

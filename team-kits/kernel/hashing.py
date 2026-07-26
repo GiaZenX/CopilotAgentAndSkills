@@ -68,6 +68,61 @@ class BundleSourceMissing(ValueError):
     """A source tree to compare against is absent — see `modified_bundle_files`."""
 
 
+KIT_SKIP_DIRS = frozenset(("__pycache__", ".ruff_cache", ".mypy_cache", ".pytest_cache"))
+# Shared scaffold/generator inputs that decide what a kit installs, hashed with it. A kit whose
+# own files are untouched but whose scaffold changed is a different installation.
+KIT_SHARED_FILES = (
+    "gen_provider_artifacts.py", "init_project_memory.ps1", "init_project_memory.sh",
+    "model_tiers.yaml", "preset_config.py", "registry.yaml", "scaffold_team.ps1",
+    "scaffold_team.sh", "write_kit_state.py",
+)
+
+
+def kit_hash(kit_dir: str) -> str:
+    """SHA-256 over a kit's own files plus the shared harness inputs, CRLF-normalized.
+
+    Lives in the KERNEL, which ships, because two things need it and only one of them used to be
+    able to reach it: `tools/bump_kit_version.py` writes it into `<kit>/VERSION` as `content:`,
+    and `write_kit_state.py` checks that the kit it is about to compare against is that kit. The
+    tools directory does not travel to a staging, so a copy there would have been the third
+    duplicated hash in this file's history.
+
+    CRLF normalization keeps the value identical across Windows and Linux checkouts of one commit.
+    The kit's own top-level VERSION is excluded — it carries the result.
+    """
+    digest = hashlib.sha256()
+    for dirpath, dirnames, filenames in os.walk(kit_dir):
+        dirnames[:] = sorted(d for d in dirnames if d not in KIT_SKIP_DIRS)
+        for name in sorted(filenames):
+            if (name == "VERSION" and dirpath == kit_dir) or name.endswith(".pyc"):
+                continue
+            path = os.path.join(dirpath, name)
+            digest.update(os.path.relpath(path, kit_dir).replace("\\", "/").encode("utf-8"))
+            with open(path, "rb") as handle:
+                digest.update(handle.read().replace(b"\r\n", b"\n"))
+    root = os.path.dirname(os.path.abspath(kit_dir))
+    for relative in KIT_SHARED_FILES:
+        path = os.path.join(root, relative)
+        if not os.path.isfile(path):
+            continue
+        digest.update(("@shared/" + relative).encode("utf-8"))
+        with open(path, "rb") as handle:
+            digest.update(handle.read().replace(b"\r\n", b"\n"))
+    return digest.hexdigest()
+
+
+def recorded_kit_hash(kit_dir: str):
+    """The `content:` hash `<kit>/VERSION` claims, or None when there is no such stamp."""
+    try:
+        with open(os.path.join(kit_dir, "VERSION"), encoding="utf-8-sig") as handle:
+            for line in handle:
+                if line.startswith("content:"):
+                    return line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    return None
+
+
 def modified_bundle_files(kit_dir: str, kernel_dir: str, claude_dir: str):
     """Kit files whose INSTALLED copy differs from the source — empty when the bundle is the kit's.
 
@@ -122,6 +177,9 @@ def modified_bundle_files(kit_dir: str, kernel_dir: str, claude_dir: str):
             continue
         for relative, source in _bundle_files(root, flat):
             installed = os.path.join(claude_dir, subtree, relative.replace("/", os.sep))
+            if source is None:            # the source itself is a symlinked directory
+                modified.append(subtree + "/" + relative)
+                continue
             try:
                 with open(source, "rb") as left, open(installed, "rb") as right:
                     if left.read() != right.read():
@@ -158,16 +216,36 @@ def strangers_in_the_bundle(claude_dir: str, kit_dir: str, kernel_dir: str):
     return sorted(found)
 
 
+SYMLINK_MARKER = "<symlink>"
+
+
 def _bundle_files(root: str, flat: bool):
-    """(relative posix path, absolute path) for every file the bundle would take from `root`."""
+    """(relative posix path, absolute path or None) for every entry the bundle takes from `root`.
+
+    A SYMLINKED DIRECTORY yields `(name + "/" + SYMLINK_MARKER, None)` and is not descended into.
+    `os.walk` does not follow directory links by default, so before this such a link was invisible
+    to the hash, to the stranger scan and to doctor — while Python imports through it perfectly
+    well. Measured: `.claude/hooks/yaml -> <elsewhere>` shadows PyYAML for the kernel in every
+    gate process, and `.claude/hooks/_compat -> <elsewhere>` makes `guard_harness_selfmod` wave
+    through a write to `.claude/hooks/` — with the bundle hash UNCHANGED and `hook_trust` still
+    `verified`. Following the link instead would invite cycles and would hash whatever it points
+    at; naming it is enough, because a name in the hash is a hash that changes.
+    """
     if flat:
         for name in sorted(os.listdir(root)):
             path = os.path.join(root, name)
-            if os.path.isfile(path) and not name.endswith(BUNDLE_IGNORED_SUFFIXES):
+            if os.path.islink(path):
+                yield name + "/" + SYMLINK_MARKER, None
+            elif os.path.isfile(path) and not name.endswith(BUNDLE_IGNORED_SUFFIXES):
                 yield name, path
         return
     for current, dirs, files in os.walk(root):
-        dirs[:] = sorted(d for d in dirs if d not in BUNDLE_IGNORED_DIRS)
+        linked = sorted(d for d in dirs if os.path.islink(os.path.join(current, d)))
+        dirs[:] = sorted(d for d in dirs
+                         if d not in BUNDLE_IGNORED_DIRS and d not in linked)
+        for name in linked:
+            path = os.path.join(current, name)
+            yield os.path.relpath(path, root).replace(os.sep, "/") + "/" + SYMLINK_MARKER, None
         for name in sorted(files):
             if name.endswith(BUNDLE_IGNORED_SUFFIXES):
                 continue
@@ -176,32 +254,30 @@ def _bundle_files(root: str, flat: bool):
 
 
 def _hash_subtrees(subtrees, flat_first=False):
-    """SHA-256 over named subtrees; `flat_first` walks the first one non-recursively."""
+    """SHA-256 over named subtrees; `flat_first` treats the first one non-recursively.
+
+    Enumeration is delegated to `_bundle_files` rather than repeated here. The two used to walk
+    separately and the difference was not academic: the copy in this function had no symlink
+    handling, so a link planted in `.claude/hooks` left the hash untouched while the stranger scan
+    (once fixed) reported it — one directory, two answers, which is the defect this module was
+    written to end.
+    """
     digest = hashlib.sha256()
     seen = False
     for index, (subtree, root) in enumerate(subtrees):
         if not os.path.isdir(root):
             continue
-        walker = ([(root, [], sorted(n for n in os.listdir(root)
-                                     if os.path.isfile(os.path.join(root, n))))]
-                  if flat_first and index == 0 else os.walk(root))
-        for current, dirs, files in walker:
-            dirs[:] = sorted(d for d in dirs if d not in BUNDLE_IGNORED_DIRS)
-            for filename in sorted(files):
-                if filename.endswith(BUNDLE_IGNORED_SUFFIXES):
-                    continue
-                path = os.path.join(current, filename)
-                relative = subtree + "/" + os.path.relpath(path, root).replace(os.sep, "/")
+        for relative, path in _bundle_files(root, flat_first and index == 0):
+            digest.update((subtree + "/" + relative).encode("utf-8") + b"\0")
+            if path is not None:
                 try:
                     with open(path, "rb") as handle:
-                        content = handle.read()
+                        digest.update(handle.read())
                 except OSError:
                     # a file that cannot be read is not a bundle that can be trusted
                     return None
-                digest.update(relative.encode("utf-8") + b"\0")
-                digest.update(content)
-                digest.update(b"\0")
-                seen = True
+            digest.update(b"\0")
+            seen = True
     return digest.hexdigest() if seen else None
 
 

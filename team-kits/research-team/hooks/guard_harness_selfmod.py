@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Edit|Write) — the enforcement layer must not be editable by the agents it enforces.
+PreToolUse(Edit|Write|MultiEdit|NotebookEdit) — the enforcement layer must not be editable by the agents it enforces.
 
 A real PM silently rewrote the kit settings via Bash to unblock its own spawns; the answer was a
 prose rule (§2.10) — this guard is its mechanical backstop, and it applies to EVERY agent (main

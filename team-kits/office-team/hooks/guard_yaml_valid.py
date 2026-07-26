@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PostToolUse(Edit|Write) — validate a project_memory/*.yaml IMMEDIATELY after it is written.
+PostToolUse(Edit|Write|MultiEdit|NotebookEdit) — validate a project_memory/*.yaml IMMEDIATELY after it is written.
 
 A real run shipped decisions.yaml/architecture.yaml as invalid YAML repeatedly: the architect (a
 spec-writing role without Bash) could not parse-check its own artifacts, the dashboard generator

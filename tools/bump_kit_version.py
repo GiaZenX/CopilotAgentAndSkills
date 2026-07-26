@@ -13,22 +13,12 @@ session_status compares it against the staged kit and flags available updates at
 Run after any kit change:  python tools/bump_kit_version.py
 """
 import datetime
-import hashlib
 import os
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SKIP_DIRS = {"__pycache__", ".ruff_cache", ".mypy_cache", ".pytest_cache"}
-SHARED_HARNESS_FILES = (
-    "gen_provider_artifacts.py",
-    "init_project_memory.ps1",
-    "init_project_memory.sh",
-    "model_tiers.yaml",
-    "preset_config.py",
-    "registry.yaml",
-    "scaffold_team.ps1",
-    "scaffold_team.sh",
-)
+# The kit-hash inputs (skipped dirs, shared harness files) live with the hash itself, in
+# `kernel.hashing` — see kit_hash() below.
 
 
 def discover_kits(root=ROOT):
@@ -44,28 +34,15 @@ def discover_kits(root=ROOT):
 def kit_hash(kit_dir):
     """Hash kit-local files plus shared scaffold/generator inputs (except VERSION + caches).
 
-    CRLF normalization keeps the hash identical across Windows/Linux checkouts of the same commit.
+    THE DEFINITION LIVES IN THE KERNEL (`kernel.hashing.kit_hash`) because two things need it and
+    only one of them can reach `tools/`: this stamper, and `write_kit_state.py`, which checks that
+    the kit it compares an installation against really is that kit. A copy here would have been
+    the third duplicated hash in this repo's history, and the previous two each produced a round
+    of findings.
     """
-    h = hashlib.sha256()
-    for dirpath, dirnames, filenames in os.walk(kit_dir):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-        for fn in sorted(filenames):
-            if (fn == "VERSION" and dirpath == kit_dir) or fn.endswith(".pyc"):
-                continue  # only the kit's own top-level VERSION is hash-excluded
-            p = os.path.join(dirpath, fn)
-            rel = os.path.relpath(p, kit_dir).replace("\\", "/")
-            h.update(rel.encode("utf-8"))
-            with open(p, "rb") as fh:
-                h.update(fh.read().replace(b"\r\n", b"\n"))
-    team_kits_root = os.path.dirname(os.path.abspath(kit_dir))
-    for rel in SHARED_HARNESS_FILES:
-        path = os.path.join(team_kits_root, rel)
-        if not os.path.isfile(path):
-            continue
-        h.update(("@shared/" + rel).encode("utf-8"))
-        with open(path, "rb") as fh:
-            h.update(fh.read().replace(b"\r\n", b"\n"))
-    return h.hexdigest()
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.hashing import kit_hash as canonical
+    return canonical(kit_dir)
 
 
 def read_version_line(path):

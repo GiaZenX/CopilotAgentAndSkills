@@ -291,7 +291,10 @@ for kit_dir_name in os.listdir(os.path.join(ROOT, "team-kits")):
 #     VERSION true only on THIS machine: a real .gitignore'd office seed kept local validate green
 #     while CI was red and fresh clones could not install (the hash walks the FILESYSTEM).
 import subprocess as _sp  # noqa: E402
-from bump_kit_version import SKIP_DIRS  # noqa: E402
+# The kit-hash inputs live with the hash, in the kernel (which ships) rather than in
+# tools/ (which does not) -- see kernel.hashing.kit_hash.
+sys.path.insert(0, os.path.join(ROOT, "team-kits"))  # noqa: E402
+from kernel.hashing import KIT_SKIP_DIRS as SKIP_DIRS  # noqa: E402
 try:
     _git = _sp.run(["git", "ls-files", "team-kits"], cwd=ROOT, capture_output=True,
                    text=True, timeout=30)

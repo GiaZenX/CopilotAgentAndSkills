@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PostToolUse(Edit|Write) — block repo source files that reference session-scratchpad paths.
+PostToolUse(Edit|Write|MultiEdit|NotebookEdit) — block repo source files that reference session-scratchpad paths.
 
 A real run committed a fonts.css saying "Regenerate via scratchpad/vendor_fonts.py" — the tool
 lived in the subagent's session scratchpad and is gone forever; the font pipeline stopped being

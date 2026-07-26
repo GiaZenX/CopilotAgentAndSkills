@@ -51,9 +51,36 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 #                 guard_question_context cannot hook it, so the self-contained-question rule
 #                 binds Codex PMs through the SKILL alone (audit: the fallthrough used to
 #                 register the Claude tool name verbatim — a dead entry in .codex/hooks.json).
-CODEX_MATCHER = {"Write": "apply_patch", "Edit|Write": "apply_patch",
-                 "Bash|PowerShell": "Bash", "Agent|Task": None,
-                 "AskUserQuestion": None}
+# Translated from the TOOL SET, not from the matcher string. The string table was a lookup over
+# exact spellings with a verbatim fallthrough, and widening two Claude matchers from `Edit|Write`
+# to `Edit|Write|MultiEdit|NotebookEdit` silently dropped `guard_pm_scope` — the lead's write-scope
+# veto — and `guard_guidelines` off Codex entirely: the new spelling was not in the table, so it
+# was emitted verbatim, and Codex knows no such matcher. That is the same "dead entry" the comment
+# above already records, reached again through a change nobody expected to touch this file.
+CODEX_TOOL_MATCHER = (
+    (frozenset(("Edit", "Write", "MultiEdit", "NotebookEdit")), "apply_patch"),
+    (frozenset(("Bash", "PowerShell")), "Bash"),
+)
+# Tools Codex has no equivalent for: a registration that only names these translates to nothing.
+CODEX_UNSUPPORTED_TOOLS = frozenset(("Agent", "Task", "AskUserQuestion"))
+
+
+def codex_matcher(matcher):
+    """The Codex matcher for a Claude one, or None when Codex cannot express it.
+
+    Unknown tools yield None rather than the Claude string: an untranslatable registration must
+    vanish from `.codex/hooks.json`, because one that is present and never fires reads as
+    enforcement in every audit of that file.
+    """
+    if not matcher or matcher == "*":
+        return matcher or ""
+    tools = frozenset(part for part in re.split(r"[|,]", matcher) if part)
+    for group, translated in CODEX_TOOL_MATCHER:
+        if tools & group:
+            return translated
+    return None
+
+
 CODEX_EVENTS = ("SessionStart", "PreToolUse", "PostToolUse", "SubagentStart",
                 "SubagentStop", "Stop")
 
@@ -443,7 +470,7 @@ def gen_codex_hooks(settings, role_hooks=(), repo=None):
     global_keys = set()
     for event in CODEX_EVENTS:
         for matcher, hook in hook_entries(settings, event):
-            cm = CODEX_MATCHER.get(matcher, matcher) if matcher else ""
+            cm = codex_matcher(matcher)
             if matcher and cm is None:
                 continue
             key = (event, cm, hook["command"], hook.get("timeout"))
@@ -457,7 +484,7 @@ def gen_codex_hooks(settings, role_hooks=(), repo=None):
             registrations[key] = {"hook": hook, "roles": None}
             global_keys.add(key)
     for event, matcher, hook, role in role_hooks:
-        cm = CODEX_MATCHER.get(matcher, matcher) if matcher else ""
+        cm = codex_matcher(matcher)
         if matcher and cm is None:
             continue
         key = (event, cm, hook["command"], hook.get("timeout"))

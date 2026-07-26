@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Edit|Write) — keep the PM out of production code.
+PreToolUse(Edit|Write|MultiEdit|NotebookEdit) — keep the PM out of production code.
 
 settings.json tool-hooks fire for the PM AND for every subagent (verified in a real run + the
 Claude Code docs), so to block ONLY the PM we skip when `agent_id` is present (set only inside a

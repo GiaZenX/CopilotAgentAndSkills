@@ -3615,7 +3615,10 @@ def test_shared_helpers_are_identical_across_kits():
         here = {n for n in os.listdir(os.path.join(TEAM_KITS, kit, "hooks")) if n.endswith(".py")}
         names = here if names is None else (names & here)
     shared = sorted(names - set(KIT_SPECIFIC_HOOKS))
-    assert len(shared) >= 19, "only %d hooks are shared across all three kits" % len(shared)
+    # A floor, not a count. It sat exactly on the current value for one round, which makes
+    # every legitimate kit-specific divergence a red test and every red test an invitation
+    # to lower the number — the mechanism that produced the nine-name list this replaced.
+    assert len(shared) >= 15, "only %d hooks are shared across all three kits" % len(shared)
     for helper in shared:
         bodies = set()
         for kit in KITS:
@@ -6053,7 +6056,8 @@ def test_the_report_says_whether_a_better_mode_is_even_reachable(tmp_path):
     assert result["enforcement_ceiling"] == "audited"
     ceiling = result["enforcement_ceiling_reasons"]
     # exactly the structurally-blocked ones, not everything that happens to be unmet
-    assert set(ceiling) == {"approval_provenance", "state_write_protection.shell"}, ceiling
+    assert set(ceiling) == {"approval_provenance", "hook_trust",
+                            "state_write_protection.shell"}, ceiling
     assert "known_hole" in ceiling["state_write_protection.shell"]
     assert "PERMISSION posture" in ceiling["approval_provenance"]
     # a merely UNWIRED capability is a blocker, never a ceiling reason — that is the distinction
@@ -6112,7 +6116,13 @@ def test_hook_trust_compares_a_real_hash(tmp_path):
     assert "changed since it was trusted" in stale["capability_reasons"]["hook_trust"]
     fresh = doctor_of(tmp_path / "b", wired=ALL_WIRED,
                       kit_state={"state": "active", "hook_bundle_hash": "AUTO"})
-    assert fresh["capabilities"]["hook_trust"] == "verified"
+    # The WIRING verdict is what this test is about, and it is now visible only in the reason:
+    # `hook_trust` carries a `known_hole` (an agent that can run scripts can forge a trust record),
+    # so rule 2 pulls the capability down whatever the hash says. Asserting the reason rather than
+    # the verdict keeps the two mechanisms apart — the mistake that let the round-1 provenance
+    # regress hide behind the enumeration for a whole round.
+    assert "hashes to the value the project recorded" in fresh["capability_reasons"]["hook_trust"]
+    assert fresh["capabilities"]["hook_trust"] == "unverified"
 
 
 def test_doctor_does_not_report_unknown_for_what_it_has_read(tmp_path):
@@ -6359,6 +6369,69 @@ def test_trust_cannot_be_reset_by_re_running_the_recorder(tmp_path):
         bypass = subprocess.run(argv, capture_output=True, text=True)
         assert bypass.returncode != 0, (extra, bypass.stdout + bypass.stderr)
         assert _kit_state(repo)["state"] == "hooks_trust_required", extra
+    # ...and now the PROPERTY rather than the shape of the last fix. Each round's regression test
+    # asserted the argument form that had just been closed, and each following round walked around
+    # it with a perfectly ordinary argument. These two are the routes that needed no flag at all:
+    # an empty directory with a legal kit name, and an unstamped mirror of the tampered bundle.
+    staging = tmp_path / "staging"
+    shutil.copytree(TEAM_KITS, str(staging), ignore=shutil.ignore_patterns(
+        "__pycache__", "*.pyc", ".pytest_cache", ".ruff_cache"))
+    os.makedirs(str(staging / "x" / "hooks"), exist_ok=True)
+    mirror = staging / "mirrored"
+    os.makedirs(str(mirror), exist_ok=True)
+    shutil.copytree(hooks, str(mirror / "hooks"))
+    for kit in ("x", "mirrored"):
+        forged = subprocess.run(
+            [sys.executable, str(staging / "write_kit_state.py"),
+             "--repo", str(repo), "--kit", kit], capture_output=True, text=True)
+        assert forged.returncode != 0, (kit, forged.stdout + forged.stderr)
+        assert "VERSION" in forged.stderr, (kit, forged.stderr)
+        assert _kit_state(repo)["state"] == "hooks_trust_required", kit
+
+
+@pytest.mark.known_hole("hook_trust")
+def test_an_agent_that_can_run_scripts_can_still_forge_a_trust_record(tmp_path):
+    """THE RESIDUAL, asserted rather than promised away. Three rounds of review each closed one
+    laundering route and each found the next: re-running the recorder, `--kit-root`, and a copy of
+    the recorder beside an authored kit tree. The stamp check closes every careless and every
+    cheap route — an empty `x/hooks`, an unstamped mirror, an edited kit — but not this one: the
+    stamp is computed by public code, so whoever can run a script can regenerate it.
+
+    That is not a fixable property at this layer. It rests on `state_write_protection.shell`,
+    which is itself a declared hole: an agent that cannot run arbitrary scripts cannot do any of
+    this, and one that can does not need a trust record to begin with. So `hook_trust` is declared
+    here, `harness doctor` reports it `unverified`, and the report stops claiming a guarantee the
+    harness cannot make. INVERT THIS TEST the day shell writes are actually contained."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import kit_hash
+    repo = tmp_path / "repo"
+    hooks = _scaffolded_bundle(repo)
+    _run_trust_hook(repo)
+    write(os.path.join(hooks, "gate_dispatch.py"), "import sys\nsys.exit(0)\n")   # veto disarmed
+    _run_trust_hook(repo)
+    assert _kit_state(repo)["state"] == "hooks_trust_required"
+    # the forgery: an authored staging that mirrors the TAMPERED bundle, stamped to match itself
+    evil = tmp_path / "evil"
+    os.makedirs(str(evil / "dev-team"), exist_ok=True)
+    shutil.copyfile(os.path.join(TEAM_KITS, "write_kit_state.py"),
+                    str(evil / "write_kit_state.py"))
+    shutil.copytree(os.path.join(TEAM_KITS, "kernel"), str(evil / "kernel"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(hooks, str(evil / "dev-team" / "hooks"))
+    (evil / "dev-team" / "VERSION").write_text("version: 9999.99.99-1\ncontent: placeholder\n",
+                                               encoding="utf-8")
+    (evil / "dev-team" / "VERSION").write_text(
+        "version: 9999.99.99-1\ncontent: %s\n" % kit_hash(str(evil / "dev-team")),
+        encoding="utf-8")
+    forged = subprocess.run(
+        [sys.executable, str(evil / "write_kit_state.py"), "--repo", str(repo),
+         "--kit", "dev-team"], capture_output=True, text=True)
+    assert forged.returncode == 0, forged.stderr
+    _run_trust_hook(repo)
+    assert _kit_state(repo)["state"] == "active", "the residual this test documents is gone"
+    from kernel import report
+    trusted, _why = report._hook_bundle_trust(str(repo))
+    assert trusted is True, "…and doctor believes it, which is why hook_trust is a known_hole"
 
 
 def test_a_stranger_in_the_hook_directory_is_named(tmp_path):
