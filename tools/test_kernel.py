@@ -289,3 +289,47 @@ def test_golden_hash_pin():
     assert subject_manifest_hash(manifest) == (
         "d5dcf6a8aefed485c03f12dabf8bab20607eb2d8a8848972b52b0c7670bc6cea"
     )
+
+
+# -- validate_state: a freshly scaffolded project must be silent ----------------
+
+def _template_state(tmp_path, kit="dev-team"):
+    """A `project_memory/` exactly as the initializer lays it down -- nothing captured yet."""
+    import shutil
+    src = os.path.join(TEAM_KITS_DIR, kit, "templates", "project_memory")
+    dst = str(tmp_path / "project_memory")
+    shutil.copytree(src, dst)
+    return dst
+
+
+def test_fresh_template_state_produces_no_finding_at_all(tmp_path):
+    """A validator that warns about the empty project it just created teaches everyone to ignore it.
+
+    The staging-orphan scan reads the entries of `staging/` as item ids. Every kit template ships
+    `staging/.gitkeep` so git can carry the empty directory, so it reported
+    `staging/.gitkeep: orphaned staging dir` in EVERY `harness validate` and every session brief of
+    every fresh project -- permanent noise in the one output that is supposed to mean something.
+    Asserting on the whole finding list rather than on the absence of that one string is deliberate:
+    any other rule that starts firing on an empty project is the same defect.
+    """
+    from kernel.report import validate_state
+    from kernel.state import ProjectState
+    root = _template_state(tmp_path)
+    # The tooth: without a non-directory entry under staging/ the assertion below is vacuous, and
+    # `.gitkeep` is exactly the entry the shipped template puts there.
+    assert os.path.isfile(os.path.join(root, "staging", ".gitkeep"))
+    assert validate_state(ProjectState(root)) == []
+
+
+def test_staging_dir_without_an_active_item_is_still_reported(tmp_path):
+    """The other half: silencing the `.gitkeep` noise must not silence a real orphan.
+
+    A staging KEY is a DIRECTORY named after an item, so a directory with no active task or root item
+    behind it is the finding the scan exists for.
+    """
+    from kernel.report import validate_state
+    from kernel.state import ProjectState
+    root = _template_state(tmp_path)
+    os.makedirs(os.path.join(root, "staging", "TSK-9999"))
+    findings = validate_state(ProjectState(root))
+    assert [(f["severity"], f["item"]) for f in findings] == [("warning", "staging/TSK-9999")]

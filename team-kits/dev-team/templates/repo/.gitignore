@@ -15,8 +15,15 @@ frontend/dist/
 venv/
 target/
 
-# generated dashboard snapshots (churn + security-review noise; retention keeps last 20 locally)
-project_memory/dashboard_history/
+# regenerated state artifacts (spec II.2): index, session brief and dashboard are rebuilt from the
+# typed items on every kernel write. Committing them would put a second, always-stale copy of the
+# project status in git and produce a merge conflict on every parallel branch.
+project_memory/generated/
+
+# the state kernel's cross-process lock (and the remnants a stale-break leaves behind). It names a
+# live PID on THIS machine; committed, a clone would inherit a lock nobody holds.
+project_memory/.kernel.lock
+project_memory/.kernel.lock.stale-*
 
 # append-only hook/agent event log (diagnostic, read by scripts/retro.py — never project state;
 # the notify_agent_events hook writes here on every background-agent completion = git-status churn)

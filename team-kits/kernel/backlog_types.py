@@ -166,7 +166,12 @@ ACTIVE_DIRS = {
     "DSN": "design/revisions",   # frozen design revisions (II.6; promotion path)
 }
 
-ROOT_TYPE_BY_KIT = {"dev-team": "PR", "office-team": "PR", "research-team": "RQ"}
+# The item a project HANGS FROM, per kit -- the one the entry gate seeds at onboarding and the one
+# `_root.has_root_item` looks for to decide a repo is past setup. A kit is absent here when it has no
+# such item: the office kit is led by procedures and master data, its constitution knows no PR
+# anywhere, and the "PR" this map used to claim for it sent the entry gate to write a PR-0001 no
+# office role would ever read.
+ROOT_TYPE_BY_KIT = {"dev-team": "PR", "research-team": "RQ"}
 
 _ID_RE = re.compile(r"([A-Z]{2,4})-(\d{4,})", re.ASCII)
 

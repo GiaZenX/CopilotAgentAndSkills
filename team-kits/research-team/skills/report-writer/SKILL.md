@@ -12,25 +12,35 @@ application draft once `fzulg_documentation.yaml` is `READY`). You **present** e
 NEVER alter data or conclusions; if numbers/claims are inconsistent, flag it to the PM instead of "fixing" it.
 
 ## Read first
-`experiment_designs.yaml` (the EXP), `hypotheses.yaml`, `results.yaml`, `findings.yaml`, `fzulg_documentation.yaml`,
+The `EXP` item (its `design` and `success_criteria`), the `HYP` items it tests, the `RQ` above them, the raw
+and derived Evidence attached to that EXP (that is where the numbers, figures and provenance live) plus the
+Reviewer's review/acceptance Evidence, `fzulg_documentation.yaml`,
 and the templates `project_memory/reports/scientific_report.template.tex` and
 `project_memory/reports/experiment_report.template.html`.
 
+## Where your renders go
+`project_memory/reports/` is where a rendered report BELONGS, and where the kernel promotes it once a
+promotion path exists — but `gate_write_scope` refuses every tool write under `project_memory/` except your
+task's own `staging/<task-id>/` (constitution §0 write-lock). So render into
+`project_memory/staging/<your task-id>/` under the FINAL file names below, hand those paths back, and report
+the missing promotion step as the infrastructure defect it is. Never write into `reports/` and never
+hand-copy your render there with a shell.
+
 ## Do
-1. **Scientific report (the deliverable) — LaTeX.** Render `project_memory/reports/EXP-xxxx.tex` from the
-   fixed `scientific_report.template.tex`, filling the `<< >>` placeholders in order ONLY from existing
+1. **Scientific report (the deliverable) — LaTeX.** Render `EXP-xxxx.tex` from the
+   fixed `reports/scientific_report.template.tex`, filling the `<< >>` placeholders in order ONLY from existing
    artifacts: **problem/question** (RQ + HYP), **methodology** (design + the pre-registered analysis plan),
    **derivation** (real LaTeX math `\( \)`/`\[ \]`, define symbols), **data & reproducibility** (paths/seeds/
    versions/checksums), **results** (numbers, effect sizes, CIs, figures — report ALL pre-registered
    comparisons incl. refuted ones), **conclusion** (supported/refuted/inconclusive + basis), **limitations**,
    **references** (verified citations only). **Compile to `EXP-xxxx.pdf`** when a LaTeX engine is available
    (`tectonic` or `pdflatex`); if none is installed, leave the `.tex` and note that PDF compilation is pending.
-2. **Offline HTML preview (optional, quick view).** Also render `project_memory/reports/EXP-xxxx.html` from
-   `experiment_report.template.html` using the bundled **KaTeX** (`reports/assets/`, offline, never a CDN), so
+2. **Offline HTML preview (optional, quick view).** Also render `EXP-xxxx.html` from
+   `reports/experiment_report.template.html` using the bundled **KaTeX** (`reports/assets/`, offline, never a CDN), so
    every report can be eyeballed in a browser. KaTeX is ONLY the preview's math renderer — the LaTeX `.tex`/PDF
    is the submittable report (this is the resolution of "LaTeX vs KaTeX": both exist, with distinct roles).
 3. **BSFZ application draft.** When `fzulg_documentation.yaml` for an RQ is `READY`, render a transcribable
-   draft `project_memory/reports/fzulg_application_RQ-xxxx.md` that lays out the BSFZ form 1:1 — 3.1 general
+   draft `fzulg_application_RQ-xxxx.md` that lays out the BSFZ form 1:1 — 3.1 general
    (title/dates/branch/FuE-category/keywords), 3.3 content (goal & gap, state of the art, work performed,
    uncertainties), the 3.3.1 tabular work plan (the `work_packages`, with **planned** PM/hours marked as such),
    the cited sources (each with its verification status), and the anticipated review-question answers. Carry
@@ -39,11 +49,16 @@ and the templates `project_memory/reports/scientific_report.template.tex` and
    YAML already holds.
 
 ## Files you WRITE
-`project_memory/reports/EXP-*.tex` (+ compiled `EXP-*.pdf`), `project_memory/reports/EXP-*.html`, and
-`project_memory/reports/fzulg_application_RQ-*.md`. Nothing else; never edit the templates, the bundled
-assets, or any YAML. If you genuinely need a render helper, keep it under `scripts/` (NEVER the repo root) —
-but prefer rendering the report directly without committing a separate generator script.
+Inside `project_memory/staging/<your task-id>/` and nowhere else: `EXP-*.tex` (+ compiled `EXP-*.pdf`),
+`EXP-*.html`, and `fzulg_application_RQ-*.md` — the rendered deliverables, under the names they will carry
+in `reports/`. Never edit the templates, the bundled assets, or any ITEM: the typed state under
+`project_memory/` is the kernel's, so the rendered report becomes project state by being referenced from an
+Evidence item the PM captures (`related` = the EXP, `artifact_refs` = your paths), which is also what lets
+the EXP reach `ANALYZED`. If you genuinely need a render helper, keep it under `scripts/` (NEVER the repo
+root) — but prefer rendering the report directly without committing a separate generator script.
 
 ## Output to the PM
-YAML: `summary`, `exp_id`, `report_paths` (tex/pdf/html), `fzulg_draft_path`, `sections_filled`,
-`pdf_compiled` (true/false), `inconsistencies_flagged`, `open_questions`.
+The result envelope: `task_id`, `role`, `status_proposal`, `summary`, `outputs` (the sections filled, whether
+the PDF compiled), `evidence` (the report paths — tex/pdf/html and the FZulG draft), `scope_touched`,
+`followups` (every inconsistency you refused to "fix", open questions). Under 4 KB — the report is
+referenced, never quoted into the envelope.

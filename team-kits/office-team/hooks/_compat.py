@@ -186,12 +186,23 @@ _WRAPPER_RX = re.compile(
 _QUOTED_RX = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
 
 
-def git_invocation_text(command):
-    """Lowercased command text with wrapper payloads unwrapped and prose quotes stripped."""
-    unwrapped = _WRAPPER_RX.sub(
+def unwrap_shell_payload(command):
+    """Command text with `bash -lc "…"` payloads lifted out of their quotes, otherwise verbatim.
+
+    The half of `git_invocation_text` that is about SHELL SYNTAX rather than about git: a wrapper
+    payload is code one level down, and a gate that tokenises the outer line sees one opaque
+    string where the real command is. Case and inner quoting are preserved, because a gate reading
+    PATHS needs both (`mv inbox/a.pdf "archive/2026/Müller GmbH.pdf"`) — only the git reader below
+    may lowercase and drop quoted prose.
+    """
+    return _WRAPPER_RX.sub(
         lambda m: m.group(1) + " " + (m.group(3) if m.group(3) is not None else m.group(4) or "")
         + " ", command or "")
-    return _QUOTED_RX.sub(" ", unwrapped.lower())
+
+
+def git_invocation_text(command):
+    """Lowercased command text with wrapper payloads unwrapped and prose quotes stripped."""
+    return _QUOTED_RX.sub(" ", unwrap_shell_payload(command).lower())
 
 
 def wants_push_or_merge(command):

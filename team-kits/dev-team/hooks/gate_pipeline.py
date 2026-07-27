@@ -24,7 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _compat
-from _root import find_repo_root
+from _root import find_repo_root, has_root_item
 from _compat import run_captured, wants_push_or_merge
 import _audit
 
@@ -60,7 +60,7 @@ def main():
     pm = os.path.join(root, "project_memory")
     if not os.path.isdir(pm):
         sys.exit(0)
-    if not re.search(r"\n\s*PRD-\d", read(os.path.join(pm, "product_requirements.yaml"))):
+    if not has_root_item(root):
         sys.exit(0)  # no real work yet
 
     runner = os.path.join(root, "scripts", "quality.py")

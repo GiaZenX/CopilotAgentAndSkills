@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<!--
+  progress.dashboard.template.html - SHELL owned by: PM (generated artifact source)
+
+  Static shell for the project's user-facing dashboard. It is NEVER edited by hand for data:
+  generate_dashboard.py replaces ONLY the embedded JSON block below (id="dashboard-data") and
+  writes the result to project_memory/generated/dashboard.html.
+
+  Spec II.7 rules this shell implements:
+    * the views are Product, Delivery, System, Decisions and Archive,
+    * at most `page_size` items per view; the rest are counted, never rendered,
+    * item rows are built when their view is opened and item DETAIL when its row is opened, so
+      the initial DOM stays small,
+    * the archive appears as counts only — no archived item and no full text is ever embedded,
+    * the Delivery board hides finished work ("Erledigtes verborgen"): the generator drops items
+      whose status is terminal for their type, because nothing auto-archives them and they would
+      otherwise crowd the open work off the first page,
+    * there is no committed history and no "since last run" diff: the dashboard is a pure
+      function of the state it was generated from,
+    * the dashboard reports status and never sets one.
+
+  No external dependencies (no CDN, no fonts, no network): the generated file renders offline by
+  double-click and leaks nothing.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Project Dashboard</title>
+<style>
+  :root {
+    --bg: #0f1320;
+    --panel: #181d2e;
+    --panel-2: #1f2540;
+    --text: #e7eaf3;
+    --muted: #9aa3bd;
+    --line: #2a3150;
+    --accent: #8b5cf6;
+    --good: #22c55e;
+    --bad: #ef4444;
+    --warn: #f5a623;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 32px clamp(16px, 4vw, 56px);
+  }
+  header { margin-bottom: 24px; }
+  h1 { margin: 0 0 6px; font-size: 1.6rem; letter-spacing: .2px; }
+  .meta { font-size: .8rem; color: var(--muted); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+    margin-bottom: 22px;
+  }
+  .kpi {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 18px;
+  }
+  .kpi .num { font-size: 2rem; font-weight: 700; line-height: 1; }
+  .kpi .label { color: var(--muted); font-size: .78rem; margin-top: 8px; text-transform: uppercase; letter-spacing: .6px; }
+
+  nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  nav button {
+    font: inherit;
+    font-size: .85rem;
+    color: var(--muted);
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 7px 16px;
+    cursor: pointer;
+  }
+  nav button[aria-selected="true"] { color: var(--text); border-color: var(--accent); background: var(--panel-2); }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 18px 20px;
+  }
+  .panel h2 { margin: 0 0 14px; font-size: 1.02rem; font-weight: 600; }
+  .note { color: var(--muted); font-size: .82rem; font-style: italic; }
+
+  .item { border-top: 1px solid var(--line); }
+  .item:first-child { border-top: none; }
+  .item > summary {
+    list-style: none;
+    cursor: pointer;
+    display: grid;
+    grid-template-columns: 76px 1fr auto;
+    align-items: baseline;
+    gap: 12px;
+    padding: 9px 0;
+    outline: none;
+  }
+  .item > summary::-webkit-details-marker { display: none; }
+  .item .id { font-weight: 600; font-size: .85rem; }
+  .item .title { font-size: .88rem; }
+  .item .state { font-size: .74rem; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .item .pill {
+    font-size: .68rem; letter-spacing: .4px; text-transform: uppercase; font-weight: 700;
+    padding: 2px 8px; border-radius: 999px; background: var(--panel-2); color: var(--muted);
+    margin-left: 8px;
+  }
+  .item .pill.blocked { background: rgba(239,68,68,.16); color: var(--bad); }
+  .item .pill.approved { background: rgba(34,197,94,.16); color: var(--good); }
+  .item .pill.corrupt { background: rgba(245,166,35,.18); color: var(--warn); }
+  .detail { margin: 0 0 12px 12px; padding-left: 14px; border-left: 1px dashed var(--line); font-size: .82rem; color: var(--muted); }
+  .detail div { margin: 5px 0; }
+  .detail .k { color: var(--text); font-weight: 600; margin-right: 6px; }
+
+  table.archive { border-collapse: collapse; font-size: .84rem; }
+  table.archive th, table.archive td { text-align: left; padding: 5px 18px 5px 0; }
+  table.archive th { color: var(--muted); font-weight: 600; }
+
+  footer { margin-top: 26px; color: var(--muted); font-size: .75rem; }
+  footer code { color: var(--text); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Project Dashboard</h1>
+  <div class="meta">Generated <span id="generated-at">&mdash;</span> from
+    <code>generated/index.yaml</code> and the active items &middot; regenerate with
+    <code>python scripts/generate_dashboard.py</code></div>
+  <div class="note" id="notice" hidden></div>
+</header>
+
+<section class="grid" id="kpis"></section>
+
+<nav id="tabs" role="tablist"></nav>
+
+<section class="panel" id="view">
+  <h2 id="view-title">&mdash;</h2>
+  <div id="view-body"></div>
+</section>
+
+<footer id="vitals"></footer>
+
+<!--
+  Single source of truth for this page. The generator replaces this whole block.
+  Shape:
+    generated_at, page_size
+    notice:  "" or a sentence about the STATE OF THE DATA rather than of the project — today the
+             one case is a greenfield repo, where "no index" and "nothing captured" are the same
+             truth and the page must say which one it is showing.
+    views:   [ { id, label, total, items: [ { id, type, title, status, next, blocked_by,
+                 revision, approved, corrupt, relations: [id, ...] } ] } ]
+             `total` is how many items the view has AFTER its own filter (Delivery drops
+             finished work); `items` holds at most page_size of them.
+    archive: { total, by_type: { TYPE: { YEAR: count } } }   -- counts only, never content
+    repo_vitals: { largest: [ { path, lines } ], over_2000, source_files }
+-->
+<script type="application/json" id="dashboard-data">
+{
+  "generated_at": "",
+  "page_size": 50,
+  "notice": "",
+  "views": [],
+  "archive": { "total": 0, "by_type": {} },
+  "repo_vitals": { "largest": [], "over_2000": 0, "source_files": 0 }
+}
+</script>
+
+<script>
+  (function () {
+    "use strict";
+    var data;
+    try {
+      data = JSON.parse(document.getElementById("dashboard-data").textContent);
+    } catch (e) {
+      data = null;
+    }
+    if (!data) {
+      data = { generated_at: "", page_size: 0, notice: "", views: [],
+               archive: { total: 0, by_type: {} },
+               repo_vitals: { largest: [], over_2000: 0, source_files: 0 } };
+    }
+    var views = data.views || [];
+    var archive = data.archive || { total: 0, by_type: {} };
+    var ARCHIVE_TAB = "__archive__";
+
+    function el(tag, className, text) {
+      var node = document.createElement(tag);
+      if (className) { node.className = className; }
+      if (text !== undefined && text !== null) { node.textContent = String(text); }
+      return node;
+    }
+
+    function renderKpis() {
+      var host = document.getElementById("kpis");
+      host.textContent = "";
+      var cards = views.map(function (v) { return { label: v.label, value: v.total || 0 }; });
+      cards.push({ label: "Archived", value: archive.total || 0 });
+      cards.forEach(function (c) {
+        var card = el("div", "kpi");
+        card.appendChild(el("div", "num", c.value));
+        card.appendChild(el("div", "label", c.label));
+        host.appendChild(card);
+      });
+    }
+
+    // Item DETAIL is built on first open, not up front: 50 rows x every reference would put the
+    // whole item graph into the initial DOM, which is what spec II.7 asks this page not to do.
+    function buildDetail(item) {
+      var box = el("div", "detail");
+      function line(key, value) {
+        if (value === undefined || value === null || value === "") { return; }
+        var row = el("div");
+        row.appendChild(el("span", "k", key));
+        row.appendChild(document.createTextNode(String(value)));
+        box.appendChild(row);
+      }
+      line("Type", item.type);
+      line("Status", item.status);
+      line("Next", item.next);
+      line("Blocked by", item.blocked_by);
+      line("Revision", item.revision);
+      line("Relations", (item.relations || []).join(", "));
+      if (!box.firstChild) { box.appendChild(el("div", null, "no further detail")); }
+      return box;
+    }
+
+    function buildRow(item) {
+      var row = el("details", "item");
+      var summary = el("summary");
+      summary.appendChild(el("span", "id", item.id));
+
+      var title = el("span", "title", item.title || "");
+      if (item.blocked_by) { title.appendChild(el("span", "pill blocked", "blocked")); }
+      if (item.corrupt) { title.appendChild(el("span", "pill corrupt", "unreadable")); }
+      if (item.approved) { title.appendChild(el("span", "pill approved", "approved")); }
+      summary.appendChild(title);
+
+      summary.appendChild(el("span", "state",
+        item.status + (item.next ? "  →  " + item.next : "")));
+      row.appendChild(summary);
+
+      var built = false;
+      row.addEventListener("toggle", function () {
+        if (row.open && !built) { built = true; row.appendChild(buildDetail(item)); }
+      });
+      return row;
+    }
+
+    function renderArchive(body) {
+      var byType = archive.by_type || {};
+      var types = Object.keys(byType).sort();
+      if (!types.length) {
+        body.appendChild(el("div", "note", "Nothing archived yet."));
+        return;
+      }
+      body.appendChild(el("div", "note",
+        "Counts only — archived items are never embedded here. They live under "
+        + "project_memory/archive/<type>/<year>/."));
+      var table = el("table", "archive");
+      var head = el("tr");
+      ["Type", "Year", "Items"].forEach(function (h) { head.appendChild(el("th", null, h)); });
+      table.appendChild(head);
+      types.forEach(function (type) {
+        Object.keys(byType[type]).sort().forEach(function (year) {
+          var tr = el("tr");
+          tr.appendChild(el("td", null, type));
+          tr.appendChild(el("td", null, year));
+          tr.appendChild(el("td", null, byType[type][year]));
+          table.appendChild(tr);
+        });
+      });
+      body.appendChild(table);
+    }
+
+    // Rows are built when their view is opened, so only one view's worth of DOM ever exists.
+    function showView(id) {
+      var body = document.getElementById("view-body");
+      var titleNode = document.getElementById("view-title");
+      body.textContent = "";
+      Array.prototype.forEach.call(document.querySelectorAll("#tabs button"), function (b) {
+        b.setAttribute("aria-selected", b.dataset.view === id ? "true" : "false");
+      });
+      if (id === ARCHIVE_TAB) {
+        titleNode.textContent = "Archive";
+        renderArchive(body);
+        return;
+      }
+      var view = null;
+      views.forEach(function (v) { if (v.id === id) { view = v; } });
+      if (!view) { titleNode.textContent = "—"; return; }
+      titleNode.textContent = view.label;
+      var items = view.items || [];
+      if (!items.length) {
+        body.appendChild(el("div", "note", "No active items in this view."));
+        return;
+      }
+      items.forEach(function (item) { body.appendChild(buildRow(item)); });
+      if ((view.total || 0) > items.length) {
+        body.appendChild(el("div", "note",
+          "Showing " + items.length + " of " + view.total + " items (page size "
+          + data.page_size + "). The rest are in the item files."));
+      }
+    }
+
+    function renderTabs() {
+      var host = document.getElementById("tabs");
+      host.textContent = "";
+      var entries = views.map(function (v) { return { id: v.id, label: v.label }; });
+      entries.push({ id: ARCHIVE_TAB, label: "Archive" });
+      entries.forEach(function (entry) {
+        var button = el("button", null, entry.label);
+        button.type = "button";
+        button.setAttribute("role", "tab");
+        button.dataset.view = entry.id;
+        button.addEventListener("click", function () { showView(entry.id); });
+        host.appendChild(button);
+      });
+      showView(entries.length ? entries[0].id : ARCHIVE_TAB);
+    }
+
+    function renderVitals() {
+      var host = document.getElementById("vitals");
+      var vitals = data.repo_vitals || { largest: [], over_2000: 0, source_files: 0 };
+      var top = (vitals.largest || [])[0];
+      var text = "Self-contained · no external resources · generated from the typed "
+        + "items. Do not edit by hand.";
+      if (top) {
+        text += "  Largest source file: " + top.path + " (" + top.lines + " lines); "
+          + vitals.over_2000 + " of " + vitals.source_files + " files over 2000 lines.";
+      }
+      host.textContent = text;
+    }
+
+    document.getElementById("generated-at").textContent = data.generated_at || "—";
+    if (data.notice) {
+      var noticeNode = document.getElementById("notice");
+      noticeNode.textContent = data.notice;
+      noticeNode.hidden = false;
+    }
+    renderKpis();
+    renderTabs();
+    renderVitals();
+  })();
+</script>
+</body>
+</html>

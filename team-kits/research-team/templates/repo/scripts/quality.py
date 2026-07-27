@@ -217,10 +217,14 @@ def _sec(name, tool, cmd, detail):
 
 
 def _declared_source_areas():
-    """Top-level source dirs from coding/research_guidelines `source_areas:` — the same key AND
-    the same parser as kit_checks' file budget (an audit caught a block-only regex here silently
-    skipping an inline-declared area the budget check DID scan). Regex fallback only without
-    pyyaml. Dot-only names are rejected everywhere (audit: '..' walked the parent dir)."""
+    """Top-level source dirs from the guidelines file's `source_areas:` — the same KEY as
+    kit_checks' file budget, read through the same structured reader (`_project_yaml` ->
+    kit_checks.load_project_yaml; an audit caught a block-only regex here silently skipping an
+    inline-declared area the budget check DID scan). What is NOT shared: the extraction/validation
+    around it, the pyyaml-less regex fallback below, and the guidelines FILENAMES — kit_checks
+    keeps those in `_GUIDELINE_FILES` and this is a second copy. Consolidating the two readers is
+    open; see the quality.py row in the phase-0 disposition. Dot-only names are rejected everywhere
+    (audit: '..' walked the parent dir)."""
     raw = []
     for name in ("coding_guidelines.yaml", "research_guidelines.yaml"):
         data = _project_yaml(name)

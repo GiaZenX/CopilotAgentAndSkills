@@ -1,0 +1,2 @@
+The kernel creates this directory on demand; the placeholder only makes the shape of the
+state visible in a fresh checkout and keeps the directory in git.

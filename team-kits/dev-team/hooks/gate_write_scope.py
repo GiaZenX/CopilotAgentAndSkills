@@ -34,8 +34,12 @@ not by hook logic, and `harness doctor` must weigh that rather than treat this g
 sufficient. The `known_hole`-marked tests in tools/test_hooks_v2.py enumerate what is still open,
 for BOTH capabilities.
 
-No bootstrap exemption either, unlike gate_dispatch: the installer writes canonical state through
-the kernel, so a bootstrap window never needs a tool write into the state dir.
+No bootstrap exemption either, unlike gate_dispatch -- but NOT because the bootstrap goes through the
+kernel. The entry gate writes the masterplan, the first root item and `project_config.yaml` by hand, and
+for the prose and the config the kernel has no path at all. It needs no exemption because it runs BEFORE
+the scaffold, when this hook is not installed yet. What follows from that is a gap, not a protected
+window: once the kit is installed nothing can write those two files, which is why the entry gate is told
+to finish them there and every later role is told to report the gap instead of editing a state file.
 """
 import os
 import sys

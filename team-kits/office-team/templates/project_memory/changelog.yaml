@@ -1,6 +1,0 @@
-# changelog.yaml — owned by: Manager
-# Append-only notable events (PROC approvals/amendments, migrations, report handovers,
-# infrastructure notes). One dated line each.
-
-changelog: []
-#  - "2026-07-12: filing plan v1 approved; migration dry-run presented"

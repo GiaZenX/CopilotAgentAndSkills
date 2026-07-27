@@ -122,8 +122,16 @@ def freeze_wireframe(
 def freeze_architecture(
     state: ProjectState, staging_key: str, arc_id: str, title: str, scope: str,
     derives_from: list, approval_ref: str = None, assets: dict = None,
+    packaging: dict = None,
 ) -> dict:
-    """Freeze staging ARC into architecture/revisions/ + active companion (II.6a)."""
+    """Freeze staging ARC into architecture/revisions/ + active companion (II.6a).
+
+    `packaging` is the optional {method: ...} block the packaging gate reads. It is
+    a PARAMETER rather than something the architect writes afterwards because this
+    is the only path that creates an ARC item: `capture` refuses the type, and
+    `project_memory/**` is kernel-only for tool writes. Without it the gate had a
+    reader and no producer, which blocks every merge with no way out.
+    """
     parse_id(arc_id)
     source = os.path.join(staging_dir(state, staging_key), arc_id + ".drawio.svg")
     with state.lock:
@@ -142,6 +150,11 @@ def freeze_architecture(
             "assets": assets or {"mode": "self_contained"},
             "render_check": True,
         }
+        if packaging is not None:
+            # absent, not null: the schema is strict and `packaging` is optional,
+            # so a `None` value would fail validation instead of meaning "not
+            # stated here"
+            companion["packaging"] = packaging
         validate(companion, "arc_companion")
         os.makedirs(ext_path(revisions_dir), exist_ok=True)
         shutil.copyfile(ext_path(source), ext_path(frozen))

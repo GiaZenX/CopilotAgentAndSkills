@@ -20,7 +20,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _compat
-from _root import find_repo_root
+from _root import find_repo_root, has_root_item
 from _compat import wants_push_or_merge
 import _audit
 
@@ -84,12 +84,7 @@ def main():
     if not os.path.isdir(pm):
         sys.exit(0)
     # only gate once there is real work
-    prd = os.path.join(pm, "product_requirements.yaml")
-    try:
-        with open(prd, encoding="utf-8", errors="ignore") as fh:
-            if not re.search(r"\n\s*PRD-\d", fh.read()):
-                sys.exit(0)
-    except Exception:
+    if not has_root_item(root):
         sys.exit(0)
 
     # python backend area: src/ with code -> needs tests under tests/ or src/

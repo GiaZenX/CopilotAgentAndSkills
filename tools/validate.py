@@ -13,6 +13,13 @@ import sys
 
 import yaml
 
+# The in-memory compile below states the rule ("validation must never create __pycache__ that the
+# installer could accidentally carry into the shared team-kit staging tree") and this script broke it
+# with the imports it really performs: `preset_config` and `kernel.hashing` come from `team-kits/`, so
+# every run left `team-kits/__pycache__` and `team-kits/kernel/__pycache__` behind — measured. A
+# one-shot validator gains nothing from a bytecode cache, so it writes none.
+sys.dont_write_bytecode = True
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "team-kits"))
 from preset_config import UniqueKeyLoader, load_preset_catalog  # noqa: E402
@@ -246,9 +253,16 @@ MIRROR_DEV_RESEARCH = [
     "hooks/guard_yaml_valid.py", "hooks/guard_agent_spawn.py", "hooks/notify_agent_events.py",
     "hooks/guard_scratchpad_ref.py", "hooks/gate_subagent_output.py", "hooks/guard_harness_selfmod.py",
     "hooks/guard_pm_scope.py", "hooks/guard_no_adhoc.py", "hooks/guard_question_context.py",
-    "hooks/_root.py", "hooks/_audit.py", "hooks/_compat.py", "hooks/auto_dashboard.py",
+    "hooks/gate_memory_complete.py", "hooks/gate_pipeline.py",
+    "hooks/_root.py", "hooks/_audit.py", "hooks/_compat.py",
     "templates/repo/scripts/quality.py", "templates/repo/scripts/kit_checks.py",
     "templates/repo/scripts/kit_browser_checks.py", "templates/repo/scripts/retro.py",
+    # kit-NEUTRAL by content (it names project_memory/** and generic source dirs, nothing dev- or
+    # research-specific), so the two copies have always been identical and a fix to one belongs in
+    # both. It was carried along in the phase-2 lockstep on that reasoning while nothing held it —
+    # the office copy is deliberately different (a document workspace, not a code repo) and stays
+    # out of every mirror set.
+    "templates/repo/.claude/claude-security-guidance.md",
 ]
 MIRROR_DEV_OFFICE = [
     "hooks/guard_yaml_valid.py", "hooks/guard_agent_spawn.py", "hooks/notify_agent_events.py",
@@ -265,9 +279,12 @@ for other, names in (("research-team", MIRROR_DEV_RESEARCH), ("office-team", MIR
         elif open(a, "rb").read() != open(b, "rb").read():
             fails.append("mirror: %s diverged between dev-team and %s — copy the fixed file" % (name, other))
 
-# 11) every §-reference in hooks/skills/agents must resolve to a heading (## N.) or a bold anchor
-#     (**Na.) in that kit's constitution — a block message citing a deleted paragraph teaches
-#     the agent to look for nothing (audit finding after the constitution diet).
+# 11) every §-reference in hooks/skills/agents AND in the constitution itself must resolve to a
+#     heading (## N.) or a bold anchor (**Na.) in that kit's constitution — a block message citing
+#     a deleted paragraph teaches the agent to look for nothing (audit finding after the
+#     constitution diet). The constitution is in the list because it cites itself more than any
+#     other file does, and an unchecked self-reference is exactly how four office `(§8)` pointers
+#     shipped aiming at a section that did not carry the rule they cited.
 import re as _re  # noqa: E402
 for kit_dir_name in os.listdir(os.path.join(ROOT, "team-kits")):
     cpath = os.path.join(ROOT, "team-kits", kit_dir_name, "constitution", "AGENTS.md")
@@ -276,12 +293,13 @@ for kit_dir_name in os.listdir(os.path.join(ROOT, "team-kits")):
     cons = open(cpath, encoding="utf-8", errors="ignore").read()
     anchors = set(_re.findall(r"(?m)^##+\s*(\d+[a-z]?)\.", cons))
     anchors |= set(_re.findall(r"(?m)^\*\*(\d+[a-z]?)\.", cons))
-    for pattern in ("hooks/*.py", "skills/*/SKILL.md", "agents/*.md"):
+    for pattern in ("constitution/AGENTS.md", "hooks/*.py", "skills/*/SKILL.md", "agents/*.md"):
         for p in glob.glob(os.path.join(ROOT, "team-kits", kit_dir_name, pattern)):
             txt = open(p, encoding="utf-8", errors="ignore").read()
             for m in _re.finditer(r"§(\d+[a-z]?)", txt):
-                if txt[m.end():m.end() + 1] == ".":
-                    continue  # §2.7-style sub-reference resolves to its parent section
+                # a `§2.7`-style sub-reference resolves to its PARENT section, so the parent is
+                # what has to exist. Skipping the whole reference (the earlier behaviour) let
+                # `§99.1` through, which is the same dead pointer one level down.
                 if m.group(1) not in anchors:
                     fails.append("%s: references §%s which does not exist in %s's constitution"
                                  % (rel(p), m.group(1), kit_dir_name))

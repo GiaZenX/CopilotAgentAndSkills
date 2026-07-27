@@ -134,7 +134,7 @@ $templateFiles | ForEach-Object {
 $pendFile = Join-Path $repo ".claude\kit_update_pending.memory"
 if ($keptTooling.Count -gt 0) {
     if (-not (Test-Path (Join-Path $repo ".claude"))) { New-Item -ItemType Directory -Force -Path (Join-Path $repo ".claude") | Out-Null }
-    $lines = @("# project_memory TOOLING that DIFFERS from kit '$Team' (templates lag behind the kit) -- the PM reviews each against the kit template, merges the kit's fixes (or documents a conscious skip in progress.yaml log:), then DELETES this file. session_status reminds every session until it is gone. Filled YAML state is NOT listed here and is never overwritten.")
+    $lines = @("# project_memory TOOLING that DIFFERS from kit '$Team' (templates lag behind the kit) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone. Filled YAML state is NOT listed here and is never overwritten.")
     $lines += ($keptTooling | ForEach-Object { "- $_" })
     Set-Content -Path $pendFile -Value $lines -Encoding utf8
     $stateFile = Join-Path $repo ".claude\kit_update_pending.state"

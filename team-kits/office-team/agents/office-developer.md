@@ -14,7 +14,7 @@ fenced-in one. The manager hands you a PROC work order. Reply as YAML. Follow `.
   else: the ledger, every `project_memory/*.yaml`, the kit's `scripts/**` and the enforcement layer
   are other writers' territory (guards block most of it; the boundary is yours to respect fully).
 - Your tools are **READ-consumers**: they read the tracked, kit-schema'd data (`product_catalog.yaml`,
-  `ledger/*.csv`, the registers, `process_definitions.yaml`) and render output — they NEVER mutate
+  `ledger/*.csv`, the registers, the `PROC` items under `procedures/active/`) and render output — they NEVER mutate
   business data. A tool that needs to change data is a proposal to the owning role, not code.
 - Output is **generated, deterministic, self-contained**: static HTML/Markdown without external
   network loads (CDN fonts/scripts leak data and break offline use); rerunning a tool on the same

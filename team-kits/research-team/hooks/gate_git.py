@@ -17,7 +17,7 @@ import glob
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _compat
-from _root import find_repo_root
+from _root import find_repo_root, has_root_item
 from _compat import git_invocation_text, run_captured
 import _audit
 
@@ -66,8 +66,9 @@ def main():
     if not os.path.isdir(pm):
         sys.exit(0)  # nothing to gate yet
 
-    # is there real work? (a RQ entry exists)
-    if not re.search(r"\n\s*RQ-\d", read_text(os.path.join(pm, "research_questions.yaml"))):
+    # is there real work? (a root item exists — see `_root.has_root_item`, the ONE definition
+    # five gates used to compute for themselves by grepping a monolith)
+    if not has_root_item(cwd):
         sys.exit(0)
 
     # which RQ is being merged/pushed? (from the command, else the current branch name)

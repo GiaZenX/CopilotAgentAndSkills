@@ -577,7 +577,7 @@ if (Test-Path $repoTplSrc) {
 $pendFile = Join-Path $repo ".claude\kit_update_pending.repo"
 $stateFile = Join-Path $repo ".claude\kit_update_pending.state"
 if ($keptList.Count -gt 0) {
-    $lines = @("# Repo templates that DIFFER from kit $Team $((Get-Content (Join-Path $kit 'VERSION') -TotalCount 1 -ErrorAction SilentlyContinue)) -- the PM reviews each against the kit template, merges the kit's fixes (or documents a conscious skip in progress.yaml log:), then DELETES this file. session_status reminds every session until it is gone.")
+    $lines = @("# Repo templates that DIFFER from kit $Team $((Get-Content (Join-Path $kit 'VERSION') -TotalCount 1 -ErrorAction SilentlyContinue)) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone.")
     $lines += ($keptList | ForEach-Object { "- $_" })
     Set-Content -Path $pendFile -Value $lines -Encoding utf8
     # fresh REAL update -> fresh nag counter; a same-version re-run must NOT reset the

@@ -2,24 +2,32 @@
 """
 retro.py — a READ-ONLY diagnostic retro for the PM.
 
-Aggregates the facts of recent work (git history, QA failures, gate blocks from the hook event log,
-task churn) and appends a dated entry to project_memory/retro.yaml. It writes ONLY retro.yaml (its own
-append-only diagnostic layer) — never project state, so it does not become a second writer (§6). Run it
-manually, from CI, or from a scheduled agent; an Opus agent may then read retro.yaml and turn the facts
-into concrete advice for the PM (and the PM's agent-memory).
+Aggregates the facts of recent work (git history, gate blocks from the hook event log, the state
+of the typed items) and appends a dated entry to project_memory/retro.yaml. It writes ONLY
+retro.yaml (its own append-only diagnostic layer) — never project state, so it does not become a
+second writer (§6). Run it manually, from CI, or from a scheduled agent; an Opus agent may then
+read retro.yaml and turn the facts into concrete advice for the PM (and the PM's agent-memory).
+
+FACTS, NOT VERDICTS. The item numbers below are a raw status mix per item type, taken from
+`project_memory/generated/index.yaml` — the kernel's regenerated index over the typed items
+(spec II.2/II.4). Reading the index rather than the item directories is what keeps this script
+from carrying a second copy of the type→directory map (`kernel.backlog_types.ACTIVE_DIRS`), and
+reporting the mix rather than a hand-picked "bad status" list is what keeps it from carrying a
+second copy of the status automata. A new item type or a new status shows up here the day it
+ships, without an edit.
 
 Usage: python scripts/retro.py [--since "2 days ago"]
 """
 import collections
 import json
 import os
-import re
 import subprocess
 import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PM = os.path.join(ROOT, "project_memory")
+INDEX = os.path.join(PM, "generated", "index.yaml")
 
 
 def git(*args):
@@ -38,6 +46,30 @@ def read(path):
         return ""
 
 
+def load_index():
+    """(rows, problem) — the kernel's index rows, or a problem string naming what to do.
+
+    A missing or unreadable index must never read as "no items": that is the false-green the
+    whole harness keeps re-fixing. The caller reports the problem as a finding of its own.
+    """
+    if not os.path.isfile(INDEX):
+        return [], ("no project_memory/generated/index.yaml — item facts unavailable (run "
+                    "`harness generate-index`; until that CLI entry point ships — spec II.11 "
+                    "step 4 — any kernel state write rebuilds the index)")
+    try:
+        import yaml  # type: ignore[import-untyped]
+    except ImportError:
+        return [], "pyyaml is not installed, so the item index could not be read"
+    try:
+        data = yaml.safe_load(read(INDEX))
+    except Exception as exc:
+        return [], "generated/index.yaml does not parse (%s) — regenerate it" % exc
+    rows = (data or {}).get("items") if isinstance(data, dict) else None
+    if not isinstance(rows, list):
+        return [], "generated/index.yaml carries no items: list — regenerate it"
+    return [r for r in rows if isinstance(r, dict)], ""
+
+
 def main():
     since = "7 days ago"
     if "--since" in sys.argv:
@@ -47,15 +79,6 @@ def main():
         return
 
     commits = [ln for ln in git("log", "--since", since, "--oneline").splitlines() if ln.strip()]
-
-    # QA failures across report files
-    qa_fail = 0
-    for fn in ("test_reports.yaml", "review_reports.yaml", "acceptance_reports.yaml",
-               "validation_reports.yaml"):
-        t = read(os.path.join(PM, fn))
-        qa_fail += len(re.findall(r"(?mi)^\s*(result|verdict):\s*fail", t))
-    qa_failures_field = sum(int(x) for x in re.findall(r"(?mi)qa_failures:\s*(\d+)",
-                                                       read(os.path.join(PM, "tasks.yaml"))))
 
     # gate blocks from the hook event log. The log also carries NON-block lifecycle events
     # (notify_agent_events: agent_completed / agent_needs_input) — count those separately, or one
@@ -74,38 +97,43 @@ def main():
             except Exception:
                 pass
 
-    # task churn
-    tasks = read(os.path.join(PM, "tasks.yaml"))
-    rejected = len(re.findall(r"(?mi)status:\s*REJECTED", tasks))
+    rows, index_problem = load_index()
+    status_mix = collections.defaultdict(collections.Counter)
+    blocked = []
+    for row in rows:
+        status_mix[str(row.get("type") or "?")][str(row.get("status") or "?")] += 1
+        if row.get("blocked_by"):
+            blocked.append("%s (by %s)" % (row.get("id") or "?", row["blocked_by"]))
 
     findings = []
+    if index_problem:
+        findings.append(index_problem)
     if blocks:
         findings.append("gates blocked work: " + ", ".join("%s x%d" % (k, v) for k, v in blocks.most_common()))
     if agent_events:
         findings.append("background-agent events: " + ", ".join(
             "%s x%d" % (k, v) for k, v in agent_events.most_common()))
-    if qa_fail:
-        findings.append("%d QA FAIL verdict(s) recorded" % qa_fail)
-    if qa_failures_field:
-        findings.append("%d cumulative task qa_failures (model/escalation signal)" % qa_failures_field)
-    if rejected:
-        findings.append("%d task(s) ended REJECTED (re-scoping churn)" % rejected)
+    for item_type in sorted(status_mix):
+        findings.append("%s: %s" % (item_type, ", ".join(
+            "%s x%d" % (s, n) for s, n in status_mix[item_type].most_common())))
+    if blocked:
+        findings.append("%d blocked item(s): %s" % (len(blocked), ", ".join(blocked[:8])))
     if blocks.get("guard_pm_scope"):
         findings.append("the PM tried to write code %d time(s) — should delegate" % blocks["guard_pm_scope"])
     if not findings:
-        findings.append("clean: no gate blocks, QA failures or rejected tasks in the window")
+        findings.append("clean: no gate blocks and no active items in the window")
 
     stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
     entry = (
         "  - date: %s\n"
         "    window: \"%s\"\n"
         "    commits: %d\n"
-        "    qa_fail_verdicts: %d\n"
+        "    active_items: %d\n"
         "    gate_blocks: %s\n"
         "    findings:\n%s\n"
-        % (stamp, since, len(commits), qa_fail,
+        % (stamp, since, len(commits), len(rows),
            (json.dumps(dict(blocks)) if blocks else "{}"),
-           "\n".join("      - %s" % f for f in findings))
+           "\n".join("      - %s" % json.dumps(f, ensure_ascii=False) for f in findings))
     )
     out = os.path.join(PM, "retro.yaml")
     if not os.path.isfile(out):
@@ -116,7 +144,7 @@ def main():
     with open(out, "a", encoding="utf-8") as fh:
         fh.write(entry)
 
-    print("[retro] %d commits, %d QA fails, blocks=%s" % (len(commits), qa_fail, dict(blocks)))
+    print("[retro] %d commits, %d active item(s), blocks=%s" % (len(commits), len(rows), dict(blocks)))
     for f in findings:
         print("  - " + f)
     print("[retro] appended to project_memory/retro.yaml")

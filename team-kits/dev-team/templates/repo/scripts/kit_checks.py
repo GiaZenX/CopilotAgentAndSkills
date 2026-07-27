@@ -9,22 +9,29 @@ specific checks belong in scripts/quality.py (the runner, copy-if-absent, yours 
 imports this module and calls run_kit_checks().
 
 Shipped checks:
-  * project_memory yaml-lint (parse + duplicate keys + the progress.yaml contract) + repo-wide
-    yaml parse of every git-tracked *.yaml (a real decisions.yaml shipped ~50 unparsable items
-    and the dashboard swallowed the ParserError silently); template YAMLs excludable via
-    `yaml_lint_exclude:` (glob list) in coding/research_guidelines
+  * project_memory yaml-lint (parse + duplicate keys, over the whole typed item tree) +
+    repo-wide yaml parse of every git-tracked *.yaml (a real decisions.yaml shipped ~50
+    unparsable items and the dashboard swallowed the ParserError silently); template YAMLs
+    excludable via `yaml_lint_exclude:` (glob list) in coding/research_guidelines
+  * state validity — the kernel's own fail-closed validator (spec II.4 gate 4) run here rather
+    than only in the merge gate
   * frontend pitfalls (raw secure-context APIs; local-first external asset loads;
     chunkSizeWarningLimit must never be ASSIGNED — raising the threshold instead of
     code-splitting is a defect, not a fix)
-  * module invariants (architecture rules as data: coding_guidelines `module_invariants:`
-    lists files that must never contain given tokens — the pattern hand-rolled itself three
-    times in one real project before becoming this config)
+  * module invariants (architecture rules as data: a `module_invariants:` list of files that
+    must never contain given tokens — the pattern hand-rolled itself three times in one real
+    project before becoming this config)
   * file budget (no source file beyond max_lines — the anti-monolith gate; configurable +
-    exemptable with a reason in coding_guidelines.yaml `file_budget:`)
+    exemptable with a reason via `file_budget:`)
+
+The yaml-lint excludes, the module invariants and the file budget read their knobs from the kit's
+guidelines file; `_knob_hint` below is the ONE place that decides which file that is and what to
+tell a user when the project has none.
 """
 import fnmatch
 import os
 import re
+import sys
 
 # Browser APIs that need a SECURE CONTEXT (https / localhost) — raw use is silently dead on a
 # plain-http LAN origin, and jsdom/unit tests stay green (a real run shipped a browser-dead send
@@ -40,13 +47,13 @@ _COMMENT_LINE_RX = re.compile(r"^\s*(//|\*|/\*|#|<!--)")
 
 # vendored/generated code is not ours to fix — a `.next/` chunk or a vendored lib containing
 # crypto.randomUUID must not turn the gate red (dot-dirs, vendor dirs, *.min.* are skipped).
-_SKIP_DIRS = ("node_modules", "dist", "build", "__pycache__", ".venv", "venv", "coverage",
-              "target", "vendor", "third_party")
+SKIP_DIRS = ("node_modules", "dist", "build", "__pycache__", ".venv", "venv", "coverage",
+             "target", "vendor", "third_party")
 
 # The anti-monolith gate. Default threshold: hand-written source files stay below this many lines;
 # a real App.tsx grew to 8,966 lines (+666 in one session) while its ui/ component library sat
-# 100% unused — visibility flags alone demonstrably did nothing. Projects tune/exempt via
-# coding_guidelines.yaml:
+# 100% unused — visibility flags alone demonstrably did nothing. Projects tune/exempt via the
+# guidelines file (see _GUIDELINE_FILES):
 #   file_budget:
 #     max_lines: 800            # tighten for UI-heavy projects (e.g. 500)
 #     exempt:
@@ -56,7 +63,7 @@ FILE_BUDGET_DEFAULT = 800
 _BUDGET_EXTS = {".py", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".css", ".html", ".go", ".rs",
                 ".c", ".cpp", ".h", ".cs", ".java", ".svelte", ".vue"}
 # DEFAULT scan areas — projects with additional top-level packages MUST list them via
-# `source_areas:` in coding_guidelines.yaml (research: research_guidelines.yaml). A real project
+# `source_areas:` in the guidelines file (see _GUIDELINE_FILES). A real project
 # kept its whole codebase under compounder/ and "PASS file budget" was false-green for weeks
 # (an 1,111-line file went undetected) because this tuple silently never matched anything.
 _BUDGET_AREAS = ("src", "frontend", "scripts", "tests", "static", "public")
@@ -92,6 +99,25 @@ def load_project_yaml(root, name):
         return {}
 
 
+# The tuning knobs below (file_budget, source_areas, module_invariants, yaml_lint_exclude) are
+# read from the kit's guidelines file. V2 dissolved the dev kit's coding_guidelines.yaml into INV
+# items and has NOT yet decided where those knobs live (phase-0 disposition: "neue Heimat"), so a
+# check must never print that filename as the way out: the scaffold no longer creates the file and
+# gate_write_scope would refuse the write anyway. `_knob_hint` answers "where do I declare this?"
+# from what the project actually has.
+_GUIDELINE_FILES = ("coding_guidelines.yaml", "research_guidelines.yaml")
+
+
+def _knob_hint(root, knob):
+    """A walkable answer to "where do I declare `knob`?", or an honest "nowhere yet"."""
+    for name in _GUIDELINE_FILES:
+        if load_project_yaml(root, name):
+            return "declare `%s:` in project_memory/%s" % (knob, name)
+    return ("`%s:` has no home in this project — the guidelines monolith is gone in V2 and its "
+            "config knobs have not been rehomed yet, so report the need instead of recreating "
+            "the file" % knob)
+
+
 def _more(items, shown):
     """Honest truncation: a display cut to the first N hits once made a PM report 'almost green'
     to the user while 13 findings were hidden — every truncated list says exactly how many more."""
@@ -117,7 +143,7 @@ def _frontend_sources(root):
         if not os.path.isdir(d):
             continue
         for dp, dn, fn in os.walk(d):
-            dn[:] = [x for x in dn if x not in _SKIP_DIRS and not x.startswith(".")]
+            dn[:] = [x for x in dn if x not in SKIP_DIRS and not x.startswith(".")]
             for f in fn:
                 ext = os.path.splitext(f)[1].lower()
                 if ext not in exts:
@@ -208,10 +234,25 @@ def check_frontend_build_config(root, ok, fail, warn):
 
 
 def check_project_memory_yaml(root, ok, fail, warn):
-    """Every project_memory/*.yaml must parse and carry no duplicate keys (safe_load keeps only the
-    last duplicate silently); progress.yaml must additionally honor its contract. The write-time
-    hook (guard_yaml_valid) catches Edit/Write immediately — this stage is the merge/CI backstop
-    and the ONLY one that also sees shell-written files."""
+    """Every YAML under project_memory/ must parse and carry no duplicate keys (safe_load keeps
+    only the last duplicate silently). The write-time hook (guard_yaml_valid) catches Edit/Write
+    immediately — this stage is the merge/CI backstop and the ONLY one that also sees
+    shell-written files.
+
+    The walk is RECURSIVE because the V2 state is one file per item under
+    `project_memory/<type>/active/` (spec II.2): a top-level-only listing is what the monolith era
+    needed and would now scan an almost empty directory while every real item went unchecked —
+    and `_repo_wide_yaml_parse` skips project_memory/ on the promise that this pass is the
+    stricter one. It is the same defect the write-time guard was fixed for one layer up, where a
+    path is now accepted on its `project_memory` SEGMENT rather than on its parent directory.
+
+    `archive/` is the one subtree left out, for the same reason `_repo_wide_yaml_parse` caps file
+    size: this runs on every merge and CI reads it cold. An archived item is frozen — it was
+    linted while it was active, nothing may write it again, and the kernel's own validator does
+    not scan it either (`_iter_active`), so re-parsing a monotonically growing history twice per
+    file would buy nothing and cost seconds that grow forever. The parse step uses the C loader for
+    the same reason, wherever PyYAML ships it; the duplicate-key pass stays on the Python composer,
+    which is the node API this walk was written against."""
     d = os.path.join(root, "project_memory")
     if not os.path.isdir(d):
         return
@@ -220,6 +261,7 @@ def check_project_memory_yaml(root, ok, fail, warn):
     except ImportError:
         warn("yaml-lint (project_memory)", "pyyaml not installed; runs + hard-fails in CI")
         return
+    loader = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
     def dup_keys(text):
         found = []
@@ -248,35 +290,25 @@ def check_project_memory_yaml(root, ok, fail, warn):
         return found
 
     bad = []
-    for fn in sorted(os.listdir(d)):
-        if not fn.endswith((".yaml", ".yml")):
-            continue
-        try:
-            text = open(os.path.join(d, fn), encoding="utf-8", errors="ignore").read()
-        except Exception:
-            continue
-        try:
-            data = yaml.safe_load(text)
-        except yaml.YAMLError as e:
-            bad.append("%s: %s" % (fn, str(e).splitlines()[0]))
-            continue
-        for msg in dup_keys(text):
-            bad.append("%s: %s" % (fn, msg))
-        # progress.yaml contract (same thresholds as the write-time guard_yaml_valid): the guard only
-        # sees Edit/Write tool calls — a status blob written via a SHELL heredoc/script bypasses it
-        # (a real PM grew a 42k-char "one-liner" exactly that way). This stage catches it at every
-        # pipeline run and at merge, whatever wrote the file.
-        if fn == "progress.yaml" and isinstance(data, dict):
-            status = data.get("status")
-            if isinstance(status, str):
-                nlines = len([ln for ln in status.splitlines() if ln.strip()])
-                if nlines > 3 or len(status) > 700:
-                    bad.append("progress.yaml: status is %d non-empty lines / %d chars — it MUST stay "
-                               "ONE line (state + concrete next action); history belongs in the "
-                               "append-only log: list" % (nlines, len(status)))
-            if "log" not in data:
-                bad.append("progress.yaml: the append-only log: list is missing (keep `log: []` even "
-                           "when empty; history goes there, never into status)")
+    for dp, dn, fn in os.walk(d):
+        dn[:] = sorted(x for x in dn if x not in SKIP_DIRS and not x.startswith("."))
+        if dp == d:
+            dn[:] = [x for x in dn if x != "archive"]  # frozen history, see the docstring
+        for name in sorted(fn):
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            rel = os.path.relpath(os.path.join(dp, name), d).replace("\\", "/")
+            try:
+                text = open(os.path.join(dp, name), encoding="utf-8", errors="ignore").read()
+            except Exception:
+                continue
+            try:
+                yaml.load(text, Loader=loader)
+            except yaml.YAMLError as e:
+                bad.append("%s: %s" % (rel, str(e).splitlines()[0]))
+                continue
+            for msg in dup_keys(text):
+                bad.append("%s: %s" % (rel, msg))
     ok("yaml-lint (project_memory)") if not bad else fail(
         "yaml-lint (project_memory)", "; ".join(bad[:6]) + _more(bad, 6))
     _repo_wide_yaml_parse(root, yaml, ok, fail, warn)
@@ -286,7 +318,7 @@ def _yaml_lint_excludes(root):
     """Glob patterns from coding/research_guidelines `yaml_lint_exclude:` — Helm/Jinja-templated
     YAMLs are legitimately unparsable and must not turn the repo-wide parse red."""
     out = []
-    for name in ("coding_guidelines.yaml", "research_guidelines.yaml"):
+    for name in _GUIDELINE_FILES:
         data = load_project_yaml(root, name)
         out += [str(g).replace("\\", "/") for g in (data.get("yaml_lint_exclude") or [])]
     return out
@@ -296,7 +328,7 @@ def _repo_wide_yaml_parse(root, yaml, ok, fail, warn):
     """Parse EVERY git-tracked *.yaml/*.yml, not only project_memory/ — a real decisions.yaml
     shipped ~50 unparsable items while the dashboard generator swallowed the ParserError silently
     (upstreamed from a live project's fork). Parse-only outside project_memory (which already got
-    the stricter duplicate-key + contract pass above). Requires git (no tracked files -> skip
+    the stricter duplicate-key pass above). Requires git (no tracked files -> skip
     silently); files beyond the size cap are skipped WITH a warn (a multi-MB pnpm-lock.yaml must
     not cost the gate minutes — audit finding); the C loader is used when available."""
     try:
@@ -340,8 +372,8 @@ def _repo_wide_yaml_parse(root, yaml, ok, fail, warn):
              % (len(skipped_big), "; ".join(skipped_big[:3]), _more(skipped_big, 3)))
     if bad:
         fail("yaml-lint (repo-wide)", "; ".join(bad[:6]) + _more(bad, 6)
-             + " — genuinely templated YAML (Helm/Jinja) can be excluded via "
-               "`yaml_lint_exclude:` in coding_guidelines.yaml")
+             + " — genuinely templated YAML (Helm/Jinja) is excludable: %s"
+             % _knob_hint(root, "yaml_lint_exclude"))
     elif count:
         ok("yaml-lint (repo-wide, %d tracked file(s))" % count)
 
@@ -357,7 +389,7 @@ def check_module_invariants(root, ok, fail, warn):
           reason: "pure scoring module — all I/O lives in the store layer (ADR-0034)"
     """
     rules = []
-    for name in ("coding_guidelines.yaml", "research_guidelines.yaml"):
+    for name in _GUIDELINE_FILES:
         data = load_project_yaml(root, name)
         for entry in (data.get("module_invariants") or []):
             if (isinstance(entry, dict) and entry.get("path")
@@ -408,13 +440,15 @@ def _count_lines(path):
 
 
 def _budget_config(root):
-    """file_budget + source_areas from coding_guidelines.yaml (fallback: research_guidelines.yaml —
-    the research kit ships no coding_guidelines): {max_lines, exempt: [{path, reason}], areas}.
+    """file_budget + source_areas from whichever guidelines file the project has (`_GUIDELINE_FILES`,
+    and `_knob_hint` for what to tell a user who has none): {max_lines, exempt: [{path, reason}],
+    areas}. Both knobs are homeless in a V2 dev project — see the comment above `_GUIDELINE_FILES` —
+    so the defaults below are what a dev project actually runs with today.
     Exemptions are architect-owned and REQUIRE a reason — a bare path does not count.
     `source_areas:` (top-level key) EXTENDS the default scan areas; it can never remove them
     (removing would silently un-gate src/ — the false-green class this key exists to kill)."""
     max_lines, exempt, areas = FILE_BUDGET_DEFAULT, {}, list(_BUDGET_AREAS)
-    for name in ("coding_guidelines.yaml", "research_guidelines.yaml"):
+    for name in _GUIDELINE_FILES:
         data = load_project_yaml(root, name)
         if not data:
             continue
@@ -438,18 +472,25 @@ def _budget_config(root):
     return max_lines, exempt, areas
 
 
-def check_file_budget(root, ok, fail, warn):
-    """No hand-written source file beyond max_lines. Deterministic anti-monolith gate: split the
-    file or add an architect-owned exemption WITH a reason (visible, reviewable) — never both grow
-    silently. Vendored/generated/minified/dot-dirs are skipped."""
-    max_lines, exempt, areas = _budget_config(root)
-    offenders, scanned = [], False
-    for area in areas:
+def source_files(root):
+    """Yields (relative path, line count) for every file the file budget covers.
+
+    THE definition of "a hand-written source file of this project" — scan areas, the
+    vendored/generated skip list, the extension set and the `.min.*` exclusion in ONE place.
+    Public because the dashboard's repo-vitals panel reports on exactly the files this gate
+    enforces: it used to carry its own copy of the extension set, its own minified filter and a
+    third line counter, and a panel that disagrees with the gate is worse than no panel.
+
+    The line count is None for a file that cannot be read. That case still has to be yielded:
+    it proves the scan area matched, and the budget check's "NO scan area matched" warning must
+    not fire for a directory that plainly holds sources.
+    """
+    for area in _budget_config(root)[2]:
         d = os.path.join(root, area)
         if not os.path.isdir(d):
             continue
         for dp, dn, fn in os.walk(d):
-            dn[:] = [x for x in dn if x not in _SKIP_DIRS and not x.startswith(".")]
+            dn[:] = [x for x in dn if x not in SKIP_DIRS and not x.startswith(".")]
             for f in fn:
                 if os.path.splitext(f)[1].lower() not in _BUDGET_EXTS:
                     continue
@@ -457,20 +498,32 @@ def check_file_budget(root, ok, fail, warn):
                     continue
                 path = os.path.join(dp, f)
                 rel = os.path.relpath(path, root).replace("\\", "/")
-                scanned = True
                 try:
-                    n = _count_lines(path)
+                    yield rel, _count_lines(path)
                 except Exception:
-                    continue
-                if n > max_lines and rel not in exempt:
-                    offenders.append((rel, n))
+                    yield rel, None
+
+
+def check_file_budget(root, ok, fail, warn):
+    """No hand-written source file beyond max_lines. Deterministic anti-monolith gate: split the
+    file or add an architect-owned exemption WITH a reason (visible, reviewable) — never both grow
+    silently. Which files count is `source_files()` (vendored/generated/minified/dot-dirs skipped)."""
+    max_lines, exempt, areas = _budget_config(root)
+    offenders, scanned = [], False
+    for rel, n in source_files(root):
+        scanned = True
+        if n is None:
+            continue
+        if n > max_lines and rel not in exempt:
+            offenders.append((rel, n))
     if offenders:
         offenders.sort(key=lambda t: -t[1])
         fail("file budget (<=%d lines)" % max_lines,
              "%d file(s) over budget: %s%s — SPLIT them into modules (a real App.tsx reached 8,966 "
-             "lines while its ui/ library sat unused), or add an architect-owned exemption WITH a "
-             "reason under coding_guidelines.yaml `file_budget: exempt:`"
-             % (len(offenders), "; ".join("%s (%d)" % o for o in offenders[:5]), _more(offenders, 5)))
+             "lines while its ui/ library sat unused); an architect-owned exemption WITH a reason "
+             "is the only alternative: %s"
+             % (len(offenders), "; ".join("%s (%d)" % o for o in offenders[:5]), _more(offenders, 5),
+                _knob_hint(root, "file_budget: exempt")))
     elif scanned:
         ok("file budget (<=%d lines%s)" % (max_lines, ", %d exemption(s)" % len(exempt) if exempt else ""))
     else:
@@ -478,8 +531,8 @@ def check_file_budget(root, ok, fail, warn):
         # would otherwise read every report as budget-green (real incident: compounder/ was never
         # scanned and an 1,111-line file went undetected for weeks).
         warn("file budget",
-             "NO scan area matched (%s) — declare the project's top-level source package(s) via "
-             "`source_areas:` in coding_guidelines.yaml" % ", ".join(areas))
+             "NO scan area matched (%s) — the project's top-level source package(s) must be "
+             "declared: %s" % (", ".join(areas), _knob_hint(root, "source_areas")))
 
 
 # Enforcement files no agent may change inside a project (provider-NEUTRAL second line of
@@ -568,9 +621,59 @@ def check_enforcement_diff(root, ok, fail, warn):
         notes.append("test file(s) DELETED: %s%s" % ("; ".join(dead_tests[:4]), _more(dead_tests, 4)))
     if notes:
         warn("enforcement diff", "review deliberately: %s — any change that weakens CI/tests is a "
-             "blocker unless explicitly approved (log it in progress.yaml log:)" % " | ".join(notes))
+             "blocker unless explicitly approved (record the approval as a decision item under "
+             "project_memory/decisions/active/)" % " | ".join(notes))
     else:
         ok("enforcement diff (%s)" % scope)
+
+
+def check_state_validity(root, ok, fail, warn):
+    """The state kernel's own fail-closed validation (spec II.4 gate 4), run in the pipeline.
+
+    Without this the full graph scan — duplicate ids, unreadable item files, an approval whose
+    expiry disagrees with the request it was minted from, a task deriving from a foreign root —
+    happens only in the merge gate, i.e. the first time somebody tries to merge, which is the
+    latest possible moment to learn that the state is broken.
+
+    The kernel is reached through `.claude/hooks/_kernel.py`, the ONE module that knows where the
+    kernel lives, so this reports on exactly the kernel the gates enforce — or says that it could
+    not reach it. It never reports "valid" on a validator it did not run.
+    """
+    if not os.path.isdir(os.path.join(root, "project_memory")):
+        return  # no canonical state (a plain repo running the quality pipeline)
+    bridge_dir = os.path.join(root, ".claude", "hooks")
+    if not os.path.isfile(os.path.join(bridge_dir, "_kernel.py")):
+        warn("state validity", "no .claude/hooks/_kernel.py, so the state validator was NOT run "
+                               "— re-run the team scaffold for this repo")
+        return
+    if bridge_dir not in sys.path:
+        sys.path.insert(0, bridge_dir)
+    try:
+        import _kernel  # type: ignore[import-not-found]
+        # importing the bridge arms the gate excepthook; this process is a report runner, so an
+        # ordinary exception here must stay an exception instead of becoming "the hook failed"
+        _kernel.disarm()
+        report = _kernel.kernel_module("report", root)
+        findings = report.validate_state(_kernel.open_state(root))
+    except Exception as exc:
+        warn("state validity", "the state validator could not run (%s: %s) — `harness doctor` "
+             "names what is missing" % (type(exc).__name__, exc))
+        return
+    errors = [f for f in findings if f.get("severity") == "error"]
+    others = [f for f in findings if f.get("severity") != "error"]
+
+    def _line(f):
+        return "%s: %s (%s)" % (f.get("item"), f.get("message"), f.get("remedy"))
+
+    if errors:
+        fail("state validity", "%d state error(s): %s%s"
+             % (len(errors), "; ".join(_line(f) for f in errors[:5]), _more(errors, 5)))
+        return
+    if others:
+        warn("state validity", "%d state warning(s): %s%s"
+             % (len(others), "; ".join(_line(f) for f in others[:5]), _more(others, 5)))
+        return
+    ok("state validity (kernel validator, 0 findings)")
 
 
 def check_ops_pitfalls(root, ok, fail, warn):
@@ -598,6 +701,7 @@ def check_ops_pitfalls(root, ok, fail, warn):
 def run_kit_checks(root, ok, fail, warn):
     """Entry point for scripts/quality.py — runs every kit-owned check."""
     check_project_memory_yaml(root, ok, fail, warn)
+    check_state_validity(root, ok, fail, warn)
     check_frontend_pitfalls(root, ok, fail, warn)
     check_frontend_build_config(root, ok, fail, warn)
     check_module_invariants(root, ok, fail, warn)

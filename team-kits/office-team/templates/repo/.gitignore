@@ -16,13 +16,27 @@ __pycache__/
 .venv/
 venv/
 
+# regenerated state artifacts (spec II.2): index, session brief and dashboard are rebuilt from the
+# typed items on every kernel write. Committing them would put a second, always-stale copy of the
+# project status in git and produce a merge conflict on every parallel branch.
+project_memory/generated/
+
+# the state kernel's cross-process lock (and the remnants a stale-break leaves behind). It names a
+# live PID on THIS machine; committed, a clone would inherit a lock nobody holds.
+project_memory/.kernel.lock
+project_memory/.kernel.lock.stale-*
+
 # append-only hook/agent event log (diagnostic — never project state)
 project_memory/.audit/
 
 # GDPR data minimization: these carry counterparty/customer NAMES in target paths (a real
 # deployment committed 140 customer names on day 1 — Art.-17 erasure impossible once in
-# history). They stay on disk for the gates and operations; they stay OUT of git history.
-# The ledger remains tracked: statutory bookkeeping retention overrides erasure there.
+# history), so they stay OUT of git history. `filing_log.yaml` is a V1 store: nothing writes one
+# any more and no gate reads one, so the line is purely DEFENSIVE — an upgraded project that still
+# carries the file, or a hand-made copy of it, must not walk into history through this template.
+# The filing scan index spec II.9 plans needs no rule of its own: it is regenerated, so it lands
+# under `generated/` above, which is already ignored. The ledger remains tracked: statutory
+# bookkeeping retention overrides erasure there.
 project_memory/filing_log.yaml
 project_memory/migration_manifest*.yaml
 

@@ -27,6 +27,9 @@ import sys
 
 import pytest
 
+import conftest
+from conftest import load_kit_module
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM_KITS = os.path.join(ROOT, "team-kits")
 HOOKS = os.path.join(TEAM_KITS, "dev-team", "hooks")
@@ -139,11 +142,14 @@ def test_only_comfort_hooks_opt_out_of_the_bound():
     the label says.
 
     EXTENDED 2026-07-25 (phase-2 step 9), judged by that same rule rather than by any label: the
-    twelve hooks that still parsed stdin with a raw `json.load` were given bounded reads, and
-    three of them opted out. Each was checked for a `sys.exit(2)` first — `auto_dashboard`,
-    `session_status` and `notify_agent_events` contain none, so none of them can refuse a tool
-    call, and making them fail-closed would mean a dashboard that failed to render silently
-    blocking work. `format_on_write` was the original member for exactly that reason."""
+    twelve hooks that still parsed stdin with a raw `json.load` were given bounded reads, and the
+    ones that opted out were each checked for a `sys.exit(2)` first — `session_status` and
+    `notify_agent_events` contain none, so neither can refuse a tool call, and making a briefing
+    hook fail-closed would mean an unreadable payload silently blocking work. `format_on_write`
+    was the original member for exactly that reason. (`auto_dashboard` was a third such member
+    until the phase-2 lockstep deleted it: the INDEX is written atomically by the kernel's own state
+    writes, not by a Stop hook. The dashboard is a separate, explicit render step —
+    `scripts/generate_dashboard.py` — and no kernel path produces it.)"""
     tolerating, blockers = set(), set()
     for kit in KITS:
         for path in globmodule.glob(os.path.join(TEAM_KITS, kit, "hooks", "*.py")):
@@ -156,7 +162,7 @@ def test_only_comfort_hooks_opt_out_of_the_bound():
                 tolerating.add(name)
                 if "sys.exit(2)" in body:
                     blockers.add(name)
-    assert tolerating == {"format_on_write.py", "auto_dashboard.py", "session_status.py",
+    assert tolerating == {"format_on_write.py", "session_status.py",
                           "notify_agent_events.py", "kit_trust_state.py"}
     # ...and the rule itself, asserted rather than trusted to the list above: nothing that can
     # BLOCK may opt out, whatever it is called.
@@ -809,6 +815,77 @@ def test_the_kit_state_file_is_gitignored_by_the_template(kit):
     with open(path, encoding="utf-8") as handle:
         lines = [ln.strip() for ln in handle if not ln.strip().startswith("#")]
     assert ".claude/kit_state.json" in lines, "%s: %s does not ignore it" % (kit, path)
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_the_regenerated_state_and_the_kernel_lock_are_gitignored(kit, tmp_path):
+    """Spec II.2 names exactly three things a project must not commit: `kit_state.json` (above),
+    `generated/**` and the kernel lock. The first is a trust record, the other two are machine
+    state: a committed `generated/` is a second, always-stale copy of the project status that
+    conflicts on every parallel branch, and a committed lock hands a clone a lock nobody holds.
+    All three kits ship the same lines — one of them used to ship only the first.
+
+    Asserted as EFFECT, not as a line: the kit's own `.gitignore` goes into a throwaway repo and
+    `git check-ignore` decides. The office file is why that matters — its `inbox/*` +
+    `!inbox/README.txt` pair proves negations are in use here, and a later `!` can re-include a
+    path that a string comparison would still find "ignored".
+
+    The lock's NAME is taken from the lock module rather than typed here: an ignore rule for a
+    filename the kernel no longer writes is an ignore rule that ignores nothing."""
+    if shutil.which("git") is None:
+        pytest.skip("needs git on PATH to measure the ignore rules")
+    from kernel.lock import KernelLock
+    lock_name = os.path.basename(KernelLock("project_memory").lock_path)
+    shutil.copy(os.path.join(TEAM_KITS, kit, "templates", "repo", ".gitignore"),
+                str(tmp_path / ".gitignore"))
+    init = subprocess.run(["git", "init", "-q", str(tmp_path)], capture_output=True)
+    assert init.returncode == 0, init.stderr
+    for rel in ("project_memory/generated/index.yaml",
+                "project_memory/%s" % lock_name,
+                "project_memory/%s.stale-4242" % lock_name):
+        write(str(tmp_path / rel), "x\n")
+        r = subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", rel],
+                           capture_output=True)
+        assert r.returncode == 0, "%s: the shipped .gitignore does not ignore %s" % (kit, rel)
+
+
+def test_the_office_gitignore_keeps_name_bearing_state_out_of_git(tmp_path):
+    """Art.-17 erasure stays possible only while counterparty names are OUT of git history — the
+    office kit's own reason for the rule (a real deployment committed 140 customer names on day 1).
+    Two paths under the state dir carry such names in the clear: the migration manifests, and the
+    V1 `filing_log.yaml`.
+
+    `filing_log.yaml` is a V1 store that nothing writes any more, and that is exactly why the line
+    needs holding down: the first lockstep round read it as a leftover pointer and deleted it,
+    against a phase-0 disposition row that had already recorded it as deliberately DEFENSIVE (an
+    upgraded project still carrying the file must not commit it). Nothing measured the deletion,
+    because a `.gitignore` pattern forbids a path instead of pointing at it.
+
+    Measured as EFFECT via `git check-ignore`, both directions: the state the project must keep —
+    its config and its ledger — stays tracked, or the rule would be hiding the project itself.
+
+    The monolith's name comes from `conftest.V1_MONOLITHS`, the one inventory of V1 names, and the
+    path is assembled rather than spelled out: a literal `project_memory/<monolith>` is exactly what
+    the lockstep's completion proof forbids, and rightly so — this test is about the path being
+    UNTRACKABLE, not about anything reaching it."""
+    if shutil.which("git") is None:
+        pytest.skip("needs git on PATH to measure the ignore rules")
+    filing_log = next(n for n in conftest.V1_MONOLITHS if n.startswith("filing_log"))
+    shutil.copy(os.path.join(TEAM_KITS, "office-team", "templates", "repo", ".gitignore"),
+                str(tmp_path / ".gitignore"))
+    init = subprocess.run(["git", "init", "-q", str(tmp_path)], capture_output=True)
+    assert init.returncode == 0, init.stderr
+
+    def ignored(rel):
+        write(str(tmp_path / rel), "x\n")
+        return subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", rel],
+                              capture_output=True).returncode == 0
+
+    for rel in ("project_memory/%s" % filing_log,
+                "project_memory/migration_manifest_2026.yaml"):
+        assert ignored(rel), "the office .gitignore lets %s into git history" % rel
+    for rel in ("project_memory/project_config.yaml", "ledger/2026.csv"):
+        assert not ignored(rel), "the office .gitignore hides %s, which must be tracked" % rel
 
 
 def test_the_codex_profile_keeps_the_enforcement_layer_read_only():
@@ -4108,24 +4185,32 @@ def test_no_shipped_office_file_still_teaches_append_only():
     assert "guard_ledger_direct" not in open(
         os.path.join(office, "settings", "settings.json"), encoding="utf-8").read()
 
+    # What "reaching the tree" MEANS, rather than a count that drifts with every template the
+    # lockstep deletes (it stood at `> 40` and went red the day the office monoliths went away,
+    # which measured the template count, not the reach): every file that INSTRUCTS the office
+    # roles must have been opened — the constitution, each role definition, each role SKILL, and
+    # the security guidance that lives in a dot-directory, which is the miss the docstring is about.
+    must_reach = {os.path.join(office, "constitution", "AGENTS.md"),
+                  os.path.join(office, "templates", "repo", ".claude",
+                               "claude-security-guidance.md")}
+    must_reach |= set(globmodule.glob(os.path.join(office, "agents", "*.md")))
+    must_reach |= set(globmodule.glob(os.path.join(office, "skills", "*", "SKILL.md")))
+
     patterns = [re.compile(p) for p in STALE_LEDGER_TEACHING]
-    stale, scanned = [], 0
+    stale, scanned = [], set()
     for directory, subdirs, files in os.walk(office):
         subdirs[:] = [d for d in subdirs if d not in (".git", "__pycache__")]
         for name in files:
             if not name.endswith((".md", ".yaml", ".yml", ".txt", ".json")):
                 continue
             path = os.path.join(directory, name)
-            # the gate and the validator NAME the deleted rule to explain why it is gone, which is
-            # the opposite of teaching it. Instruction files get no such licence.
-            if name in ("gate_ledger_valid.py", "ledger_add.py"):
-                continue
-            scanned += 1
+            scanned.add(path)
             body = open(path, encoding="utf-8", errors="ignore").read()
             for pattern in patterns:
                 for hit in pattern.findall(body):
                     stale.append("%s: %r" % (os.path.relpath(path, TEAM_KITS), hit))
-    assert scanned > 40, "the sweep found only %d files — it is not reaching the tree" % scanned
+    missed = sorted(os.path.relpath(p, TEAM_KITS) for p in must_reach - scanned)
+    assert not missed, "the sweep never opened these instruction files: %s" % missed
     assert stale == [], stale
 
 
@@ -5318,35 +5403,36 @@ def test_a_counterparty_name_outside_the_ledger_is_found(tmp_path):
     sees is names."""
     work = pii_project(tmp_path)
     assert run_pii(work).returncode == 0, "the baseline must be clean"
-    write(str(work / "project_memory" / "progress.yaml"),
-          "status: filed the invoice from Muster GmbH\nlog: []\n")
+    write(str(work / "project_memory" / "tasks" / "active" / "TSK-0001.yaml"),
+          "title: filed the invoice from Muster GmbH\n")
     result = run_pii(work)
     assert result.returncode == 1
-    assert "progress.yaml:1" in result.stderr and "Muster GmbH" in result.stderr
+    assert "TSK-0001.yaml:1" in result.stderr and "Muster GmbH" in result.stderr
     assert "140 names" in result.stderr
 
 
 @pytest.mark.parametrize("text,found", [
-    ("status: waiting on MUSTER GMBH BERLIN\n", True),      # alias
-    ("status: waiting on muster handel\n", True),           # alias, lowercase
-    ("status: three documents filed\n", False),             # no name at all
+    ("title: waiting on MUSTER GMBH BERLIN\n", True),        # alias
+    ("title: waiting on muster handel\n", True),             # alias, lowercase
+    ("title: three documents filed\n", False),               # no name at all
 ])
 def test_aliases_and_case_are_matched(tmp_path, text, found):
     work = pii_project(tmp_path)
-    write(str(work / "project_memory" / "progress.yaml"), text)
+    write(str(work / "project_memory" / "tasks" / "active" / "TSK-0001.yaml"), text)
     assert (run_pii(work).returncode == 1) is found, text
 
 
 @pytest.mark.parametrize("rel,text", [
     ("ledger/2026.csv", "id,counterparty\nL2026-0001,Erika Mustermann\n"),
-    ("project_memory/filing_log.yaml", "entries:\n  - Erika Mustermann\n"),
+    ("project_memory/generated/filing_log.yaml", "entries:\n  - Erika Mustermann\n"),
     ("archive/2026/invoice.txt", "Rechnung an Erika Mustermann"),
     ("archive/2026/scan.pdf", "Erika Mustermann"),
 ])
 def test_where_names_legitimately_live_is_exempt(tmp_path, rel, text):
-    """The ledger by statutory retention, `filing_log` because it is gitignored (on disk for the
-    gates, out of history), and the ARCHIVED SOURCE document because it IS the business record —
-    scanning it would flag every file the business is required to keep."""
+    """The ledger by statutory retention, everything under `generated/` because it is rebuilt from
+    the tracked state and gitignored (on disk, out of history) — the filing scan index spec II.9
+    plans is the case with names in it — and the ARCHIVED SOURCE document because it IS the
+    business record: scanning it would flag every file the business is required to keep."""
     work = pii_project(tmp_path)
     write(str(work / rel.replace("/", os.sep)), text)
     assert run_pii(work).returncode == 0, rel
@@ -5388,17 +5474,89 @@ def test_staged_only_looks_at_what_is_about_to_be_committed(tmp_path):
     assert staged.returncode == 1
 
 
+# A markdown BLOCK boundary: a blank line, or the start of the next list item. That is the unit a
+# reader takes in as one statement, and it is what a prose pin has to be measured in — see
+# `test_the_ui_inventory_snapshot_rule_is_shipped`.
+_MD_BLOCK_BREAK_RX = re.compile(r"^[ \t]*$|^[ \t]*(?:[-*+]|\d+\.)[ \t]", re.MULTILINE)
+# A sentence ends at `.`/`!`/`?` plus whitespace. Crude for English at large, exact for this prose.
+_SENTENCE_SPLIT_RX = re.compile(r"(?<=[.!?])\s+")
+
+
+def _markdown_block_around(text, start, end):
+    """The one list item or paragraph that `text[start:end]` sits in.
+
+    A list item OWNS its marker line, so a break that is a marker starts the block it matched; a
+    blank line belongs to neither side, so the block starts after it.
+    """
+    left = 0
+    for match in _MD_BLOCK_BREAK_RX.finditer(text, 0, start):
+        left = match.start() if match.group().strip() else match.end()
+    match = _MD_BLOCK_BREAK_RX.search(text, end)
+    return text[left:match.start() if match else len(text)]
+
+
 def test_the_ui_inventory_snapshot_rule_is_shipped():
-    """R5 (parity row 25/97). The disposition replaces the prose rule with the snapshot test that
-    already exists as a pattern in `testing_guidelines`. This pins it so the II.11/3 shrink cannot
-    delete the pattern the rule was traded for — which is the whole failure mode the "Gates vor
-    Kürzung" sequence exists to prevent (a real run silently deleted the Account button)."""
-    for kit in ("dev-team",):
-        path = os.path.join(TEAM_KITS, kit, "templates", "project_memory",
-                            "testing_guidelines.yaml")
-        body = open(path, encoding="utf-8").read()
-        assert "UI INVENTORY SNAPSHOT" in body, kit
-        assert "approved CR" in body, "%s: the snapshot must name the CR requirement" % kit
+    """R5 (parity row 25/97). A real run silently deleted the Account button, and the rule traded
+    for that is: a visible element may not be removed or replaced without an approved CR, and a
+    snapshot test is what notices. It used to live as a pattern in the `testing_guidelines.yaml`
+    template; the V2 lockstep dissolved that file, so the rule now lives where the roles that must
+    obey it read — the constitution's CR line, the frontend loop and the QA loop — and each of the
+    three has to name the snapshot AND the CR requirement in one breath. Pinned here so the II.11/3
+    shrink cannot drop the half that gives the rule teeth and leave the half that sounds nice.
+    """
+    homes = (os.path.join("constitution", "AGENTS.md"),
+             os.path.join("skills", "frontend-developer", "SKILL.md"),
+             os.path.join("skills", "quality-engineer", "SKILL.md"))
+    for rel in homes:
+        body = open(os.path.join(TEAM_KITS, "dev-team", rel), encoding="utf-8").read()
+        mention = re.search(r"UI\s+inventory\s+snapshot", body, re.IGNORECASE)
+        assert mention, "%s no longer names the UI inventory snapshot" % rel
+        # The two halves have to stand TOGETHER: a snapshot named on its own reads as a nice-to-have
+        # assertion, and a CR rule named on its own has nothing that notices when it is broken. So
+        # what is looked for is the RULE — one sentence that binds REMOVING a visible element to a
+        # CR — in the same markdown block as the snapshot, not a `CR` token near it. The earlier cut
+        # took a bare `\bCR\b` inside ±300 characters, and in the constitution the glossary line
+        # "**CR** (change to an APPROVED revision)" three lines up satisfied it on its own: the duty
+        # could be replaced by "visible UI elements may be removed freely" and the test stayed green
+        # (measured 2026-07-27). The three files phrase the rule differently ("ALWAYS a CR", "an
+        # approved CR", "without an approved CR = automatic FAIL"), which is why it is the verb and
+        # the CR that are pinned rather than any wording.
+        block = _markdown_block_around(body, mention.start(), mention.end())
+        assert any(re.search(r"remov|replac|renam|delet", sentence, re.IGNORECASE)
+                   and re.search(r"\bCR\b", sentence)
+                   for sentence in _SENTENCE_SPLIT_RX.split(block)), (
+            "%s names the UI inventory snapshot, but nothing in the same block says that removing "
+            "or replacing a visible element takes a CR — that requirement is what the snapshot "
+            "exists to enforce, and a snapshot without it is an assertion nobody has to honour"
+            % rel)
+
+
+def test_the_design_ambition_is_still_the_users_call():
+    """The rule the dissolved `design.yaml` gate carried: never ship ONE design silently.
+
+    V1 blocked the merge when a UI `design.yaml` named a chosen direction but no `ambition:` — the
+    synaipse failure mode, where a single design was produced and documented as if the user had
+    picked it. `design.yaml` is gone and with it the field a gate could read, so the guarantee moved
+    into the flow: the PM ASKS, and the answer becomes a Decision item the designer reads. Two
+    tests died with the monolith and nothing replaced them, which is how a rule quietly becomes a
+    preference — this pins the two halves that are left, and says plainly that no gate sees either.
+    """
+    pm = open(os.path.join(TEAM_KITS, "dev-team", "skills", "project-manager", "SKILL.md"),
+              encoding="utf-8").read()
+    ask = re.search(r"AMBITION[^\n]*user'?s call", pm)
+    assert ask, "the PM SKILL no longer makes the design ambition the user's call"
+    window = pm[ask.start():ask.end() + 400]
+    assert re.search(r"NEVER decide this silently", window), (
+        "the PM SKILL asks for the ambition but no longer forbids deciding it silently — that "
+        "prohibition IS the rule the deleted design.yaml gate enforced")
+    assert re.search(r"Decision item", window), (
+        "the PM SKILL never says where the ambition is recorded; a decision nothing stores is a "
+        "decision the next session re-invents")
+    designer = open(os.path.join(TEAM_KITS, "dev-team", "skills", "product-designer", "SKILL.md"),
+                    encoding="utf-8").read()
+    assert re.search(r"Decision item[^\n]*AMBITION", designer, re.IGNORECASE), (
+        "the designer SKILL no longer reads the Decision item holding the ambition, so the answer "
+        "the PM records reaches nobody")
 
 
 def test_delivery_freshness_compares_served_bytes_to_the_build(tmp_path):
@@ -5407,8 +5565,10 @@ def test_delivery_freshness_compares_served_bytes_to_the_build(tmp_path):
     from another branch, a service worker replaying a cached shell — renders perfectly."""
     import http.server
     import threading
-    sys.path.insert(0, os.path.join(TEAM_KITS, "dev-team", "templates", "repo", "scripts"))
-    import kit_browser_checks
+    kit_browser_checks = load_kit_module(
+        "kit_browser_checks_under_test",
+        os.path.join(TEAM_KITS, "dev-team", "templates", "repo", "scripts",
+                     "kit_browser_checks.py"))
 
     served_dir = tmp_path / "served"
     os.makedirs(str(served_dir), exist_ok=True)

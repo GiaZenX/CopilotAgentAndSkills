@@ -6,15 +6,21 @@ The harness blocks other repos' merges on missing tests; it must test its OWN se
 Each hook is run as a real subprocess with synthetic stdin JSON and CLAUDE_PROJECT_DIR, and asserted
 on its exit code (0 = allow, 2 = block for guards/gates, 1 = red for quality.py). Run: pytest tools/
 """
+import ast
 import hashlib
+import io
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tokenize
 
 import pytest
+
+import conftest
+from conftest import load_kit_module
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOOKS = os.path.join(ROOT, "team-kits", "dev-team", "hooks")
@@ -29,7 +35,11 @@ MERGE_SETTINGS = os.path.join(ROOT, "user", "merge_settings.py")
 
 
 def run_hook_process(name, payload, project_dir, hooks_dir=None, extra_env=None):
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project_dir))
+    # HARNESS_KERNEL_PATH: the kernel-backed gates resolve `kernel` relative to the PROJECT, and a
+    # tmp_path repo has no `.claude/kernel` — without this they would fail closed on every call and
+    # the tests would read as "the gate works" while measuring a missing install.
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project_dir),
+               HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits"))
     env.update(extra_env or {})
     return subprocess.run([sys.executable, os.path.join(hooks_dir or HOOKS, name)],
                           input=json.dumps(payload), capture_output=True, text=True,
@@ -154,7 +164,9 @@ def test_subagent_allowed_in_src(tmp_path):
 def test_pm_allowed_in_project_memory(tmp_path):
     (tmp_path / "project_memory").mkdir()
     payload = {"tool_name": "Write",
-               "tool_input": {"file_path": str(tmp_path / "project_memory" / "progress.yaml")}, "cwd": str(tmp_path)}
+               "tool_input": {"file_path": str(tmp_path / "project_memory" / "product" /
+                                                "active" / "PR-0001.yaml")},
+               "cwd": str(tmp_path)}
     assert run_hook("guard_pm_scope.py", payload, tmp_path) == 0
 
 
@@ -172,7 +184,9 @@ def test_spawn_lead_blocked(kit_repo):
     assert run_hook("guard_agent_spawn.py", payload, kit_repo) == 2
 
 
-WORK_ORDER = "objective: implement SR-1\nread_first: [tasks.yaml TSK-1]\noutput: summary, status\nboundaries: no schema changes\n"
+WORK_ORDER = ("objective: implement SR-0001\n"
+              "read_first: [tasks/active/TSK-0001.yaml, system/active/SR-0001.yaml]\n"
+              "output: summary, status\nboundaries: no schema changes\n")
 
 
 def test_spawn_specialist_allowed(kit_repo):
@@ -215,9 +229,36 @@ def test_spawn_generic_blocked(kit_repo):
 
 
 # ---------------- gate_git (PRD binding) ----------------
+PR_FIELDS = {
+    "title": "Checkout flow",
+    "class": "normal",
+    "problem": "no checkout",
+    "goal": "working checkout",
+    "acceptance_criteria": [{"id": "AC-1", "text": "order completes"}],
+    "invariants": [],
+    "out_of_scope": [],
+    "priority": "high",
+    "user_story": "As a buyer I can pay",
+}
+
+
+def capture_root_item(repo, fields=None):
+    """Give a repo its first typed root item — what `_root.has_root_item` now looks for.
+
+    Written THROUGH the kernel, not by hand: the merge gates ask the state validator whether the
+    state is complete, so a hand-rolled item would make every gate test measure a broken fixture
+    rather than the gate.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    root = os.path.join(str(repo), "project_memory")
+    os.makedirs(root, exist_ok=True)
+    return ProjectState(root).capture("PR", dict(fields or PR_FIELDS))
+
+
 @pytest.fixture
 def prd_repo(tmp_path):
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"), "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     return tmp_path
 
 
@@ -249,17 +290,59 @@ def test_gate_git_matching_prd_pass_allowed(prd_repo):
 
 
 # ---------------- gate_memory_complete ----------------
-def test_memory_complete_blocks_empty_required(prd_repo):
-    write(str(prd_repo / "project_memory" / "system_requirements.yaml"), "requirements: []\n")  # empty
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 2
+MERGE = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PR-0001-x"}}
 
 
-def test_memory_complete_allows_na_marked(prd_repo):
-    write(str(prd_repo / "project_memory" / "change_requests.yaml"), "applicable: false\nreason: no changes\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    # other required files are absent -> not flagged; the N/A one must not block
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) in (0, 2)  # tolerant: just must not crash
+def _merge_payload(repo):
+    return dict(MERGE, cwd=str(repo))
+
+
+def test_memory_complete_is_silent_before_the_first_root_item(tmp_path):
+    """The II.11/2 lockstep regression: the trigger is now `product/active/PR-*.yaml`. A repo that
+    has not captured its first requirement is still being SET UP, and a merge gate firing there
+    blocks the setup it exists to protect.
+
+    The fixture is the SCAFFOLD, not an empty directory: a fresh repo carries the two shipped
+    templates the gate has its own teeth for, and only that state can tell a working trigger from
+    a dead one. Against an empty `project_memory/` the gate has nothing to find either way, so the
+    test held even with `has_root_item` forced to True — it could not see the regression it
+    claims. With the templates present, killing the trigger makes it rc=2 on the masterplan."""
+    plan = tmp_path / "project_memory" / "product" / "masterplan.md"
+    write(str(plan), "# Masterplan — <project name>\n")
+    write(str(tmp_path / "project_memory" / "project_config.yaml"),
+          'project:\n  name: ""\n  stacks: [TODO]\n')
+    assert run_hook("gate_memory_complete.py", _merge_payload(tmp_path), tmp_path) == 0
+
+
+def test_memory_complete_fires_once_a_typed_root_item_exists(tmp_path):
+    """...and the other half of the same regression: the gate must actually WAKE UP for the typed
+    item. An incomplete PR (no acceptance criteria, no goal) is what the validator calls an error."""
+    capture_root_item(tmp_path, {"title": "x", "class": "normal", "problem": "p", "goal": "g",
+                                 "acceptance_criteria": [], "invariants": [], "out_of_scope": [],
+                                 "priority": "high"})
+    os.remove(os.path.join(str(tmp_path), "project_memory", "product", "active", "PR-0001.yaml"))
+    write(str(tmp_path / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\nstatus: DRAFT\ntitle: x\n")  # missing most required fields
+    result = run_hook_process("gate_memory_complete.py", _merge_payload(tmp_path), tmp_path)
+    assert result.returncode == 2
+    assert "PR-0001" in result.stderr
+
+
+def test_memory_complete_allows_a_state_the_validator_accepts(prd_repo):
+    assert run_hook("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo) == 0
+
+
+def test_memory_complete_reports_the_validator_verdict_not_its_own(prd_repo):
+    """The completeness question has ONE answer (`kernel/report.validate_state`); this gate relays
+    it. Asserted by making the validator's own rule fire — a duplicate id, which no template scan
+    could ever have seen."""
+    for item_id in ("PR-0002",):
+        write(str(prd_repo / "project_memory" / "product" / "active" / (item_id + ".yaml")),
+              open(str(prd_repo / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+                   encoding="utf-8").read())
+    result = run_hook_process("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "duplicate id" in result.stderr
 
 
 # ---------------- quality.py ----------------
@@ -267,7 +350,7 @@ BROWSER_CHECKS = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo"
                               "kit_browser_checks.py")
 
 
-def run_quality_proc(repo, *args):
+def run_quality_proc(repo, *args, extra_env=None):
     os.makedirs(os.path.join(repo, "scripts"), exist_ok=True)
     import shutil
     shutil.copy(QUALITY, os.path.join(repo, "scripts", "quality.py"))
@@ -275,7 +358,7 @@ def run_quality_proc(repo, *args):
     shutil.copy(BROWSER_CHECKS, os.path.join(repo, "scripts", "kit_browser_checks.py"))
     return subprocess.run([sys.executable, os.path.join(repo, "scripts", "quality.py"), *args],
                           capture_output=True, text=True, encoding="utf-8", errors="replace",
-                          cwd=repo, timeout=120)
+                          cwd=repo, timeout=120, env=dict(os.environ, **(extra_env or {})))
 
 
 def run_quality(repo):
@@ -358,25 +441,28 @@ def test_quality_electron_env_stripped():
         os.environ.pop("ELECTRON_RUN_AS_NODE", None)
 
 
-# ---------------- guard_yaml_valid (write-time YAML validity, the synaipse decisions.yaml saga) ----------------
+# ---------------- guard_yaml_valid (write-time YAML validity, the synaipse invalid-decisions saga) ----------------
 def _yaml_payload(repo, fname):
     return {"tool_name": "Write",
             "tool_input": {"file_path": str(repo / "project_memory" / fname)}, "cwd": str(repo)}
 
 
+DECISION_ITEM = os.path.join("decisions", "active", "DEC-0001.yaml").replace(os.sep, "/")
+
+
 def test_yaml_valid_blocks_parse_error(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "decisions.yaml"),
-          "decisions:\n  ADR-0001:\n    title: STRIDE: threat: model\n")  # unquoted colons -> invalid
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "decisions.yaml"), tmp_path) == 2
+    write(str(tmp_path / "project_memory" / DECISION_ITEM),
+          "title: STRIDE: threat: model\n")  # unquoted colons -> invalid
+    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, DECISION_ITEM), tmp_path) == 2
 
 
 def test_yaml_valid_uses_codex_posttool_block_decision(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "decisions.yaml"),
-          "decisions:\n  ADR-0001:\n    title: STRIDE: threat: model\n")
+    write(str(tmp_path / "project_memory" / DECISION_ITEM),
+          "title: STRIDE: threat: model\n")
     result = run_hook_process(
-        "guard_yaml_valid.py", _yaml_payload(tmp_path, "decisions.yaml"), tmp_path,
+        "guard_yaml_valid.py", _yaml_payload(tmp_path, DECISION_ITEM), tmp_path,
         extra_env={"TEAM_KIT_PROVIDER": "codex"})
     assert result.returncode == 0
     output = json.loads(result.stdout)
@@ -386,16 +472,17 @@ def test_yaml_valid_uses_codex_posttool_block_decision(tmp_path):
 
 def test_yaml_valid_blocks_duplicate_key(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "architecture.yaml"),
+    architecture_item = os.path.join("architecture", "active", "ARC-0001.yaml").replace(os.sep, "/")
+    write(str(tmp_path / "project_memory" / architecture_item),
           "components:\n  api:\n    responsibility: a\n  api:\n    responsibility: b\n")
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "architecture.yaml"), tmp_path) == 2
+    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, architecture_item), tmp_path) == 2
 
 
 def test_yaml_valid_allows_good_yaml(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "decisions.yaml"),
-          'decisions:\n  ADR-0001:\n    title: "STRIDE: threat model"\n    body: |\n      prose: with colons is fine\n')
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "decisions.yaml"), tmp_path) == 0
+    write(str(tmp_path / "project_memory" / DECISION_ITEM),
+          'title: "STRIDE: threat model"\ncontext: |\n  prose: with colons is fine\n')
+    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, DECISION_ITEM), tmp_path) == 0
 
 
 def test_yaml_valid_ignores_non_project_memory(tmp_path):
@@ -435,32 +522,31 @@ def test_guidelines_stray_key_outside_languages_does_not_satisfy(prd_repo):
 def test_yaml_valid_survives_recursive_alias(tmp_path):
     # anchors/aliases make the node graph cyclic — the dup-key walker must terminate (visited set)
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "decisions.yaml"), "a: &x\n  b: ok\nc: *x\n")
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "decisions.yaml"), tmp_path) == 0
+    write(str(tmp_path / "project_memory" / DECISION_ITEM), "a: &x\n  b: ok\nc: *x\n")
+    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, DECISION_ITEM), tmp_path) == 0
 
 
 def test_memory_complete_blocks_template_masterplan(prd_repo):
-    write(str(prd_repo / "project_memory" / "masterplan.md"),
+    # the masterplan moved to product/ (spec II.2) — prose, so no schema sees it; this gate does
+    write(str(prd_repo / "project_memory" / "product" / "masterplan.md"),
           "# Masterplan — <project name>\n\n> One-line essence of the idea.\n")
     write(str(prd_repo / "project_memory" / "project_config.yaml"),
           'project:\n  name: "X"\n  stacks: [python]\n')
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 2
+    assert run_hook("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo) == 2
 
 
 def test_memory_complete_allows_filled_masterplan(prd_repo):
-    write(str(prd_repo / "project_memory" / "masterplan.md"),
+    write(str(prd_repo / "project_memory" / "product" / "masterplan.md"),
           "# Masterplan — Chatly\n\n> A local chat platform.\n\n## 1. Leitidee\nReal prose here.\n")
     write(str(prd_repo / "project_memory" / "project_config.yaml"),
           'project:\n  name: "X"\n  stacks: [python]\n')
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 0
+    assert run_hook("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo) == 0
 
 
 # ---------------- quality.py: project_memory yaml-lint backstop ----------------
 def test_quality_red_on_invalid_project_memory_yaml(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "decisions.yaml"), "decisions:\n  ADR-1:\n    a: b: c\n")
+    write(str(tmp_path / "project_memory" / DECISION_ITEM), "title: a: b: c\n")
     assert run_quality(str(tmp_path)) == 1
 
 
@@ -641,118 +727,344 @@ def test_init_project_memory_sh_rejects_external_symlink_before_mutation(tmp_pat
 
 
 # ---------------- gate_packaging_decision (the generalised "Docker was forgotten" guard) ----------------
+def _architecture_item(repo, body):
+    write(str(repo / "project_memory" / "architecture" / "active" / "ARC-0001.yaml"), body)
+
+
 def test_packaging_gate_blocks_todo(prd_repo):
-    write(str(prd_repo / "project_memory" / "architecture.yaml"),
-          "components: {}\npackaging:\n  method: TODO\n  targets: []\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_packaging_decision.py", payload, prd_repo) == 2
+    _architecture_item(prd_repo, "id: ARC-0001\ntitle: system\npackaging:\n  method: TODO\n")
+    assert run_hook("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo) == 2
+
+
+def test_packaging_gate_blocks_when_no_architecture_item_exists(prd_repo):
+    """V1 shipped an `architecture.yaml` template with `method: TODO` in every project, so 'no
+    architecture' could not occur and the gate always asked the question. No template ships any
+    more — reading an absent architecture item as an exemption would silently retire the gate."""
+    result = run_hook_process("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "no architecture item yet" in result.stderr
 
 
 def test_packaging_gate_allows_decided(prd_repo):
-    write(str(prd_repo / "project_memory" / "architecture.yaml"),
-          "components: {}\npackaging:\n  method: static-binary\n  targets: [linux, windows]\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_packaging_decision.py", payload, prd_repo) == 0
+    _architecture_item(prd_repo,
+                       "id: ARC-0001\ntitle: system\npackaging:\n  method: static-binary\n"
+                       "  targets: [linux, windows]\n")
+    assert run_hook("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo) == 0
 
 
 def test_packaging_gate_allows_explicit_none(prd_repo):
     # "none (library only)" is a conscious decision and must pass — only TODO/absent blocks
-    write(str(prd_repo / "project_memory" / "architecture.yaml"),
-          "components: {}\npackaging:\n  method: none(library)\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_packaging_decision.py", payload, prd_repo) == 0
+    _architecture_item(prd_repo, "id: ARC-0001\ntitle: system\npackaging:\n  method: none(library)\n")
+    assert run_hook("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo) == 0
 
 
-# ---------------- gate_memory_complete: optional FR backlog must not block ----------------
-def test_memory_complete_allows_empty_fr_backlog(prd_repo):
-    write(str(prd_repo / "project_memory" / "feature_requests.yaml"),
-          "applicable: false\nreason: no backlog yet\nfeature_requests: {}\n")
-    write(str(prd_repo / "project_memory" / "project_config.yaml"),
-          'project:\n  name: "Demo"\n  stacks: [python]\n')
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 0
+def test_packaging_gate_reads_any_active_architecture_item(prd_repo):
+    """The decision lives on ONE lean item; the directory also holds diagram companions. A gate
+    that only looked at the first file would block a project that decided in the second."""
+    write(str(prd_repo / "project_memory" / "architecture" / "active" / "ARC-0001.yaml"),
+          "id: ARC-0001\ntitle: context diagram\ndiagram_hash: deadbeef\n")
+    write(str(prd_repo / "project_memory" / "architecture" / "active" / "ARC-0002.yaml"),
+          "id: ARC-0002\ntitle: system\npackaging:\n  method: docker\n")
+    assert run_hook("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo) == 0
 
 
-# ---------------- dashboard generator: feature requests + roadmap land in the HTML ----------------
-def test_dashboard_renders_fr_and_roadmap(tmp_path):
-    try:
-        import yaml  # noqa: F401
-    except ImportError:
-        pytest.skip("pyyaml not available")
-    src = os.path.join(ROOT, "team-kits", "dev-team", "templates", "project_memory")
-    d = tmp_path / "pm"
-    d.mkdir()
-    shutil.copy(os.path.join(src, "generate_dashboard.py"), str(d / "generate_dashboard.py"))
-    shutil.copy(os.path.join(src, "progress.dashboard.template.html"), str(d / "progress.dashboard.template.html"))
-    write(str(d / "product_requirements.yaml"), "requirements:\n  PRD-0001:\n    title: t\n    status: ACCEPTED\n")
-    write(str(d / "feature_requests.yaml"), "feature_requests:\n  FR-0001:\n    title: f\n    status: PROPOSED\n")
-    write(str(d / "bugs.yaml"), "bugs:\n  BUG-0001:\n    title: crash\n    severity: high\n    status: OPEN\n")
-    write(str(d / "progress.yaml"),
-          "status: ok\nmilestones:\n  - id: M1\n    title: MVP\n    items: [PRD-0001, FR-0001]\n")
-    r = subprocess.run([sys.executable, str(d / "generate_dashboard.py")],
-                       capture_output=True, text=True, cwd=str(d), timeout=60)
+def test_packaging_gate_clears_on_a_kernel_written_architecture_item(prd_repo):
+    """The field has to be REACHABLE, not merely readable.
+
+    Every test above writes ARC-0001 by hand, so all of them passed while nothing could produce
+    the field at all: `capture` refuses the type and the companion schema is strict, so the only
+    writer — `freeze_architecture` — dropped `packaging` as an unknown field. A dev project was
+    therefore blocked at its first merge for good. This test walks the one path a project has
+    (stage the diagram, let the kernel freeze it) and goes red the moment that path stops
+    carrying the decision.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import staging
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(prd_repo), "project_memory"))
+    write(os.path.join(state.root, "staging", "PR-0001", "ARC-0001.drawio.svg"),
+          '<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>\n')
+    staging.freeze_architecture(state, "PR-0001", "ARC-0001", title="system",
+                                scope="whole system", derives_from=["PR-0001"],
+                                packaging={"method": "docker"})
+    assert run_hook("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo) == 0
+
+
+# ---------------- dashboard generator: typed items + kernel index -> generated/dashboard.html ----------------
+DASHBOARD = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts",
+                         "generate_dashboard.py")
+
+
+def _dashboard_repo(tmp_path):
+    """A repo the generator can run in: hook bridge, scripts/, project_memory, and typed items.
+
+    The generator resolves the kernel through `.claude/hooks/_kernel.py` (the one place that
+    knows where the kernel lives), so the bridge and its helpers have to be there; the kernel
+    package itself comes from HARNESS_KERNEL_PATH, as for every other kernel-backed test.
+    kit_checks.py comes along because the vitals panel takes its scan areas from there.
+    """
+    src = os.path.dirname(DASHBOARD)
+    hooks = tmp_path / ".claude" / "hooks"
+    hooks.mkdir(parents=True)
+    for helper in ("_kernel.py", "_root.py", "_audit.py", "_compat.py"):
+        shutil.copy(os.path.join(HOOKS, helper), str(hooks / helper))
+    scripts = tmp_path / "scripts"
+    scripts.mkdir()
+    for name in ("generate_dashboard.py", "progress.dashboard.template.html", "kit_checks.py"):
+        shutil.copy(os.path.join(src, name), str(scripts / name))
+    pm = tmp_path / "project_memory"
+    pm.mkdir()
+    return pm
+
+
+def _generate_index(pm):
+    """The real index, written by the kernel itself -- a hand-written fixture would let the
+    generator agree with a shape nothing produces."""
+    index = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, sys.argv[1]);"
+         "from kernel.state import ProjectState; ProjectState(sys.argv[2]).generate_index()",
+         os.path.join(ROOT, "team-kits"), str(pm)],
+        capture_output=True, text=True, timeout=60)
+    assert index.returncode == 0, index.stdout + index.stderr
+
+
+def _run_dashboard(tmp_path, pm):
+    env = dict(os.environ, HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits"))
+    _generate_index(pm)
+    return subprocess.run([sys.executable, str(tmp_path / "scripts" / "generate_dashboard.py")],
+                          capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=60)
+
+
+def _dashboard_data(pm):
+    html = (pm / "generated" / "dashboard.html").read_text(encoding="utf-8")
+    return html, json.loads(re.search(
+        r'<script type="application/json" id="dashboard-data">(.*?)</script>',
+        html, re.DOTALL).group(1))
+
+
+def test_dashboard_renders_typed_items(tmp_path):
+    pytest.importorskip("yaml")
+    pm = _dashboard_repo(tmp_path)
+    write(str(pm / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\ntitle: login\nstatus: APPROVED\nrevision: 2\n")
+    write(str(pm / "tasks" / "active" / "TSK-0001.yaml"),
+          "id: TSK-0001\ntitle: build it\nstatus: READY\nproduct_requirement: PR-0001\n")
+    write(str(pm / "bugs" / "active" / "BUG-0001.yaml"),
+          "id: BUG-0001\ntitle: crash\nstatus: OPEN\nblocked_by: TSK-0001\n")
+    write(str(pm / "archive" / "PR" / "2025" / "PR-0009.yaml"), "id: PR-0009\nstatus: ACCEPTED\n")
+    r = _run_dashboard(tmp_path, pm)
     assert r.returncode == 0, r.stdout + r.stderr
-    html = (d / "progress.dashboard.html").read_text(encoding="utf-8")
-    assert "FR-0001" in html and "BUG-0001" in html and '"id": "M1"' in html
-    assert "1 FRs" in r.stdout and "1 bugs" in r.stdout and "1 milestones" in r.stdout
+    html, data = _dashboard_data(pm)
+    rendered = {it["id"]: it for view in data["views"] for it in view["items"]}
+    assert set(rendered) == {"PR-0001", "TSK-0001", "BUG-0001"}
+    # the next step is DERIVED from the automaton chain, not from a table of advice
+    assert rendered["PR-0001"]["next"] == "IN_DELIVERY"
+    assert rendered["TSK-0001"]["next"] == "LEASED"
+    # the blocker flag survives, and a relation is "a field whose value parses as an item id"
+    assert rendered["BUG-0001"]["blocked_by"] == "TSK-0001"
+    assert rendered["TSK-0001"]["relations"] == ["PR-0001"]
+    # archive is COUNTED, never embedded (spec II.7)
+    assert "PR-0009" not in html
+    assert data["archive"] == {"total": 1, "by_type": {"PR": {"2025": 1}}}
 
 
-def test_memory_complete_allows_empty_bug_log(prd_repo):
-    write(str(prd_repo / "project_memory" / "bugs.yaml"),
-          "applicable: false\nreason: no defects yet\nbugs: {}\n")
-    write(str(prd_repo / "project_memory" / "project_config.yaml"),
-          'project:\n  name: "Demo"\n  stacks: [python]\n')
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 0
+def _dashboard_without_index(tmp_path):
+    env = dict(os.environ, HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits"))
+    return subprocess.run([sys.executable, str(tmp_path / "scripts" / "generate_dashboard.py")],
+                          capture_output=True, text=True, cwd=str(tmp_path), env=env, timeout=60)
 
 
-# ---------------- gate_memory_complete: UI design.yaml must record an ambition (synaipse fix) ----------------
-def test_memory_complete_blocks_design_without_ambition(prd_repo):
-    # a UI design.yaml (not applicable:false) with no `ambition:` -> blocked (don't ship one design silently)
-    write(str(prd_repo / "project_memory" / "design.yaml"), 'chosen: "Aurora"\ndirections: [Aurora]\n')
-    write(str(prd_repo / "project_memory" / "project_config.yaml"),
-          'project:\n  name: "X"\n  stacks: [python]\n')
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 2
-
-
-def test_memory_complete_allows_design_with_ambition(prd_repo):
-    write(str(prd_repo / "project_memory" / "design.yaml"), 'ambition: minimal\nchosen: "Aurora"\n')
-    write(str(prd_repo / "project_memory" / "project_config.yaml"),
-          'project:\n  name: "X"\n  stacks: [python]\n')
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_memory_complete.py", payload, prd_repo) == 0
-
-
-# ---------------- guard_yaml_valid: progress.yaml format backstop (V10 — status blob / dropped log) ----------------
-def test_progress_status_blob_blocked(tmp_path):
+def test_dashboard_refuses_without_an_index(tmp_path):
+    """Items on disk but no index: an un-generated index must not render as an empty, reassuring
+    dashboard. The item is what separates this from the greenfield case below — the two used to be
+    the same branch, which made the "non-skippable" command exit 1 in every brand-new project."""
     pytest.importorskip("yaml")
-    blob = "\n".join("line %d of a growing prose status" % i for i in range(12))
-    write(str(tmp_path / "project_memory" / "progress.yaml"),
-          "status: |\n" + "".join("  %s\n" % ln for ln in blob.splitlines()) + "log: []\n")
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "progress.yaml"), tmp_path) == 2
+    pm = _dashboard_repo(tmp_path)
+    write(str(pm / "product" / "active" / "PR-0001.yaml"), "id: PR-0001\nstatus: DRAFT\n")
+    r = _dashboard_without_index(tmp_path)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "generate-index" in r.stderr
+    assert not (pm / "generated" / "dashboard.html").exists()
 
 
-def test_progress_missing_log_blocked(tmp_path):
+def test_dashboard_on_a_greenfield_project_renders_and_says_nothing_is_captured(tmp_path):
+    """A project that has captured nothing has no index BY CONSTRUCTION (the kernel writes it on a
+    state write, and the scaffold writes no items), while the constitution calls the generator
+    non-skippable from day 1. So here — and only here — "no index" and "nothing captured" are the
+    same truth, and the honest answer is a rendered page that SAYS so. The predicate is the bridge's
+    `state_is_empty`, not a guess: one item flips it (the test above)."""
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "progress.yaml"),
-          'status: "PRD-0001 merged; next: PRD-0002 design loop"\nmetrics: {}\n')
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "progress.yaml"), tmp_path) == 2
+    pm = _dashboard_repo(tmp_path)
+    r = _dashboard_without_index(tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "No items captured yet" in r.stdout
+    html, data = _dashboard_data(pm)
+    assert "No items captured yet" in data["notice"]
+    assert "No items captured yet" in html          # the page itself says it, not just stdout
+    assert all(view["total"] == 0 for view in data["views"])
 
 
-def test_progress_compliant_allowed(tmp_path):
+_DASHBOARD_CMD_RX = re.compile(r"python[^`\n<]*generate_dashboard\.py")
+# Only POSITIVE examples may reach the gate. A didactic counter-example ("never run `python
+# project_memory/generate_dashboard.py`") documents what NOT to do; run through gate_write_scope it
+# would turn this test red, and the obvious "repair" would be to delete the lesson. None exists
+# today, hence the filter rather than a rule nobody can see. `assert found` below is what keeps the
+# filter from silently emptying a whole source file.
+_COUNTEREXAMPLE_RX = re.compile(r"\b(never|no longer|must not|do not|don't)\b", re.I)
+
+
+def test_the_documented_dashboard_command_survives_the_write_scope_gate(tmp_path):
+    """The generator is only reachable if the command a user or agent is TOLD to run passes
+    gate_write_scope. It once did not: the gate refuses every write-capable pipeline that names the
+    state directory, so the invocation of a generator living inside project_memory/ exited 2 while
+    the constitution called it non-skippable. The commands are read OUT of the shipped files, so
+    this goes red again the day one of them names the state directory."""
+    sources = (
+        os.path.join(ROOT, "team-kits", "dev-team", "constitution", "AGENTS.md"),
+        os.path.join(os.path.dirname(DASHBOARD), "progress.dashboard.template.html"),
+        DASHBOARD,
+    )
+    commands = []
+    for path in sources:
+        found = []
+        for line in open(path, encoding="utf-8").read().splitlines():
+            if _COUNTEREXAMPLE_RX.search(line):
+                continue
+            found += _DASHBOARD_CMD_RX.findall(line)
+        assert found, "no runnable generator command documented in %s" % path
+        commands += found
+    for command in commands:
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                   "tool_input": {"command": command}, "cwd": str(tmp_path)}
+        r = run_hook_process("gate_write_scope.py", payload, tmp_path)
+        assert r.returncode == 0, "the documented command %r is refused: %s" % (command, r.stderr)
+
+
+def test_dashboard_delivery_board_hides_finished_work(tmp_path):
+    """Spec II.7: "Delivery (Task-Board, Erledigtes verborgen)". Nothing auto-archives a terminal
+    item, so without the filter a VALIDATED task sits on the board for good. Which statuses count
+    as finished is the automaton's `terminals`, never a list in the generator."""
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "progress.yaml"),
-          'status: "PRD-0001 merged; next: PRD-0002 design loop"\nlog:\n  - "2026-07-09: PRD-0001 merged"\n')
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "progress.yaml"), tmp_path) == 0
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import AUTOMATA
+    done = sorted(AUTOMATA["TSK"].terminals)[0]
+    pm = _dashboard_repo(tmp_path)
+    write(str(pm / "tasks" / "active" / "TSK-0001.yaml"), "id: TSK-0001\nstatus: READY\n")
+    write(str(pm / "tasks" / "active" / "TSK-0002.yaml"), "id: TSK-0002\nstatus: %s\n" % done)
+    r = _run_dashboard(tmp_path, pm)
+    assert r.returncode == 0, r.stdout + r.stderr
+    html, data = _dashboard_data(pm)
+    delivery = [v for v in data["views"] if v["id"] == "delivery"][0]
+    assert [it["id"] for it in delivery["items"]] == ["TSK-0001"]
+    assert delivery["total"] == 1, "the hidden item must not be counted as work in progress"
+    assert "TSK-0002" not in html
+    # the stdout tally is the only place the filter's WORK is visible; an unchecked counter is
+    # where a number quietly stops being true
+    assert "1 finished hidden" in r.stdout, r.stdout
+    # a view WITHOUT the filter still shows its terminal items -- the rule is Delivery's alone
+    write(str(pm / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\nstatus: %s\n" % sorted(AUTOMATA["PR"].terminals)[0])
+    r = _run_dashboard(tmp_path, pm)
+    assert r.returncode == 0, r.stdout + r.stderr
+    _html, data = _dashboard_data(pm)
+    product = [v for v in data["views"] if v["id"] == "product"][0]
+    assert [it["id"] for it in product["items"]] == ["PR-0001"]
 
 
-def test_progress_rule_does_not_hit_other_yaml(tmp_path):
-    # a long status field in ANOTHER artifact must not trigger the progress.yaml contract
+def test_dashboard_survives_a_hand_written_item(tmp_path):
+    """Two shapes no shipped schema produces but a hand-edited item does, and `capture` is not the
+    only thing that ever writes these files: a title containing `</script>` ends the embedded JSON
+    block as far as any HTML parser is concerned, and mixed top-level key types (`1:` next to `a:`)
+    made the relation scan's `sorted()` raise TypeError and kill the run with a traceback.
+
+    The title assertion carries the escaping proof: the extraction here is non-greedy up to the
+    first `</script>`, exactly like the parser, so an unescaped title would truncate the block."""
     pytest.importorskip("yaml")
-    body = "status: |\n" + "".join("  line %d\n" % i for i in range(12))
-    write(str(tmp_path / "project_memory" / "test_reports.yaml"), body)
-    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, "test_reports.yaml"), tmp_path) == 0
+    pm = _dashboard_repo(tmp_path)
+    write(str(pm / "bugs" / "active" / "BUG-0001.yaml"),
+          'id: BUG-0001\ntitle: "fix </script> leak"\nstatus: OPEN\n1: numeric key\n')
+    r = _run_dashboard(tmp_path, pm)
+    assert r.returncode == 0, r.stdout + r.stderr
+    html, data = _dashboard_data(pm)
+    rendered = {it["id"]: it for view in data["views"] for it in view["items"]}
+    assert rendered["BUG-0001"]["title"] == "fix </script> leak"
+    assert "<\\/script>" in html, "the JSON block is embedded unescaped"
+
+
+def test_dashboard_vitals_and_the_file_budget_see_the_same_files(tmp_path):
+    """One knob, ONE definition. The panel used to carry its own copy of the extension set, its own
+    `.min.*` filter and a third line counter, so the promise "panel and gate cannot scan different
+    trees" held for the trees and quietly failed for the file TYPES. The expected set here is read
+    from `kit_checks.source_files` — the same generator the budget check iterates — so this goes red
+    on divergence, whichever side moves."""
+    pytest.importorskip("yaml")
+    pm = _dashboard_repo(tmp_path)
+    write(str(tmp_path / "src" / "app.py"), "x = 1\n" * 2500)
+    write(str(tmp_path / "src" / "vendor.min.js"), "let x=1;\n" * 2500)   # vendored, not ours
+    write(str(tmp_path / "src" / "notes.md"), "text\n" * 2500)            # not source at all
+    r = _run_dashboard(tmp_path, pm)
+    assert r.returncode == 0, r.stdout + r.stderr
+    _html, data = _dashboard_data(pm)
+    expected = {rel for rel, n in _kit_checks_mod().source_files(str(tmp_path)) if n is not None}
+    assert "src/app.py" in expected and "src/vendor.min.js" not in expected
+    assert data["repo_vitals"]["source_files"] == len(expected)
+    assert {entry["path"] for entry in data["repo_vitals"]["largest"]} <= expected
+    assert data["repo_vitals"]["over_2000"] == 1
+
+
+def test_dashboard_page_size_is_the_hard_ceiling(tmp_path):
+    """Spec II.7 promises at most 50 items per page and no full text in the initial DOM — the
+    reason the template and the generator were rewritten at all. Every other dashboard test works
+    with a handful of items and can never touch the boundary."""
+    pytest.importorskip("yaml")
+    pm = _dashboard_repo(tmp_path)
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    mod = _load_dashboard_module()
+    over = mod.PAGE_SIZE + 5
+    for n in range(1, over + 1):
+        write(str(pm / "bugs" / "active" / ("BUG-%04d.yaml" % n)),
+              "id: BUG-%04d\ntitle: crash %d\nstatus: OPEN\n" % (n, n))
+    r = _run_dashboard(tmp_path, pm)
+    assert r.returncode == 0, r.stdout + r.stderr
+    html, data = _dashboard_data(pm)
+    product = [v for v in data["views"] if v["id"] == "product"][0]
+    assert product["total"] == over
+    assert len(product["items"]) == mod.PAGE_SIZE
+    assert "BUG-%04d" % over not in html, "an item past the page size reached the initial DOM"
+
+
+def _load_dashboard_module():
+    return load_kit_module("generate_dashboard_under_test", DASHBOARD)
+
+
+def test_dashboard_views_cover_every_item_type():
+    """Every type the kernel knows reaches a view. A type nobody assigned lands in "Other" and is
+    named on stdout — the failure worth designing against is a whole item type quietly missing
+    from the only overview a user looks at."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS
+    mod = _load_dashboard_module()
+    views, unassigned = mod.assign_views(ACTIVE_DIRS)
+    assert not unassigned, "unassigned item type(s): %s" % unassigned
+    covered = [t for view in views for t in view.types]
+    assert sorted(covered) == sorted(ACTIVE_DIRS)
+    assert len(covered) == len(set(covered)), "a type is rendered in two views"
+    # ...and the catch-all really catches: in a green tree `unassigned` is always empty, so the
+    # branch that saves a NEW item type from disappearing is otherwise never executed.
+    views, unassigned = mod.assign_views({**ACTIVE_DIRS, "ZZZ": "zzz/active"})
+    assert unassigned == ["ZZZ"]
+    assert "ZZZ" in [t for view in views for t in view.types]
+
+
+# ---------------- guard_yaml_valid: typed items live in SUBdirectories now ----------------
+def test_yaml_valid_reaches_a_typed_item_in_a_subdirectory(tmp_path):
+    """The V2 state is one file per item under `project_memory/<type>/active/`, so the guard's
+    reach must not stop at the top level — the monolith era only ever wrote there."""
+    pytest.importorskip("yaml")
+    rel = os.path.join("product", "active", "PR-0001.yaml")
+    write(str(tmp_path / "project_memory" / rel), "id: PR-0001\ntitle: a: b\n")  # unquoted colon
+    assert run_hook("guard_yaml_valid.py", _yaml_payload(tmp_path, rel), tmp_path) == 2
 
 
 # ---------------- notify_agent_events: background-agent lifecycle -> audit log ----------------
@@ -890,25 +1202,94 @@ def test_session_status_quiet_when_synced(tmp_path):
     assert "MODEL/EFFORT OUT OF SYNC" not in out
 
 
-# ---------------- quality.py: progress.yaml contract at the pipeline (catches shell-written blobs) ----------------
-def test_quality_red_on_progress_status_blob(tmp_path):
+# ---------------- quality.py: the project_memory yaml-lint reaches the typed items ----------------
+def test_quality_red_on_unparsable_typed_item(tmp_path):
+    """V2 state is one file per item under `project_memory/<type>/active/` (spec II.2). The
+    monolith-era pass listed the top level only, which after the lockstep would scan an almost
+    empty directory and report green over every real item — and `_repo_wide_yaml_parse` skips
+    project_memory/ on the promise that this pass covers it."""
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "progress.yaml"),
-          'status: "%s"\nlog: []\n' % ("x" * 800))
+    write(str(tmp_path / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\ntitle: a: b\n")          # unquoted colon
     assert run_quality(str(tmp_path)) == 1
 
 
-def test_quality_red_on_progress_missing_log(tmp_path):
+def test_quality_green_on_valid_typed_items(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "progress.yaml"), 'status: "ok; next: PRD-2"\n')
-    assert run_quality(str(tmp_path)) == 1
-
-
-def test_quality_green_on_compliant_progress(tmp_path):
-    pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "progress.yaml"),
-          'status: "PRD-1 merged; next: PRD-2 design"\nlog:\n  - "2026-07-12: PRD-1 merged"\n')
+    write(str(tmp_path / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\ntitle: ok\nstatus: DRAFT\n")
+    write(str(tmp_path / "project_memory" / "tasks" / "active" / "TSK-0001.yaml"),
+          "id: TSK-0001\nstatus: READY\n")
     assert run_quality(str(tmp_path)) == 0
+
+
+def test_quality_red_on_duplicate_key_in_typed_item(tmp_path):
+    """Duplicate keys parse fine and silently keep the last value — the reason this pass exists
+    at all. It has to reach a nested item, not just the (now empty) top level."""
+    pytest.importorskip("yaml")
+    write(str(tmp_path / "project_memory" / "bugs" / "active" / "BUG-0001.yaml"),
+          "id: BUG-0001\nseverity: high\nseverity: low\n")
+    assert run_quality(str(tmp_path)) == 1
+
+
+# ---------------- kit_checks: the kernel's state validator runs in the pipeline ----------------
+def _repo_with_kernel_bridge(tmp_path):
+    """A repo where kit_checks can reach the kernel the way a scaffolded project does."""
+    hooks = tmp_path / ".claude" / "hooks"
+    hooks.mkdir(parents=True)
+    for helper in ("_kernel.py", "_root.py", "_audit.py", "_compat.py"):
+        shutil.copy(os.path.join(HOOKS, helper), str(hooks / helper))
+    return {"HARNESS_KERNEL_PATH": os.path.join(ROOT, "team-kits")}
+
+
+def test_quality_runs_the_kernel_state_validator(tmp_path):
+    """Spec II.4 gate 4 in the PIPELINE, not only in the merge gate. A valid state has to be able
+    to say so, or the red case below would prove nothing about the check running."""
+    pytest.importorskip("yaml")
+    env = _repo_with_kernel_bridge(tmp_path)
+    (tmp_path / "project_memory").mkdir()
+    r = run_quality_proc(str(tmp_path), extra_env=env)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "state validity (kernel validator, 0 findings)" in r.stdout
+
+
+def test_quality_red_on_a_state_the_kernel_validator_rejects(tmp_path):
+    """Two items carrying the SAME id parse cleanly and lint cleanly — only the kernel's graph
+    scan sees it, and the merge gate is the latest possible place to learn that."""
+    pytest.importorskip("yaml")
+    env = _repo_with_kernel_bridge(tmp_path)
+    # FR is the type with the smallest field contract, so the duplicate id is the ONLY finding and
+    # the assertion cannot pass on some unrelated schema complaint
+    inbox = tmp_path / "project_memory" / "inbox" / "active"
+    write(str(inbox / "FR-0001.yaml"), "id: FR-0001\ntitle: a\nrequest_text: a\nstatus: OPEN\n")
+    write(str(inbox / "FR-0002.yaml"), "id: FR-0001\ntitle: b\nrequest_text: b\nstatus: OPEN\n")
+    r = run_quality_proc(str(tmp_path), extra_env=env)
+    assert r.returncode == 1, r.stdout + r.stderr
+    assert "duplicate id" in r.stdout
+
+
+def test_kit_check_remedies_never_name_a_file_the_project_does_not_have(tmp_path):
+    """A remedy has to be walkable. V2 dissolved coding_guidelines.yaml, so a check that offers it
+    as the only way out sends the user to a file the scaffold does not create and gate_write_scope
+    would not let them write — the "remedy nobody can follow" class gate_filing documents on
+    itself. When the project HAS a guidelines file the remedy must name that one."""
+    pytest.importorskip("yaml")
+    write(str(tmp_path / "src" / "static" / "app.js"), "let x = 1;\n" * 900)
+    r = run_quality_proc(str(tmp_path))
+    assert "file budget" in r.stdout and r.returncode == 1
+    assert "coding_guidelines.yaml" not in r.stdout
+    assert "has no home in this project" in r.stdout
+    write(str(tmp_path / "project_memory" / "research_guidelines.yaml"), "source_areas: []\n")
+    r = run_quality_proc(str(tmp_path))
+    assert "`file_budget: exempt:` in project_memory/research_guidelines.yaml" in r.stdout
+
+
+def test_quality_says_so_when_the_state_validator_cannot_be_reached(tmp_path):
+    """An unreachable validator must never read as a passed one (the false-green class)."""
+    pytest.importorskip("yaml")
+    (tmp_path / "project_memory").mkdir()
+    r = run_quality_proc(str(tmp_path))
+    assert "state validator was NOT run" in r.stdout
 
 
 # ---------------- retro.py: agent lifecycle events must not count as gate blocks ----------------
@@ -927,6 +1308,45 @@ def test_retro_separates_blocks_from_agent_events(tmp_path):
     assert "gates blocked work: gate_git x2" in p.stdout
     assert "background-agent events: agent_completed x3" in p.stdout
     assert "notify_agent_events x" not in p.stdout  # lifecycle events must never read as blocks
+    # ...and a missing index must be SAID, not silently rendered as "nothing happened"
+    assert "generate-index" in p.stdout
+
+
+def _run_retro(tmp_path):
+    retro_src = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts", "retro.py")
+    os.makedirs(str(tmp_path / "scripts"), exist_ok=True)
+    shutil.copy(retro_src, str(tmp_path / "scripts" / "retro.py"))
+    return subprocess.run([sys.executable, str(tmp_path / "scripts" / "retro.py")],
+                          capture_output=True, text=True, cwd=str(tmp_path), timeout=60)
+
+
+def test_retro_reports_the_item_status_mix_from_the_index(tmp_path):
+    """The V2 facts come from the kernel's regenerated index, so retro carries neither a copy of
+    the type->directory map nor a copy of the status vocabulary."""
+    pytest.importorskip("yaml")
+    pm = tmp_path / "project_memory"
+    write(str(pm / "tasks" / "active" / "TSK-0001.yaml"), "id: TSK-0001\nstatus: READY\n")
+    write(str(pm / "tasks" / "active" / "TSK-0002.yaml"),
+          "id: TSK-0002\nstatus: FAILED\nblocked_by: BUG-0001\n")
+    write(str(pm / "bugs" / "active" / "BUG-0001.yaml"), "id: BUG-0001\nstatus: OPEN\n")
+    index = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, sys.argv[1]);"
+         "from kernel.state import ProjectState; ProjectState(sys.argv[2]).generate_index()",
+         os.path.join(ROOT, "team-kits"), str(pm)],
+        capture_output=True, text=True, timeout=60)
+    assert index.returncode == 0, index.stdout + index.stderr
+    p = _run_retro(tmp_path)
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert "TSK: READY x1, FAILED x1" in p.stdout or "TSK: FAILED x1, READY x1" in p.stdout
+    assert "BUG: OPEN x1" in p.stdout
+    assert "1 blocked item(s): TSK-0002 (by BUG-0001)" in p.stdout
+    assert "generate-index" not in p.stdout
+    # retro writes ONLY its own diagnostic layer, and that file has to be valid YAML
+    import yaml
+    entries = yaml.safe_load((pm / "retro.yaml").read_text(encoding="utf-8"))["retros"]
+    assert len(entries) == 1 and entries[0]["active_items"] == 3
+    assert all(isinstance(f, str) for f in entries[0]["findings"])
 
 
 # ---------------- init_project_memory: diverged tooling -> pending file; resolution deletes it ----------------
@@ -972,9 +1392,40 @@ KIT_SPECIFIC_HOOKS = {
     "session_status.py": "the session briefing names each kit's own artifacts and nags",
     "format_on_write.py": "formats the languages a kit actually produces",
     "gate_git.py": "the dev/research merge gates run different pipelines",
-    "gate_memory_complete.py": "role memory differs per kit",
-    "gate_pipeline.py": "the green-tree pipeline is kit-specific",
 }
+# The SAME rule for the project scripts a kit ships. Empty on purpose: the office kit's scripts
+# share no filename with dev/research, and every name dev and research both ship is meant to be one
+# file. A kit that needs its own variant of one adds it here WITH the reason.
+KIT_SPECIFIC_SCRIPTS = {}
+KITS = ("dev-team", "office-team", "research-team")
+
+
+def _kit_files_by_name(rel_dir, suffixes):
+    """{filename: {kit: bytes}} for one directory across all kits — the input to the mirror rule."""
+    by_name = {}
+    for kit in KITS:
+        directory = os.path.join(ROOT, "team-kits", kit, *rel_dir)
+        for name in sorted(os.listdir(directory)):
+            if name.endswith(suffixes):
+                with open(os.path.join(directory, name), "rb") as handle:
+                    by_name.setdefault(name, {})[kit] = handle.read()
+    return by_name
+
+
+def _assert_mirrored(label, by_name, exceptions):
+    for name, copies in sorted(by_name.items()):
+        if len(copies) < 2 or name in exceptions:
+            continue
+        assert len(set(copies.values())) == 1, (
+            "%s/%s exists in %s and they are NOT identical — either re-mirror it, or add it to the "
+            "kit-specific map with the reason" % (label, name, ", ".join(sorted(copies))))
+    # ...and a name on the exception list that has stopped differing is an exception nobody needs
+    for name in sorted(exceptions):
+        copies = by_name.get(name, {})
+        if len(copies) >= 2:
+            assert len(set(copies.values())) > 1, (
+                "%s/%s is listed as kit-specific but all copies are identical — drop the exception "
+                "so it stays pinned" % (label, name))
 
 
 def test_shared_kit_files_identical():
@@ -985,31 +1436,15 @@ def test_shared_kit_files_identical():
     commands reached dev-team and neither mirror, so two kits blocked `docker compose ps`.
 
     Now the burden is the other way round: a name present in more than one kit is pinned unless
-    KIT_SPECIFIC_HOOKS says why it differs. A new mirrored file is covered the day it ships."""
-    by_name = {}
-    for kit in ("dev-team", "office-team", "research-team"):
-        hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
-        for name in sorted(os.listdir(hooks_dir)):
-            if name.endswith(".py"):
-                with open(os.path.join(hooks_dir, name), "rb") as handle:
-                    by_name.setdefault(name, {})[kit] = handle.read()
-    for name, copies in sorted(by_name.items()):
-        if len(copies) < 2 or name in KIT_SPECIFIC_HOOKS:
-            continue
-        assert len(set(copies.values())) == 1, (
-            "hooks/%s exists in %s and they are NOT identical — either re-mirror it, or add it to "
-            "KIT_SPECIFIC_HOOKS with the reason" % (name, ", ".join(sorted(copies))))
-    # ...and a name on the exception list that has stopped differing is an exception nobody needs
-    for name in sorted(KIT_SPECIFIC_HOOKS):
-        copies = by_name.get(name, {})
-        if len(copies) >= 2:
-            assert len(set(copies.values())) > 1, (
-                "hooks/%s is listed as kit-specific but all copies are identical — drop the "
-                "exception so it stays pinned" % name)
-    for name in ("quality.py", "kit_checks.py", "retro.py"):
-        a = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts", name)
-        b = os.path.join(ROOT, "team-kits", "research-team", "templates", "repo", "scripts", name)
-        assert open(a, "rb").read() == open(b, "rb").read(), "scripts/%s diverged" % name
+    KIT_SPECIFIC_HOOKS says why it differs. A new mirrored file is covered the day it ships.
+
+    The SCRIPTS half used to be the old shape again — three typed filenames — so `kit_browser_checks.py`
+    was unpinned here and `generate_dashboard.py` plus its HTML shell would have drifted silently the
+    day research got a copy. Same derivation now, same burden of proof."""
+    _assert_mirrored("hooks", _kit_files_by_name(("hooks",), (".py",)), KIT_SPECIFIC_HOOKS)
+    _assert_mirrored("templates/repo/scripts",
+                     _kit_files_by_name(("templates", "repo", "scripts"), (".py", ".html")),
+                     KIT_SPECIFIC_SCRIPTS)
 
 
 # ---------------- kit_checks: file budget (the anti-monolith gate) ----------------
@@ -1025,7 +1460,6 @@ def test_file_budget_exemption_with_reason_passes(tmp_path):
     write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
           "global:\n  - x\nlanguages: {}\nfile_budget:\n  max_lines: 800\n  exempt:\n"
           "    - path: src/static/app.js\n      reason: \"legacy monolith - split tracked in TSK-1\"\n")
-    write(str(tmp_path / "project_memory" / "progress.yaml"), 'status: "ok"\nlog: []\n')
     assert run_quality(str(tmp_path)) == 0
 
 
@@ -1060,25 +1494,6 @@ def test_pending_nag_escalates(tmp_path):
     cleared = run_status()
     assert "KIT MERGE BACKLOG" not in cleared
     assert not (repo / ".claude" / "kit_update_pending.state").exists()  # counter reset
-
-
-# ---------------- auto_dashboard: once-per-session stop reminder while pending exists ----------------
-def test_stop_reminder_once_per_session(tmp_path):
-    repo = tmp_path / "repo"
-    write(str(repo / ".claude" / "kit_update_pending.repo"), "# d\n- scripts/quality.py\n")
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo))
-
-    def run_stop(sid):
-        return subprocess.run([sys.executable, os.path.join(HOOKS, "auto_dashboard.py")],
-                              input=json.dumps({"cwd": str(repo), "session_id": sid}),
-                              capture_output=True, text=True, env=env, timeout=60)
-
-    p1 = run_stop("s1")
-    assert p1.returncode == 1 and "kit_update_pending" in p1.stderr
-    p2 = run_stop("s1")
-    assert p2.returncode == 0 and "kit_update_pending" not in p2.stderr  # same session: quiet
-    p3 = run_stop("s2")
-    assert p3.returncode == 1  # new session: reminded again
 
 
 # ---------------- guard_agent_spawn: allowed spawns are audited ----------------
@@ -1281,8 +1696,7 @@ def test_root_normalizes_windows_drive_case(tmp_path, monkeypatch):
 
 # ---------------- gate detection: prose mentions of push/merge must not trigger ----------------
 def test_gate_pipeline_ignores_prose_push_mentions(tmp_path):
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     # a commit message DESCRIBING a push must not run the pipeline (real incident:
     # the diagnosis commit about a blocked push triggered the full RED pipeline again)
     prose = {"tool_name": "Bash", "cwd": str(tmp_path),
@@ -1315,8 +1729,7 @@ def test_gate_git_force_check_survives_quote_stripping(tmp_path):
 def test_gates_catch_shell_wrapped_push(tmp_path):
     # audit finding (regression vs the old substring check): a push inside a shell WRAPPER
     # payload is CODE and must gate — plain quote-stripping had let it pass both gates
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     for command in ('bash -c "git push origin main"',
                     "powershell -Command 'git push origin main'",
                     'powershell -NoProfile -Command "git push origin main"',
@@ -1336,8 +1749,7 @@ def test_gates_catch_combined_flag_wrappers(tmp_path):
     # wrapper regex required -c as its OWN token, so a combined short cluster unwrapped
     # nothing and the payload was then stripped as prose. Escaped quotes inside the payload
     # must not cut the unwrap short either.
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     for command in ('bash -lc "git push origin main"',
                     'bash -xec "git push origin main"',
                     "sh -euc 'git merge feature'",
@@ -1370,8 +1782,7 @@ def test_source_areas_reject_dot_names(tmp_path):
 def test_gate_test_coverage_rejects_dot_areas(tmp_path):
     repo = tmp_path / "repo"
     write(str(tmp_path / "stray.py"), "def f():\n    return 1\n")  # code OUTSIDE the repo
-    write(str(repo / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(repo)
     write(str(repo / "project_memory" / "testing_guidelines.yaml"),
           "coverage_areas:\n  - '..'\n")
     payload = {"tool_name": "Bash", "cwd": str(repo),
@@ -1432,6 +1843,71 @@ def test_no_adhoc_blocks_codex_move_to_dump_name(tmp_path):
     assert run_hook("guard_no_adhoc.py", payload, tmp_path) == 2
 
 
+def hook_constant(hook_file, name, hooks_dir=None):
+    """The value of a module-level literal constant in a hook, read WITHOUT importing the hook.
+
+    Reading the assignment that actually runs is the point (a docstring-satisfied test proves
+    nothing), but executing the module for it is too expensive a side effect for a test process:
+    it puts a kit's `hooks/` on `sys.path` for good and runs `_compat`'s stream pinning as an
+    import effect, making later tests depend on collection order. `ast.literal_eval` on the
+    parsed assignment reads the same line with none of that.
+    """
+    path = os.path.join(hooks_dir or HOOKS, hook_file)
+    with open(path, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read(), filename=path)
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else []
+        if any(isinstance(t, ast.Name) and t.id == name for t in targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError("%s does not define %s at module level" % (hook_file, name))
+
+
+def test_no_adhoc_covers_every_item_type(tmp_path):
+    """The guard names the item prefixes literally (it must decide without loading the kernel), so
+    the list is only safe while something proves it complete. Adding a type to ACTIVE_DIRS without
+    it would let `<NEWTYPE>-0001_notes.md` past the rule that exists for exactly that file."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS, V1_STATUS_MAPPING
+    item_types = hook_constant("guard_no_adhoc.py", "ITEM_TYPES")
+    legacy_types = hook_constant("guard_no_adhoc.py", "LEGACY_ITEM_TYPES")
+    assert set(item_types) == {t.lower() for t in ACTIVE_DIRS}
+    # LEGACY_ITEM_TYPES was the one prefix list with nothing behind it. The V1 vocabulary the
+    # migration table still translates is a real source for part of it: every type a migrated
+    # project can carry must be a prefix this guard knows, current or legacy.
+    assert {v1_type.lower() for v1_type, _ in V1_STATUS_MAPPING} <= set(item_types) | set(
+        legacy_types)
+    # ...and the pattern really rejects a file named after the newest of them. Run the guard, do
+    # not re-derive its regex here: a second construction of the pattern would pass while the
+    # shipped one is broken.
+    newest = sorted(ACTIVE_DIRS)[-1].lower()
+    payload = {"tool_name": "Write", "cwd": str(tmp_path),
+               "tool_input": {"file_path": str(tmp_path / "docs" / ("%s-0001_notes.md" % newest))}}
+    assert run_hook("guard_no_adhoc.py", payload, tmp_path) == 2
+
+
+def test_no_adhoc_leaves_a_note_that_only_looks_like_an_item_id_alone(tmp_path):
+    """The rule is "named after a KERNEL ITEM ID", and the kernel mints `<TYPE>-<4+ digits>`
+    (`backlog_types._ID_RE`). Matching on `<type>-<any digit>` widened the guard over ordinary
+    notes — `bug-42.md`, `fr-1.md` — which the docstring's "never block legitimate work" forbids.
+    A name that IS a valid item id stays blocked: that collision is what the rule is for."""
+    for name, expected in (("bug-42.md", 0), ("fr-1.md", 0), ("bug-0042.md", 2)):
+        payload = {"tool_name": "Write", "cwd": str(tmp_path),
+                   "tool_input": {"file_path": str(tmp_path / "docs" / name)}}
+        assert run_hook("guard_no_adhoc.py", payload, tmp_path) == expected, name
+
+
+def test_root_item_globs_are_the_kernels_root_types():
+    """`_root.ROOT_ITEM_GLOBS` spells out directories the kernel already owns. The literal is
+    deliberate — `has_root_item` runs on every guarded shell command and must not import the
+    kernel to answer "does an item exist" — but a cache without a proof is just a second list, and
+    this repo has produced one defect per unproven list. Same pattern as guard_no_adhoc.ITEM_TYPES,
+    which is why the exception was inconsistent rather than justified."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS, ROOT_TYPE_BY_KIT
+    assert set(hook_constant("_root.py", "ROOT_ITEM_GLOBS")) == {
+        "%s/%s-*.yaml" % (ACTIVE_DIRS[t], t) for t in set(ROOT_TYPE_BY_KIT.values())}
+
+
 def test_pm_scope_blocks_lowercase_tool_alias(tmp_path):
     # non-Claude payloads may use lowercase tool names; _TOOL_ALIASES must normalize them
     payload = {"tool_name": "edit", "tool_input": {"file_path": str(tmp_path / "src" / "x.py")},
@@ -1455,11 +1931,7 @@ def test_selfmod_blocks_settings_local_and_case_bypass(tmp_path):
 
 # ---------------- kit_checks: secure-context false positives + honest truncation ----------------
 def _kit_checks_mod():
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("kit_checks_under_test", KIT_CHECKS)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    return load_kit_module("kit_checks_under_test", KIT_CHECKS)
 
 
 def _collector():
@@ -1485,6 +1957,48 @@ def test_file_budget_source_areas_extend_and_warn(tmp_path):
     assert any("compounder/big.py" in m for _n, m in calls["fail"])
 
 
+def test_yaml_lint_skips_the_frozen_archive(tmp_path):
+    """`project_memory/archive/` is excluded from the recursive lint on purpose: an archived item is
+    frozen (it was linted while active, nothing may write it again, and the kernel's own validator
+    does not scan it either), while the tree grows monotonically and this check runs on every merge
+    with a cold CI read. Asserted as behaviour so the exclusion cannot silently become "everything"
+    or "nothing" — the second half proves the walk still reaches an active item."""
+    pytest.importorskip("yaml")
+    mod = _kit_checks_mod()
+    write(str(tmp_path / "project_memory" / "archive" / "PR" / "2025" / "PR-0009.yaml"),
+          "a: [unclosed\n")
+    calls, ok, fail, warn = _collector()
+    mod.check_project_memory_yaml(str(tmp_path), ok, fail, warn)
+    assert not calls["fail"], calls["fail"]
+    write(str(tmp_path / "project_memory" / "product" / "active" / "PR-0001.yaml"), "a: [unclosed\n")
+    calls, ok, fail, warn = _collector()
+    mod.check_project_memory_yaml(str(tmp_path), ok, fail, warn)
+    assert any("PR-0001" in m for _n, m in calls["fail"]), calls
+
+
+def test_the_suite_leaves_no_bytecode_in_the_kit_tree():
+    """tools/validate.py's principle: the suite must never create bytecode the installer could pick
+    up. It had been implemented at ONE of three by-path loaders, and a `kit_checks.cpython-*.pyc`
+    was measured appearing under the kit's scripts/ mid-run — from the other two AND from a plain
+    `import kit_browser_checks` nobody had counted. So the guarantee is a redirected cache
+    (`conftest.PYCACHE_DIR`), not a shielded call site, and this asserts the OUTCOME over the whole
+    shipped tree rather than at the loaders it happens to know about."""
+    assert sys.pycache_prefix == conftest.PYCACHE_DIR, "the cache redirection is gone"
+    kit_tree = os.path.join(ROOT, "team-kits")
+    for cache in _kit_bytecode_dirs(kit_tree):
+        shutil.rmtree(cache, ignore_errors=True)
+    _load_dashboard_module()
+    _kit_checks_mod()
+    leaked = _kit_bytecode_dirs(kit_tree)
+    assert not leaked, "the suite wrote bytecode into the kit tree: %s" % leaked
+
+
+def _kit_bytecode_dirs(tree):
+    return sorted(os.path.join(dirpath, name)
+                  for dirpath, dirnames, _files in os.walk(tree)
+                  for name in dirnames if name == "__pycache__")
+
+
 def test_ops_pitfalls_compose_name_pin(tmp_path):
     mod = _kit_checks_mod()
     write(str(tmp_path / "docker-compose.yml"), "services:\n  db:\n    image: postgres\n")
@@ -1499,8 +2013,7 @@ def test_ops_pitfalls_compose_name_pin(tmp_path):
 
 
 def test_gate_test_coverage_declared_areas(tmp_path):
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     write(str(tmp_path / "compounder" / "core.py"), "def f():\n    return 1\n")
     payload = {"tool_name": "Bash", "cwd": str(tmp_path),
                "tool_input": {"command": "git push origin main"}}
@@ -1577,8 +2090,7 @@ def test_proc_hash_update_survives_crlf(tmp_path):
 def test_gate_pipeline_green_tree_cache(tmp_path):
     repo = tmp_path / "repo"
     runs = tmp_path / "runs.txt"           # OUTSIDE the repo: the counter must not dirty the tree
-    write(str(repo / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(repo)
     write(str(repo / "scripts" / "quality.py"),
           "import pathlib\n"
           "p = pathlib.Path(r'%s')\n"
@@ -1612,9 +2124,8 @@ def test_gate_pipeline_green_tree_cache(tmp_path):
 
 
 def test_gate_memory_complete_escalates_on_repeat(tmp_path):
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
-    write(str(tmp_path / "project_memory" / "masterplan.md"),
+    capture_root_item(tmp_path)
+    write(str(tmp_path / "project_memory" / "product" / "masterplan.md"),
           "# Masterplan — <project name>\nTODO\n")
     payload = {"tool_name": "Bash", "cwd": str(tmp_path),
                "tool_input": {"command": "git push origin main"}}
@@ -1625,6 +2136,25 @@ def test_gate_memory_complete_escalates_on_repeat(tmp_path):
         outputs.append(r.stderr)
     assert "REPEAT BLOCK" not in outputs[0]
     assert "REPEAT BLOCK" in outputs[2]     # third identical block escalates
+
+
+def test_gate_memory_complete_escalates_past_the_audit_reason_cap(tmp_path):
+    """`REASON_KEY_CHARS` exists because `_audit` stores at most 2000 characters of a reason: a
+    key longer than what was stored can never `startswith`-match it, and the escalation dies
+    silently on exactly the noisy state it is for. Nothing bounds the message length — the item id
+    is the part of a finding the STATE decides — so this drives it past the cap with long (still
+    kernel-legal, `<TYPE>-<4+ digits>`) ids and requires the third block to escalate anyway."""
+    capture_root_item(tmp_path)
+    active = tmp_path / "project_memory" / "product" / "active"
+    for i in range(2, 12):
+        item_id = "PR-" + str(i).zfill(240)
+        write(str(active / (item_id + ".yaml")), "id: %s\nstatus: DRAFT\ntitle: t\n" % item_id)
+    payload = {"tool_name": "Bash", "cwd": str(tmp_path),
+               "tool_input": {"command": "git push origin main"}}
+    outputs = [run_hook_process("gate_memory_complete.py", payload, tmp_path).stderr
+               for _ in range(3)]
+    assert len(outputs[0]) > 2000            # the message really is past the cap
+    assert "REPEAT BLOCK" in outputs[2]
 
 
 def test_session_status_path_change_tripwire(tmp_path):
@@ -2293,17 +2823,1057 @@ def test_generated_posix_hook_command_verifies_bundle_before_execution(tmp_path)
     _exercise_generated_hook_bundle_command(tmp_path, "command", shutil.which("bash"))
 
 
+def _kit_hooks(kit):
+    hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
+    return {fn[:-3] for fn in os.listdir(hooks_dir)
+            if fn.endswith(".py") and not fn.startswith("_")}
+
+
 # ---------------- constitutions: every hook has a documented rule-home (diet safety) ----------------
 def test_every_hook_documented_in_its_constitution():
-    for kit in ("dev-team", "research-team", "office-team"):
+    for kit in KITS:
         cpath = os.path.join(ROOT, "team-kits", kit, "constitution", "AGENTS.md")
         text = open(cpath, encoding="utf-8", errors="ignore").read()
+        for name in sorted(_kit_hooks(kit)):
+            assert name in text, "%s: hook %s has no documented rule-home in the constitution" % (kit, name)
+
+
+def test_no_instruction_file_names_a_hook_its_own_kit_does_not_ship():
+    """The other direction, which nothing checked: a hook name the kit does not install.
+
+    A role that reads "`guard_no_adhoc`-style discipline" in a kit shipping no such hook looks for a
+    guard that is not there and reads the rule as enforced. Which names count is derived, not listed:
+    a name is a HOOK if some kit ships a module by that name, so `gate_health` — a judge-rubric
+    dimension that merely looks like one — is not one, and a new hook is covered the day it ships.
+    """
+    known = set()
+    for kit in KITS:
+        known |= _kit_hooks(kit)
+    hook_mention = re.compile(r"`([a-z][a-z0-9_]+)`")
+    for kit in KITS:
+        shipped = _kit_hooks(kit)
+        for path, text in _instruction_files(kit):
+            for match in hook_mention.finditer(text):
+                name = match.group(1)
+                if name not in known or name in shipped:
+                    continue
+                raise AssertionError(
+                    "%s names the hook `%s`, which %s does not install — the rule it stands for is "
+                    "policy here. Say so, or name a hook this kit actually ships."
+                    % (os.path.relpath(path, ROOT), name, kit))
+
+
+def _dispatch_authorising_kinds():
+    """APR kinds that really authorise a dispatch, read out of the kernel that decides.
+
+    Two routes exist, and each keeps its answer in a different place: the ROOT route in the
+    `ROOT_DISPATCH_KINDS` constant, the task-listing route as a literal comparison inside
+    `_covering_analysis_apr`. Both are read here rather than restated, because the point of the test
+    is that instruction text must not name a THIRD kind — `APR.kind: routine` was documented as the
+    auditor's dispatch basis while the kernel refused it (measured 2026-07-26).
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.approvals import APR_KINDS, ROOT_DISPATCH_KINDS
+    source = open(os.path.join(ROOT, "team-kits", "kernel", "dispatch.py"),
+                  encoding="utf-8").read()
+    kinds = set(ROOT_DISPATCH_KINDS)
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.FunctionDef) and node.name == "_covering_analysis_apr":
+            kinds |= {n.value for n in ast.walk(node)
+                      if isinstance(n, ast.Constant) and n.value in APR_KINDS}
+    return kinds
+
+
+def test_the_auditor_names_an_approval_kind_that_can_actually_dispatch_it():
+    """The auditor's own SKILL must name a kind the dispatch gate accepts.
+
+    It documented `APR.kind: routine` — the kind spec II.10a designs for this role — as the approval
+    it "is dispatched on", and added that an expired one blocks the spawn. Measured: a valid,
+    unexpired, unrevoked routine APR on the root authorises nothing, so the promised expiry check is
+    unreachable code and an auditor following its instruction cannot be spawned at all. Until the
+    kernel grows the route, the text has to name the kind that works.
+    """
+    authorising = _dispatch_authorising_kinds()
+    assert authorising, "could not read the dispatch routes out of the kernel"
+    for kit in KITS:
+        path = os.path.join(ROOT, "team-kits", kit, "skills", "project-auditor", "SKILL.md")
+        text = open(path, encoding="utf-8", errors="ignore").read()
+        named = set(re.findall(r"APR\.kind:\s*([a-z]+)", text))
+        assert named, "%s: the auditor SKILL names no APR kind as its dispatch basis" % kit
+        assert named & authorising, (
+            "%s: the auditor SKILL names only %s as its dispatch basis, but the kernel authorises a "
+            "dispatch through %s. A role told to ride on a kind the gate refuses cannot be spawned."
+            % (kit, "/".join(sorted(named)), "/".join(sorted(authorising))))
+
+
+# Everything an agent is instructed BY. The constitution, the agent definitions and the role SKILLs,
+# because a rule the constitution states honestly and a role SKILL then restates as unconditional is
+# still a lie told to the role that acts on it — plus the state templates, because the entry gate
+# tells the initializer to fill EVERY section of them, so a dead monolith name in a template comment
+# is copied into every new project. That is how `feature_requests.yaml` survived in the masterplan
+# template while this sweep, reading three patterns, saw nothing (found by hand, 2026-07-26).
+INSTRUCTION_PATTERNS = ("constitution/AGENTS.md", "agents/*.md", "skills/*/SKILL.md",
+                        "templates/project_memory/**/*")
+
+
+def _instruction_files(kit):
+    import glob as _glob
+    for pattern in INSTRUCTION_PATTERNS:
+        for path in sorted(_glob.glob(os.path.join(ROOT, "team-kits", kit, pattern),
+                                      recursive=True)):
+            if os.path.isdir(path):
+                continue
+            yield path, open(path, encoding="utf-8", errors="ignore").read()
+
+
+def _self_disabling_state_files(source):
+    """The `*.yaml` inputs whose ABSENCE makes this hook stop without deciding.
+
+    Derived from the code that runs, via the AST: an `if not <exists-check>(...)` whose body ENDS the
+    decision (`return`, or `sys.exit(0)`) is a hook that switches itself off when its input is
+    missing. The path is normally assembled by an `os.path.join` some lines above the guard, so every
+    `*.yaml` literal in the module counts as a candidate input rather than only the guard's own
+    expression. `.json` literals are deliberately out: project STATE in these kits is YAML (the
+    kernel writes YAML items), while the `.json` files a hook touches are enforcement-layer or cache
+    files whose absence means "not a scaffolded project", not "this rule is off".
+    """
+    exists_predicates = ("isfile", "exists", "isdir", "is_file", "is_dir")
+
+    def ends_decision(node):
+        for sub in ast.walk(node):
+            if isinstance(sub, ast.Return):
+                return True
+            if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute) \
+                    and sub.func.attr == "exit" and isinstance(sub.func.value, ast.Name) \
+                    and sub.func.value.id == "sys" and sub.args \
+                    and isinstance(sub.args[0], ast.Constant) and sub.args[0].value == 0:
+                return True
+        return False
+
+    def negated_existence(test):
+        if not (isinstance(test, ast.UnaryOp) and isinstance(test.op, ast.Not)):
+            return False
+        return any(isinstance(sub, ast.Call) and isinstance(sub.func, ast.Attribute)
+                   and sub.func.attr in exists_predicates for sub in ast.walk(test.operand))
+
+    tree = ast.parse(source)
+    if not any(isinstance(n, ast.If) and negated_existence(n.test) and ends_decision(n)
+               for n in ast.walk(tree)):
+        return set()
+    if not ("sys.exit(2)" in source or "_kernel.block(" in source):
+        return set()  # a hook that cannot block claims no block to be honest about
+    return {n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)
+            and re.fullmatch(r"[A-Za-z0-9_.-]+\.yaml", n.value.strip())}
+
+
+def test_constitution_names_the_file_that_switches_a_gate_off():
+    """A gate that fails OPEN on a missing input must say WHICH input, where its rule is documented.
+
+    Two shipped rows claimed an unconditional hard block over a hook that exits 0 while its registry
+    is absent — `gate_proc_approved` (the V2 bootstrap hole stayed permanently open) and
+    `guard_guidelines` (no template ships its file, so the default project has no guard). Both rows
+    read as protection nobody had. Naming the file is the smallest claim that cannot be true while
+    the precondition is hidden: derived from the hook's AST, so a hook that GAINS such a path is
+    covered the day it ships, and no list of hook names exists here to go stale.
+    """
+    for kit in ("dev-team", "research-team", "office-team"):
+        cpath = os.path.join(ROOT, "team-kits", kit, "constitution", "AGENTS.md")
+        lines = open(cpath, encoding="utf-8", errors="ignore").read().splitlines()
         hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
-        for fn in os.listdir(hooks_dir):
+        for fn in sorted(os.listdir(hooks_dir)):
             if not fn.endswith(".py") or fn.startswith("_"):
                 continue
             name = fn[:-3]
-            assert name in text, "%s: hook %s has no documented rule-home in the constitution" % (kit, name)
+            candidates = _self_disabling_state_files(
+                open(os.path.join(hooks_dir, fn), encoding="utf-8", errors="ignore").read())
+            if not candidates:
+                continue
+            # The hook's OWN table row — the cell a role reads at the gate. Deliberately not "any
+            # line mentioning the hook": the shipped defect was a row that contradicted the truth
+            # a paragraph elsewhere told, and joining both made the honest paragraph cover for it.
+            documented = " ".join(
+                ln for ln in lines
+                if ln.lstrip().startswith("|") and name in ln.split("|")[1])
+            documented = documented or " ".join(ln for ln in lines if name in ln)
+            assert documented, "%s: %s has no constitution row at all" % (kit, name)
+            assert any(c in documented for c in sorted(candidates)), (
+                "%s: %s stops without deciding when %s is missing, but its constitution row never "
+                "names that file — the row reads as unconditional protection. Say which file the "
+                "rule depends on." % (kit, name, "/".join(sorted(candidates))))
+
+
+# Where an exemption below is allowed to be used. ANY = the file genuinely has no template in V2, so
+# naming it is a true statement wherever it is written. KIT_ONLY = a DELETED V1 monolith that only
+# one kit's own broken tooling still reads: inside that kit, naming it documents the defect; in the
+# global entry gates there is no such tooling, so a monolith name there is exactly the V1 regression
+# this sweep exists to catch (measured: the entry gates could name `process_definitions.yaml` and
+# seed a PROC into it, green).
+ANY, KIT_ONLY = "any", "kit-only"
+
+# Names an instruction file may say although the kit template ships no such file. Each one is a
+# deliberate statement about a file that does NOT exist in a V2 project, and each needs its scope and
+# reason here — this dict is the only place a name may be exempted, so re-introducing a monolith by
+# writing about it is a test failure rather than a review finding.
+STATE_FILES_NOT_SHIPPED = {
+    # kernel rollups: written into `generated/` on every state write, never templated
+    "index.yaml": (ANY, "generated by the kernel, not a template"),
+    "session_brief.yaml": (ANY, "generated by the kernel, not a template"),
+    "retro.yaml": (ANY, "written by scripts/retro.py as its own diagnostic layer, not project state"),
+    "hook_events.jsonl": (ANY, "hook event log, created by notify_agent_events on its first write"),
+    # optional tuning files the instruction text names in order to say V2 ships neither
+    "coding_guidelines.yaml": (ANY, "V2 ships no template; named to explain that guard_guidelines is conditional"),
+    "testing_guidelines.yaml": (ANY, "V2 ships no template; named as the optional home of the two coverage knobs"),
+    # deleted V1 stores the instruction text names in order to call the tooling that reads them broken
+    "process_definitions.yaml": (KIT_ONLY, "deleted V1 PROC registry; named because proc_hash/gate_proc_approved still read it"),
+    "filing_log.yaml": (KIT_ONLY, "deleted V1 log; named to say nothing writes one and no gate reads one"),
+    # a placeholder in a note ABOUT glob semantics, not a file anyone is sent to
+    "x.yaml": (ANY, "the `deploy/sub/x.yaml` example in research_guidelines.yaml, showing that `*` "
+                    "crosses directory separators"),
+}
+
+
+def _exempt_names(scopes):
+    """The exempted names usable in the given scope(s) — see ANY / KIT_ONLY above."""
+    return {name for name, (scope, _why) in STATE_FILES_NOT_SHIPPED.items() if scope in scopes}
+
+
+# The same contract for DIRECTORIES under the state dir: a path an instruction file spells out
+# although the kit template ships no such directory. Only entries here are allowed to be absent.
+# A `/**` suffix exempts the whole subtree — for a layout no template CAN ship because it is data:
+# the archive tree is derived from the item type and year in dev/research and from the office kit's
+# own `filing_plan.yaml` rules, so the alternative is a list of example paths going stale.
+STATE_DIRS_NOT_SHIPPED = {
+    "generated": "kernel output, recreated on every state write, never templated",
+    ".audit": "hook event log, created by notify_agent_events on its first write",
+    "architecture": "the research kit ships none, and the one line naming it says exactly that",
+    "archive/**": "created on demand when an item or document is filed; the layout is data, "
+                  "not a template (item type + year, or the filing plan's rule paths)",
+}
+
+# A path token in prose — a run of path characters with at least one `/`. `<...>` placeholders and
+# `*` globs are part of the token and are cut off before the path is judged.
+_PATH_TOKEN_RX = re.compile(r"[A-Za-z0-9_.<>*-]+(?:/[A-Za-z0-9_.<>*-]*)+")
+
+
+def _state_file_suffixes(shipped_paths):
+    """The file extensions the STATE tree actually uses — the alphabet a bare name is judged in.
+
+    Derived, not listed. Pinning `.yaml` here was a hole with teeth in exactly the place this sweep
+    exists for: `product/masterplan.md` is state too, so `fill the masterplan into masterplan.md at
+    the state root` — the shortest way to undo one of the three §6.2 moves of this lockstep — was
+    invisible (measured 2026-07-26). A dotfile such as `.gitkeep` is a NAME, not an extension, and
+    contributes none; a suffix no state file uses is therefore also unjudged, which is the honest
+    price of deriving instead of enumerating.
+    """
+    suffixes = set()
+    for path in shipped_paths:
+        name = path.rsplit("/", 1)[-1]
+        if "." in name[1:]:
+            suffixes.add(name.rsplit(".", 1)[-1])
+    return suffixes
+
+
+def _bare_name_rx(suffixes):
+    """A BARE file name — no directory at all — in one of the state tree's own extensions."""
+    return re.compile(r"(?<![A-Za-z0-9_.<>*/-])[A-Za-z0-9_.<>*-]*[A-Za-z0-9_.-]\.(?:%s)"
+                      r"(?![A-Za-z0-9_-])" % "|".join(sorted(map(re.escape, suffixes))))
+
+
+def _dir_not_shipped(claimed):
+    """Whether `claimed` is a directory STATE_DIRS_NOT_SHIPPED excuses, subtrees included."""
+    for entry in STATE_DIRS_NOT_SHIPPED:
+        if entry.endswith("/**"):
+            top = entry[:-3]
+            if claimed == top or claimed.startswith(top + "/"):
+                return True
+        elif claimed == entry:
+            return True
+    return False
+
+
+def _state_path_claim(token, state_tops):
+    """What `token` claims about the state dir, as (directory, file path) — either may be None.
+
+    A token is treated as a PATH only when it says so: rooted at `project_memory/`, ending in a
+    slash, or ending in a file name. Prose writes `product/taste/cost` to mean "or", and reading
+    that as a directory tree is how a check of this shape earns a false finding per review round.
+
+    The file half is the state-RELATIVE path, not the basename, because that is what the text
+    actually asserts: "this file lives HERE". Judging the name alone was a hole — reverting the
+    masterplan to `project_memory/masterplan.md` in the template left the entry-gate sweep green,
+    although the move is one of the three §6.2 lines this lockstep is about (measured 2026-07-26).
+    It also makes the claim extension-blind, so an `.md` or `.json` state file is covered without
+    anyone maintaining a list of state suffixes.
+    """
+    # Prose punctuation is not part of the path. `>` is in the token alphabet for `<placeholder>`,
+    # so a path ending an HTML comment (`… generated/session_brief.yaml.>`) drags the terminator and
+    # the sentence's full stop into the file name.
+    while token and token[-1] in ".>" and not (token[-1] == ">" and "<" in token):
+        token = token[:-1]
+    if not (token.startswith("project_memory/") or token.endswith("/")
+            or "." in token.rsplit("/", 1)[-1]):
+        return None, None
+    segments = [s for s in token.split("/") if s]
+    rooted = bool(segments) and segments[0] == "project_memory"
+    if rooted:
+        segments = segments[1:]
+    if not segments or (not rooted and segments[0] not in state_tops):
+        return None, None  # not a path into the state dir at all
+    kept, truncated = [], False
+    for segment in segments:
+        if "<" in segment or "*" in segment:
+            truncated = True
+            break  # a placeholder or glob: everything below it is unknowable
+        kept.append(segment)
+    file_claim = None
+    if kept and "." in kept[-1]:
+        if not truncated:
+            file_claim = "/".join(kept)
+        kept.pop()  # the last segment is a file name, not part of the directory
+    return "/".join(kept) or None, file_claim
+
+
+def _assert_name_claim(where, name, at_path, shipped, shipped_paths, exempt_names):
+    """Judge ONE file name an instruction text writes, against where the state tree ships that name.
+
+    `at_path` is the state-relative path the text asserts, or None when the text says nothing about
+    the location because it wrote a path OUTSIDE the state tree. A bare name is not location-free,
+    though: a file written with no directory sits at the state root, so callers pass the name itself
+    as `at_path` and the claim is judged as "this file is at the state root".
+
+    Two rules, with deliberately different reach:
+      * LOCATION, extension-blind: if the state tree ships this name, the text must put it where the
+        template actually has it. This is what covers `.md`/`.tex`/`.html` state without a suffix
+        list, and what catches reverting `product/masterplan.md` to a bare `masterplan.md`.
+      * PHANTOM, `.yaml` only: a name nothing ships at all is a deleted monolith. Restricted to YAML
+        because every V1 status store was one, while a `.md` name in prose is as often a file outside
+        this repo (a role's `MEMORY.md`) or an example artifact (`outbox/…/2026-08-01_instagram.md`)
+        as it is state — measured: broadening this half produced five such false findings and no true
+        one. The price, stated rather than papered over: an invented `progress.md` is not caught.
+    """
+    in_state = {p for p in shipped_paths if p.rsplit("/", 1)[-1] == name}
+    if in_state:
+        assert at_path is None or at_path in in_state, (
+            "%s puts `%s` at `%s`, but the state tree ships that name at %s. A moved state file "
+            "whose old path stays in the prose sends the reader to a file that is not there — and a "
+            "name written without a directory claims the state ROOT, because that is where such a "
+            "file sits." % (where, name, at_path, " / ".join(sorted(in_state))))
+    elif name.endswith(".yaml"):
+        assert name in shipped or name in exempt_names, (
+            "%s names `%s`, which this kit ships nowhere. Either it is a V1 monolith that "
+            "must not be in instruction text any more, or it is deliberate — then add it to "
+            "STATE_FILES_NOT_SHIPPED with its scope and the reason." % (where, name))
+
+
+def _assert_state_claims(where, text, shipped, shipped_paths, state_dirs, state_tops,
+                         exempt_names):
+    """Judge every state claim ONE instruction text makes (the three claims below).
+
+    Extracted so the kit sweep and the entry-gate sweep share one implementation: a second copy of
+    this logic would be a second thing to keep in step with `ACTIVE_DIRS`, which is the failure mode
+    both tests exist to prevent. The regexes are built from the constant on every call rather than
+    passed in, so no caller can supply a stale set of type names.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS
+    types = "|".join(sorted(ACTIVE_DIRS))
+    # The number half of an item id: a run of the placeholder character, a glob, or a real number.
+    # Written as a shape rather than the two spellings `nnnn`/`xxxx`, because prose also writes
+    # `EXP-xxx` and a check that hinges on the exact placeholder width is a check on a typo.
+    number = r"(?:[nN]+|[xX]+|\*|\d+)"
+    # A path holding an item id names no single file: the kernel writes it at runtime, so no template
+    # can ship it. Extension-blind on purpose — a DSN revision is `.html`, an experiment report
+    # `.tex`, and pinning `.yaml` here made the path claim below demand a template for both.
+    id_placeholder = re.compile(r"(?:%s)-%s" % (types, number))
+    # an ITEM FILE: the type's own id shape as the last segment. That fixes the directory it must
+    # sit in, which is ACTIVE_DIRS[type] and nothing else. Extension-blind for the same reason
+    # `id_placeholder` is: what makes a token an item file is the ID, not the format it is stored
+    # in. Pinned to `.yaml` this could never judge the only two non-YAML types ACTIVE_DIRS has —
+    # `DSN` (`.html` revisions) and `WFR` — and this round put the first DSN path into a swept file
+    # (`design/wireframes/DSN-0001.html` measured green before the fix, 2026-07-27).
+    item_file = re.compile(r"(?:^|/)(%s)-%s(?:\.[A-Za-z0-9.]+)?$" % (types, number))
+    # the `TYPE (dir/sub)` shape of the §6 ownership tables
+    type_dir_pair = re.compile(r"`(%s)`[^(\n]{0,40}\(`?([A-Za-z0-9_./<>*-]*/[A-Za-z0-9_./<>*-]*)"
+                               % types)
+    suffixes = _state_file_suffixes(shipped_paths)
+    for match in _bare_name_rx(suffixes).finditer(text):
+        name = match.group(0)
+        if "*" in name or "<" in name or id_placeholder.search(name):
+            continue  # a glob or an id placeholder names no single file
+        _assert_name_claim(where, name, name, shipped, shipped_paths, exempt_names)
+    for match in _PATH_TOKEN_RX.finditer(text):
+        token = match.group(0)
+        claimed, claimed_file = _state_path_claim(token, state_tops)
+        if claimed is None and claimed_file is None:
+            # Not a path into the state dir — so it claims nothing about the LAYOUT, but it still
+            # names a file, and `docs/product_requirements.yaml` or `.claude/progress.yaml` names a
+            # deleted monolith just as loudly as the bare name does. Judging the basename here is
+            # what the earlier basename-only cut did for free and the path rewrite dropped.
+            tail = token.rstrip(".>").rsplit("/", 1)[-1]
+            if (tail and tail.rsplit(".", 1)[-1] in suffixes and "*" not in token
+                    and "<" not in token and not id_placeholder.search(tail)):
+                _assert_name_claim(where, tail, None, shipped, shipped_paths, exempt_names)
+            continue
+        if claimed is not None:
+            assert claimed in state_dirs or _dir_not_shipped(claimed), (
+                "%s sends a role to `%s`, but `%s` is neither a directory this kit's template "
+                "ships nor a value in kernel.backlog_types.ACTIVE_DIRS. A role told to read a "
+                "directory that does not exist invents one — fix the path, or add it to "
+                "STATE_DIRS_NOT_SHIPPED with the reason it is absent."
+                % (where, token, claimed))
+        if (claimed_file is not None and not id_placeholder.search(claimed_file)
+                and not _dir_not_shipped(claimed_file.rsplit("/", 1)[0] if "/" in claimed_file
+                                        else "")):
+            # Two kinds of file are not a template's business and are judged elsewhere or not at
+            # all: one carrying an item id (written at runtime — its DIRECTORY is the whole claim,
+            # asserted just below), and one inside a subtree STATE_DIRS_NOT_SHIPPED excuses.
+            assert (claimed_file in shipped_paths
+                    or claimed_file.rsplit("/", 1)[-1] in exempt_names), (
+                "%s puts `%s` at `%s`, but no kit template ships a file at that path. A moved "
+                "state file whose old path stays in the prose sends the reader to a file that is "
+                "not there — fix the path, or add the name to STATE_FILES_NOT_SHIPPED with its "
+                "scope and the reason it is absent."
+                % (where, claimed_file.rsplit("/", 1)[-1], claimed_file))
+        item = item_file.search(token)
+        if item and claimed in set(ACTIVE_DIRS.values()):
+            # Judged where an item HOME is claimed, and only there. A file named after an item is
+            # not always the item: `reports/EXP-nnnn.tex` is a document ABOUT the experiment and
+            # `reports/` is a directory of the research template, so demanding
+            # `experiments/active` for it would be wrong. What the constant is the authority on is
+            # its own homes — put a file carrying an id into one of them and the type has to match.
+            expected = ACTIVE_DIRS[item.group(1)]
+            assert claimed == expected, (
+                "%s puts a %s item in `%s`, but ACTIVE_DIRS says `%s`. The constant is the "
+                "authority; prose that disagrees with it sends the role to the wrong place."
+                % (where, item.group(1), claimed, expected))
+    for match in type_dir_pair.finditer(text):
+        item_type, claimed = match.group(1), match.group(2).lstrip("`")
+        expected = ACTIVE_DIRS[item_type]
+        assert claimed.rstrip("/") == expected or claimed.startswith(expected + "/"), (
+            "%s tells the reader that `%s` lives in `%s`, but ACTIVE_DIRS says `%s` — this "
+            "table is a prose copy of the constant and has drifted from it."
+            % (where, item_type, claimed, expected))
+
+
+def _kit_state_vocabulary(kit):
+    """(shipped names, shipped state-relative paths, state directories, their tops) for one kit.
+
+    The names and the paths answer different questions: a bare `progress.yaml` in prose can only be
+    judged by name, while `project_memory/product/masterplan.md` states WHERE the file is and has to
+    be judged against the template's own layout.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS
+    shipped = set()
+    for _dirpath, _dirs, files in os.walk(os.path.join(ROOT, "team-kits", kit)):
+        shipped.update(files)
+    shipped.update(os.listdir(os.path.join(ROOT, "team-kits")))
+    template_root = os.path.join(ROOT, "team-kits", kit, "templates", "project_memory")
+    state_dirs = set(ACTIVE_DIRS.values()) | set(STATE_DIRS_NOT_SHIPPED)
+    shipped_paths = set()
+    for dirpath, _dirs, files in os.walk(template_root):
+        rel = os.path.relpath(dirpath, template_root).replace("\\", "/")
+        if rel != ".":
+            state_dirs.add(rel)
+        for name in files:
+            shipped_paths.add(name if rel == "." else "%s/%s" % (rel, name))
+    return shipped, shipped_paths, state_dirs, {d.split("/")[0] for d in state_dirs}
+
+
+def test_instruction_files_name_only_state_files_a_v2_project_has():
+    """Every state path an instruction file names must exist in the kit it ships with.
+
+    Derived from the template tree and from `kernel.backlog_types.ACTIVE_DIRS` — the two authorities
+    on what a scaffolded project contains — so a monolith nobody thought to enumerate is caught by
+    construction. This is the check that was missing: the mirror/§-reference tests and
+    `assert name in text` all passed while three constitutions and nineteen SKILLs were rewritten.
+
+    Three claims are judged, because instruction text makes three:
+    1. a FILE, anywhere in the prose — not only inside backticks, and not only at the end of a
+       backtick span. Both narrowings were real holes: `project_memory/progress.yaml` written without
+       backticks, and `` `progress.yaml status:` `` with the name followed by other words, each passed
+       an earlier cut of this test while naming a deleted monolith. Every file name is judged the same
+       way, by `_assert_name_claim`: against where the state tree ships that name. A name written
+       without a directory claims the state ROOT, which is what catches reverting
+       `product/masterplan.md` back to `masterplan.md`; the extensions this applies to are derived
+       from the state tree's own files, so `.md` state is covered without a suffix list.
+    2. a DIRECTORY, which the earlier cut never looked at at all — so `invariant/active/` for
+       `invariants/active/` was invisible although the §6 tables now carry a prose copy of
+       ACTIVE_DIRS.
+    3. the AGREEMENT between an item type and the directory the text puts it in, in both shapes the
+       text uses: `` `SR` (system/active) `` and `procedures/active/PROC-nnnn.yaml`. This is what pins
+       the prose copy against the constant instead of trusting it.
+
+    What it cannot catch, stated so nobody reads more protection into it: a token whose FIRST segment
+    is not a known state directory (`docs/progress.yaml`, `system/OSS`) makes no claim about the state
+    LAYOUT, so only its file name is judged there and a directory typo is invisible unless the path is
+    rooted at `project_memory/`; a path holding an item id is only judged on its directory, since no
+    template can ship the file; everything under a `/**` entry of STATE_DIRS_NOT_SHIPPED is unjudged,
+    because that layout is data rather than a template; and a file extension no state file uses is
+    outside the name alphabet altogether (`_state_file_suffixes`).
+    """
+    for kit in ("dev-team", "research-team", "office-team"):
+        vocabulary = _kit_state_vocabulary(kit)
+        for path, text in _instruction_files(kit):
+            _assert_state_claims(os.path.relpath(path, ROOT), text, *vocabulary,
+                                 exempt_names=_exempt_names((ANY, KIT_ONLY)))
+
+
+# The two files that install to ~/.claude/CLAUDE.md and $CODEX_HOME/AGENTS.md. They are instruction
+# text like a constitution, but they belong to NO kit: they run before one is installed and route to
+# whichever kit the registry picks. That is why the per-kit sweep above never saw them — and why both
+# kept telling the initializer to write `product_requirements.yaml` and a `progress.yaml` summary
+# after those monoliths were deleted from all three kits (found by hand, 2026-07-26).
+ENTRY_GATE_FILES = (os.path.join("user", "claude", "CLAUDE.md"),
+                    os.path.join("user", "codex", "AGENTS.md"))
+
+
+def test_entry_gates_name_only_state_files_some_kit_ships():
+    """The same state-claim contract for the global entry gates, against the UNION of the kits.
+
+    A kit-agnostic file may legitimately name an artifact only one kit ships (`business_profile.yaml`
+    is office-only), so a per-kit judgement would be wrong here; the union is what "some kit ships
+    this" means. Everything else is judged by the same code — except the exemption scope: an entry
+    gate gets only the ANY exemptions, never the KIT_ONLY ones, because those excuse a deleted V1
+    monolith on the grounds that a KIT's own hook still reads it, and an entry gate has no hooks.
+    """
+    union = (set(), set(), set(), set())
+    for kit in ("dev-team", "research-team", "office-team"):
+        for target, addition in zip(union, _kit_state_vocabulary(kit)):
+            target |= addition
+    for rel in ENTRY_GATE_FILES:
+        path = os.path.join(ROOT, rel)
+        assert os.path.isfile(path), "%s is the installed entry gate and must exist" % rel
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            _assert_state_claims(rel, fh.read(), *union, exempt_names=_exempt_names((ANY,)))
+
+
+def test_the_eval_scenarios_name_only_state_files_a_v2_project_has():
+    """`tools/eval/scenarios.yaml` is instruction text too — and the only one nothing else reads.
+
+    Every scenario's `work_order` is a work order for a real role, `read_first` is a list of files
+    that role is sent to open, and no runner, test or CI step parses the file: it is executed by a
+    human running the eval by hand. So the sweeps are all it has, and the completion proof does not
+    reach it either — that one judges the state-root PATH, while a scenario reverted to
+    `read_first: [product_requirements.yaml PRD-0001]` names the monolith without a path and stayed
+    green (measured 2026-07-26).
+
+    Judged exactly like the entry gates: same union over the three kits, because a scenario names
+    the artifacts of the kit it runs in, and the ANY exemptions only — a scenario has no hooks, so
+    the KIT_ONLY licence for "a kit's own hook still reads this deleted V1 store" cannot apply.
+
+    One documented limit of `_assert_state_claims` bites HARDER here than anywhere else, so it is
+    repeated rather than referred to: a path whose FIRST segment is not a known state top makes no
+    claim about the layout and only its file name is judged. Every `read_first` path in this file
+    is written relative to the state root, so that first segment is always a state top and a typo
+    in it (`procedure/active/PROC-0001.yaml`) takes the whole path out of judgement — measured
+    green, 2026-07-27. In the kits' instruction text most paths are `project_memory/`-rooted and
+    the same typo is caught; here nothing catches it.
+    """
+    union = (set(), set(), set(), set())
+    for kit in KITS:
+        for target, addition in zip(union, _kit_state_vocabulary(kit)):
+            target |= addition
+    rel = "tools/eval/scenarios.yaml"
+    with open(os.path.join(ROOT, rel), encoding="utf-8") as fh:
+        _assert_state_claims(rel, fh.read(), *union, exempt_names=_exempt_names((ANY,)))
+
+
+def test_kit_names_a_root_item_exactly_when_the_kernel_gives_it_one():
+    """`ROOT_TYPE_BY_KIT` decides which kits HAVE a leading item — and nothing held that decision.
+
+    Its `office-team: PR` entry was dropped in this lockstep (the office constitution knows no `PR`
+    anywhere, and the entry gates were seeding a `PR-0001` no office role would ever read). The only
+    other code reader is `test_root_item_globs_are_the_kernels_root_types`, which compares
+    `set(values())` — so putting the line back leaves the whole suite green while the entry gates start
+    seeding a PR for office again. The rule has two visible consequences and this pins both, per kit
+    and per root type, so it holds for a kit or a root type nobody thought of here:
+
+      * the SKELETON. A kit ships the storage directory of a root type exactly when that type is ITS
+        root type; a `product/active/` in a kit that is not PR-led is a shipped, documented home for
+        an item nobody seeds. Both office and research shipped one, and the state-claim sweep cannot
+        see it: `product/active/PR-0001.yaml` is a VALID `ACTIVE_DIRS` path, so what is checked there
+        is type-vs-directory, never "does this kit have that root type".
+      * the INSTRUCTION TEXT. Same iff for an id of that type — office named `PR-0001` in the very
+        README a fresh office project reads first.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS, ROOT_TYPE_BY_KIT
+    for kit in ("dev-team", "research-team", "office-team"):
+        own = ROOT_TYPE_BY_KIT.get(kit)
+        template_root = os.path.join(ROOT, "team-kits", kit, "templates", "project_memory")
+        shipped_dirs = {os.path.relpath(d, template_root).replace("\\", "/")
+                        for d, _sub, _files in os.walk(template_root)} - {"."}
+        for root_type in sorted(set(ROOT_TYPE_BY_KIT.values())):
+            expected = root_type == own
+            # the id shape, written as in `_assert_state_claims`: placeholder run, glob or number
+            id_rx = re.compile(r"(?<![A-Za-z0-9_])%s-(?:[nNxX]+|\*|\d+)" % root_type)
+            named = sorted(os.path.relpath(p, ROOT) for p, text in _instruction_files(kit)
+                           if id_rx.search(text))
+            assert (ACTIVE_DIRS[root_type] in shipped_dirs) is expected, (
+                "%s %s `%s`, the home of `%s` items, but ROOT_TYPE_BY_KIT gives this kit %s. A root "
+                "type's directory in a kit not led by it is a home for an item no entry gate seeds "
+                "and no role owns; a missing one leaves the kit's own root item homeless."
+                % (kit, "ships" if not expected else "does not ship", ACTIVE_DIRS[root_type],
+                   root_type, own or "no root item at all"))
+            assert bool(named) is expected, (
+                "%s: instruction text %s a `%s` item (%s), but ROOT_TYPE_BY_KIT gives this kit %s."
+                % (kit, "names" if named else "never names", root_type,
+                   ", ".join(named) or "nowhere", own or "no root item at all"))
+
+
+# ------------- the lockstep proof: which V1 root stores are gone, and which are not -------------
+
+# The harness's own written record of what V1 was and where it went. A V1 path is the SUBJECT
+# there — the spec's findings section quotes monolith sizes, the append-only log records the
+# migration — so this is the one place the old paths are allowed to stand. Everywhere else in the
+# repo a V1 path is a leftover: it either still reaches for the file or tells someone else to.
+#
+# `radar/` is in the second list for a related but distinct reason, worth saying rather than
+# blurring: it is an APPEND-ONLY record — dated weekly reports and a triage log — that nobody edits
+# after writing. A V1 path there is a quotation of the week it was written, not a pointer, and
+# sweeping it would leave the suite one honest weekly report away from red. The residual, stated:
+# `radar/README.md` describes the radar workflow rather than recording a week, so a V1 path
+# creeping into THAT one would go unnoticed. It ships to no project and addresses no role, so the
+# cost is a stale in-repo note.
+MIGRATION_DOC_FILES = ("README.md", "HARNESS_LOG.md")
+MIGRATION_DOC_TREES = ("docs/", "radar/")
+
+# Trees that are not the repo's content: git's own store, caches, and the sandbox an e2e run builds.
+_SWEEP_SKIP_DIRS = frozenset((".git", ".pytest_cache", "__pycache__", "node_modules",
+                              ".e2e-sandbox"))
+
+
+def _state_root_store(token, stores):
+    """The V1 root store from `stores` that a path token puts at the state ROOT, or None.
+
+    `stores` is the inventory to judge against, because there are two: `conftest.V1_MONOLITHS`, the
+    stores this lockstep moved and nothing may point at any more, and
+    `conftest.V1_ROOT_STORES_NOT_YET_MIGRATED`, the ones another group still owns and which are
+    asserted PRESENT. Same machinery, opposite verdict — passing the inventory in is what keeps
+    those two from needing two copies of the folding below.
+
+    A token claims the state root when its LAST segment is a store name and the segment
+    directly ABOVE it is `project_memory` — or there is no segment above it at all, which is how a
+    composed path arrives once its runtime prefix has been dropped. What decides is the PARENT, not
+    where `project_memory` sits in the token: `"%s/project_memory/progress.yaml" % root` is the
+    second most common way this repo writes a path in a hook, and `"$repo/project_memory/…"` is the
+    only way the shell half of the init script writes one. Anchoring the definition at the FIRST
+    segment made both invisible, so the docstring below promised a protection this function did not
+    give (measured 2026-07-26: three such reintroductions passed the sweep).
+
+    Judging the parent is also what makes the sweep right about the two different fates of a
+    monolith: `masterplan.md` MOVED, so `product/masterplan.md` claims nothing, while
+    `project_memory/masterplan.md` claims the file is back where V1 kept it. `docs/progress.yaml`
+    and `generated/filing_log.yaml` claim nothing either — neither parent is the state root.
+    """
+    segments = [s for s in re.split(r"[/\\]", token.strip()) if s and s != "."]
+    if not segments or segments[-1] not in stores:
+        return None
+    if len(segments) == 1 or segments[-2] == "project_memory":
+        return segments[-1]
+    return None
+
+
+# The sweep's own path token. It differs from `_PATH_TOKEN_RX` in one character class, and the
+# difference is the native path separator: the claim sweep reads PROSE about the state tree, where
+# a backslash is a LaTeX command as often as a separator, but this sweep also reads the `.ps1` half
+# of the init/scaffold pair, where a backslash-separated `project_memory\<store>` is the normal
+# spelling and was therefore unjudged (measured 2026-07-26). Widening the shared regex would change
+# what `_assert_state_claims` sees, so the two stay separate. A backslash run cannot become a false
+# finding here: a token is only reported once it reduces to a store name directly under
+# `project_memory`.
+_SWEEP_PATH_TOKEN_RX = re.compile(r"[A-Za-z0-9_.<>*-]+(?:[/\\][A-Za-z0-9_.<>*-]*)+")
+
+
+def _monolith_paths_in_text(text, stores):
+    """Every state-root store path spelled out in `text`, as (store, token).
+
+    The trailing full stop of a sentence is not part of the path — `.` is in the token alphabet
+    because file names need it, so a path that ends a sentence arrives one character too long.
+    """
+    for match in _SWEEP_PATH_TOKEN_RX.finditer(text):
+        token = match.group(0).rstrip(".")
+        found = _state_root_store(token, stores)
+        if found:
+            yield found, token
+
+
+def _callee_name(node):
+    """The bare name of what a `Call` calls, ignoring how it was imported or qualified."""
+    if not isinstance(node, ast.Call):
+        return None
+    if isinstance(node.func, ast.Attribute):
+        return node.func.attr
+    return node.func.id if isinstance(node.func, ast.Name) else None
+
+
+def _path_call_parts(node):
+    """The path segments a CALL composes, or None when the call composes no path.
+
+    What makes a call a path composition is what it DOES with its arguments, not which module it
+    came from: `join` appends its arguments to a base, `joinpath` appends them to the object it is
+    called on, and a `Path` constructor builds one out of them. Matching the callable's own NAME is
+    what makes that a definition rather than a list of spellings — `os.path.join`, `posixpath.join`
+    and `from os.path import join` are one operation written three ways, and the previous cut knew
+    only the first: `pathlib.Path(root, "project_memory", "progress.yaml")` and
+    `root.joinpath("project_memory").joinpath("progress.yaml")` both walked past the sweep
+    (measured 2026-07-27).
+
+    The RECEIVER of a `join` is never a segment. For `os.path.join` it is the module; for
+    `"/".join(parts)` it is the separator of a string operation that is not a path at all — and
+    since neither contributes, the same rule covers both and `"/".join(...)` needs no exception.
+    """
+    name = _callee_name(node)
+    if name is None:
+        return None
+    if name == "join":
+        return list(node.args)
+    if name == "joinpath" and isinstance(node.func, ast.Attribute):
+        return [node.func.value] + list(node.args)
+    if name.endswith("Path"):     # pathlib's constructors: Path, PurePath, WindowsPath, …
+        return list(node.args)
+    return None
+
+
+def _path_parts(node):
+    """The parts a path composition is built from, `None` for a part decided at runtime."""
+    parts = _path_call_parts(node)
+    if parts is not None:
+        composed = []
+        for arg in parts:
+            composed.extend(_path_parts(arg))
+        return composed
+    if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Div, ast.Add)):
+        return _path_parts(node.left) + _path_parts(node.right)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return [node.value]
+    return [None]
+
+
+def _is_composition(node):
+    """Whether `node` glues several expressions into one path-shaped value.
+
+    Two forms, and they are Python's, not this repo's: a CALL that composes (`_path_call_parts`)
+    and a binary operator that concatenates — `/` for paths and `+` for the strings paths are made
+    of. Naming the operators rather than the habits is the point: `state + "/progress.yaml"` is the
+    same claim as `state / "progress.yaml"` and used to be invisible because only the second was
+    listed (measured 2026-07-27).
+    """
+    return (_path_call_parts(node) is not None
+            or (isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Div, ast.Add))))
+
+
+def _composed_paths(tree):
+    """The tail of every path the module BUILDS, from the last runtime part onwards.
+
+    A composed path holds no path SEPARATOR in any one literal, which is exactly why a plain text
+    scan over Python source reads `os.path.join(state_dir, "progress.yaml")` as innocent. The tail
+    is what the code asserts about the location, so `os.path.join("product", "masterplan.md")`
+    yields `product/masterplan.md` and is silent, while a bare name joined onto a runtime directory
+    yields that name alone and claims the root.
+    """
+    for node in ast.walk(tree):
+        if not _is_composition(node):
+            continue
+        tail = []
+        for part in _path_parts(node):
+            tail = [] if part is None else tail + [part]
+        if tail:
+            yield "/".join(tail)
+
+
+def _running_strings(tree):
+    """Every string literal the module RUNS on — docstrings and bare string statements removed.
+
+    A string that is a statement by itself executes nothing and opens nothing; it is a comment with
+    quotes around it, and half this repo's honest explanations of what V1 did live in one. What is
+    left is the set of strings a path can actually be built from.
+    """
+    prose = {id(node.value) for node in ast.walk(tree)
+             if isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+             and isinstance(node.value.value, str)}
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and id(node) not in prose):
+            yield node.value
+
+
+def _python_comments(source):
+    """Every `#` comment in `source`, asked of the tokenizer rather than matched out of the text.
+
+    A `#` inside a string literal is not a comment, and the difference is what a regex over the raw
+    text cannot see. `tokenize` is the same reader Python itself uses, so it needs no rule about
+    quoting, line continuations or f-strings.
+    """
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                yield token.string
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return  # unreadable source; `_monolith_paths_in_file` falls back to the raw-text sweep
+
+
+def _monolith_paths_in_python(source, stores):
+    """The same sweep for Python: the part that RUNS, plus the comments.
+
+    The AST gives the executable half — string literals that are not prose statements, and the path
+    compositions above. It does NOT give comments, and that is the half where the risk actually
+    lives: a comment still spelling the V1 path is how the path gets copied back into the code
+    beneath it. This test's own docstring promised comments were read while `.py` — the largest file
+    type it sweeps — was the one type where they were not (measured 2026-07-27: a commented V1 path
+    in a shipped hook passed). So the comments are read separately, through the tokenizer.
+
+    Backslashes are normalised in the literals, because in a Python string a backslash IS a path
+    separator on this platform — unlike in the prose files, where it is a LaTeX command as often as
+    anything else and rewriting it would invent path tokens that were never there.
+    """
+    tree = ast.parse(source)
+    for value in _running_strings(tree):
+        for found, token in _monolith_paths_in_text(value.replace("\\", "/"), stores):
+            yield found, token
+    for comment in _python_comments(source):
+        for found, token in _monolith_paths_in_text(comment, stores):
+            yield found, token
+    for path in _composed_paths(tree):
+        found = _state_root_store(path, stores)
+        if found:
+            yield found, path
+
+
+# A `Join-Path` whose second argument is a quoted literal — the PowerShell twin of
+# `os.path.join`. The head may be a quoted literal or a plain word (`$dst`, `$env:X`); a
+# parenthesised head is deliberately not matched, because a nested composition is beyond what a
+# regex can fold and guessing at it would put a finding on `Join-Path (… "product") "masterplan.md"`,
+# which claims the V2 home and not the root.
+_PS_JOIN_PATH_RX = re.compile(r"Join-Path\s+(['\"][^'\"]*['\"]|[^\s()'\"]+)\s+(['\"])([^'\"]+)\2")
+
+
+def _monolith_paths_in_powershell(text, stores):
+    """`Join-Path` compositions that land a store at the state root, as (store, token).
+
+    The same rule `_composed_paths` applies to Python: what the composition asserts about the
+    LOCATION is the tail from the last runtime part onwards. A quoted head is part of the path; a
+    head decided at runtime is not, so `Join-Path $dst "progress.yaml"` claims the bare name — the
+    state root, wherever `$dst` points. The `.ps1` half of the init/scaffold pair is the half that
+    runs on Windows, and it was the only path-building shape in the repo that nothing folded
+    (measured 2026-07-26).
+    """
+    for match in _PS_JOIN_PATH_RX.finditer(text):
+        head, tail = match.group(1), match.group(3)
+        if head.startswith("-"):
+            # A PARAMETER NAME, not a head. `… | Join-Path -ChildPath "masterplan.md"` takes its
+            # parent from the pipeline, and `Join-Path -Path $a -ChildPath "b"` from an argument
+            # this regex has already passed — either way the head is not in hand, and folding it as
+            # if it were absent claims the state ROOT for a path whose root is unknown (measured
+            # 2026-07-27: a false finding on the piped form). Nothing in the repo writes it, so the
+            # choice is between a latent false alarm and a latent blind spot; a blind spot at least
+            # cannot make a correct file fail.
+            continue
+        quoted_head = head[1:-1] if head[0] in "'\"" else None
+        path = tail if quoted_head is None else quoted_head + "/" + tail
+        found = _state_root_store(path, stores)
+        if found:
+            yield found, match.group(0)
+
+
+def _monolith_paths_in_gitignore(text, stores):
+    """The store paths a `.gitignore` REFERS to — which is only what it re-includes.
+
+    An ignore pattern is a PROHIBITION, not a reference: it neither opens the file nor sends anyone
+    to it, it forbids git from ever tracking it, which is what V2 wants for a V1 leftover too. The
+    office kit ignores `project_memory/filing_log.yaml` on exactly that defensive ground (phase-0
+    disposition, `.gitignore` row), and reading that line as a leftover pointer is what made the
+    previous lockstep round delete it against its own disposition. A `!pattern` is the opposite —
+    it re-includes the path — and stays judged.
+    """
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("!"):
+            for found, token in _monolith_paths_in_text(stripped[1:], stores):
+                yield found, token
+
+
+def _monolith_paths_in_file(path, text, stores):
+    """Every state-root store path a file points at, judged in that file's own language."""
+    if path.endswith(".py"):
+        try:
+            return list(_monolith_paths_in_python(text, stores))
+        except SyntaxError:
+            return list(_monolith_paths_in_text(text, stores))
+    if os.path.basename(path) == ".gitignore":
+        return list(_monolith_paths_in_gitignore(text, stores))
+    found = list(_monolith_paths_in_text(text, stores))
+    if path.endswith(".ps1"):
+        found += list(_monolith_paths_in_powershell(text, stores))
+    return found
+
+
+def _sweep_state_root(stores):
+    """(repo-relative file, store, token) for every place in the repo that spells one of `stores`.
+
+    One traversal shared by the two verdicts the inventories carry — "must be gone" and "is still
+    here" — so neither can be measured with a reader the other does not have.
+    """
+    for rel, path, text in _sweepable_files():
+        for store, token in _monolith_paths_in_file(path, text, stores):
+            yield rel, store, token
+
+
+def _sweepable_files():
+    """Every file of the repo that is not the harness's own record of the migration."""
+    for dirpath, dirs, files in os.walk(ROOT):
+        dirs[:] = sorted(d for d in dirs if d not in _SWEEP_SKIP_DIRS)
+        for name in sorted(files):
+            path = os.path.join(dirpath, name)
+            rel = os.path.relpath(path, ROOT).replace("\\", "/")
+            if rel in MIGRATION_DOC_FILES or rel.startswith(MIGRATION_DOC_TREES):
+                continue
+            with open(path, "rb") as fh:
+                data = fh.read()
+            if b"\x00" in data:
+                continue  # binary; a path token in a PNG is a coincidence, not a reference
+            yield rel, path, data.decode("utf-8", errors="replace")
+
+
+def test_the_state_root_ships_no_v1_monolith():
+    """No kit template puts a V1 monolith back into `project_memory/`.
+
+    The first half of the lockstep, and the half that needs no text at all: a monolith is a file at
+    the state ROOT, so shipping one is visible in the template tree itself, whatever the instruction
+    text says about it.
+
+    Only the ROOT is judged, and the reason is `product/masterplan.md`: a monolith NAME can have a
+    legitimate V2 home, so "no file with that basename anywhere" would be false. A monolith name
+    reappearing deep in the tree (`product/progress.yaml`) is therefore not caught here — what would
+    catch it is prose sending a role to it, which
+    `test_instruction_files_name_only_state_files_a_v2_project_has` judges against this same tree.
+    """
+    for kit in KITS:
+        template_root = os.path.join(ROOT, "team-kits", kit, "templates", "project_memory")
+        for dirpath, _dirs, files in os.walk(template_root):
+            rel = os.path.relpath(dirpath, template_root).replace("\\", "/")
+            for name in files:
+                at = name if rel == "." else "%s/%s" % (rel, name)
+                assert not _state_root_store(at, conftest.V1_MONOLITHS), (
+                    "%s ships `%s` — a V1 monolith at the state root (%s). V2 keeps no state "
+                    "there; the state is one file per item."
+                    % (kit, at, conftest.V1_MONOLITHS[name]))
+
+
+def test_the_monolith_inventory_names_real_v2_successors():
+    """Where each monolith WENT is prose in `conftest.V1_MONOLITHS` — pin it to the constant.
+
+    The inventory is the one place the V1 names are written down, and every value says which V2
+    directory took the state over. That is a prose copy of `ACTIVE_DIRS`, and a prose copy of a
+    constant in this repo has drifted from it once per review round — so it is judged by the same
+    code as a constitution's ownership table, against the union of the three kits (the inventory is
+    kit-agnostic: `hypotheses/active` exists only in research, `procedures/active` only in office).
+
+    Measured reach, so nobody reads the pin as tighter than it is: putting a type in another type's
+    home (`system/active/TSK-nnnn.yaml`), a typo below a real state top (`tasks/activ/`) and the
+    masterplan back at the root all fail. Two do NOT, and both are the documented limits of
+    `_assert_state_claims`: a typo in the TOP segment itself (`task/active/`) reads as a path
+    outside the state tree and is judged only on its file name, and anything under a
+    `STATE_DIRS_NOT_SHIPPED` entry (`generated/…`) has no template to be checked against.
+    """
+    union = (set(), set(), set(), set())
+    for kit in KITS:
+        for target, addition in zip(union, _kit_state_vocabulary(kit)):
+            target |= addition
+    _assert_state_claims("conftest.V1_MONOLITHS", " ".join(conftest.V1_MONOLITHS.values()),
+                         *union, exempt_names=_exempt_names((ANY,)))
+    # The sibling inventory makes the same kind of claim ("this state went there") and gets the
+    # same judgement. Only its REASON is read: the file lists beside it are source paths, not state
+    # paths, and a source tree is not what ACTIVE_DIRS is the authority on.
+    _assert_state_claims(
+        "conftest.V1_ROOT_STORES_NOT_YET_MIGRATED",
+        " ".join(why for why, _files in conftest.V1_ROOT_STORES_NOT_YET_MIGRATED.values()),
+        *union, exempt_names=_exempt_names((ANY,)))
+
+
+def test_nothing_shipped_still_spells_a_v1_monolith_path():
+    """No file outside the migration documentation names a MOVED monolith AT THE STATE ROOT.
+
+    This is the proof for the eleven stores `conftest.V1_MONOLITHS` names, and for nothing wider.
+    Four further V1 root stores fit the same definition and are deliberately outside that
+    inventory, because shipped code still reads them and repairing it belongs to another group:
+    they are named in `conftest.V1_ROOT_STORES_NOT_YET_MIGRATED` and asserted PRESENT by
+    `test_the_open_v1_root_store_couplings_are_still_exactly_these`. Green here therefore means
+    "the eleven are gone", not "no V1 coupling is left" — a scaffolded V2 project today cannot get
+    a single merge or push through, for one of those four reasons.
+
+    Within that inventory it is a claim about PATHS, not about names. The
+    names survive on purpose: `filing_log.yaml` is what spec II.9 will call a regenerated scan
+    index, `masterplan.md` is a file that moved rather than died, and every honest "V1 read this,
+    V2 does not" comment in the hooks has to be able to say which file it means. What must not
+    survive is the LOCATION — `project_memory/<monolith>` is a place V2 has nothing at, so
+    whatever still points there either opens a file that is not there or sends a role to it.
+
+    Python is read through its AST plus its tokenizer: docstrings and bare string statements are
+    dropped (a comment with quotes around it cannot open anything), path COMPOSITIONS are folded
+    first because none of them puts a separator inside any single literal (`_is_composition`), and
+    the `#` comments are read back in through `tokenize`. PowerShell gets the same fold for its
+    `Join-Path`. Every other file is read whole, comments included — everything except a
+    `.gitignore`, whose one exception is below. Reading comments is stricter than necessary and
+    deliberately so, since a comment that still spells the V1 path is how the path gets copied back
+    into the code beneath it; that reason had been written here for a round while `.py`, the
+    largest type swept, was the one type whose comments were NOT read.
+
+    One file type is read looser rather than stricter, and it is the one whose lines are not
+    references at all: in a `.gitignore` only a re-inclusion (`!path`) points AT a file, while a
+    plain pattern forbids it — see `_monolith_paths_in_gitignore`.
+
+    What this does NOT judge, so nobody reads more into it: a BARE monolith name that is not part
+    of a path. In a kit's instruction text and in the entry gates such a name IS judged — against
+    the shipped template tree, by `test_instruction_files_name_only_state_files_a_v2_project_has`,
+    which owns the registry of names V2 still deliberately talks about. Everywhere else it is
+    judged by nobody: a hook or a fixture that hands `"progress.yaml"` to a helper which joins it
+    onto the state directory somewhere else passes here, because the join this reads is the one at
+    the call site. The same goes for a path assembled at runtime from pieces the AST cannot see.
+    """
+    offences = []
+    for rel, _store, token in _sweep_state_root(conftest.V1_MONOLITHS):
+        offences.append("%s: `%s` (%s)"
+                        % (rel, token, conftest.V1_MONOLITHS[_state_root_store(
+                            token, conftest.V1_MONOLITHS)]))
+    assert not offences, (
+        "these still point at one of the eleven MOVED V1 monoliths in the state root:\n  %s"
+        % "\n  ".join(sorted(set(offences))))
+
+
+def test_the_open_v1_root_store_couplings_are_still_exactly_these():
+    """The other side of the proof: the V1 root stores this lockstep did NOT reach, as measured.
+
+    The completion proof above is only as complete as its inventory, and four V1 root stores are
+    outside it on purpose — `conftest.V1_ROOT_STORES_NOT_YET_MIGRATED` says which and why. Left at
+    that, the artefact would claim more than it holds: a reader seeing the sweep green would take
+    the lockstep for finished while `gate_git` blocks every push in a scaffolded V2 project and
+    two office scripts cannot start.
+
+    So the open couplings are asserted as facts that hold TODAY, with the same reader the proof
+    uses. Equality in BOTH directions is the whole point:
+
+      * a NEW file reaching for one of these four fails here, which is the guarantee the
+        completion proof cannot give for a name outside its inventory;
+      * and the day a coupling is repaired, this fails too, saying so in the one place the next
+        round will look. That is the `known_hole` bargain — a hole asserted rather than promised —
+        and a note in a report would not have survived the round.
+    """
+    measured = {}
+    for rel, store, _token in _sweep_state_root(conftest.V1_ROOT_STORES_NOT_YET_MIGRATED):
+        measured.setdefault(store, set()).add(rel)
+    recorded = {store: set(files)
+                for store, (_why, files) in conftest.V1_ROOT_STORES_NOT_YET_MIGRATED.items()}
+    assert measured == recorded, (
+        "the open V1 root-store couplings have moved.\n"
+        "  gone (delete the entry from conftest.V1_ROOT_STORES_NOT_YET_MIGRATED, and if a store "
+        "has no files left, move its name into V1_MONOLITHS so the completion proof owns it): "
+        "%s\n"
+        "  new (a file started reaching for a deleted V1 root store): %s"
+        % (sorted((s, f) for s in recorded for f in recorded[s] - measured.get(s, set())) or "none",
+           sorted((s, f) for s in measured for f in measured[s] - recorded.get(s, set())) or "none"))
 
 
 # ---------------- notify_agent_events: SubagentStop route ----------------
@@ -2445,36 +4015,194 @@ def test_euer_report_totals(tmp_path):
 
 
 # ---------------- office kit: filing gate + fs tripwire ----------------
-def test_gate_filing_blocks_phantom_target(tmp_path):
-    log = tmp_path / "project_memory" / "filing_log.yaml"
-    write(str(log), 'filed:\n  - source: a.pdf\n    target: "archive/fin/a.pdf"\n')
-    payload = {"tool_name": "Write", "tool_input": {"file_path": str(log)}, "cwd": str(tmp_path)}
-    assert run_hook("gate_filing.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS) == 2
+FILING_PLAN = (
+    "rules:\n"
+    "  - id: FP-001\n"
+    '    path_template: "archive/finance/incoming_invoices/<year>/"\n'
+    "    document_types: [invoice]\n"
+)
 
 
-def test_gate_filing_passes_real_target(tmp_path):
-    write(str(tmp_path / "archive" / "fin" / "a.pdf"), "x")
-    log = tmp_path / "project_memory" / "filing_log.yaml"
-    write(str(log), 'filed:\n  - source: a.pdf\n    target: "archive/fin/a.pdf"\n')
-    payload = {"tool_name": "Write", "tool_input": {"file_path": str(log)}, "cwd": str(tmp_path)}
-    assert run_hook("gate_filing.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS) == 0
+def _filing_move(repo, command):
+    return {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+            "tool_input": {"command": command}, "cwd": str(repo)}
 
 
-def test_gate_filing_blocks_codex_multifile_patch(tmp_path):
-    log = tmp_path / "project_memory" / "filing_log.yaml"
-    write(str(log), 'filed:\n  - source: a.pdf\n    target: "archive/fin/a.pdf"\n')
+def _run_filing(payload, repo, extra_env=None):
+    return run_hook_process("gate_filing.py", payload, repo, hooks_dir=OFFICE_HOOKS,
+                            extra_env=extra_env)
+
+
+def test_gate_filing_blocks_while_the_plan_has_no_rules(tmp_path):
+    """Fail-closed on an empty plan: with no rule there is nothing to file AGAINST, and a business
+    archive is where an unverifiable filing is dearest to undo. Note that the shipped template IS
+    the empty plan and `project_memory/**` is kernel-only for tool writes, so this currently
+    blocks the first filing of every office project — see the gate's LOCKSTEP DEPENDENCY note."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), "rules: []\n")
+    payload = _filing_move(tmp_path, "mv inbox/a.pdf archive/finance/incoming_invoices/2026/a.pdf")
+    result = _run_filing(payload, tmp_path)
+    assert result.returncode == 2 and "filing_plan.yaml" in result.stderr
+
+
+def test_gate_filing_blocks_a_target_no_rule_covers(tmp_path):
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = _filing_move(tmp_path, "mv inbox/a.pdf archive/invented/a.pdf")
+    result = _run_filing(payload, tmp_path)
+    assert result.returncode == 2 and "archive/invented" in result.stderr
+
+
+def test_gate_filing_allows_a_target_a_rule_covers(tmp_path):
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = _filing_move(tmp_path,
+                           "mv inbox/a.pdf archive/finance/incoming_invoices/2026/2026-01-01_x.pdf")
+    assert _run_filing(payload, tmp_path).returncode == 0
+
+
+def test_gate_filing_placeholder_matches_one_segment_only(tmp_path):
+    """`<year>` stands for ONE path segment. Letting it swallow `2026/subfolder` would turn every
+    rule into a prefix rule, and the Aktenplan would stop describing the archive."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = _filing_move(tmp_path, "mv inbox/a.pdf archive/finance/incoming_invoices/2026/q1/a.pdf")
+    assert _run_filing(payload, tmp_path).returncode == 2
+
+
+def test_gate_filing_sees_a_quoted_destination_with_spaces(tmp_path):
+    """A business archive is full of `Müller GmbH.pdf`. Splitting the command on whitespace ended
+    in the token `GmbH.pdf"`, which is not under archive/ — the gate passed the exact filenames it
+    exists for."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = _filing_move(tmp_path, 'mv inbox/a.pdf "archive/invented/Müller GmbH.pdf"')
+    assert _run_filing(payload, tmp_path).returncode == 2
+
+
+def test_gate_filing_ignores_a_move_that_is_not_a_filing(tmp_path):
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = _filing_move(tmp_path, "mv draft.md outbox/draft.md")
+    assert _run_filing(payload, tmp_path).returncode == 0
+
+
+def test_gate_filing_reads_a_named_powershell_destination_before_the_source(tmp_path):
+    """`Move-Item -Destination <dst> -Path <src>` is ordinary PowerShell, the gate IS registered on
+    PowerShell, and under the old "destination = last positional token" rule it passed clean
+    (measured rc=0 while the same move in POSIX order blocked). A named parameter names its own
+    token, so it has to win over position."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    for command in (r"Move-Item -Destination archive\invented\a.pdf -Path inbox\a.pdf",
+                    r"Copy-Item -Des:archive\invented\a.pdf -Path inbox\a.pdf"):
+        result = _run_filing(_filing_move(tmp_path, command), tmp_path)
+        assert result.returncode == 2, command
+        assert "archive/invented" in result.stderr, command
+
+
+def test_gate_filing_reads_the_destination_of_a_directory_copier(tmp_path):
+    """`robocopy`/`xcopy` put the destination SECOND and it is a directory — reading it as "the
+    last token" landed on the filename filter and let a whole folder into the archive."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    result = _run_filing(_filing_move(tmp_path, "robocopy inbox archive\\invented a.pdf"), tmp_path)
+    assert result.returncode == 2 and "archive/invented" in result.stderr
+
+
+def test_gate_filing_sees_a_move_inside_a_shell_wrapper(tmp_path):
+    """`bash -lc "mv … archive/…"` is the same `mv`, one level down.
+
+    `_compat` exists for exactly this ("audit: `-lc` bypassed every gate") and every git gate
+    unwraps through it; this one tokenised the outer line instead, so both wrapper spellings
+    measured rc=0 while the bare command blocked."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    for command in ('bash -lc "mv inbox/a.pdf archive/invented/a.pdf"',
+                    'powershell -Command "Move-Item inbox/a.pdf archive/invented/a.pdf"'):
+        result = _run_filing(_filing_move(tmp_path, command), tmp_path)
+        assert result.returncode == 2, command
+        assert "archive/invented" in result.stderr, command
+
+
+def test_gate_filing_reads_a_gnu_target_directory_flag(tmp_path):
+    """`mv -t DIR src` moves the destination OFF its position — the flag names it, exactly as
+    `-Destination` does for PowerShell. Under the last-token rule the destination was the SOURCE
+    and the gate passed (measured rc=0 for all four spellings). The `-t` reading is scoped to the
+    coreutils family on purpose: `rsync -t` preserves timestamps."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    for command in ("mv -t archive/invented inbox/a.pdf",
+                    "mv --target-directory=archive/invented inbox/a.pdf",
+                    "cp -fvt archive/invented inbox/a.pdf",
+                    "install -tarchive/invented inbox/a.pdf"):
+        result = _run_filing(_filing_move(tmp_path, command), tmp_path)
+        assert result.returncode == 2, command
+        assert "archive/invented" in result.stderr, command
+
+
+def test_gate_filing_reads_the_target_directory_flag_as_a_directory(tmp_path):
+    """...and it names a DIRECTORY, so the rule check must run against that directory itself.
+    Read as a file path, `-t archive/finance/incoming_invoices/2026` would be checked against its
+    PARENT — a directory nobody is filing into, and one a coarser rule may well cover."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    ok = "mv -t archive/finance/incoming_invoices/2026 inbox/a.pdf"
+    assert _run_filing(_filing_move(tmp_path, ok), tmp_path).returncode == 0
+    bad = "mv -t archive/finance/incoming_invoices inbox/a.pdf"
+    assert _run_filing(_filing_move(tmp_path, bad), tmp_path).returncode == 2
+
+
+def test_gate_filing_reads_the_trailing_destination_of_rsync(tmp_path):
+    """`rsync -a inbox/ archive/2026/` obeys the same N-sources-then-destination convention as
+    `mv`, and fills an archive just as well — it was simply not in the family."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    result = _run_filing(_filing_move(tmp_path, "rsync -a inbox/ archive/invented/"), tmp_path)
+    assert result.returncode == 2 and "archive/invented" in result.stderr
+
+
+def test_gate_filing_sees_a_redirect_into_the_archive(tmp_path):
+    """A redirection target is a file the SHELL creates — no move verb involved. `cat inbox/a.pdf >
+    archive/invented/a.pdf` files a document exactly as well as `mv` does, and a verb list can
+    never see it. Same rule guard_fs_tripwire uses for the ledger."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    for command in ("cat inbox/a.pdf > archive/invented/a.pdf",
+                    "cat inbox/a.pdf | tee archive/invented/a.pdf"):
+        result = _run_filing(_filing_move(tmp_path, command), tmp_path)
+        assert result.returncode == 2, command
+
+
+def test_gate_filing_still_sees_the_destination_past_a_redirect(tmp_path):
+    """...and adding the redirect rule must not cost the positional one: with `mv a b > log` the
+    last token of the line is the log file, so the argument list has to end at the redirect."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = _filing_move(tmp_path, "mv inbox/a.pdf archive/invented/a.pdf > /tmp/mv.log")
+    result = _run_filing(payload, tmp_path)
+    assert result.returncode == 2 and "archive/invented" in result.stderr
+
+
+def test_gate_filing_resolves_a_relative_target_against_the_agents_cwd(tmp_path):
+    """An agent working in `inbox/` writes `../archive/…`, which resolved against the repo ROOT
+    looks like an escape from the repo and was dropped — the document really landed in the
+    archive while the gate stayed silent. The same failure class `_compat` already fixed for Codex
+    patch paths: resolve against cwd AND root, block on either reading."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    os.makedirs(str(tmp_path / "inbox"), exist_ok=True)
+    payload = dict(_filing_move(tmp_path, "mv a.pdf ../archive/invented/a.pdf"),
+                   cwd=str(tmp_path / "inbox"))
+    result = _run_filing(payload, tmp_path)
+    assert result.returncode == 2 and "archive/invented" in result.stderr
+
+
+def test_gate_filing_covers_a_direct_write_into_the_archive(tmp_path):
+    """The other door. A gate that only watched shell moves would document its own bypass: `Write`
+    to a path under archive/ files a document just as effectively."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Write",
+               "tool_input": {"file_path": str(tmp_path / "archive" / "invented" / "a.pdf")},
+               "cwd": str(tmp_path)}
+    assert _run_filing(payload, tmp_path).returncode == 2
+
+
+def test_gate_filing_blocks_codex_patch_that_files_into_the_archive(tmp_path):
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
     payload = {
-        "hook_event_name": "PostToolUse",
+        "hook_event_name": "PreToolUse",
         "tool_name": "apply_patch",
-        "tool_input": {"command": _codex_patch("docs/notes.md",
-                                                 "project_memory/filing_log.yaml")},
+        "tool_input": {"command": _codex_patch("docs/notes.md", "archive/invented/a.md")},
         "cwd": str(tmp_path),
     }
-    result = run_hook_process("gate_filing.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS,
-                              extra_env={"TEAM_KIT_PROVIDER": "codex"})
-    assert result.returncode == 0
-    output = json.loads(result.stdout)
-    assert output["decision"] == "block" and "file does NOT exist" in output["reason"]
+    result = _run_filing(payload, tmp_path, extra_env={"TEAM_KIT_PROVIDER": "codex"})
+    assert result.returncode == 2 and "archive/invented" in result.stderr
 
 
 def test_fs_tripwire_blocks_archive_delete(tmp_path):
@@ -3429,7 +5157,7 @@ def test_kit_checks_repo_wide_yaml_parse(tmp_path):
     pytest.importorskip("yaml")
     mod = _kit_checks_mod()
     subprocess.run(["git", "init", "-q"], cwd=str(tmp_path), capture_output=True)
-    write(str(tmp_path / "project_memory" / "progress.yaml"), "status: x\nlog: []\n")
+    write(str(tmp_path / "project_memory" / "product" / "active" / "PR-0001.yaml"), "id: PR-0001\n")
     write(str(tmp_path / "config" / "bad.yaml"), "a: [unclosed\n")
     subprocess.run(["git", "add", "-A"], cwd=str(tmp_path), capture_output=True)
     calls, ok, fail, warn = _collector()

@@ -11,7 +11,8 @@ You run as the **Office Developer**. Procedure per PROC work order:
 ## Read first
 The PROC entry, `business_profile.yaml`, and the SCHEMAS of every data file the tool consumes
 (`product_catalog.yaml`, `ledger/` CSV header + `master_data.yaml` categories,
-`compliance_register.yaml`, `process_definitions.yaml`) — the tracked files are the stable API.
+`compliance_register.yaml`, the `PROC` items under `procedures/active/`) — the tracked files are the
+stable API.
 
 ## Do
 1. **Consume, never mutate:** your scripts under `tools/` read the tracked data and write rendered

@@ -8,9 +8,11 @@ what it sees, and what it sees is names; every note, every progress line, every 
 invoice from <person>" puts one more into a history that is forever.
 
 THE RULE the constitution states: personal names appear ONLY where the business record requires
-them — the ledger, under statutory retention. `filing_log.yaml` and the migration manifests live
-on disk for the gates but are gitignored, out of history. Every OTHER tracked file references a
-document by Beleg-ID, date and doctype, never by customer name.
+them — the ledger, under statutory retention. Everything under `project_memory/generated/` (spec
+II.9 plans a regenerated scan index over what is actually filed there, with `filing_plan.yaml` as
+the filing truth; nothing regenerates it yet, so it may simply not exist) and the migration
+manifests are gitignored wherever they do exist, out of history. Every OTHER tracked file
+references a document by Beleg-ID, date and doctype, never by customer name.
 
 WHAT THIS CHECKS, and what it cannot: the names it knows are the ones the project has already
 written down — `counterparties` in `master_data.yaml`, canonical plus aliases. That is a real
@@ -31,8 +33,9 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# The ledger holds names by statutory obligation; the manifests are gitignored anyway, and listing
-# them here means the scan says nothing surprising if someone un-ignores one by accident.
+# Where a name may legitimately appear in a TRACKED file: because the record requires it (the
+# ledger, under statutory retention), because the file IS the name list, or because the file is a
+# derived view whose names came from the tracked state anyway. Everything else is a finding.
 ALLOWED = (
     "ledger/",
     "project_memory/master_data.yaml",      # the name list itself
@@ -41,7 +44,15 @@ ALLOWED = (
     # and a plausible real customer elsewhere. Only this one script is exempt, not all of
     # `scripts/` -- a name hardcoded in `process_doc.py` would be a genuine finding.
     "scripts/pii_scan.py",
-    "project_memory/filing_log.yaml",
+    # Every regenerated rollup: the index, the session brief and the filing scan index spec II.9
+    # plans all name documents by their target path, and every one of them is rebuilt from the
+    # tracked state rather than written by hand -- so a hit there points at the item that carries
+    # the name, and fixing the copy would fix nothing. The DIRECTORY, not the three file names:
+    # `generated/` is defined as what the kernel rebuilds, so an enumeration would go stale with
+    # the next rollup. This is load-bearing, not decorative: the shipped .gitignore keeps the tree
+    # untracked, but a project upgraded from an older template still tracks it, and then these are
+    # the files the scan meets first.
+    "project_memory/generated/",
     "project_memory/business_profile.yaml",  # the user's own details, not a customer's
 )
 ALLOWED_PREFIXES = tuple(part.replace("\\", "/") for part in ALLOWED)

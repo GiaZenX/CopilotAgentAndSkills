@@ -5,44 +5,48 @@
 #
 # Each scenario: what a PM/manager would delegate, and the PROPERTIES a correct specialist
 # response must have (the judge checks properties, not exact wording).
+#
+# The work orders name V2 state: one file per item under its typed directory
+# (kernel/backlog_types.ACTIVE_DIRS). A scenario that still sent a role to a V1 monolith would be
+# measuring a repo the harness no longer builds.
 
 scenarios:
   - id: EV-0001
     kit: dev-team
     role: software-architect
     work_order: |
-      objective: derive SRs for a PRD "local notes app with offline sync"
-      read_first: [product_requirements.yaml PRD-0001]
-      output: system_requirements ids + decisions + open_questions
+      objective: derive SRs for PR-0001 "local notes app with offline sync"
+      read_first: [product/active/PR-0001.yaml, generated/index.yaml]
+      output: SR ids + Decision items + open_questions
       boundaries: no implementation, no test files
     must_have:
       - testable SRs with derives_from
-      - a direction-setting ADR WITH premise_invalidation_triggers
-      - packaging.method decided or explicitly proposed
+      - a direction-setting Decision item WITH premise_invalidation_triggers
+      - packaging.method decided or explicitly proposed on the architecture item
       - no code written
   - id: EV-0002
     kit: dev-team
     role: quality-engineer
     work_order: |
-      objective: gate PRD-0001 after implementation
-      read_first: [tasks.yaml TSK-0003..5, testing_guidelines.yaml]
-      output: verdict + review_findings + test_results
+      objective: gate PR-0001 after implementation
+      read_first: [tasks/active/TSK-0003.yaml, tasks/active/TSK-0004.yaml, product/active/PR-0001.yaml]
+      output: verdict + Evidence items (kind test / kind review)
       boundaries: no feature-code changes
     must_have:
       - runs targeted tests first, full suite exactly once before the verdict
       - verdict PASS/FAIL with named evidence (no "looks good")
-      - consistency assertions checked for UI-bearing work
+      - every acceptance criterion and INV of the PR has a NAMED proof
       - SKIPPED-for-environment reported as BLOCKED, never green
   - id: EV-0003
     kit: dev-team
     role: frontend-developer
     work_order: |
-      objective: implement the approved mockup for the settings view
-      read_first: [design_preview.html settings view, design.yaml tokens]
+      objective: implement the approved design revision for the settings view
+      read_first: [tasks/active/TSK-0007.yaml, design/revisions/DSN-0001.html]
       output: summary + files_changed + tests_added
-      boundaries: no backend changes; no new visible elements beyond the mockup
+      boundaries: no backend changes; no new visible elements beyond the design revision
     must_have:
-      - mockup markup/CSS used as the BASE (no recolored old layout)
+      - the frozen DSN markup/CSS used as the BASE (no recolored old layout)
       - consistency assertions green (heading scale, card heights)
       - no visible element removed/replaced without naming a CR
   - id: EV-0004
@@ -50,45 +54,46 @@ scenarios:
     role: product-designer
     work_order: |
       objective: propose 3 design directions for a music practice app (ambition exploration)
-      read_first: [masterplan.md, design.yaml]
-      output: directions + per-view mockups plan
+      read_first: [product/masterplan.md, product/active/PR-0001.yaml]
+      output: directions + per-view wireframe plan
       boundaries: no code
     must_have:
       - 3 genuinely distinct directions with a committed point of view
       - baseline uniformity specced from screen one (heading scale, spacing tokens)
       - a11y baseline present (focus-visible, contrast, reduced motion)
+      - proposals left in staging/<task-id>/, never written into the state tree
   - id: EV-0005
     kit: dev-team
     role: project-auditor
     work_order: |
       objective: daily audit run
-      read_first: [review_findings.yaml last run, product_requirements.yaml, tasks.yaml]
-      output: appended run entry
-      boundaries: read-only outside review_findings.yaml
+      read_first: [evidence/, generated/index.yaml, product/active/PR-0001.yaml]
+      output: ONE Evidence item (kind audit)
+      boundaries: read-only; findings become BUG/CR/TSK items, nothing else is touched
     must_have:
       - 3–5 sampled claims verified against real files (quoted evidence)
       - rubric scores 0.0–1.0 for all five dimensions
-      - findings carry severity + evidence + recommendation
-      - nothing modified outside review_findings.yaml
+      - findings carry severity + evidence + recommendation + a fingerprint
+      - unchanged findings deduped against the previous run's fingerprints
   - id: EV-0006
     kit: research-team
     role: methodologist
     work_order: |
       objective: design experiments for RQ-0001 "does context caching reduce agent latency?"
-      read_first: [research_questions.yaml RQ-0001, literature.yaml]
-      output: hypotheses + experiment_designs + decisions
+      read_first: [research/active/RQ-0001.yaml, literature.yaml]
+      output: HYP items + EXP items + Decision items
       boundaries: no experiment execution
     must_have:
       - falsifiable HYPs with success criteria
       - seed pinning + baseline/ablation in the design
-      - a direction-setting MDR WITH premise_invalidation_triggers
+      - a direction-setting Decision item WITH premise_invalidation_triggers
   - id: EV-0007
     kit: research-team
     role: reviewer
     work_order: |
-      objective: validate EXP-0002 results
-      read_first: [results.yaml EXP-0002, experiment_designs.yaml]
-      output: verdict + reproduction
+      objective: validate the results of EXP-0002
+      read_first: [experiments/active/EXP-0002.yaml, evidence/]
+      output: verdict + reproduction as an Evidence item
       boundaries: no analysis-code changes
     must_have:
       - actual reproduction from recorded seeds (numbers re-checked, not trusted)
@@ -100,7 +105,7 @@ scenarios:
     work_order: |
       objective: book the 3 invoices filed today (PROC-0001)
       proc: PROC-0001
-      read_first: [master_data.yaml, filing_log.yaml newest entries]
+      read_first: [procedures/active/PROC-0001.yaml, master_data.yaml, archive/ newest entries]
       output: booked + open_items + unclear
       boundaries: no direct ledger edits; no tax advice
     must_have:
@@ -114,12 +119,12 @@ scenarios:
     work_order: |
       objective: file today's inbox drop (PROC-0001)
       proc: PROC-0001
-      read_first: [filing_plan.yaml]
+      read_first: [procedures/active/PROC-0001.yaml, filing_plan.yaml]
       output: filed + unclear
       boundaries: move-only; nothing deleted
     must_have:
       - moves (never deletes), naming rule applied
-      - filing_log entries only for files that really exist under archive/
+      - the archive tree IS the record — no filing log written by hand
       - unclear items -> _unsorted with a question list
   - id: EV-0010
     kit: office-team
@@ -127,7 +132,7 @@ scenarios:
     work_order: |
       objective: build the register for category electronics, market DE (PROC-0003)
       proc: PROC-0003
-      read_first: [business_profile.yaml, compliance_register.yaml]
+      read_first: [procedures/active/PROC-0003.yaml, business_profile.yaml, compliance_register.yaml]
       output: entries_added_updated + flags + tasks_for_user
       boundaries: research only; no legal advice
     must_have:

@@ -53,3 +53,17 @@ fields:
   render_check:
     type: bool
     required: true
+  packaging:
+    # II.6a dissolved architecture.yaml, and with it the one place that asked HOW
+    # the software is built and shipped. The question survives as a field on the
+    # architecture item that answers it -- `gate_packaging_decision` reads it.
+    # OPTIONAL, because not every ARC is that item: a context diagram is not a
+    # deployment decision, and the gate asks whether SOME active item states a
+    # resolved method, not whether every one does. Its own `method` is required,
+    # so `packaging: {}` cannot pass for an answer.
+    type: dict
+    required: false
+    sub_fields:
+      method:
+        type: str
+        required: true

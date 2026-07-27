@@ -2,94 +2,139 @@
 """
 PreToolUse(Bash) — block merge/push while the packaging/deployment decision is unmade.
 
-Generalises the "Docker was forgotten" failure mode: HOW the software is built and shipped
-must be a CONSCIOUS choice (even "none / library" is valid), never implicit. The architect
-records it in architecture.yaml `packaging.method` (+ an ADR in decisions.yaml). This gate
-blocks the merge while `packaging.method` is still TODO/empty — so a critical packaging tool
-(e.g. Docker) can never be silently forgotten.
+Generalises the "Docker was forgotten" failure mode: HOW the software is built and shipped must be
+a CONSCIOUS choice (even "none / library" is valid), never implicit.
 
-Only fires on `git push`/`git merge`, only when real work exists (a PRD entry). Any
-uncertainty -> exit 0 (never block legitimate work). Stdlib only (no YAML dep).
+WHERE THE ANSWER LIVES NOW. V1 read `packaging.method` out of the `architecture.yaml` monolith,
+which every project carried as a shipped template with `method: TODO` — so the gate effectively
+fired from the first PRD onwards, and only a real value cleared it. That monolith is dissolved
+(spec II.6a): `packaging.method` is a field on a lean architecture item, one of the typed items
+under the kernel's ARC directory. Keeping the SAME teeth therefore means keeping the same trigger,
+not the same file: once a root item exists, some active architecture item must state a resolved
+packaging method. "No architecture item at all" is an unmade decision, not an exemption — reading
+it as one would be the exact failure this lockstep exists to prevent, since the template that used
+to guarantee the question got asked no longer ships.
+
+The directory is never spelled out here; it comes from `kernel.backlog_types.ACTIVE_DIRS` via
+`ProjectState.active_dir("ARC")`, so a relocation of the typed state moves this gate with it.
+
+HOW THE ANSWER GETS THERE. `project_memory/**` is kernel-only for tool writes (`gate_write_scope`,
+on Edit/Write AND Bash), so the field this gate reads has to be writable through the kernel or the
+gate is a block with no exit. It is: `staging.freeze_architecture(..., packaging={"method": ...})`
+is the one path that creates an ARC item — `capture` refuses the type — and `packaging` is an
+optional field of the `arc_companion` schema, whose own `method` is required. That schema is
+`strict`, which is also why this reads only `packaging.method` and no second spelling: nothing can
+write a `packaging_method:` variant, so tolerating one would be a branch no producer can reach.
+
+Only fires on `git push`/`git merge`.
 """
 import os
-import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import _compat
-from _root import find_repo_root
-from _compat import wants_push_or_merge
-import _audit
-
-
-def read(path):
-    try:
-        # utf-8-sig: a PS 5.1 rewrite prepends a BOM and the ^-anchored key regexes
-        # then never match — a correctly filled config caused a PERMANENT push block (audit)
-        with open(path, encoding="utf-8-sig", errors="ignore") as fh:
-            return fh.read()
-    except Exception:
-        return ""
-
-
-def packaging_method(text):
-    """Return the packaging.method value ('' if the block/key is absent)."""
-    mi = re.search(r"(?m)^packaging:\s*\{[^}]*\bmethod:\s*([^,}]+)", text)
-    if mi:
-        return mi.group(1).strip().strip("'\"")
-    m = re.search(r"(?m)^packaging:\s*$", text)
-    if not m:
-        return ""
-    for line in text[m.end():].splitlines():
-        if line.strip() and not line[:1].isspace() and not line.lstrip().startswith("#"):
-            break  # dedented to a new top-level key -> left the packaging block
-        mm = re.match(r"[ \t]+method:\s*(.*)$", line)
-        if mm:
-            return mm.group(1).split("#", 1)[0].strip().strip("'\"")
-    return ""
-
-
-def block(detail):
-    _audit.record("gate_packaging_decision", detail)
-    sys.stderr.write(
-        "[team-kit gate] Blocked merge/push: the packaging/deployment decision is unmade (%s).\n"
-        "HOW the software is built + shipped must be a CONSCIOUS choice — even 'none/library' is valid, but "
-        "it must be stated. Have the architect set `packaging.method` in architecture.yaml (+ an ADR in "
-        "decisions.yaml). This is the deterministic guard against a critical packaging tool (e.g. Docker) "
-        "being silently forgotten (constitution §6).\n" % detail
-    )
+try:
+    import _kernel
+except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
+    sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
+                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "usual cause.\n" % (exc,))
     sys.exit(2)
+
+import _compat  # noqa: E402
+import _root  # noqa: E402
+
+HOOK = "gate_packaging_decision"
+ARCHITECTURE = "ARC"
+# Unresolved means absent or still the template's placeholder — the V1 definition, kept verbatim.
+# Widening it to a list of synonyms ("tbd", "?", ...) would be guessing at what a human meant;
+# an odd-looking but deliberate value is a decision, and this gate is about decisions being made.
+PLACEHOLDER = "todo"
+
+
+def packaging_method(item):
+    """The `packaging.method` an architecture item states, '' when it states none.
+
+    Exactly the shape `kernel/schemas/arc_companion.yaml` permits — see the module docstring for
+    why there is no second spelling. The isinstance guards are for a file that reached the
+    directory some other way, not for a second contract.
+    """
+    if not isinstance(item, dict):
+        return ""
+    packaging = item.get("packaging")
+    if not isinstance(packaging, dict):
+        return ""
+    return str(packaging.get("method") or "").strip()
+
+
+def resolved_packaging(state):
+    """(method, seen) — the first resolved packaging method found, and how many architecture items
+    were looked at.
+
+    `seen` is not decoration: it is what separates "this project has no architecture item at all"
+    from "it has several and none of them decides" in the block message, and those are two
+    different conversations with the architect.
+
+    An item is `<ID>.yaml` written by the kernel — the same definition `ProjectState.read_item`
+    uses, which is why the read goes through that PUBLIC entry point rather than the private YAML
+    helper next to it. Everything else in the directory (the `.drawio.svg` diagrams) is the
+    picture, not the decision. Deliberately WITHOUT the kernel lock: items are written temp-file +
+    `os.replace`, so every read sees a whole file, and a second lock acquisition on the same
+    PreToolUse — `gate_memory_complete` already takes one — buys nothing but latency and a
+    lock-timeout failure mode on a merge.
+    """
+    lock = _kernel.kernel_module("lock")
+    directory = lock.ext_path(state.active_dir(ARCHITECTURE))
+    seen = 0
+    if not os.path.isdir(directory):
+        return None, 0
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".yaml"):
+            continue
+        seen += 1
+        try:
+            item = state.read_item(os.path.splitext(name)[0])
+        except Exception:  # noqa: BLE001 — guard_yaml_valid owns broken YAML; it is not a method
+            continue
+        method = packaging_method(item)
+        if method and method.lower() != PLACEHOLDER:
+            return method, seen
+    return None, seen
 
 
 def main():
-    # BOUNDED read (spec II.4). A raw `json.load(sys.stdin)` will happily buffer a
-    # payload of any size, and an oversized one is the shape that turns a hook into
-    # a memory event rather than a decision. `_compat.load` caps it at STDIN_LIMIT
-    # and exits 2, because a gate that cannot read its input has not judged it.
-    data = _compat.load()
+    # No `hook_event_name` guard: this gate is registered on PreToolUse and nowhere else, so
+    # the event is settled by settings.json. Re-checking a field a provider may simply omit
+    # would turn the gate into a silent exit 0 -- the failure this whole phase is about.
+    data = _kernel.payload(HOOK)
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         sys.exit(0)
     # Detection lives in _compat.wants_push_or_merge (single home): wrapper payloads are
     # CODE, quoted prose is not (a commit MESSAGE once re-triggered a full gate).
-    if not wants_push_or_merge(((data.get("tool_input") or {}).get("command") or "")):
+    if not _compat.wants_push_or_merge(((data.get("tool_input") or {}).get("command") or "")):
         sys.exit(0)
 
-    root = find_repo_root(data.get("cwd"))
-    pm = os.path.join(root, "project_memory")
-    if not os.path.isdir(pm):
+    root = _kernel.find_repo_root(data.get("cwd"))
+    if not os.path.isdir(_kernel.state_dir(root)):
         sys.exit(0)
-    # only gate once there is real work (a PRD)
-    if not re.search(r"\n\s*PRD-\d", read(os.path.join(pm, "product_requirements.yaml"))):
-        sys.exit(0)
+    if not _root.has_root_item(root):
+        sys.exit(0)  # still being set up; see gate_memory_complete for why that is not gated
 
-    arch = os.path.join(pm, "architecture.yaml")
-    if not os.path.isfile(arch):
-        sys.exit(0)  # no architecture yet -> nothing to enforce
-    method = packaging_method(read(arch)).upper()
-    if method in ("", "TODO"):
-        block("architecture.yaml `packaging.method` is still %s" % (method.lower() or "absent"))
-    sys.exit(0)
+    method, seen = resolved_packaging(_kernel.open_state(root))
+    if method:
+        sys.exit(0)
+    _kernel.block(
+        HOOK,
+        "the packaging/deployment decision is unmade (%s). HOW the software is built and shipped "
+        "must be a CONSCIOUS choice — even 'none / library' is valid, but it has to be stated. "
+        "This is the deterministic guard against a critical packaging tool (e.g. Docker) being "
+        "silently forgotten."
+        % ("no active architecture item states one" if seen else
+           "this project has no architecture item yet"),
+        remedy="have the architect stage the architecture diagram and freeze it through the "
+               "kernel with the decision attached (`staging.freeze_architecture(..., "
+               "packaging={'method': '<docker|static-binary|none (library)|…>'})`), plus a "
+               "Decision item recording why, then merge again.")
 
 
 if __name__ == "__main__":
-    main()
+    _kernel.run_gate(HOOK, main)

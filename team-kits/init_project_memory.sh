@@ -112,7 +112,7 @@ PEND="$REPO/.claude/kit_update_pending.memory"
 if [ ${#kept_tooling[@]} -gt 0 ]; then
   mkdir -p "$REPO/.claude"
   {
-    echo "# project_memory TOOLING that DIFFERS from kit '$TEAM' (templates lag behind the kit) -- the PM reviews each against the kit template, merges the kit's fixes (or documents a conscious skip in progress.yaml log:), then DELETES this file. session_status reminds every session until it is gone. Filled YAML state is NOT listed here and is never overwritten."
+    echo "# project_memory TOOLING that DIFFERS from kit '$TEAM' (templates lag behind the kit) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone. Filled YAML state is NOT listed here and is never overwritten."
     printf -- "- %s\n" "${kept_tooling[@]}"
   } > "$PEND"
   rm -f "$REPO/.claude/kit_update_pending.state"   # fresh update -> fresh nag counter

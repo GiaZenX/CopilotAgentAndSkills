@@ -320,6 +320,11 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     staging_dir = os.path.join(state.root, "staging")
     if os.path.isdir(ext_path(staging_dir)):
         for entry in sorted(os.listdir(ext_path(staging_dir))):
+            # A staging KEY is a directory named after an item. The template ships `staging/.gitkeep`
+            # so git can carry the empty directory, and reading that file as a key put a warning into
+            # every `harness validate` and every session brief of every fresh project.
+            if not os.path.isdir(ext_path(os.path.join(staging_dir, entry))):
+                continue
             if entry not in active_items:
                 findings.append(_finding(
                     "warning", "staging/%s" % entry,

@@ -14,9 +14,12 @@ Parsing uses yaml.safe_load only; duplicate keys are found by walking yaml.compo
 exit-2 correction; Codex receives a PostToolUse `decision: block` response. Defensive: not a
 project_memory yaml / no PyYAML / internal error -> exit 0.
 
-Also the format backstop for progress.yaml: a real PM regrew `status` into a 307-line blob and
-dropped `log:` although the template says "ONE line" — prompt-level rules the PM applies to itself
-get ignored, so the artifact's own contract is enforced here mechanically.
+WELL-FORMEDNESS ONLY. This hook used to carry a second job: the progress.yaml format contract
+("`status` stays ONE line, history goes to the append-only `log:`"). That contract died with the
+monolith (spec II.2) — the per-item state has no single status field to regrow into a blob, and
+what a typed item must contain is its TYPE's field contract, answered by the state validator
+(`kernel/report.validate_state`) against `kernel/backlog_types`. Re-answering it here from a
+PostToolUse hook would be the second truth that spec II.4 forbids.
 """
 import os
 import sys
@@ -28,21 +31,34 @@ YAML_TIPS = ("Tips: put prose containing ':' in a block scalar (key: |), quote s
              "characters, and never repeat a key at the same level.")
 
 
-def block(base, msg, why="is INVALID YAML after your edit", tips=YAML_TIPS):
+def block(rel, msg, why="is INVALID YAML after your edit", tips=YAML_TIPS):
     if len(msg) > 600:
         msg = msg[:600] + " …"
     try:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import _audit
-        _audit.record("guard_yaml_valid", base)
+        _audit.record("guard_yaml_valid", rel)
     except Exception:
         pass
     message = (
-        "[team-kit guard] project_memory/%s %s:\n%s\n"
+        "[team-kit guard] %s %s:\n%s\n"
         "Fix it NOW — you own this artifact. %s Do not hand the file to another role; "
-        "do not leave it broken.\n" % (base, why, msg, tips)
+        "do not leave it broken.\n" % (rel, why, msg, tips)
     )
     _compat.stop(message, "PostToolUse")
+
+
+def state_relative_path(norm):
+    """The edited file's path from the `project_memory` segment on.
+
+    The message says "fix it NOW — you own this artifact", so it has to name a path the owner can
+    open. A basename stopped doing that when the state became typed: `product/active/PR-0001.yaml`
+    was reported as `project_memory/PR-0001.yaml`, which exists nowhere, and the same basename can
+    now sit in several directories at once. The absolute path would be noise — agents address
+    files repo-relative — so the cut is at the state directory.
+    """
+    parts = norm.split("/")
+    return "/".join(parts[parts.index("project_memory"):])
 
 
 def find_duplicate_keys(yaml_mod, text):
@@ -74,35 +90,13 @@ def find_duplicate_keys(yaml_mod, text):
     return dupes
 
 
-def progress_format_problems(data):
-    """progress.yaml contract (V10 backstop): `status` stays ONE line (state + next action); history
-    lives in the append-only `log:` list. Returns problem strings, empty when compliant."""
-    if not isinstance(data, dict):
-        return []
-    problems = []
-    status = data.get("status")
-    if isinstance(status, str):
-        lines = [ln for ln in status.splitlines() if ln.strip()]
-        if len(lines) > 3 or len(status) > 700:
-            problems.append(
-                "`status` is %d non-empty lines / %d chars — it MUST stay ONE line: current state + the "
-                "concrete next action. Move history/details into the append-only `log:` list (a real run's "
-                "300-line status blob caused giant re-edits, token burn and tool-call parse failures)."
-                % (len(lines), len(status)))
-    if "log" not in data:
-        problems.append(
-            "the append-only `log:` list is missing — keep a `log:` key (even empty: `log: []`); dated "
-            "one-line history entries belong there, NEVER in `status`.")
-    return problems
-
-
 def check(path):
     norm = path.replace("\\", "/")
-    base = os.path.basename(norm)
-    if "project_memory" not in norm.split("/") or not base.endswith((".yaml", ".yml")):
+    if "project_memory" not in norm.split("/") or not norm.endswith((".yaml", ".yml")):
         return
     if not os.path.isfile(path):
         return
+    rel = state_relative_path(norm)
 
     try:
         import yaml  # type: ignore[import-untyped]
@@ -115,23 +109,16 @@ def check(path):
     except Exception:
         return
 
-    data_y = None
     try:
-        data_y = yaml.safe_load(text)
+        yaml.safe_load(text)
     except yaml.YAMLError as e:
-        block(base, str(e))
+        block(rel, str(e))
     except Exception:
         return  # internal edge case — never block on our own bug
 
     dupes = find_duplicate_keys(yaml, text)
     if dupes:
-        block(base, "\n".join(dupes))
-
-    if base == "progress.yaml":
-        problems = progress_format_problems(data_y)
-        if problems:
-            block(base, "\n".join(problems), why="violates its format contract after your edit",
-                  tips="See the header comments in the shipped progress.yaml template.")
+        block(rel, "\n".join(dupes))
 
 
 def main():

@@ -178,12 +178,12 @@ harness/
 │   │   ├── skills/                      ← one role skill per agent (project-manager, software-architect, …)
 │   │   ├── constitution/AGENTS.md       ← source → canonical ./AGENTS.md + Claude import shim
 │   │   ├── hooks/ + settings/           ← deterministic enforcement hooks + .claude/settings.json (agent, model, …)
-│   │   └── templates/project_memory/    ← YAML artifact templates
+│   │   └── templates/project_memory/    ← the typed state skeleton (empty item directories) + reference files
 │   ├── research-team/
 │   │   ├── agents/ + skills/            ← project-manager + 6 specialists + their role skills
 │   │   ├── constitution/AGENTS.md       ← research constitution source (carries team marker)
 │   │   ├── hooks/ + settings/           ← enforcement hooks + .claude/settings.json
-│   │   └── templates/project_memory/    ← research artifacts + LaTeX/HTML report templates + bundled KaTeX preview
+│   │   └── templates/project_memory/    ← state skeleton (incl. research/, hypotheses/, experiments/) + LaTeX/HTML report templates + bundled KaTeX preview
 │   └── office-team/
 │       ├── agents/ + skills/            ← office-manager (session agent) + 6 specialists + role skills
 │       ├── constitution/AGENTS.md       ← office constitution source: PROC model, outbox-only
@@ -201,9 +201,12 @@ harness/
    or Codex `AGENTS.md` asks *structured (PM) or free?*. Choose *free* and you work without
    bookkeeping.
 2. **Auto-init (discovery first):** on *structured*, the default agent classifies intent, interviews
-   and drafts a reviewed plan before installing. The Codex gate additionally assesses an existing
-   repository read-only and seeds the correct kit artifact: Dev PRD, Research RQ, or Office business
-   profile. Provider-specific limitations are stated in the parity section above.
+   and drafts a reviewed plan before installing. It then seeds the frozen `product/masterplan.md`, ONE
+   DRAFT root item (dev `PR`, research `RQ`; the office kit gets its business profile instead) and a
+   filled `project_config.yaml` — including the confirmed `preset:`, without which every project silently
+   starts as `solo` — and regenerates `generated/index.yaml` over the result. The Codex gate additionally
+   assesses an existing repository read-only.
+   Provider-specific limitations are stated in the parity section above.
 3. **Local install:** specialist agents are copied to `./.claude/agents/`, the canonical constitution
    to `./AGENTS.md`, and hooks/settings to `./.claude/`. On the Codex path, existing managed
    destinations are inventoried and require explicit replacement consent first; Codex then also
@@ -217,7 +220,8 @@ harness/
    and seeded the kit-specific `project_memory/` deterministically, confirmed the preset, and run the
    complete scaffold. The PM's **startup gate** validates that handover and reports an
    incomplete/inactive provider layer instead of silently degrading. It then begins the phase model,
-   maintains `project_memory/`, and delegates specialist work to ephemeral subagent runs.
+   decides WHAT gets captured into `project_memory/` (the state kernel performs every write), and
+   delegates specialist work to ephemeral subagent runs.
 
 ---
 
@@ -233,38 +237,39 @@ return YAML. Roles below are the **`dev-team`**; the **`research-team`** mirrors
 
 | Role | File | Job | Talks to user |
 |---|---|---|---|
-| **Project Manager** | `project-manager` (foreground lead; Claude: opus + role memory; Codex: mapped lead tier + checked-in project memory) | Requirements (PRD/CR), `project_memory/` bookkeeping, delegation, merge, user acceptance | **Yes (only one)** |
-| **Software Architect** | `software-architect` | System requirements, architecture, ADRs, coding guidelines, test strategy | No |
-| **Product Designer** | `product-designer` | UI/UX: screens, flows, design system, accessibility (UI-bearing PRDs) — `design.yaml` | No |
-| **Research Engineer** | `research-engineer` | Web-enabled investigation of libs/datasheets/APIs; cited facts — `research_notes.yaml` | No |
+| **Project Manager** | `project-manager` (foreground lead; Claude: opus + role memory; Codex: mapped lead tier + checked-in project memory) | Requirements (`PR`/`FR`/`CR`/`BUG`), the masterplan, delegation, merge, user acceptance | **Yes (only one)** |
+| **Software Architect** | `software-architect` | System requirements (`SR`), architecture diagrams (`ARC`), decision items, test strategy | No |
+| **Product Designer** | `product-designer` | UI/UX: screens, flows, design system, accessibility (UI-bearing `PR`s) — wireframes (`WFR`) + frozen design revisions (`DSN`) | No |
+| **Research Engineer** | `research-engineer` | Web-enabled investigation of libs/datasheets/APIs; cited facts as evidence items | No |
 | **Backend Developer** | `backend-developer` | Server-side tasks, tests, commits | No |
 | **Frontend Developer** | `frontend-developer` | UI tasks, tests, commits | No |
 | **Quality Engineer** | `quality-engineer` | Review, tests (sole owner of test completeness), Definition of Done, merge gate | No |
 | **DevOps Engineer** | `devops-engineer` | CI/CD, pipelines, environments, release | No |
-| **Project Auditor** | `project-auditor` | Scheduled daily READ-ONLY review: samples requirements↔code claims, judge rubric (0.0–1.0 + pass/fail), sole writer of `review_findings.yaml`; findings become TSKs or logged skips | No |
+| **Project Auditor** | `project-auditor` | Weekly / event-triggered READ-ONLY review: samples requirement↔code claims, judge rubric (0.0–1.0 + pass/fail), records evidence (`kind: audit`); every finding becomes a `TSK`/`BUG`/`CR` or a decision item saying why not | No |
 
 ### Roles (research-team)
 
-Same two-tier machinery, research-flavored. Hierarchy: **Research Question (RQ) → Hypothesis (HYP) +
-Experiment Design (EXP) → Tasks**; changes go through **Protocol Amendments (PA)**. The PM (lead) is again
-the only customer-facing role.
+Same two-tier machinery, research-flavored. Hierarchy: **Research Question (`RQ`) → Hypothesis (`HYP`) +
+Experiment (`EXP`) → Tasks (`TSK`)**; a change to an approved `RQ` revision is a **`CR`** (which replaced
+V1's Protocol Amendment). The PM (lead) is again the only customer-facing role.
 
 | Role | File | Job |
 |---|---|---|
-| **Research Lead (PM)** | `project-manager` (foreground lead; Claude: opus + role memory; Codex: mapped lead tier + checked-in project memory) | RQs/PAs, `project_memory/` + **FZulG** bookkeeping, delegation, merge, user acceptance |
-| **Methodologist** | `methodologist` | Hypotheses, experiment designs, MDRs, research guidelines, FZulG criteria |
+| **Research Lead (PM)** | `project-manager` (foreground lead; Claude: opus + role memory; Codex: mapped lead tier + checked-in project memory) | `RQ`s/`CR`s, the masterplan + **FZulG** bookkeeping, delegation, merge, user acceptance |
+| **Methodologist** | `methodologist` | Hypotheses (`HYP`), experiment designs (`EXP`), MDRs, research guidelines, FZulG criteria |
 | **Researcher** | `researcher` | Runs experiments, collects raw data, analysis code |
 | **Data Analyst** | `data-analyst` | Statistics, effect sizes, visualization, interpretation |
 | **Reviewer** | `reviewer` | Reproducibility + validity gate, peer review, merge gate |
 | **Research Engineer** | `research-engineer` | Data pipelines, environments, dataset versioning |
 | **Report Writer** | `report-writer` | Per-experiment scientific report in **LaTeX/PDF** (+ offline HTML preview via KaTeX) and the **BSFZ application draft** from `fzulg_documentation.yaml`, fixed templates |
-| **Project Auditor** | `project-auditor` | Scheduled daily READ-ONLY review: samples claims vs evidence, judge rubric (0.0–1.0 + pass/fail), sole writer of `review_findings.yaml`; findings become tasks or logged skips |
+| **Project Auditor** | `project-auditor` | Weekly / event-triggered READ-ONLY review: samples claims vs evidence, judge rubric (0.0–1.0 + pass/fail), records evidence (`kind: audit`); every finding becomes a `TSK`/`BUG`/`CR` or a decision item saying why not |
 
 ### Roles (office-team)
 
-Back-office automation for a small business, PROCESS-shaped: the approval unit is a **PROC**
-(`process_definitions.yaml`) — approved once by the user (with a tamper-detecting `approved_hash`),
-then routine runs execute autonomously within it. Inbox → verified filing → script-validated
+Back-office automation for a small business, PROCESS-shaped: the approval unit is a **`PROC`**
+(one file, `procedures/active/PROC-nnnn.yaml`) — approved once by the user (with a tamper-detecting
+`approved_hash` over its steps AND roles), then routine runs execute autonomously within it. Inbox →
+verified filing (the archive tree IS the record; there is no filing log to write) → script-validated
 append-only ledger → **generated** quarterly income/expense report (Zufluss/Abfluss; drafts only,
 no tax/legal advice, NOTHING is ever sent — `outbox/` is the user's send tray. Claude denies
 `mcp__*` by default; Codex has no exact project-local wildcard equivalent, so stronger outbound
@@ -272,14 +277,14 @@ enforcement requires external server/tool restrictions or admin policy).
 
 | Role | File | Job |
 |---|---|---|
-| **Office Manager** | `office-manager` (foreground lead; Claude: opus + role memory; Codex: mapped lead tier + checked-in project memory) | Onboarding interview, business profile/masterplan, PROC lifecycle + approvals, inbox routing, report runs, git |
-| **Records Clerk** | `records-clerk` | Filing plan (+ retention), verified filing log, move-only migrations |
+| **Office Manager** | `office-manager` (foreground lead; Claude: opus + role memory; Codex: mapped lead tier + checked-in project memory) | Onboarding interview, business profile/masterplan, `PROC` lifecycle + approvals, inbox routing, report runs, git |
+| **Records Clerk** | `records-clerk` | Filing plan (+ retention) — the single machine-readable filing truth, move-only migrations |
 | **Bookkeeper** | `bookkeeper` | E-invoice-first extraction, ledger entries via `scripts/ledger_add.py` (validated, append-only), master data, report commentary — **no tax advice** |
 | **Product Editor** | `product-editor` | Catalog + content guidelines, article texts, supplier-query drafts (single writer for product copy) |
 | **Shop Curator** | `shop-curator` | Read/audit-only SEO/GEO/content audits with sourced findings; page drafts |
 | **Compliance Researcher** | `compliance-researcher` | Sourced regulation register per category × market (CE, RoHS, RED, Ökodesign …) with review dates — **no legal advice** |
 | **Marketing Planner** | `marketing-planner` | Research-backed channel strategy, account inventory, calendar, post drafts |
-| **Project Auditor** | `project-auditor` | Scheduled daily READ-ONLY review: samples filing/ledger/report claims for real, judge rubric, sole writer of `review_findings.yaml` |
+| **Project Auditor** | `project-auditor` | Weekly / event-triggered READ-ONLY review: samples filing/ledger/report claims for real, judge rubric, records evidence (`kind: audit`) |
 
 ### Phase model
 
@@ -287,35 +292,57 @@ enforcement requires external server/tool restrictions or admin policy).
 3 USER_APPROVAL → 4 SYSTEM_PLANNING → 5 IMPLEMENTATION → 6 REVIEW → 7 TEST → 8 QA →
 9 INTERNAL_ACCEPTANCE + MERGE → 10 USER_ACCEPTANCE`
 
-- **Two-level acceptance:** PM/QA accept internally per branch/task; the **user only accepts per PRD**
+- **Two-level acceptance:** PM/QA accept internally per branch/task; the **user only accepts per `PR`**
   (on `main`, after the internal merge).
 - **ASSESSMENT** runs only for existing repos: PM + Architect + QA produce a **gap report** (missing
   tests, guideline gaps, refactoring candidates, tech debt, security) — the user chooses what becomes
-  a PRD/CR.
+  a `PR`/`CR`.
 
-### Artifacts (`project_memory/`)
+### State (`project_memory/`)
 
-Structured YAML files in the repo — the **single source of truth**. Each role writes only its own area
-(no overwriting); the **PM** creates `project_memory/` on the first run via the deterministic
-`init_project_memory` script (copy-if-absent from the kit templates) and owns the requirement/progress
-bookkeeping itself. The user's idea lives as a proper **`masterplan.md`** (seeded richly at onboarding, PM-owned,
-critically engaged — never just blessed) — the living north star the PRDs derive from. The project evolves through four explicit requirement types, never silent edits: a
-**user-story Feature Request (FR)** for new capability → triaged into a **PRD** (the delivered unit), a
-**Change Request (CR)** for a change to an approved PRD, and a **Bug (BUG)** for a defect against approved
-behaviour (with a mandatory regression test). **No ad-hoc status/summary/report files** are allowed — findings
-go into the predefined YAML (this is also enforced by a hook, see below).
+**One file is one item** — the repo's `project_memory/` is the single source of truth, and a status is
+written exactly once, in the item that has it. Each item type has its own directory
+(`<area>/active/<TYPE>-nnnn.yaml`); which type lives where is defined once in code
+(`team-kits/kernel/backlog_types.py`, `ACTIVE_DIRS`), together with the per-type field contract
+(`REQUIRED_FIELDS`) and status automaton (`AUTOMATA`) — never as a second list in prose. The typed
+directory skeleton is created by the deterministic `init_project_memory` script (copy-if-absent from the
+kit templates).
 
-A user-facing **dashboard** (`progress.dashboard.html`) is generated, never hand-edited: the **PM** runs
-`generate_dashboard.py`, which reads the requirement/task/CR YAML files, rebuilds the dashboard from a
-static shell, archives the previous version under `dashboard_history/`, and lists what changed since the
-last run. Bars expand to reveal the items behind each status (id, title, owner, origin, start/end dates).
-Running the generator needs PyYAML (`pip install pyyaml`); the generated HTML is dependency-free and opens
-by double-click.
+The **state kernel is the only writer.** Roles decide WHAT is captured; the kernel allocates the id,
+stamps the timestamps, refuses a status the automaton does not allow, and writes the file atomically
+under a lock. `gate_write_scope` closes the tool paths to the state directory (an agent gets only its
+task's `staging/<task-id>/`), so "two roles overwrote each other's YAML" is structurally gone rather than
+a rule someone follows.
+
+The user's idea lives as a proper **`product/masterplan.md`** (seeded richly at onboarding, PM-owned,
+critically engaged — never just blessed): frozen discovery prose and explicitly **not** a status source.
+The project then evolves through explicit item types, never silent edits: a user-story **`FR`** for new
+capability, triaged into a **`PR`** (the delivered unit, `RQ` in the research kit), a **`CR`** for a change
+to an approved `PR` revision, and a **`BUG`** for a defect against approved behaviour (with a mandatory
+regression test). Below a `PR` sit `SR` contracts and `TSK` work orders; approvals (`APR`), decisions,
+invariants (`INV`) and evidence are items in exactly the same sense. Architecture diagrams (`ARC`) and
+wireframes (`WFR`) are **draw.io `.drawio.svg`** files with a companion YAML, frozen on approval.
+
+What is closed **leaves**: a terminal item is archived to `archive/<type>/<year>/`, so the active
+directories ARE the current context. History lives in git, not as a changelog inside an active file.
+There is no `progress.yaml`, no narrative status log, no committed dashboard history and no ad-hoc
+status/summary/report file (`guard_no_adhoc` blocks the last one).
+
+Everything that summarises the items is **regenerated** from them and lives under `generated/`:
+`index.yaml`, the `session_brief.yaml` the session-start hook points the lead at, and the user-facing
+`dashboard.html`. `generated/**`, `.claude/kit_state.json` and the kernel lock are deliberately **not
+committed** — all regenerable, and generated artifacts never produce merge conflicts. The dashboard is
+rendered by `scripts/generate_dashboard.py` from `generated/index.yaml` plus the active items into
+`project_memory/generated/dashboard.html`: views over the item types, each row expanding into that item's
+detail on demand. It keeps no history and computes no since-last-run diff — the previous state is a git
+commit away. Running it needs PyYAML (`pip install pyyaml`); the generated HTML is dependency-free and
+opens by double-click.
 
 ### Git, presets & models
 
-- **Branch per PRD** (`feat/PRD-xxx-…`), merge after internal QA, **push only on user confirmation**,
-  no force-push, no work on a dirty tree.
+- **Branch per work item** (`<typ>/<ITEM-ID>-<slug>`, prefixes `pr/ cr/ bug/` — e.g.
+  `pr/PR-0012-checkout`), merge after internal QA, **push only on user confirmation**, no force-push,
+  no work on a dirty tree.
 - **Team preset** chosen once per project (dev/research: `solo` | `duo` | `team`; office: `core` |
   `commerce` | `full`) — **mechanical**: the scaffold installs only the preset's roles (kit
   `presets.yaml`), so another **custom kit role** is unavailable until an upgrade. Codex's upstream
@@ -341,7 +368,8 @@ by double-click.
 
 ### Memory
 
-- **`project_memory/`** = the project's facts/state (authoritative single source of truth; the PM maintains it).
+- **`project_memory/`** = the project's facts/state (authoritative single source of truth; the PM decides
+  its content, the state kernel performs every write).
 - **Agent memory** (`memory: project` → `.claude/agent-memory/<role>/MEMORY.md`) is enabled only for
   selected Claude craft roles. Codex has no role-specific equivalent; generated project config sets
   `features.memories=false` and `generate_memories/use_memories=false`, so required facts/rules stay
@@ -357,8 +385,25 @@ permission profile for secret denial and read-only harness control files, and em
 `agent_type`; older Codex hosts must be upgraded rather than treated as equivalent. Codex ignores
 all project-local `.codex/` layers until the repository and hooks are trusted.
 
-- **No ad-hoc files** (`guard_no_adhoc`) — blocks writing status/summary/report files outside the allowlist
-  (`project_memory/**`, `src/**`, `tests/**`, `docs/**`, configs).
+- **No ad-hoc files** (`guard_no_adhoc`) — blocks the status/summary/report/result dumps agents keep
+  inventing; a finding belongs in a typed item (evidence, decision, `BUG`, `CR`) and work still in flight
+  in the task's own `staging/<task-id>/`.
+- **The state directory is kernel-only** (`gate_write_scope`) — refuses ANY tool write into
+  `project_memory/**` (the exception is a bound specialist's own `staging/<task-id>/`), a bound
+  specialist writing outside its task's `allowed_scope`, an unbound subagent writing anything, and from a
+  shell every write-capable command line naming the state directory or the enforcement layer. What a
+  command line does not reveal it cannot refuse: a script the agent wrote and then ran is bounded by the
+  project's permission posture, not by this gate.
+- **No spawn without a work order** (`gate_dispatch`) — no subagent starts without a valid dispatch header
+  and a live kernel lease: missing task, wrong role, stale root revision, unproven or invalidated
+  approval, open dependency, spent lease, or a UI task without the `design_ref` its confirmed design
+  requires. It binds the child's `agent_id` to its task and returns the task to `READY` when the platform
+  reports the spawn failed.
+- **Approvals are minted, not claimed** (`gate_approval`) — a question marked as an approval request must
+  match the kernel-generated approval question exactly (text, header, every option) or it is blocked;
+  only the verbatim approval label mints the approval.
+- **Result contract at stop** (`gate_subagent_output`) — a specialist that ends in prose instead of its
+  declared output envelope is blocked; work built on a missing result is work built on air.
 - **No rogue spawns** (`guard_agent_spawn`) — hard-blocking in Claude. Codex installs exact custom
   specialist roles, instructs the lead to use only those, and makes every specialist self-validate
   the work order. Codex's built-in roles remain available upstream, and `SubagentStart` cannot veto
@@ -367,19 +412,30 @@ all project-local `.codex/` layers until the repository and hooks are trusted.
   Codex `PreToolUse` supplies `agent_id`/`agent_type`, so the same guard distinguishes the foreground
   lead from specialists; dev/research still retain QA/pipeline as a second line of defense.
 - **Guidelines before code** (`guard_guidelines`) — blocks a code-writer from writing a language before its
-  `coding_guidelines.yaml` `languages:` block exists, so the architect fills the rules first.
+  `coding_guidelines.yaml` `languages:` block exists. CONDITIONAL: V2 ships no template for that file, so
+  in a project that does not keep one the hook exits 0 and the rule binds as policy only.
 - **Real pipeline at merge** (`gate_pipeline`) — runs `scripts/quality.py` (lint/types/tests+coverage,
   secret/dep scan) and blocks on a red or missing pipeline; a self-reported "pass" does not suffice.
-- **Commit / merge gate** (`gate_git`) — always blocks force-push; blocks push/merge without a passing QA
-  report in the YAML.
+- **Commit / merge gate** (`gate_git`) — always blocks force-push. It also blocks EVERY merge/push today,
+  because it still looks for a V1-era `project_memory/*report*.yaml` naming the branch's item and a V2
+  project has no such file — a known lockstep defect, not a QA verdict; until it reads evidence items the
+  QA duty binds as policy. Plus `gate_push_token`: a `git push` needs a user approval bound to
+  remote + branch + HEAD, which a new commit invalidates. Plus `gate_shell_hygiene`: destructive `docker`
+  on a foreign compose project or any `prune`, and merge/rebase/pull/`reset --hard`/branch-switch on a
+  dirty tree.
 - **Per-area test gate** (`gate_test_coverage`, dev-team) — blocks merge while any source area (e.g.
-  `src/`, `frontend/src/`) has no tests, so a strong area can't mask an untested one.
-- **Completeness gate** (`gate_memory_complete`) — blocks merge while a required `project_memory/` YAML is
-  still empty/template (unless it is explicitly marked `applicable: false`).
+  `src/`, `frontend/src/`) has no tests, so a strong area can't mask an untested one. The default areas
+  always count; EXTRA areas come from `testing_guidelines.yaml` `coverage_areas:`, an optional file V2
+  ships no template for — without it a source package outside the defaults is not scanned at all.
+- **Completeness gate** (`gate_memory_complete`) — blocks merge while the fail-closed state validator
+  reports an error, `product/masterplan.md` is still the raw template, or `project_config.yaml` has no
+  project name / only TODO stacks.
 - **YAML-valid-at-write** (`guard_yaml_valid`) — parses every written `project_memory/*.yaml` immediately
   (parse errors + duplicate keys go straight back to the writer), so a spec role without a shell can never
-  leave broken YAML behind; also enforces the `progress.yaml` contract (ONE-line `status`, `log:` present —
-  a real PM regrew a 300-line status blob). The pipeline's yaml-lint stage is the merge/CI backstop.
+  leave broken YAML behind. Well-formedness only: what an item must CONTAIN is its type's field contract,
+  which the state validator answers. The pipeline's yaml-lint stage is the merge/CI backstop.
+- **Memory holds craft, never project status** (`guard_memory_budget`) — blocks an oversized role-memory
+  index or topic, a 21st topic for one role, and any project item id written into a role's memory.
 - **Background-agent audit** (`notify_agent_events` + spawn log) — never blocks; logs
   `agent_completed`/`agent_needs_input` notifications AND `SubagentStop` completions to
   `project_memory/.audit/hook_events.jsonl`, while `guard_agent_spawn` logs every allowed spawn —
@@ -392,18 +448,21 @@ all project-local `.codex/` layers until the repository and hooks are trusted.
   dev/research kits — the office kit ships deterministic office scripts instead) — the scaffold
   OVERWRITES this file on every update (like the hooks), so kit-level check fixes reach even
   projects whose quality.py runner is a heavy fork; includes the anti-monolith **file budget**
-  (max lines per source file, threshold + reasoned exemptions in `coding_guidelines.yaml`
-  `file_budget:`, research fallback: `research_guidelines.yaml` — a real App.tsx reached 8,966
-  lines while its ui/ library sat unused).
-- **Packaging gate** (`gate_packaging_decision`, dev-team) — blocks merge while `architecture.yaml`
-  `packaging.method` is still TODO, so HOW the software ships is always a conscious decision (even "none /
+  (max lines per source file — a real App.tsx reached 8,966 lines while its ui/ library sat unused).
+  Its threshold and reasoned exemptions used to live in the guidelines monolith; V2 dissolved that file
+  and has not rehomed the config knobs yet, so the budget currently runs on its defaults and the checks
+  say so instead of pointing at a file that no longer exists.
+- **Packaging gate** (`gate_packaging_decision`, dev-team) — blocks merge while no active architecture item
+  states a resolved `packaging.method`, so HOW the software ships is always a conscious decision (even "none /
   library" is valid) — the deterministic guard against a critical packaging tool (e.g. Docker) being forgotten.
-- **Auto-dashboard** (`auto_dashboard`) — regenerates `progress.dashboard.html` whenever `project_memory/`
-  changed.
+- **Which bundle this checkout trusts** (`kit_trust_state`) — records the hook bundle a project has
+  actually run in `.claude/kit_state.json` (`restart_required` → `active`, `hooks_trust_required` when the
+  bundle changed). It is per-machine runtime state and deliberately not committed, so a clone can never
+  inherit "trusted" before a single hook ran in it.
 - Note on `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=80` in the kit settings: meanwhile officially documented;
   it can only LOWER the threshold below the default, and Opus-1M sessions reportedly ignore it
   (open issue) — treat it as best-effort; the real context hygiene is the "fresh session after each
-  PRD merge" rule the PM skill enforces.
+  merged requirement" rule the PM skill enforces.
 - Claude hooks resolve via `${CLAUDE_PROJECT_DIR}`/`_root.py`; generated Codex commands resolve the
   Git root or walk upward before launching a shared hook, so subdirectories and greenfield repos
   before `git init` both work.
@@ -482,9 +541,12 @@ also receives generated native copies under `./.agents/skills/`. Claude preloads
 Codex lead/specialist instructions explicitly require the matching native skill. There are no global
 role skills.
 
-**Coverage guarantee:** every `project_memory/*.yaml` has a write-owner named in a role skill (a few are
-partitioned co-owners: `tasks`, `results`, `tests/`), so no artifact is ever left unmaintained. The
-`derives_from` chain runs **PRD → SR → TSK**; each owner updates the status of its own items.
+**Coverage guarantee:** every item type has a CONTENT owner named in the constitution and its role skill,
+so no part of the state is left unmaintained — while the writing itself belongs to the kernel alone. What
+an item must contain is not repeated in any skill: it is the type's field contract in
+`kernel/backlog_types.py`, which the fail-closed state validator checks. The `derives_from` chain runs
+**`PR` → `SR` → `TSK`** (research: **`RQ` → `HYP`/`EXP` → `TSK`**), and each item's status moves only
+along its own automaton.
 
 ---
 
@@ -523,10 +585,14 @@ Team kits are **versioned** (`team-kits/<kit>/VERSION`, content-hashed — `vali
 without a bump). The scaffold stamps `./.claude/kit_version` into each project; at session start the
 `session_status` hook compares it with the staged kit and flags **KIT UPDATE AVAILABLE**. The PM then proposes
 the update (scaffold_team + init_project_memory — backup first, copy-if-absent, `project_memory/` content is
-never overwritten) and asks for a restart. Under Codex the approved scaffold may need explicit filesystem
+never overwritten; the update adds missing typed directories, it never touches an existing item) and asks
+for a restart. `kit_trust_state` records in the uncommitted `.claude/kit_state.json` which hook bundle this
+checkout has actually run, so a changed bundle shows up as `hooks_trust_required` rather than being assumed
+active. Under Codex the approved scaffold may need explicit filesystem
 permission escalation because harness/provider paths are read-only; never run the provider generator alone.
 Afterward verify generated TOMLs, review/re-trust the changed bundle hash in `/hooks`, and start the new
-session. Newly required fields in existing YAMLs are requested by the gates.
+session. A field a newer kit version requires is reported per item by the state validator, which the merge
+gate relays.
 
 ---
 

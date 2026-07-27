@@ -39,3 +39,33 @@ def find_repo_root(start=None):
         if parent == d:
             return base
         d = parent
+
+
+# The typed state's root types, per kit (kernel/backlog_types.ROOT_TYPE_BY_KIT). A dev project is
+# led by PRs, a research project by RQs; both may exist in a mixed repo, so both count.
+# Spelled out because `has_root_item` answers on every guarded shell command and importing the
+# kernel there would pull PyYAML into that path. It is a cache with a proof, not a second list:
+# `test_root_item_globs_are_the_kernels_root_types` derives the same tuple from ACTIVE_DIRS +
+# ROOT_TYPE_BY_KIT, so a moved directory or a new root type cannot leave the gates asleep.
+ROOT_ITEM_GLOBS = ("product/active/PR-*.yaml", "research/active/RQ-*.yaml")
+
+
+def has_root_item(repo_root):
+    """Has this project captured its first product requirement / research question yet?
+
+    THE ONE PREDICATE five gates used to compute for themselves, each by grepping
+    `project_memory/product_requirements.yaml` for a `PRD-<number>` line. That file no longer exists —
+    the state is one file per item — and five private copies of a question is how the answers
+    drift. Gates ask this to decide whether they APPLY at all: before the first root item a repo
+    is still being set up, and a quality gate that fires there blocks the setup it exists to
+    protect.
+
+    Glob, not YAML: this runs on every guarded shell command, and the question is "does an item
+    exist", which a filename answers.
+    """
+    import glob as _glob
+    state = os.path.join(repo_root, "project_memory")
+    for pattern in ROOT_ITEM_GLOBS:
+        if _glob.glob(os.path.join(state, pattern.replace("/", os.sep))):
+            return True
+    return False

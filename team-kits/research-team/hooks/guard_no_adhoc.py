@@ -2,10 +2,16 @@
 """
 PreToolUse(Write) guard — enforces the single-source-of-truth rule.
 
-Blocks the creation of ad-hoc status/summary/report/result files that the agents
-kept inventing instead of writing the predefined project_memory/*.yaml. Reads the
-Claude Code hook JSON from stdin; exit code 2 + a stderr message blocks the tool call
-and tells the model why. Any uncertainty -> exit 0 (never block legitimate work).
+Blocks the creation of ad-hoc status/summary/report/result files that the agents kept inventing
+instead of recording the finding as a typed item. Reads the Claude Code hook JSON from stdin; exit
+code 2 + a stderr message blocks the tool call and tells the model why. Any uncertainty -> exit 0
+(never block legitimate work).
+
+WHERE THE CONTENT GOES INSTEAD, in V2 (spec II.2): not into a monolith YAML any more — those are
+gone — but into a typed item the STATE KERNEL writes. That changes the advice this guard gives,
+not what it blocks: a review/test/acceptance run becomes an Evidence item, a durable choice a
+Decision item, a defect a BUG, a scope change a CR, and work still in flight belongs in the
+task's own `project_memory/staging/<task-id>/`.
 """
 import sys
 import os
@@ -25,6 +31,25 @@ ALLOWED_ROOT_DOCS = {
     "code_of_conduct.md", "security.md",
 }
 
+# The id prefixes of the typed items (`kernel/backlog_types.ACTIVE_DIRS`). Kept as a literal
+# because this guard runs on EVERY Write and decides on the filename alone: importing the kernel
+# to learn the type names would pull PyYAML into that path, and a guard that cannot load must not
+# stop guarding. It is a cache with a proof, not a second list — `test_no_adhoc_covers_every_item
+# _type` asserts it equals ACTIVE_DIRS, so a new item type cannot silently escape the rule.
+ITEM_TYPES = ("apr", "arc", "bug", "cr", "dec", "dsn", "evd", "exp", "fr", "hyp", "inv",
+              "pr", "proc", "rq", "sr", "tsk", "wfr")
+# V1 ids that migrated projects still carry (spec II.10 keeps them in `legacy_ids`), so a
+# `PRD-0002_status.md` written from an old habit is still caught. Also proven, as far as it can
+# be: the same test asserts every type in the kernel's V1 migration table is a prefix known here.
+LEGACY_ITEM_TYPES = ("adr", "mdr", "pa", "prd")
+# The rule is "named after an ITEM ID", so it matches the id shape the kernel actually mints —
+# `<TYPE>-<4+ digits>` (`kernel/backlog_types._ID_RE`). Matching a single digit made the guard
+# swallow ordinary notes whose name merely starts with two letters (`bug-42.md`, `fr-1.md`),
+# against this file's own "never block legitimate work". A name that IS a valid item id stays
+# blocked even when it meant something else — that collision is precisely what the rule is for.
+ITEM_FILENAME_RE = re.compile(
+    r"^(?:%s)-\d{4,}" % "|".join(sorted(ITEM_TYPES + LEGACY_ITEM_TYPES, key=len, reverse=True)))
+
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _root import find_repo_root
@@ -36,10 +61,12 @@ def block(rel, why):
     _audit.record("guard_no_adhoc", rel)
     sys.stderr.write(
         "[team-kit guard] Blocked creating '%s': %s.\n"
-        "Single source of truth = project_memory/*.yaml (+ src/ + tests/). "
-        "Reviews -> review_reports.yaml, tests -> test_reports.yaml, "
-        "acceptance -> acceptance_reports.yaml, architecture -> architecture.yaml/decisions.yaml. "
-        "Put the content into the correct YAML instead of a new file.\n" % (rel, why)
+        "The single source of truth is the typed state, and the kernel is its only writer "
+        "(`harness capture ...`): a review, test or acceptance run is an Evidence item (kind: "
+        "review | test | acceptance), a durable choice a Decision item, a defect a BUG, a scope "
+        "change a CR, an architecture statement an ARC item. Work still in flight goes into your "
+        "task's project_memory/staging/<task-id>/, product code into src/ and tests/. "
+        "Capture it as the right item instead of inventing a file.\n" % (rel, why)
     )
     sys.exit(2)
 
@@ -58,13 +85,13 @@ def check(path, cwd):
         if fnmatch.fnmatch(name, pat):
             block(rel, "matches a forbidden ad-hoc report/summary pattern")
 
-    # 2) requirement/task status written as a markdown doc (PRD-002_*.md etc.), anywhere
-    if name.endswith(".md") and re.match(r"^(prd|rq|exp|sr|tsk|cr|pa|adr|mdr|hyp)-\d", name):
-        block(rel, "requirement/task status belongs in project_memory/*.yaml, not a markdown file")
+    # 2) item status written as a markdown doc (PR-0002_*.md etc.), anywhere
+    if name.endswith(".md") and ITEM_FILENAME_RE.match(name):
+        block(rel, "an item's content belongs in the item itself, not in a markdown file beside it")
 
     # 3) loose markdown at the repo root (except the few conventional ones)
     if is_root and name.endswith(".md") and name not in ALLOWED_ROOT_DOCS:
-        block(rel, "no loose docs at the repo root; put status/notes into project_memory/*.yaml or docs/")
+        block(rel, "no loose docs at the repo root; status belongs in a typed item, prose in docs/")
 
 
 def main():

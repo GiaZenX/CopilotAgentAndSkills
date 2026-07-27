@@ -13,8 +13,11 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import pytest
+
+from conftest import load_kit_module
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None,
                                 reason="e2e scenarios need git on PATH")
@@ -27,10 +30,49 @@ SCRIPTS = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scri
 
 def raw_hook(name, payload, project_dir, hooks_dir=None):
     """Run a hook exactly like a provider does: raw UTF-8 bytes on stdin, bytes captured."""
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project_dir))
+    # HARNESS_KERNEL_PATH: the kernel-backed gates resolve `kernel` relative to the PROJECT, and a
+    # tmp_path repo has no `.claude/kernel` — without it they fail closed on every call, which
+    # would make these scenarios measure a missing install instead of the behaviour under test.
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project_dir),
+               HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits"))
     return subprocess.run([sys.executable, os.path.join(hooks_dir or HOOKS, name)],
                           input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                           capture_output=True, env=env, timeout=120)
+
+
+def capture_root_item(repo):
+    """The repo's first typed root item — what the merge gates now trigger on (spec II.2/II.11/2).
+
+    Through the kernel, so the item is one the state validator accepts: a hand-written stub would
+    make every gate here block on a broken fixture rather than on the thing under test.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    root = os.path.join(str(repo), "project_memory")
+    os.makedirs(root, exist_ok=True)
+    return ProjectState(root).capture("PR", {
+        "title": "Checkout flow", "class": "normal", "problem": "no checkout",
+        "goal": "working checkout",
+        "acceptance_criteria": [{"id": "AC-1", "text": "order completes"}],
+        "invariants": [], "out_of_scope": [], "priority": "high",
+        "user_story": "As a buyer I can pay",
+    })
+
+
+def launched_hook(gate, payload, project_dir, hooks_dir=None):
+    """Run a gate the way the shipped `settings.json` registers it: behind `_gate.py`.
+
+    Calling the gate module directly is a different program. The launcher owns `__main__`, and a
+    round was lost to exactly that difference once already (`_assert_minting_caller` saw the
+    launcher and every approval in every kit silently stopped minting). An end-to-end scenario that
+    took the shortcut would be measuring a registration nobody ships.
+    """
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project_dir),
+               HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits"))
+    return subprocess.run(
+        [sys.executable, os.path.join(hooks_dir or HOOKS, "_gate.py"), gate],
+        input=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        capture_output=True, env=env, timeout=120)
 
 
 def write(path, text):
@@ -50,8 +92,7 @@ def test_e2e_gate_pipeline_red_run_shows_utf8_fail_lines(tmp_path):
     """A RED quality.py emitting Vitest-style UTF-8 glyphs (❯) must yield a BLOCK whose stderr
     still contains the FAIL line — the cp1252 read once dropped the ENTIRE output (p.stdout was
     None) and the PM debugged blind for a night."""
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     write(str(tmp_path / "scripts" / "quality.py"),
           "import sys\n"
           "for s in (sys.stdout, sys.stderr):\n"
@@ -74,8 +115,7 @@ def test_e2e_gate_pipeline_green_cache_with_umlaut_filename(tmp_path):
     """Green-tree cache round trip in a repo containing an umlaut filename — git status/rev-parse
     output flows through the pinned decoder; second push must hit the cache, not rerun."""
     repo = tmp_path / "repo"
-    write(str(repo / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(repo)
     counter = tmp_path / "runs.txt"  # OUTSIDE the repo — the tree must stay clean
     write(str(repo / "scripts" / "quality.py"),
           "open(r'%s', 'a').write('x')\nprint('[quality] pipeline GREEN.')\n" % str(counter))
@@ -118,13 +158,10 @@ def test_e2e_repo_wide_yaml_parses_umlaut_filenames(tmp_path):
     """A tracked, BROKEN YAML with an umlaut name must be found and named (git quotepath once
     octal-escaped such paths so isfile() skipped them — the file was silently unchecked)."""
     pytest.importorskip("yaml")
-    import importlib.util
-    spec = importlib.util.spec_from_file_location("kit_checks_e2e",
-                                                  os.path.join(SCRIPTS, "kit_checks.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    mod = load_kit_module("kit_checks_e2e", os.path.join(SCRIPTS, "kit_checks.py"))
     repo = tmp_path / "repo"
-    write(str(repo / "project_memory" / "progress.yaml"), "status: x\nlog: []\n")
+    write(str(repo / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\nstatus: DRAFT\n")
     write(str(repo / "config" / "Geschäftskonten.yaml"), "a: [unclosed\n")
     for args in (("init", "-q"), ("add", "-A")):
         assert _git(repo, *args).returncode == 0
@@ -141,8 +178,9 @@ def test_e2e_session_status_survives_umlaut_git_state(tmp_path):
     """SessionStart briefing in a repo whose branch name carries umlauts — the pinned git decode
     must deliver a readable branch line, never crash the hook (additionalContext JSON intact)."""
     repo = tmp_path / "repo"
-    write(str(repo / "project_memory" / "progress.yaml"), "status: x\nlog: []\n")
-    for args in (("init", "-q", "-b", "feature/PRD-1-büro"), ("add", "-A"),
+    write(str(repo / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+          "id: PR-0001\nstatus: DRAFT\n")
+    for args in (("init", "-q", "-b", "feature/PR-0001-büro"), ("add", "-A"),
                  ("-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")):
         assert _git(repo, *args).returncode == 0
     payload = {"hook_event_name": "SessionStart", "cwd": str(repo)}
@@ -158,8 +196,7 @@ def test_e2e_memory_complete_accepts_bom_config(tmp_path):
     """A PS-5.1-style BOM rewrite of project_config.yaml (name on line 1) once made
     config_unfilled() blind — the gate blocked every push of a correctly filled project and
     escalated. The stdlib gates read utf-8-sig now."""
-    write(str(tmp_path / "project_memory" / "product_requirements.yaml"),
-          "requirements:\n  PRD-0001:\n    title: x\n")
+    capture_root_item(tmp_path)
     cfg = tmp_path / "project_memory" / "project_config.yaml"
     cfg.write_bytes("﻿name: Bürosoftware Müller GmbH\npreset: solo\n".encode("utf-8"))
     payload = {"tool_name": "Bash", "cwd": str(tmp_path),
@@ -167,6 +204,142 @@ def test_e2e_memory_complete_accepts_bom_config(tmp_path):
     r = raw_hook("gate_memory_complete.py", payload, tmp_path)
     err = r.stderr.decode("utf-8", "replace")
     assert "project_config.yaml" not in err  # filled config never appears in the block list
+    # POSITIVE CONTROL on the same axis. The assertion above is negative and holds just as well
+    # against EMPTY stderr — it stayed green with the gate's trigger disabled, proving nothing
+    # about the BOM path. The same BOM-encoded file with an UNFILLED key must reach the gate and
+    # block; only both directions together show that the config was actually read.
+    cfg.write_bytes("﻿name: Bürosoftware Müller GmbH\nstacks: [TODO]\n".encode("utf-8"))
+    r2 = raw_hook("gate_memory_complete.py", payload, tmp_path)
+    assert r2.returncode == 2
+    assert "project_config.yaml" in r2.stderr.decode("utf-8", "replace")
+
+
+# ---------------- scenario: the V2 chain itself — draft PR, approval, SR, task, spawn ----------
+sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+from kernel import approvals, dispatch  # noqa: E402
+from kernel.state import ProjectState  # noqa: E402
+
+
+def _leased_task(repo):
+    """Walk the chain to a leased task and return (state, task, dispatch header).
+
+    Every step is a kernel operation, and the approval step is a real subprocess through the
+    shipped launcher — the one step of the chain that a test is not allowed to shortcut, because
+    the kernel refuses to mint for any other caller.
+    """
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    pr = state.capture("PR", {
+        "title": "Rechnungsübersicht für Käufer", "class": "normal",
+        "problem": "der Käufer sieht seine Rechnungen nicht",
+        "goal": "Rechnungsliste im Konto",
+        "acceptance_criteria": [{"id": "AC-1", "text": "Käufer sieht seine Rechnungen"}],
+        "invariants": [], "out_of_scope": [], "priority": "high",
+        "user_story": "Als Käufer sehe ich meine Rechnungen",
+    })
+    assert state.read_item(pr["id"])["status"] != "APPROVED"  # a fresh PR is a DRAFT, not a plan
+
+    request = approvals.create_pending_request(state, "scope", pr["id"])
+    question = approvals.build_question(request)
+    approved = launched_hook("gate_approval.py", {
+        "hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "cwd": str(repo),
+        "tool_input": {"questions": [question]},
+        "tool_response": {"questions": [question], "answers": {
+            question["question"]: approvals.approve_label(request["mint_code"])}},
+    }, repo)
+    assert approved.returncode == 0, approved.stderr.decode("utf-8", "replace")
+    assert state.read_item(pr["id"])["status"] == "APPROVED"
+
+    sr = state.capture("SR", {
+        "title": "GET /rechnungen liefert die Belege des angemeldeten Käufers",
+        "derives_from": pr["id"],
+        "contract": "200 + JSON-Liste für den eigenen Account, 403 für fremde",
+        "affected_components": ["api"],
+    })
+    task = dispatch.create_task(state, {
+        "product_requirement": pr["id"], "derives_from": sr["id"], "type": "implementation",
+        "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"],
+        "required_inputs": [], "allowed_scope": ["src/"], "forbidden_scope": ["secrets/"],
+        "expected_outputs": ["src/rechnungen.py"], "dependencies": [],
+    })
+    state.transition(task["id"], "READY")
+    lease = dispatch.create_lease(state, task["id"])
+    return state, task, dispatch.dispatch_header(lease)
+
+
+def test_e2e_the_draft_to_dispatch_chain_runs_through_the_shipped_hooks(tmp_path):
+    """Draft PR → user approval → SR → task → lease → the spawn the dispatch gate lets through.
+
+    The single scenario the disposition asks of this file, and the one thing the unit tests around
+    the kernel cannot show: they exercise the links, this walks the CHAIN. Each link consumes what
+    the one before it produced — the mint turns the DRAFT into the approval `create_lease` demands,
+    the SR carries the PR's id, the task carries the root revision the lease validates, and the
+    header the gate parses is the nonce the lease minted. A link that quietly stopped feeding the
+    next one leaves every unit test green.
+
+    German text throughout, because that is what this file is for: the whole chain crosses process
+    boundaries as raw UTF-8, and an item title mangled on the way in reappears as a dispatch that
+    refuses to match itself.
+    """
+    state, task, header = _leased_task(tmp_path)
+    spawn = launched_hook("gate_dispatch.py", {
+        "hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
+        "tool_input": {"subagent_type": "backend-developer",
+                       "prompt": "objective: Rechnungsliste bauen\n%s\noutput: Diff" % header},
+    }, tmp_path)
+    assert spawn.returncode == 0, spawn.stderr.decode("utf-8", "replace")
+    lease = state._read_yaml(os.path.join(state.root, "tasks", "leases",
+                                          task["id"] + ".lease.yaml"))
+    assert lease.get("awaiting_bind_until")  # the child may now claim the task
+
+    # the counter-direction on the same chain: the role the task was NOT planned for is refused,
+    # so the pass above measures the chain and not a gate that waves everything through.
+    other = launched_hook("gate_dispatch.py", {
+        "hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
+        "tool_input": {"subagent_type": "frontend-developer",
+                       "prompt": "objective: Rechnungsliste bauen\n%s\noutput: Diff" % header},
+    }, tmp_path)
+    assert other.returncode == 2
+
+
+def test_e2e_a_lock_held_by_a_foreign_process_makes_the_gate_wait_not_skip(tmp_path):
+    """Spec II.12, v2.1 test cases: "Lock: zweiter Prozess wartet/blockt."
+
+    The kernel's own lock tests run inside one interpreter. This is the case the lock exists for:
+    another PROCESS holds it — a `harness` command, a second agent session — while a shipped hook
+    needs the state. The failure this rules out is the silent one: a gate that finds the lock taken
+    and proceeds unlocked would still exit 0, and only a torn write days later would show it.
+
+    Measured as elapsed time, because "waited" and "did not wait" are otherwise the same green.
+    """
+    state, _task, header = _leased_task(tmp_path)
+    hold = 2.0
+    holder = subprocess.Popen(
+        [sys.executable, "-c",
+         "import sys, time\n"
+         "sys.path.insert(0, %r)\n"
+         "from kernel.lock import KernelLock\n"
+         "lock = KernelLock(%r).acquire()\n"
+         "sys.stdout.write('held\\n')\n"
+         "sys.stdout.flush()\n"
+         "time.sleep(%r)\n"
+         "lock.release()\n" % (os.path.join(ROOT, "team-kits"), state.root, hold)],
+        stdout=subprocess.PIPE, text=True)
+    try:
+        assert holder.stdout.readline().strip() == "held"
+        started = time.monotonic()
+        spawn = launched_hook("gate_dispatch.py", {
+            "hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
+            "tool_input": {"subagent_type": "backend-developer",
+                           "prompt": "objective: Rechnungsliste bauen\n%s\noutput: Diff" % header},
+        }, tmp_path)
+        waited = time.monotonic() - started
+    finally:
+        holder.wait(timeout=30)
+    assert spawn.returncode == 0, spawn.stderr.decode("utf-8", "replace")
+    assert waited >= hold / 2, (
+        "the dispatch gate answered in %.2fs while another process held the kernel lock for %.1fs "
+        "— it did not wait for the lock." % (waited, hold))
 
 
 def test_e2e_quality_scalar_configs_never_crash(tmp_path):

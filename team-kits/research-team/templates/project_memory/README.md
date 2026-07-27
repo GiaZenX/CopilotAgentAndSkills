@@ -1,59 +1,53 @@
-# project_memory/ — artifact templates (research-team)
+# project_memory/ — the project's canonical state
 
-These YAML skeletons are the canonical structure of a research project's `project_memory/`.
-The **PM** (the foreground agent, here the Research Lead) copies them into the project's `project_memory/`
-at project init and fills them as the phase model progresses. `project_memory/` is the **single source of
-truth** — no ad-hoc status/summary/report files are allowed (also enforced by a hook).
+One file is one item. There is no status monolith any more — no file that collects the status of
+many items in one place, and no narrative status log. Where a status used to be written twice —
+once in the item and once in a summary — it is now written once, in the item, and every summary is
+regenerated.
 
-| File | Write owner | Purpose |
-|---|---|---|
-| `project_config.yaml` | PM | Preset, repo mode, model map |
-| `research_questions.yaml` | PM | RQs (customer-visible goals) |
-| `protocol_amendments.yaml` | PM | PAs (changes to an existing RQ) |
-| `hypotheses.yaml` | Methodologist | Falsifiable hypotheses (HYP) |
-| `experiment_designs.yaml` | PM + Methodologist | EXP designs (technical) |
-| `tasks.yaml` | Researcher / Data Analyst | Experiment tasks (TSK) |
-| `methodology.yaml` | Methodologist | Approach, rationale, threats to validity |
-| `decisions.yaml` | Methodologist | Methodology Decision Records (MDR) |
-| `research_guidelines.yaml` | Methodologist | Hard research rules (Reviewer-enforced) |
-| `literature.yaml` | Methodologist | Prior art / novelty evidence |
-| `results.yaml` | Researcher (raw) / Data Analyst (derived) | Recorded outcomes |
-| `findings.yaml` | Data Analyst | Interpretation per hypothesis |
-| `validity_criteria.yaml` | Reviewer | Definition of Validity |
-| `review_reports.yaml` | Reviewer | Methodological review results |
-| `validation_reports.yaml` | Reviewer | Reproduction + validity results |
-| `acceptance_reports.yaml` | Reviewer | RQ acceptance checks |
-| `fzulg_documentation.yaml` | PM | BSFZ application (form fields, work plan) + eligibility pillars + effort |
-| `progress.yaml` | PM | Status line + metrics overview |
-| `changelog.yaml` | PM | History |
-| `progress.dashboard.template.html` | PM | Static shell the dashboard is rendered from |
-| `generate_dashboard.py` | PM | Generator: builds the dashboard from the YAML files |
-| `progress.dashboard.html` | PM | Generated dashboard (do not hand-edit) |
-| `reports/scientific_report.template.tex` | Report Writer | Fixed LaTeX template (submittable report) |
-| `reports/experiment_report.template.html` | Report Writer | Fixed HTML preview template |
-| `reports/EXP-*.{tex,pdf,html}` | Report Writer | Rendered per-experiment reports (LaTeX/PDF + HTML preview) |
-| `reports/fzulg_application_RQ-*.md` | Report Writer | Rendered BSFZ application draft |
-| `reports/assets/` | (bundled) | Local KaTeX (CSS/JS/fonts) for the offline HTML preview |
+## Layout
 
-## Dashboard
+```
+research/active/RQ-0001.yaml       research question — the user-facing level
+product/masterplan.md              frozen discovery artifact; NOT a status source
+hypotheses/active/HYP-0001.yaml    a hypothesis under a research question
+experiments/active/EXP-0001.yaml   an experiment testing a hypothesis
+inbox/active/FR-0001.yaml          an incoming question not yet assigned
+changes/active/CR-0001.yaml        a change to an approved protocol revision
+bugs/active/BUG-0001.yaml          a deviation from confirmed behaviour
+tasks/active/TSK-0001.yaml         a work order for exactly one role
+invariants/active/INV-0001.yaml    a standing methodological rule
+decisions/active/                  decision items
+project_config.yaml                the project's configuration
+approvals/APR-0001.yaml            a user approval of one revision or analysis
+approvals/pending/                 open approval requests — written by the KERNEL only
+evidence/                          test, review and acceptance evidence
+archive/<type>/<year>/<ID>.yaml    closed items leave the active context
+staging/<task_id>/                 non-canonical proposals
+generated/                         index.yaml, session_brief.yaml — NOT committed
+```
 
-`progress.dashboard.html` is a self-contained, dependency-free dashboard. It is generated, never
-hand-edited: the **PM** runs `generate_dashboard.py`, which reads the YAML artifacts (RQs, tasks, PAs,
-`progress.yaml`), rebuilds the file from `progress.dashboard.template.html`, archives the previous version
-under `dashboard_history/`, and lists what changed since the last run. The bars are expandable to reveal
-the items behind each status (id, title, owner, origin, start/end dates). Running the generator needs
-PyYAML (`pip install pyyaml`); the generated HTML itself has no dependencies and opens by double-click.
+## Rules
 
-## Experiment reports
+- **Closed leaves.** Done, rejected or superseded moves to `archive/`, so the active directories
+  ARE the current context and nothing has to be filtered out while reading.
+- **`generated/**` is never hand-edited and never committed.** It is rebuilt from the items; a
+  hand-maintained summary is a second source of truth, which is what this structure ends.
+- **History lives in git**, not as a changelog inside an active file.
+- **`approvals/pending/` belongs to the kernel.** An approval an agent could write is not one.
 
-Immediately after each experiment's **Reviewer-gate PASS** (per experiment, never deferred to the RQ merge)
-the Report Writer renders the **scientific report in LaTeX** (`reports/EXP-xxxx.tex`,
-compiled to `EXP-xxxx.pdf` when a LaTeX engine is available) — the submittable deliverable — plus a
-self-contained **HTML preview** (`reports/EXP-xxxx.html`) whose formulas render **offline** via the bundled
-KaTeX in `reports/assets/` (no CDN). KaTeX is only the preview's math renderer; the LaTeX/PDF is the report.
-Once an RQ's `fzulg_documentation.yaml` is `READY`, it also renders the **BSFZ application draft**
-(`reports/fzulg_application_RQ-xxxx.md`). The Report Writer presents existing results only — it never alters
-data or conclusions.
+## The field contract
 
-Everyone may read everything; each role writes only its own area. See the constitution (`AGENTS.md`) for
-the full rules.
+Required fields per type are defined ONCE, in code: `kernel/backlog_types.REQUIRED_FIELDS`, with
+the status automata beside them in `AUTOMATA`. `harness validate` checks every item against them
+and names what is missing. There are deliberately no skeleton files repeating those lists here — a
+second copy of a contract is a copy that goes stale.
+
+Create items through the kernel (`harness capture`), not by hand: it allocates the id, sets the
+timestamps, and refuses a shape the validator would reject anyway.
+
+## Kit-specific files that are NOT items
+
+`methodology.yaml`, `literature.yaml`, `research_guidelines.yaml` and `fzulg_documentation.yaml`
+are reference material, not state with a lifecycle. Results and findings are `evidence/` entries
+attached to the EXP that produced them.

@@ -1,17 +1,31 @@
 # filing_plan.yaml — owned by: Records-Clerk (structure changes need user approval via the manager)
-# The Aktenplan: archive tree + naming rules + retention per node. Filing targets MUST live under
-# archive/ (gate_filing verifies existence); originals are moved, never deleted, never re-saved.
-
-naming_rule: "YYYY-MM-DD_<counterparty>_<doctype>"   # applied to every filed document
-
+# THE Aktenplan, and the ONLY machine-readable filing truth (spec II.9). Every rule says where a
+# class of document lives, how it is named, what metadata it must carry and how long it is kept.
+# `gate_filing` matches every file landing under archive/ against these rules; a document that
+# matches NO rule is not moved, not renamed and not entered anywhere — the clerk leaves it where it
+# is and asks the user with a concrete rule proposal (spec II.9: the plan is amended deliberately,
+# never bent silently). The human-readable Ablage guideline is GENERATED from this file, and git is
+# its version history — the derivation never runs the other way round.
+#
+# Rule fields: id · path_template · document_types · filename_template · required_metadata ·
+# collision_policy · retention · examples. In `path_template`, `<name>` stands for exactly one path
+# segment (a year, a counterparty folder, ...); everything else matches literally.
 # retention: DE defaults (Belege 8 years, Bücher 10 — the user's Steuerberater confirms; source noted).
-tree: []
-#  - path: archive/finance/incoming_invoices/<year>/
-#    doc_types: [invoice, credit_note]
+
+rules: []
+#  - id: FP-001
+#    path_template: "archive/finance/incoming_invoices/<year>/"
+#    document_types: [invoice, credit_note]
+#    filename_template: "YYYY-MM-DD_<counterparty>_<doctype>"
+#    required_metadata: [date, counterparty, amount_gross]
+#    collision_policy: suffix        # suffix | quarantine — never overwrite, never delete
 #    retention: "8y (BEG IV; confirm with Steuerberater)"
-#  - path: archive/products/datasheets/
-#    doc_types: [datasheet, supplier_sheet]
+#    examples: ["archive/finance/incoming_invoices/2026/2026-03-04_ACME_invoice.pdf"]
+#  - id: FP-002
+#    path_template: "archive/products/datasheets/"
+#    document_types: [datasheet, supplier_sheet]
+#    filename_template: "YYYY-MM-DD_<supplier>_<doctype>"
+#    required_metadata: [date, supplier]
+#    collision_policy: suffix
 #    retention: "while product active + 3y"
-#  - path: archive/_unsorted/          # holding node for unclear items — with a question list
-#    doc_types: [unclear]
-#    retention: "until sorted"
+#    examples: ["archive/products/datasheets/2026-01-09_ACME_datasheet.pdf"]

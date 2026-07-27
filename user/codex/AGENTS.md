@@ -193,32 +193,62 @@ kit-specific YAML document root and required key. The initializer does not prove
 it keeps. Preserve every pre-existing project file and stop on a missing, unknown, or incompatible
 schema instead of writing a mixed-format memory tree.
 
-Now persist only the confirmed bootstrap draft, using the schemas shipped by the selected kit:
+The state directory holds one file per item; there is no status monolith to append to. Now persist only
+the confirmed bootstrap draft, using the schemas shipped by the selected kit:
 
-1. Fill every relevant section of `project_memory/masterplan.md` with the confirmed plan, including
-   recommendations and the existing-state assessment where applicable.
+1. Fill every relevant section of `project_memory/product/masterplan.md` with the confirmed plan,
+   including recommendations and the existing-state assessment where applicable. It is frozen discovery
+   prose and carries no status. Finish it here, not later: after the install `gate_write_scope` refuses
+   every tool write under `project_memory/` and the kernel captures typed items only, so no writer for this
+   file exists any more, while `gate_memory_complete` blocks every merge as long as it still reads like the
+   template. A half-filled masterplan is a dead end, not a draft.
 2. Seed the kit-specific handover artifact:
-   - `dev-team`: add the first free `PRD-xxxx` entry to
-     `project_memory/product_requirements.yaml`, with the confirmed product wish and objective
-     acceptance criteria; status `PROPOSED`, `complete: false`.
-   - `research-team`: add the first free `RQ-xxxx` entry to
-     `project_memory/research_questions.yaml`, with the confirmed research goal and acceptance
-     criteria; status `PROPOSED`, `complete: false`.
-   - `office-team`: fill `project_memory/business_profile.yaml` from the explicitly confirmed
-     onboarding answers. Do not create or approve a PROC here; the Office Manager does that with the
-     user after handover.
-3. Put exactly one single-line current-state summary plus concrete next action into the scalar
-   `project_memory/progress.yaml` key `status:`. Put history only into the append-only `log:` list;
-   never turn `status:` into a multiline scalar or prose history.
-4. In `project_memory/project_config.yaml`, set the confirmed `project.name` and `project.preset`.
-   Where the schema contains `project.repo_mode`, set it to `greenfield` or `onboarded` from step 2.
-5. Set `providers: [claude, codex]` (the only supported providers; a legacy `copilot` entry must
+   - a kit listed in `ROOT_TYPE_BY_KIT`: write **one DRAFT root item** numbered `-0001`, holding the
+     confirmed wish/research goal and objective acceptance criteria (for a dev project that is
+     `product/active/PR-0001.yaml` — an example, not the authority). Read the type, its directory and its
+     fields off the kernel instead of a spelling in this file:
+     `~/.claude/team-kits/kernel/backlog_types.py` maps the kit to its root type (`ROOT_TYPE_BY_KIT`), the
+     type to its directory (`ACTIVE_DIRS`) and to the fields it owes (`REQUIRED_FIELDS`, together with the
+     status-dependent duties named directly above it), and its status is that type's first state in
+     `AUTOMATA`. Write the kernel-stamped fields too (`kernel/state.py`, `capture`: `_KERNEL_SET`) — no
+     kernel and no gate is reachable before the scaffold, so this is the one item a hand writes, and after
+     the install the lead's state validator reads it against that same contract.
+   - a kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none. `office-team` is that
+     case: fill `project_memory/business_profile.yaml` from the explicitly confirmed onboarding answers
+     instead. Do not create or approve a `PROC` (`procedures/active/PROC-nnnn.yaml`) here; the Office
+     Manager does that with the user after handover.
+3. In `project_memory/project_config.yaml`, set the confirmed `project.name` and `project.preset`.
+   Where the schema contains `project.repo_mode`, set it to `greenfield` or `onboarded` from step 2. Fill
+   the rest of the config for the same reason as the masterplan: nothing writes it after the install, and
+   `gate_memory_complete` blocks every merge while it is unfilled. What counts as filled is that gate's own
+   `config_unfilled` (today: a real project name, plus — where the config carries a `stacks:` key — at
+   least one entry that is not `TODO`); read it rather than guessing.
+4. Set `providers: [claude, codex]` (the only supported providers; a legacy `copilot` entry must
    be removed). In this architecture `claude` names the mandatory shared
    source layer from which all provider artifacts are generated; it does **not** require the Claude
    application, a Claude account, or a Claude session. `codex` activates the generated Codex layer.
+5. Regenerate the index from the repository root. The kit is not installed yet, so the kernel comes from the
+   shared home copy:
+   - Windows:
+     `$env:PYTHONPATH="$env:USERPROFILE\.claude\team-kits"; python -m kernel.cli --root project_memory generate-index`
+   - POSIX:
+     `PYTHONPATH="$HOME/.claude/team-kits" python -m kernel.cli --root project_memory generate-index`
 
-Do not derive system requirements, experiment designs, PROCs, implementation tasks, architecture, or
-code in this initializer session. Those belong to the installed lead and specialists.
+   The hand-written item in step 2 is the only state write in this project's life that does not go through
+   the kernel, so it is the only one that does not update `generated/index.yaml` on the way - and every
+   rollup over the items refuses to run against a state directory that holds items but no index.
+
+   This command and the step-4 initializer only run **before** the scaffold. Afterwards the kit's
+   `gate_write_scope` refuses every write-capable shell pipeline that so much as names `.claude` or
+   `team-kits`, so a later regeneration is a gap the installed lead reports and hands back to the user,
+   not a command to retry.
+
+Write no progress, status or dashboard file: an item's status lives in the item, and every rollup over
+them — `generated/index.yaml`, `generated/session_brief.yaml`, the dashboard — is regenerated from the
+items and never hand-maintained.
+
+Derive no `SR`, `HYP`/`EXP`, `PROC`, `TSK` or `ARC` item and no code in this initializer session. Those
+belong to the installed lead and specialists.
 
 ### 5. Install the selected kit locally
 
@@ -254,8 +284,12 @@ Tell the user clearly, in German:
    reviewed and trusted again.
 3. Start one more **new Codex session** in the same repository and send any first message, for example
    `weiter`. Project instructions and agent configuration are discovered for the new session.
-4. The foreground Project Manager/Research Lead/Office Manager will read the saved draft, summarize
-   it, and refine/confirm it before any implementation starts.
+4. The foreground Project Manager/Research Lead/Office Manager will read the saved draft and summarize it
+   before any implementation starts. It can still refine the root item, because the kernel captures items;
+   the masterplan it can only read and discuss, since no writer for it exists after the install. From that
+   session on the kit's `gate_write_scope` refuses every tool write under `project_memory/`: the kernel is
+   the state's only writer, so the lead captures through it - and where that path is not yet walkable, as
+   for the masterplan and the config, it reports the gap instead of editing a state file.
 
 Use this handover wording as the model:
 
@@ -266,8 +300,8 @@ Use this handover wording as the model:
 
 ## Free mode (user chose "Nein")
 
-Work normally and directly. Create and maintain no `project_memory/`, PRDs, RQs, PROCs, progress
-files, or dashboards. Mention only occasionally - not every turn - that the structured manager is
+Work normally and directly. Create and maintain no `project_memory/` at all - no items, no masterplan,
+nothing generated from them. Mention only occasionally - not every turn - that the structured manager is
 available and can be enabled later. If the user explicitly requests structured mode, leave Free mode
 and return to the structured confirmation flow in this gate.
 

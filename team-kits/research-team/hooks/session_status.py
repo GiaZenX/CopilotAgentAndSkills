@@ -199,10 +199,13 @@ def main():
     if os.path.isdir(os.path.join(cwd, "project_memory")):
         parts.append(
             "project_memory/ exists. On the user's FIRST message (whatever it says — even just 'weiter'), "
-            "BEFORE acting read project_memory/progress.yaml, research_questions.yaml, any DRAFT "
-            "plan/masterplan left by the install session, and any open experiment/review reports, then "
-            "give the user a one-line status (active RQ, running experiments, pending validation) and ask "
-            "what to do next. " + (
+            "BEFORE acting read project_memory/generated/session_brief.yaml — the kernel's rollup of "
+            "active roots, tasks, open approvals and validator findings — plus the DRAFT research "
+            "question(s) and product/masterplan.md left by the install session, then give the user a "
+            "one-line status (active RQ, running experiments, pending approvals) and ask what to do next. "
+            "If the brief is missing or stale, regenerate it (`harness generate-session-brief`, which "
+            "needs `--kit/--kit-version/--enforcement` — see `harness --help`) instead "
+            "of reconstructing the state by hand. " + (
                 "Use the native project-manager skill; optional Codex host memory is not role-specific "
                 "or project truth and must not be maintained manually."
                 if is_codex else "Also consult your Claude project-manager agent memory."
@@ -293,14 +296,14 @@ def main():
             today = time.strftime("%Y-%m-%d")
             urgency = ("" if sessions <= 1 or first == today else
                        " OPEN SINCE %s — this is the %d. session that sees it. Work through at least ONE "
-                       "entry NOW (or log a conscious skip in progress.yaml log:) before feature work; "
+                       "entry NOW (or record a conscious skip as a decision item) before feature work; "
                        "acknowledging it once and moving on is the documented failure mode." % (first, sessions))
             parts.append(
                 "KIT MERGE BACKLOG (%s) — the kit VERSION is already current; do NOT run the "
                 "scaffold again because of these (it cannot resolve them). %d "
                 "project file(s) still diverge from the kit templates (%s%s) — diff each against "
-                "the kit template, merge the kit's fixes via the owning role (or document a "
-                "conscious skip in progress.yaml log:), then DELETE the pending file(s). Name "
+                "the kit template, merge the kit's fixes via the owning role (or record a "
+                "conscious skip as a decision item), then DELETE the pending file(s). Name "
                 "this backlog in the FIRST paragraph of your reply to the user.%s"
                 % ("+".join(pend_files), len(pend_lines), "; ".join(pend_lines[:5]),
                    " …" if len(pend_lines) > 5 else "", urgency)

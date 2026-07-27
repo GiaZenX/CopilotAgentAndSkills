@@ -584,7 +584,7 @@ STATE="$REPO/.claude/kit_update_pending.state"
 if [ ${#kept_list[@]} -gt 0 ]; then
   mkdir -p "$REPO/.claude"
   {
-    echo "# Repo templates that DIFFER from kit $TEAM $(head -n 1 "$KIT/VERSION" 2>/dev/null) -- the PM reviews each against the kit template, merges the kit's fixes (or documents a conscious skip in progress.yaml log:), then DELETES this file. session_status reminds every session until it is gone."
+    echo "# Repo templates that DIFFER from kit $TEAM $(head -n 1 "$KIT/VERSION" 2>/dev/null) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone."
     printf -- "- %s\n" "${kept_list[@]}"
   } > "$PEND"
   # fresh REAL update -> fresh nag counter; a same-version re-run must NOT reset the

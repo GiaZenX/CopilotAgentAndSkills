@@ -1,39 +1,50 @@
-# project_memory/ — artifact templates
+# project_memory/ — the project's canonical state
 
-These YAML skeletons are the canonical structure of a project's `project_memory/`.
-The **PM** (the foreground agent) copies them into the project's `project_memory/` at project init and
-fills them as the phase model progresses. `project_memory/` is the **single source of truth** — no ad-hoc
-status/summary/report files are allowed (this is also enforced by a hook).
+One file is one item. There is no status monolith any more — no file that collects the status of
+many items in one place, and no narrative status log. Where a status used to be written twice —
+once in the item and once in a summary — it is now written once, in the item, and every summary is
+regenerated.
 
-| File | Write owner | Purpose |
-|---|---|---|
-| `project_config.yaml` | PM | Preset, repo mode, model map |
-| `product_requirements.yaml` | PM | PRDs (functional) |
-| `change_requests.yaml` | PM | CRs |
-| `system_requirements.yaml` | Architect | SRs (technical; PM derives via the architect) |
-| `tasks.yaml` | Backend / Frontend | Tasks |
-| `architecture.yaml` | Architect | Components, structure, per-component test strategy |
-| `decisions.yaml` | Architect | ADRs (incl. the test-approach ADR) |
-| `coding_guidelines.yaml` | Architect | Hard code rules (QA-enforced) |
-| `design.yaml` | Product-Designer | UI/UX spec (UI-bearing PRDs); else `applicable: false` |
-| `research_notes.yaml` | Researcher | Cited research findings; else `applicable: false` |
-| `testing_guidelines.yaml` | QA | Test rules |
-| `definition_of_done.yaml` | QA | DoD |
-| `review_reports.yaml` | QA | Code review results |
-| `test_reports.yaml` | QA | Test results |
-| `acceptance_reports.yaml` | QA | Acceptance checks |
-| `progress.yaml` | PM | Status line + metrics overview |
-| `progress.dashboard.template.html` | PM | Static shell the dashboard is rendered from |
-| `generate_dashboard.py` | PM | Generator: builds the dashboard from the YAML files |
-| `progress.dashboard.html` | PM | Generated user-facing dashboard (do not hand-edit) |
-| `changelog.yaml` | PM | History |
+## Layout
 
-`progress.dashboard.html` is a self-contained, dependency-free dashboard. It is generated, never
-hand-edited: the **PM** runs `generate_dashboard.py`, which reads the YAML artifacts (PRDs, tasks, CRs,
-`progress.yaml`), rebuilds the file from `progress.dashboard.template.html`, archives the previous version
-under `dashboard_history/`, and lists what changed since the last run. The bars are expandable to reveal
-the items behind each status (id, title, owner, origin, start/end dates). Running the generator needs
-PyYAML (`pip install pyyaml`); the generated HTML itself has no dependencies and opens by double-click.
+```
+product/active/PR-0001.yaml        product requirement — the user-facing level
+product/masterplan.md              frozen discovery artifact; NOT a status source
+inbox/active/FR-0001.yaml          a wish not yet assigned to a PR
+changes/active/CR-0001.yaml        a change to an already approved PR revision
+bugs/active/BUG-0001.yaml          a deviation from confirmed behaviour
+system/active/SR-0001.yaml         a technical contract under a PR
+tasks/active/TSK-0001.yaml         a work order for exactly one role
+invariants/active/INV-0001.yaml    a project-wide invariant — only when genuinely reused
+decisions/active/                  decision items
+design/revisions/DSN-0001.html     frozen approved design revisions
+design/wireframes/WFR-0001.rNN.drawio.svg
+architecture/active/ARC-0001.drawio.svg (+ ARC-0001.yaml)
+architecture/revisions/            frozen approved architecture revisions
+project_config.yaml                the project's configuration
+approvals/APR-0001.yaml            a user approval of one revision or analysis
+approvals/pending/                 open approval requests — written by the KERNEL only
+evidence/                          test, review and acceptance evidence
+archive/<type>/<year>/<ID>.yaml    closed items leave the active context
+staging/<task_id>/                 non-canonical proposals
+generated/                         index.yaml, session_brief.yaml, dashboard.html — NOT committed
+```
 
-Everyone may read everything; each role writes only its own area. See the constitution (`AGENTS.md`) for
-the full rules.
+## Rules
+
+- **Closed leaves.** Done, rejected or superseded moves to `archive/`, so the active directories
+  ARE the current context and nothing has to be filtered out while reading.
+- **`generated/**` is never hand-edited and never committed.** It is rebuilt from the items; a
+  hand-maintained summary is a second source of truth, which is what this structure ends.
+- **History lives in git**, not as a changelog inside an active file.
+- **`approvals/pending/` belongs to the kernel.** An approval an agent could write is not one.
+
+## The field contract
+
+Required fields per type are defined ONCE, in code: `kernel/backlog_types.REQUIRED_FIELDS`, with
+the status automata beside them in `AUTOMATA`. `harness validate` checks every item against them
+and names what is missing. There are deliberately no skeleton files repeating those lists here — a
+second copy of a contract is a copy that goes stale.
+
+Create items through the kernel (`harness capture`), not by hand: it allocates the id, sets the
+timestamps, and refuses a shape the validator would reject anyway.
