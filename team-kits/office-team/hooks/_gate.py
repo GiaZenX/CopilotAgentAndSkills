@@ -9,7 +9,7 @@ FAILING TO PARSE. A file truncated mid-write — the ordinary artifact of an int
 and the same failure the preamble exists for, one step earlier — raises SyntaxError before its
 first statement runs. Python exits 1. Claude Code reads every code except 2 as a non-blocking
 error and LETS THE CALL THROUGH. The gate is not merely absent; it is absent while looking
-present, which is worse: `harness doctor` still finds it registered and on disk.
+present, which is worse: `python scripts/harness.py doctor` still finds it registered and on disk.
 
 "Nothing inside a Python file can close that; it closes one level up, by invoking gates through a
 launcher whose own compile is the only one that must succeed." This is that launcher.
@@ -49,10 +49,21 @@ import os
 import sys
 import types
 
+# NO BYTECODE FROM A GATE RUN. `.claude/hooks` and `.claude/kernel` are the hashed enforcement
+# bundle, and everything a gate imports — `_kernel`, `_compat`, the whole kernel package — would
+# otherwise be cached as `.pyc` INSIDE it: the bundle would change by being run, which is precisely
+# the argument that once kept bytecode out of the hash and thereby out of the measurement (see
+# `kernel.hashing.BYTECODE_SUFFIXES`). The kits register every hook as `python -B`, so in
+# production this line is redundant; it is here because a gate is also run directly — by the test
+# suite, by a person diagnosing one — and the measurement must not depend on how it was started.
+# It must precede the gate's own preamble, which imports `_kernel`. Cost, measured: ~5 ms on a full
+# kernel import.
+sys.dont_write_bytecode = True
+
 
 def _refuse(reason):
     text = ("[team-kit gate launcher] refused: %s — a gate that cannot RUN must not be read as "
-            "permission (spec II.4 fail-closed).\nRemedy: run `harness doctor`; a partial "
+            "permission (spec II.4 fail-closed).\nRemedy: run `python scripts/harness.py doctor`; a partial "
             "checkout or a half-finished kit update is the usual cause.\n" % reason)
     try:
         sys.stderr.write(text)

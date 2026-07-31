@@ -12,8 +12,8 @@ Procedure:
 ## Read first
 Your `TSK` — `derives_from` names the SR, `acceptance_refs` the criteria you are measured against,
 `required_inputs` the exact files, and `allowed_scope`/`forbidden_scope` the only paths you may touch. Then
-those SR items, the `INV` items in force, `coding_guidelines.yaml` / `testing_guidelines.yaml` if the project
-keeps them, and the relevant `src/**`/`tests/**`.
+those SR items, the `INV` items in force (they carry the language and area rules), and the relevant
+`src/**`/`tests/**`.
 
 ## Do
 1. Do NOT create or edit task items: the kernel created your `TSK` before you were spawned and its work-order

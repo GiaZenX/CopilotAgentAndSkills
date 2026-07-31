@@ -83,7 +83,18 @@ function Assert-NoReparseTree {
 Assert-NoReparseComponentsAbsolute $src
 Assert-NoReparseTree $src
 Assert-SafeRepoPath $dst
-$templateFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force | Where-Object { $_.FullName -notmatch '__pycache__' })
+# A tool leftover is a file UNDER a directory with one of these names -- a path COMPONENT, which is
+# what the `.sh` twin's `-path '*/__pycache__/*'` asks and what a regex over the full path does not.
+# The two readings disagree about everything that merely CONTAINS such a name: a template called
+# `notes__pycache__.md`, or any checkout living under a `C:\...\.mypy_cache\...` directory, was
+# silently not installed by the Windows half and installed by the POSIX one -- and a template that
+# never arrives produces no message anywhere, so the divergence surfaces as a missing file weeks
+# later. Same rule, same answer, on both platforms.
+$transientDirs = @('__pycache__', '.ruff_cache', '.mypy_cache', '.pytest_cache')
+$templateFiles = @(Get-ChildItem -LiteralPath $src -Recurse -File -Force | Where-Object {
+    $components = ([IO.Path]::GetDirectoryName($_.FullName)) -split '[\\/]'
+    -not ($components | Where-Object { $transientDirs -contains $_ })
+})
 foreach ($templateFile in $templateFiles) {
     $relative = $templateFile.FullName.Substring($src.Length).TrimStart('\', '/')
     Assert-SafeRepoPath (Join-Path $dst $relative)

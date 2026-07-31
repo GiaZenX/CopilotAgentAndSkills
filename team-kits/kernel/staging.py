@@ -21,7 +21,7 @@ currently attests EXACTLY that well-formedness, nothing more) and companions
 must pass their schema.
 Crash notes: a crash between the frozen copy and the staging clear leaves both
 copies -- harmless (the canonical copy exists; a re-freeze produces rNN+1);
-`harness validate`/doctor surface leftovers.
+`python scripts/harness.py validate`/doctor surface leftovers.
 Wiring note: WHO calls freeze at mint time is phase-2 hook/orchestrator logic;
 the kernel provides the operations.
 """
@@ -33,7 +33,7 @@ import shutil
 import time
 import xml.etree.ElementTree as ET
 
-from .backlog_types import parse_id
+from .backlog_types import ACTIVE_DIRS, parse_id
 from .lock import ext_path
 from .schemas import validate
 from .state import ProjectState, StateError, _now_iso
@@ -41,6 +41,27 @@ from .state import ProjectState, StateError, _now_iso
 
 class StagingError(StateError):
     """Staging/freeze operation refused -- message carries the remedy."""
+
+
+# The ONE directory a `design_refs` entry can point into, named where the entry is PRODUCED.
+# `freeze_design` (below) is the only function in the harness that appends to `design_refs`, and
+# it appends a path under `ACTIVE_DIRS[DESIGN_REF_TYPE]` -- so the constant is what that function
+# composes its own target from, and `dispatch` reads it rather than carrying a second copy.
+#
+# WFR IS NOT IN HERE, and the first cut of this was wider than any producer: `freeze_wireframe`
+# writes a frozen wireframe but never touches `design_refs`, so no entry pointing into
+# `design/wireframes/` is ever created -- accepting one would have been a rule about a shape
+# nothing produces. Spec II.2 does say the scope manifest's design references include approved
+# wireframes (II.6a), so the ABSENCE OF THAT PRODUCER is an open gap and not a decision taken
+# here; the day `freeze_wireframe` appends, it appends through this constant and the resolver
+# follows. ARC stays out for a different reason: an architecture revision is not a design
+# reference (II.6 makes `design_ref` the binding IMPLEMENTATION reference for a UI task).
+DESIGN_REF_TYPE = "DSN"
+
+
+def frozen_design_dirs():
+    """The state-relative directories a FROZEN design reference may point into."""
+    return (ACTIVE_DIRS[DESIGN_REF_TYPE],)
 
 
 def staging_dir(state: ProjectState, key: str) -> str:
@@ -184,7 +205,9 @@ def freeze_design(
                 "re-stage the self-contained preview." % source
             )
         root = state.read_item(root_id)
-        revisions_dir = os.path.join(state.root, "design", "revisions")
+        # composed from the same constant the resolver reads, so "the directory a freezer writes
+        # into" is one fact rather than a literal here and a tuple there
+        revisions_dir = os.path.join(state.root, *ACTIVE_DIRS[DESIGN_REF_TYPE].split("/"))
         revision = _next_frozen_revision(revisions_dir, dsn_id)
         frozen = os.path.join(revisions_dir, "%s.r%02d.html" % (dsn_id, revision))
         os.makedirs(ext_path(revisions_dir), exist_ok=True)
@@ -197,6 +220,11 @@ def freeze_design(
             "root_revision": root.get("revision"),
             "frozen_at": _now_iso(),
         }
+        # validated like the two companions, for the reason the manifest has a schema at all:
+        # `root` is this item's parent binding, and `backlog_types.PARENT_FIELDS` derives the
+        # reference graph from the declared contracts. An unvalidated dict would let the written
+        # record and the declared contract drift, and the graph would walk the declaration.
+        validate(manifest, "dsn_manifest")
         state._write_yaml_atomic(
             os.path.join(revisions_dir, "%s.r%02d.yaml" % (dsn_id, revision)), manifest
         )

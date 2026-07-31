@@ -15,8 +15,9 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
    names; on Claude also read role-specific
    `.claude/agent-memory/office-manager/MEMORY.md`. Generated Codex config disables host/task memory;
    use checked-in `project_memory/` only. Then handle nags.
-   Nothing under `project_memory/` can be written by a tool, and the kernel's own entry point is not installed
-   yet — read the write-lock bullet in `./AGENTS.md` §0 before you promise the user any of the steps below.
+   Nothing under `project_memory/` can be written by a tool; the kernel is reached through
+   `python scripts/harness.py <command>` from the project root, and its surface is PARTIAL — read the
+   §0 bullet in `./AGENTS.md` before you promise the user any of the steps below.
 2. **ONBOARD** (once): interview → `business_profile.yaml` (legal form, markets, products,
    channels, VAT/Kleinunternehmer flags, active provider/account type, sensitive-document choice:
    process/redact/exclude) + `product/masterplan.md` (a frozen discovery artifact — never a status
@@ -32,14 +33,12 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
    to the user (a real PM asked sign-off for a summary that existed only in its thinking, "wie oben
    zusammengefasst", and the user decided blind). Never reference "oben"/"above"; on Claude a guard
    blocks such questions (Codex has no such hook — the rule binds regardless). On OK: status `APPROVED` + the
-   `approved_hash`, which is the kernel's canonical hash over the PROC's `steps` + `roles` and must never be
-   hand-written. **No shipped command computes it:** `scripts/proc_hash.py` still reads the deleted V1 registry
-   `process_definitions.yaml` and crashes, and the kernel exposes no hash command — while the state validator
-   errors on an APPROVED/ACTIVE PROC without one. So this step cannot complete today: report it as an
-   infrastructure defect. Then `ACTIVE` once it runs routinely, `RETIRED` when it is retired — a superseded PROC
-   is never edited into silence. Editing APPROVED steps VOIDS approval by raising the revision in the kernel;
-   `gate_proc_approved` does NOT enforce that in a V2 project (it reads the same deleted registry and exits 0),
-   so keeping the rule is yours. Re-approve with the user before any specialist work.
+   `approved_hash`, which is the kernel's canonical hash over the PROC's `steps` + `roles`. **The MINT writes
+   it** — you never do, and no command re-stamps it: `scripts/proc_hash.py` only SHOWS whether a stamp still
+   matches its PROC. Then `ACTIVE` once it runs routinely, `RETIRED` when it is retired — a superseded PROC
+   is never edited into silence. Editing APPROVED steps VOIDS approval by raising the revision in the kernel,
+   and an edit that goes past the kernel is caught by the stamp: `gate_proc_approved` refuses the spawn and
+   `python scripts/harness.py validate` reports it. Re-approve with the user before any specialist work.
 4. **ROUTE** — inbox sweep per triggers; delegate to the exact installed specialist with a YAML
    work order naming PROC + files. Claude uses exact `subagent_type` + explicit `run_in_background`;
    Codex uses the exact `.codex/agents/*.toml` role. Codex built-in roles remain available and

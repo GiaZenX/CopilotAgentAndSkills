@@ -79,7 +79,7 @@ while IFS= read -r -d '' source_file; do
   rel="${source_file#"$SRC"/}"
   template_files+=("$rel")
   assert_safe_repo_path "$DST/$rel"
-done < <(find -P "$SRC" -type f -not -path '*/__pycache__/*' -print0)
+done < <(find -P "$SRC" -type f -not -path '*/__pycache__/*' -not -path '*/.ruff_cache/*' -not -path '*/.mypy_cache/*' -not -path '*/.pytest_cache/*' -print0)
 assert_safe_repo_path "$REPO/.claude/kit_update_pending.memory"
 assert_safe_repo_path "$REPO/.claude/kit_update_pending.state"
 mkdir -p "$DST"

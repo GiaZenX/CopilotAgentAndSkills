@@ -14,8 +14,8 @@ Your `TSK` — `derives_from` names the SR, `acceptance_refs` the criteria you a
 `design_ref` the FROZEN design revision under `design/revisions/` that is your visual contract
 (a UI task cannot be dispatched without it once a confirmed design exists), and
 `allowed_scope`/`forbidden_scope` the only paths you may touch. Then those SR items, the `INV` items in
-force, the frozen wireframe the design derives from, `coding_guidelines.yaml` / `testing_guidelines.yaml` if
-the project keeps them, and the relevant `src/**`/`tests/**`/`frontend/**`.
+force (they carry the language and area rules), the frozen wireframe the design derives from, and the
+relevant `src/**`/`tests/**`/`frontend/**`.
 
 ## Do
 1. Do NOT create or edit task items: the kernel created your `TSK` before you were spawned and its work-order

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SessionStart — inject project state so the Research Lead wakes up knowing the situation.
+SessionStart() — inject project state so the Research Lead wakes up knowing the situation.
 
 Reinforces the "session 1 = setup, session 2+ = work" model: when the project-manager
 session agent starts, it is reminded that it IS the Research Lead, told the git branch,
@@ -13,6 +13,15 @@ import json
 import re
 import time
 
+
+# NO BYTECODE FROM A HOOK RUN, for the reason `_gate.py` states at length: this file lives in
+# the hashed enforcement bundle and imports its neighbours out of it, so caching them would
+# change the bundle by being run — `hooks_trust_required` at the next session, blamed on
+# anything but the hook that caused it. The kits register this hook as `python -B`, so in
+# production the flag is redundant; it is here because a hook is also started directly — by the
+# test suite, by a person diagnosing one — and the measurement must not depend on how it was
+# started. `_gate.py` carries the same line for the gates it launches; this one is not launched.
+sys.dont_write_bytecode = True
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _compat
@@ -203,8 +212,8 @@ def main():
             "active roots, tasks, open approvals and validator findings — plus the DRAFT research "
             "question(s) and product/masterplan.md left by the install session, then give the user a "
             "one-line status (active RQ, running experiments, pending approvals) and ask what to do next. "
-            "If the brief is missing or stale, regenerate it (`harness generate-session-brief`, which "
-            "needs `--kit/--kit-version/--enforcement` — see `harness --help`) instead "
+            "If the brief is missing or stale, regenerate it (`python scripts/harness.py generate-session-brief`, which "
+            "needs `--kit/--kit-version/--enforcement` — see `python scripts/harness.py --help`) instead "
             "of reconstructing the state by hand. " + (
                 "Use the native project-manager skill; optional Codex host memory is not role-specific "
                 "or project truth and must not be maintained manually."

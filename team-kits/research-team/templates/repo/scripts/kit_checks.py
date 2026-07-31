@@ -12,26 +12,35 @@ Shipped checks:
   * project_memory yaml-lint (parse + duplicate keys, over the whole typed item tree) +
     repo-wide yaml parse of every git-tracked *.yaml (a real decisions.yaml shipped ~50
     unparsable items and the dashboard swallowed the ParserError silently); template YAMLs
-    excludable via `yaml_lint_exclude:` (glob list) in coding/research_guidelines
+    excludable via the `yaml_lint_exclude` invariant (a glob list)
   * state validity — the kernel's own fail-closed validator (spec II.4 gate 4) run here rather
     than only in the merge gate
   * frontend pitfalls (raw secure-context APIs; local-first external asset loads;
     chunkSizeWarningLimit must never be ASSIGNED — raising the threshold instead of
     code-splitting is a defect, not a fix)
-  * module invariants (architecture rules as data: a `module_invariants:` list of files that
-    must never contain given tokens — the pattern hand-rolled itself three times in one real
+  * module invariants (architecture rules as data: the `module_invariants` invariant lists files
+    that must never contain given tokens — the pattern hand-rolled itself three times in one real
     project before becoming this config)
   * file budget (no source file beyond max_lines — the anti-monolith gate; configurable +
-    exemptable with a reason via `file_budget:`)
+    exemptable with a reason via the `file_budget` invariant)
 
-The yaml-lint excludes, the module invariants and the file budget read their knobs from the kit's
-guidelines file; `_knob_hint` below is the ONE place that decides which file that is and what to
-tell a user when the project has none.
+The yaml-lint excludes, the module invariants and the file budget read their knobs from the
+project's own `INV` items — one item per knob, found by its `scope`. See `load_invariants` /
+`invariant_knob` / `governed_source_areas` for why that is the home, and `_knob_hint` for what a
+check tells a user who wants to set one.
 """
 import fnmatch
 import os
 import re
 import sys
+
+# This script imports the kernel THROUGH the installed bundle (`.claude/hooks/_kernel.py`), and
+# `.claude/hooks` + `.claude/kernel` are what `hook_bundle_hash` measures. Left to itself, running
+# a report would drop `__pycache__` into the enforcement bundle, the hash would no longer match the
+# one the project recorded, and the next session would report `hooks_trust_required` because
+# somebody generated a dashboard. No harness process writes bytecode into a tree the harness
+# hashes — see `kernel/hashing.py`, BYTECODE_SUFFIXES.
+sys.dont_write_bytecode = True
 
 # Browser APIs that need a SECURE CONTEXT (https / localhost) — raw use is silently dead on a
 # plain-http LAN origin, and jsdom/unit tests stay green (a real run shipped a browser-dead send
@@ -52,9 +61,10 @@ SKIP_DIRS = ("node_modules", "dist", "build", "__pycache__", ".venv", "venv", "c
 
 # The anti-monolith gate. Default threshold: hand-written source files stay below this many lines;
 # a real App.tsx grew to 8,966 lines (+666 in one session) while its ui/ component library sat
-# 100% unused — visibility flags alone demonstrably did nothing. Projects tune/exempt via the
-# guidelines file (see _GUIDELINE_FILES):
-#   file_budget:
+# 100% unused — visibility flags alone demonstrably did nothing. Projects tune/exempt via an INV
+# item (see `invariant_knob`):
+#   scope: file_budget
+#   value:
 #     max_lines: 800            # tighten for UI-heavy projects (e.g. 500)
 #     exempt:
 #       - path: frontend/src/app/App.tsx
@@ -62,10 +72,10 @@ SKIP_DIRS = ("node_modules", "dist", "build", "__pycache__", ".venv", "venv", "c
 FILE_BUDGET_DEFAULT = 800
 _BUDGET_EXTS = {".py", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".css", ".html", ".go", ".rs",
                 ".c", ".cpp", ".h", ".cs", ".java", ".svelte", ".vue"}
-# DEFAULT scan areas — projects with additional top-level packages MUST list them via
-# `source_areas:` in the guidelines file (see _GUIDELINE_FILES). A real project
-# kept its whole codebase under compounder/ and "PASS file budget" was false-green for weeks
-# (an 1,111-line file went undetected) because this tuple silently never matched anything.
+# DEFAULT scan areas — a project with an additional top-level package gets it scanned by giving
+# it an INV item whose `scope` names it (`governed_source_areas`). A real project kept its whole
+# codebase under compounder/ and "PASS file budget" was false-green for weeks (an 1,111-line file
+# went undetected) because this tuple silently never matched anything.
 _BUDGET_AREAS = ("src", "frontend", "scripts", "tests", "static", "public")
 
 
@@ -99,23 +109,99 @@ def load_project_yaml(root, name):
         return {}
 
 
-# The tuning knobs below (file_budget, source_areas, module_invariants, yaml_lint_exclude) are
-# read from the kit's guidelines file. V2 dissolved the dev kit's coding_guidelines.yaml into INV
-# items and has NOT yet decided where those knobs live (phase-0 disposition: "neue Heimat"), so a
-# check must never print that filename as the way out: the scaffold no longer creates the file and
-# gate_write_scope would refuse the write anyway. `_knob_hint` answers "where do I declare this?"
-# from what the project actually has.
-_GUIDELINE_FILES = ("coding_guidelines.yaml", "research_guidelines.yaml")
+# WHERE THE TUNING KNOBS LIVE IN V2: in `INV` items, and that is a definition rather than a
+# relocation. V1 kept them as top-level keys of a guidelines monolith at the state root; V2
+# dissolved that file, no kit ships a template for it, and `gate_write_scope` refuses every tool
+# write under the state directory — so every knob below was unreachable, and this module's own
+# comment said so ("no home in this project"). The home is the item type the kernel already has:
+# `report.py` requires an `INV` to carry EXACTLY ONE of `text` or `value`, which is the same split
+# the knobs need — a `text` invariant is a rule for humans, a `value` invariant is a setting for
+# tooling. Its `scope` says what it is about, so (scope, value) IS the knob, one item per knob, and
+# no reader here knows an `INV-nnnn` id.
+INVARIANTS_DIR = ("invariants", "active")
+
+# The two caps on reading that store, and the same values in the two HOOKS that read it
+# (`guard_guidelines`, `gate_test_coverage`) — see the long note at the first of them for why a
+# blocking gate needs them most. Pinned across the three readers by
+# `test_the_two_readers_of_a_governed_source_area_agree`; a per-item cap here and none there is
+# how the two answered differently on the day they were written.
+INVARIANT_MAX_BYTES = 2_000_000
+INVARIANT_SCAN_MAX_BYTES = 8_000_000
 
 
-def _knob_hint(root, knob):
-    """A walkable answer to "where do I declare `knob`?", or an honest "nowhere yet"."""
-    for name in _GUIDELINE_FILES:
-        if load_project_yaml(root, name):
-            return "declare `%s:` in project_memory/%s" % (knob, name)
-    return ("`%s:` has no home in this project — the guidelines monolith is gone in V2 and its "
-            "config knobs have not been rehomed yet, so report the need instead of recreating "
-            "the file" % knob)
+def load_invariants(root):
+    """Every active `INV` item of the project, as parsed mappings; [] when there are none.
+
+    THE structured reader for the invariant store, exactly as `load_project_yaml` is THE reader for
+    a state-root file — `quality.py` and `kit_browser_checks.py` call this one too, so the three
+    can never disagree about a knob again (an audit caught precisely that divergence between two
+    hand-rolled readers of one key). Unreadable items are skipped rather than raised: the state
+    validator is what REPORTS them, and a check that died on one would report nothing at all.
+    """
+    directory = os.path.join(root, "project_memory", *INVARIANTS_DIR)
+    if not os.path.isdir(directory):
+        return []
+    try:
+        import yaml  # type: ignore[import-untyped]
+        names = [n for n in sorted(os.listdir(directory)) if n.endswith(".yaml")]
+    except Exception:
+        return []
+    items = []
+    spent = 0
+    for name in names:
+        path = os.path.join(directory, name)
+        try:
+            size = os.path.getsize(path)
+            if size > INVARIANT_MAX_BYTES:
+                continue
+            spent += size
+            if spent > INVARIANT_SCAN_MAX_BYTES:
+                break
+            item = yaml.safe_load(open(path, encoding="utf-8-sig", errors="ignore").read())
+        except Exception:
+            continue
+        if isinstance(item, dict):
+            items.append(item)
+    return items
+
+
+def invariant_knob(root, scope, default=None):
+    """The `value` of the invariant whose `scope` is `scope` — the V2 form of a guidelines key."""
+    for item in load_invariants(root):
+        if str(item.get("scope") or "").strip() == scope and "value" in item:
+            return item["value"]
+    return default
+
+
+def governed_source_areas(root):
+    """Top-level source directories the project's invariants govern.
+
+    The other half of the definition above, and the half that needs no knob NAME at all: an
+    invariant's `scope` says what it governs, so a scope whose first path segment is a real
+    directory of this repo names a source area the project declared for itself. V1 spelled the same
+    fact twice under two keys in two files (`source_areas:` for the budget, `coverage_areas:` for
+    the test floor) and they drifted; `gate_test_coverage._governed_source_areas` asks this same
+    question of the same items, and `test_the_two_readers_of_a_governed_source_area_agree` pins the
+    two answers to one INV fixture.
+    """
+    out = []
+    for item in load_invariants(root):
+        area = str(item.get("scope") or "").strip().replace("\\", "/").lstrip("./")
+        area = area.split("/")[0].strip()
+        # the char class blocks separators, but NOT dot-only names: '..' walked the PARENT
+        # directory in an audit repro. Asking the filesystem is what separates a scope that names
+        # an AREA from one that names a language or a rule, with no vocabulary to keep.
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", area) or set(area) == {"."}:
+            continue
+        if os.path.isdir(os.path.join(root, area)) and area not in out:
+            out.append(area)
+    return out
+
+
+def _knob_hint(knob):
+    """A walkable answer to "where do I declare `knob`?"."""
+    return ("declare it as an INV item — `scope: %s` with the setting in `value:` "
+            "(the architect captures it; the kernel writes it)" % knob)
 
 
 def _more(items, shown):
@@ -315,13 +401,10 @@ def check_project_memory_yaml(root, ok, fail, warn):
 
 
 def _yaml_lint_excludes(root):
-    """Glob patterns from coding/research_guidelines `yaml_lint_exclude:` — Helm/Jinja-templated
-    YAMLs are legitimately unparsable and must not turn the repo-wide parse red."""
-    out = []
-    for name in _GUIDELINE_FILES:
-        data = load_project_yaml(root, name)
-        out += [str(g).replace("\\", "/") for g in (data.get("yaml_lint_exclude") or [])]
-    return out
+    """Glob patterns from the `yaml_lint_exclude` invariant — Helm/Jinja-templated YAMLs are
+    legitimately unparsable and must not turn the repo-wide parse red."""
+    declared = invariant_knob(root, "yaml_lint_exclude")
+    return [str(g).replace("\\", "/") for g in declared] if isinstance(declared, list) else []
 
 
 def _repo_wide_yaml_parse(root, yaml, ok, fail, warn):
@@ -373,28 +456,28 @@ def _repo_wide_yaml_parse(root, yaml, ok, fail, warn):
     if bad:
         fail("yaml-lint (repo-wide)", "; ".join(bad[:6]) + _more(bad, 6)
              + " — genuinely templated YAML (Helm/Jinja) is excludable: %s"
-             % _knob_hint(root, "yaml_lint_exclude"))
+             % _knob_hint("yaml_lint_exclude"))
     elif count:
         ok("yaml-lint (repo-wide, %d tracked file(s))" % count)
 
 
 def check_module_invariants(root, ok, fail, warn):
-    """Architecture invariants as DATA: coding/research_guidelines `module_invariants:` lists
-    files that must never contain given tokens (e.g. a pure classifier module that must stay
-    I/O-free). A real project hand-rolled this guard three separate times (provenance, hardware
-    scoring, single-DB-connection) — the duplication is the proof the config knob belongs here.
-      module_invariants:
+    """Architecture invariants as DATA: the `module_invariants` invariant lists files that must
+    never contain given tokens (e.g. a pure classifier module that must stay I/O-free). A real
+    project hand-rolled this guard three separate times (provenance, hardware scoring,
+    single-DB-connection) — the duplication is the proof the config knob belongs here.
+      scope: module_invariants
+      value:
         - path: src/scoring/percent_match.py
           forbidden_tokens: ["import aiosqlite", "open("]
           reason: "pure scoring module — all I/O lives in the store layer (ADR-0034)"
     """
     rules = []
-    for name in _GUIDELINE_FILES:
-        data = load_project_yaml(root, name)
-        for entry in (data.get("module_invariants") or []):
-            if (isinstance(entry, dict) and entry.get("path")
-                    and entry.get("forbidden_tokens")):
-                rules.append(entry)
+    declared = invariant_knob(root, "module_invariants")
+    for entry in (declared if isinstance(declared, list) else []):
+        if (isinstance(entry, dict) and entry.get("path")
+                and entry.get("forbidden_tokens")):
+            rules.append(entry)
     if not rules:
         return
     hits, stale, effective = [], [], 0
@@ -423,8 +506,8 @@ def check_module_invariants(root, ok, fail, warn):
         fail("module invariants", "; ".join(hits[:5]) + _more(hits, 5))
         return
     if stale:
-        warn("module invariants", "declared file(s) missing: %s — update module_invariants "
-             "in the guidelines (a stale rule guards nothing)" % "; ".join(stale[:4]))
+        warn("module invariants", "declared file(s) missing: %s — update the `module_invariants` "
+             "invariant (a stale rule guards nothing)" % "; ".join(stale[:4]))
     if effective:  # never count dead rules as a PASS (audit: stale-only showed warn AND ok)
         ok("module invariants (%d rule(s))" % effective)
 
@@ -440,35 +523,25 @@ def _count_lines(path):
 
 
 def _budget_config(root):
-    """file_budget + source_areas from whichever guidelines file the project has (`_GUIDELINE_FILES`,
-    and `_knob_hint` for what to tell a user who has none): {max_lines, exempt: [{path, reason}],
-    areas}. Both knobs are homeless in a V2 dev project — see the comment above `_GUIDELINE_FILES` —
-    so the defaults below are what a dev project actually runs with today.
-    Exemptions are architect-owned and REQUIRE a reason — a bare path does not count.
-    `source_areas:` (top-level key) EXTENDS the default scan areas; it can never remove them
-    (removing would silently un-gate src/ — the false-green class this key exists to kill)."""
-    max_lines, exempt, areas = FILE_BUDGET_DEFAULT, {}, list(_BUDGET_AREAS)
-    for name in _GUIDELINE_FILES:
-        data = load_project_yaml(root, name)
-        if not data:
-            continue
-        declared = data.get("source_areas")
-        # list-guard: a scalar `source_areas: src` would iterate CHARACTERS (audit repro)
-        for extra in (declared if isinstance(declared, list) else []):
-            name_clean = str(extra).strip().strip("/").replace("\\", "/")
-            # the char class blocks separators, but NOT dot-only names: '..' walked the
-            # PARENT directory in an audit repro — a scan area must be a real child name
-            if (re.fullmatch(r"[A-Za-z0-9_.-]+", name_clean)
-                    and set(name_clean) != {"."} and name_clean not in areas):
-                areas.append(name_clean)
-        cfg = data.get("file_budget") or {}
-        if isinstance(cfg, dict) and cfg:
-            if isinstance(cfg.get("max_lines"), int) and cfg["max_lines"] > 0:
-                max_lines = cfg["max_lines"]
-            for entry in (cfg.get("exempt") or []):
-                if isinstance(entry, dict) and entry.get("path") and str(entry.get("reason") or "").strip():
-                    exempt[str(entry["path"]).replace("\\", "/")] = str(entry["reason"])
-            break
+    """The file budget: {max_lines, exempt: [{path, reason}], areas}.
+
+    `max_lines` and the exemptions come from the `file_budget` invariant's `value`; the scan areas
+    are the default tuple EXTENDED by `governed_source_areas` — extended and never replaced, since
+    replacing would silently un-gate `src/`, the false-green class that derivation exists to kill.
+    Exemptions are architect-owned and REQUIRE a reason — a bare path does not count."""
+    max_lines, exempt = FILE_BUDGET_DEFAULT, {}
+    areas = list(_BUDGET_AREAS)
+    for extra in governed_source_areas(root):
+        if extra not in areas:
+            areas.append(extra)
+    cfg = invariant_knob(root, "file_budget")
+    if isinstance(cfg, dict):
+        if isinstance(cfg.get("max_lines"), int) and not isinstance(cfg.get("max_lines"), bool) \
+                and cfg["max_lines"] > 0:
+            max_lines = cfg["max_lines"]
+        for entry in (cfg.get("exempt") or []):
+            if isinstance(entry, dict) and entry.get("path") and str(entry.get("reason") or "").strip():
+                exempt[str(entry["path"]).replace("\\", "/")] = str(entry["reason"])
     return max_lines, exempt, areas
 
 
@@ -523,7 +596,7 @@ def check_file_budget(root, ok, fail, warn):
              "lines while its ui/ library sat unused); an architect-owned exemption WITH a reason "
              "is the only alternative: %s"
              % (len(offenders), "; ".join("%s (%d)" % o for o in offenders[:5]), _more(offenders, 5),
-                _knob_hint(root, "file_budget: exempt")))
+                _knob_hint("file_budget")))
     elif scanned:
         ok("file budget (<=%d lines%s)" % (max_lines, ", %d exemption(s)" % len(exempt) if exempt else ""))
     else:
@@ -532,7 +605,9 @@ def check_file_budget(root, ok, fail, warn):
         # scanned and an 1,111-line file went undetected for weeks).
         warn("file budget",
              "NO scan area matched (%s) — the project's top-level source package(s) must be "
-             "declared: %s" % (", ".join(areas), _knob_hint(root, "source_areas")))
+             "declared: %s" % (", ".join(areas),
+                                "give it an INV item whose `scope` names the directory — that is "
+                                "what makes it a source area (governed_source_areas)"))
 
 
 # Enforcement files no agent may change inside a project (provider-NEUTRAL second line of
@@ -656,7 +731,7 @@ def check_state_validity(root, ok, fail, warn):
         report = _kernel.kernel_module("report", root)
         findings = report.validate_state(_kernel.open_state(root))
     except Exception as exc:
-        warn("state validity", "the state validator could not run (%s: %s) — `harness doctor` "
+        warn("state validity", "the state validator could not run (%s: %s) — `python scripts/harness.py doctor` "
              "names what is missing" % (type(exc).__name__, exc))
         return
     errors = [f for f in findings if f.get("severity") == "error"]

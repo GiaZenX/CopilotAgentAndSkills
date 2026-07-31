@@ -141,7 +141,7 @@ def import_kernel(repo_root=None):
             if found and not _same_file(found, init):
                 raise KernelUnavailable(
                     "kernel already imported from %s but this repo resolves to %s — refusing to "
-                    "enforce with a foreign kernel. Remedy: run `harness doctor`; a stale "
+                    "enforce with a foreign kernel. Remedy: run `python scripts/harness.py doctor`; a stale "
                     "$HARNESS_KERNEL_PATH or a half-finished kit update is the usual cause."
                     % (found, init)
                 )
@@ -175,7 +175,7 @@ def import_kernel(repo_root=None):
                 "resolved the kernel at %s but the import produced %s — refusing to enforce with "
                 "a kernel this repo did not install. Remedy: something earlier on sys.path "
                 "(PYTHONPATH, a site-packages package named `kernel`, a stray copy inside the "
-                "repo) shadows it; remove it, then re-run `harness doctor`."
+                "repo) shadows it; remove it, then re-run `python scripts/harness.py doctor`."
                 % (init, getattr(module, "__file__", None) or "<unknown>")
             )
         return module
@@ -339,7 +339,7 @@ def payload(hook, event="PreToolUse"):
               "the hook payload could not be read or parsed, so this call could not be "
               "inspected — refused rather than waved through (spec II.4 fail-closed).",
               event=event,
-              remedy="run `harness doctor`; a provider sending a payload this hook cannot parse "
+              remedy="run `python scripts/harness.py doctor`; a provider sending a payload this hook cannot parse "
                      "is a harness defect worth reporting, not something to work around.")
     return data
 
@@ -414,7 +414,7 @@ def fail_closed(hook, event="PreToolUse"):
               "would otherwise let the call through (spec II.4 fail-closed).\nDiagnosis: %s"
               % (type(exc).__name__, exc, detail),
               event=event,
-              remedy="run `harness doctor` for the state view; if the kernel or its state is "
+              remedy="run `python scripts/harness.py doctor` for the state view; if the kernel or its state is "
                      "damaged, the doctor output names the file to restore.")
 
 
@@ -428,7 +428,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\\n" % (exc,))
     sys.exit(2)
 '''
@@ -481,7 +481,7 @@ def _install_excepthook():
                 "[team-kit hook] refused: the hook itself failed to run (%s: %s) — a hook that "
                 "cannot execute must not be read as permission (spec II.4 fail-closed).\n"
                 "Diagnosis: %s\n"
-                "Remedy: run `harness doctor`; a partial checkout or a half-finished kit update "
+                "Remedy: run `python scripts/harness.py doctor`; a partial checkout or a half-finished kit update "
                 "is the usual cause.\n" % (exc_type.__name__, exc, detail.strip())
             )
             sys.stderr.flush()

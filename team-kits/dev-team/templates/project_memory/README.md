@@ -42,9 +42,15 @@ generated/                         index.yaml, session_brief.yaml, dashboard.htm
 ## The field contract
 
 Required fields per type are defined ONCE, in code: `kernel/backlog_types.REQUIRED_FIELDS`, with
-the status automata beside them in `AUTOMATA`. `harness validate` checks every item against them
+the status automata beside them in `AUTOMATA`. `python scripts/harness.py validate` checks every item against them
 and names what is missing. There are deliberately no skeleton files repeating those lists here — a
 second copy of a contract is a copy that goes stale.
 
-Create items through the kernel (`harness capture`), not by hand: it allocates the id, sets the
-timestamps, and refuses a shape the validator would reject anyway.
+Create items through the kernel, not by hand: it allocates the id, sets the timestamps, and
+refuses a shape the validator would reject anyway. The kernel is reached through one entry point,
+`python scripts/harness.py <command>`, run from the project root and never with `--root`.
+`python scripts/harness.py --help` lists what that surface has today: `capture <TYPE>` reads the
+item's fields as a JSON object on stdin (JSON, not YAML — these fields are hashed into approvals,
+and YAML would retype `no` as false on the way in). A type `capture` refuses — `ARC`, `WFR` and
+`DSN` are frozen through the promotion path (II.6a) — is an infrastructure gap to report, never a
+file to write by hand.

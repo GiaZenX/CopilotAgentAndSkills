@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Bash) — block merge/push while the project state is incomplete.
+PreToolUse(Bash|PowerShell) — block merge/push while the project state is incomplete.
 
 WHAT MOVED IN V2. The V1 version answered "is anything still an empty template?" by scanning
 `project_memory/*.yaml` itself: comments dropped, empty containers detected, `applicable: false`
@@ -10,7 +10,7 @@ now has one machine-readable answer in `kernel/report.validate_state`, checked a
 field contracts in `kernel/backlog_types` (REQUIRED_FIELDS + the status automata; the files under
 `kernel/schemas/` are the envelope/companion contracts and hold no item schema). This gate calls
 that answer instead of re-deriving it: a second implementation of "what counts as complete" is
-exactly how the two drift, and the validator is the one CI and `harness doctor` also read.
+exactly how the two drift, and the validator is the one CI and `python scripts/harness.py doctor` also read.
 
 The gate keeps its own teeth for the two things the validator structurally cannot see:
   * `product/masterplan.md` -- prose, not a typed item, and therefore outside every schema. An
@@ -31,7 +31,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -150,8 +150,11 @@ def main():
     data = _kernel.payload(HOOK)
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         sys.exit(0)
-    # Detection lives in _compat.wants_push_or_merge (single home): wrapper payloads are
-    # CODE, quoted prose is not (a commit MESSAGE once re-triggered a full gate).
+    # Detection lives in _compat.wants_push_or_merge (single home): applicability is decided on
+    # the git SUBCOMMAND of a `git` word the shell would execute -- so no quoting, escaping, line
+    # break or wrapper word spells the verb past this gate, and a verb the shell only builds at
+    # run time counts as every verb. A commit MESSAGE about a push stays a message (it once
+    # re-triggered a full gate), because it is an argument, not a word git was handed.
     if not _compat.wants_push_or_merge(((data.get("tool_input") or {}).get("command") or "")):
         sys.exit(0)
 
@@ -188,7 +191,7 @@ def main():
             % (repeats + 1))
     _kernel.block(
         HOOK, message,
-        remedy="run `harness validate` for the full list and fix each finding at its source — an "
+        remedy="run `python scripts/harness.py validate` for the full list and fix each finding at its source — an "
                "item that genuinely does not apply is closed through its status automaton, not "
                "left half-written.")
 

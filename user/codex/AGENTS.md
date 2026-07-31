@@ -230,9 +230,9 @@ the confirmed bootstrap draft, using the schemas shipped by the selected kit:
 5. Regenerate the index from the repository root. The kit is not installed yet, so the kernel comes from the
    shared home copy:
    - Windows:
-     `$env:PYTHONPATH="$env:USERPROFILE\.claude\team-kits"; python -m kernel.cli --root project_memory generate-index`
+     `$env:PYTHONPATH="$env:USERPROFILE\.claude\team-kits"; python -B -m kernel.cli --root project_memory generate-index`
    - POSIX:
-     `PYTHONPATH="$HOME/.claude/team-kits" python -m kernel.cli --root project_memory generate-index`
+     `PYTHONPATH="$HOME/.claude/team-kits" python -B -m kernel.cli --root project_memory generate-index`
 
    The hand-written item in step 2 is the only state write in this project's life that does not go through
    the kernel, so it is the only one that does not update `generated/index.yaml` on the way - and every

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SubagentStop — a kit specialist may not stop without honoring its output contract.
+SubagentStop() — a kit specialist may not stop without honoring its output contract.
 
 Every role skill defines an "Output to the PM/manager" YAML block; a real failure class is the
 specialist that "finishes" with prose, an apology, or nothing — and the PM builds on air. Claude

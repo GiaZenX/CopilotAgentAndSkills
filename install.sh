@@ -254,7 +254,11 @@ if [[ -d "$TEAM_KITS_SRC" ]]; then
     # If copytree (or anything after it) dies mid-flight, do not leave a half-written stage
     # directory behind — set -e exits through this trap.
     trap '[[ -n "${stage:-}" && -e "$stage" ]] && rm -rf "$stage"' EXIT
-    "$PYTHON" -c "import shutil,sys; shutil.copytree(sys.argv[1], sys.argv[2], ignore=shutil.ignore_patterns('__pycache__','*.pyc','*.pyo','.pytest_cache','.ruff_cache','.mypy_cache'))" \
+    # What must not travel into the staging is defined once, in the tree being staged
+    # (`kernel.hashing.transient_ignore_globs`) — a second list here was the fourth spelling of that
+    # rule and the three did not agree. `-B` because this very import must not leave a
+    # `__pycache__` in the source it is copying.
+    "$PYTHON" -B -c "import shutil,sys; sys.path.insert(0, sys.argv[1]); from kernel.hashing import transient_ignore_globs; shutil.copytree(sys.argv[1], sys.argv[2], ignore=shutil.ignore_patterns(*transient_ignore_globs()))" \
       "$TEAM_KITS_SRC" "$stage"
     if [[ -e "$CLAUDE_TEAM_KITS" ]]; then mv "$CLAUDE_TEAM_KITS" "$previous"; fi
     if ! mv "$stage" "$CLAUDE_TEAM_KITS"; then

@@ -1,13 +1,13 @@
 """Shared pytest configuration for the harness's own test suite.
 
-It carries the `known_hole` marker and the two V1 inventories below — what more than one test
-module has to agree on. The inventories are a pair on purpose: one names the state stores this
-lockstep MOVED, the other the ones it has not reached, and a check that reads only the first would
-call the migration finished while shipped code still opens the second.
+It carries the `known_hole` marker and the V1 monolith inventory below — what more than one test
+module has to agree on. That inventory was a PAIR for a round, the second half naming the stores
+whose shipped readers another group still owned; it is one dict again because those readers were
+rewritten and the names moved across. See the comment above `V1_MONOLITHS`.
 
 The `known_hole` marker: a place where a documented, still-open gap is
 ASSERTED as current behaviour rather than promised in prose. `pytest -m known_hole` enumerates
-them, and `harness doctor` (phase-2 step 8) must cross-check that enumeration against the
+them, and `python scripts/harness.py doctor` (phase-2 step 8) must cross-check that enumeration against the
 capability matrix's `unverified` entries — so "step 4 will close this" stops being a note someone
 has to remember and becomes something the harness checks about itself.
 
@@ -50,10 +50,16 @@ os.environ["PYTHONPYCACHEPREFIX"] = PYCACHE_DIR
 # state went, because "gone" and "moved" need different treatment: `masterplan.md` still exists at
 # `product/masterplan.md`, which is why the lockstep sweep judges the PATH and not the name.
 #
-# This dict holds the stores THIS lockstep moved, and nothing else. Four further V1 root stores fit
-# the definition above and are deliberately not in it — see `V1_ROOT_STORES_NOT_YET_MIGRATED`
-# below, which says why and pins them. Whatever reads this dict is therefore complete about the
-# migration that happened, not about V1.
+# THIS DICT IS NOW COMPLETE ABOUT V1, and for one round it was not. A second inventory
+# (`V1_ROOT_STORES_NOT_YET_MIGRATED`) stood beside it holding three stores whose SHIPPED READERS
+# another group still owned — the office PROC registry and the two guidelines files — because
+# sweeping them here would have painted that group's open work as this group's regression. Those
+# readers were rewritten (`gate_proc_approved` and the two office scripts onto PROC items,
+# `guard_guidelines` / `gate_test_coverage` / the kit scripts onto INV items), so the three names
+# moved in here and the second inventory went with them, together with the test that asserted the
+# couplings were exactly those. That is the bargain that inventory was written under: an entry
+# disappears WITH the repair, and the completion proof below then owns the name — which is the
+# stronger check, since it fails for ANY new path rather than for a departure from a recorded list.
 V1_MONOLITHS = {
     "product_requirements.yaml": "every PRD in one file -> product/active/PR-nnnn.yaml",
     "system_requirements.yaml": "every SR in one file -> system/active/SR-nnnn.yaml",
@@ -67,76 +73,143 @@ V1_MONOLITHS = {
     "research_questions.yaml": "every RQ in one file -> research/active/RQ-nnnn.yaml",
     "hypotheses.yaml": "every hypothesis in one file -> hypotheses/active/HYP-nnnn.yaml",
     "experiment_designs.yaml": "every experiment in one file -> experiments/active/EXP-nnnn.yaml",
+    # A GLOB rather than a name, because that is literally what the V1 merge gate looked for: the
+    # store was "whichever report file happens to be there". It moved last, on its own disposition
+    # rows (115/338/507), when `gate_git` was rewritten to read the Evidence store instead.
+    "*report*.yaml": "the QA/validation reports -> evidence/EVD-nnnn.yaml, one typed item per "
+                     "verdict (spec II.2 Evidence)",
+    "coding_guidelines.yaml": "the language rule book -> invariants/active/INV-nnnn.yaml: a rule "
+                              "is an INV with `text`, a kit-script knob is an INV with `value`, "
+                              "and a source area is any INV whose `scope` names a directory",
+    "testing_guidelines.yaml": "the test rule book -> invariants/active/INV-nnnn.yaml, the same "
+                               "way: `coverage_gate` and `browser_smoke` are value-INVs, and the "
+                               "EXTRA coverage areas are the scopes that name directories",
+    "process_definitions.yaml": "the office PROC registry -> procedures/active/PROC-nnnn.yaml, "
+                                "one typed item per procedure (spec II.2/II.9). It moved LAST, "
+                                "with the gate and the two repo scripts that opened it: "
+                                "`gate_proc_approved` now reads the items and refuses an empty "
+                                "store (spec II.4), and the `approved_hash` those scripts could "
+                                "not produce is stamped by the approval mint.",
 }
 
 
-# THE V1 ROOT STORES THE LOCKSTEP HAS NOT REACHED. Same definition as above — a store at the state
-# root that held many items — and every one of them is gone from all three template trees. What
-# separates them from the dict above is the READERS: shipped, running code still composes their
-# path, and rewriting it is another group's work under its own phase-0 disposition row. Sweeping
-# them with the inventory above would therefore paint that group's open work as this group's
-# regression, and the suite would be red for something nobody in it may fix.
+# THE EVIDENCE PRODUCER IS INSTALLED, AND THE TWO CONSTANTS THAT SAID OTHERWISE CAME OUT HERE.
+# `NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM` ("entry point is not installed") and
+# `EVIDENCE_PRODUCER_CLAIM_SCOPE` ("what the harness INSTALLS") pinned one measured fact across
+# twenty shipped documents, with the promise written into their own comment: they would go RED the
+# day the shim shipped, and the constants, the four tests and the caveat in every shipped text
+# would then come out TOGETHER. That day is 2026-07-29 — the kits install
+# `templates/repo/scripts/harness.py` kit-owned, and the acceptance measurement lives in
+# `test_the_evidence_the_merge_gate_demands_has_an_installed_producer` (merge refused for want of
+# Evidence, the entry point's command line through every registered shell gate and then executed,
+# the same merge allowed).
 #
-# They are written down as facts that hold TODAY, not as an exemption list. The value names the
-# repo-relative files that still reach for the store, and
-# `test_the_open_v1_root_store_couplings_are_still_exactly_these` asserts the set is EXACTLY that —
-# so a new coupling fails it, and so does the day one is repaired, which is when the entry must be
-# deleted. That is the `known_hole` idiom (see above) applied where the marker itself does not fit:
-# `known_hole` names a capability from `report.CAPABILITIES`, doctor forces that capability to
-# `unverified`, and every name there is also in `_REQUIRED_FOR_HARD` — a test-suite coupling is
-# none of those things, and inventing a capability for it would put a permanent hold on
-# `enforcement: hard` for a reason spec II.8 does not know. Measured rather than assumed
-# (2026-07-27): marking the test `known_hole("v1_root_store_couplings")` and regenerating the
-# sidecar turns `test_an_asserted_hole_outranks_a_green_wiring_check` red with "names no
-# capability", which is doctor correctly reporting a marker the matrix cannot cross-check.
-#
-# `*report*.yaml` is a glob rather than a name because that is literally what `gate_git` looks for:
-# the store was "whichever report file happens to be there", which is why nothing in V2 can write
-# one and every merge and push in a scaffolded V2 project is blocked (disposition rows 115/338/507).
-V1_ROOT_STORES_NOT_YET_MIGRATED = {
-    "coding_guidelines.yaml": (
-        "the language rule book -> INV items plus config knobs (disposition row 159). "
-        "`guard_guidelines` reads it and exits 0 when it is absent, so the 'no code before "
-        "guidelines' rule is inert in every V2 project.",
-        ("team-kits/dev-team/hooks/guard_guidelines.py",
-         "team-kits/dev-team/skills/software-architect/SKILL.md",
-         "tools/test_hooks.py"),
-    ),
-    "testing_guidelines.yaml": (
-        "test rules -> INV items plus config knobs (disposition row 176). It is the source of the "
-        "EXTRA coverage areas and of the browser-smoke configuration, so those knobs are "
-        "unreachable in a V2 project rather than gone.",
-        ("team-kits/dev-team/hooks/gate_test_coverage.py",
-         "team-kits/dev-team/skills/devops-engineer/SKILL.md",
-         "team-kits/dev-team/skills/quality-engineer/SKILL.md",
-         "team-kits/dev-team/templates/repo/scripts/kit_browser_checks.py",
-         "team-kits/dev-team/templates/repo/scripts/quality.py",
-         "team-kits/research-team/templates/repo/scripts/kit_browser_checks.py",
-         "team-kits/research-team/templates/repo/scripts/quality.py",
-         "tools/test_e2e.py",
-         "tools/test_hooks.py"),
-    ),
-    "process_definitions.yaml": (
-        "the office PROC registry -> procedures/active/PROC-nnnn.yaml (disposition rows 249/556). "
-        "`gate_proc_approved` exits 0 when the file is absent, so the work-order-names-an-APPROVED-"
-        "PROC rule is inert; the two repo scripts fail outright.",
-        ("team-kits/office-team/hooks/gate_proc_approved.py",
-         "team-kits/office-team/templates/repo/scripts/proc_hash.py",
-         "team-kits/office-team/templates/repo/scripts/process_doc.py",
-         "tools/test_hooks.py",
-         "tools/test_hooks_v2.py"),
-    ),
-    "*report*.yaml": (
-        "the QA/validation reports -> evidence/EVD-nnnn.yaml (disposition rows 115/338/507). "
-        "Nothing in V2 writes a file matching this glob, so `gate_git` blocks EVERY merge and "
-        "push in a scaffolded V2 project — measured, not inferred.",
-        ("team-kits/dev-team/constitution/AGENTS.md",
-         "team-kits/dev-team/hooks/gate_git.py",
-         "team-kits/dev-team/skills/project-manager/SKILL.md",
-         "team-kits/research-team/constitution/AGENTS.md",
-         "team-kits/research-team/hooks/gate_git.py"),
-    ),
-}
+# WHAT REPLACED THEM, because the derivation was the valuable half and the fact was only its
+# subject. The old constants existed so that ~20 documents could not each grow their own account
+# of one fact; the new fact — there is exactly ONE spelling of the entry point, and its surface is
+# smaller than spec II.4 asks for — needs the same holding-together across ~150 places, so it is
+# derived the same way in `test_hooks.py`:
+#   * `test_every_shipped_text_spells_the_entry_point_the_one_way` — the spelling comes from
+#     `kernel.cli.INVOCATION`, and no shipped text may spell a command as the bare word, whether
+#     in a code span or in front of a subcommand.
+#   * `test_every_command_a_role_is_handed_is_on_the_entry_points_surface` — every command named in
+#     a shipped text is checked against the SHIPPED PARSER, or its block says it is not on the
+#     surface. The two run over ONE corpus (every shipped text, plus the AST-folded refusal texts);
+#     they did not, and an uncovered `capture` planted in `session_status.py` was measured passing
+#     the narrower one.
+# Neither needs a constant here: both read the kernel, which is the one place the answer is built.
+# Both read their corpus through `_reading_view`, because a command does not stop at a line break —
+# the split-string form that hid this very fact from a `rg` in `gate_write_scope.py` also hid a
+# planted `("run harness " / "doctor first")` from the first cut of these checks.
+
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+TEAM_KITS = os.path.join(ROOT, "team-kits")
+
+
+def mint_via_hook(state, request, answer=None, expect_success=True):
+    """Mint an approval through the REAL PostToolUse hook — the only caller the kernel accepts.
+
+    `approvals.mint` refuses any other caller (user condition (i), 2026-07-25): it is a plain
+    function, and anything that can read `approvals/pending/<id>.yaml` would otherwise be able to
+    pass the label it found there and manufacture a user approval. So every test that expects a
+    SUCCESSFUL mint drives the hook, which also means the mint path is exercised end to end rather
+    than in a library call no production code makes. Refusal tests keep calling `mint` directly:
+    the caller check is deliberately last, so content refusals still report on their own terms.
+
+    HERE rather than in one test module, because a second module needed it the day
+    `state.transition` started demanding an approval: the fixtures that walk a root item along its
+    chain now have to MINT, and a private copy of this in each of them is the drift this file
+    exists to prevent.
+    """
+    import json
+    import subprocess
+
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import approvals
+
+    repo = os.path.dirname(state.root)
+    question = approvals.build_question(request)
+    if answer is None:
+        answer = approvals.approve_label(request["mint_code"])
+    payload = {
+        "hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "cwd": repo,
+        "tool_input": {"questions": [question]},
+        "tool_response": {"answers": {question["question"]: answer},
+                          "questions": [question]},
+    }
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=repo, HARNESS_KERNEL_PATH=TEAM_KITS)
+    result = subprocess.run(
+        [sys.executable, os.path.join(TEAM_KITS, "dev-team", "hooks", "gate_approval.py")],
+        input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
+    assert result.returncode == 0, result.stderr
+    if expect_success:
+        assert "recorded for" in result.stderr, result.stderr
+    return result
+
+
+def approve(state, item_id, kind="scope"):
+    """Give an item a real, minted approval of `kind` — request + hook mint, nothing hand-written."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import approvals
+    mint_via_hook(state, approvals.create_pending_request(state, kind, item_id))
+    return approvals.read_apr(state, state.read_item(item_id)["approval_ref"])
+
+
+def walk_to_status(state, item, target):
+    """Walk an item along its OWN chain to `target`, the way a real session walks it.
+
+    WHICH edges need an approval is asked of the kernel (`approvals.required_approval_kinds`) and
+    never listed here — that is the whole point of the fixture. A gated edge is walked by MINTING
+    its approval, because `state.transition` refuses it and the mint performs the edge itself; an
+    ungated one is walked by `transition`. So the day another edge becomes gated, every fixture
+    built on this one keeps walking the sanctioned route instead of quietly measuring a hole.
+
+    There is deliberately no shortcut past the mint. Spec II.4 forbids a bootstrap FLAG ("der Lead
+    könnte sein eigenes Gate umgehen"), and a test fixture that could set one would be exactly the
+    caller the rule is about — the suite would then prove the gate on a path production never
+    takes. A target OFF the chain (a terminal such as REJECTED) is a single transition, which is
+    what its automaton says it is.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.approvals import create_pending_request, required_approval_kinds
+    from kernel.backlog_types import AUTOMATA, parse_id
+
+    item_type, _ = parse_id(item["id"])
+    chain = AUTOMATA[item_type].chain
+    current = state.read_item(item["id"])
+    if target in chain:
+        steps = chain[chain.index(current["status"]) + 1: chain.index(target) + 1]
+    else:
+        steps = (target,)
+    for step in steps:
+        current = state.read_item(item["id"])
+        kinds = required_approval_kinds(item_type, current["status"], step)
+        if kinds:
+            mint_via_hook(state, create_pending_request(state, sorted(kinds)[0], item["id"]))
+        else:
+            state.transition(item["id"], step)
+    return state.read_item(item["id"])
 
 
 def load_kit_module(name, path):

@@ -11,12 +11,12 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
 ---
 You are the **Data Analyst**. Obey the constitution in `./AGENTS.md` and the PM's work order. Your procedure
 — which items you read, and what you hand back — is in your preloaded **data-analyst** skill; you write no

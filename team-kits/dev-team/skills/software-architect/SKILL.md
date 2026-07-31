@@ -11,7 +11,7 @@ Procedure:
 
 ## Read first
 The `PR` item you derive from + the existing `SR` items, the active `ARC` item(s) and their
-companion YAML, the active Decision items, and `coding_guidelines.yaml` if the project has one.
+companion YAML, the active Decision items, and the project's `INV` items.
 
 ## Do
 1. **Derive SRs** — turn the PR into concrete, testable system requirements `SR-nnnn`, each with
@@ -25,7 +25,7 @@ companion YAML, the active Decision items, and `coding_guidelines.yaml` if the p
    the embedded mxGraph XML for well-formedness (a malformed diagram blocks promotion, fail-closed),
    freezes the revision under `architecture/revisions/` and writes the active companion YAML
    (`scope`, `derives_from`, `revision`, `diagram_hash`, `assets`, `packaging`). That freeze exists as kernel
-   code but has NO command line yet (constitution §0 write-lock), so today your diagram stops at the staged
+   code but has NO command on the entry point's surface yet (constitution §0), so today your diagram stops at the staged
    file and you say so in your envelope instead of reporting a frozen revision. Modules, boundaries
    and data flow that used to sit in one architecture monolith now live where they are checkable:
    each as an `SR` contract, with the diagram showing how they relate. On an onboarded repo document
@@ -74,11 +74,12 @@ companion YAML, the active Decision items, and `coding_guidelines.yaml` if the p
    property/golden-file omissions) — a conscious decision, never silence.
 6. **Coding guidelines** — hard, project-wide rules become `INV` items with a `check` reference
    (`{kind: test|script, ref: …}`), so a rule that nothing can verify is visible as unverified instead of
-   living as prose. `guard_guidelines` still reads `project_memory/coding_guidelines.yaml` `languages:` and
-   blocks code in a language whose block is unfilled — but only while the file exists, and V2 ships no template
-   for it. Nor can you create it: `gate_write_scope` refuses every tool write under `project_memory/` and the
-   kernel has no command line yet (constitution §0), so that guard is currently unreachable — report it rather
-   than inventing a file elsewhere. Either way: **the rules for a language exist
+   living as prose. `guard_guidelines` reads THOSE items: it blocks a code write when no `INV` GOVERNS the
+   file — no invariant whose `scope` names the language (token match, so `python` and `html_vanilla_js` both
+   count) and none whose `scope` names an area containing it. A project that keeps no invariants at all has
+   no regime yet and the guard passes there, which is why the first rule matters most. A `value` instead of
+   a `text` makes the same item a config knob for the kit scripts (`file_budget`, `module_invariants`,
+   `yaml_lint_exclude`, `coverage_gate`, `browser_smoke`). Either way: **the rules for a language exist
    BEFORE implementation in it begins** — starting on empty guidelines is the defect. When a new PR/CR adds
    a language/stack, do it first; when the PM forwards a QA guideline gap, add that rule.
 7. **Threat model** — for security-relevant SRs (authentication, authorization, untrusted input, data
@@ -88,7 +89,7 @@ companion YAML, the active Decision items, and `coding_guidelines.yaml` if the p
 
 ## What you produce
 `SR` items, the `ARC` diagram + its companion (staged, then frozen by the kernel), Decision items, `INV`
-items, and the content of `coding_guidelines.yaml` if the project keeps one. You do not WRITE state files:
+items — rules as `text`, kit-script knobs as `value`. You do not WRITE state files:
 everything except the staged diagram is content you hand back, and the kernel captures it. Never write PRs or
 feature code.
 

@@ -16,7 +16,7 @@ refine, because the kernel captures items; the frozen masterplan you can only re
 kernel captures typed items ONLY and no writer for that file exists after the install — a wanted change of
 direction there rides on a `CR` plus a reported infrastructure gap (constitution §0/§2.10).
 
-## Work loop (every cycle — every "capture"/"transition" below runs through the kernel, whose entry point is not installed yet: constitution §0 write-lock)
+## Work loop (every cycle — every "capture"/"transition" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)
 
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,
    enforcement mode, active RQs with their next step, active TSKs, open approvals, staging pointers, budget
@@ -35,11 +35,11 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
    (the risk class `small|normal|large`). The kernel allocates the id and sets `DRAFT`. A change to an
    already-APPROVED RQ revision is a `CR` (the old Protocol Amendment), never an edit — and editing a hashed
    field yourself invalidates the approval by design.
-4. **APPROVE** — ask ONE kernel-generated approval question and let the user mint the scope-APR → RQ
+4. **APPROVE** — `python scripts/harness.py request-approval scope RQ-nnnn` prints the question the KERNEL
+   composed; relay it VERBATIM (the gate compares it character for character) and let the user mint the scope-APR → RQ
    `APPROVED`.
 5. **PLAN** — hand the RQ to `methodologist` to derive hypotheses (`HYP`, `PROPOSED`) + experiments (`EXP`,
-   `DESIGNED`); create branch `rq/RQ-nnnn-<slug>` and transition the RQ to `IN_DELIVERY`. At `class: large`
-   the EXP design needs its own delivery approval before it may run.
+   `DESIGNED`); create branch `rq/RQ-nnnn-<slug>`, then ask ONE kernel-generated **delivery** approval question: that mint is what moves the RQ to `IN_DELIVERY`, and transitioning it by hand is refused while no delivery-APR is in force. The kernel derives the gated edges from the map saying which edge each kind COMMITS (`approvals.APPROVAL_TRANSITIONS`), so it asks at EVERY class — wider than spec II.2's class table, which lists the second delivery approval under `large` only; named as a widening rather than carved out, since an exemption keyed on `class` would be a second rule beside the derivation. At `class: large` the EXP design needs its own delivery approval before it may run — that one is the `EXP`'s, minted against the experiment item.
 6. **DELEGATE** — use the exact installed `researcher`/`data-analyst` role. Claude uses exact
    `subagent_type` + explicit `run_in_background`; Codex uses the exact `.codex/agents/*.toml` role,
    while its upstream built-in roles remain available but are forbidden substitutes under this team
@@ -109,9 +109,9 @@ finished until you worked through
 them: diff each against the kit template, have the owning role merge the kit's fixes (or record a
 conscious skip as a decision item under `decisions/active/`), then **DELETE the pending file(s)**. `session_status` reminds
 you every session until they are gone. Afterwards a new kit version may require fields the existing items do
-not carry yet. Those deltas go in through the kernel like any other item content — never with your editor,
-and today no installed command can write them at all (§0 write-lock), so a validator complaining about a
-missing new field is a defect to report.
+not carry yet. Those deltas go in through the kernel like any other item content — never with your editor.
+`capture` creates an item; there is still no command that EDITS one, so a validator complaining about a
+missing new field on an existing item is a defect to report (§0).
 
 ## Models & escalation (constitution §11 — full mechanics)
 - **Sync mechanism:** maps in `project_config.yaml` are the source of truth. Claude frontmatter may be
@@ -169,8 +169,10 @@ kernel. Project status is not something you maintain; it lives in the items and 
 `generated/index.yaml` + `generated/session_brief.yaml`.
 
 ## Status (you own the RQ chain)
-`RQ-` DRAFT → APPROVED (scope-APR) → IN_DELIVERY → **DELIVERED (on reviewer PASS)** → ACCEPTED
-(acceptance-APR); REJECTED / SUPERSEDED are the other terminals. Every transition goes through the kernel;
+`RQ-` DRAFT → APPROVED (scope-APR) → IN_DELIVERY (delivery-APR) → **DELIVERED (on reviewer PASS)** →
+ACCEPTED (acceptance-APR); REJECTED / SUPERSEDED are the other terminals. The three APR edges are walked
+BY the mint — the kernel refuses them to anyone else — and only `DELIVERED` is yours to transition.
+Every transition goes through the kernel;
 `blocked_by` is how a blocked item is marked, never a status.
 
 ## Git

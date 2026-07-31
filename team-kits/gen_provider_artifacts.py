@@ -39,14 +39,25 @@ import stat
 import sys
 import tempfile
 
+# This script imports `kernel.hashing` out of the team-kit staging (see `kernel_hashing`) and runs
+# during a scaffold — and it is the script that BINDS Codex trust to a bundle hash. Writing a
+# `.pyc` into a hashed tree while computing that hash is the one thing it must not do. No harness
+# process writes bytecode into a tree the harness hashes or installs from: see
+# `kernel.hashing.BYTECODE_SUFFIXES`, and `tools/validate.py` for the repo-side statement of it.
+sys.dont_write_bytecode = True
+
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Claude matcher -> Codex matcher (Codex tool vocabulary: Bash, apply_patch, mcp__*).
-# None = do not register on Codex (documented gap, see parity matrix in the README):
+# Absent from the table = do not register on Codex, and then only if `CODEX_UNSUPPORTED_TOOLS`
+# declares it (documented gap, see parity matrix in the README). A TOOL is what this list is about;
+# an EVENT Codex does not have (`Notification`) is a gap of a different kind and is declared by its
+# absence from `CODEX_EVENTS`, which is where the reader has to look for it — it used to stand here
+# among the tools, in the paragraph that says how a tool is declared, and no tool declaration
+# covers it:
 #   Agent|Task  — Codex exposes SubagentStart, but it cannot stop a spawn and does not carry the
 #                 Claude work-order payload. Built-in Codex roles also remain available.
-#   Notification — no such Codex event.
 #   AskUserQuestion — Codex asks via request_user_input (root-only, different payload shape);
 #                 guard_question_context cannot hook it, so the self-contained-question rule
 #                 binds Codex PMs through the SKILL alone (audit: the fallthrough used to
@@ -61,28 +72,96 @@ CODEX_TOOL_MATCHER = (
     (frozenset(("Edit", "Write", "MultiEdit", "NotebookEdit")), "apply_patch"),
     (frozenset(("Bash", "PowerShell")), "Bash"),
 )
-# Tools Codex has no equivalent for: a registration that only names these translates to nothing.
+# Tools Codex has no equivalent for, DECLARED — the whole point of naming them is that dropping
+# them is a decision somebody made and wrote down (the reasons are in the comment above), not the
+# accident of a lookup that found nothing. `codex_matchers` refuses anything absent from both this
+# set and the table above, so the difference between "deliberately not on Codex" and "nobody has
+# translated this yet" is a message at generation time instead of a registration that never fires.
 CODEX_UNSUPPORTED_TOOLS = frozenset(("Agent", "Task", "AskUserQuestion"))
+# Codex's own tool vocabulary reaches a Claude matcher unchanged through this prefix: an MCP tool is
+# called `mcp__<server>__<tool>` on both sides, so the name IS the translation.
+MCP_TOOL_PREFIX = "mcp__"
 
 
-def codex_matcher(matcher):
-    """The Codex matcher for a Claude one, or None when Codex cannot express it.
+def codex_matchers(matcher):
+    """Every Codex matcher a TOOL matcher translates to — one per distinct Codex tool it names.
 
-    Unknown tools yield None rather than the Claude string: an untranslatable registration must
-    vanish from `.codex/hooks.json`, because one that is present and never fires reads as
-    enforcement in every audit of that file.
+    ONLY FOR THE EVENTS WHOSE MATCHERS NAME TOOLS (`TOOL_MATCHED_EVENTS`); see that constant for
+    what a matcher is on the other events and why asking this function about one is a category
+    error rather than a lookup failure.
+
+    A MATCHER NAMES A SET OF TOOLS, SO THE ANSWER IS A SET. The previous version returned the first
+    table entry the set intersected, which meant a mixed matcher lost everything after it — and one
+    is shipped: `gate_filing` is registered `Bash|PowerShell|Edit|Write|MultiEdit`, because the
+    office kit's filing rule applies to a shell command that moves a document exactly as it applies
+    to writing one. On Codex it arrived as `apply_patch` alone, so the shell half of that gate has
+    been absent on that provider for as long as the kit has existed (measured 2026-07-27).
+
+    THREE OUTCOMES PER TOOL, and the third is why this can raise. A tool the table knows becomes
+    its Codex name; a tool Codex has no equivalent for (`CODEX_UNSUPPORTED_TOOLS`) contributes
+    nothing, which is the DECLARED gap; anything else is refused, because the alternative has
+    already shipped once — widening two Claude matchers to include `NotebookEdit` fell through a
+    lookup, got emitted verbatim, and left the lead's write-scope veto registered under a matcher
+    Codex does not know, i.e. never firing, in a file that reads as enforcement. A generator that
+    stops with a name is the only version of that event anybody notices.
+
+    An empty matcher (or `*`) is a registration for every call and translates to itself.
     """
     if not matcher or matcher == "*":
-        return matcher or ""
-    tools = frozenset(part for part in re.split(r"[|,]", matcher) if part)
-    for group, translated in CODEX_TOOL_MATCHER:
-        if tools & group:
-            return translated
-    return None
+        return (matcher or "",)
+    translated, unknown = [], []
+    for tool in sorted({part for part in re.split(r"[|,]", matcher) if part}):
+        if tool in CODEX_UNSUPPORTED_TOOLS:
+            continue
+        if tool.startswith(MCP_TOOL_PREFIX):
+            name = tool
+        else:
+            name = next((codex for group, codex in CODEX_TOOL_MATCHER if tool in group), None)
+        if name is None:
+            unknown.append(tool)
+        elif name not in translated:
+            translated.append(name)
+    if unknown:
+        raise SystemExit(
+            "Claude matcher %r names tool(s) with no Codex translation and no declared gap: %s. "
+            "Add them to CODEX_TOOL_MATCHER (they have a Codex equivalent) or to "
+            "CODEX_UNSUPPORTED_TOOLS (they have none) in gen_provider_artifacts.py; emitting the "
+            "registration anyway would put a hook into .codex/hooks.json that can never fire. "
+            "Provider artifacts were left untouched" % (matcher, ", ".join(unknown)))
+    return tuple(sorted(translated))
 
 
 CODEX_EVENTS = ("SessionStart", "PreToolUse", "PostToolUse", "SubagentStart",
                 "SubagentStop", "Stop")
+
+# WHAT A MATCHER SELECTS ON IS A PROPERTY OF THE EVENT, not of the string. The tool events match on
+# TOOL NAMES; every other event matches in a vocabulary of its own, and the kits ship one:
+# `Notification` is registered `agent_completed|agent_needs_input` in all three, which are
+# notification kinds. `codex_matchers` refuses anything that is not a known tool, so handing it that
+# matcher stops the generator with a message about an untranslatable TOOL — the honest answer to the
+# wrong question.
+#
+# That this has never happened rests on `Notification` being absent from `CODEX_EVENTS`, i.e. on an
+# unwritten agreement between two tuples, and Codex does have notification-shaped events. So the
+# condition is stated where it belongs: the tool table is asked about tool matchers and nothing
+# else. `test_every_registration_a_kit_writes_survives_the_codex_translation` translates every
+# event EVERY kit registers — not only the ones that reach Codex today — so the shipped
+# `Notification` matcher is a measured case whether or not it is ever added to `CODEX_EVENTS`.
+#
+# THE OTHER EVENTS' MATCHERS ARE NOT TRANSLATED, because the tool namespace is the only thing this
+# generator knows to differ between the two providers: a notification kind or a session source is
+# named by the shared event contract, not by the provider's tool vocabulary. Today every such
+# registration in every kit is `""` or `*` (measured 2026-07-28), for which "carry it over" and
+# "translate it" are the same answer anyway.
+TOOL_MATCHED_EVENTS = frozenset(("PreToolUse", "PostToolUse", "PermissionDenied",
+                                 "PostToolUseFailure"))
+
+
+def codex_matchers_for(event, matcher):
+    """The Codex matchers a Claude REGISTRATION translates to — the event decides the vocabulary."""
+    if event in TOOL_MATCHED_EVENTS:
+        return codex_matchers(matcher)
+    return (matcher,)
 
 ROLE_PREAMBLE = (
     "You are the specialist role described below inside a team-kit governed repository.\n"
@@ -327,7 +406,7 @@ def rel_command(command):
 def hook_bundle_hash(repo):
     """Hash every installed hook dependency so Codex trust changes when executable code changes.
 
-    The ALGORITHM lives in `kernel.hashing.hook_bundle_hash` and is shared with `harness doctor`,
+    The ALGORITHM lives in `kernel.hashing.hook_bundle_hash` and is shared with `python scripts/harness.py doctor`,
     which used to compute a different hash over this same directory — so doctor's `hook_trust`
     could never match the value this generator bound Codex to. Only the two guarantees specific to
     generating a trust binding stay here: a missing directory is fatal (Codex trust must not be
@@ -364,11 +443,40 @@ def hook_bundle_verifier_b64():
 
     The one surviving copy of `kernel.hashing.hook_bundle_hash`, and it has to be a copy: Codex
     hashes these bytes as part of the hook definition, so the verifier cannot import the thing it
-    is verifying. `argv[1]` is the `.claude` DIRECTORY, not the hooks directory — the scope is
-    hooks + kernel (see the canonical function for why). A test runs both over an adversarial tree
-    and fails on any drift; if they ever disagree, every Codex hook refuses with "bundle changed"
-    on a bundle that did not change, and the kit is dead on that provider.
+    is verifying. `argv[1]` is the `.claude` DIRECTORY, not the hooks directory, because the scope
+    is `kernel.hashing.BUNDLE_SUBTREES` — every subtree it names, whichever those are on the day
+    the artifacts are generated (see the last paragraph) — and it skips NOTHING inside them,
+    bytecode included, for the reason `kernel.hashing.BYTECODE_SUFFIXES` gives.
+
+    ON CODEX THIS IS THE ENFORCED MEASUREMENT, so a divergence here is not a reporting defect but
+    an unfixed hole. It happened: the canonical function learned to name a directory symlink
+    instead of walking past it, this copy did not, and for one release R5-F2 was simply not fixed
+    on that provider — a `.claude/hooks/yaml -> <elsewhere>` that replaces PyYAML for the kernel of
+    every gate process passed every Codex hook with rc 0 while the canonical hash had long since
+    changed (measured end to end, 2026-07-27).
+
+    The other direction is real too, but it lands earlier and more gently than it first looks:
+    `assert_tree_no_reparse` refuses to GENERATE artifacts for a bundle containing any reparse
+    point, so a legitimate directory link does not produce Codex hooks that refuse an unchanged
+    bundle — it produces no Codex hooks at all, with a readable message. What survives generation
+    is a link planted afterwards, which is the security half.
+
+    `test_the_inline_codex_verifier_agrees_with_the_canonical_hash` runs both over
+    `_adversarial_bundle`, which since 2026-07-27 contains a real directory symlink for exactly
+    this reason; a junction would not do, because `os.path.islink` is False for one and both sides
+    then agree by descending into it.
+
+    WHAT IS COPIED IS THE ALGORITHM; THE CONSTANTS ARE INTERPOLATED. The scope of the measurement
+    and the stand-in a symlink contributes are values, and a value written out here a second time
+    is the same drift class as the walk above with none of its excuse — the copy cannot import
+    `kernel.hashing` at RUN time, but this function reads it at GENERATION time and can simply
+    write today's answer into the source it emits. That matters most for the scope: a bundle
+    subtree added to `BUNDLE_SUBTREES` would otherwise be hashed by the canonical function and
+    ignored by the enforced one, and no fixture-based pin could notice, because a tree that does
+    not yet exist expresses no disagreement. Substituted by name rather than with `%` because the
+    emitted code contains a `%s` of its own.
     """
+    hashing = kernel_hashing()
     code = r'''import hashlib
 import os
 import sys
@@ -376,15 +484,23 @@ import sys
 root, expected = sys.argv[1], sys.argv[2]
 digest = hashlib.sha256()
 try:
-    for subtree in ("hooks", "kernel"):
+    for subtree in __SUBTREES__:
         base = os.path.join(root, subtree)
         if not os.path.isdir(base):
             continue
         for current, dirs, files in os.walk(base):
-            dirs[:] = sorted(item for item in dirs if item != "__pycache__")
+            # A directory symlink contributes its NAME plus the marker and no content, and is not
+            # descended into -- byte for byte what kernel.hashing._bundle_files does, including
+            # emitting the links of a level before its files. os.walk would otherwise skip the
+            # link entirely and the hash would not notice a shadowing package.
+            linked = sorted(d for d in dirs if os.path.islink(os.path.join(current, d)))
+            dirs[:] = sorted(d for d in dirs if d not in linked)
+            for dirname in linked:
+                path = os.path.join(current, dirname)
+                relative = subtree + "/" + os.path.relpath(path, base).replace(os.sep, "/")
+                digest.update((relative + "/" + __MARKER__).encode("utf-8") + b"\0")
+                digest.update(b"\0")
             for filename in sorted(files):
-                if filename.endswith((".pyc", ".pyo")):
-                    continue
                 path = os.path.join(current, filename)
                 relative = subtree + "/" + os.path.relpath(path, base).replace(os.sep, "/")
                 digest.update(relative.encode("utf-8") + b"\0")
@@ -398,6 +514,8 @@ if digest.hexdigest() != expected:
     sys.stderr.write("Team-kit hook bundle changed after scaffold/trust; rerun the full scaffold and review /hooks.\n")
     sys.exit(2)
 '''
+    code = (code.replace("__SUBTREES__", repr(tuple(hashing.BUNDLE_SUBTREES)))
+                .replace("__MARKER__", repr(hashing.SYMLINK_MARKER)))
     return base64.b64encode(code.encode("utf-8")).decode("ascii")
 
 
@@ -407,6 +525,13 @@ def codex_hook_commands(command, agent_types=(), bundle_hash=""):
     Codex runs hook commands from the session cwd. The official docs explicitly warn that this
     may be a nested directory, so a plain `.claude/hooks/x.py` path is not safe. Git is the fast
     path; a parent walk keeps greenfield repositories working before `git init`.
+
+    BOTH interpreter invocations carry `-B`, and the verifier's is the one that must not be
+    forgotten: it is the process that runs FIRST on every Codex tool call, so a `.pyc` written by
+    it would change the bundle between the verification and the next one. The `-B` in the kits'
+    settings.json does not reach here — this function rebuilds the command from the script path
+    rather than passing the original string through — so it is stated again rather than inherited.
+    See `kernel.hashing.BYTECODE_SUFFIXES` for what the bundle hash now covers.
     """
     relative = rel_command(command).replace("\\", "/")
     match = re.search(r"(?:^|[\"'])((?:\.claude|\.codex)/hooks/[^\"']+\.py)(?:[\"']|$)", relative)
@@ -434,9 +559,9 @@ def codex_hook_commands(command, agent_types=(), bundle_hash=""):
              'while [ ! -f "$root/%(script)s" ] && [ "$root" != "/" ]; '
              'do root="$(dirname "$root")"; done; '
              'py="$(command -v python3 || command -v python)"; [ -n "$py" ] || exit 1; '
-             '"$py" -c "import base64;exec(base64.b64decode(\'%(verify)s\'))" '
+             '"$py" -B -c "import base64;exec(base64.b64decode(\'%(verify)s\'))" '
              '"$root/.claude" "%(hash)s" || exit $?; '
-             '%(env)s "$py" "$root/%(script)s"%(args)s' % {
+             '%(env)s "$py" -B "$root/%(script)s"%(args)s' % {
                  "script": script, "env": posix_env, "verify": verifier,
                  "args": (" " + script_args) if script_args else "",
                  "hash": bundle_hash})
@@ -451,13 +576,13 @@ def codex_hook_commands(command, agent_types=(), bundle_hash=""):
                 'if (-not $py) { $py = Get-Command python3 -ErrorAction SilentlyContinue }; '
                 'if (-not $py) { throw \'Python 3 is required for team-kit hooks\' }; '
                 '$verify = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(\'%(verify)s\')); '
-                '$verify | & $py.Source - (Join-Path $root \'.claude\') \'%(hash)s\'; '
+                '$verify | & $py.Source -B - (Join-Path $root \'.claude\') \'%(hash)s\'; '
                 'if ($LASTEXITCODE -ne 0) { exit 2 }; '
                 # `powershell -Command` collapses a native child's exit code to 1, and 1 is what
                 # Claude Code and Codex both read as "non-blocking error" = ALLOW. Without this
                 # line every Windows block became a pass — the same failure class the launcher
                 # exists to close, one layer out in the shell.
-                '& $py.Source (Join-Path $root \'%(script)s\')%(args)s; '
+                '& $py.Source -B (Join-Path $root \'%(script)s\')%(args)s; '
                 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }"'
                % {"script": script, "env": windows_env, "verify": verifier,
                   "args": (" " + script_args) if script_args else "",
@@ -470,12 +595,12 @@ def gen_codex_hooks(settings, role_hooks=(), repo=None):
     global_keys = set()
     for event in CODEX_EVENTS:
         for matcher, hook in hook_entries(settings, event):
-            cm = codex_matcher(matcher)
-            if matcher and cm is None:
-                continue
-            key = (event, cm, hook["command"], hook.get("timeout"))
-            registrations[key] = {"hook": hook, "roles": None}
-            global_keys.add(key)
+            # one registration per Codex matcher: a Claude matcher naming tools from two Codex
+            # vocabularies is two Codex registrations, not a choice between them
+            for cm in codex_matchers_for(event, matcher):
+                key = (event, cm, hook["command"], hook.get("timeout"))
+                registrations[key] = {"hook": hook, "roles": None}
+                global_keys.add(key)
     # Codex has a native, non-blocking lifecycle event. Reuse the shared audit hook so spawn-side
     # accounting exists even though Claude's Agent|Task pre-spawn guard has no Codex equivalent.
     for _matcher, hook in hook_entries(settings, "SubagentStop"):
@@ -484,14 +609,12 @@ def gen_codex_hooks(settings, role_hooks=(), repo=None):
             registrations[key] = {"hook": hook, "roles": None}
             global_keys.add(key)
     for event, matcher, hook, role in role_hooks:
-        cm = codex_matcher(matcher)
-        if matcher and cm is None:
-            continue
-        key = (event, cm, hook["command"], hook.get("timeout"))
-        if key in global_keys:
-            continue
-        item = registrations.setdefault(key, {"hook": hook, "roles": set()})
-        item["roles"].add(role)
+        for cm in codex_matchers_for(event, matcher):
+            key = (event, cm, hook["command"], hook.get("timeout"))
+            if key in global_keys:
+                continue
+            item = registrations.setdefault(key, {"hook": hook, "roles": set()})
+            item["roles"].add(role)
 
     out = {}
     grouped = {}

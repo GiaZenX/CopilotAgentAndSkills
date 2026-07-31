@@ -1,5 +1,5 @@
 {
-  "_comment": "Claude Code registration of the shared, provider-neutral Python hooks (.claude/hooks/*.py speak every provider payload via _compat.py). The Codex counterpart (.codex/hooks.json + config.toml) is GENERATED from this file by team-kits/gen_provider_artifacts.py - never hand-maintained.",
+  "_comment": "Claude Code registration of the shared, provider-neutral Python hooks (.claude/hooks/*.py speak every provider payload via _compat.py). The Codex counterpart (.codex/hooks.json + config.toml) is GENERATED from this file by team-kits/gen_provider_artifacts.py - never hand-maintained. Every interpreter runs with -B: .claude/hooks and .claude/kernel are the hashed enforcement bundle, and a hook that leaves a .pyc behind changes the bundle it was just trusted against - which is why bytecode used to be excluded from the hash instead (kernel/hashing.py BYTECODE_SUFFIXES). Measured cost of -B on a full kernel import: ~5 ms.",
   "agent": "project-manager",
   "model": "opus",
   "permissions": {
@@ -25,11 +25,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/kit_trust_state.py\""
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/kit_trust_state.py\""
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_status.py\""
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session_status.py\""
           }
         ]
       }
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
           }
         ]
       },
@@ -49,7 +49,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_pm_scope.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_pm_scope.py"
           }
         ]
       },
@@ -58,29 +58,29 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_git.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_git.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_memory_complete.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_memory_complete.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_pipeline.py",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_pipeline.py",
             "timeout": 1800
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_write_scope.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_write_scope.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py",
             "timeout": 60
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py",
             "timeout": 60
           }
         ]
@@ -90,11 +90,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       },
@@ -103,11 +103,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_question_context.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_question_context.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
           }
         ]
       },
@@ -116,7 +116,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_write_scope.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_write_scope.py"
           }
         ]
       },
@@ -125,7 +125,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_memory_budget.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_memory_budget.py"
           }
         ]
       },
@@ -134,7 +134,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_harness_selfmod.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_harness_selfmod.py"
           }
         ]
       }
@@ -145,11 +145,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_yaml_valid.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_yaml_valid.py"
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_scratchpad_ref.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_scratchpad_ref.py"
           }
         ]
       },
@@ -158,7 +158,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       },
@@ -167,7 +167,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
           }
         ]
       }
@@ -178,7 +178,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/notify_agent_events.py\""
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/notify_agent_events.py\""
           }
         ]
       }
@@ -188,11 +188,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/notify_agent_events.py\""
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/notify_agent_events.py\""
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py"
           }
         ]
       }
@@ -203,7 +203,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       }
@@ -214,7 +214,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       }
@@ -225,7 +225,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       }

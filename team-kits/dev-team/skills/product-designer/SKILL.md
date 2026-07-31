@@ -49,7 +49,7 @@ taste constraints. Your `TSK` names the exact files in `required_inputs`. Note t
   `design/revisions/DSN-nnnn.rNN.html` and points the PR's `design_refs` at it; that frozen file is the
   `design_ref` a UI task must carry, and the frontend's binding contract.
 
-Both freezes exist as kernel code with **no command line yet** (constitution §0 write-lock), so in practice
+Both freezes exist as kernel code with **no command on the entry point's surface yet** (constitution §0), so in practice
 your artifacts stop at the staged file: name the staged path in your envelope and never claim a frozen
 revision that nothing produced.
 Nothing survives outside staging: on approval the kernel promotes and EMPTIES the directory, on rejection it

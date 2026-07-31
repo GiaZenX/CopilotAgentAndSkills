@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SessionStart — inject business state so the Office Manager wakes up knowing the situation.
+SessionStart() — inject business state so the Office Manager wakes up knowing the situation.
 
 Briefs the manager (role, git branch, first-message procedure), counts the inbox, flags DUE
 quarterly reports (a completed quarter with ledger entries but no generated report), flags STALE
@@ -15,6 +15,15 @@ import re
 import sys
 import time
 
+
+# NO BYTECODE FROM A HOOK RUN, for the reason `_gate.py` states at length: this file lives in
+# the hashed enforcement bundle and imports its neighbours out of it, so caching them would
+# change the bundle by being run — `hooks_trust_required` at the next session, blamed on
+# anything but the hook that caused it. The kits register this hook as `python -B`, so in
+# production the flag is redundant; it is here because a hook is also started directly — by the
+# test suite, by a person diagnosing one — and the measurement must not depend on how it was
+# started. `_gate.py` carries the same line for the gates it launches; this one is not launched.
+sys.dont_write_bytecode = True
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _compat
@@ -247,8 +256,8 @@ def main():
             "business_profile.yaml, the active PROC items and any DRAFT plan left by the install "
             "session, then give the user a one-line status (open inbox items, running PROCs, due "
             "reports, drafts waiting in outbox/) and ask what to do next. If the brief is missing or "
-            "stale, regenerate it (`harness generate-session-brief`, which needs "
-            "`--kit/--kit-version/--enforcement` — see `harness --help`) instead of reconstructing the "
+            "stale, regenerate it (`python scripts/harness.py generate-session-brief`, which needs "
+            "`--kit/--kit-version/--enforcement` — see `python scripts/harness.py --help`) instead of reconstructing the "
             "state by hand. " + (
                 "Use the native office-manager skill; optional Codex host memory is not role-specific "
                 "or business truth and must not be maintained manually."

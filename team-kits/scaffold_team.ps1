@@ -436,23 +436,53 @@ if (Test-Path $hooksSrc) {
         Copy-Item $_.FullName (Join-Path $hooksDst $_.Name) -Force
         Write-Host "  [ok] hook: $($_.Name)" -ForegroundColor Green
     }
+    # ...AND REMOVE WHAT THIS KIT DOES NOT SHIP, which the copy loop alone never did. `.claude/hooks`
+    # is `sys.path[0]` for every gate process, so a file an EARLIER kit left there is not clutter:
+    # it is a module the harness installed and no longer controls, and `write_kit_state.py` now
+    # refuses to record trust over anything importable that the kit did not deliver. Without this
+    # prune the first release to drop a hook (`auto_dashboard.py`, in the V2 monolith) would make
+    # every project installed before it un-scaffoldable. `.claude/kernel` needs no equivalent — it
+    # is deleted and re-copied wholesale just below. The previous contents were backed up above.
+    Get-ChildItem -Path $hooksDst -Force |
+        Where-Object { -not (Test-Path -LiteralPath (Join-Path $hooksSrc $_.Name)) } |
+        ForEach-Object {
+            Remove-Item $_.FullName -Recurse -Force
+            Write-Host "  [prune] .claude/hooks/$($_.Name) (not shipped by '$Team')" -ForegroundColor Yellow
+        }
 }
 # ...and the V2 state kernel the hooks import. `_kernel.kernel_parents()` names `<repo>/.claude`
 # as the FIRST place it looks and says why: a project must run the kernel its hook bundle was
 # installed with, not whatever version happens to sit in the global staging. Nothing copied it
 # there, so that first candidate never existed and every project silently fell through to
 # ~/.claude/team-kits -- or, on a machine without it, got KernelUnavailable from every integrity
-# gate. It also carries `known_holes.json`, which `harness doctor` needs to report any capability
+# gate. It also carries `known_holes.json`, which `python scripts/harness.py doctor` needs to report any capability
 # as verified at all.
 $kernelSrc = Join-Path (Split-Path -Parent $kit) "kernel"
 if (Test-Path $kernelSrc) {
     $kernelDst = Join-Path $repo ".claude\kernel"
     if (Test-Path $kernelDst) { Remove-Item $kernelDst -Recurse -Force }
     Copy-Item $kernelSrc $kernelDst -Recurse -Force
-    Get-ChildItem -Path $kernelDst -Recurse -Force -Directory |
-        Where-Object { $_.Name -eq "__pycache__" } |
-        ForEach-Object { Remove-Item $_.FullName -Recurse -Force }
     Write-Host "  [ok] .claude/kernel (V2 state kernel)" -ForegroundColor Green
+}
+# THE INSTALLED BUNDLE CARRIES NO TOOL LEFTOVERS. `.claude/hooks` and `.claude/kernel` are what
+# `hook_bundle_hash` measures, byte for byte and with nothing excluded -- a `.pyc` there is not a
+# cache but an importable module on `sys.path[0]` of every gate process, and a cache directory is a
+# file the recorder would bless although no kit stamp covers it. `kit_hash` may leave both out of
+# what a KIT contains only because no kit ships any, so this prune is what makes that true at the
+# one moment source becomes installation. Afterwards, anything of the kind found under those two
+# directories is a stranger, and `write_kit_state.py` reports it as one.
+#
+# The kernel decides WHAT a leftover is (`kernel.hashing.prune_transient`, the same predicate
+# `_shipped_files` excludes by) and both scaffolds call it, so the two platforms cannot prune
+# different sets -- the shell twins did, and only this one was ever executed by a test.
+#
+# Guarded by the same condition as the copy above, and for the recorder's reason: a staging too old
+# to carry a kernel installs none, so nothing hashes this bundle and nothing records trust for it.
+# Refusing the whole scaffold there would break the update path off such a staging instead of
+# leaving `hook_trust` unverified, which is the fail-closed direction.
+if (Test-Path $kernelSrc) {
+    & $providerPython.Source -B -c "import sys; sys.path.insert(0, sys.argv[1]); from kernel.hashing import prune_transient; prune_transient(*sys.argv[2:])" (Split-Path -Parent $kit) (Join-Path $repo ".claude\hooks") (Join-Path $repo ".claude\kernel")
+    if ($LASTEXITCODE -ne 0) { throw "Could not prune tool leftovers out of the installed bundle" }
 }
 # Role skills travel with the team (preloaded into the agents via their `skills:` frontmatter).
 if (Test-Path $skillsSrc) {
@@ -502,7 +532,7 @@ if (Test-Path $verSrc) {
     Write-Host "  [ok] .claude/kit_version ($newV)" -ForegroundColor Green
 }
 
-# Record WHICH hook bundle this project now carries -- the value `harness doctor` measures
+# Record WHICH hook bundle this project now carries -- the value `python scripts/harness.py doctor` measures
 # `hook_trust` against. Nothing wrote it before, so that comparison had no counterpart and
 # `enforcement: hard` was unreachable for a reason nobody could act on. State is
 # `restart_required`: the hooks installed above are not running in the session that ran this
@@ -520,7 +550,7 @@ if (Test-Path -LiteralPath $recorder) {
     & $providerPython.Source $recorder --repo $repo --kit $Team --kit-version $kitStateVersion
     if ($LASTEXITCODE -ne 0) { throw "Could not record the installed hook bundle; backups are under $bdir" }
 } else {
-    Write-Host "  [warn] $recorder is missing -- no hook-bundle trust recorded (harness doctor will report hook_trust: unverified)" -ForegroundColor Yellow
+    Write-Host "  [warn] $recorder is missing -- no hook-bundle trust recorded (``python scripts/harness.py doctor`` will report hook_trust: unverified)" -ForegroundColor Yellow
 }
 
 # Extra providers: Python/PyYAML owns parsing so quoted or block-style valid YAML can never be
@@ -552,9 +582,12 @@ if (Test-Path $repoTplSrc) {
     Get-ChildItem -Path $repoTplSrc -Recurse -File -Force | Where-Object { $_.FullName -notmatch '__pycache__|\.ruff_cache|\.mypy_cache|\.pytest_cache' } | ForEach-Object {
         $rel = $_.FullName.Substring($repoTplSrc.Length).TrimStart('\', '/')
         $dst = Join-Path $repo $rel
-        # scripts/kit_checks.py + kit_browser_checks.py are KIT-OWNED: always overwritten (like
-        # the hooks), never pending — kit-level fixes reach even heavy quality.py forks.
-        if (($rel -replace '\\', '/') -in @('scripts/kit_checks.py', 'scripts/kit_browser_checks.py')) {
+        # scripts/kit_checks.py + kit_browser_checks.py + harness.py are KIT-OWNED: always
+        # overwritten (like the hooks), never pending — kit-level fixes reach even heavy
+        # quality.py forks. harness.py is the entry point every fail-closed remedy names; a
+        # project keeping an old copy would keep an old bridge into the enforcement layer,
+        # which is a security question, not a comfort one (kernel/cli.py ENTRY_POINT).
+        if (($rel -replace '\\', '/') -in @('scripts/kit_checks.py', 'scripts/kit_browser_checks.py', 'scripts/harness.py')) {
             $dstDir = Split-Path $dst
             if ($dstDir -and -not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
             Copy-Item $_.FullName $dst -Force

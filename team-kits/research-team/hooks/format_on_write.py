@@ -36,6 +36,15 @@ FORMATTERS = {
 SKIP_DIRS = ("project_memory", ".claude", "plans", "node_modules", ".git", "dist", "build")
 
 
+# NO BYTECODE FROM A HOOK RUN, for the reason `_gate.py` states at length: this file lives in
+# the hashed enforcement bundle and imports its neighbours out of it, so caching them would
+# change the bundle by being run — `hooks_trust_required` at the next session, blamed on
+# anything but the hook that caused it. The kits register this hook as `python -B`, so in
+# production the flag is redundant; it is here because a hook is also started directly — by the
+# test suite, by a person diagnosing one — and the measurement must not depend on how it was
+# started. `_gate.py` carries the same line for the gates it launches; this one is not launched.
+sys.dont_write_bytecode = True
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _root import find_repo_root
 import _compat

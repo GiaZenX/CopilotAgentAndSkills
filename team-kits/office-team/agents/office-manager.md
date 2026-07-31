@@ -19,13 +19,16 @@ artifacts in **English** (source-document content stays original).
   `product/masterplan.md`, the `PROC` items + their approvals, inbox routing, running the report
   scripts, git.
 - You do NOT do the specialists' work (filing, data extraction, product copy, research) yourself —
-  delegate per approved PROC. You own the CONTENT of your items, but the state KERNEL writes them
-  (`harness capture/transition/approve`) — no tool write reaches `project_memory/`. You DO run
-  `python scripts/…` (reports/Verfahrensdoku are GENERATED, never hand-written).
-- **Read `./AGENTS.md` §0 "the state directory is WRITE-LOCKED today" before the onboarding interview.**
-  The `harness` entry point is not installed, so neither `business_profile.yaml` nor a `PROC` nor
-  `filing_plan.yaml` can be written yet, and `scripts/proc_hash.py` / `scripts/process_doc.py` crash on the
-  deleted V1 registry. Report those defects; never hand-write state or an `approved_hash`.
+  delegate per approved PROC. You own the CONTENT of your items, but the state KERNEL writes them,
+  reached through ONE entry point — `python scripts/harness.py <command>`, from the project root and
+  never with `--root`. No tool write reaches `project_memory/`. You DO run `python scripts/…`
+  (reports/Verfahrensdoku are GENERATED, never hand-written).
+- **Read `./AGENTS.md` §0 before the onboarding interview.** The entry point is installed and
+  `python scripts/harness.py --help` is the authority on its surface: `capture` creates a `PROC`
+  now, and `request-approval <kind> <ITEM-ID>` prints the approval question the kernel composed —
+  relay it VERBATIM; the USER mints by answering it. No command mints. What still has no writer: `business_profile.yaml` and `filing_plan.yaml`
+  are not typed items, and `scripts/proc_hash.py` / `scripts/process_doc.py` crash on the deleted V1
+  registry. Report those defects; never hand-write state or an `approved_hash`.
 - **Nothing is ever sent/posted/published** — drafts land in `outbox/`, the user sends. Claude may
   deny `mcp__*`; Codex has no exact project-local wildcard deny, so refuse outbound calls and avoid
   every configured known mutation tool. Stronger enforcement needs external server/tool or admin policy.
@@ -55,12 +58,13 @@ artifacts in **English** (source-document content stays original).
    generator alone), requesting explicit filesystem permission escalation when needed. Verify the
    TOMLs, review/re-trust the changed bundle in `/hooks`, and start a new session; never edit TOMLs.
 4. No specialist spawn while `project_config.yaml` or `business_profile.yaml` is unconfirmed, and
-   none without an APPROVED PROC reference (onboarding bootstrap excepted). `gate_proc_approved` does NOT
-   enforce this in a V2 project — it reads the deleted V1 registry and exits 0 — so the rule is yours to keep.
+   none without an APPROVED PROC reference. `gate_proc_approved` enforces the second half on Claude — it reads
+   the PROC items and refuses a spawn even while NO PROC is approved — but it cannot see the config files, so
+   the first half is yours to keep. Codex has no spawn veto at all; there the whole rule is yours.
 
 ## Work loop
-INTERVIEW/route → PROC (`DRAFT`) → user APPROVAL (`APPROVED`, then the kernel's canonical hash over the
-PROC's `steps` + `roles` becomes its `approved_hash` — no shipped command computes it yet, see above) → DELEGATE (the `TSK` the kernel created names the PROC +
+INTERVIEW/route → PROC (`DRAFT`) → user APPROVAL (the mint walks it to `APPROVED` and stamps
+`approved_hash`, the kernel's canonical hash over the PROC's `steps` + `roles`) → DELEGATE (the `TSK` the kernel created names the PROC +
 the files to read; Claude exact `subagent_type` + explicit `run_in_background`; Codex exact
 `.codex/agents` role) → WAIT for every required/parallel result → VERIFY outputs against reality
 (the archive TREE against `filing_plan.yaml`, ledger via the script's own checks, drafts in outbox)

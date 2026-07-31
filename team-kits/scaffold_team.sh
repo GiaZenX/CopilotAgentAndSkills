@@ -449,19 +449,53 @@ if [ -d "$KIT/hooks" ]; then
     cp -f "$f" "$REPO/.claude/hooks/$(basename "$f")"
     echo "  [ok] hook: $(basename "$f")"
   done
+  # ...AND REMOVE WHAT THIS KIT DOES NOT SHIP, which the copy loop alone never did. `.claude/hooks`
+  # is `sys.path[0]` for every gate process, so a file an EARLIER kit left there is not clutter: it
+  # is a module the harness installed and no longer controls, and `write_kit_state.py` now refuses
+  # to record trust over anything importable the kit did not deliver. Without this prune the first
+  # release to drop a hook (`auto_dashboard.py`, in the V2 monolith) would make every project
+  # installed before it un-scaffoldable. `.claude/kernel` needs no equivalent — it is deleted and
+  # re-copied wholesale just below. The previous contents were backed up above.
+  for f in "$REPO"/.claude/hooks/*; do
+    [ -e "$f" ] || continue
+    base="$(basename "$f")"
+    if [ ! -e "$KIT/hooks/$base" ]; then
+      rm -rf "$f"
+      echo "  [prune] .claude/hooks/$base (not shipped by '$TEAM')"
+    fi
+  done
 fi
 # ...and the V2 state kernel the hooks import. `_kernel.kernel_parents()` names `<repo>/.claude`
 # as the FIRST place it looks and says why: a project must run the kernel its hook bundle was
 # installed with, not whatever version happens to sit in the global staging. Nothing copied it
 # there, so that first candidate never existed and every project silently fell through to
 # ~/.claude/team-kits -- or, on a machine without it, got KernelUnavailable from every integrity
-# gate. It also carries `known_holes.json`, which `harness doctor` needs to report any capability
+# gate. It also carries `known_holes.json`, which `python scripts/harness.py doctor` needs to report any capability
 # as verified at all.
 if [ -d "$KITS_ROOT/kernel" ]; then
   rm -rf "$REPO/.claude/kernel"
   cp -R "$KITS_ROOT/kernel" "$REPO/.claude/kernel"
-  find "$REPO/.claude/kernel" -name __pycache__ -type d -prune -exec rm -rf {} + 2>/dev/null || true
   echo "  [ok] .claude/kernel (V2 state kernel)"
+fi
+# THE INSTALLED BUNDLE CARRIES NO TOOL LEFTOVERS. `.claude/hooks` and `.claude/kernel` are what
+# `hook_bundle_hash` measures, byte for byte and with nothing excluded -- a `.pyc` there is not a
+# cache but an importable module on `sys.path[0]` of every gate process, and a cache directory is a
+# file the recorder would bless although no kit stamp covers it. `kit_hash` may leave both out of
+# what a KIT contains only because no kit ships any, so this prune is what makes that true at the
+# one moment source becomes installation. Afterwards, anything of the kind found under those two
+# directories is a stranger, and `write_kit_state.py` reports it as one.
+#
+# The kernel decides WHAT a leftover is (`kernel.hashing.prune_transient`, the same predicate
+# `_shipped_files` excludes by) and both scaffolds call it, so the two platforms cannot prune
+# different sets -- the shell twins did, and only the Windows one was ever executed by a test.
+#
+# Guarded by the same condition as the copy above, and for the recorder's reason: a staging too old
+# to carry a kernel installs none, so nothing hashes this bundle and nothing records trust for it.
+# Refusing the whole scaffold there would break the update path off such a staging instead of
+# leaving `hook_trust` unverified, which is the fail-closed direction.
+if [ -d "$KITS_ROOT/kernel" ]; then
+  "$PYBIN" -B -c 'import sys; sys.path.insert(0, sys.argv[1]); from kernel.hashing import prune_transient; prune_transient(*sys.argv[2:])' \
+    "$KITS_ROOT" "$REPO/.claude/hooks" "$REPO/.claude/kernel"
 fi
 # Role skills travel with the team (preloaded into the agents via their `skills:` frontmatter).
 if [ -d "$SKILLS_SRC" ]; then
@@ -525,7 +559,7 @@ if [ -f "$KIT/VERSION" ]; then
   echo "  [ok] .claude/kit_version ($(head -n 1 "$KIT/VERSION"))"
 fi
 
-# Record WHICH hook bundle this project now carries -- the value `harness doctor` measures
+# Record WHICH hook bundle this project now carries -- the value `python scripts/harness.py doctor` measures
 # `hook_trust` against. Nothing wrote it before, so that comparison had no counterpart and
 # `enforcement: hard` was unreachable for a reason nobody could act on. State is
 # `restart_required`: the hooks installed above are not running in the session that ran this
@@ -539,7 +573,7 @@ if [ -f "$KITS_ROOT/write_kit_state.py" ]; then
   "$PYBIN" "$KITS_ROOT/write_kit_state.py" \
     --repo "$REPO" --kit "$TEAM" --kit-version "$(head -n 1 "$KIT/VERSION" 2>/dev/null || echo '')"
 else
-  echo "  [warn] $KITS_ROOT/write_kit_state.py is missing -- no hook-bundle trust recorded (harness doctor will report hook_trust: unverified)"
+  echo "  [warn] $KITS_ROOT/write_kit_state.py is missing -- no hook-bundle trust recorded (\`python scripts/harness.py doctor\` will report hook_trust: unverified)"
 fi
 
 # Extra providers: the same validated project_config drives exact provider generation/removal.
@@ -558,9 +592,13 @@ if [ -d "$KIT/templates/repo" ]; then
   while IFS= read -r rel; do
     rel="${rel#./}"
     dst="$REPO/$rel"
-    # scripts/kit_checks.py + kit_browser_checks.py are KIT-OWNED: always overwritten (like the
-    # hooks), never pending — kit-level fixes reach even heavy quality.py forks.
-    if [ "$rel" = "scripts/kit_checks.py" ] || [ "$rel" = "scripts/kit_browser_checks.py" ]; then
+    # scripts/kit_checks.py + kit_browser_checks.py + harness.py are KIT-OWNED: always overwritten
+    # (like the hooks), never pending — kit-level fixes reach even heavy quality.py forks.
+    # harness.py is the entry point every fail-closed remedy names; a project keeping an old copy
+    # would keep an old bridge into the enforcement layer, which is a security question, not a
+    # comfort one (kernel/cli.py ENTRY_POINT).
+    if [ "$rel" = "scripts/kit_checks.py" ] || [ "$rel" = "scripts/kit_browser_checks.py" ] \
+       || [ "$rel" = "scripts/harness.py" ]; then
       mkdir -p "$(dirname "$dst")"
       cp -f "$KIT/templates/repo/$rel" "$dst"
       echo "  [ok] repo (kit-owned, always updated): $rel"

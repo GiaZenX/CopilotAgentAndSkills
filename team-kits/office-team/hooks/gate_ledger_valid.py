@@ -50,7 +50,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -92,11 +92,16 @@ VALIDATE_TIMEOUT = 20
 TOTAL_BUDGET = 40
 
 # The follow-on operations II.9 names: "Dispatch, Commit, Merge und Reports". `git add` stays
-# allowed: staging a CORRECTION is how the block gets resolved.
-_BLOCKED_GIT_RX = re.compile(
-    r"\bgit(?:\.exe)?\b(?:\s+(?:-c\s+\S+|--\S+(?:=\S+)?|-[a-z]\s*\S*))*\s+"
-    r"(?:commit|push|merge|rebase|tag|revert|cherry-pick|am|format-patch|bundle|archive|"
-    r"send-email)\b", re.IGNORECASE)
+# allowed: staging a CORRECTION is how the block gets resolved. A set of SUBCOMMANDS, matched
+# through `_compat.git_invocations` and its `runs` test: the previous version spelled the whole
+# invocation as a regex and therefore missed `git "commit"` on both views it searched — the raw
+# text (the quotes sit where the pattern wants the verb) and the prose-stripped one (the span with
+# the verb in it was deleted). What an operation IS cannot be a question about quoting, about
+# which word stands in front of `git` (`sudo "git" commit -m x` reached HEAD with an INVALID
+# ledger — measured, rc 0), or about whether the verb is spelled or computed.
+_BLOCKED_GIT_SUBCOMMANDS = frozenset((
+    "commit", "push", "merge", "rebase", "tag", "revert", "cherry-pick", "am", "format-patch",
+    "bundle", "archive", "send-email"))
 # ...and the report generators. `einvoice_extract` is deliberately NOT here: extracting a document
 # reads nothing from the ledger, so blocking it stops the work that produces the correction.
 _BLOCKED_SCRIPT_RX = re.compile(r"\beuer_report\b", re.IGNORECASE)
@@ -241,7 +246,8 @@ _LEDGER_WRITE_FLAGS = {
 # `rm`, `clean` and `apply` are absent because each of them can -- and so are `merge`, `rebase`,
 # `revert`, `cherry-pick` and `am`, which a first cut listed here on the false reasoning that they
 # "cannot modify a ledger file". They write working-tree files by definition. Nothing needed them
-# in this set: whether those operations are permitted at all is `_BLOCKED_GIT_RX`'s question.
+# in this set: whether those operations are permitted at all is `_BLOCKED_GIT_SUBCOMMANDS`'s
+# question.
 _READ_ONLY_GIT = frozenset((
     "add", "status", "diff", "log", "show", "commit", "push", "fetch", "remote", "branch",
     "config", "rev-parse", "ls-files", "blame", "describe", "tag", "bundle", "format-patch",
@@ -261,15 +267,16 @@ _SUBSTITUTION_OPEN_RX = re.compile(r"\$\(|<\(|>\(|`")
 # the next: a backslash-newline continuation (which is simply how a long command is FORMATTED), a
 # newline after the pipe, a newline inside the first stage, and `|&`. Each is the same pipeline
 # written differently, so the answer is to make them one shape first — the same move that ended
-# the path and verb enumerations two rounds ago.
-_LINE_CONTINUATION_RX = re.compile(r"\\\s*\n\s*")
+# the path and verb enumerations two rounds ago. The continuation itself comes from
+# `_compat.join_line_continuations` — this hook's own copy joined with a SPACE, so a continuation
+# INSIDE a token (`led\<newline>ger/2026.csv`) split the very path the rule is about.
 _PIPE_AMP_RX = re.compile(r"\|&")
 _NEWLINE_AROUND_PIPE_RX = re.compile(r"\s*\n\s*\|\s*|\s*\|\s*\n\s*")
 
 
 def _normalise_pipeline(text):
     """One shape for every way a shell can spell the same pipeline."""
-    text = _LINE_CONTINUATION_RX.sub(" ", text)
+    text = _compat.join_line_continuations(text)
     text = _PIPE_AMP_RX.sub("|", text)
     text = _NEWLINE_AROUND_PIPE_RX.sub(" | ", text)
     # ...and a newline whose next line begins with a FLAG continues the same command. Splitting
@@ -518,7 +525,7 @@ def _validator_argv(script, absolute):
     `site-packages/zz_evil.pth` containing `import zz_evil`, and a `zz_evil.py` registering an
     `atexit` hook that calls `os._exit(0)` when `--validate` is in argv — made the validator exit 0
     WHILE STILL PRINTING its findings. `-S` is safe here because the validator imports stdlib only.
-    Below 3.11 `-P` does not exist, so it is omitted and `harness doctor` reports the gap rather
+    Below 3.11 `-P` does not exist, so it is omitted and `python scripts/harness.py doctor` reports the gap rather
     than this file pretending to close it.
     """
     flags = ["-S", "-E", "-s"]
@@ -662,10 +669,12 @@ def handle_pre_tool_use(data):
         _refuse_if_invalid(root, "specialist dispatch")
     elif tool in SHELL_TOOLS:
         raw = str((data.get("tool_input") or {}).get("command") or "")
-        text = _compat.git_invocation_text(raw)
-        # the RAW text too: `git_invocation_text` strips quoted spans as prose, which also strips
-        # `eval "git commit -m x"`
-        blocked_op = (_BLOCKED_GIT_RX.search(text) or _BLOCKED_GIT_RX.search(raw)
+        # ONE view, the one the shell hands git: quote marks gone, their content kept. That is
+        # what makes `eval "git commit -m x"` visible here without a second search over the raw
+        # text — the workaround the deleted prose-stripping reader needed.
+        text = _compat.git_argument_text(raw)
+        blocked_op = (any(invocation.runs(*_BLOCKED_GIT_SUBCOMMANDS)
+                          for invocation in _compat.git_invocations(raw))
                       or _BLOCKED_SCRIPT_RX.search(text) or _BLOCKED_SCRIPT_RX.search(raw))
         if blocked_op and _writes_ledger(_without_messages(raw)):
             _kernel.block(

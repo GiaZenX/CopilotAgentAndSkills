@@ -19,13 +19,12 @@ import uuid
 from .approvals import (
     ROOT_DISPATCH_KINDS,
     ApprovalError,
+    assert_apr_in_force,
     consumed_request,
-    item_subject_manifest,
     proven_expiry,
     read_apr,
 )
 from .backlog_types import UI_TASK_TYPES, parse_id
-from .hashing import subject_manifest_hash
 from .schemas import validate
 from .state import ProjectState, StateError, _now_iso
 
@@ -235,8 +234,8 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
         if task.get("status") != "LEASED":
             raise DispatchError(
                 "%s is %s but holds a lease -- inconsistent state, dispatch "
-                "blocked (fail-closed). Remedy: `harness doctor` shows the "
-                "lease; `harness sweep-leases` returns the task to READY."
+                "blocked (fail-closed). Remedy: `python scripts/harness.py doctor` shows the "
+                "lease; `python scripts/harness.py sweep-leases` returns the task to READY."
                 % (task_id, task.get("status"))
             )
         expected_role = task.get("assigned_role")
@@ -300,6 +299,30 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
                     "design_ref the binding implementation reference). Remedy: "
                     "set design_ref to one of the frozen revisions: %s."
                     % (task_id, root["id"], task.get("design_ref"), ", ".join(confirmed))
+                )
+            # ...and MEMBERSHIP IS NOT RESOLUTION. The paragraph above says both checks "ask
+            # whether the reference RESOLVES", and this one did not: `design_refs` lives on the
+            # ROOT, is not a binding field (`PARENT_FIELDS`), and is therefore never resolved on
+            # any write path -- so `capture PR … "design_refs":["DSN-9999"]` followed by
+            # `create-task --design-ref DSN-9999` was a SPAWN ALLOWED against a design that does
+            # not exist (measured 2026-07-31, before this).
+            #
+            # WHAT A `design_ref` IS, read off the producer rather than assumed: `staging.
+            # freeze_design` writes a STATE-RELATIVE PATH (`design/revisions/DSN-0001.r01.html`)
+            # and `freeze_wireframe` the same shape, because a frozen revision is a FILE, not an
+            # item with its own automaton (II.6a: "Zustand = Ort + approval_ref"). A role writing
+            # the field by hand reaches for the id instead, which is what the measured hole used.
+            # Both are accepted and both must resolve -- a path to a file under the state root, an
+            # id through `exists_anywhere` (which already knows a frozen revision lives at
+            # `<id>.rNN.yaml`). Anything else resolves to nothing and is refused.
+            missing = [ref for ref in confirmed if not _design_ref_resolves(state, ref)]
+            if missing:
+                raise DispatchError(
+                    "%s names design references that exist nowhere: %s -- dispatch blocked "
+                    "(spec II.6a: design_ref is the BINDING implementation reference, and a "
+                    "reference to nothing binds nothing). Remedy: freeze the design through the "
+                    "promotion path, or correct %s's design_refs."
+                    % (root["id"], ", ".join(missing), root["id"])
                 )
         if claim:
             lease["dispatched_at"] = _now_iso()
@@ -649,21 +672,6 @@ def _assert_dispatch_authorised_locked(state: ProjectState, task: dict, root: di
         )
 
 
-def _assert_not_expired(apr_ref: str, request: dict) -> None:
-    """spec II.10a: an expired routine approval blocks the dispatch.
-
-    The expiry comes from the minted REQUEST, never from the approval file --
-    see approvals.proven_expiry for why that distinction is the whole point.
-    """
-    expires = proven_expiry(request)
-    if expires is not None and expires < time.time():
-        raise DispatchError(
-            "approval %s expired -- dispatch blocked (spec II.10a: an expired "
-            "routine approval blocks the dispatch). Remedy: renew the approval."
-            % apr_ref
-        )
-
-
 def _covering_analysis_apr(state: ProjectState, task_id: str):
     """A valid, PROVEN analysis approval listing this task, or None.
 
@@ -698,12 +706,19 @@ def _covering_analysis_apr(state: ProjectState, task_id: str):
 
 
 def _assert_root_approval_locked(state: ProjectState, root: dict) -> None:
-    """Root carries a current, unrevoked approval whose hash still matches.
+    """Root carries a CURRENT approval that is still in force.
 
-    The hash re-computation is what catches an OUT-OF-BAND edit: someone who
-    edits an approved item in an IDE, around the kernel, keeps `approval_ref`
-    pointing at an approval that no longer describes the item (spec II.4 gate 4
-    "out-of-band edit invalidated approval").
+    Which APR that is, is this function's own question: `approval_ref` names the approval the root
+    presents, and the dispatch route rides on THAT one (its kind decided the route two frames up).
+    Whether it still grants anything is `approvals.assert_apr_in_force`, shared with the status
+    automaton -- revoked, unprovable, foreign, expired, or invalidated by an out-of-band edit are
+    the same five answers whoever asks, and the copy that used to live here is how a shared fact
+    becomes two facts.
+
+    ApprovalError is NOT a DispatchError, and the hook classifies anything else as an internal
+    error -- so a provable-policy refusal would reach the user as "the harness is broken, run the
+    doctor" instead of "this approval is not proven". Re-raised in the dispatch vocabulary here,
+    with the consequence this caller adds and the shared check deliberately does not carry.
     """
     apr_ref = root.get("approval_ref")
     if not apr_ref:
@@ -712,57 +727,73 @@ def _assert_root_approval_locked(state: ProjectState, root: dict) -> None:
             "Remedy: obtain the scope/delivery approval." % root["id"]
         )
     apr = read_apr(state, apr_ref)
-    if apr.get("revoked"):
-        raise DispatchError(
-            "approval %s is revoked -- dispatch blocked. Remedy: obtain a fresh "
-            "approval." % apr_ref
-        )
-    # provenance first: an approval that cannot show its minted request is not a
-    # user approval at all, whatever else it says (spec II.12). ApprovalError is
-    # NOT a DispatchError, and the hook classifies anything else as an internal
-    # error -- so a provable-policy refusal would have reached the user as "the
-    # harness is broken, run harness doctor" instead of "this approval is not
-    # proven". Re-raised in the dispatch vocabulary here.
     try:
-        request = consumed_request(state, apr)
+        assert_apr_in_force(state, apr, root)
     except ApprovalError as exc:
-        raise DispatchError(str(exc)) from None
-    if str(apr.get("item") or "") != root["id"]:
-        raise DispatchError(
-            "approval %s belongs to %r, not to %s -- dispatch blocked. Remedy: "
-            "obtain an approval for this root item."
-            % (apr_ref, apr.get("item"), root["id"])
-        )
-    _assert_not_expired(apr_ref, request)
-    kind = apr.get("kind")
-    if kind in ("scope", "acceptance", "delivery"):
-        current = subject_manifest_hash(item_subject_manifest(root, kind))
-        if current != apr.get("subject_manifest_hash"):
-            raise DispatchError(
-                "content hash of %s no longer matches approval %s -- an "
-                "out-of-band edit invalidated the approval; dispatch blocked "
-                "(spec II.4). Remedy: re-approve the current revision, or "
-                "`git restore %s` to return to the approved content."
-                % (root["id"], apr_ref,
-                   os.path.relpath(state.active_path(root["id"]), state.root))
-            )
+        raise DispatchError("dispatch blocked (spec II.4): %s" % exc) from None
+
+
+def _design_ref_resolves(state: ProjectState, reference: str) -> bool:
+    """Does this `design_refs` entry name a FROZEN DESIGN that exists? (see validate_dispatch)
+
+    "EXISTS" IS NOT ENOUGH, and the first cut of this function proved it. It asked
+    `os.path.exists(state.root/<entry>)`, which is true of `README.md`, of `generated/index.yaml`,
+    of `.`, of `..` and of `../.claude/settings.json` -- measured 2026-07-31 end to end over the
+    shipped surface: `capture PR … "design_refs":["../.claude/settings.json"]`, a UI task naming
+    that ref, scope approval, lease, and the spawn was ALLOWED. The II.6 rule was still satisfiable
+    by a self-written reference; only the shape had changed from a phantom id to any path at all.
+    Its own docstring claimed the opposite ("an entry that escapes the state root simply does not
+    resolve"), which is the comment shape this kit refuses.
+
+    TWO FORMS, AND THE ID FORM IS ASKED FIRST -- which is the correction to the first version of
+    this function, where it was DEAD CODE. A bare `DSN-0001` is also a relative path under the
+    state root, so it entered the path branch, was not a file, and came back False: the branch
+    below could only ever be reached by a reference that lands on or outside the root, and none of
+    those parses as an id. Measured after a real `freeze_design`: `exists_anywhere('DSN-0001')`
+    True, `_design_ref_resolves('DSN-0001')` False -- so the docstring's promise was wrong AND a
+    `design_refs` entry in id form locked every legitimate UI dispatch. Replacing the whole branch
+    with `return False` changed no test, which is why the test below now carries a REAL frozen id
+    in the accepted list rather than only a phantom in the refused one.
+
+    THE PATH FORM, three conditions, each closing one measured case:
+      * CONTAINMENT -- `realpath`, not `normpath`. `normpath` is textual, and `os.path.isfile`
+        follows links: measured with `mklink /J project_memory/design/revisions/out .claude`, the
+        entry `design/revisions/out/settings.json` resolved True while its real path lay outside
+        the state root entirely. This repo has paid for a symlink-blind path comparison once
+        already (`hashing._bundle_files`); resolving both sides is the same fix in one word.
+      * IT MUST BE A FILE. A frozen revision is a file (II.6a: "Zustand = Ort"), so `staging`,
+        `.` and every other directory stop here.
+      * IT MUST LIE WHERE THE PRODUCER PUTS ONE (`staging.frozen_design_dirs`).
+    """
+    from .staging import frozen_design_dirs
+
+    reference = str(reference or "").strip()
+    if not reference:
+        return False
+    try:
+        parse_id(reference)
+    except ValueError:
+        pass
+    else:
+        return state.exists_anywhere(reference)
+    root = os.path.realpath(state.root)
+    target = os.path.realpath(os.path.join(state.root, reference.replace("/", os.sep)))
+    if target == root or not target.startswith(root + os.sep):
+        return False
+    relative = os.path.relpath(target, root).replace(os.sep, "/")
+    return os.path.isfile(target) and any(
+        relative.startswith(directory + "/") for directory in frozen_design_dirs())
 
 
 def _read_item_any(state: ProjectState, item_id: str):
-    """Return (item, archived) looking in active first, then the archive; the
-    caller holds the lock. (None, False) when the id exists nowhere."""
-    try:
-        return state.read_item(item_id), False
-    except StateError:
-        pass
-    item_type, _ = parse_id(item_id)
-    base = os.path.join(state.root, "archive", item_type)
-    if os.path.isdir(base):
-        for year in sorted(os.listdir(base)):
-            candidate = os.path.join(base, year, item_id + ".yaml")
-            if os.path.exists(candidate):
-                return state._read_yaml(candidate), True
-    return None, False
+    """Return (item, archived); the caller holds the lock.
+
+    Delegates to `ProjectState.read_anywhere` -- this was the original home of
+    that walk, and the merge gate needed the same one. Two readers of one storage
+    layout is the defect this repo keeps finding, so the walk moved to the state
+    object and this name stays as the local spelling.
+    """
+    return state.read_anywhere(item_id)
 
 
 def _read_lease(state: ProjectState, task_id: str) -> dict:
@@ -776,7 +807,7 @@ def _read_lease(state: ProjectState, task_id: str) -> dict:
     except Exception as exc:
         raise DispatchError(
             "corrupt lease file for %s (%s) -- dispatch blocked (fail-closed). "
-            "Remedy: `harness doctor` inspects leases; removing the corrupt "
+            "Remedy: `python scripts/harness.py doctor` inspects leases; removing the corrupt "
             "lease returns the task to READY on the next sweep."
             % (task_id, exc.__class__.__name__)
         ) from None

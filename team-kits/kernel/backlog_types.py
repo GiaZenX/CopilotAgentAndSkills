@@ -228,7 +228,7 @@ def assert_transition(item_type: str, from_status: str, to_status: str) -> None:
         if status not in auto.states:
             raise TransitionError(
                 "unknown status %r for %s (states: %s). BLOCKED is a flag "
-                "(blocked_by), never a status. Remedy: use `harness transition` "
+                "(blocked_by), never a status. Remedy: use `python scripts/harness.py transition` "
                 "with a defined status." % (status, item_type, ", ".join(sorted(auto.states)))
             )
     if (from_status, to_status) not in auto.allowed:
@@ -288,8 +288,154 @@ REQUIRED_FIELDS = {
     "EXP": ("derives_from", "design", "variables", "success_criteria",
             "evidence_refs"),
     "DEC": ("title", "context", "decision", "consequences", "source"),
-    "EVD": ("kind", "related", "summary", "artifact_refs"),
+    # `result` beyond the spec's field list, and additively: the spec fixes what
+    # Evidence must SAY about itself, while a gate has to know what it says about
+    # the work. Without a verdict field the store cannot distinguish "QA ran and
+    # passed" from "QA ran and failed", and `gate_git` would open a merge on the
+    # existence of a failing report -- the false-accept an earlier audit found in
+    # the V1 report files, one level in.
+    "EVD": ("kind", "related", "result", "summary", "artifact_refs"),
 }
+
+# The OTHER half of the same contract: fields spec II.2 declares for a type and
+# lets it omit. Machine-readable for the reason `schemas.item_field_contracts`
+# reports every DECLARED field rather than only the required ones -- whether a
+# field means anything to the reference graph is a question about the FIELD, and
+# an item's freedom to leave it out is a question about the ITEM. Reading only
+# `REQUIRED_FIELDS` answers the first question with the second one, and that is
+# how `PROC.derives_from` (spec II.2: "derives_from (optional)") and
+# `FR.related_pr` ("related_pr (optional)") stayed outside the graph: a PROC
+# captured against a phantom parent was reported by nobody and an Evidence
+# recorded on it never reached its root, the identical damage the `SR` and the
+# `ARC`/`WFR`/`DSN` rounds were about.
+# The comment above lists the same four fields in prose; this is that sentence
+# in a form the derivation can read.
+OPTIONAL_FIELDS = {
+    "PR": ("user_story",),      # optional for class == technical_enabler
+    "FR": ("related_pr",),
+    "PROC": ("derives_from",),
+    "TSK": ("design_ref",),     # required only when the UI scope has a frozen design
+}
+
+# Required fields for which an EMPTY value is the same lie as absence. A list-valued
+# field is normally allowed to be empty -- a PR with no invariants has none -- so this
+# is the exception, and it exists only where the emptiness would leave a gate deciding
+# on nothing:
+#   * `EVD.related` is the binding the merge gate resolves. Bound to nothing, the
+#     record judges nothing; `report.qa_verdicts_by_subject` can only file it under its
+#     own id, so it neither opens nor closes the merge it was recorded for.
+#   * `EVD.artifact_refs` is the only field of an Evidence that points OUT of the
+#     record. `result` is the claim and `summary` is prose about the claim, so with no
+#     reference the record IS the assertion it exists to prove -- while `gate_git`
+#     opens a merge on it and its own remedy text presents the reference as the proof.
+#     What the kernel can check is that the verdict names where to look; whether the
+#     artefact holds up is the auditor's job, and it cannot even start without a path.
+NONEMPTY_FIELDS = {"EVD": ("related", "artifact_refs")}
+
+# -- the reference graph: through which field an item names what it belongs to --
+#
+# A field BINDS an item when its value is the ID of the item this one hangs from.
+# WHICH FIELD NAMES do that is a decision about the state model and is made here,
+# once, in `_BINDING_FIELD_NAMES`. WHICH TYPES carry one is NOT a second decision:
+# it follows from the type's FIELD CONTRACT, so the map below is DERIVED rather
+# than listed beside it.
+#
+# THE CONTRACT HAS TWO SOURCES AND THE DERIVATION READS BOTH IN FULL, because
+# reading half of one of them is how this went wrong three times, one type
+# further along each time:
+#   * the CAPTURE-time contract, which covers exactly the types `capture`
+#     creates. It is `REQUIRED_FIELDS` PLUS `OPTIONAL_FIELDS` -- a contract is
+#     the set of fields a type HAS, and `REQUIRED_FIELDS` is by construction
+#     only the fields an item may not omit.
+#   * `kernel/schemas/*.yaml` is the contract of the types the kernel FREEZES
+#     (ARC/WFR/DSN, spec II.6a) -- `schemas.item_field_contracts`, which reports
+#     required and optional fields alike, for this same reason. Those items
+#     never pass `capture`, so `REQUIRED_FIELDS` says nothing about them at all.
+#
+# Round one: `report._parents_of` enumerated the derived types (TSK/BUG/CR/HYP/
+# EXP) and `SR` -- given a REQUIRED `derives_from` in this lockstep, and the
+# natural subject of a review -- was not in the list, so an Evidence recorded
+# against an `SR` resolved to no root and `gate_git` refused the merge with
+# "nothing judges this work" at the role that had just judged exactly this work.
+# Round two: the map was derived, but from `REQUIRED_FIELDS` alone, and `ARC`,
+# `WFR` and `DSN` -- each of which declares its parent binding in its schema --
+# reproduced the identical refusal for the architect and the designer. Reading
+# both sources is what makes this a definition: a type joins the graph the day
+# some contract of its own gives it a binding field. (Knowing the field was half
+# of it for `WFR`/`DSN`: those are stored per revision, so their ids resolved to
+# no file at all -- `state._frozen_revision_path` is the other half.)
+# Round three: both sources were read, but the capture-time one only through
+# `REQUIRED_FIELDS` -- so `PROC.derives_from` and `FR.related_pr`, optional by
+# spec II.2 and item ids when present, were bindings the graph did not walk.
+#
+# `EVD.related` is in here for the same reason it is in `NONEMPTY_FIELDS`: it is
+# the id of the work the record is ABOUT, which is the same hop the graph walks.
+# `DSN.root` is the frozen design revision's binding to the PR/RQ it was frozen
+# against (`staging.freeze_design`); the name is generic, the meaning is not.
+_BINDING_FIELD_NAMES = ("product_requirement", "derives_from", "related_pr",
+                        "target_pr", "related", "root")
+
+
+def _contract_fields() -> dict:
+    """{item type -> set of field names its contracts declare}, over BOTH sources, in full."""
+    from .schemas import item_field_contracts
+    fields = {item_type: set(names) for item_type, names in REQUIRED_FIELDS.items()}
+    for item_type, names in OPTIONAL_FIELDS.items():
+        fields.setdefault(item_type, set()).update(names)
+    for item_type, declared in item_field_contracts().items():
+        fields.setdefault(item_type, set()).update(declared)
+    return fields
+
+
+def _declared_required_fields() -> dict:
+    """{item type -> the fields SOME contract of its own requires}, over both sources.
+
+    `REQUIRED_FIELDS` is what a CALLER must hand `capture`; this is what an item must CARRY, and
+    the two differ exactly for the types no caller captures. The state validator judges files, not
+    capture calls, so it reads this: its field-duty loop ran zero times for `ARC`, `WFR` and `DSN`
+    -- the three types whose duties are declared in `kernel/schemas/` -- while spec II.8 assigns
+    it "ARC ohne derives_from -> Validator-Flag" by name.
+    """
+    from .schemas import item_required_fields
+    required = {item_type: tuple(names) for item_type, names in REQUIRED_FIELDS.items()}
+    for item_type, names in item_required_fields().items():
+        required[item_type] = tuple(dict.fromkeys(required.get(item_type, ()) + tuple(names)))
+    return required
+
+
+def _parent_fields() -> dict:
+    return {
+        item_type: tuple(f for f in _BINDING_FIELD_NAMES if f in fields)
+        for item_type, fields in sorted(_contract_fields().items())
+        if not fields.isdisjoint(_BINDING_FIELD_NAMES)
+    }
+
+
+# `PARENT_FIELDS` (the reference graph) and `DECLARED_REQUIRED_FIELDS` (what the state VALIDATOR
+# holds a stored item to -- see `_declared_required_fields`) are DERIVED, and both derivations
+# read `kernel/schemas/*.yaml`, which needs PyYAML. Computing them at module scope would make
+# `import kernel.backlog_types` a PyYAML import and six file reads, and that import is the one
+# path a hook can take to learn the type names without pulling the parser in:
+# `guard_no_adhoc` keeps its type list as a LITERAL for exactly that reason ("a guard that cannot
+# load must not stop guarding"), and spec II.7 says integrity gates are stdlib-first with no
+# PyYAML import load on the hot path. So the values are computed on FIRST ACCESS instead. The
+# consumers inside the kernel (`state`, `report`) bind them with a normal `from ... import` and
+# pay the cost once at their own import, where PyYAML is already loaded anyway.
+_DERIVED = {"PARENT_FIELDS": _parent_fields, "DECLARED_REQUIRED_FIELDS": _declared_required_fields}
+_derived_cache: dict = {}
+
+
+def __getattr__(name: str):
+    """Module-level lazy attributes (PEP 562) -- also serves `from .backlog_types import X`."""
+    if name in _DERIVED:
+        if name not in _derived_cache:
+            _derived_cache[name] = _DERIVED[name]()
+        return _derived_cache[name]
+    raise AttributeError("module %r has no attribute %r" % (__name__, name))
+
+
+def __dir__():
+    return sorted(list(globals()) + list(_DERIVED))
 
 # Fields whose change INVALIDATES a current approval (spec II.2 subject
 # manifests + Freigabe-Invalidierung): revision +1, approval_ref cleared,
@@ -340,6 +486,53 @@ TASK_TYPES = frozenset((
 
 # The subset for which a confirmed design makes design_ref mandatory (II.6).
 UI_TASK_TYPES = frozenset(("ui",))
+
+
+# -- Evidence contract (spec II.2 "Evidence") ----------------------------------
+
+# Evidence carries no project STATUS, and that is exactly why it has to carry a
+# VERDICT: it is the only item type whose whole purpose is to say whether
+# something held. `gate_git` opens a merge on it, so both fields below are gate
+# inputs and both are CLOSED for the same reason TASK_TYPES is -- an unrecognised
+# value does not fail a check, it SKIPS one. An unknown `result` is not a `fail`
+# and an unknown `kind` is not QA, so in either direction the gate would go quiet
+# on precisely the value nobody validated. Widening either set is a spec
+# decision, not a guess at call time.
+EVIDENCE_KINDS = frozenset(("test", "review", "acceptance", "audit"))
+
+# The kinds that judge the PROJECT rather than one delivery. `audit` is the whole
+# list and the reason is specific to it: an audit run judges the repo-wide scope
+# (II.10a Auditor-Routine: one Evidence per run, related to that scope), so
+# accepting it as a delivery's QA would open a merge on a report that never looked
+# at the branch.
+PROJECT_EVIDENCE_KINDS = frozenset(("audit",))
+
+# The kinds a merge of an item may rest on -- DERIVED, and that is the point. Two
+# hand-written lists of the same words drift in one direction only: a kind added to
+# EVIDENCE_KINDS and forgotten here would become a verdict the merge gate never
+# reads, i.e. a role recording it in good faith while the gate reports "no QA
+# Evidence". Subtracting the declared exception makes a new kind judge deliveries by
+# DEFAULT, which is the reading a reviewer can check against the one sentence above.
+QA_EVIDENCE_KINDS = EVIDENCE_KINDS - PROJECT_EVIDENCE_KINDS
+
+# A verdict is binary on purpose. "inconclusive" is the tempting third value and
+# it is the one a gate cannot act on: it would have to be read as pass or as
+# fail, and whichever was chosen the other reading would be the silent one. A run
+# that could not decide is a `fail` whose `summary` says why -- spec II.10a
+# already rules that a partial run is not merge evidence.
+EVIDENCE_RESULTS = frozenset(("pass", "fail"))
+
+# Types that are a RECORD of something that already happened rather than a piece of
+# living state. What separates them from every other type is that they have no
+# automaton and no future: an item with a status is a thing whose story continues, so
+# editing a detail of it is part of that story, while a record's only claim is that a
+# run produced this verdict at this time. Change any field of it and the claim is
+# simply false -- there is no revision, no approval to invalidate, nothing that would
+# make the change visible. So the kernel refuses the edit outright (state.py edit path)
+# and a superseding record is the only way forward. This is what lets `gate_git` say
+# "retired by recording the re-run, never by editing" and mean it: without the refusal
+# a FAIL becomes a PASS in place, with no new item and no trace in the store.
+IMMUTABLE_TYPES = frozenset(("EVD",))
 
 # The work-order contract of a TSK: everything a gate reads to decide what this
 # task may do. FROZEN once the task leaves DRAFT (enforced in the kernel edit

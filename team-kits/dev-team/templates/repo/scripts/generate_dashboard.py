@@ -43,6 +43,14 @@ import os
 import re
 import sys
 
+# This script imports the kernel THROUGH the installed bundle (`.claude/hooks/_kernel.py`), and
+# `.claude/hooks` + `.claude/kernel` are what `hook_bundle_hash` measures. Left to itself, running
+# a report would drop `__pycache__` into the enforcement bundle, the hash would no longer match the
+# one the project recorded, and the next session would report `hooks_trust_required` because
+# somebody generated a dashboard. No harness process writes bytecode into a tree the harness
+# hashes — see `kernel/hashing.py`, BYTECODE_SUFFIXES.
+sys.dont_write_bytecode = True
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(BASE_DIR)
 TEMPLATE = os.path.join(BASE_DIR, "progress.dashboard.template.html")
@@ -141,9 +149,9 @@ def load_index(index_path, bridge):
                               "project_memory/, so there is no state to report on.")
         sys.stderr.write(
             "[dashboard] no %s, but %s holds items — the dashboard renders the kernel's index, it "
-            "does not rebuild it. Remedy: `harness generate-index` (spec II.11 step 4; until that "
-            "CLI entry point ships, ANY kernel state write — capture/transition/archive — writes "
-            "the index as part of the same commit).\n"
+            "does not rebuild it. Remedy: `python scripts/harness.py generate-index`, from the "
+            "project root — and ANY kernel state write rebuilds the index as part of the same "
+            "commit anyway, so a missing index means nothing has written state here yet.\n"
             % (os.path.relpath(index_path, REPO_ROOT), bridge.STATE_DIRNAME))
         sys.exit(1)
     try:
@@ -158,7 +166,7 @@ def load_index(index_path, bridge):
     rows = (data or {}).get("items") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         sys.stderr.write("[dashboard] generated/index.yaml carries no `items:` list — it is "
-                         "truncated or hand-edited. Delete it; `harness generate-index` or the next "
+                         "truncated or hand-edited. Delete it; `python scripts/harness.py generate-index` or the next "
                          "kernel state write rebuilds it.\n")
         sys.exit(1)
     return [row for row in rows if isinstance(row, dict)], yaml, ""

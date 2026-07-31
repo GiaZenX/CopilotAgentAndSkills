@@ -35,7 +35,7 @@ kernel-only territory (the codes sit there in cleartext, and the question text
 even names the path). BOTH need a Bash/PowerShell-level guard, because
 `guard_harness_selfmod` gates only Edit|Write|MultiEdit. Until that guard
 exists, `approval_provenance` is `unverified` and the enforcement mode is
-`audited` -- and `harness doctor` must compute that rather than assert it.
+`audited` -- and `python scripts/harness.py doctor` must compute that rather than assert it.
 
 Bundling (user decision 2026-07-24): one analysis/scope APR may cover several
 analysis tasks LISTED in its subject manifest.
@@ -49,7 +49,7 @@ import sys
 import time
 import uuid
 
-from .backlog_types import parse_id
+from .backlog_types import AUTOMATA, HASHED_FIELDS, parse_id
 from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso
 
@@ -72,8 +72,11 @@ def approve_label(mint_code: str) -> str:
     """The ONE answer string that mints -- entropy-carrying by design."""
     return "Freigeben [%s]" % mint_code
 
-# status side-effect of a successful mint, per (item_type, kind) -- everything
-# else only sets approval_ref (spec II.2/II.3)
+# WHICH TRANSITION AN APPROVAL COMMITS, per (item_type, kind). Read forwards it is the status
+# side-effect of a successful mint -- everything else only sets approval_ref (spec II.2/II.3).
+# Read BACKWARDS it is the answer to "which transitions may only be walked when a user approved
+# them", and `required_approval_kinds` reads it that way. One table, both directions: a pair added
+# here arrives gated at `transition` with no second list to keep in step.
 APPROVAL_TRANSITIONS = {
     ("PR", "scope"): ("DRAFT", "APPROVED"),
     ("RQ", "scope"): ("DRAFT", "APPROVED"),
@@ -89,6 +92,26 @@ APPROVAL_TRANSITIONS = {
 
 # fields hashed into the subject manifest per kind for ITEM-bound approvals
 # (spec II.2 subject_manifest lists)
+#
+# WHAT THIS COVERS AND WHAT IT DOES NOT. A scope approval reads as "the user signed this item's
+# content", and the honest question is how much of that content the manifest actually carries.
+# `backlog_types.HASHED_FIELDS[item_type]` is the kernel's own answer to "which fields of this
+# type are approval-relevant", so the coverage of a manifest is the overlap between the two --
+# a DERIVATION, not a count, and the count this comment first carried ("for two types it does
+# not") was wrong. Measured 2026-07-31 over all TEN (item type, kind) pairs in
+# `APPROVAL_TRANSITIONS`: exactly two of them cover their type's hashed fields in full -- PR/scope
+# 6 of 6 and RQ/scope 5 of 5 -- and the other EIGHT cover one field or none:
+#   BUG/scope 1 of 5 . CR/scope 1 of 4 . PROC/scope 0 of 2 (steps, roles) . EXP/delivery 0 of 3 .
+#   PR|RQ delivery and acceptance 0 of 6|5, because those manifests name fields (`risks`,
+#   `delivered_commit`, ...) that no type's contract declares at all.
+# `SR` is not in that list because it is in no pair: nothing approves an SR, which is the
+# neighbouring finding in `required_approval_kinds`.
+# The consequence is exact: a change THROUGH THE KERNEL still invalidates (`HASHED_FIELDS` bumps
+# the revision, and the revision IS in every manifest), while an out-of-band edit past the kernel
+# leaves the hash matching -- the one thing the content hash exists to catch. Widening this tuple
+# is not a fix that can be slipped in: every stored hash would change and every live approval
+# would die, so it is a spec decision with a migration attached. Named here so nobody reads the
+# hash as wider than it is.
 _SCOPE_FIELDS = ("problem", "goal", "question", "motivation",
                  "acceptance_criteria", "invariants", "out_of_scope",
                  "design_refs")
@@ -171,6 +194,288 @@ def item_subject_manifest(item: dict, kind: str) -> dict:
         "manifest -- for push, build it with `push_subject_manifest`). Remedy: "
         "pass `manifest=` to create_pending_request." % kind
     )
+
+
+# -- which transitions a Freigabe GUARDS (spec II.2 Statusautomaten + Freigaben) ----------------
+
+def required_approval_kinds(item_type: str, from_status: str, to_status: str) -> frozenset:
+    """The approval kinds that COMMIT this transition -- i.e. the ones whose mint walks it.
+
+    DERIVED BY INVERTING `APPROVAL_TRANSITIONS`, and that is the whole design. That map already
+    answers "which approval kind commits which edge" -- `mint` walks the edge with it the moment
+    the user approves -- so the same table read the other way round answers "which edge may only
+    be walked when such an approval exists". A constant of the shape `{"APPROVED": "scope"}` would
+    be a SECOND statement of the same fact, and every second statement in this kernel has fallen
+    behind its original: a new (item type, kind) pair added above therefore arrives here gated,
+    and a pair removed there stops gating, with nothing to remember.
+
+    AN EDGE NO KIND MAPS TO IS NOT APPROVAL-BOUND, and that is the same derivation rather than a
+    list of exemptions. Checked against spec II.2 rather than assumed, the answers are:
+      * no edge of the TSK automaton -- no kind's manifest describes a task's progress; those
+        edges are moved by the lease lifecycle and `submit_result`, and the one rule that does
+        guard a TSK edge (FAILED -> READY only on an approved retry) lives in `state.transition`
+        because its evidence is a caller argument, not an APR.
+      * SR (PROPOSED -> ACCEPTED) -- an SR is a technical contract under a root, and no manifest
+        in `item_subject_manifest` describes one. Reported, not bridged: if accepting an SR is to
+        need a user approval, it needs a KIND with a manifest first, and that is a spec decision.
+      * no edge INTO a terminal state except `ACCEPTED` -- discarding work is not approving it,
+        and gating a terminal would make an item unabandonable. The cost of that is real and is
+        named where a role reads it (`scripts/harness.py`): a root item can still be dropped.
+      * nothing on DEC or INV -- they are `_NON_AUTOMATON_INITIAL_STATUS`, so `assert_transition`
+        refuses every transition on them before this is ever asked.
+
+    WHAT "COMMITS" IS NOT, and the difference is measurable: the map pairs a kind with an edge, it
+    does not promise that the kind's manifest describes the item's content. For `PROC` and `SR` it
+    does not (see `_SCOPE_FIELDS`), so a scope approval there binds to `{item, revision}` -- the
+    gate still holds, the CONTENT hash behind it is thinner than the name suggests.
+    """
+    return frozenset(kind for (typ, kind), edge in APPROVAL_TRANSITIONS.items()
+                     if typ == item_type and edge == (from_status, to_status))
+
+
+# The item field the kernel stamps with `approved_content_hash` at mint time. Spec II.2 lists it
+# among a PROC's fields; nothing there forbids another type carrying it, and the kernel writes it
+# wherever it is computable (see `approved_content_hash`) rather than for one type by name.
+APPROVED_CONTENT_HASH_FIELD = "approved_hash"
+
+
+def approved_statuses(item_type: str) -> frozenset:
+    """The statuses an item stands in BECAUSE a user approved it, and has not left again.
+
+    DERIVED FROM `APPROVAL_TRANSITIONS` AND THE TYPE'S OWN CHAIN, for the reason
+    `required_approval_kinds` gives one function up: a hand-written `("APPROVED", "ACTIVE")` beside
+    the automaton is a second statement of what the automaton already says, and every second
+    statement in this kernel has fallen behind its original. Read this way the answer is one
+    sentence of graph: an approval walks the item onto some status of its chain, and every LATER
+    chain status is still that same approved run of the item -- `PROC` DRAFT -> APPROVED -> ACTIVE
+    is exactly the "approved, then in use" pair the office gate needs, with nothing enumerated.
+
+    A TERMINAL IS SUBTRACTED ONLY WHEN NO APPROVAL PUT IT THERE, and getting that condition wrong
+    made this function contradict its own first sentence for five types out of six. Subtracting
+    every terminal is right for `RETIRED` (a procedure the project stopped running, and a gate that
+    let a work order execute it would read a tombstone as a permission) and wrong for `ACCEPTED`,
+    which is exactly the status an `acceptance` approval commits -- so a blanket subtraction
+    answered "a PR is not in an approved status" about the one status a user signed for. `PROC` is
+    the only type whose terminals all lie OFF its chain, which is why the mistake was latent: its
+    consumer today is the office spawn gate, and there the two readings agree.
+
+    A type nothing approves, or one with no automaton at all (`DEC`, `INV`), answers with the empty
+    set -- there is no status it holds because of an approval.
+    """
+    auto = AUTOMATA.get(item_type)
+    if auto is None:
+        return frozenset()
+    reached = set()
+    approved_targets = set()
+    for (typ, _kind), (_source, target) in APPROVAL_TRANSITIONS.items():
+        if typ != item_type:
+            continue
+        approved_targets.add(target)
+        if target in auto.chain:
+            reached.update(auto.chain[auto.chain.index(target):])
+    return frozenset(reached) - (auto.terminals - approved_targets)
+
+
+def approved_content_hash(item_type: str, item: dict):
+    """The canonical hash over the fields whose change invalidates this item's approval, or None.
+
+    THE SUBJECT IS `HASHED_FIELDS`, which is the kernel's own answer to "which fields of this type
+    are approval-relevant". So this is not a second opinion about what an approval covers -- it is
+    the same list, hashed, and a type that declares none (`INV`, `DEC`, `FR`, `TSK`, `EVD`) has
+    nothing to record and gets None.
+
+    WHY IT EXISTS BESIDE `subject_manifest_hash(item_subject_manifest(...))`, which looks like the
+    same thing and is not: the scope manifest carries `_SCOPE_FIELDS`, and the comment there
+    measures the overlap -- for `PROC` it is 0 of 2, so an approved PROC's `steps` and `roles` sit
+    outside every hash the approval record itself keeps. Widening `_SCOPE_FIELDS` would change
+    every stored hash and kill every live approval, which is the migration that comment refuses to
+    slip in. A SEPARATE field changes no stored hash at all: the approval record stays exactly as
+    it was, and the item gains a stamp of what was approved.
+
+    WHAT THAT BUYS, stated no wider than it is: an out-of-band edit -- one that goes past the
+    kernel, so no revision is bumped and no approval is invalidated -- leaves the stamp behind
+    disagreeing with the content. `gate_proc_approved` refuses a spawn on that disagreement and
+    `report.validate_state` reports it. It is NOT read by `assert_apr_in_force`, so such an edit
+    does not by itself stop a dispatch or a transition; that would be a widening of the
+    authorisation path and is named here rather than done quietly.
+
+    AND WHAT IT DOES NOT BUY, because the sentence above is exactly the shape that gets read as
+    more: this is an UNKEYED hash of public content by a public function, so anyone who can write
+    the item file can write the matching stamp with it. Measured: edit an approved PROC's steps,
+    recompute, write both -- spawn rc 0 and `validate` rc 0, no finding anywhere. It detects an
+    edit that did not bother, not an edit that did. The same limit `proven_expiry` records for the
+    approval manifest, and it closes the same way: by keeping the state directory kernel-only for
+    tool writes (gate layer 3), never by arithmetic.
+    """
+    fields = HASHED_FIELDS.get(item_type)
+    if not fields:
+        return None
+    return subject_manifest_hash({name: item.get(name) for name in fields})
+
+
+def assert_apr_in_force(state: ProjectState, apr: dict, item: dict) -> dict:
+    """Raise unless this approval authorises anything about this item RIGHT NOW; return its request.
+
+    ONE definition of "in force", because two readers need it and they used to be one reader with
+    a private copy: the dispatch gate asking whether a root's current approval still authorises a
+    spawn (`dispatch._assert_root_approval_locked`), and the status automaton asking whether an
+    approval of the required kind exists for an edge (`assert_transition_approved`). The questions
+    differ -- which APR is looked at, and whether the kind is fixed -- but the validity test is the
+    same one, and a copy of it would drift exactly as `report._parents_of` did.
+
+    The five ways an approval that EXISTS still grants nothing, in the order a reader wants them:
+    it was revoked; its provenance cannot be proven (`consumed_request` -- a hand-written APR is
+    just a file); it belongs to another item; its clock ran out; the item's hashed content moved
+    since it was minted. The messages stay fact-first and remedy-second, and the callers add their
+    own consequence ("dispatch blocked", "transition refused") around them -- a message that names
+    one caller's consequence inside a shared check is how the last such helper became two.
+    """
+    apr_ref = apr.get("id")
+    if apr.get("revoked"):
+        raise ApprovalError(
+            "approval %s is revoked. Remedy: obtain a fresh approval." % apr_ref)
+    # provenance first: an approval that cannot show its minted request is not a user approval at
+    # all, whatever else it says (spec II.12)
+    request = consumed_request(state, apr)
+    if str(apr.get("item") or "") != item["id"]:
+        raise ApprovalError(
+            "approval %s belongs to %r, not to %s. Remedy: obtain an approval for this item."
+            % (apr_ref, apr.get("item"), item["id"]))
+    expires = proven_expiry(request)
+    if expires is not None and expires < time.time():
+        raise ApprovalError(
+            "approval %s expired (spec II.10a: an expired approval blocks). Remedy: renew the "
+            "approval." % apr_ref)
+    kind = apr.get("kind")
+    if kind in ("scope", "acceptance", "delivery"):
+        current = subject_manifest_hash(item_subject_manifest(item, kind))
+        if current != apr.get("subject_manifest_hash"):
+            raise ApprovalError(
+                "content hash of %s no longer matches approval %s -- an out-of-band edit "
+                "invalidated the approval (spec II.4 gate 4). Remedy: re-approve the current "
+                "revision, or `git restore %s` to return to the approved content."
+                % (item["id"], apr_ref,
+                   os.path.relpath(state.active_path(item["id"]), state.root)))
+    return request
+
+
+def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
+                               from_status: str, to_status: str):
+    """Refuse a transition the user has to authorise and did not. Returns the APR, or None.
+
+    THE HOLE THIS CLOSES, measured 2026-07-29 in a scaffolded project: `python
+    scripts/harness.py transition PR-0002 APPROVED` walked a root item out of its DRAFT past all
+    eight PreToolUse gates, with a specialist's `agent_type` in the payload as readily as without
+    one -- while `gate_git` refuses a merge for an item still in its initial status ON THE GROUND
+    THAT NOTHING APPROVED THE WORK. A status the supervised party can set itself proves nothing,
+    so the gate that reads it was resting on a value its own subject could write.
+
+    Called from `state._transition_locked`, i.e. from EVERY transition including the one `mint`
+    performs -- there is deliberately no parameter that turns it off. Spec II.4 is explicit that
+    bootstrap "ist kein Config-Flag (der Lead könnte sein eigenes Gate umgehen)", and a `force=` a
+    caller may pass is that flag with a different name. The mint passes this check the ordinary
+    way, because it writes the APR and consumes its request BEFORE it walks the edge.
+
+    THE SEARCH IS OVER THE APPROVAL STORE, not over `item.approval_ref`, and the two are different
+    questions. `approval_ref` holds the LAST approval minted for an item -- an item legitimately
+    collects several of different kinds, and the newest one overwrites the field -- so reading it
+    would answer "was the most recent approval of this kind" instead of "is an approval of this
+    kind in force", which is what spec II.2 binds to (kind + item + revision + content hash).
+
+    WHAT THAT LEAVES OPEN, named because the same property is what makes it possible: the SEQUENCE
+    spec II.3 builds is not enforced. An approval binds to (kind, item, revision, content hash)
+    and to nothing about WHEN it was given, so all three of a root's approvals can be minted while
+    the item is still DRAFT -- `delivery` and `acceptance` have no status effect there (their
+    source states are APPROVED and DELIVERED), `scope` then walks DRAFT -> APPROVED, and
+    IN_DELIVERY / DELIVERED / ACCEPTED follow with no further question. Measured 2026-07-31, each
+    step rc 0, and since `request-approval` shipped the whole sequence is reachable FROM A ROLE'S
+    COMMAND LINE -- three request/answer cycles in DRAFT, then three transitions. Before that
+    command it needed a library call, which is worth saying plainly: closing the entry hole made
+    this one walkable.
+    It is not a forgery: a user really answered three questions. It is that the questions were
+    answerable at a moment when their subject could not have been meaningful -- `delivery`'s
+    manifest names `system_requirements`, `architecture_refs`, `planned_tasks`, `risks` and
+    `acceptance`'s names `delivered_commit`, `evidence_refs`, and NO command on this surface
+    produces any of them, so what the user signs in DRAFT is byte-identical to what they would
+    sign after delivery.
+
+    THE OBVIOUS CLOSURE -- "an approval authorises an edge only if it was minted while the item
+    stood in that edge's SOURCE status" -- is derivable and NOT taken here, on ONE ground: the
+    minting status would have to live inside the HASHED manifest to be tamper-evident, and adding
+    a field to a manifest changes every stored hash and kills every live approval, so it is a spec
+    decision with a migration attached rather than an implementation detail.
+    A second ground was offered and does not hold, so it is retracted rather than left standing:
+    "it would forbid a legitimate re-approval". It would not. The rule binds only
+    `assert_transition_approved`, which runs when an edge is WALKED; re-approving an already
+    walked edge authorises nothing either way, and after an invalidation `INVALIDATION_TARGET`
+    puts the item back into the source status anyway. What the rule would really forbid is
+    pre-minting -- which is the thing to forbid.
+    """
+    kinds = required_approval_kinds(item_type, from_status, to_status)
+    if not kinds:
+        return None
+    rejected = []
+    approvals_dir = os.path.join(state.root, "approvals")
+    names = sorted(os.listdir(approvals_dir)) if os.path.isdir(approvals_dir) else []
+    for name in names:
+        if not (name.startswith("APR-") and name.endswith(".yaml")):
+            continue
+        try:
+            apr = state._read_yaml(os.path.join(approvals_dir, name))
+        except Exception:
+            continue        # an unreadable approval authorises nothing (fail-closed)
+        if not isinstance(apr, dict) or apr.get("kind") not in kinds:
+            continue
+        if str(apr.get("item") or "") != item["id"]:
+            continue
+        try:
+            assert_apr_in_force(state, apr, item)
+        except ApprovalError as exc:
+            # named rather than swallowed: a revoked or content-invalidated approval is the case a
+            # role hits most often, and "no approval at all" would send it looking for the wrong
+            # thing
+            rejected.append("%s (%s): %s" % (apr.get("id") or name[:-5], apr.get("kind"), exc))
+            continue
+        return apr
+    raise ApprovalError(
+        "%s %s -> %s is the transition a %s approval commits, and none is in force for %s at "
+        "revision %s -- refused (fail-closed). A status the supervised party can set itself is a "
+        "status no gate may read as approval.%s Remedy: run the kernel approval flow for %s -- "
+        "the mint walks this transition itself once the user approves, so there is nothing left "
+        "to transition by hand afterwards."
+        % (item["id"], from_status, to_status, "/".join(sorted(kinds)), item["id"],
+           item.get("revision"),
+           (" The approvals that name this item do not count: %s." % "; ".join(rejected))
+           if rejected else "",
+           item["id"])
+    )
+
+
+def item_derived_kinds() -> tuple:
+    """The APR kinds whose subject manifest can be built from an ITEM ALONE.
+
+    Asked of `item_subject_manifest` rather than restated: that function is what decides it, by
+    raising for every kind it cannot derive. `cli` needs exactly this set (a command line can
+    carry an item id; it cannot carry an analysis question, a read-only scope and a cadence), and
+    the alternative spelling -- `APR_KINDS - EXPIRING_KINDS` -- is a THIRD statement of the same
+    split that happens to agree today. One probe item, no list.
+    """
+    probe = {"id": "PR-0001", "revision": 1}
+    derived = []
+    for kind in APR_KINDS:
+        try:
+            item_subject_manifest(probe, kind)
+        except Exception:
+            # EVERY exception, not just ApprovalError, and the difference is the whole CLI. This
+            # runs inside `build_parser()`, so anything escaping it kills every command including
+            # `doctor` -- measured with a manifest that reads a field the probe lacks: `KeyError:
+            # 'contract'` out of `build_parser()` and out of `main([..., "doctor"])`. A diagnosis
+            # command that dies on the thing it diagnoses is the failure `cli.py`'s own docstring
+            # is written against. A kind that cannot be built from an id alone is simply not
+            # item-derived, which is what this function was asked.
+            continue
+        derived.append(kind)
+    return tuple(derived)
 
 
 def create_pending_request(
@@ -340,7 +645,7 @@ def _assert_minting_caller() -> None:
     checking in-process state. It needs a guard that stops an agent from invoking
     the hooks, or python against the kernel, at all -- a Bash/PowerShell-level
     check, since `guard_harness_selfmod` gates only Edit|Write|MultiEdit. Until
-    that exists, `harness doctor` must report `approval_provenance: unverified`
+    that exists, `python scripts/harness.py doctor` must report `approval_provenance: unverified`
     and the mode stays `audited`.
 
     Deliberately the LAST check in `mint`: every content refusal (wrong label,
@@ -450,7 +755,7 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                 if isinstance(existing, dict) and existing.get("request_id") == request_id:
                     raise ApprovalError(
                         "request %s already minted %s -- replay blocked. "
-                        "Remedy: run `harness validate` to reconcile the "
+                        "Remedy: run `python scripts/harness.py validate` to reconcile the "
                         "half-consumed request." % (request_id, existing.get("id"))
                     )
         # LAST gate before the approval exists: provenance of the CALLER (see
@@ -487,16 +792,44 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
         state._write_yaml_atomic(
             os.path.join(state.root, "approvals", apr_id + ".yaml"), apr
         )
+        # CONSUME BEFORE THE ITEM MOVES, and the order is load-bearing rather than tidy. The
+        # transition below runs the same `assert_transition_approved` every other caller runs
+        # (there is no bypass parameter -- spec II.4), and that check proves an approval through
+        # its CONSUMED request. Written afterwards, as it used to be, the mint would refuse its
+        # own transition: the approval it had just created would still be unprovable.
+        # What the reordering costs, stated rather than glossed: a crash between here and the item
+        # write leaves a fully valid approval whose item carries no `approval_ref`. That item is
+        # transitionable (the approval is real -- the user did approve) but NOT dispatchable
+        # (`_assert_root_approval_locked` reads `approval_ref`), so the window fails closed on the
+        # side that grants a spawn. NOTHING REPORTS THE PAIR, and that is worth knowing rather than
+        # implying: `report.validate_state` walks items that HAVE an approval_ref, so an approval
+        # whose item forgot it produces no finding -- only the two files in git say so. The old
+        # order could not be kept either way, because a check that reads the store cannot be
+        # satisfied by a store write that has not happened yet.
+        state._write_yaml_atomic(_request_path(state, request_id, consumed=True), request)
+        os.remove(path)
         if item is not None:
             item["approval_ref"] = apr_id
             item_type, _ = parse_id(apr["item"])
-            transition = APPROVAL_TRANSITIONS.get((item_type, request["kind"]))
-            if transition and item.get("status") == transition[0]:
-                item["status"] = transition[1]
+            # STAMP WHAT WAS APPROVED. The mint is the only moment at which a user has just said
+            # yes to this exact content, so it is the only honest producer of that stamp -- and
+            # before this line there was none at all: `report.validate_state` demanded a PROC's
+            # `approved_hash` as an ERROR while the sole writer of it was a V1 script that opened a
+            # deleted monolith and died. A rule whose only route to compliance is a command that
+            # cannot run is a rule the project can never satisfy.
+            # It is deliberately NOT a `--update` flag on a script either: "run this to make the
+            # tamper check pass again" is the same permission the check exists to withhold.
+            content_hash = approved_content_hash(item_type, item)
+            if content_hash is not None:
+                item[APPROVED_CONTENT_HASH_FIELD] = content_hash
+            edge = APPROVAL_TRANSITIONS.get((item_type, request["kind"]))
             state._write_yaml_atomic(state.active_path(item["id"]), item)
-        # consume the request (move, never delete -- audit trail)
-        state._write_yaml_atomic(_request_path(state, request_id, consumed=True), request)
-        os.remove(path)
+            if edge and item.get("status") == edge[0]:
+                # THROUGH the automaton, not around it. `state.transition` is documented as the
+                # only status writer and this line used to disprove it: a direct `item["status"] =`
+                # skipped `assert_transition` and would skip the approval check too, which is one
+                # bypass in the one place a bypass would be invisible.
+                item = state._transition_locked(item["id"], edge[1])
         state._regenerate_index_locked()
         return apr
 
@@ -608,7 +941,7 @@ def consumed_request(state: ProjectState, apr: dict) -> dict:
                "was REVOKED" if revoked else "has no consumed request %s, so its "
                "provenance cannot be proven" % request_id,
                "obtain a fresh approval." if revoked else
-               "obtain the approval through the kernel approval flow; `harness "
+               "obtain the approval through the kernel approval flow; `python scripts/harness.py "
                "validate` reports approvals without a request.")
         ) from None
     except Exception as exc:
@@ -681,5 +1014,5 @@ def read_apr(state: ProjectState, apr_id: str) -> dict:
     except FileNotFoundError:
         raise ApprovalError(
             "no approval %s. Remedy: the item's approval_ref is stale -- run "
-            "`harness validate`." % apr_id
+            "`python scripts/harness.py validate`." % apr_id
         ) from None

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Shell-hygiene gate — parity risks R10 and R11, promoted from "optional" to FIRM by the user's
-"maximal härten" decision of 2026-07-24.
+PreToolUse(Bash|PowerShell) — shell-hygiene gate, parity risks R10 and R11, promoted from
+"optional" to FIRM by the user's "maximal härten" decision of 2026-07-24.
 
 Two rules, one hook, because they share the only thing that matters for cost: they both trigger on
 a shell command and would otherwise be two process spawns per Bash call.
@@ -30,7 +30,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -40,6 +40,20 @@ import _compat  # noqa: E402
 
 HOOK = "gate_shell_hygiene"
 SHELL_TOOLS = ("Bash", "PowerShell")
+
+
+def _shell_view(command):
+    """What the SHELL hands the program, for the rules below that still read words out of the
+    text (`_compat.git_argument_text` — the name says git, the view is not git-specific).
+
+    Quote marks gone, their content kept, line continuations resolved, wrapper payloads lifted,
+    and one line per reading of the escape character, because the same eight hooks gate the
+    `PowerShell` tool and PowerShell escapes with a backtick. Case is PRESERVED: a container name
+    is case-sensitive and goes straight into `docker inspect`; the patterns below are IGNORECASE
+    where they need to be.
+    """
+    return _compat.git_argument_text(command, lower=False)
+
 
 # -- R10 ----------------------------------------------------------------------
 # Verbs that STOP or DESTROY. `docker ps/logs/inspect/stats/build/run` are absent: reading is how
@@ -54,18 +68,21 @@ _PRUNE_RX = re.compile(r"\bdocker(?:\.exe)?\s+(?:system|volume|network|image|con
 _COMPOSE_LABEL = "com.docker.compose.project"
 
 # -- R11 ----------------------------------------------------------------------
-# Operations that can lose uncommitted work. `checkout -b` / `switch -c` CREATE a branch and carry
-# the changes along, which is safe and routine; only a switch to an EXISTING ref is in scope.
-_DIRTY_RISK_RX = re.compile(
-    r"\bgit(?:\.exe)?\b(?:\s+(?:-c\s+\S+|--\S+(?:=\S+)?|-[a-zA-Z]\s*\S*))*\s+"
-    r"(?P<verb>merge|rebase|pull|cherry-pick|revert|am)\b", re.IGNORECASE)
-_HARD_RESET_RX = re.compile(r"\bgit(?:\.exe)?\s+reset\b[^\n]*--hard\b", re.IGNORECASE)
-_SWITCH_RX = re.compile(r"\bgit(?:\.exe)?\s+(?:checkout|switch)\b(?P<rest>[^\n;|&]*)",
-                        re.IGNORECASE)
-_CREATE_BRANCH_RX = re.compile(r"(?:^|\s)-(?:b|B|c|C)(?:\s|$)")
+# Operations that can lose uncommitted work, as SUBCOMMANDS read by `_compat.git_invocations`.
+# This hook kept its own regexes for one round too long and therefore kept both defects the shared
+# reader was written to end — measured as real hook processes on a dirty tree: `git reset --hard
+# HEAD~1` blocked while `git "reset" --hard HEAD~1`, `git rese''t --hard HEAD~1`,
+# `git reset --ha\<newline>rd HEAD~1`, `git "merge" feat/x` and `git "checkout" main` all ran, and
+# the last of those was blocked by NO hook in the kit. A pattern is a list of spellings; what an
+# operation IS cannot be a question about quoting.
+_DIRTY_RISK_SUBCOMMANDS = frozenset(("merge", "rebase", "pull", "cherry-pick", "revert", "am"))
+# `checkout -b` / `switch -c` CREATE a branch and carry the changes along, which is safe and
+# routine; only a switch to an EXISTING ref is in scope.
+_SWITCH_SUBCOMMANDS = frozenset(("checkout", "switch"))
+_CREATE_BRANCH_FLAGS = frozenset(("-b", "-B", "-c", "-C"))
 # `git checkout -- <path>` and `git checkout <ref> -- <path>` restore FILES; that is a deliberate
 # discard, which the constitution names as one of the three offers.
-_PATHSPEC_RX = re.compile(r"(?:^|\s)--(?:\s|$)")
+_PATHSPEC = "--"
 
 
 def _git(root, *args):
@@ -76,12 +93,16 @@ def _git(root, *args):
     return (result.stdout or "").strip() if result.returncode == 0 else None
 
 
-def _docker_targets(command):
-    """Names/ids given to a destructive docker verb, minus its flags."""
-    match = _DOCKER_DESTRUCTIVE_RX.search(command)
+def _docker_targets(view):
+    """Names/ids given to a destructive docker verb, minus its flags.
+
+    Read off `_shell_view`, so `docker "stop" db` names the same container the bare spelling does.
+    The split on a newline also bounds the answer to ONE reading of the escape character — the
+    view holds one reading per line."""
+    match = _DOCKER_DESTRUCTIVE_RX.search(view)
     if not match:
         return []
-    rest = re.split(r"[;&|]|\n", command[match.end():], 1)[0]
+    rest = re.split(r"[;&|]|\n", view[match.end():], maxsplit=1)[0]
     return [token.strip("\"'") for token in rest.split()
             if not token.startswith("-") and token.strip("\"'")]
 
@@ -116,12 +137,12 @@ def _our_compose_projects(root):
     return names
 
 
-def _check_docker(root, command):
+def _check_docker(root, view):
     # PRUNE is checked FIRST and independently: `docker system prune` / `docker volume prune` put
     # a subcommand where the destructive-verb pattern expects the verb, so gating the prune check
     # behind that pattern meant the two most dangerous forms — the ones that by construction reach
     # every project on the daemon — were the only ones never examined.
-    if _PRUNE_RX.search(command):
+    if _PRUNE_RX.search(view):
         _kernel.block(
             HOOK,
             "`docker prune` removes resources across the WHOLE daemon, so it cannot be scoped to "
@@ -130,9 +151,9 @@ def _check_docker(root, command):
             remedy="remove this project's own resources by name, or `docker compose down` inside "
                    "the repo. If a machine-wide prune is really what you want, that is the user's "
                    "call to make and to run.")
-    if not _DOCKER_DESTRUCTIVE_RX.search(command):
+    if not _DOCKER_DESTRUCTIVE_RX.search(view):
         return          # reading (`ps`, `logs`, `inspect`, `build`, `up`) is never this gate's business
-    targets = _docker_targets(command)
+    targets = _docker_targets(view)
     if not targets:
         return          # `docker compose down` with no target: scoped to this directory already
     ours = _our_compose_projects(root)
@@ -152,25 +173,42 @@ def _check_docker(root, command):
                        "touching anything else on the daemon.")
 
 
-def _switches_branch(command):
-    match = _SWITCH_RX.search(command)
-    if not match:
-        return False
-    rest = match.group("rest")
-    if _CREATE_BRANCH_RX.search(rest) or _PATHSPEC_RX.search(rest):
+def _switches_branch(invocation):
+    """A switch to an EXISTING ref — the only checkout/switch shape that can lose work."""
+    arguments = invocation.arguments
+    if any(token in _CREATE_BRANCH_FLAGS or token == _PATHSPEC for token in arguments):
         return False    # creating a branch carries changes along; `--` restores files on purpose
-    return bool(rest.strip())
+    return bool(arguments)
+
+
+def _dirty_risk_verb(command):
+    """The name of the operation that can lose uncommitted work, or None.
+
+    One pass over the same invocation reader every other git gate uses, so the three rules cannot
+    disagree with each other about what counts as `reset --hard`. An invocation whose verb the
+    shell builds at run time answers YES to all of them (`GitInvocation.runs`), which is the
+    fail-closed reading: the rule protects data that is gone once the command runs.
+    """
+    for invocation in _compat.git_invocations(command):
+        if invocation.runs(*_DIRTY_RISK_SUBCOMMANDS):
+            # `%s`, not `+`: an unresolved verb is `_compat.UNRESOLVED_SUBCOMMAND`, which is an
+            # object precisely so no command text can spell it — it renders, it does not concatenate
+            return (invocation.subcommand if invocation.resolved
+                    else "git %s" % (invocation.subcommand,))
+        if invocation.runs("reset") and "--hard" in invocation.arguments:
+            return "reset --hard"
+        if invocation.runs(*_SWITCH_SUBCOMMANDS) and _switches_branch(invocation):
+            return "branch switch"
+    return None
 
 
 def _check_dirty(root, command):
-    risky = _DIRTY_RISK_RX.search(command) or _HARD_RESET_RX.search(command)
-    if not (risky or _switches_branch(command)):
+    verb = _dirty_risk_verb(command)
+    if verb is None:
         return
     status = _git(root, "status", "--porcelain")
     if not status:
         return          # clean, or not a worktree at all
-    verb = risky.group("verb") if risky and risky.lastindex else (
-        "reset --hard" if _HARD_RESET_RX.search(command) else "branch switch")
     # `split(None, 1)` rather than `line[3:]`: porcelain is `XY<space>PATH`, but `_git` strips the
     # output, so the leading space of an unstaged ` M a.txt` is already gone and a fixed offset
     # eats the first character of the filename ("a.txt" was reported as ".txt").
@@ -194,7 +232,7 @@ def main():
         sys.exit(0)
     raw = str((data.get("tool_input") or {}).get("command") or "")
     root = _kernel.find_repo_root(data.get("cwd"))
-    _check_docker(root, raw)
+    _check_docker(root, _shell_view(raw))
     _check_dirty(root, raw)
     sys.exit(0)
 

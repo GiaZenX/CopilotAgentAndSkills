@@ -100,8 +100,8 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      at least one entry that is not `TODO`); read it rather than guessing.
    - finally **regenerate the index**, from the project root (the kit is not installed yet, so the kernel
      comes from your home copy):
-     - `PYTHONPATH="$HOME/.claude/team-kits" python -m kernel.cli --root project_memory generate-index`
-     - (Windows: `$env:PYTHONPATH="$env:USERPROFILE\.claude\team-kits"; python -m kernel.cli --root project_memory generate-index`)
+     - `PYTHONPATH="$HOME/.claude/team-kits" python -B -m kernel.cli --root project_memory generate-index`
+     - (Windows: `$env:PYTHONPATH="$env:USERPROFILE\.claude\team-kits"; python -B -m kernel.cli --root project_memory generate-index`)
      The hand-written item above is the only state write in this project's life that does not go through the
      kernel, so it is the only one that does not update `generated/index.yaml` on the way — and every rollup
      over the items refuses to run against a state directory that holds items but no index.

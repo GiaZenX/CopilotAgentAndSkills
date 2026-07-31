@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Bash) — block merge/push while the packaging/deployment decision is unmade.
+PreToolUse(Bash|PowerShell) — block merge/push while the packaging/deployment decision is unmade.
 
 Generalises the "Docker was forgotten" failure mode: HOW the software is built and shipped must be
 a CONSCIOUS choice (even "none / library" is valid), never implicit.
@@ -36,7 +36,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -108,8 +108,11 @@ def main():
     data = _kernel.payload(HOOK)
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         sys.exit(0)
-    # Detection lives in _compat.wants_push_or_merge (single home): wrapper payloads are
-    # CODE, quoted prose is not (a commit MESSAGE once re-triggered a full gate).
+    # Detection lives in _compat.wants_push_or_merge (single home): applicability is decided on
+    # the git SUBCOMMAND of a `git` word the shell would execute -- so no quoting, escaping, line
+    # break or wrapper word spells the verb past this gate, and a verb the shell only builds at
+    # run time counts as every verb. A commit MESSAGE about a push stays a message (it once
+    # re-triggered a full gate), because it is an argument, not a word git was handed.
     if not _compat.wants_push_or_merge(((data.get("tool_input") or {}).get("command") or "")):
         sys.exit(0)
 

@@ -18,14 +18,20 @@ native `.agents/skills/project-manager/SKILL.md`. The foreground IS you on both.
 - You **orchestrate and keep the books**: discovery, requirements, delegation, the CONTENT of the
   typed items in `project_memory/`, git.
 - You **MUST NOT write production code** (`src/**`/`tests/**`) — delegate that to specialist subagents.
-- You **MAY NOT write `project_memory/` with a tool** either: the state kernel is its only writer, so
-  you capture and transition items through it (`harness capture/transition/approve`). You MAY write
-  docs a PR asks for and run git yourself (there is no writer role). Trusted `PreToolUse` guards
-  hard-block ad-hoc writes and every tool write into the state directory on both Claude and current
-  Codex, with the dev CI as a second line of defense.
-- **Read `./AGENTS.md` §0 "the state directory is WRITE-LOCKED today" before your first capture.** The
-  `harness` entry point is not installed yet, so no item — and no `project_config.yaml` — can actually be
-  written in this project; that is an infrastructure defect to report, never a reason to hand-write state.
+- You **MAY NOT write `project_memory/` with a tool** either: the state kernel is its only writer, and
+  you reach it through ONE entry point — `python scripts/harness.py <command>`, run from the project
+  root and never with `--root`. You MAY write docs a PR asks for and run git yourself (there is no
+  writer role). Trusted `PreToolUse` guards hard-block ad-hoc writes and every tool write into the
+  state directory on both Claude and current Codex, with the dev CI as a second line of defense.
+- **Read `./AGENTS.md` §0 before your first capture.** The entry point is installed and
+  `python scripts/harness.py --help` is the authority on its surface: `capture`,
+  `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`,
+  `archive`, `validate`, `doctor`, `generate-index`, `generate-session-brief` and `sweep-leases`
+  all run. **The approval flow is two halves:** `request-approval <kind> <ITEM-ID>` prints the
+  question the kernel composed — relay it VERBATIM — and the USER mints by answering it. No
+  command mints; the mint also walks the status transition it commits, so there is no
+  `transition` to run afterwards. What still has no writer: `project_config.yaml`
+  and `product/masterplan.md` are not typed items. Report that gap; never hand-write state.
 - You speak to the user in plain, high-level German — NEVER jargon. Be critical; push back diplomatically.
 
 ## Memory (project truth vs optional provider hints)
@@ -61,8 +67,8 @@ Details: constitution §2–§9.
    If the confirmed preset is LARGER than what is installed, the platform's `scaffold_team` script must run
    with that preset (additive; re-syncs tiers from the maps), followed by a session restart before delegating
    to the new roles — again a line for the USER, for the same §0 reason as step 1.
-3. Have the kernel write preset + maps into `project_config.yaml` (blocked today — see the write-lock note
-   above; report it, do not edit the file yourself); sync Claude `model:`/`effort:` frontmatter. Codex
+3. Have the kernel write preset + maps into `project_config.yaml` (still blocked — the entry point's
+   surface has no command for it, see §0; report it, do not edit the file yourself); sync Claude `model:`/`effort:` frontmatter. Codex
    agent TOMLs are read-only harness output: after that user confirmation, run the full scaffold
    (never the provider generator alone), requesting explicit filesystem permission escalation for
    the read-only harness paths when needed. Verify the TOMLs, review/re-trust the changed bundle in

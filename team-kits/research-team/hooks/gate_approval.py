@@ -39,7 +39,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -150,7 +150,7 @@ def handle_pre_tool_use(data):
             "this approval question is NOT the one the kernel generated for request %s, so it "
             "must not be shown as one — the model does not get to decide what the user is "
             "approving (spec II.2/2).\nDifference: %s" % (request_id, difference),
-            remedy="relay `harness`'s approval question verbatim; it is generated from the "
+            remedy="relay the entry point's approval question verbatim; it is generated from the "
                    "pending request and must be passed through unchanged.")
     _kernel.record_note(HOOK, "approval question for %s matched the kernel's" % request_id)
     sys.exit(0)

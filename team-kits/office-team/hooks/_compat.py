@@ -19,6 +19,8 @@ The differences this shim absorbs:
 Uncertainty -> return the payload unchanged; a guard that cannot parse stays fail-open (exit 0),
 same philosophy as every other hook.
 """
+import functools
+import itertools
 import json
 import os
 import re
@@ -39,7 +41,7 @@ for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
-        pass  # non-reconfigurable stream (test harness capture) — best effort
+        pass  # non-reconfigurable stream (a test runner capturing it) — best effort
 
 
 # BOUNDED stdin (spec II.4: "Hooks lesen stdin BEGRENZT"). An unbounded read makes every hook a
@@ -69,6 +71,21 @@ _TOOL_ALIASES = {"edit": "Edit", "write": "Write", "bash": "Bash", "powershell":
                  "str_replace": "Edit", "create_file": "Write", "shell": "Bash"}
 
 
+# THE PAYLOAD THIS PROCESS IS DECIDING ON, remembered for `stop()`. A hook process reads stdin
+# exactly once, so "the payload" is a property of the process rather than of a call, and the
+# alternative — threading the command through `_kernel.block` into every one of the eight gates —
+# is the same nine-call-site thread that `_ESCAPE_CHARS` documents someone forgetting. Cleared at
+# the START of every load so an in-process consumer (a test, the CLI) can never be handed the
+# previous payload's command.
+_LAST_PAYLOAD = []
+
+
+def last_command():
+    """The shell command of the payload this process read, or "" — see `_LAST_PAYLOAD`."""
+    data = _LAST_PAYLOAD[0] if _LAST_PAYLOAD else {}
+    return str((data.get("tool_input") or {}).get("command") or "")
+
+
 def load(stream=None, limit=None, tolerate_overflow=False):
     """Read + normalize the hook payload from stdin. Returns {} on garbage.
 
@@ -82,6 +99,7 @@ def load(stream=None, limit=None, tolerate_overflow=False):
     sentinel instead. The limit default is resolved HERE, not in the signature, so the
     module-level cap stays adjustable at runtime (tests, tuning)."""
     limit = STDIN_LIMIT if limit is None else limit
+    del _LAST_PAYLOAD[:]
     raw = None
     try:
         source = stream if stream is not None else sys.stdin
@@ -148,6 +166,7 @@ def load(stream=None, limit=None, tolerate_overflow=False):
         data["_file_paths"] = paths
         if paths and not ti.get("file_path"):
             ti["file_path"] = paths[0]
+    _LAST_PAYLOAD.append(data)
     return data
 
 
@@ -174,40 +193,1115 @@ def created_file_paths(data):
 
 
 # Shared push/merge detection for every git gate (single home — six hook-local copies drifted:
-# an audit had to fix the same regression twice). Shell-WRAPPER payloads are CODE
-# (`bash -c "git push"` must gate), remaining quoted spans are PROSE (a commit MESSAGE describing
-# a push must not). Unquoted prose may still over-trigger — the safe direction for a gate.
-# The c-flag may sit in a COMBINED short cluster (`bash -lc`, `-xec` — audit: `-lc` bypassed
-# every gate) and quoted payloads may contain ESCAPED quotes — both are handled below.
+# an audit had to fix the same regression twice). A shell WRAPPER's quoted payload is not an
+# argument, it is CODE one level down (`bash -c "git push"` must gate), so it is lifted out of its
+# quotes before any reader below sees it. The MEMBERSHIP TEST is that property and not a name:
+# "this program is handed a string and hands it straight to a command parser". `eval "git push"`
+# does exactly what `sh -c` does; `Invoke-Expression`/`iex` is that same eval for PowerShell —
+# which this kit gates as its own tool (`SHELL_TOOLS`), so leaving it out was leaving out one of
+# the two shells actually being enforced (measured: `iex "git push --force origin main"` matched
+# none of the eight PreToolUse hooks).
+#
+# HOW the string is handed over is not part of the membership test, so each spelling of the
+# handover gets its own reader rather than its own rule: as the ARGUMENT after the c-flag
+# (`_WRAPPER_RX`), through a PIPE (`echo "git push --force" | sh` — `_lift_piped_payloads`), or as
+# STANDARD INPUT via a here-string (`bash <<< 'git push --force origin main'` — `_HERESTRING_RX`;
+# measured as a real push that reached NONE of the eight hooks, because the redirection rule in
+# `_argument_scan` is right that a redirection's target never reaches the program and here the
+# target IS the code). They are all here because the shell-WORD rule in `git_invocations` would
+# otherwise read those payloads as the text they syntactically are. The c-flag may sit in a
+# COMBINED short cluster (`bash -lc`, `-xec` — audit: `-lc` bypassed every gate), an option in
+# front of it may carry a VALUE either attached after a colon or as the next word (`cmd /v:on /c`,
+# `powershell -ExecutionPolicy Bypass -Command` — both measured below), and quoted payloads may
+# contain ESCAPED quotes.
+#
+# A payload that is ITSELF a wrapper is lifted AGAIN — `unwrap_shell_payload` iterates to a
+# fixpoint. `bash -c "eval 'git push --force origin main'"` pushes in a real bash 5.2 and measured
+# ALL EIGHT hooks ALLOW, as did `bash -c "bash -c '…'"`, `eval "eval '…'"`, `bash -c "sh -c '…'"`
+# and the three-deep spelling: the membership test held twice over, and only the outer
+# substitution ran. What the shell will execute is written out in the text there, which is exactly
+# what separates it from the holes below.
+#
+# The list below is therefore an inventory of the programs KNOWN to have that property, not the
+# definition of it, and an inventory is only ever as complete as the last review. Anything that
+# executes text WITHOUT handing it to a parser as one span of THIS text is out of reach of this
+# shape entirely, and those are named as holes rather than implied to be covered.
+#
+# KNOWN HOLES, named rather than implied (a comment must not promise protection the code does not
+# implement), each measured as reaching no gate:
+#   * a stage that TRANSFORMS or TRANSPORTS the text between its quotes and the shell:
+#     `echo "git push --force" | tr a-z A-Z | sh`, a file written and then sourced, and a HEREDOC
+#     (`sh <<EOF … EOF`), whose payload is not a quoted span at all but the lines that follow —
+#     `sh <<'EOF'` reaching a gate is incidental, the newline splits the segment and the payload
+#     is then read as its own line. The here-STRING above is the opposite case and is closed.
+#   * an ENCODED payload: `powershell -EncodedCommand <base64>` carries the same code with no
+#     quoted span to lift. ANSI-C encoding (`$'\x67…'`) is the same shape one level down and it
+#     survives the lift, because nothing in this file decodes it (`_argument_scan`). It reaches
+#     BOTH halves of the reading, and only one of them is closed:
+#       - the PROGRAM NAME is open: `bash -c $'\x67it push --force origin main'` pushes for real
+#         and reaches none of the eight hooks. After lifting, the text spells `\x67it`, and
+#         `_GIT_WORD_RX` looks for the letters `git` — there is no `git` word to find, in either
+#         reading, so no invocation exists to be called unresolved.
+#       - the VERB was open in the same shape and is closed: `bash -c $'bash -c \'git \x70ush
+#         --force\''` ran a real push past all eight hooks. The mechanism is worth writing down
+#         because it is not "the reader cannot decode": the OUTER lift leaves the inner wrapper's
+#         quotes ESCAPED (`\'`), the fixpoint therefore stopped after one round, and the two
+#         readings then blinded each other — the POSIX one ate the payload's backslashes and
+#         resolved the harmless verb `x70ush`, the PowerShell one kept them and so read `\'…\'`
+#         as a real quote pair, inside which `git` ends no word. `_QUOTED_SPAN` starting at an
+#         escaped delimiter is what closed it; the same five lines with a LITERAL verb were open
+#         before the fixpoint existed and are closed by it.
+#     Resolving an encoded verb rather than widening it needs a decoder this file deliberately
+#     does not have, so the program-name half stays open and is named here rather than implied.
+#   * a cmd VARIABLE REFERENCE whose name or modifier contains a SPACE. `_CMD_VARIABLE_RX` reads
+#     a reference as one token, and after the `cmd /c "…"` payload is lifted its spaces are real
+#     word breaks, so such a reference is two tokens and the verb token holds only the first half
+#     — which matches no reference form and therefore comes back RESOLVED and harmless. Measured
+#     at the reader: `cmd /v:on /c "git !V: =u! …"` reads the verb `!v:` (resolved), and
+#     `cmd /v:on /c "git !V A! …"` reads `!v`, while the same lines without the space
+#     (`!V:X=u!`, `!V!`) are unresolved and refused by three gates.
+#     THE BOUNDARY THAT CAUSES IT IS THE ONE THAT PAYS FOR ITSELF: excluding whitespace from a
+#     reference's content is exactly what keeps fourteen lines of ordinary prose out of the gates
+#     (`echo "I love git!"`, `echo "git! and git!"`), so widening it here would trade a
+#     constructed line for lines people write daily.
+#     AND THE RUNNABLE LINE HAS TWO WAYS PAST THE GATES RATHER THAN ONE WITH AN EXTRA HURDLE.
+#     Defining a variable whose NAME holds a space needs `set "V A=push"`, i.e. a double quote
+#     inside the double-quoted `/c` payload, so the whole line reads
+#     `cmd /v:on /c "set "V A=push"& git !V A! --force origin main"`. An earlier wording filed
+#     that nesting under "it also needs more setting up", which reads as difficulty for the
+#     attacker and hides the second hole. Measured, it is one: the line is a REAL
+#     `git push --force` in cmd.exe (`/c` strips only the first and the last quote when the
+#     payload holds more than two, so the inner pair survives; verified by running the same line
+#     with `status` in place of `push` — it printed `## No commits yet on master`), and it reached
+#     NONE of the eight PreToolUse hooks. The two ways are independent:
+#       - THE READER, which is the hole named above and would decide if the payload were lifted
+#         whole: the reference is two tokens, the verb token is `!v`, that matches no reference
+#         form, and it comes back RESOLVED and harmless (measured on
+#         `cmd /v:on /c "git !V A! --force origin main"`).
+#       - THE LIFT, which is what actually happens here and never reaches that reader at all.
+#         `_QUOTED_SPAN` ends at the FIRST unescaped closing quote, so `_WRAPPER_RX` matches
+#         `cmd /v:on /c "set "` and lifts the span `set `. The remainder
+#         `V A=push"& git !V A! --force origin main"` is left with its quotes unbalanced, the
+#         `git` therefore sits INSIDE a quoted span, and quoted whitespace is `\x00` in the word
+#         view — so `_ends_word` says no, `_read_invocations` skips it, and `git_invocations`
+#         returns an EMPTY list. Not an unresolved invocation that every gate would refuse: no
+#         invocation at all. Closing the reader half alone would leave this line exactly where it
+#         is. (Without the nesting, `cmd /v:on /c "set V=push& git !V! --force origin main"` lifts
+#         cleanly and reads the unresolved verb `!v!`; measured in a scaffolded project, five of
+#         the eight refuse it, and the three that refuse it FOR the invocation are gate_git,
+#         gate_push_token and gate_shell_hygiene — the other two are state-completeness gates
+#         that apply because a push was recognised at all.)
+#   * a payload passed as an ARGUMENT VECTOR rather than as one string:
+#     `Start-Process git -ArgumentList "push","--force"`.
+#   * INDIRECTION through a name the text does not resolve: `alias gp='git push --force'; gp`,
+#     `G=git; $G push`.
+_SHELL_NAMES = r"(?:bash|sh|zsh|dash|pwsh|powershell|cmd)(?:\.exe)?"
+_EVAL_NAMES = r"(?:eval|iex|invoke-expression)"
+# A quoted span, optionally carrying the `$` of ANSI-C/locale quoting. The `$` sits OUTSIDE both
+# capture groups so the group numbers its users below index by stay what they are. Without it
+# the wrapper chain broke on one character: `_WRAPPER_RX` wants the span directly after `-c `, the
+# `$` of `bash -c $'git push --force origin main'` stopped the match, the payload was never lifted,
+# and — because `$'…'` then reads as ONE word — the `git` inside it ended no word either, so that
+# line reached NO gate at all (measured; `eval $'…'` likewise). `$'…'` being quoting rather than
+# expansion is stated 250 lines down in `_argument_scan` and was not known here.
+#
+# THE DELIMITERS MAY THEMSELVES BE ESCAPED, and that is the second round of the fixpoint being
+# able to happen at all. Lifting `bash -c $'bash -c \'git push\''` leaves the INNER wrapper's
+# quotes standing as `\'`, a span pattern that only starts at a bare quote finds nothing, and the
+# fixpoint stops one level too early — measured, five lines of that shape ran a real push/reset/
+# merge and reached NONE of the eight hooks. Only the delimiters learn the backslash; the BODY
+# stays the unrolled `(?:\\.|[^"\\])*` loop, whose two alternatives cannot both match the same
+# character. That is not tidiness: an ambiguous body is the shape that made `_WRAPPER_OPTION`
+# exponential, and the first cut of this fix had it. Measured unambiguous: 3200 escaped spans
+# (19 KB) cost 0.003 s and the whole unwrap stays linear.
+#
+# KNOWN IMPRECISION, and it has ONE shape: a payload whose content ENDS in a backslash, directly
+# before the closing quote. There the optional backslash of the closing delimiter eats a character
+# that belonged to the text, and the PATH-reading callers of `git_argument_text` see the payload
+# one backslash short. Measured over twelve over-match candidates, TWO read differently than they
+# did before, both of that shape:
+#     bash -c "cd C:\src\" ; git push --force origin main      -> lifts `cd C:\src`
+#     powershell -Command "Get-ChildItem C:\src\"              -> lifts `Get-ChildItem C:\src`
+# The two are not the same case, which is why "unbalanced quotes only" would be wrong: in a POSIX
+# shell that backslash really does escape the closing quote, so the first line is unrunnable to
+# begin with; in PowerShell it does not, so the second is an ordinary command and the trailing
+# separator of a DIRECTORY path is what is lost. Ten real path cases — `echo x >
+# "project_memory/a.yaml"`, `mv inbox/a.pdf "archive/2026/Müller GmbH.pdf"`, `sed 's/\\/\//g'`,
+# `echo "he said \"hi\""` and the like — are unchanged, and the GIT reading of both lines above is
+# unaffected (the push in the first is still detected). Named here rather than fixed: the fix is a
+# quote balancer, and the cost is a trailing separator on a directory path, which every prefix
+# check in this kit already treats as the same directory.
+_QUOTED_SPAN = r'\$?(\\?"((?:\\.|[^"\\])*)\\?"|\\?\'((?:\\.|[^\'\\])*)\\?\')'
+# The options a wrapper may carry BEFORE its c-flag, and an option is not just a `-word`: it can
+# carry a VALUE, and the two spellings of that were two separate measured bypasses.
+#   * ATTACHED after a colon — `cmd /v:on /c "…"`. With `[\w-]` the `:` ended the option token,
+#     `/v:on` matched neither this group nor the c-flag alternative, and the payload of
+#     `cmd /v:on /c "set V=push& git !V! --force origin main"` was never lifted: a real push
+#     (measured through the PowerShell tool) reaching NONE of the eight hooks.
+#   * SEPARATE, as the next word — `powershell -ExecutionPolicy Bypass -Command "…"`, the ordinary
+#     Windows spelling. `Bypass` starts with no dash, so the option group could not consume it and
+#     the c-flag alternative had to match there and failed; measured, that line pushes for real and
+#     reached none of the eight hooks, as did `bash -O extglob -c "…"` and `sh -o pipefail -c "…"`.
+# The value is spelled as "one word that starts with neither a dash, a slash nor a quote", so a
+# payload can never be mistaken for it, and the regex backtracks into the c-flag when the last
+# option IS the c-flag (`bash -lc "…"` still matches on the shortest reading).
+#
+# EVERY PIECE OF THIS IS UNAMBIGUOUS ON PURPOSE, and that is not style — it is the difference
+# between linear and exponential. The character after the leading dashes may NOT be a dash, or
+# `--no-cache` parses two ways (`--` + `no-cache`, `-` + `-no-cache`); a value may not begin with
+# a dash or a slash, or a token could be either the previous option's value or the next option.
+# Each ambiguity doubles the work per option when the overall match FAILS, and the pattern this
+# replaces had the first one. Measured on `echo bash --a-b×N ; git push --force origin main`,
+# medians of three: 0.020 s at 14 options, 0.270 s at 18, 4.011 s at 22, 65.550 s at 26 — a
+# factor of ~15 per four options, and 65.5 s is already PAST the host's 60 s kill, where a killed
+# hook is an ALLOW rather than a refusal (spec II.4). That line was a complete bypass with no
+# quoting trick in it. Unambiguous, the same input costs 0.0000 s at 26 options and 0.0009 s at
+# four thousand.
+_WRAPPER_OPTION = r'[-/]{1,2}[\w:.][\w:.-]*(?:\s+[^\s"\'/-][^\s"\']*)?\s+'
 _WRAPPER_RX = re.compile(
-    r'((?:bash|sh|zsh|dash|pwsh|powershell|cmd)(?:\.exe)?\s+(?:[-/]{1,2}[\w-]+\s+)*'
-    r'[-/]{1,2}(?:[A-Za-z]*c|command)\s+)("((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\')',
+    r'((?:' + _SHELL_NAMES + r'\s+(?:' + _WRAPPER_OPTION + r')*'
+    r'[-/]{1,2}(?:[A-Za-z]*c|command)|\b' + _EVAL_NAMES + r'\b)\s+)' + _QUOTED_SPAN,
     re.IGNORECASE | re.DOTALL)
-_QUOTED_RX = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'')
+_PIPE_TO_SHELL_RX = re.compile(r'\s*\|\s*' + _SHELL_NAMES + r'\b', re.IGNORECASE)
+# A HERE-STRING hands the shell its COMMANDS on standard input. Same membership test, third way of
+# handing over — and the one the rest of this file actively deletes rather than merely fails to
+# see: `_argument_scan` drops a redirection operator together with its target, correctly (a target
+# never reaches the program), which for `bash <<< 'git push --force origin main'` drops the code.
+# Group numbering matches `_WRAPPER_RX` (prefix, span, double, single) so both share one lift.
+_HERESTRING_RX = re.compile(
+    r'((?<![\w.-])' + _SHELL_NAMES + r'\s+(?:' + _WRAPPER_OPTION + r')*)<<<[ \t]*' + _QUOTED_SPAN,
+    re.IGNORECASE | re.DOTALL)
+
+# A line CONTINUATION is not a line END — and it is not a SPACE either. The shell removes
+# `\`+newline (PowerShell: backtick+newline) with NOTHING in its place, before it parses anything,
+# so `git pu\<newline>sh` is the single word `push` and `git \<newline>  merge x` is one invocation
+# of git. Joining with a space got the second case right and the first one wrong, which is not a
+# cosmetic difference: `git push --f\<newline>orce origin main` measured ALLOW with the force-push
+# ban loaded and blind, and `git mer\<newline>ge feat/PR-0002-x` matched no git gate at all. Every
+# reader below decides "which part of this line is this command" with a pattern that stops at a
+# newline — correctly, an unescaped newline really does end a command — so the continuation has to
+# be resolved before that pattern ever runs.
+_CONTINUATION_RX = re.compile(r"[\\`]\r?\n")
+
+# WHAT ENDS A SHELL WORD **IN LITERAL TEXT** — and that qualifier is the whole of what the
+# previous version of this comment got wrong. Outside a quoted span a word ends at whitespace or at
+# a METACHARACTER, and the shell's metacharacters are exactly `| & ; ( ) < > space tab newline` —
+# POSIX XCU 2.2, and cmd/PowerShell add none that matter here. Writing the set down closed a real
+# hole: `_argument_scan` used to answer for `& | ; ( )` and not for `< >`, and a redirection
+# therefore glued itself to the verb — `git push>/dev/null --force origin main` read as the
+# subcommand `push>/dev/null`, which is no git command at all, so ALL EIGHT PreToolUse hooks stood
+# down on a force-push (measured).
+#
+# What it then CLAIMED — "there is no eleventh one to discover later" — was false in a way the set
+# itself cannot fix, and it cost the layer a class HEAD still held. Word splitting happens AFTER
+# expansion (POSIX XCU 2.6.5), so a closed set of characters answers "where does this word end"
+# only for text that is already the word. `git${IFS}push --force origin main` runs a force-push in
+# a real bash 5.2; the character after `git` is `$`, which is in no metacharacter set, so `git`
+# ended no word, the line held no git invocation, and all eight hooks stood down — worse than the
+# spelling-based reader this definition replaced. `git$IFS push` and `git{,} push` are the same
+# shape. See `_UNDETERMINED_BREAK_RX`: where an expansion begins, the text does not SAY how many
+# words come out, and an integrity layer that must be fail-closed (spec II.4) reads "unknown" as
+# "possibly a word end", not as "not one".
+#
+# The set splits three ways by what each member does BEYOND ending the word, and `_argument_scan`
+# answers all three:
+#   * `& | ; newline` end the COMMAND as well — `_SYNTAX_CHARS`, and `_SEGMENT_SPLIT_RX` cuts there.
+#   * `( )` open and close a command context; they belong to no word.
+#   * `< >` introduce a REDIRECTION, which takes the following word with it: neither the operator
+#     nor its target was ever handed to the program (`git push origin main >/dev/null 2>&1` pushes
+#     `origin main`, nothing else).
+# `#` is not a metacharacter — it does not end a word, it opens a comment at the start of one.
+#
+# Inside a quoted span none of them carry any of that meaning — the span is one argument — which is
+# why `_argument_scan` neutralises the command separators there instead of passing them on into a
+# text that will be split on them.
+_SYNTAX_CHARS = "&|;#\n\r"
+_SYNTAX_TO_SPACE = {ord(char): " " for char in _SYNTAX_CHARS}
+# ...and the whitespace that, INSIDE a quoted span, is not a word break. See `_argument_scan` for
+# the parallel "word view" this builds and why a word boundary has to be a separate answer from
+# the text itself.
+_QUOTED_WHITESPACE_TO_FILLER = {ord(char): "\x00" for char in " \t\n\r\v\f"}
+
+
+def _lifted_payload(double, single):
+    """The content of a wrapper's quoted span, as code the readers below can scan.
+
+    Handed on VERBATIM, and that is a decision rather than an omission. A quoted span's
+    BACKSLASHES do change meaning by being lifted, and in both directions:
+
+      * out of a SINGLE-quoted span they become escapes that were not escapes —
+        `bash -c 'git pu\\sh --force'` hands git `pu\\sh`, which is no push, while the POSIX
+        reading of the lifted text consumes the `\\` and reads `push`. That is an over-trigger,
+        i.e. the fail-CLOSED direction, and it costs one refusal on a line nobody writes.
+      * out of an ANSI-C span (`$'…'`) they become escapes that bash itself would have decoded
+        differently — `bash -c $'git \\x70ush --force'` really pushes, and the POSIX reading of
+        the lifted text consumes the `\\` and reads the RESOLVED verb `x70ush` (the escape eats
+        exactly one character, the `x`), which no gate asks about. That is the fail-OPEN
+        direction, so something has to carry it.
+
+    FOR A ONE-STAGE PAYLOAD, what carries it is the SECOND reading and not a repair here — and
+    that qualifier is load-bearing, see below. `_scan_views` produces a PowerShell reading of every
+    command containing a backslash, and a payload with a backslash puts one in the command by
+    definition; in that reading nothing consumes a backslash, so the verb comes back as
+    `\\x70ush`, which `_UNDETERMINED_VALUE_RX` reads as a token the text does not fix. An earlier
+    cut doubled the backslash here to force that answer out of the FIRST reading as well;
+    measured over all eight single-stage ANSI-C spellings and both readings, it changed no gate's
+    verdict on any of them, because the second reading had already answered — and it made one of
+    the two readings spell something no shell would produce, which the PATH-reading callers of
+    `git_argument_text` also see.
+
+    NESTED, the two readings can blind each other, and no doubling here reaches that. Once the
+    payload is itself a wrapper (`bash -c $'bash -c \\'git \\x70ush --force\\''`), the POSIX
+    reading eats the payload's backslashes and resolves the harmless verb `x70ush`, while the
+    PowerShell reading keeps them — and thereby leaves the inner `\\'` as a real quote pair, so
+    the payload becomes ONE quoted word in which `git` ends no word at all. Five such lines run a
+    real push/reset/merge. They are closed now, but by `_QUOTED_SPAN` learning to start at an
+    ESCAPED delimiter so the fixpoint reaches the inner wrapper — not by anything in this
+    function. See the KNOWN HOLES list for what is left of the class.
+
+    Decoding ANSI-C escapes would be the honest way to RESOLVE such a verb instead of widening it;
+    this file does not, and does not pretend to.
+    """
+    return double if double is not None else (single or "")
+
+
+def _lift_piped_payloads(text):
+    """`echo "git push --force" | sh` with the payload lifted out of its quotes.
+
+    A LEFT-TO-RIGHT scan and not one pattern, and the reason is COST — measured, not feared. The
+    pattern this replaces opened with the quoted SPAN and asked for the pipe only afterwards, so
+    the engine tried to build a span at every quote character in the line and every quote that
+    never closes cost it the rest of the line. Medians of five on `bash -c "…\\"…\\""` repeated,
+    with ZERO matches found: 0.165 s at 13 KB, 0.688 s at 26 KB, 3.609 s at 52 KB — a factor of
+    ~4.2 for every doubling, which puts the reader's own bound (`GIT_READ_LIMIT`, 512 KiB) in the
+    minutes. The host kills a hook at 60 s and a killed hook is an ALLOW rather than a refusal
+    (spec II.4), so a bound that only bounds the READING does not bound anything.
+
+    This scan, same shapes and same medians: 0.001 s at 13 KB, 0.002 s at 26 KB, 0.004 s at
+    52 KB, 0.041 s at the full 512 KiB — and 0.058 s at that size on text that really IS piped,
+    i.e. where it does the substituting rather than only proving there is none.
+
+    This visits every character at most twice: a span that closes is skipped past in one step, and
+    a quote character that finds no partner is never tried again, because a later start of the
+    same quote reads the same tail. (An escape walk can step over a partner that a later start
+    would see; that can only cost a lift, never invent one, and a payload behind an unbalanced
+    quote is the shape the KNOWN HOLES list already names.)
+    """
+    result, index, length, unterminated = [], 0, len(text), set()
+    while index < length:
+        char = text[index]
+        if char not in "\"'" or char in unterminated:
+            result.append(char)
+            index += 1
+            continue
+        close = index + 1
+        while close < length and text[close] != char:
+            close += 2 if text[close] == "\\" else 1
+        if close >= length:
+            unterminated.add(char)
+            result.append(char)
+            index += 1
+            continue
+        if _PIPE_TO_SHELL_RX.match(text, close + 1) is None:
+            result.append(text[index:close + 1])       # an ordinary quoted argument, untouched
+        else:
+            if result and result[-1] == "$":
+                result.pop()                           # `$'…' | sh` — the `$` is quoting, not text
+            result.append(" " + text[index + 1:close] + " ")
+        index = close + 1
+    return "".join(result)
+
+
+# How often a payload may be a wrapper again before this reader stops unwrapping. A bound, not a
+# depth claim: the host kills a hook at 60 s and a killed hook is an ALLOW (`GIT_READ_LIMIT` exists
+# for the same reason), so an unbounded loop over attacker-chosen text is not something a
+# fail-closed gate may run. Measured after the scan above replaced the quadratic pattern, medians
+# of five at the full 512 KiB: 0.494 s for nested wrappers, 0.474 s for the escaped-quote shape
+# that is the worst case for the span pattern. Three rounds is already one more than any spelling
+# anyone has written down; five is the budget, not a depth claim.
+_UNWRAP_ROUNDS = 5
 
 
 def unwrap_shell_payload(command):
-    """Command text with `bash -lc "…"` payloads lifted out of their quotes, otherwise verbatim.
+    """Command text with `bash -lc "…"`, `… | sh` and `sh <<< "…"` payloads lifted out of quotes.
 
-    The half of `git_invocation_text` that is about SHELL SYNTAX rather than about git: a wrapper
+    The half of `git_argument_text` that is about SHELL SYNTAX rather than about git: a wrapper
     payload is code one level down, and a gate that tokenises the outer line sees one opaque
     string where the real command is. Case and inner quoting are preserved, because a gate reading
     PATHS needs both (`mv inbox/a.pdf "archive/2026/Müller GmbH.pdf"`) — only the git reader below
-    may lowercase and drop quoted prose.
+    may lowercase and drop the quote marks.
+
+    Lifted to a FIXPOINT, because a payload can be a wrapper again and `re.sub` does not rescan
+    what it substituted: `bash -c "eval 'git push --force origin main'"` runs a real push, the
+    membership test above holds for `bash -c` AND for `eval`, and one pass lifted only the outer
+    one — measured, all eight PreToolUse hooks ALLOWED it, as they did `bash -c "bash -c '…'"`,
+    `eval "eval '…'"` and `bash -c "sh -c '…'"`. The loop stops at a text that no longer changes,
+    after `_UNWRAP_ROUNDS`, or once the text has grown past what the readers will scan anyway
+    (`GIT_READ_LIMIT`, defined below and read at call time) — whichever comes first.
     """
-    return _WRAPPER_RX.sub(
-        lambda m: m.group(1) + " " + (m.group(3) if m.group(3) is not None else m.group(4) or "")
-        + " ", command or "")
+    text = command or ""
+    for _round in range(_UNWRAP_ROUNDS):
+        lifted = _WRAPPER_RX.sub(
+            lambda m: m.group(1) + " " + _lifted_payload(m.group(3), m.group(4)) + " ", text)
+        lifted = _HERESTRING_RX.sub(
+            lambda m: m.group(1) + " " + _lifted_payload(m.group(3), m.group(4)) + " ", lifted)
+        lifted = _lift_piped_payloads(lifted)
+        if lifted == text:
+            break
+        text = lifted
+        if len(text) > GIT_READ_LIMIT:
+            break
+    return text
 
 
-def git_invocation_text(command):
-    """Lowercased command text with wrapper payloads unwrapped and prose quotes stripped."""
-    return _QUOTED_RX.sub(" ", unwrap_shell_payload(command).lower())
+def join_line_continuations(text):
+    """`\\`+newline (backtick+newline in PowerShell) removed the way the SHELL removes it.
+
+    Single home for the rule, because three hooks kept their own copy and all three joined with a
+    SPACE — see `_CONTINUATION_RX` for what that costs. Exported rather than private so a reader
+    that must keep quotes and case (`gate_write_scope`) can share the rule instead of the bug.
+    """
+    return _CONTINUATION_RX.sub("", text or "")
+
+
+def _shell_normalised(command):
+    """Line continuations removed, then wrapper payloads lifted out — the shell-syntax preface the
+    git reader below shares. Continuations go first: a continuation may sit between the wrapper and
+    its payload (`bash \\<newline> -lc "git push"`), and `_WRAPPER_RX` cannot cross a raw newline."""
+    return unwrap_shell_payload(join_line_continuations(command))
+
+
+# The character that takes the special meaning away from the next one is a property of the SHELL,
+# not of the text: POSIX shells escape with a backslash, PowerShell with a backtick — and this kit
+# gates the `PowerShell` tool on the same eight PreToolUse hooks as `Bash` (`SHELL_TOOLS`). A
+# reader that knows only the POSIX spelling is blind to the other one's, and blind in BOTH
+# directions: measured as real hook processes with `tool_name: "PowerShell"`,
+# `git push --for`ce origin main` reached git as `--force` while the unconditional force-push ban
+# saw nothing, and `git pu`sh --force` matched no gate at all — one character, shorter than the
+# quoted-verb bypass this whole layer was rebuilt for. In the other direction a POSIX reading of a
+# PowerShell payload EATS characters: `C:\path\name` becomes `C:pathname`.
+#
+# The command text does not say which shell will run it, and `tool_name` is not threaded through
+# nine call sites without one of them forgetting. So the readers below produce EVERY reading an
+# ordinary shell could give the text and answer over all of them: an integrity gate that is unsure
+# which shell it is looking at must see both, because over-triggering costs a retry and silence
+# costs the rule (spec II.4 fail-closed). When the text contains neither escape character the two
+# readings are provably the same string and only one is produced.
+_ESCAPE_CHARS = ("\\", "`")
+_STOP_RX_CACHE = {}
+_WORD_RX = re.compile(r"\S+")
+# WHERE THE TEXT STOPS DETERMINING THE TOKEN — one predicate, asked as TWO questions, because they
+# are not the same question and exactly one character tells them apart.
+#
+# THE PREDICATE: after this character, what the shell finally builds is decided by something the
+# command text does not contain — the environment, the filesystem, or an unescaping this file does
+# not perform. It is derived per SHELL rather than collected per bug, and there are three of them
+# in reach (`SHELL_TOOLS` gates `Bash` and `PowerShell`; either can spawn `cmd /c`):
+#   * a POSIX shell substitutes at `$` (parameter, `$(…)`, arithmetic) and at a BACKTICK (the older
+#     command substitution), expands `{…}` (brace expansion, `${…}`) and `* ? [ ]` (pathname
+#     expansion), and escapes with a BACKSLASH.
+#   * PowerShell substitutes at `$` (`$env:X`, `$(…)`), globs with `* ? [ ]`, and escapes with the
+#     BACKTICK — a backslash is an ordinary character of a path there.
+#   * cmd substitutes `%NAME%`, substitutes `!NAME!` when delayed expansion is on (`cmd /v:on`),
+#     and escapes with `^`, which it removes from the line before it splits the line into words.
+#
+# QUESTION ONE — the VALUE of a token (`_subcommand_candidates`): is this the verb the gates ask
+# about? Every character above answers "the text does not say", and so does a BACKSLASH, in BOTH
+# readings this file produces: the POSIX one consumes it and hands back a different string than
+# bash would (`git $'\x70ush'` is `push` to bash, `x70ush` here — the escape eats exactly the `x`),
+# and the PowerShell one (`_ESCAPE_CHARS[1]`) never consumes a backslash at all, so every one of
+# them stands in the token it read. Either way the honest answer to "which git command is that" is
+# "unknown", not "not a push". Such a token is `resolved=False` and `GitInvocation.runs` then
+# answers YES to every question — measured as a full ALLOW across all eight PreToolUse hooks while
+# the literal spelling was refused by three: `git $V --force`, `git $(echo push)`, `git %VERB%`,
+# `git pus{h..h}` (a brace sequence with equal ends is ONE word, `push`), `git pus[h]` and
+# `git ?ush` (which push the moment a file named `push` sits in the directory — and the directory
+# is not in the command text), `cmd /c "git p^ush --force origin main"` and
+# `cmd /v:on /c "set V=push& git !V! --force origin main"`.
+#
+# QUESTION TWO — the WORD BOUNDARY right after the letters `git` (`_ends_word`): may the program
+# name END here? That needs a construct which can BECOME a separator or UNCOVER one. Everything
+# that substitutes or expands can: `${IFS}` is a space in every ordinary environment, `{,}` splits
+# one word into two, a glob into as many as the directory holds, `!V!` and `%V%` into whatever the
+# variable holds — `cmd /v:on /c "set ""V= "" & git!V!push --force origin main"` is a real push
+# with no space in the line at all. cmd's `^` can too — it is removed and only it, so
+# `cmd /c "git^ push --force origin main"` really runs a push (measured through the PowerShell
+# tool, which is how a `cmd /c` line reaches cmd at all: Git Bash's msys layer rewrites the `/c`
+# into a path).
+#
+# A BACKSLASH IS THE ONE THAT CANNOT, and that is the whole of the difference. bash removes it
+# TOGETHER with the character it protects, and that character then belongs to the same word, so
+# `git\ push --force origin main` is bash asking for a program named `git push` and calling no git
+# at all (measured: no git process). PowerShell and cmd keep it as an ordinary path character
+# (`cd C:\src\git\repo`). No shell turns `git` followed by a backslash into a word of its own, so
+# reading it as a possible word end bought no attack and cost the most ordinary Windows lines in
+# the repo — `cd C:\git\repo`, `cd "C:\Program Files\Git\bin"`, `robocopy C:\git\a C:\git\b /E`,
+# `Copy-Item C:\a\git\x.txt D:\b`, `$env:PATH = "C:\git\bin;" + $env:PATH` — each measured as
+# refused by three gates with no git call in them at all. Fail-closed is a rule about what is
+# UNKNOWN, and this one is known.
+# A VARIABLE REFERENCE has a FORM, and cmd's two forms are both PAIRED — `%NAME%` and, under
+# delayed expansion, `!NAME!`. Matching them by their FORM and not by their opening character is
+# not a nicety: a lone `!` is no metacharacter in cmd at all (it is one only between a pair), and
+# reading it as one cost six ordinary prose lines that hold no git call in any shell —
+# `echo "I love git!"`, `echo git!`, `echo 'git!'`, `bash -c "echo git!"`,
+# `Write-Output "migrated to git!"`, `echo "git!!"` — each measured as refused by three gates.
+#
+# WHAT STANDS BETWEEN THE DELIMITERS is the other half of the form, and spelling it `\w+` was an
+# enumeration one level below the place the pairing rule got right. cmd's reference is
+# `!NAME[:modifier]!`, and a modifier is a SUBSTRING (`:~0,4`) or a REPLACEMENT (`:a=u`) — neither
+# is `\w`. Measured in cmd.exe through the PowerShell tool, each of these hands git a real
+# `push --force origin main` and each reached NONE of the eight hooks while `!V!` was refused by
+# three:
+#     cmd /v:on /c "set V=pushXX& git !V:~0,4! --force origin main"
+#     cmd /v:on /c "set V=pash&   git !V:a=u! --force origin main"
+#     cmd /v:on /c "git !ERRORLEVEL:0=! push --force origin main"
+# So the content is a DEFINITION too — everything that is not the delimiter and not a separator —
+# and that covers the modifiers, the dynamic variables (`ERRORLEVEL`, `CD`, `RANDOM`) and whatever
+# cmd adds next, instead of the next spelling being the next hole.
+#
+# The paired form is what keeps this cheap: measured over 14 prose lines, including the two the
+# form makes tempting to guess about, NONE is refused. `echo "git! and git!"` does open a possible
+# word BREAK — inside a quoted span the whitespace is not a separator, so `! and git!` is a
+# reference by this definition — but the token it hands the verb question is `! and git!` with its
+# spaces intact, which no reference form matches, so the verb resolves to something no gate asks
+# about and the line stands.
+#
+# The CARET is the counter-case that shows this is a rule about FORM and not a preference for
+# pairs: cmd's escape really does stand alone, so it stays a single character — and its price is
+# one honest false alarm, `echo "use git^ for the first parent"`.
+_UNDETERMINED_CHARS = "$`{}*?[]^"      # both questions: can produce text this line does not hold
+_VALUE_ONLY_CHARS = "\\"               # the VALUE question only — see the paragraph above
+_CMD_VARIABLE_RX = r"%[^%\s]+%|![^!\s]+!"
+_UNDETERMINED_BREAK_RX = re.compile(
+    "[%s]|%s" % (re.escape(_UNDETERMINED_CHARS), _CMD_VARIABLE_RX))
+_UNDETERMINED_VALUE_RX = re.compile(
+    "[%s]|%s" % (re.escape(_UNDETERMINED_CHARS + _VALUE_ONLY_CHARS), _CMD_VARIABLE_RX))
+
+
+def _stop_rx(escape):
+    """The characters `_argument_scan` has to look at ONE AT A TIME, for a given escape char.
+
+    Everything between two of them is copied in one C-level slice with one quoting state, which is
+    what keeps the scan linear and cheap: the old per-character Python loop cost 6.75 s on a single
+    16 MiB command and `gate_git` runs the scan five times."""
+    rx = _STOP_RX_CACHE.get(escape)
+    if rx is None:
+        rx = re.compile("[%s]" % re.escape(escape + "\"'#$`()<>"))
+        _STOP_RX_CACHE[escape] = rx
+    return rx
+
+
+_REDIRECT_TAIL_CACHE = {}
+
+
+def _redirect_tail_rx(escape):
+    """The rest of a REDIRECTION once its first character has been seen, for a given escape char.
+
+    Namely: the second operator character where there is one (`>>`, `<<`, `<&`, `>&`, `<>`, `>|`),
+    the optional space, and then the TARGET — which is a WORD by the same definition as any other,
+    so an escaped character and a quoted span belong to it (`> "C:\\My Logs\\out.txt"`,
+    `>out\\ file`). All of it is consumed and none of it reaches the program, which is what makes the
+    operator a word boundary rather than a character inside the word beside it. It stops at the next
+    metacharacter, so `>out && git push` keeps its `&&` and the second command with it.
+    """
+    rx = _REDIRECT_TAIL_CACHE.get(escape)
+    if rx is None:
+        rx = re.compile("[<>&|]?[ \t]*(?:%s.|\"[^\"]*\"|'[^']*'|[^\\s&|;()<>\"'`])*"
+                        % re.escape(escape))
+        _REDIRECT_TAIL_CACHE[escape] = rx
+    return rx
+
+
+def _terminates_word(char, literal):
+    """True when `char` ends a shell WORD, so whatever follows it begins a new one.
+
+    Asked of the last character emitted into the word view, and it is two facts rather than one:
+    whitespace ends a word, and OUTSIDE a quoted span so does a command separator (`_SYNTAX_CHARS`
+    — `& | ;` and the newline; the `#` in that set never reaches a run, it is a stop character).
+    Asking only `.isspace()` was measurably wrong in the direction of noise: `;` is not a stop
+    character, so it arrives inside a run, `';'.isspace()` is False, and `git status;# git push
+    --force origin main` — which a real bash runs as `git status` and nothing else — was read as
+    carrying the push and refused by three gates. Inside a quoted span a separator is data, which
+    is why `literal` is a parameter and not something this can infer from the character.
+    """
+    return char.isspace() or (not literal and char in _SYNTAX_CHARS)
+
+
+def _reverse_chars(buffer):
+    """The characters already emitted into one of the two views, newest first, across chunks."""
+    for chunk in reversed(buffer):
+        for char in reversed(chunk):
+            yield char
+
+
+def _digits_open_a_word(words, count):
+    """True when the last `count` characters of the WORD VIEW are digits that begin a word.
+
+    The other half of the descriptor rule, and it has to be asked on this view rather than on the
+    text: an ESCAPED space is still a space in the text and is `\\x00` here, so `echo a\\ 2>x`
+    hands the program the single word `a 2` and its `2` is no descriptor — the text-side questions
+    alone answered yes and silently dropped a character out of an argument. They are kept beside it
+    because they carry the facts this view has thrown away: a quote MARK is gone from the word view,
+    so `git push "2">/dev/null` looks word-initial HERE while on the text the digit scan collects
+    nothing at all (see `_drop_io_number` for which clause decides which line). Both facts are
+    needed and neither view holds both.
+    """
+    seen = 0
+    for char in _reverse_chars(words):
+        if seen == count:
+            return char.isspace()
+        if char not in "0123456789":
+            return False
+        seen += 1
+    return seen == count
+
+
+def _drop_io_number(text, operator, kept, words):
+    """Remove the file DESCRIPTOR in front of a redirection from what has been kept so far.
+
+    `2>&1` is one redirection, not the argument `2` — the digits belong to the operator. Dropping
+    them matters in the SAME direction the operator itself does: `git push origin main >/dev/null
+    2>&1` is an ordinary push, and reading `2` as a third positional token made `gate_push_token`
+    refuse it as "more than one refspec", which teaches people to write the command in a way the
+    gate cannot read.
+
+    The rule is the shell's own (POSIX XCU 2.10.2): the digits count as a descriptor only when they
+    are UNQUOTED, UNESCAPED and the entire word in front of the operator. Three clauses answer
+    that, and which one answers which case matters, because each is the only guard for its own:
+
+      * QUOTED — decided by the digit scan finding nothing (`not count`). The scan runs on `text`,
+        which still carries the quote MARKS (they are removed only from the two output views), so
+        in `git push "2">/dev/null` the character before the operator is a `"`, no digit is
+        collected, and nothing is dropped. The neighbour test below never runs on that line.
+      * ESCAPED, or the tail of a longer word — decided by the NEIGHBOUR test: digits preceded by
+        anything that is not a separator are part of a word, and a word is an argument.
+        `git push2>/dev/null` hands git `push2`, and `git push \\2>/dev/null` hands it the argument
+        `2` (bash: the escape makes `\\2` an ordinary word, so the operator has no descriptor).
+        This clause is the ONLY thing that keeps that `2`, and removing it left all 81 selected
+        tests green until the `\\2>` line was written down.
+      * THE ENTIRE WORD — decided by `_digits_open_a_word` on the word view, which is the only
+        view that knows an escaped space is not a break (`git push a\\ 2>/dev/null`).
+    """
+    start = operator
+    # ASCII digits by name, not `str.isdigit()`: that also answers yes to `٢` and `²`, which no
+    # shell reads as a descriptor — a word character removed from a verb the gates then mis-read
+    while start and text[start - 1] in "0123456789":
+        start -= 1
+    count = operator - start
+    # no digits at all in the TEXT (a quote mark stands there), or an escape/word character in
+    # front of them: either way these digits are not the operator's — see the docstring
+    if not count or (start and text[start - 1] not in " \t\n\r&|;()<>"):
+        return
+    if not _digits_open_a_word(words, count):
+        return
+    for buffer in (kept, words):
+        remaining = count
+        while remaining and buffer:
+            chunk = buffer.pop()
+            if len(chunk) > remaining:
+                buffer.append(chunk[:-remaining])
+                break
+            remaining -= len(chunk)
+
+
+def _argument_scan(command, lower=True, escape="\\"):
+    """(text, words) — the normalised command text, plus a parallel WORD VIEW of the same length.
+
+    THE ONE VIEW every git reader works on — "what did the shell actually hand to git". The quote
+    MARKS are gone and the quoted CONTENT stays, because quoting changes how the shell splits
+    words, not what the command receives: `git merge "feat/PR-0001-x"` names the same ref as the
+    bare spelling, and `git "push"`, `git pu''sh` and `git pu\\<newline>sh` are all the same
+    invocation of push. There USED to be a second reader that DELETED quoted spans as prose before
+    deciding whether a line invokes git at all, and deleting the span deleted the VERB with it:
+    measured in a scaffolded project, `git "push" --force origin main` matched none of the eight
+    PreToolUse(Bash) hooks — the force-push ban, the pipeline, the coverage and the push-token gate
+    were all off, with two quote characters.
+
+    A quote MARK is removed with nothing in its place, exactly as the shell removes it, so
+    `pu''sh` closes back up into one word. Replacing it with a space instead re-opens the same
+    hole from the far side, one spelling further along.
+
+    What that deleted reader was RIGHT about survives as the WORD VIEW instead of as a deletion: a
+    commit message TALKING about a push is text and must not read as one. The distinction is not
+    lexical and not positional either — it is about WORDS. Whitespace inside a quoted span does not
+    break a word, so `-m "docs: git push blocked"` is ONE argument that happens to contain the
+    letters; the word view spells that whitespace `\\x00`, which is not whitespace to `_WORD_RX`,
+    so the whole span comes back as a single token and `git_invocations` can see that the `git` in
+    it does not END a word. A COMMAND SUBSTITUTION is the exception that proves the rule: `"$(git
+    push)"` sits inside quotes and still runs, so its spaces are real separators there.
+
+    Five more decisions are made HERE rather than by the caller, because each needs the quoting
+    state this single pass already carries — and they are five because the metacharacter set is
+    closed (`_SYNTAX_CHARS` above), not because five cases have come up so far:
+      * a `#` opens a comment only OUTSIDE quotes AND only at the start of a word. With the marks
+        gone, a `#` in a commit message would look like one and would take the rest of the line —
+        including the real ref — with it (`git merge -m "fix #3" feat/PR-0001-x`). "Start of a
+        word" is a question for the WORD VIEW and was asked on the raw text, where an escaped space
+        still looks like a break: `echo a\\ # ; git push --force origin main` prints `a #` and then
+        PUSHES in a real bash, while this scan cut the line at the `#` and all eight PreToolUse
+        hooks stood down — a class HEAD still caught. `word_start` therefore carries the answer
+        forward per branch instead of being re-derived from a view that cannot hold it (a quote
+        MARK emits nothing and still opens a word, so the emitted characters alone cannot say it
+        either). What ENDS a word is `_terminates_word`, not `.isspace()`: a command separator ends
+        one too, and asking only about whitespace made `git status;# git push --force origin main`
+        — one `git status` and a comment, in a real bash — read as carrying the push.
+      * the command separators are syntax outside quotes and data inside them, so inside they are
+        neutralised; otherwise a `|` in a message would split off the very invocation it belongs to.
+      * PARENTHESES are syntax outside quotes: they open and close a command context, they are not
+        part of any word. Leaving the closing one attached spelled the verb of `$(git push)` as
+        `push)`, which is no subcommand at all — the fail-OPEN reading of a command that really
+        pushes. The `$(` is kept intact, because `gate_git` reads it as the marker of a ref the
+        text cannot resolve.
+      * a REDIRECTION is syntax outside quotes, and it is the one metacharacter that swallows the
+        word AFTER it as well (`_redirect_tail_rx`, `_drop_io_number`). Leaving `>` attached was
+        the same fail-OPEN shape one character further along: `git push>/dev/null --force` had the
+        verb `push>/dev/null` and every git gate stood down, while `git push origin main >log`
+        handed `gate_push_token` a third positional token and it refused an ordinary push.
+      * `$'…'` and `$"…"` are QUOTING, not expansion. Read as an expansion, `git $'push' --force`
+        had the subcommand `$push` and every gate stood down; the `$` is dropped and the ordinary
+        quote path takes it from there. That path does NOT decode ANSI-C escapes — this file has
+        no `\\x70`→`p` decoder and must not read as if it had (the previous wording, "ANSI-C
+        quoting is deterministic", explained why one COULD decode and was then cited as proof that
+        it DID: `git $'\\x70ush' --force origin main` pushes for real and reached no gate). What
+        makes it safe anyway is that a backslash reaches the finished token in at least one of the
+        two readings — always in the PowerShell one, which consumes no backslash at all — where
+        `_UNDETERMINED_VALUE_RX` reads it as a verb the text does not fix. In the POSIX reading the
+        same line resolves to the harmless-looking `x70ush`; one reading answering "unknown" is
+        what the gates decide on (`GitInvocation.runs` over all of them).
+    CASE is the caller's decision: lowercasing is right for reading verbs and flags and wrong for
+    reading a ref, because a branch is case-sensitive and `gate_push_token` binds its approval
+    token to the branch NAME. That caller passes `lower=False`; the subcommand is lowercased by
+    `git_invocations` itself, so matching a verb stays case-insensitive either way.
+    """
+    text = _shell_normalised(command)
+    if lower:
+        text = text.lower()
+    stop, length = _stop_rx(escape), len(text)
+    kept, words = [], []
+    quote, substitution, index = "", 0, 0
+    # "the next character would begin a WORD" — see the `#` bullet above. Carried per branch
+    # because no view holds it: a quote mark emits nothing into either one and still opens a word.
+    word_start = True
+    while index < length:
+        match = stop.search(text, index)
+        edge = length if match is None else match.start()
+        if edge > index:
+            run = text[index:edge]
+            literal_run = bool(quote) and not substitution
+            if literal_run:
+                kept.append(run.translate(_SYNTAX_TO_SPACE))
+                words.append(run.translate(_QUOTED_WHITESPACE_TO_FILLER))
+            else:
+                kept.append(run)
+                words.append(run)
+            word_start = _terminates_word(words[-1][-1], literal_run)
+            index = edge
+        if match is None:
+            break
+        char = text[index]
+        index += 1
+        literal = bool(quote) and not substitution
+        following = text[index:index + 1]
+        opened = word_start
+        word_start = False
+        if char == escape and index < length and quote != "'":
+            # an ESCAPED character is data, never syntax (single quotes escape nothing in sh), and
+            # an escaped space does not break a word either
+            char = text[index]
+            index += 1
+            kept.append(" " if char in _SYNTAX_CHARS else char)
+            words.append("\x00" if char.isspace() else char)
+        elif quote and char == quote:
+            quote = ""                # the MARK is not a word break — `pu''sh` is one word
+        elif not quote and char in "\"'":
+            quote = char              # ...but it does OPEN one: `''#x` is the word `#x`, not a
+                                      # comment, which is exactly what no emitted view can say
+        elif char == "$" and not quote and following in ("'", '"'):
+            continue                  # `$'…'`/`$"…"` — the quote does the work, the `$` is noise
+        elif char == "$" and quote != "'" and following == "(":
+            # `$(` opens a command context the shell WILL parse, double quotes or not
+            index += 1
+            substitution += 1
+            kept.append("$(")
+            words.append("$(")
+            word_start = True         # a command context starts a command, hence a word
+        elif char == "`" and quote != "'":
+            substitution = 0 if substitution else 1
+            kept.append(char)
+            words.append(char)
+            word_start = True
+        elif char in "()" and not literal:
+            if char == ")" and substitution:
+                substitution -= 1
+            kept.append(" ")
+            words.append(" ")
+            word_start = True
+        elif char in "<>" and not literal:
+            # a REDIRECTION: the operator, its descriptor and its target are the shell's, never the
+            # program's — so the word before it ends here and nothing of the redirection is kept
+            _drop_io_number(text, index - 1, kept, words)
+            index = _redirect_tail_rx(escape).match(text, index).end()
+            kept.append(" ")
+            words.append(" ")
+            word_start = True
+        elif char == "#" and not quote and opened:
+            end = text.find("\n", index)
+            index = length if end < 0 else end
+            word_start = True         # the newline that ends the comment is a break like any other
+        else:
+            kept.append(" " if literal and char in _SYNTAX_CHARS else char)
+            words.append("\x00" if literal and char.isspace() else char)
+    return "".join(kept), "".join(words)
+
+
+@functools.lru_cache(maxsize=2)
+def _scan_views(command, lower=True):
+    """Every reading of `command` an ordinary shell could produce — see `_ESCAPE_CHARS`.
+
+    Memoised because `gate_git` alone asks for the same view five times per call and the scan is
+    the expensive part of a hook that has a 60 s budget it cannot detect being killed at."""
+    views = [_argument_scan(command, lower, _ESCAPE_CHARS[0])]
+    if any(char in (command or "") for char in _ESCAPE_CHARS):
+        other = _argument_scan(command, lower, _ESCAPE_CHARS[1])
+        if other[0] != views[0][0]:
+            views.append(other)
+    return tuple(views)
+
+
+def git_argument_text(command, lower=True):
+    """The normalised text of `_argument_scan`, for the callers that read WORDS out of a command
+    (refs, paths, container names) and need not know which of them the shell would parse as code.
+
+    ONE READING PER LINE, because there is more than one (`_ESCAPE_CHARS`). Every caller of this
+    searches the text for something it must not miss, and the honest answer to "does this command
+    contain X" is yes when ANY shell reads it that way. A newline is where every one of those
+    callers already stops, so the readings cannot bleed into each other.
+    """
+    if len(command or "") > GIT_READ_LIMIT:
+        return (command or "").lower() if lower else (command or "")
+    return "\n".join(view[0] for view in _scan_views(command, lower))
+
+
+# git's OWN options — the ones that may stand between `git` and its subcommand. The subcommand
+# reader needs to know one thing about each: whether it takes its value as a SEPARATE token,
+# because that token is the value and can never be the subcommand (`git -C /repo push` runs push,
+# not `/repo`). The `--option=value` spelling carries its own value and needs no entry, and `-C`
+# folds onto `-c` under lowercasing — harmless, both take a value.
+_GIT_VALUE_OPTIONS = frozenset((
+    "-c", "-C", "--git-dir", "--work-tree", "--namespace", "--exec-path", "--config-env",
+    "--attr-source", "--super-prefix"))
+# ...and the ones that take NO value, so the next token really is the verb. Both lists together are
+# what makes an option UNKNOWN mean something: an option in neither is one whose value behaviour
+# this reader does not know, and then the following token is ambiguous — see
+# `_subcommand_candidates`. Enumerating only the value-taking half is what let
+# `git --attr-source HEAD push --force` read its verb as `head` and match no gate at all: every
+# option git ships next is a new hole when a list decides applicability by itself.
+_GIT_FLAG_OPTIONS = frozenset((
+    "-v", "--version", "-h", "--help", "--html-path", "--man-path", "--info-path",
+    "-p", "--paginate", "-P", "--no-pager", "--no-replace-objects", "--no-lazy-fetch",
+    "--no-optional-locks", "--no-advice", "--bare", "--literal-pathspecs", "--glob-pathspecs",
+    "--noglob-pathspecs", "--no-glob-pathspecs", "--icase-pathspecs", "--no-icase-pathspecs"))
+# The word `git` as the shell sees it: not a piece of a longer word (`gitk`, `git-lfs`, `foo.git`),
+# but reachable through a path (`/usr/bin/git`, `.\git.exe`).
+_GIT_WORD_RX = re.compile(r"(?<![\w.-])git(?:\.exe)?(?![\w.-])", re.IGNORECASE)
+_SEGMENT_SPLIT_RX = re.compile(r"[&|;\n]")
+class _UnresolvedVerb(object):
+    """The verb of an invocation the reader could not resolve — an OBJECT, not a string.
+
+    It used to be the string `"<unresolved>"`, justified by a claim about text ("no shell word
+    comes out of `_argument_scan` looking like this"). A justification of that shape is worth
+    exactly as much as the reader's completeness on the day it was written, and it was already
+    false: `git '<unresolved>'` hands git that very word, quotes and all removed, and it came back
+    as a RESOLVED subcommand equal to the sentinel. An identity no text can spell needs no such
+    claim — `_read_invocations` only ever builds verbs out of slices of the command, and a slice is
+    never this object. Equality is identity, so no verb read out of any command can ever match it.
+    """
+
+    __slots__ = ()
+
+    def __eq__(self, other):
+        return other is self
+
+    def __ne__(self, other):
+        return other is not self
+
+    def __hash__(self):
+        return id(self)         # hashable: `git_subcommands` puts verbs in a set
+
+    def __repr__(self):
+        return "<unresolved>"
+
+    def __str__(self):
+        return "<unresolved>"
+
+
+UNRESOLVED_SUBCOMMAND = _UnresolvedVerb()
+# A command the readers will not finish reading in time is one they must not read as harmless.
+# `STDIN_LIMIT` bounds what a hook accepts at all (16 MiB) and answers a different question: an
+# 8 MiB Write payload is ordinary, an 8 MiB shell COMMAND is not, and the git reading is per-word
+# work a line that size makes unaffordable. Measured as real hook processes before this bound and
+# before the quadratic tail-copy below was removed: 120 KB of `git ` words took `gate_git` 125.7 s
+# and `gate_push_token` 59.6 s, i.e. past the host's 60 s kill — and a killed hook is an ALLOW, not
+# a refusal (spec II.4; `gate_ledger_valid.TOTAL_BUDGET` exists for the same reason). Over the
+# bound the answer is ONE unresolved invocation: "this could be any git command", which every gate
+# reads as applicable.
+GIT_READ_LIMIT = 512 * 1024
+
+
+class GitInvocation(object):
+    """One `git …` the shell will run: which VERB, with which ARGUMENTS, inside which segment."""
+
+    __slots__ = ("subcommand", "resolved", "segment", "_words", "_start")
+
+    def __init__(self, subcommand, resolved, segment, words, start):
+        self.subcommand = subcommand
+        self.resolved = resolved
+        self.segment = segment
+        self._words = words
+        self._start = start
+
+    @property
+    def arguments(self):
+        """The tokens after the subcommand, to the end of the segment.
+
+        Built ON DEMAND. Slicing every invocation's tail eagerly is what made the reader
+        quadratic: one segment may hold thousands of `git` words and each was handed its own copy
+        of the rest of the line — see `GIT_READ_LIMIT` for what that measured."""
+        return [self.segment[match.start():match.end()]
+                for match in _WORD_RX.finditer(self._words, self._start)]
+
+    def runs(self, *names):
+        """True when this invocation runs one of `names`, INCLUDING when its verb is unresolved.
+
+        THE fail-closed half of the definition, and the reason callers must ask this instead of
+        comparing `subcommand` themselves. A verb the shell builds at run time (`git $V --force`,
+        `git $(echo push)`, ``git `echo push` ``) is not "some other subcommand" — it is an unknown
+        one, and every one of those measured as a full ALLOW across all eight PreToolUse hooks
+        while `git push --force` was refused by three. "Could be any of them" is the only honest
+        reading, and for an unconditional ban it is the only safe one.
+        """
+        return not self.resolved or self.subcommand in names
+
+    def __repr__(self):
+        return "GitInvocation(%r, resolved=%r)" % (self.subcommand, self.resolved)
+
+
+def _ends_word(word_view, position):
+    """True when the word before `position` may END there — on the WORD VIEW, fail-closed.
+
+    Two answers in one, and the second is the reason this is a function rather than an
+    `.isspace()`: whitespace in the word view is a word break the text HAS (quoted and escaped
+    whitespace is spelled `\\x00` there, so it is not one), and a character that can become or
+    uncover a separator is a word break the text does not DECIDE — `_UNDETERMINED_BREAK_RX`, and
+    see its definition for why a backslash is in the other question and not in this one. Reading
+    "unknown" as "no break" is what let `git${IFS}push --force origin main` — a real push in a real
+    bash — reach not one of the eight PreToolUse hooks, while HEAD's cruder spelling-based reader
+    still caught it.
+
+    The cost is confined AND it is carried rather than merely accepted: the `git` gets a verb token
+    that begins with the same character, so `_UNDETERMINED_VALUE_RX` calls it unresolved — and
+    every refusal that follows carries `UNRESOLVED_VERB_NOTE`, which is the sentence that says to
+    spell the subcommand literally. `stop()` appends it, so no gate has to remember to; without it
+    the role read the gate's own reason ("no QA Evidence in this project") and had no way to learn
+    that the gate applied because the verb was unreadable.
+    """
+    return (word_view[position].isspace()
+            or _UNDETERMINED_BREAK_RX.match(word_view, position) is not None)
+
+
+def _subcommand_candidates(segment, words, position):
+    """Every token that could be the subcommand of the git word ending at `position`, as
+    (verb, argument offset, resolved).
+
+    Normally exactly one: the first token that is neither one of git's own options nor the value of
+    one. TWO when an option this reader does not know stands in front of it — such an option may or
+    may not take the following token as its value, so which of the two is the verb cannot be
+    decided here, and both are returned rather than guessed (`git --attr-source HEAD push --force`
+    really pushes, and reading only `head` switched every gate off).
+    """
+    matches = _WORD_RX.finditer(words, position)
+    ambiguous, found = False, []
+    for match in matches:
+        token = segment[match.start():match.end()]
+        low = token.lower()
+        if low in _GIT_VALUE_OPTIONS:
+            next(matches, None)             # this option's VALUE, never the subcommand
+        elif token.startswith("-"):
+            if "=" not in token and low not in _GIT_FLAG_OPTIONS:
+                ambiguous = True            # unknown option: the next token may be its value
+        else:
+            found.append((low, match.end(), _UNDETERMINED_VALUE_RX.search(token) is None))
+            if not ambiguous or len(found) == 2:
+                break
+    return found
+
+
+def git_invocations(command, lower=True):
+    """Every git invocation in a RAW command, as `GitInvocation`s.
+
+    THE DEFINITION every git gate decides applicability on, and it is about two things only.
+
+    WHICH WORD IS THE VERB. What makes a command a push is not that the letters `push` occur
+    somewhere after the word `git` — it is that `push` is the SUBCOMMAND: the first token after
+    `git` that is neither one of git's own options nor the value of one. So `git "push" --force`,
+    `git pu''sh --force`, `git pu\\<newline>sh --force`, `git $'push' --force` and
+    `git -c user.name=x push --force` are one and the same push, while `git commit -m "merge
+    later"` is a commit, because `merge` is not the first non-option token. That last case is the
+    false positive the old prose-stripping existed to prevent, and it survives here WITHOUT
+    throwing the message away. A verb the shell only builds at run time is UNRESOLVED and matches
+    every question (`GitInvocation.runs`).
+
+    WHICH `git` IS A COMMAND. A command name is a WORD, and a word is what the shell's own word
+    splitting produces — which quoting changes and quote marks do not. So a `git` counts exactly
+    when it ENDS a shell word: `"git" push`, `sudo "git" push`, `sudo "g"it push` and
+    `/usr/bin/git push` are all the program, because in every one of them the word is `git` (or a
+    path ending in it), while `git commit -m "docs: git push blocked by the gate"` invokes commit
+    and nothing else, because the whole quoted span is ONE word and the `git` sits in its middle
+    (real incident — that diagnosis commit re-ran the whole RED pipeline). This replaced a rule
+    that asked whether a quoted `git` was the segment's first token, and that rule was the same
+    defect one word further along: `sudo "git" push --force origin main` was measured ALLOW on all
+    eight PreToolUse hooks, as were `env`, `nohup`, `command` and `timeout` in front of it. What a
+    command IS cannot depend on what happens to stand before it. Command substitution is not
+    quoting even inside quotes (`_argument_scan`), and a wrapper payload has already been lifted
+    out of its quotes (`unwrap_shell_payload`), so `bash -lc "git push"`, `eval "git push"` and
+    `echo "git push" | sh` arrive as the code they are.
+
+    BOTH halves default the SAME way when the text runs out of answers, and that default is the
+    point of the whole layer. The reader does not ask "is this a push" and shrug; it asks "does
+    this line name git, and does the text fix which command it runs" — and a no to the second
+    question is a yes to every gate (`GitInvocation.runs`, `_UNDETERMINED_VALUE_RX`, `_ends_word`,
+    `GIT_READ_LIMIT`). Four rounds of review each found the next spelling that read as a resolved,
+    harmless, unknown-to-every-gate verb — `${IFS}`, `pus{h..h}`, `$'\\x70ush'`, `pus[h]`, then
+    cmd's `p^ush` and `!V!` — because the reader answered no on unsureness, which is fail-OPEN in a
+    layer spec II.4 requires to be fail-closed. It answers yes now, and the class is closed by the
+    DEFINITION — one predicate derived per shell — rather than by having listed those six.
+
+    ACCEPTED OVER-TRIGGER, in the fail-closed direction, and it is the price of that default. THE
+    RULE, not a list of the lines it happens to catch today: a line reads as an invocation when a
+    member of `_UNDETERMINED_BREAK_RX` stands immediately after the letters `git`, because there
+    the text says neither where that word ends nor what the next one is. Everything that fires
+    without running git has exactly that shape — an expansion (`$`, a backtick), a brace, a glob
+    or bracket (`* ? [ ]`), cmd's caret, or a variable reference in either cmd form.
+
+    THE SIZE of that price, measured rather than estimated: over a corpus of 121 ordinary
+    developer lines — Windows paths, globs, prose about git, sixty-odd git calls whose verb IS
+    fixed, comments and separators, wrappers whose payload is not a git call — FIFTEEN fire, and
+    every one of them was cross-checked in a real bash AND a real PowerShell as starting no git
+    process. Representative rather than exhaustive: `ls git*`, `echo git$VERSION`,
+    `grep -rn "git$" .`, `cat git{a,b}.txt`, `echo git%USERNAME%`,
+    `echo "use git^ for the first parent"`. A corpus twice this size would find more of the same
+    class and none of another; that is what makes it a rule and not a list.
+
+    The CARET is the one member that is a single character rather than a closed construct, and
+    that is a fact about cmd (see `_UNDETERMINED_CHARS`), not a lapse: cmd really does write its
+    escape alone, so a `^` after `git` really may be a word end. Its paired neighbours cost
+    nothing — reading a lone `!` as a metacharacter used to refuse six lines of ordinary prose
+    (`echo "I love git!"` and its kind); matched by its FORM, they are silent and every cmd
+    attack still answers yes.
+
+    WHERE THAT FORM HAS ITS EDGE, because a rule is only honest with its edge written down:
+    `echo "git!x!"` and `echo "git!push!"` DO fire (verb tokens `!x!` and `!push!`, unresolved).
+    Two exclamation marks with no space between them are a reference by the definition, and that
+    is the right answer rather than a lapse — the same text in `cmd /v:on` really would expand.
+    They sit outside the 121-line corpus because nobody writes them, but they are the shape of
+    prose that would be refused, and stating that is cheaper than the next round rediscovering it.
+
+    By the same rule a git call whose verb is written that way fires too (`git $VERB`,
+    `git pus{h..h}`, `cmd /c "git p^ush"`, `cmd /v:on /c "git !V:~0,4!"`). Every one of those
+    costs one command rewritten with the subcommand spelled out, which is exactly what the refusal
+    now says to do (`UNRESOLVED_VERB_NOTE`), while the other direction costs the rule.
+
+    A BACKSLASH is deliberately NOT in that shape: it can make a token's VALUE undetermined and it
+    can never end the word `git` (`_UNDETERMINED_BREAK_RX`). Asked at the boundary too, it added
+    six lines that hold no git call at all — `cd C:\\git\\repo`, `robocopy C:\\git\\a C:\\git\\b /E`,
+    `$env:PATH = "C:\\git\\bin;" + $env:PATH` and the like — and those are gone.
+
+    And narrowly the VERB in the other direction as well: `ls $HOME`, `git commit -m "$MSG"`,
+    `git log --format=%H` and `git show HEAD^1:file.txt` are untouched, because an expansion in an
+    ARGUMENT leaves the subcommand fixed.
+
+    It takes the RAW command and normalises internally on purpose: a split between "normalise" and
+    "read" is exactly the seam at which a caller reached for the wrong view and disarmed its gate.
+
+    The SEGMENT (`&`/`|`/`;`/newline-separated) bounds the arguments — `git push && echo x` hands
+    `echo x` to nothing — and is returned alongside them because a caller that reads REFS out of
+    the command needs exactly the same boundary (`gate_git.target_items`).
+    """
+    if len(command or "") > GIT_READ_LIMIT:
+        return [GitInvocation(UNRESOLVED_SUBCOMMAND, False, "", "", 0)]
+    invocations = []
+    for text, words in _scan_views(command, lower):
+        _read_invocations(text, words, invocations)
+    return invocations
+
+
+def _read_invocations(text, words, out):
+    """One reading of the command, appended to `out`. Linear in the length of the text:
+    `_ends_word` answers "does this `git` end a word" from one position in the word view, and the
+    tokens after it are scanned lazily from that offset instead of being sliced out per match."""
+    start = 0
+    for boundary in itertools.chain(_SEGMENT_SPLIT_RX.finditer(text), (None,)):
+        end = len(text) if boundary is None else boundary.start()
+        segment, word_view = text[start:end], words[start:end]
+        limit = len(segment)
+        for match in _GIT_WORD_RX.finditer(segment):
+            tail = match.end()
+            if tail < limit and not _ends_word(word_view, tail):
+                continue                    # inside a longer word, so it is text, not the program
+            for verb, position, resolved in _subcommand_candidates(segment, word_view, tail):
+                out.append(GitInvocation(verb, resolved, segment, word_view, position))
+        if boundary is None:
+            break
+        start = boundary.end()
+
+
+def git_subcommands(command):
+    """The set of git subcommands a RAW command invokes, for callers that need nothing else.
+
+    An invocation whose verb could not be resolved contributes `UNRESOLVED_SUBCOMMAND`; a caller
+    that tests membership against its own set must therefore use `GitInvocation.runs` instead of
+    this, and every gate does."""
+    return {invocation.subcommand for invocation in git_invocations(command)}
 
 
 def wants_push_or_merge(command):
     """True when the command really invokes `git push`/`git merge` (not merely mentions it)."""
-    return re.search(r"\bgit\b[^&|;\n]*\b(push|merge)\b", git_invocation_text(command)) is not None
+    return any(invocation.runs("push", "merge") for invocation in git_invocations(command))
+
+
+# The sentence a refusal owes a command whose git VERB the text does not fix. An unresolvable verb
+# is a DIFFERENT reason to refuse than "no QA Evidence" or "no quality pipeline", and until this
+# existed no gate said so: `_ends_word` promised in a comment that "the gate refuses with 'spell
+# the subcommand literally' rather than silently standing down", and the gates measurably said
+# "no quality pipeline found (scripts/quality.py)" and nothing else — leaving the role to guess
+# why a line it did not think was a push had reached a push gate at all. That is a refusal that
+# cannot be complied with, which is the failure mode this layer is least allowed to have.
+UNRESOLVED_VERB_NOTE = (
+    "NOTE: a `git` call in this command has a SUBCOMMAND the text does not fix — an expansion, a "
+    "glob, a brace, an escape or a delayed variable stands where the verb belongs (`git $V`, "
+    "`git pus{h..h}`, `git${IFS}push`, `cmd /c \"git p^ush\"`). This gate does not run the shell, "
+    "so it reads that as \"could be any git command\", the guarded ones included, and it applies "
+    "whether or not you meant one.\n"
+    "Remedy: spell the subcommand literally (`git push origin main`) and the gate judges the call "
+    "you actually make.\n")
+
+
+def unresolved_verb_note(command):
+    """`UNRESOLVED_VERB_NOTE` when `command` holds a git call whose verb the text does not fix.
+
+    Asked of `git_invocations`, i.e. of the reader that actually decided it — a second rule here
+    would be a second answer to the same question, which is how the six hook-local copies of the
+    push detection drifted apart in the first place.
+
+    Silent over `GIT_READ_LIMIT`: there every verb is unresolved (`git_invocations` says so), but
+    the reason is the length of the line and not how the verb is spelled, so telling that caller to
+    spell the subcommand out would be advice that cannot work.
+    """
+    if not command or len(command) > GIT_READ_LIMIT:
+        return ""
+    if any(not invocation.resolved for invocation in git_invocations(command)):
+        return UNRESOLVED_VERB_NOTE
+    return ""
 
 
 def run_captured(cmd, cwd=None, timeout=60, **kw):
@@ -228,7 +1322,14 @@ def stop(message, event):
     Codex PostToolUse/SubagentStop consume `decision: block` + `reason`. Claude uses exit 2 with
     stderr for these events. PreToolUse guards should keep using exit 2 directly; current Codex
     builds support that contract and include `agent_id` for subagent tool calls.
+
+    THE ONE FUNNEL every refusal goes through, which is why `UNRESOLVED_VERB_NOTE` is appended
+    HERE and not by each gate: the note is about the READING this file did, the command it is read
+    off is the one `load()` just parsed, and eight gates each remembering to append it is eight
+    chances to forget. A gate whose payload carries no command (a Write, an Agent spawn) gets
+    nothing appended, because there is no git call to be unsure about.
     """
+    message += unresolved_verb_note(last_command())
     if (os.environ.get("TEAM_KIT_PROVIDER", "").lower() == "codex"
             and event in ("PostToolUse", "SubagentStop")):
         sys.stdout.write(json.dumps({"decision": "block", "reason": message}) + "\n")

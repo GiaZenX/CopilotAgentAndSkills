@@ -44,6 +44,75 @@ class SchemaError(ValueError):
         )
 
 
+# What an item id looks like when a SCHEMA declares one: the type (or an alternation of types)
+# followed by the four-digit number, with the anchors and the group parentheses a regex needs.
+# `backlog_types._ID_RE` is the same convention read off a VALUE; this reads it off a PATTERN, and
+# the two cannot be one function because the pattern is the description and the value is the thing.
+_ID_PATTERN_RX = re.compile(r"\^?\(?([A-Z]{2,4}(?:\|[A-Z]{2,4})*)\)?-\\d\{4,\}\$?")
+
+
+def _declared_item_types(spec: dict) -> frozenset:
+    """The item types a field's declared pattern accepts, empty when it accepts no id at all.
+
+    Read off `pattern` (scalar fields) and `item_pattern` (list fields) -- the same two keys
+    `_check_field` enforces, so a field this answers "names an item" about is one the validator
+    really holds to an item id.
+    """
+    found = set()
+    for key in ("pattern", "item_pattern"):
+        match = _ID_PATTERN_RX.fullmatch(spec.get(key) or "")
+        if match:
+            found.update(match.group(1).split("|"))
+    return frozenset(found)
+
+
+def _item_schemas():
+    """(item type, fields) for every shipped schema that describes an ITEM.
+
+    WHICH schema describes an item is read off the schema, not off its file name: a schema whose
+    `id` field is held to an item-id pattern describes an item of that type. So a new companion
+    joins by being written, and a schema that describes something else (`session_brief`,
+    `result_envelope`) stays out without needing to be named anywhere.
+    """
+    for name in sorted(os.listdir(_SCHEMA_DIR)):
+        if not name.endswith(".yaml"):
+            continue
+        fields = (load_schema(name[:-5]) or {}).get("fields") or {}
+        owner = _declared_item_types(fields.get("id") or {})
+        if len(owner) == 1:
+            yield next(iter(owner)), fields
+
+
+def item_required_fields() -> dict:
+    """{item type -> the fields its schema REQUIRES} for the types the kernel freezes.
+
+    The other half of `backlog_types.REQUIRED_FIELDS`, and the reason the state validator can
+    judge an `ARC`/`WFR`/`DSN` at all: those items never pass `capture`, so the capture-time map
+    says nothing about them and the validator's field-duty loop ran zero times for exactly the
+    three types whose contract is declared here (spec II.8 assigns it "ARC ohne derives_from ->
+    Validator-Flag").
+    """
+    return {item_type: tuple(name for name, spec in fields.items() if (spec or {}).get("required"))
+            for item_type, fields in _item_schemas()}
+
+
+def item_field_contracts() -> dict:
+    """{item type -> {field name: the item types that field may name}} for every ITEM schema.
+
+    THE SECOND HALF OF THE FIELD CONTRACT. `backlog_types.REQUIRED_FIELDS` declares what a
+    caller must provide at CAPTURE, and therefore covers only the types `capture` creates. The
+    types the kernel FREEZES instead (ARC/WFR/DSN -- spec II.6a promotion path) declare their
+    fields here, in the companion/manifest schemas `staging.freeze_*` validates against. Both
+    are field contracts; neither is the whole one.
+
+    Every DECLARED field is reported, not only the required ones: whether the graph walks a field
+    is a question about the field's meaning, not about whether an item may omit it.
+    """
+    return {item_type: {field: _declared_item_types(spec or {})
+                        for field, spec in fields.items()}
+            for item_type, fields in _item_schemas()}
+
+
 def load_schema(name: str) -> dict:
     if name not in _cache:
         path = os.path.join(_SCHEMA_DIR, name + ".yaml")

@@ -180,3 +180,39 @@ def test_unknown_v1_status_blocks():
     """Spec II.10: unknown values -> block + Decision item, never guess."""
     with pytest.raises(UnknownV1Status):
         map_v1_status("SR", "WEIRD_LEGACY_STATE")
+
+
+# -- the Evidence vocabulary: one list, one derivation -------------------------
+
+def test_the_delivery_judging_kinds_are_derived_from_the_kinds_not_listed_again():
+    """`QA_EVIDENCE_KINDS` must be a SUBTRACTION, not a second spelling of the same words.
+
+    The two constants held the same three words twice, and that shape has produced one defect per
+    review round in this repo: a kind added to `EVIDENCE_KINDS` alone becomes a verdict a role can
+    legally record and the merge gate never reads — `gate_git` would answer "no QA Evidence" for
+    work that has some. Nothing was red about it, because both lists were internally consistent.
+
+    So the assertion is on the SOURCE of the assignment, read from the parsed module rather than
+    matched as text: whatever `QA_EVIDENCE_KINDS` is built from, it may not be the kind words
+    themselves. The partition below is what the derivation then guarantees and what a reader can
+    check against the one declared exception.
+    """
+    import ast
+    from kernel.backlog_types import (EVIDENCE_KINDS, PROJECT_EVIDENCE_KINDS, QA_EVIDENCE_KINDS)
+    assert QA_EVIDENCE_KINDS | PROJECT_EVIDENCE_KINDS == EVIDENCE_KINDS
+    assert not (QA_EVIDENCE_KINDS & PROJECT_EVIDENCE_KINDS)
+    source = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "team-kits", "kernel", "backlog_types.py")
+    with open(source, encoding="utf-8") as handle:
+        module = ast.parse(handle.read())
+    assignments = [node for node in module.body if isinstance(node, ast.Assign)
+                   and any(getattr(target, "id", None) == "QA_EVIDENCE_KINDS"
+                           for target in node.targets)]
+    assert len(assignments) == 1, "QA_EVIDENCE_KINDS is assigned %d times" % len(assignments)
+    spelled = {node.value for node in ast.walk(assignments[0].value)
+               if isinstance(node, ast.Constant) and node.value in EVIDENCE_KINDS}
+    assert not spelled, (
+        "QA_EVIDENCE_KINDS spells %s literally instead of deriving the set. A kind added to "
+        "EVIDENCE_KINDS would then have to be remembered here too, and forgetting it is silent: "
+        "the kind stays legal at capture and stops counting for the merge gate."
+        % ", ".join(sorted(spelled)))

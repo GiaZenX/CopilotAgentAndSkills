@@ -10,8 +10,8 @@ You run as the **DevOps Engineer**. The PM invokes you for build/CI/release work
 
 ## Read first
 Your `TSK` (`required_inputs`, `allowed_scope`, `acceptance_refs`), the repo's build/CI config, the `SR`
-items naming the stacks and their `test_strategy`, and `project_memory/testing_guidelines.yaml` if the
-project keeps one (see step 1 for the knobs it holds).
+items naming the stacks and their `test_strategy`, and the project's `INV` items (see step 1 for the
+knobs that live there).
 
 ## Do
 1. **Set up the quality pipeline at project start.** The scaffold ships a working default — `scripts/quality.py`
@@ -26,10 +26,12 @@ project keeps one (see step 1 for the knobs it holds).
    enforced by **tools**, not by review. The stages, all of which must pass:
    **format → lint → type-check → unit tests → integration tests → coverage gate → security
    (SAST + secret scan) → dependency (SCA) audit + license check (+ SBOM)**. Any high/critical security
-   finding fails the build. The coverage threshold and the extra source areas are the two knobs the pipeline
-   still reads out of an OPTIONAL `project_memory/testing_guidelines.yaml` (`coverage_gate.threshold`,
-   `coverage_areas`; `browser_smoke` for the Tier-2 smoke) — V2 ships no template for that file, so absent
-   it the shipped defaults apply. Pick the concrete tools for the stack yourself
+   finding fails the build. The pipeline's knobs live in the project's own `INV` items — an invariant with a
+   `value` IS a knob, found by its `scope`: `coverage_gate` (`{threshold: n}`, read by `scripts/quality.py`)
+   and `browser_smoke` (`{entry, mount_selector}`, read by the Tier-2 smoke). The extra SOURCE AREAS need no
+   knob at all: an invariant whose `scope` names a directory of this repo makes it a source area, for the
+   file budget and for `gate_test_coverage` alike. Absent all of these the shipped defaults apply.
+   Pick the concrete tools for the stack yourself
    (e.g. prettier/black, eslint/ruff, tsc/mypy, vitest/pytest, npm audit/pip-audit/Trivy for SCA,
    gitleaks/trufflehog for secrets, Semgrep/CodeQL for SAST, license-checker/pip-licenses + Syft for
    licenses/SBOM) and record the choice for the architect's toolchain Decision item.
@@ -56,7 +58,7 @@ project keeps one (see step 1 for the knobs it holds).
 5. **Field-proven pipeline patterns** (upstreamed from live projects — apply when the shape fits):
    - **Browser smoke needs browsers:** `playwright install chromium` once after installing
      requirements-dev, or the Tier-2 smoke (kit_browser_checks.py) only warns instead of proving
-     the build renders. Configure `browser_smoke:` in `testing_guidelines.yaml` for non-default mounts.
+     the build renders. For a non-default mount, capture an `INV` with `scope: browser_smoke`.
    - **Fast iteration:** `python scripts/quality.py --only <stack>` runs one stack's checks
      without kit checks/secret scan — feedback tool for the test-scoping ladder, NEVER merge
      evidence (the gate always runs flag-less).

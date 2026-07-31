@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Bash) — run the REAL quality pipeline before merge/push and block if it is red.
+PreToolUse(Bash|PowerShell) — run the REAL quality pipeline before merge/push and block if it is red.
 
 This is the deterministic teeth behind the Definition of Done. Instead of trusting a `result: pass`
 string in a YAML, it executes `scripts/quality.py` (ruff/mypy/pytest+coverage, eslint/tsc/tests, secret/
@@ -30,9 +30,12 @@ import _audit
 
 
 def block(why):
+    # through `_compat.stop`, not a bare stderr write: that is the one funnel every refusal in the
+    # kit goes through, and it is where a command whose git VERB the text does not fix gets the
+    # sentence that says to spell the subcommand literally. Written by hand, this gate answered
+    # `cd C:\src\git\repo` with "no quality pipeline found (scripts/quality.py)" and nothing else.
     _audit.record("gate_pipeline", why)
-    sys.stderr.write("[team-kit gate] Blocked merge/push: %s\n" % why)
-    sys.exit(2)
+    _compat.stop("[team-kit gate] Blocked merge/push: %s\n" % why, "PreToolUse")
 
 
 def read(path):
@@ -51,8 +54,11 @@ def main():
     data = _compat.load()
     if data.get("tool_name") not in ("Bash", "PowerShell"):
         sys.exit(0)
-    # Detection lives in _compat.wants_push_or_merge (single home): wrapper payloads are CODE,
-    # quoted prose is not — a commit MESSAGE once re-triggered the full pipeline (real incident).
+    # Detection lives in _compat.wants_push_or_merge (single home): applicability is decided on
+    # the git SUBCOMMAND of a `git` word the shell would execute -- so no quoting, escaping, line
+    # break or wrapper word spells the verb past this gate, and a verb the shell only builds at
+    # run time counts as every verb. A commit MESSAGE about a push stays a message (it once
+    # re-triggered the full pipeline), because it is an argument, not a word git was handed.
     if not wants_push_or_merge(((data.get("tool_input") or {}).get("command") or "")):
         sys.exit(0)
 

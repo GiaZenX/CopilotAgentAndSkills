@@ -54,8 +54,8 @@ def load_index():
     """
     if not os.path.isfile(INDEX):
         return [], ("no project_memory/generated/index.yaml — item facts unavailable (run "
-                    "`harness generate-index`; until that CLI entry point ships — spec II.11 "
-                    "step 4 — any kernel state write rebuilds the index)")
+                    "`python scripts/harness.py generate-index` from the project root; any "
+                    "kernel state write rebuilds the index anyway)")
     try:
         import yaml  # type: ignore[import-untyped]
     except ImportError:

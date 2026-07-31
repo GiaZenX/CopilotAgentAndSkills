@@ -32,9 +32,11 @@ ALLOWED_ROOT_DOCS = {
 }
 
 # The id prefixes of the typed items (`kernel/backlog_types.ACTIVE_DIRS`). Kept as a literal
-# because this guard runs on EVERY Write and decides on the filename alone: importing the kernel
-# to learn the type names would pull PyYAML into that path, and a guard that cannot load must not
-# stop guarding. It is a cache with a proof, not a second list — `test_no_adhoc_covers_every_item
+# because this guard runs on EVERY Write and decides on the filename alone, so it must not depend
+# on a kernel that may be absent, half-installed or unreadable: a guard that cannot load must not
+# stop guarding. `import kernel.backlog_types` is stdlib-only again as of 2026-07-28 (its two
+# derived maps are computed on first access), so PyYAML is no longer the reason — the resilience
+# is. It is a cache with a proof, not a second list — `test_no_adhoc_covers_every_item
 # _type` asserts it equals ACTIVE_DIRS, so a new item type cannot silently escape the rule.
 ITEM_TYPES = ("apr", "arc", "bug", "cr", "dec", "dsn", "evd", "exp", "fr", "hyp", "inv",
               "pr", "proc", "rq", "sr", "tsk", "wfr")
@@ -61,12 +63,17 @@ def block(rel, why):
     _audit.record("guard_no_adhoc", rel)
     sys.stderr.write(
         "[team-kit guard] Blocked creating '%s': %s.\n"
-        "The single source of truth is the typed state, and the kernel is its only writer "
-        "(`harness capture ...`): a review, test or acceptance run is an Evidence item (kind: "
-        "review | test | acceptance), a durable choice a Decision item, a defect a BUG, a scope "
-        "change a CR, an architecture statement an ARC item. Work still in flight goes into your "
-        "task's project_memory/staging/<task-id>/, product code into src/ and tests/. "
-        "Capture it as the right item instead of inventing a file.\n" % (rel, why)
+        "The single source of truth is the typed state, and the kernel is its only writer, "
+        "reached through `python scripts/harness.py <command>` from the project root: a review, "
+        "test or acceptance run is an Evidence item (kind: review | test | acceptance) and "
+        "`python scripts/harness.py evidence` is what records it. A durable choice is a Decision "
+        "item, a defect a BUG, a scope change a CR — `python scripts/harness.py capture <TYPE>` "
+        "creates each of those from a JSON object on stdin. An architecture statement is an ARC "
+        "item, which `capture` deliberately refuses: an ARC is FROZEN through the promotion path "
+        "(II.6a) and nothing on that surface freezes one, so for that one name the item AND the "
+        "missing command in your report. Work still in flight goes into your task's "
+        "project_memory/staging/<task-id>/, product code into src/ and tests/. Inventing a file "
+        "for any of it is what this guard refuses.\n" % (rel, why)
     )
     sys.exit(2)
 

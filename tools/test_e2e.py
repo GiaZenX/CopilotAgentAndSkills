@@ -351,10 +351,80 @@ def test_e2e_quality_scalar_configs_never_crash(tmp_path):
     for f in ("quality.py", "kit_checks.py", "kit_browser_checks.py"):
         import shutil as _sh
         _sh.copy(os.path.join(SCRIPTS, f), str(scripts / f))
-    write(str(tmp_path / "project_memory" / "testing_guidelines.yaml"), "coverage_gate: streng\n")
+    invariants = tmp_path / "project_memory" / "invariants" / "active"
+    write(str(invariants / "INV-0001.yaml"),
+          "id: INV-0001\nscope: coverage_gate\nsource: PR-0001\n"
+          "check: {kind: test, ref: tests/t.py::t}\nvalue: streng\nstatus: unverified\n")
     write(str(tmp_path / "project_memory" / "project_config.yaml"), "project: nur-ein-string\n")
     r = subprocess.run([sys.executable, str(scripts / "quality.py")],
                        capture_output=True, text=True, encoding="utf-8", errors="replace",
                        cwd=str(tmp_path), timeout=120)
     assert "Traceback" not in (r.stdout + r.stderr)
     assert r.returncode in (0, 1)  # honest verdict, never a crash
+
+
+# ---------------- scenario: the QA-evidence merge gate, end to end ----------------
+def test_e2e_the_merge_gate_opens_on_evidence_a_role_produced_and_shuts_on_a_fresh_fail(tmp_path):
+    """Task done → QA records Evidence through the harness CLI → merge. Three states, one repo.
+
+    The scenario the phase-0 disposition asks for (rows 115/338/507), and the reason it is here
+    rather than only in the unit suite: the V1 gate demanded a `project_memory/*report*.yaml`
+    that NOTHING in V2 could write, so it blocked every merge and push in a scaffolded project.
+    Proving that is fixed means proving both halves in the same repo — that the gate still
+    refuses without proof, and that the proof is something a role can actually produce. So the
+    Evidence here is written by the shipped `python scripts/harness.py evidence` command, not by the test.
+
+    Both hooks run behind `_gate.py`, the way `settings.json` registers them; and the whole path
+    carries German item text, because that is what this file exists to catch.
+    """
+    state, task, _header = _leased_task(tmp_path)
+    merge = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(tmp_path),
+             "tool_input": {"command": "git merge feat/%s-rechnungsübersicht"
+                                       % task["product_requirement"]}}
+
+    blocked = launched_hook("gate_git.py", merge, tmp_path)
+    assert blocked.returncode == 2
+    assert "no QA Evidence" in blocked.stderr.decode("utf-8", "replace")
+
+    # The shipped entry point, in the position a project has it: `scripts/harness.py` beside a
+    # `.claude/hooks` bridge. Copied rather than scaffolded because this file's subject is the
+    # gate/kernel chain — that the INSTALLERS put the file there is measured separately, by
+    # `test_the_evidence_the_merge_gate_demands_has_an_installed_producer`. What is measured here
+    # is that the command a role types resolves the state directory on its own: no `--root`
+    # appears below, and the Evidence still lands in the repo's own state.
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    shutil.copytree(HOOKS, os.path.join(str(tmp_path), ".claude", "hooks"), dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    entry = os.path.join(str(tmp_path), *cli.ENTRY_POINT.split("/"))
+    os.makedirs(os.path.dirname(entry), exist_ok=True)
+    shutil.copyfile(os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo",
+                                 *cli.ENTRY_POINT.split("/")), entry)
+
+    def record(kind, result):
+        return subprocess.run(
+            [sys.executable, os.path.join(*cli.ENTRY_POINT.split("/")), "evidence",
+             "--kind", kind, "--result", result, "--related", task["id"],
+             "--summary", "Rechnungsübersicht geprüft", "--artifact-ref",
+             "staging/%s/lauf.log" % task["id"]],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            env=dict(os.environ, HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits")),
+            cwd=str(tmp_path), timeout=120)
+
+    recorded = record("test", "pass")
+    assert recorded.returncode == 0, recorded.stdout + recorded.stderr
+    assert launched_hook("gate_git.py", merge, tmp_path).returncode == 0
+
+    # ...and the gate is not simply stuck open afterwards: a regression found later re-blocks it,
+    # bound through the TASK to the PR the branch names — the indirect binding the V1 gate could
+    # only approximate by matching the item's name anywhere in a file.
+    assert record("test", "fail").returncode == 0
+    reblocked = launched_hook("gate_git.py", merge, tmp_path)
+    assert reblocked.returncode == 2
+    assert "not a pass" in reblocked.stderr.decode("utf-8", "replace")
+
+    # force-push stays refused throughout — it is not a QA question
+    forced = launched_hook("gate_git.py", dict(
+        merge, tool_input={"command": "git push --force origin main"}), tmp_path)
+    assert forced.returncode == 2
+    assert "force-push" in forced.stderr.decode("utf-8", "replace")

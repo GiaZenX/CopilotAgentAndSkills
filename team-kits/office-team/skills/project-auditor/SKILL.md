@@ -46,7 +46,9 @@ actual `archive/` tree, `master_data.yaml`, the latest `reports/euer_*.md`, and
    and what was fixed since your last run, with the raw output in `artifact_refs`. No findings? Say so
    explicitly — a clean run is a result. Each finding must be actionable enough for the manager to turn it
    into a follow-up item or a Decision item recording a conscious skip in the SAME cycle; a finding that
-   cannot be acted on is one you have not finished writing. **GDPR:** reference documents by
+   cannot be acted on is one you have not finished writing.
+   **How you record it:** `python scripts/harness.py evidence --kind audit --result <pass|fail> --related <PROC-nnnn> --summary "…" --artifact-ref staging/<your task-id>/<file>` — the kernel captures the item and allocates its id. Run it from the project root; never add `--root` (the write gate refuses a command line that names the state directory, and the entry point refuses the flag itself). `--result` is your overall verdict, `pass` or `fail` and nothing else; `--artifact-ref` is required and its paths are relative to the state directory, because `gate_write_scope` refuses any write-capable command line that spells the state directory out. The kernel refuses a verdict that points at nothing, so write your run's raw output to that path first. `kind: audit` judges the PROJECT, so it never opens or closes a merge — that is what the delivery kinds (`test`/`review`/`acceptance`) are for.
+   **GDPR:** reference documents by
    Beleg-ID/date/doctype, never by customer name.
 
 ## Hard limits

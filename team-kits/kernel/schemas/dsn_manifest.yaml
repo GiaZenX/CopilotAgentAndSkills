@@ -1,0 +1,37 @@
+# DSN manifest YAML (HARNESS_V2_SPEC.md II.6): the metadata beside a frozen
+# design revision in design/revisions/. A DSN carries no own APR -- it rides on
+# the root revision it was frozen against, which is why `root`/`root_revision`
+# are part of the record rather than derivable from it.
+#
+# It exists as a SCHEMA and not only as the dict `staging.freeze_design` writes,
+# because the field contract of an item is what the reference graph is derived
+# from (`backlog_types.PARENT_FIELDS`). A contract that lives only in Python
+# literals is a contract nothing can read, and the DSN was the one item type
+# whose parent binding was therefore invisible to the graph that resolves a
+# merge.
+schema: dsn_manifest
+version: 1
+strict: true
+fields:
+  id:
+    type: str
+    required: true
+    pattern: '^DSN-\d{4,}$'
+  revision:
+    type: int
+    required: true
+  file_hash:
+    type: str
+    required: true
+    pattern: '^[0-9a-f]{64}$'
+  root:
+    # the PR/RQ this design revision belongs to -- the binding the graph walks
+    type: str
+    required: true
+    pattern: '^(PR|RQ)-\d{4,}$'
+  root_revision:
+    type: int
+    required: true
+  frozen_at:
+    type: str
+    required: true

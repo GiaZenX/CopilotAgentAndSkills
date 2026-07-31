@@ -20,9 +20,9 @@
   Claude's role-specific `.claude/agent-memory/<role>/` holds craft knowledge only. Generated
   Codex config disables task-/host-wide memories so they cannot leak across roles. For Claude only,
   MEMORY.md stays an INDEX ≤ 40 lines (only the first 200 lines/25 KB load per spawn).
-- **The state directory is WRITE-LOCKED today (V2 phase 2 — report it, never work around it):** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the master-data/config files §5/§6 assign to a role.
-  The kernel that IS allowed to write has no installed command line — no `harness` executable, and no capture/approval command behind it — and a direct kernel call is refused by that same gate.
-  So every `harness …` command named in this file is the INTENDED entry point, not an installed one: today neither a `PROC` nor `business_profile.yaml` nor `filing_plan.yaml` can be written here, which makes §4 phases 1–4 unexecutable. An infrastructure defect (§8), not a licence to write state by hand. The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — which includes the `init_project_memory` and `scaffold_team` runs §7 asks for. Those are the USER's to run, in a shell outside this session; ask, and never reach for a spelling the gate does not recognise.
+- **The state directory is WRITE-LOCKED against every tool write, and has exactly ONE writer:** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the master-data/config files §5/§6 assign to a role. The kernel that IS allowed to write is reached through the installed entry point, and it has ONE spelling: **`python scripts/harness.py <command>`**, run from the project root. The scaffold installs it kit-owned in every project, the same three tokens work in bash and in PowerShell, and it resolves the state directory itself — so never add `--root`, which that same gate refuses as naming the state directory and which the entry point also refuses off its own parser.
+  **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`, `sweep-leases`. Of spec II.4's twelve it still lacks `approve` and `migrate --dry-run`. `approve` is split rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. There is no migration tool. A `PROC` is a typed item, so `capture` creates one; `business_profile.yaml` and `filing_plan.yaml` are NOT items, so nothing writes them after the install — §4 phases 1–2 stay unexecutable, and phase 3 needs the `migrate --dry-run` that is also absent. Naming the missing command in your report is the step; writing state by hand is not (§8).
+  The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — which includes the `init_project_memory` and `scaffold_team` runs §7 asks for. Those are the USER's to run, in a shell outside this session; ask, and never reach for a spelling the gate does not recognise. The gate decides by READING a command line, which is enforcement and not arithmetic, so a spelling that gets past it is a defect to report, never a route to take.
 - **Hard gate:** no specialist spawn before `project_config.yaml` exists with a user-confirmed
   preset AND `business_profile.yaml` carries the onboarding interview's results.
 
@@ -37,14 +37,15 @@ terminal `RETIRED`.
 - A PROC is approved ONCE by the user (like a product requirement); routine runs then execute
   autonomously WITHIN that approval. Anything outside the approved steps comes back as a question.
 - **Editing an APPROVED PROC's steps voids approval** — the kernel hashes a PROC's `steps` AND `roles`, so
-  touching either raises the revision and drops the approval on its own. **The tooling around it is missing:**
-  `gate_proc_approved` still reads the deleted V1 registry `process_definitions.yaml` and exits 0 when it is
-  absent (always, in V2), so it blocks NOTHING; `scripts/proc_hash.py` and `scripts/process_doc.py` crash on
-  that same missing file; and no shipped command computes `approved_hash`, which the state validator demands of
-  every APPROVED/ACTIVE PROC. Update `approved_hash` only on user OK — and report the gap (§8) rather than
-  hand-writing a hash, which would make tampering undetectable exactly where the hash is supposed to prove it.
-- Every specialist work order MUST name an APPROVED/ACTIVE PROC (bootstrap exception: onboarding
-  while none exists). This binds as POLICY on both providers: nothing hard-blocks it while the gate is inert.
+  touching either raises the revision and drops the approval. An edit PAST the kernel is caught by the
+  `approved_hash` the MINT stamps on the item: `gate_proc_approved` recomputes it on every spawn,
+  `python scripts/harness.py validate` reports a stale one, and NO command re-stamps it — the way back is
+  the user's approval of the new content. The stamp is UNKEYED: it catches an edit that did not recompute
+  it, not one that did; the real boundary is §0 — only the kernel writes under `project_memory/`.
+- Every specialist work order MUST name an APPROVED/ACTIVE PROC, and `gate_proc_approved` refuses the spawn
+  otherwise — including while the project has NO approved PROC at all (spec II.4: an empty state blocks). The
+  only exception is the installer's own bootstrap window. Reaching the first PROC needs no spawn: capture it
+  and ask the user (§0 commands). On Codex this binds as POLICY only — that provider has no spawn veto.
 - Delegate by exact installed role: Claude uses exact `subagent_type` + explicit
   `run_in_background`; Codex uses the exact `.codex/agents/*.toml` name. Parallelize only independent
   work and await every result before advancing the phase. Codex's built-in roles remain technically
@@ -71,8 +72,7 @@ terminal `RETIRED`.
 4. **Reports are generated, never written by hand:** `python scripts/euer_report.py` renders the
    quarterly income/expense statement deterministically FROM the ledger (sums cannot drift from
    the data); the bookkeeper adds prose only in the separate `_notes.md`. The Verfahrensdoku draft
-   (`python scripts/process_doc.py`) is meant to render from the PROC items but still reads the deleted V1
-   registry, so it currently crashes — report it (§8); never hand-write the Verfahrensdoku instead.
+   (`python scripts/process_doc.py`) renders from the active PROC items and the filing plan; never hand-write it.
 5. **Filing is verified, not trusted.** `filing_plan.yaml` is the single machine-readable truth for
    where a document belongs; `gate_filing` blocks anything landing under `archive/` that no rule
    covers (and blocks filing at all while the plan has no rules) — a document matching no rule is
@@ -94,7 +94,7 @@ terminal `RETIRED`.
    references documents by Beleg-ID/date/doctype, never by customer name (a real day-1 deployment
    committed 140 names).
 8. **The kernel is the only writer of `project_memory/`;** you decide WHAT is captured and the kernel performs
-   the write (`harness capture/transition/approve` — read the write-lock bullet in §0 before you rely on it);
+   the write (`python scripts/harness.py <command>` — §0 names the commands that surface HAS and the ones spec II.4 asks for that it lacks);
    specialists propose content for their own items (§6) and write files only inside their task's
    `allowed_scope` plus `staging/<task-id>/`. You DO run git; push only on explicit user OK; never force-push.
 9. **Guardrails + hard backstops** (all resolve the repo root via `_root.py`): registered `PreToolUse` denials
@@ -111,12 +111,12 @@ terminal `RETIRED`.
    |---|---|
    | `guard_agent_spawn` | Claude blocks generic/unnamed spawns, a second manager, missing explicit `run_in_background`, and incomplete work orders; Codex cannot veto `SubagentStart`, so exact-role policy + specialist work-order validation cover that gap. Plus (V2, spec II.4) `gate_dispatch`: no spawn without a valid `HARNESS_DISPATCH` header + live lease — missing task, wrong role, stale root revision, unproven or invalidated approval, open dependency, spent lease, missing `design_ref` for a UI task with a confirmed design; it binds the child's `agent_id` to its task, and returns the task to READY when the platform reports the spawn failed |
    | `gate_subagent_output` | a specialist stopping without its output contract (`summary:` at minimum) — prose-only endings produced work built on air |
-   | `gate_proc_approved` | NOTHING today: it reads the deleted V1 registry `process_definitions.yaml` and exits 0 while that file is absent, which in a V2 project it always is — so §1's "no spawn without an APPROVED/ACTIVE PROC" is unenforced policy until the hook reads `procedures/active/PROC-*.yaml` (infrastructure defect, §8) |
+   | `gate_proc_approved` | a specialist spawn whose work order names no `PROC-nnnn`, names one the user never approved, or names one whose content no longer matches the `approved_hash` the mint stamped on it. It reads `procedures/active/PROC-*.yaml`, and an EMPTY store is a refusal too (spec II.4) — the installer's bootstrap window is the only exception |
    | `gate_ledger_valid` | after ANY edit to `ledger/*.csv`: full-file validation (schema, dates, year, net×(1+vat)≈gross, duplicate invoices, `reverses` targets); on failure the ledger is marked INVALID and push/merge/reports/dispatch are refused until fixed |
    | `gate_filing` | a file landing under `archive/` in a place no `filing_plan.yaml` rule covers — via a shell move OR a direct write; and every filing while the plan still lists no rules. Plus `gate_write_scope` (V2, II.4 gate 3): ANY tool write into `project_memory/**` (one writer, the kernel; an agent gets only `staging/<its task-id or root-id>/`), a bound specialist writing outside its `allowed_scope`, an UNBOUND subagent writing anything, and from a shell: naming `project_memory` or the enforcement layer in anything but a read-only command (so copying the hooks elsewhere is refused, reading them is not) |
    | `guard_fs_tripwire` | shell delete/move commands targeting `inbox/` or `archive/` paths. Plus `gate_push_token` (R1): `git push` needs a user approval minted through the approval flow and bound to remote+branch+HEAD — a new commit invalidates it. Plus `gate_shell_hygiene` (R10/R11): destructive `docker` on a FOREIGN compose project or any `prune`; merge/rebase/pull/`reset --hard`/branch-switch on a dirty tree (`git add`/`stash`/`checkout -b` stay open) |
    | `guard_question_context` | user questions referencing INVISIBLE context ("wie oben zusammengefasst" — thinking/tool calls are unseen); questions must be self-contained or preceded by visible text. Plus `gate_approval` (V2, spec II.2): a question marked `[APR-REQ:<id>]` must match the kernel-generated approval question EXACTLY (text, header, every option) or it is blocked; only the verbatim `Freigeben [code]` label mints the approval |
-   | `guard_yaml_valid` | invalid `project_memory/*.yaml` at write time — well-formedness only (parse errors, duplicate keys); what an item must CONTAIN is its TYPE's field contract, which the state validator answers (`harness validate`) Plus `guard_memory_budget` (V2, spec II.5): a MEMORY.md index over 40 lines / 8 KB, a craft topic over 100 lines / 8 KB, any OTHER file in agent-memory over 8 KB, a 21st topic for one role, or ANY project item id in a role's memory — memory holds craft, never project status (put an id in `backticks` to quote it) |
+   | `guard_yaml_valid` | invalid `project_memory/*.yaml` at write time — well-formedness only (parse errors, duplicate keys); what an item must CONTAIN is its TYPE's field contract, which the state validator answers (`python scripts/harness.py validate`) Plus `guard_memory_budget` (V2, spec II.5): a MEMORY.md index over 40 lines / 8 KB, a craft topic over 100 lines / 8 KB, any OTHER file in agent-memory over 8 KB, a 21st topic for one role, or ANY project item id in a role's memory — memory holds craft, never project status (put an id in `backticks` to quote it) |
    | `guard_scratchpad_ref` | repo files referencing ephemeral session-scratchpad paths |
    | `guard_harness_selfmod` | Claude hard-blocks edits to `.claude` enforcement; Codex blocks through trusted `PreToolUse` plus read-only permission-profile paths (the Office kit has no CI backstop) |
    | `notify_agent_events` / `session_status` / `kit_trust_state` | (never block) lifecycle audit log / session-start briefing incl. inbox count, due reports, stale compliance entries, kit-update + model/effort nags / records which hook bundle this project trusts in `.claude/kit_state.json` (`restart_required` -> `active`; `hooks_trust_required` when the bundle changed) -- doctor measures `hook_trust` against it |
@@ -133,9 +133,9 @@ Every user-question tool call is preceded by prose: Claude uses `AskUserQuestion
 |---|---|---|
 | 0 | READ + BOOTSTRAP | session brief read, startup gate, nags handled |
 | 1 | ONBOARDING interview | `business_profile.yaml` + `product/masterplan.md` (goals, jurisdictions, account type, sensitive-data choice) |
-| 2 | FILING PLAN | records-clerk proposes `filing_plan.yaml` (incl. retention per node); user approves. The proposal is all that works today — writing the plan is write-locked (§0), which also means `gate_filing`'s own remedy ("have the records-clerk propose filing_plan.yaml rules") cannot be followed |
+| 2 | FILING PLAN | records-clerk proposes `filing_plan.yaml` (incl. retention per node); user approves. The proposal is all that works today — writing the plan needs a command the entry point's surface does not have (§0), which also means `gate_filing`'s own remedy ("have the records-clerk propose filing_plan.yaml rules") cannot be followed |
 | 3 | MIGRATION (if existing data) | dry-run report first (what moves where) → user OK → move + manifest; NEVER delete |
-| 4 | PROC DEFINITION | you capture `PROC-nnnn` (`DRAFT`) per automation wish; user approves → `APPROVED` + `approved_hash` set. No shipped command computes that hash and the validator rejects an APPROVED PROC without it, so this phase cannot complete yet (§1) |
+| 4 | PROC DEFINITION | you capture `PROC-nnnn` (`DRAFT`) per automation wish; `request-approval scope PROC-nnnn`, and the user's answer mints the approval, walks it to `APPROVED` and stamps `approved_hash` in one step (§1). Until one PROC gets there, `gate_proc_approved` refuses every specialist spawn |
 | 5 | ROUTINE | inbox sweeps + report runs per approved PROCs; exceptions → questions |
 | 6 | REVIEW + ACCEPT | user reviews outputs (reports, drafts, register); feedback becomes PROC amendments (re-approval) |
 
@@ -190,7 +190,7 @@ moves its task's status by submitting its result envelope, never by editing the 
 
 Project status is not a file you write — it is the typed items plus the kernel's rollup in
 `project_memory/generated/`. By user acceptance no item stays half-written: the state validator
-(`harness validate`) decides completeness against the per-type field contracts, and something that turns
+(`python scripts/harness.py validate`) decides completeness against the per-type field contracts, and something that turns
 out not to apply is closed through its status automaton, not left empty.
 
 ## 7. Models & presets

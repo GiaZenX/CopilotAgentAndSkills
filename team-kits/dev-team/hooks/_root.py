@@ -49,6 +49,12 @@ def find_repo_root(start=None):
 # ROOT_TYPE_BY_KIT, so a moved directory or a new root type cannot leave the gates asleep.
 ROOT_ITEM_GLOBS = ("product/active/PR-*.yaml", "research/active/RQ-*.yaml")
 
+# The id PREFIXES those globs look for -- what a merge or push names when it names the item it is
+# about. Derived from the globs rather than written out a second time: the two are the same fact
+# seen from opposite sides (a file on disk, an id in a branch name), and a root type added to one
+# but not the other is how a gate goes blind on the kit that introduced it.
+ROOT_ITEM_TYPES = tuple(os.path.basename(pattern).split("-", 1)[0] for pattern in ROOT_ITEM_GLOBS)
+
 
 def has_root_item(repo_root):
     """Has this project captured its first product requirement / research question yet?

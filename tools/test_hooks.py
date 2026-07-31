@@ -7,6 +7,8 @@ Each hook is run as a real subprocess with synthetic stdin JSON and CLAUDE_PROJE
 on its exit code (0 = allow, 2 = block for guards/gates, 1 = red for quality.py). Run: pytest tools/
 """
 import ast
+import fnmatch
+import glob
 import hashlib
 import io
 import json
@@ -15,6 +17,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 import tokenize
 
 import pytest
@@ -228,7 +231,7 @@ def test_spawn_generic_blocked(kit_repo):
     assert run_hook("guard_agent_spawn.py", payload, kit_repo) == 2
 
 
-# ---------------- gate_git (PRD binding) ----------------
+# ---------------- gate_git (QA Evidence binding) ----------------
 PR_FIELDS = {
     "title": "Checkout flow",
     "class": "normal",
@@ -242,18 +245,54 @@ PR_FIELDS = {
 }
 
 
-def capture_root_item(repo, fields=None):
+def capture_root_item(repo, fields=None, status="DELIVERED"):
     """Give a repo its first typed root item — what `_root.has_root_item` now looks for.
 
     Written THROUGH the kernel, not by hand: the merge gates ask the state validator whether the
     state is complete, so a hand-rolled item would make every gate test measure a broken fixture
     rather than the gate.
+
+    `status` walks the type's own chain to that status, because a merge is judged against it:
+    `gate_git` refuses a merge for an item still in its DRAFT (nothing approved this work) or in a
+    terminal status off the chain (the project dropped it). DELIVERED is the default because it is
+    where the PM's checklist merges from — a fixture stuck in DRAFT would make every evidence test
+    below measure the status tooth instead. `status=None` leaves the item where capture put it.
+
+    THE WALK GOES THROUGH `conftest.walk_to_status`, which mints the approvals the gated edges
+    need instead of transitioning past them. It used to call `state.transition` in a loop, and
+    the day `transition` started demanding an approval that loop was the tempting place to put a
+    bypass — see the fixture's own docstring for why there is none.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    from conftest import walk_to_status
+    root = os.path.join(str(repo), "project_memory")
+    os.makedirs(root, exist_ok=True)
+    state = ProjectState(root)
+    item = state.capture("PR", dict(fields or PR_FIELDS))
+    if status is not None:
+        item = walk_to_status(state, item, status)
+    return item
+
+
+def capture_invariant(repo, scope, value=None, text=None, source="PR-0001"):
+    """Give a repo an `INV` item — the V2 home of every rule and every config knob.
+
+    Through the kernel, for the same reason `capture_root_item` is: `report.py` enforces that an
+    `INV` carries EXACTLY ONE of `text` or `value`, so a hand-written fixture could set both and
+    the readers under test would be measured against a file no project can have.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel.state import ProjectState
     root = os.path.join(str(repo), "project_memory")
     os.makedirs(root, exist_ok=True)
-    return ProjectState(root).capture("PR", dict(fields or PR_FIELDS))
+    fields = {"scope": scope, "source": source,
+              "check": {"kind": "test", "ref": "tests/test_invariants.py::test_it"}}
+    if value is not None:
+        fields["value"] = value
+    else:
+        fields["text"] = text or "the rule this invariant states"
+    return ProjectState(root).capture("INV", fields)
 
 
 @pytest.fixture
@@ -262,31 +301,265 @@ def prd_repo(tmp_path):
     return tmp_path
 
 
-def _merge(repo, report_txt):
-    write(str(repo / "project_memory" / "test_reports.yaml"), report_txt)
-    return {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(repo)}
+def evidence_dir(repo):
+    """Where Evidence lives, asked of the constant and never spelled out a second time."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS
+    return os.path.join(str(repo), "project_memory", *ACTIVE_DIRS["EVD"].split("/"))
+
+
+def capture_evidence(repo, kind="test", result="pass", related=("PR-0001",), summary="qa run"):
+    """Record an Evidence item the way a QA/reviewer role is told to — through the shipped CLI.
+
+    `kernel.cli` and not `ProjectState.capture`, because the producer is half of what these tests
+    have to prove: the V1 gate looked for a file NOTHING could write, and a fixture that wrote the
+    evidence by hand would prove the gate reads a store without proving anyone can fill it.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.cli import main as harness
+    argv = ["--root", os.path.join(str(repo), "project_memory"), "evidence",
+            "--kind", kind, "--result", result, "--summary", summary,
+            "--artifact-ref", "staging/TSK-0001/run.log"]
+    for ref in related:
+        argv += ["--related", ref]
+    assert harness(argv) == 0, argv
+    # the kernel allocates ids by max-scan, so the newest EVD is the one just written
+    return sorted(os.listdir(evidence_dir(repo)))[-1][:-5]
+
+
+def _merge(repo, item="PR-0001"):
+    return {"tool_name": "Bash", "tool_input": {"command": "git merge feat/%s-x" % item},
+            "cwd": str(repo)}
+
+
+def _bash(repo, command):
+    return {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(repo)}
 
 
 def test_gate_git_force_push_blocked(prd_repo):
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git push --force origin main"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_git.py", payload, prd_repo) == 2
+    """The stderr is asserted, not only the exit code: in a repo with a root item the QA tooth
+    returns the same rc 2, so `== 2` alone stayed green with the force-push ban removed
+    (mutation-measured)."""
+    result = run_hook_process("gate_git.py", _bash(prd_repo, "git push --force origin main"),
+                              prd_repo)
+    assert result.returncode == 2
+    assert "force-push" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # an expansion glued to the word `git` — the `git` still ends a word after expansion
+    "git${IFS}push --force origin main",
+    "git$IFS push --force origin main",
+    # a verb the text does not fix: brace sequence, glob, ANSI-C escape
+    "git pus{h..h} --force origin main",
+    "git pus[h] --force origin main",
+    "git $'\\x70ush' --force origin main",
+    # an escaped space keeps the word open, so the `#` after it is data and the `;` still splits
+    "echo a\\ # ; git push --force origin main",
+    # a wrapper payload in ANSI-C quotes is code one level down — and its backslashes stay the
+    # payload's, so the POSIX reading resolves the harmless `x70ush` while the PowerShell reading
+    # answers "this verb is not fixed by the text", which is the one the gates decide on
+    "bash -c $'git push --force origin main'",
+    "bash -c $'git \\x70ush --force origin main'",
+    # a payload that is ITSELF a wrapper — the membership test holds twice and the substitution
+    # ran once, so every one of these was a real push reaching all eight hooks as ALLOW
+    "bash -c \"eval 'git push --force origin main'\"",
+    "bash -c \"bash -c 'git push --force origin main'\"",
+    "eval \"eval 'git push --force origin main'\"",
+    "bash -c \"sh -c 'git push --force origin main'\"",
+    # ...and the third way of handing a shell its commands: standard input
+    "bash <<< 'git push --force origin main'",
+    # cmd's own escape and its delayed expansion. Both really push (measured through the
+    # PowerShell tool, whose `cmd /c` reaches cmd; Git Bash rewrites the `/c` into a path)
+    'cmd /c "git p^ush --force origin main"',
+    'cmd /c "git^ push --force origin main"',
+    'cmd /v:on /c "set V=push& git !V! --force origin main"',
+])
+def test_gate_git_force_push_blocked_however_the_verb_is_spelled(prd_repo, command):
+    """The force-push ban is unconditional, so the reader under it has to be fail-closed.
+
+    Every line here force-pushes in a real bash 5.2 and every one of them measured a full ALLOW
+    across all eight PreToolUse hooks — the first two against HEAD as well, which makes them
+    regressions rather than old holes. Run as a REAL hook process against the shipped gate,
+    because the unit tests on `_compat` cannot see a gate that reads the command a second way of
+    its own; and the stderr is asserted, because in a repo with a root item the QA tooth returns
+    the same rc 2 and `== 2` alone stays green with the ban removed.
+    """
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 2, command
+    assert "force-push" in result.stderr, command
+
+
+@pytest.mark.parametrize("command", [
+    'git commit -m "merge later"',
+    'git commit -m "$MSG"',
+    "git status",
+    "ls $HOME",
+    "echo a # ; git push --force origin main",       # a real comment really does end the line
+    # a `#` at the start of a word, where the word was opened by a command SEPARATOR — one
+    # `git status` and a comment in a real bash, and three gates refused it
+    "git status;# git push --force origin main",
+    # a backslash is not a word end, so none of these Windows lines names the program `git` —
+    # cross-checked in a real bash AND a real PowerShell: not one starts a git process
+    "cd C:\\src\\git\\repo",
+    "cd C:\\git\\repo",
+    'cd "C:\\Program Files\\Git\\bin"',
+    "robocopy C:\\git\\a C:\\git\\b /E",
+    "Copy-Item C:\\a\\git\\x.txt D:\\b",
+    '$env:PATH = "C:\\git\\bin;" + $env:PATH',
+    "git\\ push --force origin main",
+])
+def test_gate_git_stays_out_of_the_way_of_ordinary_commands(prd_repo, command):
+    """The other half of the batch above: a gate that blocks when unsure must still be silent when
+    it is not. Without this, "fail-closed" is satisfiable by refusing everything — which is how an
+    enforcement layer gets switched off by the people it is meant to protect."""
+    assert run_hook("gate_git.py", _bash(prd_repo, command), prd_repo) == 0, command
+
+
+def _shell_gate_names():
+    """Every PreToolUse gate the shipped matcher table points at Bash/PowerShell.
+
+    Read out of settings.json rather than typed here: "all eight" is a claim about the SHIPPED
+    wiring, and a list in a test would keep asserting eight after the ninth is registered.
+    """
+    with open(os.path.join(ROOT, "team-kits", "dev-team", "settings", "settings.json"),
+              encoding="utf-8") as fh:
+        data = json.load(fh)
+    names = []
+    for group in data.get("hooks", {}).get("PreToolUse", []):
+        if not {"Bash", "PowerShell"} & set(str(group.get("matcher") or "").split("|")):
+            continue
+        for hook in group.get("hooks", []):
+            found = re.search(r"_gate\.py[\"']?\s+(\S+\.py)", hook.get("command", ""))
+            if found:
+                names.append(found.group(1))
+    return names
+
+
+def test_a_refusal_names_an_unreadable_verb_as_its_own_reason(prd_repo):
+    """A gate that applies because it could not READ the verb has to say that, in the message.
+
+    `_ends_word` justified reading an undetermined boundary as a possible one with "the gate
+    refuses with 'spell the subcommand literally' rather than silently standing down". Measured,
+    no gate said anything of the sort: `cd C:\\src\\git\\repo` got "no quality pipeline found
+    (scripts/quality.py)" from gate_pipeline, "no QA Evidence in this project" from gate_git and
+    "the packaging/deployment decision is unmade" from gate_packaging_decision. Three refusals, and
+    nothing in any of them a role could act on — the reader's uncertainty was invisible.
+
+    Asserted as REAL hook processes over every shell gate the settings table registers, and in
+    both directions: the note is on every refusal of a line whose verb the text does not fix, and
+    on NONE of a line whose verb it does. The negative half is what keeps the note from becoming a
+    footer nobody reads.
+    """
+    unreadable = run_hook_process("gate_git.py", _bash(prd_repo, "git $V --force origin main"),
+                                  prd_repo)
+    assert unreadable.returncode == 2
+    assert "spell the subcommand literally" in unreadable.stderr
+
+    seen_block = False
+    for name in _shell_gate_names():
+        blocked = run_hook_process(name, _bash(prd_repo, "git $V --force origin main"), prd_repo)
+        if blocked.returncode == 2:
+            seen_block = True
+            assert "spell the subcommand literally" in blocked.stderr, (name, blocked.stderr)
+        plain = run_hook_process(name, _bash(prd_repo, "git push origin main"), prd_repo)
+        assert "spell the subcommand literally" not in plain.stderr, (name, plain.stderr)
+    assert seen_block, "no shell gate refused the unreadable verb — the fixture is not gating"
 
 
 def test_gate_git_blocks_powershell_tool_too(prd_repo):
     # the gates must not be bypassable via the separate PowerShell tool (a real setup has both)
     payload = {"tool_name": "PowerShell", "tool_input": {"command": "git push --force origin main"},
                "cwd": str(prd_repo)}
-    assert run_hook("gate_git.py", payload, prd_repo) == 2
+    result = run_hook_process("gate_git.py", payload, prd_repo)
+    assert result.returncode == 2
+    assert "force-push" in result.stderr   # same reason as above: rc 2 alone proves nothing here
 
 
-def test_gate_git_stray_prd_pass_blocked(prd_repo):
-    payload = _merge(prd_repo, "reports:\n  R1: { prd: PRD-0002, result: pass }\n")
-    assert run_hook("gate_git.py", payload, prd_repo) == 2
+def test_gate_git_blocks_a_merge_with_no_qa_evidence_at_all(prd_repo):
+    """The base case, and the reason the gate exists: work exists, nothing judges it.
+
+    The message is asserted to name the store the gate actually read, taken from the constant
+    rather than typed out — the V1 gate's failure was that it named a store nobody could fill,
+    and a refusal that does not say WHERE to put the proof repeats it in a smaller way."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS
+    result = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "no QA Evidence" in result.stderr
+    assert "project_memory/%s" % ACTIVE_DIRS["EVD"] in result.stderr
 
 
-def test_gate_git_matching_prd_pass_allowed(prd_repo):
-    payload = _merge(prd_repo, "reports:\n  R1: { prd: PRD-0001, result: pass }\n")
-    assert run_hook("gate_git.py", payload, prd_repo) == 0
+def test_gate_git_opens_once_the_evidence_a_role_can_produce_exists(prd_repo):
+    """...and the other half: the SAME repo merges once QA has recorded a passing Evidence.
+
+    Blocked-then-allowed in one test on purpose — separately, either half could pass while the
+    gate was stuck open or stuck shut."""
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+    capture_evidence(prd_repo, kind="test", result="pass")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_evidence_for_another_item_does_not_open_this_merge(prd_repo):
+    """A passing verdict about PR-0002 says nothing about PR-0001 — binding is per item."""
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    capture_evidence(prd_repo, related=("PR-0002",))
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+
+
+def test_gate_git_an_audit_evidence_does_not_open_a_delivery_merge(prd_repo):
+    """`kind: audit` judges the PROJECT (II.10a), so the auditor's weekly run is not a QA pass."""
+    capture_evidence(prd_repo, kind="audit", result="pass")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+
+
+def test_gate_git_does_not_apply_before_the_project_has_a_root_item(tmp_path):
+    """A repo that has a state directory but no PR/RQ yet merges and pushes freely.
+
+    This is the tooth that keeps the gate from being what it was before this round: with it gone,
+    a QA rule fires in a project that has no work to judge and blocks the very setup it exists to
+    protect (the V1 shape of this hook blocked EVERY merge and push for exactly that reason).
+    The counter-assertion is the point of the last two lines — the same repo, one captured item
+    later, is blocked, so "allowed" here cannot be the hook silently exiting on something else.
+    """
+    os.makedirs(os.path.join(str(tmp_path), "project_memory"), exist_ok=True)
+    assert run_hook("gate_git.py", _merge(tmp_path), tmp_path) == 0
+    assert run_hook("gate_git.py", _bash(tmp_path, "git push origin main"), tmp_path) == 0
+    capture_root_item(tmp_path)
+    assert run_hook("gate_git.py", _merge(tmp_path), tmp_path) == 2
+
+
+@pytest.mark.parametrize("verdict", ["PASS", "inconclusive", None])
+def test_gate_git_treats_a_verdict_it_cannot_read_as_no_pass(prd_repo, verdict):
+    """`result` is the one field a gate DECIDES on, so anything but `pass` must close the merge.
+
+    Written by hand, because the kernel refuses these three at capture — which is the point: the
+    only way such a file exists is that someone bypassed the kernel, and that is precisely when a
+    gate must not read an unrecognised value as consent. `PASS` is the plausible one (a human
+    spelling), `inconclusive` the vocabulary the kernel deliberately does not have, and a missing
+    field the shape a truncated write leaves behind.
+
+    A LEGAL, OLDER pass of the same kind sits next to it, and that neighbour is what makes the
+    test measure its own sentence. With the unreadable record alone, "read as no pass" and
+    "silently skipped" both end in rc 2 — once for "not a pass", once for "no QA Evidence" — so
+    the assertion held for the implementation the docstring warns about (measured: adding a skip
+    of unknown `result` values to `report._delivery_evidence` left this test and 123 kernel tests
+    green). With the older pass present, skipping makes it the current verdict and the merge
+    opens, which is why the refusal REASON is asserted and not just the exit code.
+    """
+    import yaml
+    capture_evidence(prd_repo, kind="test", result="pass", related=("PR-0001",))
+    evidence = {"id": "EVD-0002", "kind": "test", "related": ["PR-0001"],
+                "summary": "hand-written", "artifact_refs": ["staging/TSK-0001/run.log"],
+                # dated after the captured pass on purpose: the newest record of a kind is that
+                # kind's verdict, so this is the one the gate must be deciding on
+                "created": "2999-01-01T00:00:00"}
+    if verdict is not None:
+        evidence["result"] = verdict
+    write(os.path.join(evidence_dir(prd_repo), "EVD-0002.yaml"), yaml.safe_dump(evidence))
+    result = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "not a pass" in result.stderr, result.stderr
 
 
 # ---------------- gate_memory_complete ----------------
@@ -419,17 +692,20 @@ def test_quality_tool_cmd_module_fallback(monkeypatch):
     assert mod.tool_cmd("gitleaks") is None  # not a Python console-script — honest absence
 
 
-def test_quality_python_targets_from_source_areas(tmp_path):
+def test_quality_python_targets_from_governed_source_areas(tmp_path):
     os.makedirs(str(tmp_path / "scripts"))
     shutil.copy(QUALITY, str(tmp_path / "scripts" / "quality.py"))
+    shutil.copy(KIT_CHECKS, str(tmp_path / "scripts" / "kit_checks.py"))
     os.makedirs(str(tmp_path / "src"))
     os.makedirs(str(tmp_path / "compounder"))
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "source_areas:\n  - compounder\n  - '..'\n")
+    capture_invariant(tmp_path, "compounder/", text="the whole codebase lives here")
+    capture_invariant(tmp_path, "..", text="a scope that would walk out of the repo")
+    capture_invariant(tmp_path, "python", text="not an area at all — no such directory")
     mod = _quality_mod(str(tmp_path / "scripts" / "quality.py"))
     targets = mod._python_targets()
     assert "compounder" in targets and "src" in targets
     assert ".." not in targets  # dot-only names never become lint targets (audit class)
+    assert "python" not in targets  # a scope that names no directory names no area
 
 
 def test_quality_electron_env_stripped():
@@ -492,31 +768,73 @@ def test_yaml_valid_ignores_non_project_memory(tmp_path):
     assert run_hook("guard_yaml_valid.py", payload, tmp_path) == 0
 
 
-# ---------------- guard_guidelines token matching (compound keys like html_vanilla_js) ----------------
-def test_guidelines_compound_key_satisfies_js(prd_repo):
-    # the synaipse case: the architect named the block `html_vanilla_js:` — token "js" must match
-    write(str(prd_repo / "project_memory" / "coding_guidelines.yaml"),
-          "global:\n  - x\nlanguages:\n  html_vanilla_js:\n    - no inline handlers\n")
-    payload = {"tool_name": "Write",
-               "tool_input": {"file_path": str(prd_repo / "src" / "app.js")}, "cwd": str(prd_repo)}
-    assert run_hook("guard_guidelines.py", payload, prd_repo) == 0
+# ---------------- guard_guidelines: which INV governs a write ----------------
+def _write_code(repo, rel):
+    return {"tool_name": "Write", "tool_input": {"file_path": str(repo / rel)}, "cwd": str(repo)}
 
 
-def test_guidelines_still_blocks_js_without_block(prd_repo):
-    write(str(prd_repo / "project_memory" / "coding_guidelines.yaml"), "global:\n  - x\nlanguages: {}\n")
-    payload = {"tool_name": "Write",
-               "tool_input": {"file_path": str(prd_repo / "src" / "app.js")}, "cwd": str(prd_repo)}
-    assert run_hook("guard_guidelines.py", payload, prd_repo) == 2
+def test_guidelines_compound_scope_satisfies_js(prd_repo):
+    # the synaipse case: the architect named the language `html_vanilla_js` — token "js" must match
+    capture_invariant(prd_repo, "html_vanilla_js", text="no inline handlers")
+    assert run_hook("guard_guidelines.py", _write_code(prd_repo, "src/app.js"), prd_repo) == 0
 
 
-def test_guidelines_stray_key_outside_languages_does_not_satisfy(prd_repo):
-    # a `node_version:` under global must NOT satisfy .js — only keys under `languages:` count
-    pytest.importorskip("yaml")
-    write(str(prd_repo / "project_memory" / "coding_guidelines.yaml"),
-          "global:\n  node_version: 20\nlanguages: {}\n")
-    payload = {"tool_name": "Write",
-               "tool_input": {"file_path": str(prd_repo / "src" / "app.js")}, "cwd": str(prd_repo)}
-    assert run_hook("guard_guidelines.py", payload, prd_repo) == 2
+def test_guidelines_still_blocks_js_when_no_invariant_governs_it(prd_repo):
+    capture_invariant(prd_repo, "python", text="type hints on every public function")
+    assert run_hook("guard_guidelines.py", _write_code(prd_repo, "src/app.js"), prd_repo) == 2
+
+
+def test_guidelines_are_satisfied_by_an_invariant_over_the_area(prd_repo):
+    """An invariant that governs `frontend/` governs the code IN it — a scope reads as a path too.
+
+    V1 could only answer the language question, because its source was a `languages:` map. An
+    invariant states what it governs, and "everything under frontend/" is as legitimate an answer
+    as "TypeScript" — so the guard asks whether the scope covers the file, by either reading.
+    """
+    capture_invariant(prd_repo, "frontend/", text="no direct DOM access outside components")
+    assert run_hook("guard_guidelines.py", _write_code(prd_repo, "frontend/app.ts"), prd_repo) == 0
+    # ...and it does NOT govern the neighbouring backend area
+    assert run_hook("guard_guidelines.py", _write_code(prd_repo, "backend/app.ts"), prd_repo) == 2
+
+
+@pytest.mark.parametrize("scope,rel,expected", [
+    # a PATH scope is an AREA and nothing else — every one of these carries a segment that is
+    # also a language alias, and every one of them used to disarm that language repo-wide
+    ("services/node-api", "src/x.js", 2),
+    ("go/pkg", "src/main.go", 2),
+    ("lib/c-bindings", "src/main.c", 2),
+    ("docs/rust-notes", "src/m.rs", 2),
+    # ...while the area reading itself keeps working, in both directions
+    ("src/backend", "src/backend/a.py", 0),
+    ("src/backend", "src/other.py", 2),
+    # ...and a BARE name is still read as the language it names
+    ("go", "src/main.go", 0),
+    ("python", "src/a.py", 0),
+    ("ui/components", "src/a.ts", 2),
+])
+def test_a_path_scope_is_an_area_and_not_a_list_of_languages(tmp_path, scope, rel, expected):
+    """The collision the first cut of the INV migration opened, measured per shape.
+
+    `_governs` tokenised every scope on non-letters BEFORE asking whether it was a path, so any
+    segment equal to a `LANG` alias voted for that language across the whole repo — `go/pkg` for
+    `.go`, `lib/c-bindings` for `.c`, `services/node-api` for `.js`. The guard had just been
+    brought back from being inert; this made it inert again for those languages.
+
+    Run as real hook processes, because the exit code is the only thing a session sees.
+    """
+    capture_root_item(tmp_path)
+    capture_invariant(tmp_path, scope, text="the rule this invariant states")
+    assert run_hook("guard_guidelines.py", _write_code(tmp_path, rel), tmp_path) == expected
+
+
+def test_guidelines_pass_while_the_project_keeps_no_invariants_at_all(prd_repo):
+    """The V1 "no guidelines file" case, kept: a project with no invariants has no regime yet.
+
+    Turning this into a block would stop the first line of code in every new project, which spec
+    II.4 does not ask for (`guard_guidelines` is not in its fail-closed list) — so the honest form
+    is the constitution saying the rule binds as policy there, which it now does.
+    """
+    assert run_hook("guard_guidelines.py", _write_code(prd_repo, "src/app.js"), prd_repo) == 0
 
 
 def test_yaml_valid_survives_recursive_alias(tmp_path):
@@ -619,11 +937,9 @@ def test_coverage_blocks_cpp_without_tests(prd_repo):
     assert run_hook("gate_test_coverage.py", payload, prd_repo) == 2
 
 
-def test_guidelines_block_cpp_without_languages(prd_repo):
-    write(str(prd_repo / "project_memory" / "coding_guidelines.yaml"), "global:\n  - x\nlanguages: {}\n")
-    payload = {"tool_name": "Write",
-               "tool_input": {"file_path": str(prd_repo / "src" / "main.cpp")}, "cwd": str(prd_repo)}
-    assert run_hook("guard_guidelines.py", payload, prd_repo) == 2
+def test_guidelines_block_cpp_when_no_invariant_governs_it(prd_repo):
+    capture_invariant(prd_repo, "python", text="type hints on every public function")
+    assert run_hook("guard_guidelines.py", _write_code(prd_repo, "src/main.cpp"), prd_repo) == 2
 
 
 # ---------------- gate_memory_complete: project_config name/stacks loophole ----------------
@@ -1268,20 +1584,22 @@ def test_quality_red_on_a_state_the_kernel_validator_rejects(tmp_path):
     assert "duplicate id" in r.stdout
 
 
-def test_kit_check_remedies_never_name_a_file_the_project_does_not_have(tmp_path):
-    """A remedy has to be walkable. V2 dissolved coding_guidelines.yaml, so a check that offers it
-    as the only way out sends the user to a file the scaffold does not create and gate_write_scope
-    would not let them write — the "remedy nobody can follow" class gate_filing documents on
-    itself. When the project HAS a guidelines file the remedy must name that one."""
+def test_kit_check_remedies_name_a_home_that_exists(tmp_path):
+    """A remedy has to be walkable, and for a whole round this one was not.
+
+    V2 dissolved the guidelines monolith, so the check first offered a file the scaffold does not
+    create and `gate_write_scope` would not let anyone write; the round after that it said the knob
+    "has no home in this project", which was honest and still left the user nowhere. The home is an
+    `INV` item, so the remedy names that — and it must not fall back to the deleted file's name,
+    which is the regression this asserts against.
+    """
     pytest.importorskip("yaml")
     write(str(tmp_path / "src" / "static" / "app.js"), "let x = 1;\n" * 900)
     r = run_quality_proc(str(tmp_path))
     assert "file budget" in r.stdout and r.returncode == 1
-    assert "coding_guidelines.yaml" not in r.stdout
-    assert "has no home in this project" in r.stdout
-    write(str(tmp_path / "project_memory" / "research_guidelines.yaml"), "source_areas: []\n")
-    r = run_quality_proc(str(tmp_path))
-    assert "`file_budget: exempt:` in project_memory/research_guidelines.yaml" in r.stdout
+    assert "guidelines.yaml" not in r.stdout
+    assert "no home in this project" not in r.stdout
+    assert "INV item" in r.stdout and "scope: file_budget" in r.stdout
 
 
 def test_quality_says_so_when_the_state_validator_cannot_be_reached(tmp_path):
@@ -1391,7 +1709,6 @@ def test_init_pending_file_written_and_removed(tmp_path):
 KIT_SPECIFIC_HOOKS = {
     "session_status.py": "the session briefing names each kit's own artifacts and nags",
     "format_on_write.py": "formats the languages a kit actually produces",
-    "gate_git.py": "the dev/research merge gates run different pipelines",
 }
 # The SAME rule for the project scripts a kit ships. Empty on purpose: the office kit's scripts
 # share no filename with dev/research, and every name dev and research both ship is meant to be one
@@ -1428,6 +1745,251 @@ def _assert_mirrored(label, by_name, exceptions):
                 "so it stays pinned" % (label, name))
 
 
+def test_the_hooks_that_name_a_typed_directory_spell_it_as_the_kernel_does():
+    """A hook that hard-codes a state path must agree with `ACTIVE_DIRS`, or it reads an empty tree.
+
+    Spec II.7 keeps the integrity gates stdlib-first, so a gate that needs one typed directory
+    spells it as a literal rather than importing the kernel for it — a guard that cannot load must
+    not stop guarding. That literal is a second statement of a kernel constant, which is exactly the
+    shape this repo keeps finding a defect in, so it is PINNED here instead of trusted.
+
+    WHAT MAKES A CONSTANT ONE OF THESE is what the hook DOES with it, not what it is called: a
+    tuple of literals that the module SPLATS into a `join(...)` is a path composition, and there is
+    nothing else it could be. The first cut asked for a name ending in `_DIR` instead and was an
+    enumeration wearing a definition's clothes — it read `gate_filing`'s `GNU_TARGET_DIR`
+    (`mv`/`cp`/`install`, a set of shell verbs it tests membership against) as a state path and
+    reported it as a defect.
+
+    Derived, so a hook that gains such a constant is covered the day it ships, and one whose value
+    drifts from the kernel fails the same day. Measured reach: changing `INVARIANTS_DIR` to
+    `("invariants", "activ")` in either hook that has one turns this red.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ACTIVE_DIRS
+    known = set(ACTIVE_DIRS.values())
+    seen = []
+    for kit in KITS:
+        hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
+        for name in sorted(os.listdir(hooks_dir)):
+            if not name.endswith(".py"):
+                continue
+            tree = ast.parse(open(os.path.join(hooks_dir, name), encoding="utf-8").read())
+            literals = {}
+            for node in tree.body:
+                if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Tuple)):
+                    continue
+                parts = [e.value for e in node.value.elts if isinstance(e, ast.Constant)]
+                if len(parts) != len(node.value.elts):
+                    continue              # not a plain tuple of literals
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        literals[target.id] = "/".join(str(p) for p in parts)
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and _callee_name(node) == "join"):
+                    continue
+                for argument in node.args:
+                    if not (isinstance(argument, ast.Starred)
+                            and isinstance(argument.value, ast.Name)
+                            and argument.value.id in literals):
+                        continue
+                    spelled = literals[argument.value.id]
+                    seen.append("%s/%s:%s" % (kit, name, argument.value.id))
+                    assert spelled in known, (
+                        "%s/%s joins %s as a path, and it spells %r — no entry of kernel "
+                        "ACTIVE_DIRS (%s), so the hook would read an empty directory and decide "
+                        "on it" % (kit, name, argument.value.id, spelled, ", ".join(sorted(known))))
+    # a floor, so the reader silently finding nothing cannot pass for agreement
+    assert seen, "no hook composes a typed-directory constant any more — did the reader narrow?"
+
+
+_SHIPPED_SCRIPT_RX = re.compile(r"(?:scripts/)?(kit_checks|quality|kit_browser_checks|"
+                                r"generate_dashboard|retro|harness)(?:\.py)?")
+
+
+def test_the_invariant_scan_of_a_blocking_gate_is_bounded(tmp_path):
+    """A gate that cannot answer inside the host's budget is a gate that ALLOWS (spec II.4).
+
+    Both readers of the invariant store sit on BLOCKING PreToolUse hooks — `guard_guidelines` on
+    every code write, `gate_test_coverage` on every merge/push — and both walked the whole
+    directory with no bound at all. Measured before the caps: ~0.23 s per MB (10 MB 4.80 s,
+    99 MB 22.84 s, 199 MB 46.82 s), so a store past ~250 MB crosses the 60 s at which the host
+    kills the hook, and a killed hook is an ALLOW. The inversion was the giveaway: the NON-blocking
+    repo script carried a per-file cap with its reason while the blocking gates carried none.
+
+    ASSERTED AS A PROPERTY, NOT AS A DURATION, deliberately: a wall-clock bound on a scan this
+    cheap measures the machine (that mistake is documented one file over, in the memory-budget
+    latency test). The bound is visible in the RESULT instead — items beyond
+    `INVARIANT_SCAN_MAX_BYTES` are not read, so their scopes do not appear, and both readers stop
+    at the same place because both walk the directory in sorted order.
+    """
+    pytest.importorskip("yaml")
+    mod = _kit_checks_mod()
+    gate = load_kit_module("gate_test_coverage_bounded",
+                           os.path.join(HOOKS, "gate_test_coverage.py"))
+    invariants = tmp_path / "project_memory" / "invariants" / "active"
+    # one item just under the per-item cap per area, enough of them to pass the scan budget
+    per_item = mod.INVARIANT_MAX_BYTES - 4096
+    count = mod.INVARIANT_SCAN_MAX_BYTES // per_item + 2
+    for index in range(count):
+        area = "area%02d" % index
+        os.makedirs(str(tmp_path / area), exist_ok=True)
+        path = str(invariants / ("INV-%04d.yaml" % (index + 1)))
+        # the filler is ONE long scalar, not many lines: `write` opens in text mode, so on Windows
+        # every newline costs a second byte on disk and a line-counted payload lands ABOVE the
+        # per-item cap instead of just under it — measured, and it made every item invisible
+        write(path, "id: INV-%04d\nscope: %s\nsource: PR-0001\n"
+                    "check: {kind: test, ref: \"t.py::t\"}\nstatus: unverified\ntext: %s\n"
+                    % (index + 1, area, "x" * (per_item - 200)))
+        assert os.path.getsize(path) < mod.INVARIANT_MAX_BYTES, "the fixture item is oversized"
+    seen = mod.governed_source_areas(str(tmp_path))
+    from_gate = gate._governed_source_areas(str(tmp_path),
+                                            os.path.join(str(tmp_path), "project_memory"))
+    assert seen == from_gate, (seen, from_gate)
+    assert 0 < len(seen) < count, (
+        "the scan read %d of %d items — the whole-store budget bounds nothing" % (len(seen), count))
+
+
+def test_no_shipped_template_declares_a_knob_the_scripts_read_somewhere_else():
+    """A shipped state template may not offer a key that is really an `INV` knob, or claim a
+    script reads a key it does not.
+
+    THE CLASS, measured in the research kit on 2026-07-31 and closed with this check:
+    `research_guidelines.yaml` shipped `source_areas:`, `module_invariants:` and
+    `yaml_lint_exclude:` with comments saying "the deterministic checks SCAN", "enforced by
+    `scripts/kit_checks.py`" and "Repo-wide YAML parse (kit_checks)". After the knobs moved into
+    `INV` items no script read any of them, so a project filling them got nothing — measured in a
+    research scaffold: `compounder/big.py` at 1 200 lines PASSED the file budget with
+    `source_areas: [compounder]`, and FAILED it with the same package as an invariant's `scope`.
+    The V1-monolith sweep cannot see this: `research_guidelines.yaml` is reference material, not a
+    monolith, so it is correctly outside `conftest.V1_MONOLITHS` — and a dead key inside a LIVING
+    file is a shape that inventory was never going to catch.
+
+    TWO PROPERTIES, both derived from the RUNNING scripts, because one of them alone was measured
+    insufficient:
+
+      * A KNOB NAME IS TAKEN. The scopes the kit scripts read as knobs are the literal arguments
+        to their `invariant_knob(...)` calls, read out of the AST — today `file_budget`,
+        `module_invariants`, `yaml_lint_exclude`, `coverage_gate`, `browser_smoke`, and whatever a
+        later round adds without telling this test. A top-level key of that name in a state
+        template is a decoy: the script reads that name out of an `INV` item, so filling the key
+        does nothing. Reintroducing the `module_invariants:` block passes the annotation rule
+        below on its own (the name IS a literal in `kit_checks.py`, just not read from there) —
+        measured, and that is why this half exists.
+      * A NAMED SCRIPT MUST READ IT. A comment directly above a top-level key that NAMES one of
+        the kit's own scripts is a claim about that script, so the key must appear as a string
+        literal in it. This is the half that catches a name no script mentions at all —
+        `source_areas:` and `coverage_areas:` are literals nowhere any more.
+
+    Prose rules a ROLE reads (`global:`, `methods:`, `method_tooling:`) name no script and are no
+    knob — none of this check's business, which is the line between a rule and a knob.
+    """
+    scripts = {}
+    knobs = set()
+    for kit in KITS:
+        directory = os.path.join(ROOT, "team-kits", kit, "templates", "repo", "scripts")
+        for name in sorted(os.listdir(directory)) if os.path.isdir(directory) else []:
+            if not name.endswith(".py"):
+                continue
+            with open(os.path.join(directory, name), encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            scripts.setdefault(name[:-3], set()).update(
+                node.value for node in ast.walk(tree)
+                if isinstance(node, ast.Constant) and isinstance(node.value, str))
+            for node in ast.walk(tree):
+                # `invariant_knob(root, "<scope>")` and the local wrapper `_invariant_knob(...)`:
+                # matched on the callable's NAME, so a third spelling of the same call is covered
+                if not isinstance(node, ast.Call):
+                    continue
+                called = getattr(node.func, "attr", getattr(node.func, "id", "")) or ""
+                if not called.endswith("invariant_knob"):
+                    continue
+                for argument in node.args:
+                    if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                        knobs.add(argument.value)
+    assert scripts and knobs, "no kit script / no knob found — did the reader narrow?"
+    offences = []
+    for kit in KITS:
+        directory = os.path.join(ROOT, "team-kits", kit, "templates", "project_memory")
+        for name in sorted(os.listdir(directory)) if os.path.isdir(directory) else []:
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            path = os.path.join(directory, name)
+            comment = []
+            for line in open(path, encoding="utf-8", errors="ignore").read().splitlines():
+                if line.startswith("#"):
+                    comment.append(line)
+                    continue
+                key = re.match(r"([A-Za-z_][A-Za-z0-9_]*):", line)
+                if key and key.group(1) in knobs:
+                    offences.append("%s/%s: `%s:` is an INV knob — the scripts read that name out "
+                                    "of an invariant, so the key here is a decoy"
+                                    % (kit, name, key.group(1)))
+                if key and comment:
+                    named = {m.group(1) for block in comment
+                             for m in _SHIPPED_SCRIPT_RX.finditer(block)}
+                    for script in sorted(named & set(scripts)):
+                        if key.group(1) not in scripts[script]:
+                            offences.append("%s/%s: `%s:` is annotated with %s.py, which never "
+                                            "reads that key" % (kit, name, key.group(1), script))
+                comment = []
+    assert not offences, (
+        "a shipped template offers a key nothing behind it honours:\n  " + "\n  ".join(offences))
+
+
+def test_the_two_readers_of_a_governed_source_area_agree(tmp_path):
+    """One definition, two processes: the merge gate and the file budget must see the same areas.
+
+    "A source area is a directory some `INV` item's `scope` names" replaced two V1 config keys in
+    two files (`coverage_areas:` and `source_areas:`) that meant the same thing and drifted — an
+    audit caught one of them scanning an area the other skipped. A hook cannot import a repo script,
+    so the derivation exists twice; a copy that may not be deleted has to be PINNED, and this is the
+    pin: one INV fixture, both readers, the same answer.
+
+    Both are read where they RUN — the gate as a real hook process (its verdict is the only thing a
+    session ever sees of it), the script through its own module — so neither can be satisfied by a
+    docstring.
+
+    THE FIXTURE CARRIES AN OVERSIZED ITEM, because without one this pin was green while the two
+    readers already disagreed: the script skipped an item past its per-file cap and the hook, which
+    had no cap at all, read it. Measured then — `script=[]` against `gate=['compounder']` — and the
+    pin could not see it, since every item it built was small. The caps themselves are compared
+    too, so a reader that keeps a limit of its own invents a divergence rather than inheriting one.
+    """
+    pytest.importorskip("yaml")
+    capture_root_item(tmp_path)
+    for name in ("compounder", "engine", "docs_site", "bloated"):
+        os.makedirs(str(tmp_path / name), exist_ok=True)
+    capture_invariant(tmp_path, "compounder/scoring", text="pure, no I/O")
+    capture_invariant(tmp_path, "engine", text="deterministic")
+    capture_invariant(tmp_path, "python", text="not a directory, so not an area")
+    capture_invariant(tmp_path, "..", text="a scope that would walk out of the repo")
+    mod = _kit_checks_mod()
+    gate = load_kit_module("gate_test_coverage_under_test",
+                           os.path.join(HOOKS, "gate_test_coverage.py"))
+    guard = load_kit_module("guard_guidelines_under_test",
+                            os.path.join(HOOKS, "guard_guidelines.py"))
+    for name in ("INVARIANT_MAX_BYTES", "INVARIANT_SCAN_MAX_BYTES"):
+        values = {getattr(reader, name) for reader in (mod, gate, guard)}
+        assert len(values) == 1, "%s differs across the readers: %s" % (name, values)
+    # an item past the per-item cap governs nothing — in BOTH readers or in neither
+    oversized = capture_invariant(tmp_path, "bloated", text="x")
+    path = os.path.join(str(tmp_path), "project_memory", "invariants", "active",
+                        oversized["id"] + ".yaml")
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write("padding: |\n" + "  filler\n" * (mod.INVARIANT_MAX_BYTES // 9))
+
+    from_script = mod.governed_source_areas(str(tmp_path))
+    from_gate = gate._governed_source_areas(str(tmp_path),
+                                            os.path.join(str(tmp_path), "project_memory"))
+    assert sorted(from_script) == sorted(from_gate) == ["compounder", "engine"]
+    # ...and the gate's answer is what a real hook process acts on: `compounder/` has code, no tests
+    write(str(tmp_path / "compounder" / "core.py"), "def f():\n    return 1\n")
+    result = run_hook_process("gate_test_coverage.py",
+                              {"tool_name": "Bash", "cwd": str(tmp_path),
+                               "tool_input": {"command": "git push origin main"}}, tmp_path)
+    assert result.returncode == 2 and "compounder" in result.stderr
+
+
 def test_shared_kit_files_identical():
     """DERIVED, not listed. The old version enumerated six filenames, so every file mirrored after
     it was written stayed unpinned — `_gate.py`, `_kernel.py`, `_compat.py`, `kit_trust_state.py`
@@ -1457,9 +2019,10 @@ def test_file_budget_blocks_monolith(tmp_path):
 def test_file_budget_exemption_with_reason_passes(tmp_path):
     pytest.importorskip("yaml")
     write(str(tmp_path / "src" / "static" / "app.js"), "let x = 1;\n" * 900)
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "global:\n  - x\nlanguages: {}\nfile_budget:\n  max_lines: 800\n  exempt:\n"
-          "    - path: src/static/app.js\n      reason: \"legacy monolith - split tracked in TSK-1\"\n")
+    capture_invariant(tmp_path, "file_budget", value={
+        "max_lines": 800,
+        "exempt": [{"path": "src/static/app.js",
+                    "reason": "legacy monolith - split tracked in TSK-1"}]})
     assert run_quality(str(tmp_path)) == 0
 
 
@@ -1599,6 +2162,27 @@ def test_selfmod_blocks_provider_generated_control_files(tmp_path, rel):
     assert run_hook("guard_harness_selfmod.py", payload, tmp_path) == 2, rel
 
 
+def test_selfmod_blocks_editing_the_installed_entry_point(tmp_path):
+    """The file every fail-closed remedy tells a role to RUN is not a file that role may edit.
+
+    `scripts/harness.py` is installed kit-owned and imports the kernel, so an edited copy could
+    mint an approval and clear `gate_push_token` while every refusal in the tree kept pointing at
+    it — the same argument that put `scripts/ledger_add.py` in `BLOCKED_REPO_PATHS`. The path
+    comes from `kernel.cli.ENTRY_POINT`, so moving the entry point moves this test with it rather
+    than leaving a guard on a path nothing uses.
+
+    What this does NOT pin is unreachability: this is an Edit/Write guard, and a shell write goes
+    around it — the guard's own docstring has said so since V1.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    for kit in ("dev-team", "office-team", "research-team"):
+        hooks = os.path.join(ROOT, "team-kits", kit, "hooks")
+        payload = {"tool_name": "Edit", "cwd": str(tmp_path),
+                   "tool_input": {"file_path": str(tmp_path / cli.ENTRY_POINT)}}
+        assert run_hook("guard_harness_selfmod.py", payload, tmp_path, hooks) == 2, kit
+
+
 def test_selfmod_allows_scaffold_command(tmp_path):
     payload = {
         "tool_name": "Bash",
@@ -1615,28 +2199,505 @@ def test_selfmod_allows_agent_resync_and_memory(tmp_path):
         assert run_hook("guard_harness_selfmod.py", payload, tmp_path) == 0, rel
 
 
-# ---------------- gate_git: entry-level QA binding (audit false-accept regression) ----------------
-def test_gate_git_old_pass_other_task_fresh_fail_target_blocks(prd_repo):
-    # the exact reported hole: an old PASS for ANOTHER PRD + a fresh FAIL for the target in ONE file
-    write(str(prd_repo / "project_memory" / "test_reports.yaml"),
-          "reports:\n  R1: { prd: PRD-0009, result: pass }\n  R2: { prd: PRD-0001, result: fail }\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_git.py", payload, prd_repo) == 2
+# ---------------- gate_git: QA binding (audit false-accept regression, in its V2 shape) ---------
+def capture_task(repo, root="PR-0001", **overrides):
+    """A TSK hanging from `root` — what QA actually judges, and the indirect binding's middle hop."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    fields = {"product_requirement": root, "root_revision": 1, "derives_from": [root],
+              "type": "implementation", "assigned_role": "backend-developer",
+              "acceptance_refs": ["AC-1"], "required_inputs": [], "allowed_scope": ["src/**"],
+              "forbidden_scope": [], "expected_outputs": ["src/checkout.py"], "dependencies": []}
+    fields.update(overrides)
+    return ProjectState(os.path.join(str(repo), "project_memory")).capture("TSK", fields)
 
 
-def test_gate_git_bound_pass_still_allows(prd_repo):
-    write(str(prd_repo / "project_memory" / "test_reports.yaml"),
-          "reports:\n  R1: { prd: PRD-0009, result: fail }\n  R2: { prd: PRD-0001, result: pass }\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_git.py", payload, prd_repo) == 0
+def test_gate_git_a_pass_for_another_item_plus_a_fail_for_this_one_blocks(prd_repo):
+    """The reported false accept, carried over to the store that replaced the report files.
+
+    V1 kept every verdict in ONE file and matched TEXT, so an old PASS for another item sitting
+    next to a fresh FAIL for the target lifted the gate. Here the two verdicts are two items with
+    two `related` fields, and only the one about this item is read."""
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    capture_evidence(prd_repo, result="pass", related=("PR-0002",))
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "not a pass" in result.stderr
 
 
-def test_gate_git_indirect_binding_falls_back_to_file_level(prd_repo):
-    # entries bound via task ids only (no PRD in the entry) -> file-level check keeps working
-    write(str(prd_repo / "project_memory" / "test_reports.yaml"),
-          "# gate for PRD-0001\nreports:\n  R1: { task: TSK-0007, result: pass }\n")
-    payload = {"tool_name": "Bash", "tool_input": {"command": "git merge feat/PRD-0001-x"}, "cwd": str(prd_repo)}
-    assert run_hook("gate_git.py", payload, prd_repo) == 0
+def test_gate_git_a_fail_for_another_item_does_not_close_this_merge(prd_repo):
+    """The counter-direction, so the test above cannot be satisfied by blocking everything."""
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    capture_evidence(prd_repo, result="fail", related=("PR-0002",))
+    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_evidence_bound_to_a_task_resolves_to_its_root(prd_repo):
+    """QA judges a TASK; the merge is of the PR it hangs from. V1 could only fall back to matching
+    the PR's name anywhere in the file — including in a comment. V2 walks the reference graph."""
+    task = capture_task(prd_repo)
+    capture_evidence(prd_repo, related=(task["id"],))
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_evidence_bound_to_an_archived_task_still_resolves(prd_repo):
+    """A task is archived when it reaches VALIDATED — which is BEFORE the merge it was validated
+    for. Resolving only active items would lose the binding exactly at the finish line."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(prd_repo), "project_memory"))
+    task = capture_task(prd_repo)
+    capture_evidence(prd_repo, related=(task["id"],))
+    for status in ("READY", "LEASED", "IN_PROGRESS", "SUBMITTED", "DONE", "VALIDATED"):
+        state.transition(task["id"], status)
+    state.archive(task["id"])
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_a_fail_recorded_after_a_pass_closes_the_gate_again(prd_repo):
+    """Newest-wins, not any-pass-wins: a regression found after a green run is what re-blocks the
+    merge, and "there is a passing Evidence somewhere" cannot express that."""
+    capture_evidence(prd_repo, kind="test", result="pass")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+    capture_evidence(prd_repo, kind="test", result="fail")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+    capture_evidence(prd_repo, kind="test", result="pass")   # the fix, re-verified
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_a_failing_kind_blocks_although_another_kind_passes(prd_repo):
+    """Per KIND, because the kinds ask different questions: a green test run does not answer the
+    reviewer's finding, and reading only "some kind passed" would let it."""
+    capture_evidence(prd_repo, kind="test", result="pass")
+    capture_evidence(prd_repo, kind="review", result="fail")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+
+
+def test_gate_git_archiving_a_superseded_verdict_retires_it(prd_repo):
+    """Archiving is a kernel operation and visible in git, so it does lift the gate — and the
+    remedy text says so rather than pretending otherwise. What it must NOT be is the cheap way
+    out, which is why the kernel refuses to edit an Evidence at all (test_state.py)."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    failed = capture_evidence(prd_repo, kind="review", result="fail")
+    capture_evidence(prd_repo, kind="test", result="pass")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+    ProjectState(os.path.join(str(prd_repo), "project_memory")).archive(failed)
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_names_recording_the_re_run_as_the_way_out_of_a_fail(prd_repo):
+    """The refusal must point at the mechanism that exists, and describe archiving honestly.
+
+    Two failures this pins, both of them a house-rule-3 shape: a remedy that recommends editing
+    the Evidence (which the kernel refuses), and one that recommends archiving as THE fix while
+    the whole paragraph demands the work be repaired — archiving retires a verdict without
+    replacing it, so it is aftercare, not a remedy.
+    """
+    capture_evidence(prd_repo, kind="test", result="fail")
+    stderr = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo).stderr
+    assert "scripts/harness.py evidence" in stderr and "--result pass" in stderr
+    assert "refuses to EDIT" in stderr
+    assert "after a newer run, not instead of one" in stderr
+
+
+# ---------------- gate_git: WHICH item the merge is about ----------------------------------------
+def test_gate_git_requires_every_item_the_command_names(prd_repo):
+    """An id in a message is a requirement, never a substitute for the ref's own verdict.
+
+    The measured regression: reading "the first root id anywhere in the raw command" made
+    `git merge -m "see PR-0002" feat/PR-0001-x` a merge of PR-0002 in the gate's eyes, so an old
+    PASS for another item lifted the gate over a fresh FAIL for the branch's item — literally the
+    audit false accept, restored by one flag. Both spellings are checked because they fail
+    differently: quoted, the message is not part of the invocation at all; unquoted, it names a
+    second item and the gate then wants BOTH green.
+    """
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    capture_evidence(prd_repo, result="pass", related=("PR-0002",))
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    for command in ('git merge -m "see PR-0002" feat/PR-0001-x',
+                    "git merge -m see-PR-0002 feat/PR-0001-x"):
+        result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+        assert result.returncode == 2, command
+        assert "PR-0001" in result.stderr, command
+
+
+def test_gate_git_ignores_an_item_named_only_in_a_shell_comment(prd_repo):
+    """The counter-direction of the rule above: what the shell drops, the gate drops.
+
+    Without it "require every named item" would be satisfiable by blocking on anything that looks
+    like an id anywhere on the line, and a trailing note would start failing merges.
+    """
+    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    assert run_hook("gate_git.py",
+                    _bash(prd_repo, "git merge feat/PR-0001-x  # follow-up to PR-0002"),
+                    prd_repo) == 0
+
+
+@pytest.mark.parametrize("quote", ["", '"', "'"])
+def test_gate_git_binds_a_quoted_ref_exactly_like_a_bare_one(prd_repo, quote):
+    """Quoting the ref is the ordinary spelling and must change nothing the gate decides.
+
+    Measured before the fix, in a scaffolded project with the shipped hook as a real process:
+    `git merge feat/PR-0002-x` blocked and `git merge "feat/PR-0002-x"` merged — an item with no
+    Evidence at all, and a DRAFT one likewise. The cause was reading the PROSE-stripped view for a
+    question about ARGUMENTS: a quoted span is prose only when the question is whether the line
+    invokes git; here it is the ref itself. Both teeth of disposition row 115 are checked, because
+    they fail through the same hole and each alone can be satisfied by the wrong implementation —
+    the evidence tooth by any block, the status tooth by any lookup that finds the item.
+    """
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))                    # PR-0002
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Third"), status=None)        # PR-0003 DRAFT
+    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    for item, why in (("PR-0002", "no QA Evidence"),
+                      ("PR-0003", "nothing has approved this work")):
+        command = "git merge %sfeat/%s-x%s" % (quote, item, quote)
+        result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+        assert result.returncode == 2, command
+        assert item in result.stderr and why in result.stderr, (command, result.stderr)
+
+
+def test_gate_git_still_drops_a_hash_that_only_looks_like_a_comment(prd_repo):
+    """The cost of keeping quoted text: a `#` inside a message must not cut the line.
+
+    The comment rule and the quoting rule meet here. Once the quote MARKS are gone, `-m "fix #3"`
+    ends in something that reads like the start of a shell comment, and cutting there would drop
+    the ref that follows — turning the fix for the quoted ref into a new way to unbind the gate.
+    So the two are decided in one pass over the text (`_compat.git_argument_text`), and only a `#`
+    seen outside quotes opens a comment.
+    """
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002, no evidence
+    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    result = run_hook_process(
+        "gate_git.py", _bash(prd_repo, 'git merge -m "fix #3 in the flow" feat/PR-0002-x'),
+        prd_repo)
+    assert result.returncode == 2
+    assert "PR-0002" in result.stderr
+
+
+def test_gate_git_widens_to_the_whole_line_when_the_ref_is_a_shell_variable(prd_repo):
+    """A ref the shell builds at run time is unreadable, and unreadable is not "names nothing".
+
+    `B=feat/PR-0002-x; git merge "$B"` passed the gate before: the merge segment holds only `$B`,
+    so the command "named no item" and fell through to the store-wide question, which only asks
+    whether something is currently FAILING — and an item with no evidence at all is not failing.
+    The counter-assertion is the second half: widening must not turn every scripted ref into a
+    block, so the same expansion with nothing else on the line still merges.
+    """
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002, no evidence
+    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    result = run_hook_process("gate_git.py",
+                              _bash(prd_repo, 'B=feat/PR-0002-x; git merge "$B"'), prd_repo)
+    assert result.returncode == 2
+    assert "PR-0002" in result.stderr
+    assert run_hook("gate_git.py", _bash(prd_repo, 'git merge "$B"'), prd_repo) == 0
+
+
+def test_gate_git_sees_a_command_split_over_a_line_continuation(prd_repo):
+    """`\\`+newline is the shell joining two lines, and the gate has to join them too.
+
+    Measured before the fix: `git \\<newline>  merge feat/PR-0001-x` matched no git gate at all —
+    the applicability pattern of every one of them stops at a newline, correctly, because an
+    unescaped newline really does end a command. So this was not a weaker judgement, it was the
+    whole merge gate switched off by two characters, force-push ban included. Both are asserted
+    because they refuse at different points and the second is the one no project state can lift.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    merged = run_hook_process("gate_git.py",
+                              _bash(prd_repo, "git \\\n  merge feat/PR-0001-x"), prd_repo)
+    assert merged.returncode == 2
+    assert "PR-0001" in merged.stderr
+    forced = run_hook_process("gate_git.py",
+                              _bash(prd_repo, "git \\\n  push --force origin main"), prd_repo)
+    assert forced.returncode == 2
+    assert "force-push" in forced.stderr
+
+
+@pytest.mark.parametrize("command,expected", [
+    ('git "push" --force origin main', "force-push"),
+    ("git pu''sh --force origin main", "force-push"),
+    ('git "push" origin main', "PR-0001"),
+    ('git "merge" feat/PR-0001-x', "PR-0001"),
+    ('"git" push --force origin main', "force-push"),
+])
+def test_gate_git_reads_a_quoted_verb_as_the_verb_it_is(prd_repo, command, expected):
+    """Two quote characters used to switch this whole layer off.
+
+    Measured in a scaffolded project against all eight PreToolUse(Bash) hooks: `git push --force
+    origin main` was refused by four of them and `git "push" --force origin main` by NONE — the
+    applicability reader deleted quoted spans as prose, and the span it deleted held the VERB. So
+    "force-push is always forbidden" cost two keystrokes to lift, and the evidence, pipeline,
+    coverage and push-token gates went with it. `git pu''sh` is the same hole from the other end:
+    the shell closes the word back up, and a reader that replaces a quote mark with a SPACE does
+    not. `"git" push` is the third: there the quoted word is the command itself.
+
+    The fix is a definition — applicability is read off the git SUBCOMMAND — so this asserts the
+    two teeth that no project state can lift or fake: the unconditional force-push ban, and the
+    QA-evidence tooth naming the failing item.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 2, command
+    assert expected in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("git push --f\\\norce origin main", "force-push"),
+    ("git mer\\\nge feat/PR-0001-x", "PR-0001"),
+    ("git pu\\\nsh origin main", "PR-0001"),
+    ("git pu`\nsh --force origin main", "force-push"),
+])
+def test_gate_git_sees_a_continuation_inside_a_token(prd_repo, command, expected):
+    """The shell removes `\\`+newline with NOTHING in its place; the reader inserted a SPACE.
+
+    Between two tokens the difference does not show (`git \\<newline> merge x` reads correctly
+    either way, which is why the continuation test written one round earlier stayed green). INSIDE
+    a token it is the whole gate: `--f\\<newline>orce` became `--f orce` and the force-push ban
+    matched nothing, `mer\\<newline>ge` became `mer ge` and the merge gate did not apply at all.
+    The PowerShell spelling (backtick+newline) is the same rule and was equally blind.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 2, command
+    assert expected in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("git push>/dev/null --force origin main", "force-push"),
+    ("git push</dev/null --force origin main", "force-push"),
+    ("git >/dev/null push --force origin main", "force-push"),
+    ("git>/dev/null push --force origin main", "force-push"),
+    ('git "push">/dev/null --force origin main', "force-push"),
+    ("git push>/dev/null origin main", "PR-0001"),
+    ("git merge>/dev/null feat/PR-0001-x", "PR-0001"),
+    ("git merge feat/PR-0001-x>/dev/null", "PR-0001"),
+])
+def test_gate_git_reads_a_redirection_as_shell_syntax(prd_repo, command, expected):
+    """One `>` used to switch this whole layer off — half a keystroke less than the two quotes.
+
+    The word reader answered for `& | ; ( )` and not for `< >`, although a shell ends a word at all
+    ten of its metacharacters. So `push>/dev/null` came back as the SUBCOMMAND, which is no git
+    command at all, and applicability — which is now correctly a question about the subcommand —
+    answered no for every git gate at once. Measured as real hook processes in a scaffolded
+    project: force-push ban, evidence, pipeline, coverage, packaging, push-token and hygiene gate
+    all silent. `git>/dev/null push` is the same gap on the other word: with the operator inside
+    it, `git` no longer ENDS a word, so the line invoked nothing.
+
+    This is the direction a rebuild must never take — a class the old spelling-based reader still
+    caught, lost by the definition that replaced it — which is why it is asserted on the two teeth
+    no project state can lift: the unconditional force-push ban and the QA-evidence tooth.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 2, command
+    assert expected in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    'git commit -m "merge later"',
+    'git commit -m "docs: git push blocked by gate defect"',
+])
+def test_gate_git_still_reads_a_commit_message_as_a_message(prd_repo, command):
+    """THE COUNTER-ASSERTION, and the reason the broken design was chosen in the first place.
+
+    Keeping quoted spans is what closes the bypass above; reading them as commands would rebuild
+    the incident that produced the prose-stripping — a diagnosis commit ABOUT a blocked push
+    re-triggering every push gate. Both halves hold now because the reader answers a different
+    question: `merge` is not the first non-option token after `git`, so this is a commit; and the
+    `git` inside the message is quoted text at an argument position, so it opens no invocation.
+    The repo is left with a FAILING verdict on purpose — if either half slipped, this would block.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 0, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ('sudo "git" push --force origin main', "force-push"),
+    ('env "git" push --force origin main', "force-push"),
+    ('nohup "git" push --force origin main', "force-push"),
+    ('command "git" push --force origin main', "force-push"),
+    ('timeout 30 "git" push --force origin main', "force-push"),
+    ('sudo "g"it push --force origin main', "force-push"),
+    ('sudo "git" merge feat/PR-0001-x', "PR-0001"),
+])
+def test_gate_git_does_not_care_what_word_stands_in_front_of_git(prd_repo, command, expected):
+    """The quoted-verb fix, one word further along — and it was measured, not imagined.
+
+    The first repair asked whether a quoted `git` was the segment's own COMMAND word, which is a
+    question about POSITION: put any word that itself runs a command in front, and the quoted
+    `git` sits past that offset and is discarded as prose again. Measured as real hook processes
+    against all eight PreToolUse hooks, `sudo "git" push --force origin main` was ALLOWED by every
+    one of them, as were `env`, `nohup`, `command` and `timeout` — the same five characters buying
+    back the same total bypass. `sudo "g"it` is the second half: only the FIRST character of the
+    word was tested for quoting.
+
+    The definition that replaces it is about WORDS, not positions: `git` names the program when it
+    ENDS a shell word, whatever precedes the word and whatever quoting is sprinkled through it.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 2, command
+    assert expected in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("git push --for`ce origin main", "force-push"),
+    ("git pu`sh --force origin main", "force-push"),
+    ("git `push --force origin main", "force-push"),
+    ("git mer`ge feat/PR-0001-x", "PR-0001"),
+])
+def test_gate_git_reads_the_powershell_escape_on_the_powershell_tool(prd_repo, command, expected):
+    """PowerShell escapes with a backtick, and this gate is registered on the PowerShell tool.
+
+    `SHELL_TOOLS`/`test_gate_git_blocks_powershell_tool_too` establish that the second tool rail is
+    gated on purpose; the reader knew the backtick for line CONTINUATIONS only. Verified against a
+    real `powershell -File` run that prints its arguments: `git pu``sh` arrives as `push`,
+    `git push --for``ce` as `--force`. Measured against the shipped hooks before the fix, with
+    `tool_name: "PowerShell"`: the first line here left the unconditional force-push ban blind and
+    the other three matched no git gate at all.
+
+    Payloads are sent as the PowerShell TOOL, which is how they would really arrive.
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    payload = {"tool_name": "PowerShell", "tool_input": {"command": command},
+               "cwd": str(prd_repo)}
+    result = run_hook_process("gate_git.py", payload, prd_repo)
+    assert result.returncode == 2, command
+    assert expected in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command,expected", [
+    ("git --config-env a.b=C push --force origin main", "force-push"),
+    ("git --attr-source HEAD push --force origin main", "force-push"),
+    ("git --brand-new HEAD push --force origin main", "force-push"),
+    ("git $'push' --force origin main", "force-push"),
+    ("git $(echo push) --force origin main", "force-push"),
+    ("V=push; git $V --force origin main", "force-push"),
+])
+def test_gate_git_is_not_switched_off_by_what_stands_between_git_and_its_verb(
+        prd_repo, command, expected):
+    """Applicability may not hang on an ENUMERATION of git's global options (house rule 1).
+
+    `--config-env` and `--attr-source` take their value as a separate token exactly like `-c` and
+    `-C` do (verified against git 2.47.1), and both were missing: the reader skipped the option and
+    then read its VALUE as the verb, so `git --attr-source HEAD push --force origin main` had the
+    subcommand `head` and was ALLOWED by all eight hooks. Adding two names would only move the
+    hole to the next option git ships, so an option the reader does not know (`--brand-new`) now
+    makes the following token AMBIGUOUS and both readings count.
+
+    The last three are the same failure from the other side: a verb the shell builds at run time is
+    UNKNOWN, and an unconditional ban has to treat unknown as "could be this one".
+    """
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+    assert result.returncode == 2, command
+    assert expected in result.stderr, (command, result.stderr)
+
+
+def test_gate_git_answers_a_command_built_to_outlast_its_budget(prd_repo):
+    """A hook the host KILLS has allowed the call — the repo's own words, and the reason
+    `gate_ledger_valid` carries a TOTAL_BUDGET.
+
+    The reader sliced the remainder of the segment out once per `git` word, so a line of `git `
+    words cost quadratic time with the real command hidden at the end of it. Measured as real hook
+    processes: 120 KB — 0.7 % of the 16 MiB `STDIN_LIMIT` accepts — took `gate_git` 125.7 s and
+    `gate_push_token` 59.6 s, past the 60 s the host allows either of them. `run_hook_process`
+    caps the subprocess at 60 s too, so the old code cannot make this test pass at all: it raises
+    TimeoutExpired instead.
+    """
+    payload = ": " + "git " * 30000 + "&& git push --force origin main"
+    assert len(payload) > 100 * 1024
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    result = run_hook_process("gate_git.py", _bash(prd_repo, payload), prd_repo)
+    assert result.returncode == 2
+    assert "force-push" in result.stderr
+
+
+def test_gate_pipeline_applies_to_a_quoted_verb_too(tmp_path):
+    """The bypass was in the SHARED reader, so it disarmed every gate that asks the same question.
+
+    gate_git is checked above; this is the second consumer, and it is the one that proves the fix
+    landed in `_compat.wants_push_or_merge` rather than in one hook. Its own prose counter-case
+    lives in `test_gate_pipeline_ignores_prose_push_mentions`.
+    """
+    capture_root_item(tmp_path)
+    for command in ('git "push" origin main', "git pu\\\nsh origin main"):
+        result = run_hook_process("gate_pipeline.py", _bash(tmp_path, command), tmp_path)
+        assert result.returncode == 2, command
+        assert "no quality pipeline" in result.stderr, (command, result.stderr)
+
+
+def _git_repo_on_branch(repo, branch):
+    """A real git repo with one commit, standing on `branch` — the branch fallback needs one."""
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@e",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@e")
+    subprocess.run(["git", "init", "-q", "-b", branch], cwd=str(repo), capture_output=True,
+                   timeout=30, env=env)
+    write(os.path.join(str(repo), "README.md"), "x\n")
+    subprocess.run(["git", "add", "-A"], cwd=str(repo), capture_output=True, timeout=30, env=env)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=str(repo), capture_output=True,
+                   timeout=30, env=env)
+
+
+def test_gate_git_reads_the_branch_only_when_the_command_names_nothing(prd_repo):
+    """The command wins over the branch, and the branch is read at all.
+
+    Both halves in one test because each alone is passable by the wrong implementation: reading
+    the branch first would judge PR-0002 for `git merge feat/PR-0001-x` (measured green with the
+    order reversed), and never reading it would leave `git push` on a named branch unbound.
+    """
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    _git_repo_on_branch(prd_repo, "feat/PR-0002-x")
+    capture_evidence(prd_repo, result="pass", related=("PR-0002",))
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    named = run_hook_process("gate_git.py", _bash(prd_repo, "git merge feat/PR-0001-x"), prd_repo)
+    assert named.returncode == 2 and "PR-0001" in named.stderr
+    assert run_hook("gate_git.py", _bash(prd_repo, "git push origin HEAD"), prd_repo) == 0
+
+
+def test_gate_git_an_unnamed_branch_does_not_inherit_another_items_pass(prd_repo):
+    """A merge that binds to nothing is judged against every OPEN failure, not the newest verdict.
+
+    Measured before the fix: with PR-0001 failing and PR-0002 passing, `git merge feat/rechnungen`
+    and `git push origin main` were both allowed, because the store collapsed to one newest-per-
+    kind and the newest happened to be green. That is the V1 file-level false accept rebuilt out
+    of typed items, and the push to `main` is the case where a red QA matters most.
+    """
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    capture_evidence(prd_repo, result="fail", related=("PR-0001",))
+    capture_evidence(prd_repo, result="pass", related=("PR-0002",))
+    for command in ("git merge feat/rechnungen", "git push origin main"):
+        result = run_hook_process("gate_git.py", _bash(prd_repo, command), prd_repo)
+        assert result.returncode == 2, command
+        assert "PR-0001" in result.stderr, command
+    # ...and the counter-direction: with nothing failing, an unnamed branch still merges
+    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    assert run_hook("gate_git.py", _bash(prd_repo, "git merge feat/rechnungen"), prd_repo) == 0
+
+
+# ---------------- gate_git: the item's own status (disposition rows 115/343) ---------------------
+@pytest.mark.parametrize("status,expected", [
+    ("DRAFT", 2),        # the automaton's initial status: nothing approved this work
+    ("REJECTED", 2),     # terminal OFF the chain: the project dropped it
+    ("SUPERSEDED", 2),
+    ("IN_DELIVERY", 0),  # mid-chain: exactly what a merge delivers
+    ("DELIVERED", 0),
+    ("ACCEPTED", 0),     # the chain's own end: a later fix merged against it is legitimate
+])
+def test_gate_git_judges_the_merged_items_status_against_its_own_automaton(tmp_path, status,
+                                                                           expected):
+    """"Branch↔item + a status appropriate to the TYPE" — the second half of the disposition row.
+
+    Which statuses those are is read off `AUTOMATA[type]` rather than listed in the hook, so the
+    rule travels with a kit that adds a root type. Passing evidence is recorded in every case, so
+    a block here can only come from the status and an allow only from both teeth agreeing.
+    """
+    capture_root_item(tmp_path, status=status)
+    capture_evidence(tmp_path, result="pass")
+    assert run_hook("gate_git.py", _merge(tmp_path), tmp_path) == expected
 
 
 # ---------------- gate_subagent_output: honors stop_hook_active (no infinite block loop) ----------------
@@ -1771,8 +2832,8 @@ def test_source_areas_reject_dot_names(tmp_path):
     mod = _kit_checks_mod()
     repo = tmp_path / "repo"
     write(str(tmp_path / "neighbor" / "big.py"), "x = 1\n" * 900)
-    write(str(repo / "project_memory" / "coding_guidelines.yaml"),
-          "source_areas:\n  - '..'\n  - '.'\nfile_budget:\n  max_lines: 800\n  exempt: []\n")
+    capture_invariant(repo, "..", text="a scope that would walk out of the repo")
+    capture_invariant(repo, ".", text="and one that names the repo root itself")
     calls, ok, fail, warn = _collector()
     mod.check_file_budget(str(repo), ok, fail, warn)
     assert not any("neighbor" in m for _n, m in calls["fail"])  # never scans outside the repo
@@ -1783,8 +2844,7 @@ def test_gate_test_coverage_rejects_dot_areas(tmp_path):
     repo = tmp_path / "repo"
     write(str(tmp_path / "stray.py"), "def f():\n    return 1\n")  # code OUTSIDE the repo
     capture_root_item(repo)
-    write(str(repo / "project_memory" / "testing_guidelines.yaml"),
-          "coverage_areas:\n  - '..'\n")
+    capture_invariant(repo, "..", text="a scope that would walk out of the repo")
     payload = {"tool_name": "Bash", "cwd": str(repo),
                "tool_input": {"command": "git push origin main"}}
     assert run_hook("gate_test_coverage.py", payload, repo) == 0  # '..' is ignored, no block
@@ -1908,6 +2968,23 @@ def test_root_item_globs_are_the_kernels_root_types():
         "%s/%s-*.yaml" % (ACTIVE_DIRS[t], t) for t in set(ROOT_TYPE_BY_KIT.values())}
 
 
+def test_root_item_types_are_the_same_root_types_seen_from_the_id_side():
+    """`gate_git` matches a root id in a branch name; `has_root_item` matches a file on disk.
+
+    One fact, two views — so `ROOT_ITEM_TYPES` is derived from the globs rather than typed out
+    again. Proven against the kernel and not merely against the globs, because deriving from a
+    wrong list would still agree with itself: a kit that gains a root type must reach BOTH the
+    filesystem question and the merge gate, and this is what fails if only one of them moves.
+
+    Read by IMPORTING the helper, not by `ast.literal_eval` like its sibling above: the value is
+    computed from the globs, so the only honest way to ask what it is is to let it be computed."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import ROOT_TYPE_BY_KIT
+    module = conftest.load_kit_module(
+        "_root_under_test", os.path.join(ROOT, "team-kits", "dev-team", "hooks", "_root.py"))
+    assert set(module.ROOT_ITEM_TYPES) == set(ROOT_TYPE_BY_KIT.values())
+
+
 def test_pm_scope_blocks_lowercase_tool_alias(tmp_path):
     # non-Claude payloads may use lowercase tool names; _TOOL_ALIASES must normalize them
     payload = {"tool_name": "edit", "tool_input": {"file_path": str(tmp_path / "src" / "x.py")},
@@ -1950,8 +3027,7 @@ def test_file_budget_source_areas_extend_and_warn(tmp_path):
     mod.check_file_budget(str(tmp_path), ok, fail, warn)
     assert not calls["fail"] and not calls["ok"]
     assert any("NO scan area matched" in m for _n, m in calls["warn"])  # never silent
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "source_areas:\n  - compounder\nfile_budget:\n  max_lines: 800\n  exempt: []\n")
+    capture_invariant(tmp_path, "compounder/", text="every module here stays import-free")
     calls, ok, fail, warn = _collector()
     mod.check_file_budget(str(tmp_path), ok, fail, warn)
     assert any("compounder/big.py" in m for _n, m in calls["fail"])
@@ -2017,74 +3093,88 @@ def test_gate_test_coverage_declared_areas(tmp_path):
     write(str(tmp_path / "compounder" / "core.py"), "def f():\n    return 1\n")
     payload = {"tool_name": "Bash", "cwd": str(tmp_path),
                "tool_input": {"command": "git push origin main"}}
-    assert run_hook("gate_test_coverage.py", payload, tmp_path) == 0  # undeclared -> old behavior
-    write(str(tmp_path / "project_memory" / "testing_guidelines.yaml"),
-          "coverage_areas:\n  - compounder\n")
+    assert run_hook("gate_test_coverage.py", payload, tmp_path) == 0  # ungoverned -> old behavior
+    capture_invariant(tmp_path, "compounder/", text="every module here is covered by tests")
     r = run_hook_process("gate_test_coverage.py", payload, tmp_path)
     assert r.returncode == 2 and "compounder" in r.stderr
     write(str(tmp_path / "compounder" / "test_core.py"), "def test_f():\n    assert True\n")
     assert run_hook("gate_test_coverage.py", payload, tmp_path) == 0
 
 
-PROC_HASH = os.path.join(ROOT, "team-kits", "office-team", "templates", "repo", "scripts",
-                         "proc_hash.py")
+def _office_project(tmp_path):
+    """An office repo with the shipped enforcement layer installed, as a scaffold leaves it.
 
-
-def _proc_repo(tmp_path, newline="\n"):
+    The kit scripts reach the kernel through `.claude/hooks/_kernel.py` (the one module that knows
+    where the kernel lives), so a script test that ran without that bridge would measure the
+    "no enforcement layer" branch instead of the script.
+    """
     repo = tmp_path / "office"
     (repo / "scripts").mkdir(parents=True)
-    shutil.copy(PROC_HASH, str(repo / "scripts" / "proc_hash.py"))
-    text = (
-        "processes:\n"
-        "  PROC-0001:\n"
-        "    status: APPROVED\n"
-        "    steps:\n"
-        "      - do a thing\n"
-        '    approved_hash: "oldhash"\n'
-        "  PROC-0002:\n"
-        "    status: PROPOSED\n"
-        "    steps:\n"
-        "      - do another thing\n"
-        "  PROC-0003:\n"
-        "    status: APPROVED\n"
-        "    steps:\n"
-        "      - third thing\n"
-        '    approved_hash: "thirdhash"\n'
-    ).replace("\n", newline)
-    path = repo / "project_memory" / "process_definitions.yaml"
-    path.parent.mkdir(parents=True)
-    path.write_bytes(text.encode("utf-8"))
-    return repo, path
+    for name in ("proc_hash.py", "process_doc.py"):
+        shutil.copy(os.path.join(OFFICE_SCRIPTS, name), str(repo / "scripts" / name))
+    ignore = shutil.ignore_patterns("__pycache__")
+    shutil.copytree(OFFICE_HOOKS, str(repo / ".claude" / "hooks"), ignore=ignore)
+    shutil.copytree(os.path.join(ROOT, "team-kits", "kernel"), str(repo / ".claude" / "kernel"),
+                    ignore=ignore)
+    return repo
 
 
-def test_proc_hash_update_stays_in_its_block(tmp_path):
-    import tomllib  # noqa: F401  (env sanity: py3.11+)
-    import yaml
-    repo, path = _proc_repo(tmp_path)
-    # PROC-0002 has NO approved_hash line: the old (?s) regex swallowed the FOLLOWING blocks and
-    # wrote the hash into a NEIGHBOR (real incident: a PROPOSED PROC carried another's hash)
-    r = subprocess.run([sys.executable, str(repo / "scripts" / "proc_hash.py"),
-                        "PROC-0002", "--update"],
-                       capture_output=True, text=True, timeout=60)
-    assert r.returncode == 0, r.stdout + r.stderr
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    procs = data["processes"]
-    assert procs["PROC-0001"]["approved_hash"] == "oldhash"      # neighbors untouched
-    assert procs["PROC-0003"]["approved_hash"] == "thirdhash"
-    new_hash = procs["PROC-0002"]["approved_hash"]
-    assert new_hash and new_hash not in ("oldhash", "thirdhash")
+def _run_office_script(repo, name, *args):
+    return subprocess.run([sys.executable, str(repo / "scripts" / name), *args],
+                          capture_output=True, text=True, timeout=120)
 
 
-def test_proc_hash_update_survives_crlf(tmp_path):
-    import yaml
-    repo, path = _proc_repo(tmp_path, newline="\r\n")
-    r = subprocess.run([sys.executable, str(repo / "scripts" / "proc_hash.py"),
-                        "PROC-0001", "--update"],
-                       capture_output=True, text=True, timeout=60)
-    assert r.returncode == 0, r.stdout + r.stderr
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert data["processes"]["PROC-0001"]["approved_hash"] != "oldhash"
-    assert data["processes"]["PROC-0003"]["approved_hash"] == "thirdhash"
+def test_proc_hash_reports_a_matching_stamp_and_can_no_longer_write_one(tmp_path):
+    """The V1 script's `--update` was the hole, not a feature — so it is gone, measured as gone.
+
+    "Run this to make the tamper check pass again" is the permission the check exists to withhold,
+    and V1 shipped it with a docstring asking not to use it that way. The stamp now comes from
+    `approvals.mint` and from nowhere else. Both halves are asserted: a freshly approved PROC
+    verifies clean, and the old writing invocation neither writes nor succeeds.
+    """
+    pytest.importorskip("yaml")
+    repo = _office_project(tmp_path)
+    proc = capture_proc(repo)
+    before = open(_office_state(repo).active_path(proc["id"]), encoding="utf-8").read()
+    result = _run_office_script(repo, "proc_hash.py")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert proc["id"] in result.stdout and "APPROVED" in result.stdout
+    update = _run_office_script(repo, "proc_hash.py", proc["id"], "--update")
+    assert update.returncode == 2
+    assert open(_office_state(repo).active_path(proc["id"]), encoding="utf-8").read() == before
+
+
+def test_proc_hash_reports_a_stamp_that_no_longer_matches_its_procedure(tmp_path):
+    yaml = pytest.importorskip("yaml")
+    repo = _office_project(tmp_path)
+    proc = capture_proc(repo)
+    path = _office_state(repo).active_path(proc["id"])
+    item = yaml.safe_load(open(path, encoding="utf-8").read())
+    item["steps"].append("a step nobody approved")
+    write(path, yaml.safe_dump(item, sort_keys=False, allow_unicode=True))
+    result = _run_office_script(repo, "proc_hash.py")
+    assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_process_doc_renders_the_verfahrensdokumentation_from_the_proc_items(tmp_path):
+    """The renderer used to raise FileNotFoundError in every project that installed it.
+
+    A Verfahrensdokumentation nobody can generate is a GoBD obligation the kit claims to cover and
+    does not, so the measurement is the file appearing with the procedure in it — not the exit code
+    alone, which a script that wrote an empty document would also produce.
+    """
+    pytest.importorskip("yaml")
+    repo = _office_project(tmp_path)
+    proc = capture_proc(repo, steps=("open the post", "scan and file it"))
+    write(str(repo / "project_memory" / "filing_plan.yaml"),
+          "naming_rule: '{date}_{type}'\ntree:\n  - path: archive/belege\n    doc_types: [beleg]\n"
+          "    retention: 10y\n")
+    result = _run_office_script(repo, "process_doc.py")
+    assert result.returncode == 0, result.stdout + result.stderr
+    rendered = open(str(repo / "docs" / "verfahrensdokumentation.md"), encoding="utf-8").read()
+    assert proc["id"] in rendered
+    assert "scan and file it" in rendered
+    assert "archive/belege" in rendered
 
 
 def test_gate_pipeline_green_tree_cache(tmp_path):
@@ -2721,8 +3811,7 @@ def test_gen_provider_artifacts_translates_role_scoped_hooks(tmp_path):
 
 def test_guard_guidelines_codex_multifile_patch_honors_role_scope(tmp_path):
     pytest.importorskip("yaml")
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "languages:\n  python:\n    - use type hints\n")
+    capture_invariant(tmp_path, "python", text="use type hints")
     payload = {
         "hook_event_name": "PreToolUse",
         "agent_type": "backend-developer",
@@ -3005,10 +4094,10 @@ def test_constitution_names_the_file_that_switches_a_gate_off():
 
 # Where an exemption below is allowed to be used. ANY = the file genuinely has no template in V2, so
 # naming it is a true statement wherever it is written. KIT_ONLY = a DELETED V1 monolith that only
-# one kit's own broken tooling still reads: inside that kit, naming it documents the defect; in the
-# global entry gates there is no such tooling, so a monolith name there is exactly the V1 regression
-# this sweep exists to catch (measured: the entry gates could name `process_definitions.yaml` and
-# seed a PROC into it, green).
+# ONE kit's own text still has reason to name: inside that kit the name says what a store used to be
+# and what replaced it; in the global entry gates there is nothing to explain, so a monolith name
+# there is exactly the V1 regression this sweep exists to catch (measured with the office PROC
+# registry: the entry gates could name it and seed a PROC into it, green).
 ANY, KIT_ONLY = "any", "kit-only"
 
 # Names an instruction file may say although the kit template ships no such file. Each one is a
@@ -3021,11 +4110,7 @@ STATE_FILES_NOT_SHIPPED = {
     "session_brief.yaml": (ANY, "generated by the kernel, not a template"),
     "retro.yaml": (ANY, "written by scripts/retro.py as its own diagnostic layer, not project state"),
     "hook_events.jsonl": (ANY, "hook event log, created by notify_agent_events on its first write"),
-    # optional tuning files the instruction text names in order to say V2 ships neither
-    "coding_guidelines.yaml": (ANY, "V2 ships no template; named to explain that guard_guidelines is conditional"),
-    "testing_guidelines.yaml": (ANY, "V2 ships no template; named as the optional home of the two coverage knobs"),
-    # deleted V1 stores the instruction text names in order to call the tooling that reads them broken
-    "process_definitions.yaml": (KIT_ONLY, "deleted V1 PROC registry; named because proc_hash/gate_proc_approved still read it"),
+    # deleted V1 stores the instruction text names in order to say what replaced them
     "filing_log.yaml": (KIT_ONLY, "deleted V1 log; named to say nothing writes one and no gate reads one"),
     # a placeholder in a note ABOUT glob semantics, not a file anyone is sent to
     "x.yaml": (ANY, "the `deploy/sub/x.yaml` example in research_guidelines.yaml, showing that `*` "
@@ -3320,6 +4405,158 @@ def test_instruction_files_name_only_state_files_a_v2_project_has():
                                  exempt_names=_exempt_names((ANY, KIT_ONLY)))
 
 
+# -- the Evidence vocabulary in prose -------------------------------------------------------------
+# `kind` and `result` are the two Evidence fields a GATE decides on, so the kernel closes both
+# (`backlog_types.EVIDENCE_KINDS` / `EVIDENCE_RESULTS`). Every role that produces Evidence is told
+# in prose which values to use, and that prose is hand-typed in six files — so a rename in the
+# kernel leaves six texts instructing roles to type a value the kernel refuses, with nothing red.
+# This is the same failure the state-path sweep above exists for, one field deeper.
+#
+# Three shapes, each a different KIND of claim:
+_CLI_ARG_RX = re.compile(r"--(kind|result)\s+<?([a-z]+(?:\|[a-z]+)*)>?")
+# ...a BARE `kind:` field claim. Anchored at the backtick, because a qualified one is about a
+# different type's vocabulary: `APR.kind: analysis` is an approval's kind and `{kind: test|script}`
+# is an INV check's, and neither is judged by the Evidence constants.
+_FIELD_KIND_RX = re.compile(r"`kind:\s*([a-z]+)`")
+# ...and an alternation written as prose (`test`/`review`/`acceptance`), which is how both
+# constitutions state what the merge gate rests on.
+_BACKTICK_RUN_RX = re.compile(r"`[a-z]+`(?:/`[a-z]+`)+")
+
+
+def _evidence_vocabulary_claims(text):
+    """Every Evidence-vocabulary claim in `text`, as (field, values, raw).
+
+    `field` is "kind" or "result"; `values` is the SET the text offers, which is one element for an
+    instruction ("--kind audit") and several for a choice ("--kind <test|review|acceptance>"). The
+    distinction matters: a single value is only judged on membership, while a choice also claims to
+    be the complete set of options for that field, and that claim is checkable against the constant.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import EVIDENCE_KINDS, EVIDENCE_RESULTS
+    for match in _CLI_ARG_RX.finditer(text):
+        yield match.group(1), set(match.group(2).split("|")), match.group(0)
+    for match in _FIELD_KIND_RX.finditer(text):
+        yield "kind", {match.group(1)}, match.group(0)
+    for match in _BACKTICK_RUN_RX.finditer(text):
+        words = set(re.findall(r"[a-z]+", match.group(0)))
+        # A slash run is only a vocabulary claim when every one of its words IS one -- otherwise it
+        # is some other list (`Edit`/`Write`), and reading it as an incomplete kind list would make
+        # this test fire on prose that never mentioned Evidence.
+        for field, vocabulary in (("kind", EVIDENCE_KINDS), ("result", EVIDENCE_RESULTS)):
+            if words <= vocabulary:
+                yield field, words, match.group(0)
+
+
+def _texts_that_name_the_evidence_vocabulary():
+    """(where, text) for everything that TELLS someone which kind/result to use.
+
+    The instruction files of all three kits and the README, plus the refusal messages of every
+    module the harness SHIPS — those are read by the same person, at the moment they have to act
+    on them, and they name the command and its arguments just as the SKILLs do. Every shipped
+    module rather than the merge gate alone, for the reason `_refusal_texts` reads raises as well
+    as `block()` calls: which module stops a role is not something this check may know in advance.
+    Read as RUNNING strings rather than as file text, so the module docstring's account of what V1
+    did cannot satisfy the check (house rule: a check reads the part that runs).
+    """
+    for kit in KITS:
+        for path, text in _instruction_files(kit):
+            yield os.path.relpath(path, ROOT), text
+    for path in _shipped_python_modules():
+        yield os.path.relpath(path, ROOT), "\n".join(_refusal_texts(path))
+    with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as fh:
+        yield "README.md", fh.read()
+
+
+def test_no_instruction_text_names_an_evidence_kind_or_verdict_the_kernel_refuses():
+    """The prose vocabulary is pinned to the kernel's, in both directions.
+
+    Membership is the first direction: a value outside `EVIDENCE_KINDS` / `EVIDENCE_RESULTS` is one
+    the kernel refuses at capture, so the text would be teaching a role a command that cannot run.
+
+    The second direction is the one that matters for the merge gate: wherever a text offers a
+    CHOICE of kinds it is telling a delivery-judging role what its options are, and those are
+    exactly `QA_EVIDENCE_KINDS`. `audit` appearing in such a list would promise that an audit run
+    can open a merge — which `qa_verdicts` refuses — and a list missing one of the three would send
+    a role to a kind the gate then never sees. `audit` remains legitimate as a SINGLE instruction
+    (the auditor's own command line), which is why single values are judged on membership alone.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import EVIDENCE_KINDS, EVIDENCE_RESULTS, QA_EVIDENCE_KINDS
+    complete = {"kind": QA_EVIDENCE_KINDS, "result": EVIDENCE_RESULTS}
+    known = {"kind": EVIDENCE_KINDS, "result": EVIDENCE_RESULTS}
+    seen = 0
+    for where, text in _texts_that_name_the_evidence_vocabulary():
+        for field, values, raw in _evidence_vocabulary_claims(text):
+            seen += 1
+            unknown = values - known[field]
+            assert not unknown, (
+                "%s writes `%s`, but %s is not in kernel.backlog_types.%s. The kernel refuses "
+                "that value at capture, so the role is being told a command that cannot run."
+                % (where, raw, ", ".join(sorted(unknown)),
+                   "EVIDENCE_KINDS" if field == "kind" else "EVIDENCE_RESULTS"))
+            if len(values) > 1:
+                assert values == set(complete[field]), (
+                    "%s offers `%s` as the choice of Evidence %s, but the set a merge rests on is "
+                    "%s. A kind list with `audit` in it promises that an audit run opens a merge "
+                    "(it never does); one missing a kind sends the role to a verdict the gate then "
+                    "never reads."
+                    % (where, raw, field, ", ".join(sorted(complete[field]))))
+    # A floor, because the assertions above are vacuously true over text nobody reads: the shapes
+    # are regexes over prose, and prose gets reformatted. 79 claims are measured today; well under
+    # half of that means a shape stopped matching, not that the texts got shorter.
+    assert seen >= 50, (
+        "only %d Evidence vocabulary claims found — the role texts spell out the kinds and "
+        "verdicts many times over, so this few means the shapes above stopped matching and the "
+        "test is passing over prose it no longer reads." % seen)
+
+
+# An `evidence` command line as a TEXT spells it: an inline-code span, so it ends at the closing
+# backtick and not at the line break markdown wraps it on. Everything between is argument prose
+# (`<TSK-nnnn>`, `"…"`, `%s`), which is why only the FLAG NAMES are read out of it. The command's
+# own spelling is not written here — it is assembled from `kernel.cli.INVOCATION`, so this reader
+# follows the entry point instead of having to be remembered when it moves.
+def _evidence_call_rx():
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    return re.compile(re.escape(cli.INVOCATION) + r" evidence([^`]*)`")
+_EVIDENCE_FLAG_RX = re.compile(r"--[a-z][a-z-]*")
+
+
+def test_every_evidence_command_a_text_spells_names_every_argument_the_cli_requires():
+    """A command line in an instruction is a promise that typing it works.
+
+    The required arguments are read off the SHIPPED PARSER — `kernel.cli.build_parser`, the object
+    argparse will actually evaluate — so making one of them mandatory cannot quietly leave six
+    texts teaching a usage error. That is not hypothetical: `--artifact-ref` became required in
+    this round precisely because every one of these texts already presented it as THE proof while
+    the parser treated it as optional, and one gate remedy had left it out entirely.
+
+    Only flag NAMES are compared. Whether `<TSK-nnnn>` is a real id is not a question a text can
+    answer, but whether the flag is there at all is.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    evidence = [action for action in cli.build_parser()._subparsers._group_actions[0]
+                .choices["evidence"]._actions if action.option_strings and action.required]
+    required = {action.option_strings[0] for action in evidence}
+    assert len(required) >= 4, required   # the parser itself must still be the strict thing
+    seen = 0
+    for where, text in _texts_that_name_the_evidence_vocabulary():
+        for match in _evidence_call_rx().finditer(text):
+            flags = set(_EVIDENCE_FLAG_RX.findall(match.group(1)))
+            if not flags:
+                continue    # the command named, not spelled out as a call
+            seen += 1
+            assert required <= flags, (
+                "%s spells an `evidence` call `%s` that omits %s. `kernel.cli` requires that "
+                "argument, so the role is being told a command line argparse rejects."
+                % (where, match.group(1).rstrip(), ", ".join(sorted(required - flags))))
+    # 13 call sites were measured when this was written (both gate_git copies, the three auditor
+    # SKILLs, the QA and reviewer SKILLs). A floor rather than the number, because texts get
+    # rewritten — but zero would mean the span shape stopped matching, not that the calls went.
+    assert seen >= 8, "only %d spelled-out `evidence` calls found" % seen
+
+
 # The two files that install to ~/.claude/CLAUDE.md and $CODEX_HOME/AGENTS.md. They are instruction
 # text like a constitution, but they belong to NO kit: they run before one is installed and route to
 # whichever kit the registry picks. That is why the per-kit sweep above never saw them — and why both
@@ -3437,7 +4674,18 @@ def test_kit_names_a_root_item_exactly_when_the_kernel_gives_it_one():
 # `radar/README.md` describes the radar workflow rather than recording a week, so a V1 path
 # creeping into THAT one would go unnoticed. It ships to no project and addresses no role, so the
 # cost is a stale in-repo note.
-MIGRATION_DOC_FILES = ("README.md", "HARNESS_LOG.md")
+#
+# The root `README.md` USED to sit in the first list and does not any more, because it never met
+# the definition: it is not a record of the migration but a description of what the harness IS,
+# rewritten whenever that changes — the `radar/README.md` argument one directory up. The blanket
+# exemption cost exactly what that argument predicts: for a whole round after the merge gate had
+# been moved onto the Evidence store, the front page still told the reader the gate blocks EVERY
+# merge and push because it reaches for the V1 report monolith — and nothing could go red
+# (round-7 finding 10). Sweeping it is free: measured with this sweep's own reader, the file names
+# no V1 path today. That is what makes the front page's account of a gate answerable to the gate.
+# (Naming the offending path here would trip this very sweep, which reads `#` comments — the check
+# demonstrating itself, and the reason the sentence above describes the claim instead of quoting it.)
+MIGRATION_DOC_FILES = ("HARNESS_LOG.md",)
 MIGRATION_DOC_TREES = ("docs/", "radar/")
 
 # Trees that are not the repo's content: git's own store, caches, and the sandbox an e2e run builds.
@@ -3448,11 +4696,11 @@ _SWEEP_SKIP_DIRS = frozenset((".git", ".pytest_cache", "__pycache__", "node_modu
 def _state_root_store(token, stores):
     """The V1 root store from `stores` that a path token puts at the state ROOT, or None.
 
-    `stores` is the inventory to judge against, because there are two: `conftest.V1_MONOLITHS`, the
-    stores this lockstep moved and nothing may point at any more, and
-    `conftest.V1_ROOT_STORES_NOT_YET_MIGRATED`, the ones another group still owns and which are
-    asserted PRESENT. Same machinery, opposite verdict — passing the inventory in is what keeps
-    those two from needing two copies of the folding below.
+    `stores` is passed IN rather than read from `conftest.V1_MONOLITHS` here, because there used to
+    be two inventories with opposite verdicts (moved stores nothing may point at, versus stores
+    another group still owned and which were asserted PRESENT). There is one again — the second
+    half's readers were rewritten — and the parameter stays: it is what let the two share this
+    folding instead of copying it, and it is what lets a caller ask about a subset.
 
     A token claims the state root when its LAST segment is a store name and the segment
     directly ABOVE it is `project_memory` — or there is no segment above it at all, which is how a
@@ -3467,12 +4715,25 @@ def _state_root_store(token, stores):
     monolith: `masterplan.md` MOVED, so `product/masterplan.md` claims nothing, while
     `project_memory/masterplan.md` claims the file is back where V1 kept it. `docs/progress.yaml`
     and `generated/filing_log.yaml` claim nothing either — neither parent is the state root.
+
+    An inventory key that IS a glob is matched as one. One store was never a file name — the V1
+    merge gate globbed for "whichever report file happens to be there" — and matching such a key
+    literally means the entry only ever catches a re-introduced `glob("*report*.yaml")` call while
+    `project_memory/test_reports.yaml`, the same store spelled out, walks past the inventory that
+    claims to own it. Measured before widening: over both inventories and the whole tree this adds
+    zero findings today, so it closes a blind spot rather than opening a front.
     """
     segments = [s for s in re.split(r"[/\\]", token.strip()) if s and s != "."]
-    if not segments or segments[-1] not in stores:
+    if not segments:
+        return None
+    name = segments[-1]
+    if name not in stores:
+        name = next((key for key in stores
+                     if glob.has_magic(key) and fnmatch.fnmatch(segments[-1], key)), None)
+    if name is None:
         return None
     if len(segments) == 1 or segments[-2] == "project_memory":
-        return segments[-1]
+        return name
     return None
 
 
@@ -3784,27 +5045,22 @@ def test_the_monolith_inventory_names_real_v2_successors():
             target |= addition
     _assert_state_claims("conftest.V1_MONOLITHS", " ".join(conftest.V1_MONOLITHS.values()),
                          *union, exempt_names=_exempt_names((ANY,)))
-    # The sibling inventory makes the same kind of claim ("this state went there") and gets the
-    # same judgement. Only its REASON is read: the file lists beside it are source paths, not state
-    # paths, and a source tree is not what ACTIVE_DIRS is the authority on.
-    _assert_state_claims(
-        "conftest.V1_ROOT_STORES_NOT_YET_MIGRATED",
-        " ".join(why for why, _files in conftest.V1_ROOT_STORES_NOT_YET_MIGRATED.values()),
-        *union, exempt_names=_exempt_names((ANY,)))
 
 
 def test_nothing_shipped_still_spells_a_v1_monolith_path():
     """No file outside the migration documentation names a MOVED monolith AT THE STATE ROOT.
 
-    This is the proof for the eleven stores `conftest.V1_MONOLITHS` names, and for nothing wider.
-    Four further V1 root stores fit the same definition and are deliberately outside that
-    inventory, because shipped code still reads them and repairing it belongs to another group:
-    they are named in `conftest.V1_ROOT_STORES_NOT_YET_MIGRATED` and asserted PRESENT by
-    `test_the_open_v1_root_store_couplings_are_still_exactly_these`. Green here therefore means
-    "the eleven are gone", not "no V1 coupling is left" — a scaffolded V2 project today cannot get
-    a single merge or push through, for one of those four reasons.
+    This is the proof for the stores `conftest.V1_MONOLITHS` names, and it now names all of them.
+    For a round it named fewer, while three more — the two guidelines files and the office PROC
+    registry — sat in a second inventory asserted PRESENT, because shipped code still read them and
+    repairing it belonged to another group. Those readers were rewritten, so the three moved in
+    here and the second inventory is gone; green now means "no shipped file points at a V1
+    state-root store" rather than "…at one of the subset this once covered".
+    HOW MANY there are is not written here or in the failure message: both read `len()` off the
+    inventory. The number in this docstring said eleven over a dict of fifteen for a round, which
+    is this sweep's own subject matter one level up.
 
-    Within that inventory it is a claim about PATHS, not about names. The
+    It is a claim about PATHS, not about names. The
     names survive on purpose: `filing_log.yaml` is what spec II.9 will call a regenerated scan
     index, `masterplan.md` is a file that moved rather than died, and every honest "V1 read this,
     V2 does not" comment in the hooks has to be able to say which file it means. What must not
@@ -3838,42 +5094,836 @@ def test_nothing_shipped_still_spells_a_v1_monolith_path():
         offences.append("%s: `%s` (%s)"
                         % (rel, token, conftest.V1_MONOLITHS[_state_root_store(
                             token, conftest.V1_MONOLITHS)]))
+    # the COUNT comes from the inventory, not from prose: it said "eleven" while the dict held
+    # fifteen, which is the same class of rot this whole sweep exists to catch, in the sweep's own
+    # failure message
     assert not offences, (
-        "these still point at one of the eleven MOVED V1 monoliths in the state root:\n  %s"
-        % "\n  ".join(sorted(set(offences))))
+        "these still point at one of the %d MOVED V1 monoliths in the state root:\n  %s"
+        % (len(conftest.V1_MONOLITHS), "\n  ".join(sorted(set(offences)))))
 
 
-def test_the_open_v1_root_store_couplings_are_still_exactly_these():
-    """The other side of the proof: the V1 root stores this lockstep did NOT reach, as measured.
+def test_a_store_the_inventory_records_as_a_glob_is_matched_as_a_glob():
+    """One inventory key is a PATTERN, and reading it literally left the store half-guarded.
 
-    The completion proof above is only as complete as its inventory, and four V1 root stores are
-    outside it on purpose — `conftest.V1_ROOT_STORES_NOT_YET_MIGRATED` says which and why. Left at
-    that, the artefact would claim more than it holds: a reader seeing the sweep green would take
-    the lockstep for finished while `gate_git` blocks every push in a scaffolded V2 project and
-    two office scripts cannot start.
+    The V1 merge gate did not open a named file, it globbed the state root for "whichever report
+    file happens to be there", so `conftest.V1_MONOLITHS` records the store as `*report*.yaml`.
+    Matched by string equality that entry catches only a re-introduced `glob("*report*.yaml")`
+    call — while `project_memory/test_reports.yaml`, the very same store written out, is a path
+    the inventory claims to own and nothing checks. Both spellings are the regression; both are
+    findings now.
 
-    So the open couplings are asserted as facts that hold TODAY, with the same reader the proof
-    uses. Equality in BOTH directions is the whole point:
+    The last two assertions are the counter-direction, so the widening cannot be satisfied by
+    matching more or less everything: the parent still decides, and a name outside every pattern
+    is still no store.
 
-      * a NEW file reaching for one of these four fails here, which is the guarantee the
-        completion proof cannot give for a name outside its inventory;
-      * and the day a coupling is repaired, this fails too, saying so in the one place the next
-        round will look. That is the `known_hole` bargain — a hole asserted rather than promised —
-        and a note in a report would not have survived the round.
+    The tokens are ASSEMBLED rather than written out, for two reasons that point the same way:
+    the pattern comes from the inventory instead of being retyped here, and the file this test
+    lives in is itself swept — a literal `project_memory/<store>` in it would be the very
+    regression the sweep reports, found by the sweep, in the test that proves the sweep works.
     """
-    measured = {}
-    for rel, store, _token in _sweep_state_root(conftest.V1_ROOT_STORES_NOT_YET_MIGRATED):
-        measured.setdefault(store, set()).add(rel)
-    recorded = {store: set(files)
-                for store, (_why, files) in conftest.V1_ROOT_STORES_NOT_YET_MIGRATED.items()}
-    assert measured == recorded, (
-        "the open V1 root-store couplings have moved.\n"
-        "  gone (delete the entry from conftest.V1_ROOT_STORES_NOT_YET_MIGRATED, and if a store "
-        "has no files left, move its name into V1_MONOLITHS so the completion proof owns it): "
-        "%s\n"
-        "  new (a file started reaching for a deleted V1 root store): %s"
-        % (sorted((s, f) for s in recorded for f in recorded[s] - measured.get(s, set())) or "none",
-           sorted((s, f) for s in measured for f in measured[s] - recorded.get(s, set())) or "none"))
+    monoliths = conftest.V1_MONOLITHS
+    root, elsewhere = "project_memory/", "docs/"
+    pattern = next(key for key in monoliths if glob.has_magic(key))
+    spelled_out = "test_reports.yaml"
+    assert fnmatch.fnmatch(spelled_out, pattern), "the fixture must be an instance of the pattern"
+    assert _state_root_store(root + pattern, monoliths) == pattern
+    assert _state_root_store(root + spelled_out, monoliths) == pattern
+    assert _state_root_store(elsewhere + spelled_out, monoliths) is None
+    assert _state_root_store(root + "project_config.yaml", monoliths) is None
+
+
+# `test_the_open_v1_root_store_couplings_are_still_exactly_these` STOOD HERE and is gone with the
+# inventory it read. It asserted, in both directions, that exactly three V1 root stores still had
+# shipped readers — so that "the sweep is green" could not be read as "no V1 coupling is left"
+# while `guard_guidelines` was inert and two office scripts could not start. Its own docstring said
+# it would go red the day a coupling was repaired, and the error message said what to do then: move
+# the store's name into `V1_MONOLITHS`. All three were repaired in one release and all three names
+# moved, which leaves nothing for that test to assert about and the completion proof above owning
+# every V1 root store. Deleting it is the bargain being kept, not a check being dropped: an
+# equality against an empty inventory could never have gone red again.
+
+
+# ---- ...and the blockage that MOVED rather than migrated with the store it used to live in ----
+
+# Every suffix that makes a file RUNNABLE BY NAME on either platform: nothing on POSIX, the
+# default Windows `PATHEXT` set, the two spellings the Python launcher adds, and the two script
+# suffixes an installer drops when it wants one word to work on both. Taken as the constant it is
+# rather than from the runner's own `PATHEXT`, because the question is what a ROLE's shell would
+# execute in a scaffolded project, not what this machine happens to be configured for.
+_EXECUTABLE_SUFFIXES = ("", ".com", ".exe", ".bat", ".cmd", ".vbs", ".vbe", ".js", ".jse",
+                        ".wsf", ".wsh", ".msc", ".py", ".pyw", ".ps1", ".sh")
+
+
+def _invocable_as(word, path):
+    """Would a shell run `path` when a role types `word`?
+
+    What makes a file a COMMAND is its NAME: the stem is the word typed, and the suffix is one the
+    shell or `PATHEXT` executes. That is the definition, so a shim shipped as `harness`,
+    `harness.cmd` or `harness.ps1` is caught by the same rule, and a `HARNESS_LOG.md` is not a
+    command however much of the word it starts with.
+    """
+    stem, suffix = os.path.splitext(os.path.basename(path))
+    return stem.lower() == word.lower() and suffix.lower() in _EXECUTABLE_SUFFIXES
+
+
+def _installer_scripts():
+    """Every installer script this repo ships — an install POSITION, not a list of paths.
+
+    The `install.*` pair at the root (harness → user home) and every `*.sh`/`*.ps1` under
+    `team-kits/` (home → project: `scaffold_team`, `init_project_memory`). Written out as four
+    paths, this reader did not contain `init_project_memory.*` — the step the global entry gate
+    calls the deterministic one — so a shim generated there was measured to pass it.
+    """
+    for rel in ("install.sh", "install.ps1"):
+        if os.path.isfile(os.path.join(ROOT, rel)):
+            yield rel
+    for path in sorted(glob.glob(os.path.join(ROOT, "team-kits", "*.sh"))
+                       + glob.glob(os.path.join(ROOT, "team-kits", "*.ps1"))):
+        yield os.path.relpath(path, ROOT).replace(os.sep, "/")
+
+
+# THE INSTALLER-TEXT READER THAT USED TO STAND HERE IS GONE, and the reason is worth one comment.
+# It answered "does an installer WRITE a file a shell would run as <word>" by finding a
+# file-creating line and reading every identifier-shaped token on it — the fallback for the
+# platform whose installer chain this host cannot execute. Measured against the entry point that
+# shipped: it finds nothing, and nothing is the correct answer for it. Both scaffolds copy the
+# repo templates in a generic loop (`cp "$KIT/templates/repo/$rel" "$dst"`), so the file's name
+# never appears on the writing line at all — it is a directory walk, not a spelling. What decides
+# instead is the KIT-OWNED branch inside that loop, and
+# `test_both_installers_own_the_entry_point_like_the_other_kit_scripts` reads exactly that, in
+# both installers, for both platforms.
+
+
+def _project_the_installers_produce(tmp_path):
+    """Scaffold a real project with the shipped installers; return (repo, every path created).
+
+    THE MEASUREMENT, as opposed to the text reader above: what the installers PUT ON DISK answers
+    "does a role get a `harness` command" without needing any rule about how a shell script spells
+    a file name. A name held in a variable, composed by `Join-Path`, or written by a `printf` in a
+    file no list mentions all show up here as the same thing — a file in the project. The repo
+    itself comes back too, because the same question has a second half — does that file WORK — and
+    a second scaffold would only measure the installers twice.
+
+    The platform's own pair is run (`*.ps1` on Windows, `*.sh` elsewhere), so the check measures
+    where it stands and never skips. The trust recorder is removed from the staging first: it
+    writes `.claude/kit_state.json` and no executable, so it can hide nothing — and running it
+    would tie this pin to whether somebody has run `bump_kit_version.py`, which is the coupling
+    that drops a dozen unrelated tests with an off-topic message.
+    """
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    kits = home / ".claude" / "team-kits"
+    shutil.copytree(os.path.join(ROOT, "team-kits"), str(kits),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".*_cache"))
+    if (kits / "write_kit_state.py").is_file():
+        os.remove(str(kits / "write_kit_state.py"))
+    os.makedirs(str(repo), exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(repo)], capture_output=True, timeout=60)
+    env = dict(os.environ, HOME=str(home), USERPROFILE=str(home),
+               PYTHONPATH=os.pathsep.join(path for path in sys.path if path))
+    if os.name == "nt":
+        def run(script, *args):
+            return subprocess.run(
+                ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                 str(kits / (script + ".ps1")), "-Team"] + list(args),
+                cwd=str(repo), capture_output=True, text=True, env=env, timeout=600)
+    else:
+        def run(script, *args):
+            return subprocess.run(
+                ["bash", str(kits / (script + ".sh"))] + list(args),
+                cwd=str(repo), capture_output=True, text=True, env=env, timeout=600)
+    for script in ("init_project_memory", "scaffold_team"):
+        proc = run(script, "dev-team")
+        assert proc.returncode == 0, "%s failed:\n%s%s" % (script, proc.stdout, proc.stderr)
+    created = []
+    for base, dirs, files in os.walk(str(repo)):
+        dirs[:] = [d for d in dirs if d != ".git"]
+        created += [os.path.join(base, name) for name in files]
+    return repo, created
+
+
+def _run_project_hook(repo, hook, command, agent_id=None):
+    """One of the PROJECT's own hooks, as a real process, on a real shell payload.
+
+    The project's copy under `.claude/hooks`, not this repo's kit source, and with no
+    `$HARNESS_KERNEL_PATH`: the question these tests ask is what a scaffolded project does, and an
+    override would hand the gate a kernel the project did not install. `PYTHONPATH` is dropped for
+    the same reason — the suite's own path is the one place `kernel` is importable by name.
+    """
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    payload = {"tool_name": "Bash", "tool_input": {"command": command},
+               "cwd": str(repo), "hook_event_name": "PreToolUse"}
+    if agent_id:
+        payload["agent_id"] = agent_id     # what a SUBAGENT's payload carries (spike S3)
+    return subprocess.run(
+        [sys.executable, "-B", os.path.join(str(repo), ".claude", "hooks", hook)],
+        input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
+
+
+def _shell_gates_of(repo):
+    """Every PreToolUse hook THIS PROJECT registered that FIRES ON A BASH CALL.
+
+    Read from the wiring rather than named here: a gate added to the matcher is covered on the day
+    it ships, and "every shell gate allows it" stays a claim about the set the provider will run.
+
+    THE MATCHER IS A TOOL LIST, NOT A STRING, and reading it as a string made this reader narrower
+    than the provider. It compared `== "Bash|PowerShell"`, so `gate_filing.py` -- registered by the
+    office kit on `Bash|PowerShell|Edit|Write|MultiEdit` -- was invisible although it runs on every
+    Bash call. Measured 2026-07-31: string-equality sees dev 8 / office 5 / research 6; splitting
+    the matcher sees dev 8 / office 6 / research 6, and the office claim of "5" in the shipped
+    entry point was an artefact of this line. Same defect class as the "eight gates" text it was
+    used to correct, one layer down.
+    """
+    with open(os.path.join(str(repo), ".claude", "settings.json"), encoding="utf-8") as handle:
+        return _shell_gates_of_settings(json.load(handle))
+
+
+def _shell_gates_of_settings(settings):
+    """The same question asked of a settings MAPPING, so a kit source can be measured too."""
+    return [os.path.basename(entry["command"].split()[-1].strip('"'))
+            for group in settings["hooks"]["PreToolUse"]
+            if "Bash" in (group.get("matcher") or "").split("|")
+            for entry in group["hooks"]]
+
+
+def test_the_evidence_the_merge_gate_demands_has_an_installed_producer(tmp_path):
+    """The merge blockage is GONE, and this run is what says so — not a path this test names.
+
+    It replaces the pin that recorded the opposite (`conftest.NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM`
+    and its three doc siblings, deleted together with the caveat in every shipped text). The SHAPE
+    is kept, because the shape is what made that pin honest: the producer is read off the parser
+    argparse evaluates, the INSTALLATION is measured by running the shipped installers, and the
+    consequence is measured in the gate that has it.
+
+    Four steps, in the order a role meets them:
+
+      * the PRODUCER, off `kernel.cli.build_parser()`: an `evidence` subcommand, and a `prog` that
+        is the one sanctioned spelling. Renaming either moves this assertion with it. `prog` is
+        asserted because argparse prints it in every usage and error line, so a role who retypes
+        what the parser printed must get a command that exists.
+      * the INSTALLATION: the shipped installers really put a file at `cli.ENTRY_POINT` into a
+        project they built. Measured by RUNNING them, because a shell script has more ways to write
+        a file than a reader has rules about text.
+      * the RUN, through the gates a role's shell command actually meets: the merge refused for
+        want of Evidence, then the entry point's own command line put through every
+        `Bash|PowerShell` PreToolUse hook this project registered AND then executed, then the same
+        merge again. Both halves are here because either alone proves nothing — an Evidence
+        recorded by a command line the gates refuse is no remedy, and a command line the gates
+        allow but that records nothing is no producer.
+      * and NO BYTECODE in the hashed bundle afterwards. The shim carries
+        `sys.dont_write_bytecode` instead of asking a role to remember `-B`, so the sanctioned
+        spelling has to be safe without the flag; the flagless `-m` form was measured reporting
+        the bundle as tampered with in the same run that changed it.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    parser = cli.build_parser()
+    subcommands = parser._subparsers._group_actions[0].choices
+    assert "evidence" in subcommands, "the Evidence producer is not on the kernel's command surface"
+    assert parser.prog == cli.INVOCATION, (
+        "argparse prints `%s` in every usage and error line, which is not the sanctioned spelling "
+        "`%s` — a role who retypes what the parser printed types a command that does not exist"
+        % (parser.prog, cli.INVOCATION))
+
+    repo, created = _project_the_installers_produce(tmp_path / "scaffold")
+    assert len(created) > 20, (
+        "the installers produced almost nothing (%d files) — this reader stopped measuring rather "
+        "than the scaffold stopping work" % len(created))
+    entry = os.path.join(str(repo), *cli.ENTRY_POINT.split("/"))
+    assert entry in created, (
+        "the installers built a project without %s. Every shipped remedy names that path, so a "
+        "project that lacks it is handed command lines it cannot run." % cli.ENTRY_POINT)
+    assert _invocable_as("harness", entry), entry
+
+    capture_root_item(repo)
+    merge = "git merge feat/PR-0001-x"
+    blocked = _run_project_hook(repo, "gate_git.py", merge)
+    assert blocked.returncode == 2, blocked.stdout + blocked.stderr
+    assert "no QA Evidence for PR-0001" in blocked.stderr, blocked.stderr
+
+    arguments = ["evidence", "--kind", "test", "--result", "pass", "--related", "PR-0001",
+                 "--summary", "qa run green", "--artifact-ref", "staging/TSK-0001/run.log"]
+    record = "%s %s" % (cli.INVOCATION, " ".join(arguments))
+    for gate in _shell_gates_of(repo):
+        seen = _run_project_hook(repo, gate, record)
+        assert seen.returncode == 0, (
+            "%s refuses the one command line that records an Evidence:\n%s" % (gate, seen.stderr))
+    # THE SUITE'S OWN BYTECODE SETTINGS ARE REMOVED, not inherited. `conftest` exports
+    # `PYTHONPYCACHEPREFIX` so the tests never litter the tree, and a subprocess that inherits it
+    # writes no `.pyc` wherever the shim stands on the question — measured: with
+    # `sys.dont_write_bytecode` flipped to False in a copy of the kit outside this repo, the last
+    # assertion of this test stayed GREEN until these two names were dropped. A role's shell has
+    # neither variable, so neither may decide anything here.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONPATH", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")}
+    ran = subprocess.run([sys.executable, os.path.join(*cli.ENTRY_POINT.split("/"))] + arguments,
+                         cwd=str(repo), capture_output=True, text=True, env=env, timeout=120)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert "test: pass" in ran.stdout, ran.stdout
+
+    opened = _run_project_hook(repo, "gate_git.py", merge)
+    assert opened.returncode == 0, (
+        "the merge is still refused after the Evidence was recorded:\n%s" % opened.stderr)
+
+    cached = [os.path.join(base, name)
+              for base, _dirs, files in os.walk(os.path.join(str(repo), ".claude"))
+              for name in files if name.endswith((".pyc", ".pyo"))]
+    assert not cached, (
+        "running the entry point cached bytecode into the tree `hook_bundle_hash` measures, so the "
+        "next SessionStart would drop the project to `hooks_trust_required`: %s" % cached)
+
+
+def test_the_entry_point_refuses_the_one_argument_the_write_gate_would_refuse(tmp_path):
+    """`--root` is unrunnable AND wrong, so the entry point says so instead of forwarding it.
+
+    Unrunnable: `gate_write_scope` refuses a write-capable pipeline whose command line NAMES the
+    state directory, which is the whole reason the entry point resolves it itself. Wrong: the
+    kernel reads the flag RELATIVE to the current directory, so the same argument addresses a
+    different — usually nonexistent — directory from any subdirectory. Without a refusal that says
+    this, a role who copies `--root project_memory` out of an older document meets the write gate's
+    rc 2 and no explanation.
+
+    Four spellings are run, and the last three are why the shim asks the parser instead of
+    matching text: argparse accepts any unambiguous prefix AND the `=` form, so `--r`, `--ro`,
+    `--roo` and `--root=x` all bind to `--root` on a parser whose only long option that is. A list
+    would have covered the first line and none of the rest.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    repo, _created = _project_the_installers_produce(tmp_path / "scaffold")
+    capture_root_item(repo)
+    refused = _run_project_hook(
+        repo, "gate_write_scope.py",
+        "%s --root project_memory evidence --kind test" % cli.INVOCATION)
+    assert refused.returncode == 2 and "canonical state directory" in refused.stderr, refused.stderr
+
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    for flag in (["--root", "project_memory"], ["--r", "project_memory"],
+                 ["--roo", "project_memory"], ["--root=project_memory"]):
+        proc = subprocess.run(
+            [sys.executable, os.path.join(*cli.ENTRY_POINT.split("/"))] + flag +
+            ["evidence", "--kind", "test", "--result", "pass", "--related", "PR-0001",
+             "--summary", "x", "--artifact-ref", "staging/a.log"],
+            cwd=str(repo), capture_output=True, text=True, env=env, timeout=120)
+        assert proc.returncode == 2, "%s was accepted: %s%s" % (flag, proc.stdout, proc.stderr)
+        assert "`--root` does not belong" in proc.stderr, (flag, proc.stderr)
+    # ...and the refusal is a refusal: no Evidence was recorded on the way to it. Asked as "is
+    # there an item", not "is the directory empty" — the scaffold seeds a `.gitkeep` there.
+    recorded = [name for name in os.listdir(evidence_dir(repo))] if os.path.isdir(
+        evidence_dir(repo)) else []
+    assert not [name for name in recorded if name.lower().endswith((".yaml", ".yml"))], (
+        "the entry point wrote an Evidence and then refused the command line that wrote it: %s"
+        % recorded)
+
+
+def test_both_installers_own_the_entry_point_like_the_other_kit_scripts():
+    """The entry point is KIT-OWNED, in the installer pair for BOTH platforms.
+
+    The run above proves it for the platform this suite is on; the other platform's chain cannot be
+    executed here, so its half is read — but neither the installers nor the branch is a list. EVERY
+    installer this repo ships is asked (`_installer_scripts`, which is an install POSITION rather
+    than four paths), and the ones that HAVE an always-overwrite branch are the ones that owe an
+    answer: the branch is located by the file that has been in it longest (`scripts/kit_checks.py`),
+    and the question is whether `cli.ENTRY_POINT` sits in the same expression. Copy-if-absent is
+    the wrong class for it: a project keeping an old entry point keeps an old bridge into the
+    enforcement layer, and every shipped remedy names that path.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    checked = []
+    for rel in _installer_scripts():
+        with open(os.path.join(ROOT, *rel.split("/")), encoding="utf-8") as handle:
+            text = handle.read()
+        # LOGICAL lines: a shell condition wraps with a trailing `\` and PowerShell with a
+        # backtick, and a reader that stops at the newline would report a name on the second half
+        # as absent — which is how a list of one condition becomes a list of one LINE.
+        text = re.sub(r"[\\`]\r?\n\s*", " ", text)
+        owning = [line for line in text.splitlines()
+                  if "scripts/kit_checks.py" in line and not line.lstrip().startswith("#")]
+        if not owning:
+            continue        # this installer has no always-overwrite branch, so it owes nothing
+        checked.append(rel)
+        assert any(cli.ENTRY_POINT in line for line in owning), (
+            "%s decides which repo templates are always overwritten without naming %s, so a "
+            "project that already has an old one keeps it forever:\n%s"
+            % (rel, cli.ENTRY_POINT, "\n".join(owning)))
+    # One per platform. A floor rather than an equality, so a third installer gaining the branch is
+    # covered too — but zero would mean the reader stopped matching, not that nothing owes it.
+    assert len(checked) >= 2, (
+        "only %s carry an always-overwrite branch; the reader found nothing to judge" % checked)
+
+
+def _markdown_blocks(text):
+    """The units a reader takes in at once: a paragraph, a list item, a table row.
+
+    Block granularity is the point of the check that uses this. The previous version asked only
+    whether the CAVEAT appeared anywhere in the FILE, and the regression it was written for
+    survived it: deleting the honest sentence out of the README's merge-gate bullet left the
+    phrase standing in an unrelated paragraph about the write-lock, four hundred lines away, and
+    nothing went red (measured 2026-07-28).
+    """
+    current = []
+    for line in text.splitlines():
+        if not line.strip():
+            if current:
+                yield "\n".join(current)
+            current = []
+            continue
+        if current and re.match(r"^\s*(?:[-*+]|\d+\.)\s|^\|", line):
+            yield "\n".join(current)
+            current = [line]
+            continue
+        current.append(line)
+    if current:
+        yield "\n".join(current)
+
+
+def _folded_string(node, names, functions, depth=0):
+    """The value a string expression PRODUCES, or None when it is not decidable statically.
+
+    A refusal text is assembled, not written: `"…" % target`, a shared tail added with `+`, a
+    helper that returns the whole thing. Reading the literals instead answers about fragments —
+    the caveat added as `… + _NOT_INSTALLED` is a second literal, and a check over literals would
+    report the first one as missing it while the role reads the two together (measured while
+    writing this). So the pieces are put back together the way the interpreter would:
+
+    * `%` yields its TEMPLATE — the arguments are runtime values and no static reader can have
+      them, while the template is the sentence a role reads.
+    * a call to a module-level helper yields what that helper returns, so a remedy factored out
+      into a function is still read.
+    """
+    if depth > 8:
+        return None
+    if isinstance(node, ast.Constant):
+        return node.value if isinstance(node.value, str) else None
+    if isinstance(node, ast.Name):
+        return names.get(node.id)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mod):
+        return _folded_string(node.left, names, functions, depth + 1)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = _folded_string(node.left, names, functions, depth + 1)
+        right = _folded_string(node.right, names, functions, depth + 1)
+        return None if left is None or right is None else left + right
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        body = functions.get(node.func.id)
+        if body is None:
+            return None
+        parts = [_folded_string(stmt.value, names, functions, depth + 1)
+                 for stmt in ast.walk(body)
+                 if isinstance(stmt, ast.Return) and stmt.value is not None]
+        parts = [part for part in parts if part]
+        return "\n".join(parts) or None
+    return None
+
+
+def _refusal_texts(path):
+    """Every text this shipped module hands a ROLE at the moment it stops them.
+
+    A refusal is defined by WHAT IT DOES to the role, not by which function spells it: a hook
+    stops with `block(...)`, and the kernel stops by RAISING one of its own error types, which
+    `_kernel.run_gate` and the CLI turn into the same stderr the role reads. Reading only
+    `block()` was a reader that knew three source KINDS, and it missed `state.py` handing a
+    blocked role an `evidence` command line without the caveat every other text then carried —
+    the enumeration failure, in the check written to replace an enumeration.
+
+    Assembled as the interpreter would (`_folded_string`), so a message built from a template
+    plus a shared tail is read the way the role reads it.
+    """
+    with open(path, encoding="utf-8") as fh:
+        tree = ast.parse(fh.read())
+    names, functions = {}, {}
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef):
+            functions[node.name] = node
+        elif isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name):
+            value = _folded_string(node.value, names, functions)
+            if value is not None:
+                names[node.targets[0].id] = value
+    for node in ast.walk(tree):
+        call = None
+        if isinstance(node, ast.Call):
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else \
+                getattr(node.func, "id", None)
+            if name == "block":
+                call = node
+        elif isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call):
+            name = node.exc.func.attr if isinstance(node.exc.func, ast.Attribute) else \
+                getattr(node.exc.func, "id", None)
+            if name and name.endswith("Error"):
+                call = node.exc
+        if call is None:
+            continue
+        for argument in list(call.args) + [kw.value for kw in call.keywords]:
+            text = _folded_string(argument, names, functions)
+            if text:
+                yield text
+
+
+def _shipped_python_modules():
+    """Every Python module this harness INSTALLS into a project.
+
+    The kits' hooks and the kernel — which is what "a shipped text" means for the checks below:
+    a role in a scaffolded project can be stopped by any of them, and reads whatever the one that
+    stopped them says. Listing the modules that happened to carry a sentence is how the previous
+    reader missed `kernel/state.py`.
+    """
+    for kit in KITS:
+        for path in sorted(glob.glob(os.path.join(ROOT, "team-kits", kit, "hooks", "*.py"))):
+            yield path
+    for path in sorted(glob.glob(os.path.join(ROOT, "team-kits", "kernel", "*.py"))):
+        yield path
+
+
+def test_no_refusal_text_names_a_kernel_invocation_a_project_cannot_run():
+    """A remedy is read at the moment a role is stopped, so a command inside it has to work.
+
+    `gate_write_scope` once offered `python -B -m kernel.cli <command>` as the fallback for the
+    entry point. Measured in a scaffolded project: the kernel installs as `.claude/kernel`, so
+    that import fails with `No module named 'kernel'` — and `python .claude/kernel/cli.py` is no
+    entry either, since `cli.py` opens with a relative import and raises before the gate even sees
+    it (and the write gate refuses that command line for naming the enforcement layer). The gate
+    that had just refused a role handed them a second command that cannot run, which is the "no
+    comment may promise what the code does not implement" failure in the text a blocked role acts
+    on.
+
+    The INSTALLED entry point is deliberately not judged here — `python scripts/harness.py` is the
+    sanctioned surface and its two neighbours check that every text spells it that way and names
+    only commands the parser has. What may not appear is a MODULE invocation presented as the
+    alternative that works, because that is the one no project can run at all.
+
+    Over every module the harness ships, for the same reason as its neighbours: the kernel refuses
+    a role as often as a gate does, and it is the module that knows its own import name.
+    """
+    offenders = []
+    for path in _shipped_python_modules():
+        offenders += ["%s: %s" % (os.path.relpath(path, ROOT), text[:120])
+                      for text in _refusal_texts(path) if "kernel.cli" in text]
+    assert not offenders, (
+        "these refusal texts name the kernel CLI as a module invocation, which no scaffolded "
+        "project can run:\n" + "\n".join(offenders))
+
+
+def _shipped_texts():
+    """(where, text) for every file the harness SHIPS that a person or an agent reads a line off.
+
+    The kits (constitutions, agents, SKILLs, project_memory templates, hooks, repo scripts), the
+    kernel, the two global instruction files that install into the user's home, and the front page.
+    Whole files, deliberately: the two checks below ask what is WRITTEN DOWN, and a comment, a
+    docstring and a refusal string are all lines somebody copies. `_refusal_texts` answers the
+    narrower question ("what is a role handed at the moment they are stopped") and is used by the
+    check that needs that narrower subject.
+    """
+    for base in (os.path.join(ROOT, "team-kits"), os.path.join(ROOT, "user")):
+        for current, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__", ".ruff_cache")]
+            for name in sorted(files):
+                if not name.endswith((".py", ".md", ".json", ".sh", ".ps1", ".yaml", ".yml")):
+                    continue
+                path = os.path.join(current, name)
+                with open(path, encoding="utf-8", errors="ignore") as handle:
+                    yield os.path.relpath(path, ROOT).replace(os.sep, "/"), handle.read()
+    with open(os.path.join(ROOT, "README.md"), encoding="utf-8") as handle:
+        yield "README.md", handle.read()
+
+
+# TWO SHAPES, because a command line reaches a reader in two ways and the first shape alone missed
+# four shipped sites.
+#   1. a CODE SPAN that opens with the bare word. A code span is what a reader retypes, so that is
+#      a command line by construction — whether it continues (`harness doctor`) or stops there.
+#   2. the bare word followed by a word the SHIPPED PARSER knows as a subcommand, in ANY text,
+#      backticks or not. `kernel/report.py` handed a role the remedy
+#      "git restore <path> && harness generate-index" as a plain string, and both scaffolds warned
+#      that "harness doctor will report hook_trust: unverified" — no backtick anywhere, so shape 1
+#      saw none of them, and each was a command line a role would type. Reading the SUBCOMMAND off
+#      the parser is what keeps this from refusing ordinary prose: "the harness generates …" does
+#      not match, because `generates` is not on the surface, and it never needs a list of English
+#      words to exclude.
+# Both are rules rather than lists, because the previous round HAD a list: three spellings of a
+# root wrapper, chosen by shell, is exactly the drift the single spelling replaced.
+#
+# WHERE SHAPE 1 CANNOT REACH, named as the mechanism it is rather than as a judgement call: the
+# FIRST content line of a fenced block. Shape 1 needs a backtick immediately before the word, and
+# `_reading_view`'s seam pops a fence's ``` because backticks are not command-word characters — so
+# ```` ```\nharness\n``` ```` reads as ` harness ` and no shape fires, while the same content
+# inline (`` see `harness` here ``) is found. Both are "what a reader retypes", which is the ground
+# shape 1 stands on, so this is not an ambiguity between prose and code: it is one construct the
+# rule cannot see. Measured at 0 occurrences in the shipped tree. Closing it means teaching the
+# reader what a fence is — medium knowledge, which is the thing `_reading_view` was written to
+# avoid needing — so it is named here and left, not tightened by reflex.
+_BARE_ENTRY_SPAN_RX = re.compile(r"`harness(?=[\s`])")
+
+# What a command TOKEN is made of. Everything else at a line break is the medium's punctuation,
+# which is the whole idea behind `_reading_view` below.
+_COMMAND_WORD_RX = re.compile(r"[\w/.-]")
+
+
+def _reading_view(text):
+    """(text as a reader takes it in, source line of every character in it).
+
+    THE LINE IS NOT THE UNIT A COMMAND LIVES IN, and reading line by line was this check
+    repeating the very defect it replaced. Measured: `("run harness "` / `"doctor first")` — a
+    Python implicit concatenation, the EXACT shape whose split hid
+    `"its entry " "point is not installed yet"` from a `rg` over `gate_write_scope.py` in this
+    same round — passed the line reader untouched, and so did a markdown code span wrapped over
+    two lines and a fenced block.
+
+    THE SEAM IS DEFINED, NOT ENUMERATED, because a list of break forms is the failure one level
+    down: a shell backslash, a PowerShell backtick, Python's abutting quotes (with or without a
+    comma or a `+` between them), a markdown wrap that carries no marker at all, and a fence's
+    backticks look nothing alike. The definition is exactly one predicate: a character belongs to
+    the seam when it is NOT a member of `_COMMAND_WORD_RX`. So the seam is "the break, plus the
+    characters on either side of it that could not be part of a command word", collapsed to one
+    space — and the reader never has to know which medium it is reading. Measured across
+    thirteen carriers it was never written against: a block-comment star, a `#` comment, a YAML
+    fold, a batch caret, a PowerShell backtick, a blockquote marker and CRLF are all closed by
+    that one predicate.
+
+    WHAT THE PREDICATE IS NOT is "punctuation", and an earlier wording of this docstring said so
+    and was wrong. Four punctuation marks — `-`, `.`, `/`, `_` — ARE command-word characters here,
+    by necessity: without them `generate-index`, `harness.py`, `scripts/` and an underscored name
+    stop being single tokens and the whole reader falls apart. So a break carried by one of THOSE
+    is not closed, and the misses are real and measured: a markdown list dash
+    (`run harness` / `- doctor first`), line numbers in a listing (`12  run harness` /
+    `13  doctor first`), a bare `.`, `_` or `/` continuation marker, and a hyphenated word wrap.
+    That is the price of the four characters, paid knowingly, and it is the mirror image of the
+    price named below — not an oversight to be tightened later without deciding which tokens to
+    give up.
+
+    THE PRICE IN THE OTHER DIRECTION, fail-closed: a line that ENDS with the bare word followed by
+    a line STARTING with a subcommand reads as a command, even in prose, and a blank line is no
+    boundary (see below). Five of the eight subcommands are ordinary English words — `archive`,
+    `doctor`, `evidence`, `transition`, `validate` — so this is not theoretical. Measured over the
+    shipped tree: 0 offences today, but SIX lines already end in the bare word — the nearest is in
+    `kernel.report.qa_verdicts`' docstring, whose sentence breaks after the bare word and resumes
+    with a conjunction; it turns red the day somebody rewrites that continuation to start with a
+    subcommand. Named by location rather than quoted, for the reason `scripts/harness.py` gives at
+    length: a quotation of another file that nothing checks is the defect this round is about. The
+    number is the honest form of this note; "costs nothing today" was not.
+
+    A blank line is NOT a boundary here. Treating it as one would need the reader to know that a
+    paragraph ends a reading unit in markdown but a blank line inside a Python string does not —
+    medium knowledge again, and the direction it fails in is the open one.
+
+    COST: over the 222-file shipped corpus the reading view takes the reader from 0.25 s to 0.54 s
+    (median of the same run), i.e. ~0.3 s for the whole check. Written down because a time budget
+    has twice become a defect in this suite, and because a reader who cannot see the number cannot
+    judge whether the next reader may be added.
+    """
+    out, at, line = [], [], 1
+    index, end = 0, len(text)
+    while index < end:
+        char = text[index]
+        if char not in "\r\n":
+            out.append(char)
+            at.append(line)
+            index += 1
+            continue
+        while out and not _COMMAND_WORD_RX.match(out[-1]):
+            out.pop()
+            at.pop()
+        while index < end and not _COMMAND_WORD_RX.match(text[index]):
+            if text[index] == "\n":
+                line += 1
+            index += 1
+        out.append(" ")
+        at.append(line)
+    return "".join(out), at
+
+
+def _bare_entry_word_rx():
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    surface = sorted(cli.build_parser()._subparsers._group_actions[0].choices)
+    # A word boundary at BOTH ends: without the trailing one "the harness archived the item"
+    # would read as `harness archive`, and without the leading one the required spelling
+    # `scripts/harness.py doctor` would match itself.
+    return re.compile(r"(?<![\w/.-])harness\s+(?:%s)\b"
+                      % "|".join(re.escape(name) for name in surface))
+
+
+def _bare_entry_offences(text):
+    """(source line, matched text) for every bare-word command in `text`, seams included.
+
+    Both readings run: the LINE view, because it is what names the line a reader edits, and the
+    READING view, because a command does not stop at a line break. The reading view's line map
+    reports the FIRST fragment — where the command starts is where somebody has to fix it.
+    """
+    bare_word = _bare_entry_word_rx()
+    found = []
+    for number, line in enumerate(text.splitlines(), 1):
+        for rx in (_BARE_ENTRY_SPAN_RX, bare_word):
+            match = rx.search(line)
+            if match:
+                found.append((number, line.strip()[:120]))
+                break
+    joined, at = _reading_view(text)
+    for rx in (_BARE_ENTRY_SPAN_RX, bare_word):
+        for match in rx.finditer(joined):
+            number = at[match.start()] if match.start() < len(at) else 0
+            if not any(number == seen for seen, _ in found):
+                found.append((number, joined[match.start():match.start() + 120]))
+    return sorted(found)
+
+
+def test_the_spelling_reader_sees_a_command_split_across_a_line_break():
+    """The reader above is asked the question it was measured getting WRONG.
+
+    A line-based reader passed all four shapes below, and the first is the exact one this round
+    had already found by hand one layer down: `gate_write_scope.py` carried
+    `"its entry " "point is not installed yet"` across a source line, so a `rg` for the sentence
+    reported twenty files and not the twenty-three that held it. A check written to replace an
+    enumeration that then cannot see a split string is that enumeration wearing a different hat,
+    which is why this test exists at all rather than a note saying "mind line breaks".
+
+    The shapes are the four MEDIA the shipped tree actually uses, not four spellings: Python's
+    implicit concatenation, a markdown code span the paragraph wrapped, a shell continuation, and
+    a fenced block. They agree on nothing except that a medium's break punctuation is not part of
+    a command word — which is the whole of `_reading_view`'s definition.
+
+    THE CONTROLS MATTER AS MUCH AS THE CASES. Three of them, each pinning one boundary the reader
+    must NOT cross: prose that merely names the harness (the subcommand rule is what excludes it),
+    the sanctioned spelling itself (the leading word-boundary), and the sanctioned spelling split
+    across a break (the seam must not manufacture an offence out of the required form).
+    """
+    split_python = (
+        '    remedy=("run harness "\n'
+        '            "doctor first")\n'
+    )
+    wrapped_span = "Run `harness\ndoctor` to check the install.\n"
+    shell_continuation = 'echo "run harness \\\n  doctor"\n'
+    fenced_block = "```\nharness generate-index\n```\n"
+    for label, text in (("python implicit concatenation", split_python),
+                        ("wrapped markdown code span", wrapped_span),
+                        ("shell line continuation", shell_continuation),
+                        ("fenced block", fenced_block)):
+        assert _bare_entry_offences(text), (
+            "the reader does not see the bare word in a %s — a command does not stop at a line "
+            "break, and neither may this check:\n%s" % (label, text))
+        # ...and the line it reports is where the command STARTS, which is the line to edit.
+        assert _bare_entry_offences(text)[0][0] == (1 if "```" not in text else 2), (
+            "%s: reported line %d, which is not where the first fragment sits"
+            % (label, _bare_entry_offences(text)[0][0]))
+
+    for label, text in (
+            ("prose naming the harness", "the harness\ngenerates the index for you\n"),
+            ("the sanctioned spelling", "run `python scripts/harness.py doctor` first\n"),
+            ("the sanctioned spelling, split", "run `python scripts/harness.py\ndoctor` first\n")):
+        assert not _bare_entry_offences(text), (
+            "the reader invents an offence in %s — the seam may close a break, never create a "
+            "command:\n%s" % (label, text))
+
+
+def test_every_shipped_text_spells_the_entry_point_the_one_way():
+    """One entry point, one spelling, and no shipped text may print another.
+
+    `kernel.cli.INVOCATION` is that spelling and this test takes it from there — the same constant
+    argparse uses for `prog`, so a rename moves the requirement with it rather than leaving a
+    hundred texts behind. What is forbidden is the bare word wherever it reads as a command — in a
+    code span, or in front of a word the parser knows as a subcommand — because that is a line a
+    role can retype and no installation provides it: nothing is named `harness` on any PATH, and a
+    root wrapper was rejected precisely because `harness`, `./harness` and the `.cmd` spelling are
+    three commands for one thing.
+
+    This is the check that replaces `conftest.NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM`. That constant
+    held one measured fact together across twenty documents by DERIVING which of them owed it; the
+    fact is now the opposite one, and it needs holding together in exactly the same way — otherwise
+    the ~150 places that used to say `harness doctor` quietly become promises again, one file at a
+    time. The subject is every shipped text rather than only the refusal strings, because a comment
+    or a docstring naming a command that does not exist is the same defect one reader further out.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    offenders = []
+    for where, text in _shipped_texts():
+        offenders += ["%s:%d %s" % (where, number, found)
+                      for number, found in _bare_entry_offences(text)]
+    assert not offenders, (
+        "these shipped lines spell a command as the bare word `harness` — in a code span, or in "
+        "front of a subcommand the parser has — and so hand a reader a command no installation "
+        "provides. The one spelling is `%s` (kernel.cli.INVOCATION); if the word is meant as a "
+        "NOUN, it belongs neither in a code span nor in front of a subcommand:\n%s"
+        % (cli.INVOCATION, "\n".join(offenders)))
+
+
+def _entry_point_calls(text):
+    """Every `<INVOCATION> <word>` spelled in a text, as the subcommand word it names.
+
+    Reads the invocation off `kernel.cli`, so this cannot drift from what the shim installs. A
+    span that continues with a `<placeholder>` or a flag names no subcommand and yields nothing —
+    `python scripts/harness.py <command>` is a pointer to the surface, not a promise about one
+    member of it.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    for match in re.finditer(re.escape(cli.INVOCATION) + r"\s+([a-z][a-z0-9-]*)", text):
+        yield match.group(1)
+
+
+# The sentence a text owes a command spec II.4 names and the shipped parser does not have. ONE
+# fragment for all of them, for the same reason the retired claim was one fragment: the same
+# measured gap must not drift into a dozen accounts of itself. Long enough to be a statement rather
+# than a coincidence -- "not on" alone would have exempted any block that happens to contain those
+# five characters for an unrelated reason, which is an exemption nobody wrote.
+MISSING_SUBCOMMAND_CLAIM = "not on the entry point's command surface"
+
+
+def test_every_command_a_role_is_handed_is_on_the_entry_points_surface():
+    """A command line in an instruction is a promise that typing it works.
+
+    Before the shim that promise was covered by one honest caveat — the entry point is not
+    installed, so nothing here runs. Shipping the shim REMOVED that cover: `python
+    scripts/harness.py evidence` now works, which is exactly what makes `python
+    scripts/harness.py capture` a promise for the first time. Spec II.4 asks for twelve commands
+    and `build_parser()` has eight, so this is not hypothetical.
+
+    So every block that hands a role a `<INVOCATION> <word>` line must either name a subcommand the
+    SHIPPED PARSER has, or say in the same block that it is not on the surface.
+
+    THE SUBJECT IS THE SAME AS ITS SISTER'S, and it was NOT: this check read the instruction files,
+    the AST-folded refusal texts and the README, while `test_every_shipped_text_...` read every
+    shipped text. Measured in the round that shipped the entry point: an uncovered
+    `python scripts/harness.py capture` planted in `hooks/session_status.py` — the text the lead
+    reads FIRST at every session start — in `templates/repo/scripts/kit_checks.py` and in
+    `scaffold_team.sh`'s console output all passed. An asymmetry nobody wrote down is an
+    enumeration wearing a different hat, so the corpora are one corpus now: every shipped text,
+    split into blocks, PLUS the folded refusal texts, which stay because folding is the only way to
+    read a message the interpreter assembles from a template and a shared tail.
+
+    BLOCK, still, and the block is read the way `_reading_view` reads it. Both halves are measured
+    needs: the caveat has to be near the command a role is looking at, not four hundred lines away
+    — and the caveat in `gate_push_token` is itself SPLIT across two source lines, so a raw-text
+    reader would have reported it missing while the role reads it whole.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    surface = set(cli.build_parser()._subparsers._group_actions[0].choices)
+    assert len(surface) >= 8, surface
+
+    blocks = []
+    for where, text in _shipped_texts():
+        blocks += [(where, _reading_view(block)[0]) for block in _markdown_blocks(text)]
+    for path in _shipped_python_modules():
+        where = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        blocks += [(where, text) for text in _refusal_texts(path)]
+
+    seen, offenders = 0, []
+    for where, block in blocks:
+        for word in _entry_point_calls(block):
+            seen += 1
+            if word in surface or MISSING_SUBCOMMAND_CLAIM in block:
+                continue
+            offenders.append("%s: `%s %s`" % (where, cli.INVOCATION, word))
+    assert not offenders, (
+        "these blocks hand a role a command the shipped parser does not have (%s). Either the "
+        "command ships, or the block says, in so many words, that it is \"%s\" — the caveat "
+        "fragment is deliberately the words a role reads and not a `conftest` constant:\n%s"
+        % (", ".join(sorted(surface)), MISSING_SUBCOMMAND_CLAIM, "\n".join(offenders)))
+    # A floor, because every assertion above is vacuously true over a set that stopped matching.
+    # 177 call sites across 267 shipped files were measured the day the two corpora were merged.
+    # The floor sits well under that, so a rewritten document cannot trip it, and well over the 49
+    # the narrower corpus saw, so losing the merge cannot pass unnoticed.
+    assert seen >= 100, "only %d entry-point calls found — the reader stopped matching" % seen
 
 
 # ---------------- notify_agent_events: SubagentStop route ----------------
@@ -3902,62 +5952,141 @@ def test_scratchpad_ref_allowed_outside_source_areas(tmp_path):
 
 
 # ---------------- office kit: gate_proc_approved ----------------
-def _office_repo(tmp_path, procs_yaml=None):
-    repo = tmp_path / "repo"
-    (repo / "project_memory").mkdir(parents=True)
-    if procs_yaml is not None:
-        write(str(repo / "project_memory" / "process_definitions.yaml"), procs_yaml)
-    return repo
+def _office_state(repo):
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    root = os.path.join(str(repo), "project_memory")
+    os.makedirs(root, exist_ok=True)
+    return ProjectState(root)
+
+
+def capture_proc(repo, steps=("file it",), roles=("bookkeeper",), approve=True):
+    """Give an office project a PROC — captured through the kernel, approved through the MINT.
+
+    Nothing here is hand-written, and the approval half is why: `approved_hash` is stamped by
+    `approvals.mint` (see `approved_content_hash`), so a fixture that wrote the field itself would
+    prove the gate reads a stamp without proving anything can produce one — the exact shape of the
+    V1 defect this replaces, where the only writer of that field was a script that opened a deleted
+    monolith and died.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import walk_to_status
+    state = _office_state(repo)
+    item = state.capture("PROC", {"title": "inbox sweep", "steps": list(steps),
+                                  "roles": list(roles)})
+    if approve:
+        item = walk_to_status(state, item, "APPROVED")
+    return item
 
 
 def _spawn(repo, prompt):
-    return {"tool_name": "Agent",
+    return {"hook_event_name": "PreToolUse", "tool_name": "Agent",
             "tool_input": {"subagent_type": "bookkeeper", "run_in_background": False,
                            "prompt": prompt}, "cwd": str(repo)}
 
 
-def _steps_hash(steps):
-    import hashlib
+def _proc_gate(repo, prompt):
+    return run_hook_process("gate_proc_approved.py", _spawn(repo, prompt), repo,
+                            hooks_dir=OFFICE_HOOKS)
+
+
+def test_the_proc_gate_refuses_every_spawn_while_no_procedure_is_approved(tmp_path):
+    """Spec II.4 in the one sentence this file exists for: "leerer Zustand blockiert".
+
+    The V1 gate had two doors out and both said "no PROC yet, so let the onboarding work happen":
+    the registry file being absent, and nothing in it being approved. In a V2 project the first is
+    permanently true — the registry was dissolved into `procedures/active/` — so the measured
+    behaviour was rc 0 on every spawn, forever, while the office constitution promised the opposite.
+    Fail-closed is affordable here because the way out needs no spawn: the lead captures the
+    procedure and asks the user, and the refusal says so.
+    """
+    repo = tmp_path / "repo"
+    _office_state(repo)                       # state exists, holds no procedure
+    result = _proc_gate(repo, "onboarding interview")
+    assert result.returncode == 2
+    assert "no approved procedure" in result.stderr
+    assert "request-approval scope" in result.stderr, "a fail-closed refusal carries its remedy"
+
+
+def test_the_proc_gate_still_allows_the_installers_own_bootstrap_window(tmp_path):
+    """The one exception spec II.4 grants — and it is not a flag the lead can set for itself.
+
+    `_kernel.bootstrap_active` demands an EMPTY target state, a marker recording an installer run
+    plus an explicit user confirmation, and a TTL; `guard_harness_selfmod` keeps `kit_state.json`
+    off every Edit/Write path. Asserted here so the "empty state blocks" rule above cannot be read
+    as "an installer cannot install".
+    """
+    repo = tmp_path / "repo"
+    (repo / "project_memory").mkdir(parents=True)
+    write(str(repo / ".claude" / "kit_state.json"), json.dumps({"bootstrap": {
+        "user_confirmed": True, "installer_run": "scaffold_team",
+        "expires_at_epoch": time.time() + 600}}))
+    assert _proc_gate(repo, "onboarding interview").returncode == 0
+
+
+def test_the_proc_gate_refuses_a_work_order_that_names_no_procedure(tmp_path):
+    repo = tmp_path / "repo"
+    capture_proc(repo)
+    result = _proc_gate(repo, "please file the inbox")
+    assert result.returncode == 2
+    assert "names no PROC" in result.stderr
+
+
+def test_the_proc_gate_allows_a_work_order_naming_an_approved_procedure(tmp_path):
+    repo = tmp_path / "repo"
+    proc = capture_proc(repo)
+    assert _proc_gate(repo, "execute %s sweep" % proc["id"]).returncode == 0
+
+
+def test_the_proc_gate_refuses_a_procedure_the_user_never_approved(tmp_path):
+    """A DRAFT procedure is not a permission — and one approved PROC does not authorise another."""
+    repo = tmp_path / "repo"
+    capture_proc(repo)
+    draft = capture_proc(repo, steps=("do something else",), approve=False)
+    result = _proc_gate(repo, "execute %s" % draft["id"])
+    assert result.returncode == 2
+    assert "not an approved" in result.stderr
+
+
+def test_the_proc_gate_refuses_a_procedure_edited_after_its_approval(tmp_path):
+    """The stamp is what makes an out-of-band edit visible.
+
+    The edit here goes PAST the kernel (straight to the item file), which is the only way an
+    approved PROC's steps can move without the revision bump and approval invalidation
+    `state.update_item` performs — and it is exactly the case `approved_hash` exists for.
+    """
     yaml = pytest.importorskip("yaml")
-    return hashlib.sha256(yaml.safe_dump(steps, sort_keys=True, allow_unicode=True)
-                          .encode("utf-8")).hexdigest()
+    repo = tmp_path / "repo"
+    proc = capture_proc(repo)
+    path = _office_state(repo).active_path(proc["id"])
+    item = yaml.safe_load(open(path, encoding="utf-8").read())
+    item["steps"].append("NEW sneaky step")
+    write(path, yaml.safe_dump(item, sort_keys=False, allow_unicode=True))
+    result = _proc_gate(repo, "execute %s" % proc["id"])
+    assert result.returncode == 2
+    assert "edited past the kernel" in result.stderr
 
 
-def test_proc_gate_bootstrap_allows(tmp_path):
-    repo = _office_repo(tmp_path, "processes: {}\n")
-    assert run_hook("gate_proc_approved.py", _spawn(repo, "onboarding interview"), repo,
-                    hooks_dir=OFFICE_HOOKS) == 0
+def test_the_proc_gate_reads_the_stamp_the_mint_wrote_and_no_other_producer(tmp_path):
+    """The rule and its route to compliance, measured as one fact.
 
-
-def test_proc_gate_blocks_missing_ref(tmp_path):
-    pytest.importorskip("yaml")
-    h = _steps_hash(["file it"])
-    repo = _office_repo(tmp_path,
-                        "processes:\n  PROC-0001:\n    title: x\n    status: APPROVED\n"
-                        "    approved_hash: \"%s\"\n    steps:\n      - file it\n" % h)
-    assert run_hook("gate_proc_approved.py", _spawn(repo, "please file the inbox"), repo,
-                    hooks_dir=OFFICE_HOOKS) == 2
-
-
-def test_proc_gate_passes_approved_with_hash(tmp_path):
-    pytest.importorskip("yaml")
-    h = _steps_hash(["file it"])
-    repo = _office_repo(tmp_path,
-                        "processes:\n  PROC-0001:\n    title: x\n    status: APPROVED\n"
-                        "    approved_hash: \"%s\"\n    steps:\n      - file it\n" % h)
-    assert run_hook("gate_proc_approved.py", _spawn(repo, "execute PROC-0001 sweep"), repo,
-                    hooks_dir=OFFICE_HOOKS) == 0
-
-
-def test_proc_gate_blocks_tampered_steps(tmp_path):
-    pytest.importorskip("yaml")
-    h = _steps_hash(["file it"])
-    repo = _office_repo(tmp_path,
-                        "processes:\n  PROC-0001:\n    title: x\n    status: APPROVED\n"
-                        "    approved_hash: \"%s\"\n    steps:\n      - file it\n"
-                        "      - NEW sneaky step\n" % h)
-    assert run_hook("gate_proc_approved.py", _spawn(repo, "execute PROC-0001"), repo,
-                    hooks_dir=OFFICE_HOOKS) == 2
+    `report.validate_state` reports an approved PROC without an `approved_hash` as an ERROR, and
+    until the mint stamped it the only writer of that field was `scripts/proc_hash.py --update` —
+    a script that opened a deleted monolith, crashed, and whose whole purpose was to make a tamper
+    check pass on demand. So the rule had no walkable route at all. This asserts the route: capture
+    plus the user's approval leaves a stamp that matches the content, and the validator is clean.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals, report
+    repo = tmp_path / "repo"
+    proc = capture_proc(repo)
+    state = _office_state(repo)
+    stored = state.read_item(proc["id"])
+    assert stored["status"] == "APPROVED"
+    assert stored[approvals.APPROVED_CONTENT_HASH_FIELD] == approvals.approved_content_hash(
+        "PROC", stored)
+    assert [f for f in report.validate_state(state)
+            if f["severity"] == "error" and f["item"] == proc["id"]] == []
 
 
 # ---------------- office kit: ledger scripts ----------------
@@ -5133,11 +7262,9 @@ def test_kit_checks_chunk_warnlimit_guard(tmp_path):
 
 def test_kit_checks_module_invariants(tmp_path):
     mod = _kit_checks_mod()
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "module_invariants:\n"
-          "  - path: src/pure.py\n"
-          "    forbidden_tokens: [\"open(\"]\n"
-          "    reason: \"pure module - no I/O\"\n")
+    capture_invariant(tmp_path, "module_invariants", value=[
+        {"path": "src/pure.py", "forbidden_tokens": ["open("],
+         "reason": "pure module - no I/O"}])
     write(str(tmp_path / "src" / "pure.py"),
           "# never call open( in this module\ndef f():\n    return 1\n")
     calls, ok, fail, warn = _collector()
@@ -5163,8 +7290,7 @@ def test_kit_checks_repo_wide_yaml_parse(tmp_path):
     calls, ok, fail, warn = _collector()
     mod.check_project_memory_yaml(str(tmp_path), ok, fail, warn)
     assert any(n == "yaml-lint (repo-wide)" for n, _m in calls["fail"])
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "yaml_lint_exclude:\n  - \"config/*\"\n")
+    capture_invariant(tmp_path, "yaml_lint_exclude", value=["config/*"])
     calls, ok, fail, warn = _collector()
     mod.check_project_memory_yaml(str(tmp_path), ok, fail, warn)
     assert not any(n == "yaml-lint (repo-wide)" for n, _m in calls["fail"])
@@ -5180,39 +7306,26 @@ def _browser_checks_mod():
 
 def test_browser_smoke_config_and_missing_dist(tmp_path):
     mod = _browser_checks_mod()
-    write(str(tmp_path / "project_memory" / "testing_guidelines.yaml"),
-          "coverage_gate:\n  threshold: 80\nbrowser_smoke:\n  entry: /app/\n"
-          "  mount_selector: \"#app\"\n")
+    capture_invariant(tmp_path, "coverage_gate", value={"threshold": 80})
+    capture_invariant(tmp_path, "browser_smoke",
+                      value={"entry": "/app/", "mount_selector": "#app"})
     assert mod._config(str(tmp_path)) == ("/app/", "#app")
     calls, ok, fail, warn = _collector()
     mod.browser_smoke(str(tmp_path), ok, fail, warn)  # no frontend/dist
     assert not calls["fail"] and any("dist missing" in m for _n, m in calls["warn"])
 
 
-def test_browser_smoke_config_trailing_comment(tmp_path):
-    # audit finding: an unquoted value with a trailing comment silently fell back to the
-    # default route — the smoke then green-tested the WRONG page
+def test_browser_smoke_falls_back_when_no_invariant_configures_it(tmp_path):
+    """The default route must stay the default, and only that.
+
+    The audit finding this replaces was a config that SILENTLY fell back — an unquoted value with a
+    trailing comment voided the whole line and the smoke green-tested the wrong page. The V2 reader
+    parses YAML rather than lines, so that particular hazard is gone; what still has to hold is
+    that an unconfigured project gets `/` and `#root` instead of an exception.
+    """
     mod = _browser_checks_mod()
-    write(str(tmp_path / "project_memory" / "testing_guidelines.yaml"),
-          "browser_smoke:\n  entry: /app/   # main view\n  mount_selector: '#app'  # spa mount\n")
-    assert mod._config(str(tmp_path)) == ("/app/", "#app")
-
-
-def test_quality_source_areas_inline_and_quoted(tmp_path):
-    # audit finding: the block-only parser silently skipped an INLINE-declared area that the
-    # file-budget check DID scan — same knob, two behaviors
-    os.makedirs(str(tmp_path / "scripts"))
-    shutil.copy(QUALITY, str(tmp_path / "scripts" / "quality.py"))
-    os.makedirs(str(tmp_path / "compounder"))
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "source_areas: [compounder, '..']\n")
-    mod = _quality_mod(str(tmp_path / "scripts" / "quality.py"))
-    targets = mod._python_targets()
-    assert "compounder" in targets and ".." not in targets
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "source_areas:\n  # extra areas below\n  - 'compounder'\n")
-    mod2 = _quality_mod(str(tmp_path / "scripts" / "quality.py"))
-    assert "compounder" in mod2._python_targets()  # quoted item + comment line survive
+    os.makedirs(str(tmp_path / "project_memory"), exist_ok=True)
+    assert mod._config(str(tmp_path)) == ("/", "#root")
 
 
 def test_quality_declared_stacks_quoted_block(tmp_path):
@@ -5227,9 +7340,8 @@ def test_quality_declared_stacks_quoted_block(tmp_path):
 def test_kit_checks_module_invariants_string_tokens(tmp_path):
     # audit finding: a bare-string forbidden_tokens iterated CHARACTERS ('e' matched everywhere)
     mod = _kit_checks_mod()
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "module_invariants:\n  - path: src/pure.py\n    forbidden_tokens: \"open(\"\n"
-          "    reason: \"pure\"\n")
+    capture_invariant(tmp_path, "module_invariants", value=[
+        {"path": "src/pure.py", "forbidden_tokens": "open(", "reason": "pure"}])
     write(str(tmp_path / "src" / "pure.py"), "def f():\n    return open('x').read()\n")
     calls, ok, fail, warn = _collector()
     mod.check_module_invariants(str(tmp_path), ok, fail, warn)
@@ -5304,25 +7416,33 @@ def test_question_context_catches_audit_reported_misses(tmp_path):
     assert run_hook("guard_question_context.py", header_ref, tmp_path) == 2
 
 
-def test_quality_regex_fallbacks_without_pyyaml(tmp_path, monkeypatch):
-    # CI always installs pyyaml, so the demoted regex fallbacks were DEAD paths in CI (audit) —
-    # poison the yaml import to prove the pyyaml-less machine still reads every knob
+def test_quality_without_pyyaml_keeps_its_state_root_fallback_and_defaults_the_rest(tmp_path,
+                                                                                    monkeypatch):
+    """CI always installs pyyaml, so the demoted regex fallbacks were DEAD paths in CI (audit) —
+    the yaml import is poisoned here to measure what a pyyaml-less machine really does.
+
+    The answer CHANGED with the knobs' move into `INV` items, and this test says so rather than
+    asserting the old one: `project_config.yaml` is a single state-root file and keeps its regex
+    fallback, while a knob now lives in an item store that cannot be listed and parsed without a
+    parser. Writing a second, regex-shaped reader for that store would have been two parsers for one
+    question — the exact divergence an audit already caught between this file and `kit_checks` — so
+    the knobs degrade to their DEFAULTS instead, visibly and without an exception.
+    """
     os.makedirs(str(tmp_path / "scripts"))
     shutil.copy(QUALITY, str(tmp_path / "scripts" / "quality.py"))
     shutil.copy(KIT_CHECKS, str(tmp_path / "scripts" / "kit_checks.py"))
     write(str(tmp_path / "project_memory" / "project_config.yaml"),
           "project:\n  stacks:\n    - python\n")
-    write(str(tmp_path / "project_memory" / "coding_guidelines.yaml"),
-          "source_areas:\n  - compounder\n  - '..'\n")
-    write(str(tmp_path / "project_memory" / "testing_guidelines.yaml"),
-          "coverage_gate:\n  threshold: 85\n")
+    capture_invariant(tmp_path, "compounder/", text="the whole codebase lives here")
+    capture_invariant(tmp_path, "coverage_gate", value={"threshold": 85})
     os.makedirs(str(tmp_path / "compounder"))
     mod = _quality_mod(str(tmp_path / "scripts" / "quality.py"))
-    monkeypatch.setitem(sys.modules, "yaml", None)  # import yaml -> ImportError
-    assert mod.declared_stacks() == ["python"]
-    targets = mod._python_targets()
-    assert "compounder" in targets and ".." not in targets
-    assert mod.coverage_threshold() == 85
+    assert mod.coverage_threshold() == 85            # with a parser: the declared value
+    assert "compounder" in mod._python_targets()
+    monkeypatch.setitem(sys.modules, "yaml", None)   # import yaml -> ImportError
+    assert mod.declared_stacks() == ["python"]       # state-root file: regex fallback survives
+    assert mod.coverage_threshold() == 80            # item store: unreadable -> the default
+    assert "compounder" not in mod._python_targets()
 
 
 # ---------------- update-flow round: marker announce, alias guard, transcript handover ----------------
@@ -5378,3 +7498,289 @@ def test_session_status_points_at_previous_transcript(tmp_path):
     r2 = run_hook_process("session_status.py", payload, repo,
                           extra_env={"USERPROFILE": str(home), "HOME": str(home)})
     assert "aaaa-old-session" in r2.stdout and "bbbb-current.jsonl" not in r2.stdout
+
+
+# ---------------- the command surface, measured in a project the installers built ----------
+
+PR_BODY = {
+    "title": "Checkout flow", "class": "normal", "problem": "no checkout",
+    "goal": "working checkout",
+    "acceptance_criteria": [{"id": "AC-1", "text": "order completes"}],
+    "invariants": [], "out_of_scope": [], "priority": "high",
+    "user_story": "As a buyer I can pay",
+}
+
+
+def _entry_point(repo, *arguments, body=None):
+    """Run the INSTALLED entry point the way a role does, from the project root.
+
+    The suite's own bytecode variables are stripped for the reason
+    `test_the_evidence_the_merge_gate_demands_has_an_installed_producer` states: a role's shell
+    has neither, so neither may decide anything here.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONPATH", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")}
+    # ENCODING PINNED ON THE READING SIDE TOO. The approval question carries `für` and `…`,
+    # and the gate compares it character for character -- so a reader that decodes the entry
+    # point's stdout with the machine's ANSI codepage turns a correct question into a mismatch,
+    # which is exactly the class `test_e2e.py` exists for. The producer pins UTF-8
+    # (`cli._pin_utf8`); this is the consumer half.
+    return subprocess.run(
+        [sys.executable, os.path.join(*cli.ENTRY_POINT.split("/"))] + list(arguments),
+        cwd=str(repo), input=body, capture_output=True, text=True, encoding="utf-8",
+        env=env, timeout=120)
+
+
+def _every_shell_gate_allows(repo, command, agent_id=None):
+    """Every `Bash|PowerShell` PreToolUse hook THIS project registered, run on one command line.
+
+    `agent_id` is what a SUBAGENT's payload carries. Passing it is not decoration: nothing binds a
+    harness command line to a role, so the same line runs from a specialist as from the lead, and
+    a check that only ever measured the lead's payload would describe half the surface.
+    """
+    for gate in _shell_gates_of(repo):
+        seen = _run_project_hook(repo, gate, command, agent_id=agent_id)
+        assert seen.returncode == 0, (
+            "%s refuses `%s` (agent_id=%r):\n%s" % (gate, command, agent_id, seen.stderr))
+
+
+def _approval_question(repo, kind, item_id):
+    """Phase 1 THROUGH THE SHIPPED COMMAND LINE, not through a library call.
+
+    This is the half that decides whether the transition gate has a walkable counterpart at all.
+    `create_pending_request` had no caller in the shipped tree, so measuring the happy path with a
+    library call would have measured a project nobody can run: no pending request, no marked
+    question, no mint, and a root item that never leaves DRAFT. So the request is opened by
+    running `python scripts/harness.py request-approval <kind> <ITEM-ID>` in the project, and the
+    question the kernel composed is read off its stdout.
+    """
+    opened = _entry_point(repo, "request-approval", kind, item_id)
+    assert opened.returncode == 0, opened.stdout + opened.stderr
+    question = json.loads(opened.stdout)
+    assert "[APR-REQ:" in question["question"], question
+    return question
+
+
+def _mint_in_project(repo, kind, item_id):
+    """Open the request through the CLI, pin the question, then mint through the project's hook.
+
+    All three phases of spec II.2 run as the platform runs them: the kernel composes the question
+    (the command above), `gate_approval` PreToolUse compares the question the model would ask
+    against the one the kernel wrote, and PostToolUse mints from the recorded answer. The mint is
+    still the only thing `approvals.mint` accepts a caller for.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    question = _approval_question(repo, kind, item_id)
+    request_id = re.search(r"\[APR-REQ:([0-9a-f]{32})\]", question["question"]).group(1)
+    mint_code = approvals.pending_request(state, request_id)["mint_code"]
+
+    env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    env["CLAUDE_PROJECT_DIR"] = str(repo)
+    hook = os.path.join(str(repo), ".claude", "hooks", "gate_approval.py")
+
+    asked = subprocess.run(
+        [sys.executable, "-B", hook],
+        input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion",
+                          "cwd": str(repo), "tool_input": {"questions": [question]}}),
+        capture_output=True, text=True, env=env, timeout=120)
+    assert asked.returncode == 0, (
+        "the gate refused the question its own kernel composed:\n%s" % asked.stderr)
+
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "cwd": str(repo),
+               "tool_input": {"questions": [question]},
+               "tool_response": {"answers": {
+                   question["question"]: approvals.approve_label(mint_code)},
+                   "questions": [question]}}
+    minted = subprocess.run([sys.executable, "-B", hook], input=json.dumps(payload),
+                            capture_output=True, text=True, env=env, timeout=120)
+    assert minted.returncode == 0 and "recorded for" in minted.stderr, minted.stderr
+    return state
+
+
+def test_the_four_commands_spec_ii4_named_are_runnable_by_the_role_that_needs_them(tmp_path):
+    """`capture`, `create-task`, `dispatch`, `submit-result` -- through the gates, then executed.
+
+    Both halves, for the reason the Evidence measurement gives: a command the gates refuse is no
+    remedy, and a command the gates allow but that writes nothing is no producer. The command
+    lines here are the ones a role would type, including the heredoc `capture` needs -- its body
+    is a JSON object on stdin, because `gate_write_scope` refuses a write-capable pipeline that
+    names the state directory, which is what any `--from project_memory/...` would have to do.
+
+    WHAT THIS ALSO MEASURES, because it is the direct consequence of shipping them: the role is
+    now the author of its own work orders. `--allowed-scope` is gate layer 3's only input, so the
+    party a specialist's writes are scoped by is the party that wrote the scope. That is what spec
+    II.4 asks for; it is bounded by the plan fields freezing outside DRAFT and by the dispatch
+    still needing a user approval on the root, both of which are asserted below.
+    """
+    repo, _created = _project_the_installers_produce(tmp_path / "surface")
+    body = json.dumps(PR_BODY)
+
+    capture_line = "python scripts/harness.py capture PR <<'EOF'\n%s\nEOF" % body
+    _every_shell_gate_allows(repo, capture_line)
+    # ...and from a SUBAGENT's payload too, which is the honest half: nothing binds a harness
+    # command line to a role, so a bound specialist can capture items and plan work orders it
+    # would never be dispatched for. Measured rather than reasoned, and named in the shim's
+    # docstring -- closing it needs a role rule the shell layer does not have today.
+    _every_shell_gate_allows(repo, capture_line, agent_id="agent_specialist_1")
+    captured = _entry_point(repo, "capture", "PR", body=body)
+    assert captured.returncode == 0, captured.stdout + captured.stderr
+    assert "PR-0001 DRAFT" in captured.stdout, captured.stdout
+
+    task_arguments = ["create-task", "--product-requirement", "PR-0001",
+                      "--derives-from", "PR-0001", "--type", "implementation",
+                      "--assigned-role", "backend-developer", "--acceptance-ref", "AC-1",
+                      "--allowed-scope", "src/"]
+    _every_shell_gate_allows(repo, "python scripts/harness.py " + " ".join(task_arguments))
+    planned = _entry_point(repo, *task_arguments)
+    assert planned.returncode == 0, planned.stdout + planned.stderr
+    assert "TSK-0001 DRAFT (backend-developer)" in planned.stdout, planned.stdout
+
+    # a dispatch without the user's approval on the root is refused BY THE KERNEL, not by a gate
+    _every_shell_gate_allows(repo, "python scripts/harness.py dispatch TSK-0001")
+    _entry_point(repo, "transition", "TSK-0001", "READY")
+    unapproved = _entry_point(repo, "dispatch", "TSK-0001")
+    assert unapproved.returncode == 1, unapproved.stdout + unapproved.stderr
+    assert "no subagent without a user approval" in unapproved.stderr, unapproved.stderr
+
+    _mint_in_project(repo, "scope", "PR-0001")
+    leased = _entry_point(repo, "dispatch", "TSK-0001")
+    assert leased.returncode == 0, leased.stdout + leased.stderr
+    assert leased.stdout.strip().startswith("HARNESS_DISPATCH "), leased.stdout
+
+    # the work order's gate inputs FREEZE outside DRAFT -- a leased task cannot be re-scoped
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    with pytest.raises(Exception, match="frozen outside"):
+        state.update_item("TSK-0001", {"allowed_scope": ["**"]})
+
+    from kernel import dispatch as dispatch_module
+    header = dispatch_module.parse_header(leased.stdout)
+    dispatch_module.validate_dispatch(state, header, "backend-developer", claim=True)
+    dispatch_module.spawn_outcome(state, "TSK-0001", True)
+    submit_arguments = ["submit-result", "--task-id", "TSK-0001", "--role", "backend-developer",
+                        "--status-proposal", "SUBMITTED", "--summary", "checkout implemented",
+                        "--output", "src/checkout.py", "--scope-touched", "src/checkout.py"]
+    _every_shell_gate_allows(repo, "python scripts/harness.py " + " ".join(submit_arguments))
+    submitted = _entry_point(repo, *submit_arguments)
+    assert submitted.returncode == 0, submitted.stdout + submitted.stderr
+    assert "TSK-0001 -> SUBMITTED" in submitted.stdout, submitted.stdout
+
+    cached = [os.path.join(base, name)
+              for base, _dirs, files in os.walk(os.path.join(str(repo), ".claude"))
+              for name in files if name.endswith((".pyc", ".pyo"))]
+    assert not cached, cached
+
+
+def test_a_root_item_no_longer_leaves_its_initial_status_from_a_roles_command_line(tmp_path):
+    """The acceptance run for the transition gate, as real hook processes in a real project.
+
+    Four measurements, in the order a session meets them:
+
+      1. `transition PR-0001 APPROVED` with no approval: every shell gate ALLOWS the command line
+         (so the refusal is the kernel's, which is the point -- a gate cannot see what a command
+         line does not reveal), and the kernel refuses it naming the kind, the item and the
+         revision.
+      2. with a valid approval: allowed. WHICH edge that is measured on is not free. A mint WALKS
+         the edge it commits, so `scope` + a PR still in DRAFT is a state that cannot exist -- one
+         second after the scope APR is minted the item is APPROVED and the AUTOMATON answers that
+         command, not the approval check. A `delivery` approval minted while the item is still
+         DRAFT has no status effect (its source is APPROVED), so it is the one shape that holds a
+         valid approval for an unwalked edge, and `transition PR-0001 IN_DELIVERY` is then rc 0.
+      3. revoked: the same command, refused. (EXPIRED is unreachable for these kinds by
+         construction -- spec II.2 time-boxes only routine/analysis/push, and
+         `create_pending_request` refuses an expiry on the rest;
+         `test_an_expiring_approval_kind_cannot_even_be_created_for_a_gated_edge` pins that.)
+      4. an out-of-band edit of a field the approval hashes: refused, because the manifest hash is
+         recomputed from the item's CURRENT content.
+    """
+    repo, _created = _project_the_installers_produce(tmp_path / "gate")
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+
+    assert _entry_point(repo, "capture", "PR", body=json.dumps(PR_BODY)).returncode == 0
+    _every_shell_gate_allows(repo, "python scripts/harness.py request-approval scope PR-0001")
+    _every_shell_gate_allows(repo, "python scripts/harness.py transition PR-0001 APPROVED")
+    refused = _entry_point(repo, "transition", "PR-0001", "APPROVED")
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "scope approval" in refused.stderr and "PR-0001" in refused.stderr, refused.stderr
+    assert state.read_item("PR-0001")["status"] == "DRAFT"
+
+    _mint_in_project(repo, "delivery", "PR-0001")
+    assert state.read_item("PR-0001")["status"] == "DRAFT"      # its source is APPROVED, not DRAFT
+    _mint_in_project(repo, "scope", "PR-0001")
+    assert state.read_item("PR-0001")["status"] == "APPROVED"   # the mint walked that edge itself
+    allowed = _entry_point(repo, "transition", "PR-0001", "IN_DELIVERY")
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    assert "PR-0001 -> IN_DELIVERY" in allowed.stdout, allowed.stdout
+
+    # ... and the same edge on a second item, once its approval is revoked
+    assert _entry_point(repo, "capture", "PR", body=json.dumps(
+        dict(PR_BODY, title="Second slice"))).returncode == 0
+    _mint_in_project(repo, "delivery", "PR-0002")
+    _mint_in_project(repo, "scope", "PR-0002")
+    from kernel import approvals
+    revoked_apr = next(
+        state._read_yaml(os.path.join(state.root, "approvals", name))
+        for name in sorted(os.listdir(os.path.join(state.root, "approvals")))
+        if name.startswith("APR-") and name.endswith(".yaml")
+        and state._read_yaml(os.path.join(state.root, "approvals", name)).get("item") == "PR-0002"
+        and state._read_yaml(os.path.join(state.root, "approvals", name)).get("kind") == "delivery")
+    approvals.revoke(state, revoked_apr["id"])
+    withdrawn = _entry_point(repo, "transition", "PR-0002", "IN_DELIVERY")
+    assert withdrawn.returncode == 1, withdrawn.stdout + withdrawn.stderr
+    assert "REVOKED" in withdrawn.stderr or "revoked" in withdrawn.stderr, withdrawn.stderr
+
+    # ... and on a third, once a field the delivery manifest hashes is edited past the kernel
+    assert _entry_point(repo, "capture", "PR", body=json.dumps(
+        dict(PR_BODY, title="Third slice"))).returncode == 0
+    _mint_in_project(repo, "delivery", "PR-0003")
+    _mint_in_project(repo, "scope", "PR-0003")
+    path = state.active_path("PR-0003")
+    item = state._read_yaml(path)
+    item["risks"] = ["a risk nobody approved"]
+    state._write_yaml_atomic(path, item)
+    edited = _entry_point(repo, "transition", "PR-0003", "IN_DELIVERY")
+    assert edited.returncode == 1, edited.stdout + edited.stderr
+    assert "out-of-band" in edited.stderr, edited.stderr
+    assert state.read_item("PR-0003")["status"] == "APPROVED"
+
+
+def test_the_shell_gate_reader_sees_a_gate_registered_on_a_wider_matcher():
+    """`_shell_gates_of` decides which gates "every shell gate allows it" is a claim about.
+
+    It compared the matcher as a STRING (`== "Bash|PowerShell"`), so a hook registered on
+    `Bash|PowerShell|Edit|Write|MultiEdit` was invisible although the provider fires it on every
+    Bash call -- the office kit's `gate_filing.py` is exactly that, and the reader saw 5 of 6.
+    Measured against every SHIPPED settings.json rather than a fixture, because the divergence is
+    a fact about what the kits register: for each kit, the reader must return every hook whose
+    matcher CONTAINS `Bash`, and the string comparison is what this test refuses.
+    """
+    for kit in KITS:
+        with open(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json"),
+                  encoding="utf-8") as handle:
+            settings = json.load(handle)
+        expected = sorted({
+            os.path.basename(entry["command"].split()[-1].strip('"'))
+            for group in settings["hooks"]["PreToolUse"]
+            if "Bash" in (group.get("matcher") or "").split("|")
+            for entry in group["hooks"]})
+        wider = sorted({
+            os.path.basename(entry["command"].split()[-1].strip('"'))
+            for group in settings["hooks"]["PreToolUse"]
+            if "Bash" in (group.get("matcher") or "").split("|")
+            and (group.get("matcher") or "") != "Bash|PowerShell"
+            for entry in group["hooks"]})
+        seen = sorted(set(_shell_gates_of_settings(settings)))
+        assert seen == expected, "%s: reader saw %s, the provider fires %s" % (kit, seen, expected)
+        if wider:
+            assert set(wider) <= set(seen), (
+                "%s registers %s on a matcher WIDER than `Bash|PowerShell` and the reader loses "
+                "it -- which is how the office kit was measured at 5 shell gates instead of 6"
+                % (kit, wider))

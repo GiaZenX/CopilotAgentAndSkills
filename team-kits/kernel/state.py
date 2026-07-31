@@ -6,7 +6,11 @@ The kernel is the ONLY writer of canonical project state. Every operation:
 - writes atomically (temp file + os.replace, extended-length paths)
 - allocates ids itself (max-scan over active+archive under the lock;
   callers never pick ids)
-- enforces the status automata (`transition` is the only status writer)
+- enforces the status automata, and enforces the USER APPROVAL an edge needs
+  when an approval kind commits that edge (`approvals.APPROVAL_TRANSITIONS`
+  read backwards). `transition` is the only writer of such a status; the TSK
+  dispatch lifecycle writes its own statuses directly, and none of those is a
+  status an approval commits -- see `_transition_locked`
 - invalidates approvals atomically when hashed fields change
   (revision +1, approval_ref cleared, status -> INVALIDATION_TARGET)
 
@@ -31,7 +35,12 @@ import yaml
 
 from .backlog_types import (
     ACTIVE_DIRS,
+    EVIDENCE_KINDS,
+    EVIDENCE_RESULTS,
     HASHED_FIELDS,
+    IMMUTABLE_TYPES,
+    NONEMPTY_FIELDS,
+    PARENT_FIELDS,
     REQUIRED_FIELDS,
     TASK_TYPES,
     TSK_PLAN_FIELDS,
@@ -108,14 +117,106 @@ class ProjectState:
         if not isinstance(item, dict) or item.get("id") != item_id:
             raise StateError(
                 "corrupt item file for %s at %s (id mismatch or non-mapping). "
-                "Remedy: `git restore %s` then `harness generate-index`."
+                "Remedy: `git restore %s` then `python scripts/harness.py generate-index`."
                 % (item_id, path, os.path.relpath(path, self.root))
             )
         return item
 
+    def _frozen_revision_path(self, item_id: str):
+        """The newest `<id>.rNN.yaml` in the type's active dir, or None.
+
+        The kernel freezes some items PER REVISION (`staging.freeze_wireframe` /
+        `freeze_design`, spec II.6/II.6a): the canonical file of `WFR-0001` is
+        `design/wireframes/WFR-0001.r03.yaml`, and `active_path` -- which composes
+        `<id>.yaml` -- names nothing. So `read_anywhere` answered "no such item" for
+        every wireframe and every frozen design, and the two readers built on it
+        answered with it: `_assert_origins_resolve` REFUSED an Evidence recorded
+        against a `WFR` ("does not exist"), and `report._hangs_from` walked no further
+        than the id. The designer's review could not be recorded, and once recorded by
+        hand it covered nothing.
+
+        The rule is read off the file names, not off a list of types: an item stored
+        per revision IS its newest revision, so whichever type is frozen that way next
+        arrives here already resolved.
+
+        THAT DEFINITION IS NOT YET THE WHOLE KERNEL'S. `report._iter_active` still reads
+        the same directory by the older rule "every `*.yaml` is an item", so a SECOND
+        freeze of the same wireframe produces two files, and the validator reports
+        `WFR-0001 duplicate id` -- which `gate_memory_complete` turns into a blocked
+        merge. Pre-existing (the per-revision file names and the duplicate rule are both
+        older than this method), measured 2026-07-28, and filed as disposition row 6.5
+        rather than fixed here: the repair belongs in `_iter_active`, whose readers are
+        the validator, the session brief, the generated index and the dashboard. Said
+        here so this docstring does not read as a settled rule while a second reader
+        contradicts it.
+
+        Deliberately NOT in `active_path`: that path is where a write LANDS, and a write
+        must be deterministic -- a frozen revision is immutable, and the way to change
+        one is another freeze, not an edit of the file the reader happened to pick.
+        """
+        item_type, _ = parse_id(item_id)
+        base = self.active_dir(item_type)
+        if not os.path.isdir(ext_path(base)):
+            return None
+        prefix, best = item_id + ".r", None
+        for name in sorted(os.listdir(ext_path(base))):
+            if not name.startswith(prefix) or not name.endswith(".yaml"):
+                continue
+            digits = name[len(prefix):-5]
+            if digits.isdigit() and (best is None or int(digits) > best[0]):
+                best = (int(digits), os.path.join(base, name))
+        return best[1] if best else None
+
+    def read_anywhere(self, item_id: str):
+        """(item, archived) from active/, else from archive/; (None, False) when nowhere.
+
+        The reader for questions that outlive an item's active life. A TSK is
+        archived the moment it reaches VALIDATED, so anything that walks from a
+        finished piece of work back to the requirement it served -- the merge
+        gate resolving Evidence to its root is the case that forced this -- must
+        follow that walk into the archive or it stops one hop short of the
+        answer.
+
+        LOCKING is not one rule here, because the callers ask two different
+        questions. A WRITER or a validator reads to decide what it will then
+        write or assert about the store as a whole, so it must hold the lock or
+        its premise can change underneath it -- `dispatch` does exactly that.
+        The MERGE-GATE path reads single item files to answer a question about
+        one item, deliberately lock-free: it runs on the same tool call as
+        `gate_memory_complete`, which already takes the lock for
+        `validate_state`, and a second acquisition on that event is what turns a
+        slow validate into a blocked push. That trade is argued in full at
+        `report._delivery_evidence`, where the gate path begins; what makes it
+        payable is that a half-written file is no verdict either way: it is read
+        as no judgement rather than as consent, and `validate_state` -- taken
+        under the lock on the same event -- is what reports it as a finding.
+        """
+        try:
+            item_type, _ = parse_id(item_id)
+        except ValueError:
+            return None, False   # not an id at all: it names no item, here or anywhere
+        try:
+            return self.read_item(item_id), False
+        except StateError:
+            pass
+        frozen = self._frozen_revision_path(item_id)
+        if frozen is not None:
+            item = self._read_yaml(frozen)
+            if isinstance(item, dict) and item.get("id") == item_id:
+                return item, False
+        base = os.path.join(self.root, "archive", item_type)
+        if os.path.isdir(ext_path(base)):
+            for year in sorted(os.listdir(ext_path(base))):
+                candidate = os.path.join(base, year, item_id + ".yaml")
+                if os.path.exists(ext_path(candidate)):
+                    return self._read_yaml(candidate), True
+        return None, False
+
     def exists_anywhere(self, item_id: str) -> bool:
         """True when the id names an item in active/ OR archive/ -- call under the lock."""
         if os.path.exists(ext_path(self.active_path(item_id))):
+            return True
+        if self._frozen_revision_path(item_id) is not None:
             return True
         item_type, _ = parse_id(item_id)
         base = os.path.join(self.root, "archive", item_type)
@@ -127,38 +228,58 @@ class ProjectState:
         return False
 
     def _assert_origins_resolve(self, item_type: str, fields: dict) -> None:
-        """A TSK's `derives_from` must name items that EXIST (spec II.2 references).
+        """Every field BINDING an item to the work it belongs to must name items that EXIST.
 
-        This became load-bearing when the dispatch gate started resolving
-        `acceptance_refs` against the origin item: a phantom id, an integer or a
-        free-text note would silently contribute nothing, so a task could look
-        derived while being derived from nothing. Only the CHEAP half lives here
-        -- ids parse and resolve. Whether the origin belongs to this root's tree
-        (BUG.related_pr == root, CR.target_pr == root, EXP->HYP->RQ == root) is a
-        reference-GRAPH question, which spec II.4 assigns to the state validator
+        WHICH fields those are is `PARENT_FIELDS`, derived from the type's field contracts --
+        this check must not carry its own list of types. It carried one (`TSK` and `EVD`,
+        the two whose binding is a hot gate input), and the cost was that the same two-name
+        list had to be kept in step with the reference graph in `report`, which drifted:
+        `SR.derives_from` was in neither, so an `SR` could be captured against a phantom
+        parent and the merge gate then found no root for the Evidence judging it.
+
+        The bindings this exists for, and why the CHEAP half of the reference check belongs
+        on the write path rather than only in the state validator:
+
+        * `TSK.derives_from` is what the dispatch gate resolves `acceptance_refs` against.
+          A phantom id, an integer or a free-text note contributes nothing, so a task can
+          look derived while being derived from nothing.
+        * `EVD.related` is what `gate_git` resolves a merge against. Evidence bound to a
+          nonexistent id is bound to nothing -- and since the gate answers "is there
+          passing evidence for THIS item", such a record is the shape that looks like proof
+          while covering no work at all.
+
+        Called from capture AND from the edit path, for the reason the vocabulary check is:
+        a binding refused at capture and then written by an edit is not refused at all. Which
+        types can still reach it there is a fact about `IMMUTABLE_TYPES` (an `EVD` is refused
+        wholesale a few lines earlier), not a reason for this check to know which type it is
+        judging.
+
+        Only the CHEAP half lives here -- ids parse and resolve. Whether the origin belongs
+        to this root's tree (BUG.related_pr == root, CR.target_pr == root, EXP->HYP->RQ ==
+        root) is a reference-GRAPH question, which spec II.4 assigns to the state validator
         (gate layer 4) rather than to a hot dispatch path.
         """
-        if item_type != "TSK" or "derives_from" not in fields:
-            return
-        origins = fields.get("derives_from")
-        origins = origins if isinstance(origins, (list, tuple)) else [origins]
-        for origin in origins:
-            try:
-                parse_id(str(origin))
-            except ValueError:
-                raise StateError(
-                    "derives_from %r is not an item id. Remedy: name the item this "
-                    "task derives from (the PR/RQ, or the BUG/CR/EXP whose criteria "
-                    "it serves) -- free text there means the task's acceptance "
-                    "criteria resolve against nothing." % (origin,)
-                ) from None
-            if not self.exists_anywhere(str(origin)):
-                raise StateError(
-                    "derives_from %s does not exist. Remedy: create the item first, "
-                    "or point at the right one -- a phantom origin contributes no "
-                    "acceptance criteria and the dispatch gate would refuse the "
-                    "task later, with a less obvious message." % origin
-                )
+        for field in PARENT_FIELDS.get(item_type, ()):
+            if field not in fields:
+                continue
+            origins = fields.get(field)
+            origins = origins if isinstance(origins, (list, tuple)) else [origins]
+            remedy = _BINDING_REMEDY.get(item_type, _BINDING_REMEDY_DEFAULT % field)
+            for origin in origins:
+                try:
+                    parse_id(str(origin))
+                except ValueError:
+                    raise StateError(
+                        "%s %r is not an item id. Remedy: %s -- free text there binds to "
+                        "nothing." % (field, origin, remedy)
+                    ) from None
+                if not self.exists_anywhere(str(origin)):
+                    raise StateError(
+                        "%s %s does not exist. Remedy: create the item first, or point at the "
+                        "right one -- a phantom reference binds to nothing, and the gate that "
+                        "reads it would refuse later with a less obvious message."
+                        % (field, origin)
+                    )
 
     # -- id allocation ---------------------------------------------------------
 
@@ -208,7 +329,18 @@ class ProjectState:
                 "Pflichtfelder). Remedy: provide every listed field."
                 % (item_type, ", ".join(missing))
             )
-        _assert_task_type(item_type, fields)
+        # ...and for a few of them "provided" has to mean "says something": see
+        # NONEMPTY_FIELDS for why an empty list there is the same claim as no field.
+        # Capture-only, because the types that have such a field are exactly the ones
+        # the edit path refuses wholesale (IMMUTABLE_TYPES).
+        hollow = [k for k in NONEMPTY_FIELDS.get(item_type, ()) if not fields.get(k)]
+        if hollow:
+            raise StateError(
+                "capture %s: %s must name something -- an empty list there is the "
+                "same claim as leaving the field out. Remedy: %s"
+                % (item_type, ", ".join(hollow), _NONEMPTY_REMEDY[item_type])
+            )
+        _assert_closed_vocabularies(item_type, fields)
         self._assert_origins_resolve(item_type, fields)
         with self.lock:
             item_id = self.allocate_id(item_type)
@@ -249,11 +381,27 @@ class ProjectState:
                 % ", ".join(forbidden)
             )
         item = self.read_item(item_id)
-        # the SANCTIONED edit path has to enforce the same vocabulary as capture:
-        # otherwise an orchestrator that hits the capture-time refusal simply
-        # re-types the task afterwards, and the design_ref rule stops applying
-        if "type" in changes:
-            _assert_task_type(item_type, changes)
+        if item_type in IMMUTABLE_TYPES and changes:
+            # A record is superseded, never corrected -- see IMMUTABLE_TYPES for why
+            # the type has no other way to change. Measured before this existed: an
+            # `EVD` whose `result` was edited from `fail` to `pass` reopened a merge
+            # `gate_git` had closed, and an edited `related` bound a failing verdict
+            # to a different item; neither left an item behind to notice.
+            raise StateError(
+                "%s is a %s -- a record of something that already happened, so none of "
+                "its fields change (spec II.2). Remedy: record the new run as its own "
+                "item (`python scripts/harness.py evidence ...`, run from the project root "
+                "and never with --root), which supersedes this one; archive this one "
+                "afterwards if it should also leave the active store. Both are visible in "
+                "git, an edit is not." % (item_id, item_type)
+            )
+        # the SANCTIONED edit path has to enforce the same rules as capture: otherwise
+        # an orchestrator that hits the capture-time refusal simply re-types the task
+        # afterwards, and the design_ref rule stops applying. The same holds for a
+        # binding -- `derives_from` rewritten to a phantom id makes the task's
+        # acceptance criteria resolve against nothing, exactly as it would at capture.
+        _assert_closed_vocabularies(item_type, changes)
+        self._assert_origins_resolve(item_type, changes)
         if item_type == "TSK" and item.get("status") != "DRAFT":
             # ... and closing the vocabulary is not enough on its own: a
             # vocabulary-LEGAL re-type dodges the design gate just as well, and
@@ -285,22 +433,56 @@ class ProjectState:
         return item
 
     def transition(self, item_id: str, to_status: str, approved_retry: bool = False) -> dict:
-        item_type, _ = parse_id(item_id)
         with self.lock:
-            item = self.read_item(item_id)
-            from_status = item.get("status")
-            assert_transition(item_type, from_status, to_status)
-            if item_type == "TSK" and from_status == "FAILED" and to_status == "READY" \
-                    and not approved_retry:
-                raise TransitionError(
-                    "TSK FAILED -> READY requires an approved retry (spec II.2 "
-                    "Querregeln). Remedy: obtain the retry approval, then call "
-                    "transition with approved_retry=True."
-                )
-            item["status"] = to_status
-            self._write_yaml_atomic(self.active_path(item_id), item)
-            self._regenerate_index_locked()
-            return item
+            return self._transition_locked(item_id, to_status, approved_retry)
+
+    def _transition_locked(self, item_id: str, to_status: str,
+                           approved_retry: bool = False) -> dict:
+        """transition body for callers that ALREADY hold the lock (it is not reentrant).
+
+        THE ONLY WRITER OF A STATUS AN APPROVAL COMMITS, which is a narrower claim than the one
+        this kernel used to make and is the one it can keep. `approvals.mint` set
+        `item["status"]` directly and thereby skipped the automaton -- and would have skipped the
+        approval check -- on the single path that moves a root item most often; it comes through
+        here now. OTHER WRITERS REMAIN, and they are described rather than listed -- a list here
+        said "the TSK dispatch lifecycle, four functions" and the AST finds seven sites, because
+        `capture` (the initial status) and `_update_item_locked` (the approval-invalidation reset
+        spec II.2 requires to be atomic) write one too. The property that holds is not "there are
+        four" but: every status any of them can produce is bounded from a kernel map, and none of
+        those values is a status an approval commits.
+        `test_no_direct_status_write_can_produce_a_status_an_approval_commits` derives that from
+        the running source -- it enumerates the writers itself, bounds each one's possible values
+        and compares them against `APPROVAL_TRANSITIONS`, so a new writer needs no edit here and a
+        new writer that could produce APPROVED/IN_DELIVERY/ACCEPTED turns it red.
+
+        THREE things stand between a status and its new value, and they are three because their
+        evidence lives in three different places:
+          * the AUTOMATON (`assert_transition`) -- is this edge defined at all;
+          * the TSK retry rule -- its evidence is a caller argument, because spec II.2 records the
+            retry approval as a Querregel and no APR kind has a manifest for it;
+          * the APPROVAL (`approvals.assert_transition_approved`) -- derived from
+            `APPROVAL_TRANSITIONS`, so which edges it guards follows from which edges an approval
+            commits, rather than from a list kept beside it.
+        """
+        item_type, _ = parse_id(item_id)
+        item = self.read_item(item_id)
+        from_status = item.get("status")
+        assert_transition(item_type, from_status, to_status)
+        if item_type == "TSK" and from_status == "FAILED" and to_status == "READY" \
+                and not approved_retry:
+            raise TransitionError(
+                "TSK FAILED -> READY requires an approved retry (spec II.2 "
+                "Querregeln). Remedy: obtain the retry approval, then call "
+                "transition with approved_retry=True."
+            )
+        # DEFERRED import: `approvals` imports this module at its own module scope, so a top-level
+        # import here would be a cycle. By the time any transition runs, both halves are loaded.
+        from . import approvals
+        approvals.assert_transition_approved(self, item, item_type, from_status, to_status)
+        item["status"] = to_status
+        self._write_yaml_atomic(self.active_path(item_id), item)
+        self._regenerate_index_locked()
+        return item
 
     def archive(self, item_id: str) -> str:
         """Move a TERMINAL item to archive/<type>/<year>/ (never delete)."""
@@ -370,22 +552,69 @@ _AUTOMATON_TYPES = frozenset(
 _NON_AUTOMATON_INITIAL_STATUS = {"DEC": "VALID", "INV": "unverified"}
 
 
-def _assert_task_type(item_type: str, fields: dict) -> None:
-    """TSK.type must come from the CLOSED vocabulary (backlog_types.TASK_TYPES).
+# Which field an item names its parent through is `backlog_types.PARENT_FIELDS`,
+# derived there from the type's field contract -- the SAME definition the reference
+# graph in `report` walks, so a binding the graph resolves and a binding the write
+# path checks can no longer be two different sets. What lives here is only the
+# REMEDY: one sentence per type whose refusal a role meets mid-command.
+_BINDING_REMEDY = {
+    "TSK": "name the item this task derives from (the PR/RQ, or the BUG/CR/EXP "
+           "whose criteria it serves)",
+    "EVD": "name the item this evidence examined (the TSK it judged, or the "
+           "PR/RQ/EXP it covers)",
+}
+_BINDING_REMEDY_DEFAULT = "put the id of the item this one belongs to in `%s`"
 
-    Called from capture AND from the edit path. The type is a gate input -- the
-    design_ref rule asks "is this a UI task" -- so a free-text value would not
-    fail the check, it would silently skip it (spec II.6).
+# What to DO about an empty NONEMPTY_FIELDS entry, per type -- one sentence naming
+# the arguments, because the role hitting this refusal is mid-command.
+_NONEMPTY_REMEDY = {
+    "EVD": "pass `--related <ITEM-ID>` for the item you examined and "
+           "`--artifact-ref <path>` for the raw proof, state-relative "
+           "(`staging/<task-id>/coverage.html`). A verdict with nothing to point at "
+           "is an assertion, and the merge gate would open on it.",
+}
+
+# Fields whose value must come from a CLOSED vocabulary, per type. Every one of
+# them is read by a gate to DECIDE something, which is what closing them buys:
+# see TASK_TYPES (design_ref rule, II.6) and EVIDENCE_KINDS/EVIDENCE_RESULTS
+# (merge gate, II.10a). Anything not listed here is free-form by intent.
+_CLOSED_VOCABULARY = {
+    ("TSK", "type"): (TASK_TYPES,
+                      "the type is a gate input (a UI task needs a design_ref)"),
+    ("EVD", "kind"): (EVIDENCE_KINDS,
+                      "the kind decides whether this evidence judges a delivery "
+                      "or the project, and the merge gate only accepts the former"),
+    ("EVD", "result"): (EVIDENCE_RESULTS,
+                        "the verdict is what the merge gate reads; an unknown "
+                        "value is not a fail, so the gate would go quiet"),
+}
+
+
+def _assert_closed_vocabularies(item_type: str, fields: dict) -> None:
+    """Refuse a value outside its field's closed vocabulary (see _CLOSED_VOCABULARY).
+
+    Called from capture AND from the edit path, because a value refused at capture
+    and then written by an edit is not refused at all. A free-text value would not
+    FAIL the gate that reads it -- it would silently skip it, which is the failure
+    both vocabularies exist to prevent.
+
+    On the edit path only `TSK.type` can actually arrive here: an `EVD` is refused
+    wholesale a few lines earlier (IMMUTABLE_TYPES), so the two EVD entries below
+    are capture-only in practice. That is a fact about EVD and not a reason for
+    this check to know which type it is judging -- the same argument the
+    neighbouring `_assert_origins_resolve` makes, and the reason a later type with
+    a closed field needs no second edit-path wiring.
     """
-    if item_type != "TSK" or "type" not in fields:
-        return
-    if fields.get("type") not in TASK_TYPES:
-        raise StateError(
-            "unknown TSK type %r. Remedy: use one of %s -- the type is a gate "
-            "input (a UI task needs a design_ref), so a free-text value would "
-            "skip that check instead of failing it."
-            % (fields.get("type"), ", ".join(sorted(TASK_TYPES)))
-        )
+    for (owner, field), (allowed, why) in _CLOSED_VOCABULARY.items():
+        if owner != item_type or field not in fields:
+            continue
+        if fields.get(field) not in allowed:
+            raise StateError(
+                "unknown %s %s %r. Remedy: use one of %s -- %s, so a free-text "
+                "value would skip that check instead of failing it."
+                % (item_type, field, fields.get(field),
+                   ", ".join(sorted(allowed)), why)
+            )
 
 
 def _now_iso() -> str:

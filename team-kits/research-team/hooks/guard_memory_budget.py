@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Memory-budget gate — spec II.5, the half the kernel cannot see.
+PreToolUse(Edit|Write|MultiEdit|NotebookEdit) — memory-budget gate, spec II.5, the half the
+kernel cannot see.
 
 The kernel already enforces the budgets it OWNS: the 4 KB result envelope and the 25 KB session
 brief (`kernel/schemas/*.yaml` `max_serialized_bytes`) and the 200-line / 12 KB active item (the
@@ -45,7 +46,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -60,10 +61,16 @@ HOOK = "guard_memory_budget"
 # would trip the topic COUNT while its content was never modelled. It is back, because the
 # reason did not survive contact with the rule that put it there: a guard reading
 # `_compat.file_paths()` is asking about a FILE BEING WRITTEN, and that helper resolves
-# `notebook_path` like any other. The half-rule is real and unchanged -- `_resulting_text`
-# returns None for a notebook, so size and IDs stay unmodelled -- but a `.ipynb` under
-# `agent-memory/` is a memory file whether or not this hook can read it, and the count is the
-# half that works. Modelling notebook content is phase 3.
+# `notebook_path` like any other.
+#
+# WHAT IT ENFORCES FOR A REAL NOTEBOOK TODAY IS NOTHING, and the sentence that used to stand here
+# said otherwise ("the count is the half that works"). Measured 2026-07-27: a `.ipynb` under
+# `agent-memory/` matches the `memory-other` budget, which has no `max_per_role`, so the count does
+# not apply to it; `_resulting_text` returns None for a notebook, so bytes and ids are not modelled
+# either. The membership is kept anyway because a tool-name filter is the wrong place to express
+# "notebook content is not modelled": that gap belongs to `_resulting_text` and to the budget
+# table, where it is visible, and a filter that drops the call also drops it from every rule added
+# to that table later. Modelling notebook content is phase 3.
 FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 MEMORY_DIR = "agent-memory"
 # ONE definition. Promoting `.markdown`/`.mdx` to craft topics in the BUDGETS table while
@@ -184,8 +191,8 @@ def _read(path):
     wrong measurement is better than a wrong decision.
 
     A decode failure is NOT an error here: a memory file with one cp1252 byte would otherwise make
-    every Edit to it exit 2 with an internal-error diagnosis and a remedy pointing at `harness
-    doctor`, which would find nothing -- and the file could then never be repaired with Edit.
+    every Edit to it exit 2 with an internal-error diagnosis and a remedy pointing at
+    `python scripts/harness.py doctor`, which would find nothing -- and the file could then never be repaired with Edit.
     """
     try:
         with open(path, encoding="utf-8") as handle:

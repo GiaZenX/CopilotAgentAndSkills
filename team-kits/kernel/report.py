@@ -29,8 +29,22 @@ import subprocess
 import sys
 import time
 
-from .approvals import consumed_request, item_subject_manifest
-from .backlog_types import ACTIVE_DIRS, AUTOMATA, REQUIRED_FIELDS, parse_id
+from .approvals import (
+    APPROVED_CONTENT_HASH_FIELD,
+    approved_content_hash,
+    approved_statuses,
+    consumed_request,
+    item_subject_manifest,
+)
+from .backlog_types import (
+    ACTIVE_DIRS,
+    AUTOMATA,
+    DECLARED_REQUIRED_FIELDS,
+    HASHED_FIELDS,
+    PARENT_FIELDS,
+    QA_EVIDENCE_KINDS,
+    parse_id,
+)
 from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
 from .lock import LOCK_SCHEMA_VERSION, ext_path
 from .schemas import validate
@@ -39,9 +53,13 @@ from .state import ProjectState, _now_iso
 ITEM_MAX_BYTES = 12 * 1024   # spec II.5: active item <= 200 lines / 12 KB
 ITEM_MAX_LINES = 200
 
+# The next step per root status. Three of the four are "obtain an approval", and that is not
+# editorial: those three edges are the ones `approvals.APPROVAL_TRANSITIONS` says an approval
+# COMMITS, so `state.transition` refuses them without one and the mint walks them itself. A line
+# here that said "transition it" would be telling the lead to run a command the kernel refuses.
 _NEXT_STEP = {
     "DRAFT": "Scope-Freigabe einholen",
-    "APPROVED": "Tasks anlegen / Delivery starten",
+    "APPROVED": "Tasks anlegen; Delivery-Freigabe einholen (der Mint setzt IN_DELIVERY)",
     "IN_DELIVERY": "Tasks abarbeiten",
     "DELIVERED": "Abnahme einholen",
 }
@@ -184,7 +202,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
         if exc or not isinstance(item, dict):
             findings.append(_finding(
                 "error", stem, "corrupt item file (%s)" % (exc or "non-mapping"),
-                "git restore %s && harness generate-index" % rel,
+                "git restore %s && python scripts/harness.py generate-index" % rel,
             ))
             continue
         item_id = item.get("id", stem)
@@ -195,8 +213,12 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                 "merge/rename one of the two items -- ids are unique (spec II.4 gate 5)",
             ))
         seen_ids[item_id] = rel
-        # field duties: capture-time requireds
-        for field in REQUIRED_FIELDS.get(item_type, ()):
+        # field duties, over BOTH contract sources (`DECLARED_REQUIRED_FIELDS`): what a stored
+        # item must CARRY, not what a caller must hand `capture`. Reading the capture map alone
+        # made this loop run zero times for `ARC`, `WFR` and `DSN` -- the three types whose duties
+        # live in `kernel/schemas/` -- so a hand-written architecture companion with no
+        # `derives_from` was reported by nobody, the finding spec II.8 names outright.
+        for field in DECLARED_REQUIRED_FIELDS.get(item_type, ()):
             if field not in item:
                 findings.append(_finding(
                     "error", item_id, "missing required field %r" % field,
@@ -207,14 +229,14 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
         if auto and item.get("status") not in auto.states:
             findings.append(_finding(
                 "error", item_id, "unknown status %r" % item.get("status"),
-                "use `harness transition` with a defined status",
+                "use `python scripts/harness.py transition` with a defined status",
             ))
         elif auto and item.get("status") in auto.terminals:
             # II.2: Geschlossenes verlaesst den aktiven Kontext
             findings.append(_finding(
                 "warning", item_id,
                 "terminal item (%s) awaiting archive" % item.get("status"),
-                "run `harness archive %s`" % item_id,
+                "run `python scripts/harness.py archive %s`" % item_id,
             ))
         # status-dependent duties (Fable-Check 7/NIT-1)
         status = item.get("status")
@@ -223,11 +245,33 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                 "error", item_id, "TRIAGED without triage_result",
                 "record the triage result",
             ))
-        if item_type == "PROC" and status in ("APPROVED", "ACTIVE") and not item.get("approved_hash"):
-            findings.append(_finding(
-                "error", item_id, "%s PROC without approved_hash" % status,
-                "re-run the approval flow to stamp the hash",
-            ))
+        # THE APPROVAL STAMP, judged for PRESENCE and for TRUTH. Which statuses carry the duty is
+        # asked of `approved_statuses` (the automaton plus `APPROVAL_TRANSITIONS`) rather than
+        # written out as ("APPROVED", "ACTIVE") -- the pair this line used to carry was a copy of
+        # the PROC chain, and a copy of a chain is what goes stale when the chain moves.
+        # Spec II.2 lists `approved_hash` for PROC, so the DUTY stays PROC's; the second half is
+        # new and is the point of stamping at all: a stamp that no longer matches the content is a
+        # worse lie than a missing one, because it reads as proof.
+        if item_type == "PROC" and status in approved_statuses(item_type):
+            recorded = item.get(APPROVED_CONTENT_HASH_FIELD)
+            if not recorded:
+                findings.append(_finding(
+                    "error", item_id, "%s PROC without approved_hash" % status,
+                    "re-run the approval flow -- the mint stamps the hash (spec II.2)",
+                ))
+            else:
+                try:
+                    current = approved_content_hash(item_type, item)
+                except (TypeError, ValueError) as exc:
+                    current, recorded = None, "unhashable content (%s)" % type(exc).__name__
+                if current != recorded:
+                    findings.append(_finding(
+                        "error", item_id,
+                        "approved_hash no longer matches the PROC's own %s -- it was edited past "
+                        "the kernel after approval"
+                        % "/".join(HASHED_FIELDS.get(item_type, ())),
+                        "restore the approved content, or re-run the approval flow for the new one",
+                    ))
         if item_type == "PR" and item.get("class") != "technical_enabler" and not item.get("user_story"):
             findings.append(_finding(
                 "warning", item_id, "user_story missing (class %r)" % item.get("class"),
@@ -254,20 +298,30 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
             pass
     # reference graph + approval integrity (D/4)
     for item_id, (item_type, item) in active_items.items():
-        # a TSK's root must be ACTIVE (dispatch depends on it) ...
-        ref = item.get("product_requirement")
-        if ref and ref not in active_items:
-            findings.append(_finding(
-                "error", item_id, "product_requirement -> %s does not exist (active)" % ref,
-                "fix the reference or restore the item",
-            ))
-        # ... while related_pr/target_pr may legitimately point at ARCHIVED
-        # items (a BUG against an accepted PR; Fable-Check 9/#1)
-        for ref_field in ("related_pr", "target_pr"):
-            ref = item.get(ref_field)
-            if ref and ref not in active_items and not _in_archive(state, ref):
+        # THE PARENT BINDINGS, taken from `_parents_of` -- the same hop the graph walks, so a
+        # binding the merge gate resolves and a binding this validator judges cannot be two
+        # different sets. Listed instead, this knew `product_requirement`, `related_pr` and
+        # `target_pr`, and `derives_from` was in none of them: an `SR`, `HYP` or `EXP` pointed at
+        # an id that exists nowhere was reported by nobody, in the layer whose whole job is the
+        # reference graph.
+        #
+        # ONE binding is judged more strictly, and it is a rule about that field rather than about
+        # a type: `product_requirement` must be ACTIVE, because the dispatch gate reads the root of
+        # the task it is about to lease. Every other parent may legitimately have been ARCHIVED --
+        # a BUG against an accepted PR (Fable-Check 9/#1), Evidence about a task archived the moment
+        # it reached VALIDATED.
+        for field, ref in _parent_bindings(item_type, item):
+            if ref in active_items:
+                continue
+            if field == "product_requirement":
                 findings.append(_finding(
-                    "error", item_id, "%s -> %s exists neither active nor archived" % (ref_field, ref),
+                    "error", item_id, "product_requirement -> %s does not exist (active)" % ref,
+                    "fix the reference or restore the item",
+                ))
+            elif not _in_archive(state, ref):
+                findings.append(_finding(
+                    "error", item_id,
+                    "%s -> %s exists neither active nor archived" % (field, ref),
                     "fix the reference or restore the item",
                 ))
         for dep in item.get("dependencies") or []:
@@ -322,7 +376,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
         for entry in sorted(os.listdir(ext_path(staging_dir))):
             # A staging KEY is a directory named after an item. The template ships `staging/.gitkeep`
             # so git can carry the empty directory, and reading that file as a key put a warning into
-            # every `harness validate` and every session brief of every fresh project.
+            # every `python scripts/harness.py validate` and every session brief of every fresh project.
             if not os.path.isdir(ext_path(os.path.join(staging_dir, entry))):
                 continue
             if entry not in active_items:
@@ -410,7 +464,16 @@ def _check_approval_expiry_agrees(state: ProjectState, active_items: dict) -> li
             apr = state._read_yaml(os.path.join(state.root, "approvals", apr_ref + ".yaml"))
             request = consumed_request(state, apr)
         except Exception:
-            continue          # the missing/corrupt cases are reported above
+            # NOT "reported above", which is what this line used to claim: the loop above only
+            # reports a MISSING APR file. An approval whose consumed request is gone (revoked, or
+            # never written) makes `consumed_request` raise here and the item is skipped silently
+            # -- measured 2026-07-31: `0 error(s), 1 warning(s)`. It is the mirror of the other
+            # unreported pair (a valid APR whose item lost its `approval_ref`, see
+            # `approvals.mint`): the store can disagree with itself in both directions and this
+            # validator names neither. Fail-closed downstream -- every AUTHORISATION path
+            # re-derives provenance and refuses -- so what is missing is the REPORT, not the
+            # protection. Closing it is a validator change of its own.
+            continue
         proven = (request.get("subject_manifest") or {}).get("expires")
         shown = apr.get("expires")
         if shown != proven:
@@ -424,15 +487,194 @@ def _check_approval_expiry_agrees(state: ProjectState, active_items: dict) -> li
     return findings
 
 
+def _parent_bindings(item_type: str, item: dict):
+    """(field, id) for every item this one hangs from -- ONE hop up the reference graph.
+
+    WHICH FIELDS bind is `backlog_types.PARENT_FIELDS`, derived there from the field
+    contracts -- BOTH of them, the capture-time one and the frozen types' schemas. Nothing
+    here may know a list of types: `_parents_of` was one (TSK/BUG/CR/HYP/EXP), and `SR` --
+    required to carry `derives_from` since the lockstep, and the natural subject of a review
+    -- was missing from it. Evidence recorded against an `SR` therefore resolved to no root,
+    and the merge gate answered the role that had judged the work with "nothing judges this
+    work". `ARC`, `WFR` and `DSN` then repeated it for the architect and the designer, whose
+    contracts live in `kernel/schemas/` rather than in `REQUIRED_FIELDS`.
+
+    A binding field holds one id or a list of them; both spellings are normalised here, so a
+    type whose contract lets it hang from several items needs no second code path. A TSK is
+    that type today: `product_requirement` is the root it serves and `derives_from` the item
+    whose criteria it was cut from (a BUG or CR under that root), and both are legitimate
+    ways for the work to belong to the root.
+
+    The FIELD is yielded alongside the id because the validator's message names it and one
+    binding is judged more strictly than the rest -- see `validate_state`.
+    """
+    for field in PARENT_FIELDS.get(item_type, ()):
+        value = item.get(field)
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for one in values:
+            if one:
+                yield field, str(one)
+
+
+def _parents_of(item_type: str, item: dict) -> list:
+    """The ids of `_parent_bindings`, for the walk that only needs to know where to go next."""
+    return [ref for _field, ref in _parent_bindings(item_type, item)]
+
+
 def _root_of(item_type: str, item: dict):
-    """The root item a non-root item hangs from, or None when it is not derived."""
-    if item_type == "BUG":
-        return item.get("related_pr")
-    if item_type == "CR":
-        return item.get("target_pr")
-    if item_type in ("HYP", "EXP"):
-        return item.get("derives_from") if isinstance(item.get("derives_from"), str) else None
-    return None
+    """The ONE item a type hangs from, or None when it names none or several.
+
+    Its caller compares an origin's root with the task's own, and that comparison only means
+    something when the origin belongs to exactly one item: a TSK names both its root and the
+    item its criteria came from, so "the root of a TSK origin" has no single answer and the
+    comparison is skipped -- as it always was, when this function listed the types instead.
+    """
+    parents = _parents_of(item_type, item)
+    return parents[0] if len(parents) == 1 else None
+
+
+def _hangs_from(state: ProjectState, item_id: str, target_id: str, seen: set) -> bool:
+    """Does `item_id` belong to `target_id`'s tree? (transitive, cycle-safe)
+
+    The walk goes through `read_anywhere` rather than the active map on purpose: a task is
+    archived the moment it reaches VALIDATED, which is BEFORE the merge it was validated
+    for. Resolving only active items would therefore lose exactly the binding a merge gate
+    needs, and lose it at the one moment the work is finished.
+    """
+    if item_id == target_id:
+        return True
+    if item_id in seen:
+        return False
+    seen.add(item_id)
+    try:
+        item_type, _ = parse_id(item_id)
+    except ValueError:
+        return False
+    item, _archived = state.read_anywhere(item_id)
+    if not isinstance(item, dict):
+        return False
+    return any(_hangs_from(state, parent, target_id, seen)
+               for parent in _parents_of(item_type, item))
+
+
+def evidence_covers(state: ProjectState, evidence: dict, target_id: str) -> bool:
+    """Was this Evidence recorded about `target_id`?
+
+    Bound DIRECTLY when `related` names the item, and INDIRECTLY when it names something
+    that hangs from it -- QA judges a task, and the task belongs to a root. The indirect
+    hop is what replaces the V1 merge gate's file-level fallback, and it is strictly
+    narrower: V1 accepted any passing entry in a file whose TEXT mentioned the target
+    anywhere, including in a comment.
+    """
+    related = evidence.get("related") or []
+    related = list(related) if isinstance(related, (list, tuple)) else [related]
+    return any(_hangs_from(state, str(ref), target_id, set()) for ref in related)
+
+
+def _delivery_evidence(state: ProjectState):
+    """Every ACTIVE Evidence of a delivery-judging kind, as (item, ordering key).
+
+    The one scan both verdict functions below share, so "which files are verdicts and in
+    what order do they supersede each other" is answered once.
+
+    WHICH files count -- `QA_EVIDENCE_KINDS`, i.e. the kinds that judge a delivery. An
+    `audit` Evidence judges the project (II.10a), so it can neither open nor close the
+    merge of one item.
+
+    ARCHIVED evidence is deliberately not read: spec II.2 says closed things leave the
+    active context, so archiving a superseded verdict is how it is retired -- visibly,
+    through a kernel operation recorded in git, rather than by editing a file.
+
+    The ordering key is `created` and then the id NUMBER (monotonic under the kernel's
+    max-scan allocation, so it settles same-second ties).
+
+    Lock-free by design. Every read here is a single item file, and this runs on the same
+    tool call as `gate_memory_complete`, which already takes the lock for `validate_state`
+    -- a second acquisition on that event is the interaction that turns a slow validate
+    into a blocked push (see the note in that gate).
+    """
+    base = state.active_dir("EVD")
+    if not os.path.isdir(ext_path(base)):
+        return
+    for name in sorted(os.listdir(ext_path(base))):
+        if not name.endswith(".yaml"):
+            continue
+        try:
+            evidence = state._read_yaml(os.path.join(base, name))
+            _type, number = parse_id(str((evidence or {}).get("id") or name[:-5]))
+        except Exception:  # noqa: BLE001 -- a corrupt/misnamed file is no verdict; the
+            continue       # state validator is what reports it as a finding
+        if not isinstance(evidence, dict):
+            continue
+        if evidence.get("kind") not in QA_EVIDENCE_KINDS:
+            continue
+        yield evidence, (str(evidence.get("created") or ""), number)
+
+
+def _newest_per_kind(records) -> dict:
+    """{kind: {id, result, created}} keeping the newest record of each kind.
+
+    A kind's newest evidence is its CURRENT verdict: a re-run supersedes its predecessor,
+    and a FAIL recorded after a PASS is a regression that must close the gate again --
+    which "any pass wins" could not express.
+    """
+    verdicts = {}
+    for evidence, order in records:
+        kind = evidence.get("kind")
+        if kind in verdicts and order <= verdicts[kind]["_order"]:
+            continue
+        verdicts[kind] = {"id": evidence.get("id"), "result": evidence.get("result"),
+                          "created": evidence.get("created"), "_order": order}
+    for entry in verdicts.values():
+        del entry["_order"]
+    return verdicts
+
+
+def qa_verdicts(state: ProjectState, target_id: str) -> dict:
+    """The CURRENT QA verdict per Evidence kind FOR ONE item, as {kind: {id, result, created}}.
+
+    THE definition the merge gate reads, and the reason it lives here rather than in the
+    hook: "has QA passed for this item" is a question about canonical state, and a hook
+    that answered it for itself would be a second implementation of the answer the harness
+    and CI must give too.
+
+    `target_id` is required. An earlier cut let it be None and meant "the store's newest
+    per kind, unbound" -- but that reading collapses the whole project into one verdict,
+    so a green run on one item hid an open failure on another. The caller that has no item
+    asks `qa_verdicts_by_subject` instead, which keeps the grouping.
+
+    Which evidence counts for this item is `evidence_covers`; which of several counts is
+    `_newest_per_kind`; which files are verdicts at all is `_delivery_evidence`.
+    """
+    return _newest_per_kind(
+        (evidence, order) for evidence, order in _delivery_evidence(state)
+        if evidence_covers(state, evidence, target_id))
+
+
+def qa_verdicts_by_subject(state: ProjectState) -> dict:
+    """The current verdict per kind for EVERY item Evidence names: {subject: {kind: entry}}.
+
+    The answer for a caller that could not determine an item -- a merge on a branch named
+    after none. Reading the store as one flat newest-per-kind would be the V1 file-level
+    false accept rebuilt out of typed items: one item's fresh PASS would be the project's
+    verdict while another item's open FAIL sat one file away, unread. Grouping by the item
+    each Evidence NAMES keeps every open verdict its own, so "nothing is currently failing"
+    can be asked instead of "the last thing that happened was green".
+
+    Grouping is by the `related` ids AS WRITTEN, without the reference-graph walk
+    `evidence_covers` does: this function has no target to walk towards, and the walk would
+    only merge groups that are already each judged. Evidence naming no item at all is
+    grouped under its own id rather than dropped -- it judges only itself, but a `fail`
+    pinned to nothing is still a `fail`, and dropping it would make the emptiest record the
+    most permissive one.
+    """
+    groups = {}
+    for evidence, order in _delivery_evidence(state):
+        related = evidence.get("related") or []
+        related = list(related) if isinstance(related, (list, tuple)) else [related]
+        for subject in [str(ref) for ref in related] or [str(evidence.get("id"))]:
+            groups.setdefault(subject, []).append((evidence, order))
+    return {subject: _newest_per_kind(records) for subject, records in groups.items()}
 
 
 def _check_task_origins(state: ProjectState, active_items: dict) -> list:
@@ -926,6 +1168,46 @@ def _structural_blockers(matrix, reasons, holes):
     return out
 
 
+def _kit_state_record(repo_root: str):
+    """`.claude/kit_state.json` as a mapping, or None when there is nothing readable to use.
+
+    ONE READER. The trust verdict and the raw measurement below ask different questions of this
+    file and must not answer from different readings of it. There WAS a second reader,
+    `_hook_bundle_trusted`, unreferenced from anywhere and answering the old way — `active` plus any
+    recorded hash meant trusted, with no recomputation — so it returned True precisely where
+    `_hook_bundle_trust` returns "the bundle changed since it was trusted". A dead duplicate of a
+    security decision is a loaded gun for whoever calls the shorter name next; it is gone.
+    """
+    try:
+        with open(os.path.join(repo_root, ".claude", "kit_state.json"), encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def bundle_measurement(repo_root: str):
+    """(recorded, actual) hex hashes of the installed bundle — either may be None.
+
+    THE OBSERVATION, SEPARATE FROM THE CAPABILITY, and the separation is the whole point. `hook_trust`
+    is pulled to `unverified` by a shipped `known_hole` no matter what this pair says — correctly,
+    because the recorder is forgeable by anyone who can run scripts. But collapsing the capability
+    also collapsed the only machine-readable trace of the comparison: with `gate_dispatch` replaced
+    by `sys.exit(0)`, every typed field of the report — capabilities, trust_status, known_holes,
+    enforcement, blockers — came out byte-identical to a clean run (measured 2026-07-27; only the
+    free-text `capability_reasons["hook_trust"]` still differed, and no consumer parses prose).
+    A measurement with two outcomes had become a constant.
+
+    So the honest answer is two answers: the CAPABILITY stays down because the mechanism that
+    produces the record cannot be trusted, and the OBSERVATION is published on its own, whatever
+    the capability says. Deliberately blind to `disableAllHooks` and to the state machine, which
+    are reasons a matching bundle is not in EFFECT — not reasons it stopped matching.
+    """
+    data = _kit_state_record(repo_root)
+    recorded = str((data or {}).get("hook_bundle_hash") or "") or None
+    return recorded, _hook_bundle_hash(repo_root)
+
+
 def _hook_bundle_trust(repo_root: str):
     """(bool, reason) — does the installed bundle match the hash the project recorded?
 
@@ -940,20 +1222,14 @@ def _hook_bundle_trust(repo_root: str):
     if _hooks_disabled(repo_root):
         return False, ("`disableAllHooks` is set, so no hook runs at all — whatever the bundle "
                        "hashes to is not in effect")
-    path = os.path.join(repo_root, ".claude", "kit_state.json")
-    try:
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
+    data = _kit_state_record(repo_root)
+    if data is None:
         return False, "no readable .claude/kit_state.json, so there is no recorded hash to compare"
-    if not isinstance(data, dict):
-        return False, "kit_state.json is not a mapping"
     if data.get("state") != "active":
         return False, ("the kit update is in state %r — a changed bundle needs /hooks "
                        "confirmation and exactly one new session (spec II.8)"
                        % data.get("state"))
-    recorded = str(data.get("hook_bundle_hash") or "")
-    actual = _hook_bundle_hash(repo_root)
+    recorded, actual = bundle_measurement(repo_root)
     if not recorded or actual is None:
         return False, "no hook-bundle hash to compare (recorded=%r, computed=%r)" % (
             bool(recorded), actual is not None)
@@ -988,40 +1264,88 @@ def _mint_is_hook_only() -> bool:
         return False
 
 
-def _hook_bundle_trusted(repo_root: str):
-    """True/False/None — None when there is nothing recorded to compare against."""
-    path = os.path.join(repo_root, ".claude", "kit_state.json")
+def installed_identity(state: ProjectState) -> dict:
+    """What the INSTALLATION says about itself: kit, version, lead role, provider config.
+
+    THE WIRING SPEC II.4 ASKS FOR, and it did not exist. `doctor` took `kit`/`kit_version` as
+    parameters, `cli` passed neither, and `lead_role`/`provider_config` were hard-coded to
+    "unknown" behind a comment promising that "phase-2 wiring fills these from the installed kit".
+    Measured on a correctly installed office project: all four came back `unknown` while
+    `.claude/kit_state.json` held `"kit": "office-team"` and `settings.json` held
+    `agent: office-manager` two directories away. Spec II.4 lists these fields and allows
+    `unknown` only for what cannot be determined -- these can.
+
+    EVERY VALUE IS READ FROM THE INSTALLATION, never guessed: the kit name from
+    `.claude/kit_state.json` (what the scaffold recorded), the version from `.claude/kit_version`
+    (what the scaffold stamped), the lead role from `settings.json`'s `agent`, and the provider
+    config from which generated artefacts exist. Anything unreadable stays `unknown`, which is the
+    honest answer and the one the spec reserves for it.
+    """
+    claude_dir = os.path.join(os.path.dirname(state.root), ".claude")
+    identity = {"kit": "unknown", "kit_version": "unknown",
+                "lead_role": "unknown", "provider_config": "unknown"}
     try:
-        with open(path, encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, ValueError):
-        return None
-    if not isinstance(data, dict):
-        return None
-    if data.get("state") in ("hooks_trust_required", "restart_required"):
-        return False
-    return True if data.get("hook_bundle_hash") and data.get("state") == "active" else None
+        with open(os.path.join(claude_dir, "kit_state.json"), encoding="utf-8") as handle:
+            recorded = json.load(handle)
+        if isinstance(recorded, dict) and recorded.get("kit"):
+            identity["kit"] = str(recorded["kit"])
+    except Exception:
+        pass
+    try:
+        with open(os.path.join(claude_dir, "kit_version"), encoding="utf-8-sig") as handle:
+            for line in handle:
+                if line.startswith("version:"):
+                    identity["kit_version"] = line.split(":", 1)[1].strip()
+                    break
+    except Exception:
+        pass
+    try:
+        with open(os.path.join(claude_dir, "settings.json"), encoding="utf-8") as handle:
+            settings = json.load(handle)
+        if isinstance(settings, dict) and settings.get("agent"):
+            identity["lead_role"] = str(settings["agent"])
+    except Exception:
+        pass
+    providers = [name for name, marker in (
+        ("claude", os.path.join(claude_dir, "settings.json")),
+        ("codex", os.path.join(os.path.dirname(state.root), ".codex")),
+    ) if os.path.exists(marker)]
+    if providers:
+        identity["provider_config"] = "+".join(providers)
+    return identity
 
 
 def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dict:
+    # ARGUMENTS WIN, THE INSTALLATION FILLS THE REST. The two parameters stay because the
+    # SessionStart path knows the kit it is about to record and should not have to read it back;
+    # every other caller (`cli`) passes nothing and gets the installed answer instead of `unknown`.
+    identity = installed_identity(state)
     report = {
         "generated_at": _now_iso(),
         "root": state.root,
-        "kit": kit or "unknown",
-        "kit_version": kit_version or "unknown",
+        "kit": kit or identity["kit"],
+        "kit_version": kit_version or identity["kit_version"],
         # defects in the INSTALLATION rather than in the project's state -- kept separate from
         # `validator.errors`, which callers gate on, because a damaged kit is no reason to refuse
         # the user's own well-formed items. Always present, so no consumer has to guess whether an
         # absent key means "clean" or "an older report".
         "installation_errors": [],
-        # spec II.4: what the kernel cannot determine is reported as `unknown`
-        # (phase-2 wiring fills these from the installed kit)
-        "lead_role": "unknown",
-        "provider_config": "unknown",
+        # spec II.4: what the kernel cannot determine is reported as `unknown` -- and these two
+        # CAN be determined, from `settings.json` and the generated provider artefacts
+        # (`installed_identity`). They were pinned to "unknown" behind a comment promising a
+        # wiring that was never built.
+        "lead_role": identity["lead_role"],
+        "provider_config": identity["provider_config"],
         # filled below from what was actually read -- reporting `unknown` here while
         # `hook_trust` said "the bundle matches the trusted hash" made one report contradict
         # itself in two lines.
         "hook_bundle_hash": None,
+        # ...and, as a TYPED field rather than as prose inside a capability reason, the comparison
+        # itself: what the project recorded, and whether the installed bundle still hashes to it.
+        # `null` is "there was nothing to compare", which is a third answer and not a quiet `false`
+        # -- see `bundle_measurement` for why this may not be folded back into `hook_trust`.
+        "recorded_hook_bundle_hash": None,
+        "bundle_matches_recorded": None,
         "trust_status": None,
         # spec II.4 names Spezialisten among doctor's fields; it was absent entirely, not even
         # as `unknown`.
@@ -1071,7 +1395,25 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
     repo_root = os.path.dirname(state.root)
     holes, holes_source = _known_hole_capabilities()
     matrix, reasons = capability_matrix(state, repo_root, (holes, holes_source))
-    report["hook_bundle_hash"] = _hook_bundle_hash(repo_root) or "unknown"
+    recorded_bundle, actual_bundle = bundle_measurement(repo_root)
+    report["hook_bundle_hash"] = actual_bundle or "unknown"
+    report["recorded_hook_bundle_hash"] = recorded_bundle
+    report["bundle_matches_recorded"] = (
+        None if recorded_bundle is None or actual_bundle is None
+        else recorded_bundle == actual_bundle)
+    if report["bundle_matches_recorded"] is False:
+        # An INSTALLATION defect, not a state defect, so it goes where a damaged kit goes and not
+        # into `validator.errors` that callers gate on. It has to be raised somewhere typed: the
+        # capability it belongs to is held at `unverified` by a `known_hole` in every case, so
+        # without this line the difference between a clean project and one whose enforcement code
+        # was rewritten after it was trusted appears in no field a consumer can branch on.
+        report["installation_errors"].append(_finding(
+            "error", ".claude/kit_state.json",
+            "the installed enforcement bundle hashes to %s but this project recorded %s — it "
+            "changed after trust was recorded, and every gate now runs code the project never "
+            "confirmed." % (actual_bundle[:12], recorded_bundle[:12]),
+            "review the difference in /hooks and re-run the team scaffold, which reinstalls the "
+            "kit's own files and records the bundle it installed."))
     report["trust_status"] = matrix.get("hook_trust", "unknown")
     report["specialists"] = _installed_specialists(repo_root)
     report["hooks_disabled"] = _hooks_disabled(repo_root)
@@ -1133,7 +1475,7 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
         report["environment_notes"].append(
             "this report was produced by the kernel at %s, but the project installed its own at "
             "%s — the capability matrix measures the project's bundle while the `known_hole` "
-            "enumeration comes from the running package. Remedy: run `harness doctor` from the "
+            "enumeration comes from the running package. Remedy: run `python scripts/harness.py doctor` from the "
             "project's kernel, or re-run the scaffold so the two agree."
             % (report["kernel_path"], project_kernel))
     report["unknown_hole_capabilities"] = sorted(

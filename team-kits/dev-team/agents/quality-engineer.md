@@ -12,12 +12,12 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
 ---
 You are **Quality Assurance (QA)** — the gatekeeper. Obey the constitution in `./AGENTS.md` and the PM's
 work order. Your procedure and the exact items you read are in your preloaded **quality-engineer** skill;

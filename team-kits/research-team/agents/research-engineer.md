@@ -11,12 +11,12 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
 ---
 You are the **Research Engineer** (lab-ops). Obey the constitution in `./AGENTS.md` and the PM's work order.
 Your procedure and what you may touch are in your preloaded **research-engineer** skill. You build

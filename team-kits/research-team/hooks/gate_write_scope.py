@@ -3,16 +3,20 @@
 Write-scope gate — gate layer 3 of spec II.4, and the home of both preconditions the approval
 protocol depends on.
 
-Three jobs, all on PreToolUse (the only event that can actually refuse):
+Three jobs, all on PreToolUse — the only event that can actually refuse. Registered
+PreToolUse(Edit|Write|MultiEdit|NotebookEdit) for the tool writes and PreToolUse(Bash|PowerShell)
+for the shell that writes the same files; the table below says which job belongs to which, and it
+says it that way round because the matcher spelling belongs in settings.json, where a test reads
+it, and not a second time here, where the last widening of it left this table a tool short:
 
-  Edit|Write|MultiEdit   1. `project_memory/**` is KERNEL-ONLY: no tool writes canonical state,
+  the write tools        1. `project_memory/**` is KERNEL-ONLY: no tool writes canonical state,
                             not even the orchestrator's. The one exception is `staging/**`, which
                             spec II.4 defines as explicitly non-canonical — and there a bound
                             specialist may write only under ITS OWN task's key.
                          2. a bound specialist writes only inside its task's `allowed_scope` and
                             never inside `forbidden_scope`; an UNBOUND subagent writes nothing,
                             because there is no scope to check it against.
-  Bash|PowerShell        3. the same two rules, for the shell — shell writes bypass Edit/Write
+  the shell              3. the same two rules, for the shell — shell writes bypass Edit/Write
                             hooks entirely (guard_harness_selfmod has said so since V1), and the
                             approval protocol's condition (i) is exactly "an agent cannot invoke
                             the hooks or the kernel directly".
@@ -30,7 +34,7 @@ an execution position, a copy of the enforcement layer, `python -c` importing th
 write-capable command naming the state dir. It does NOT refuse a script the agent wrote (or copied)
 to an ordinary path and then ran, nor an interpreter reached indirectly (`$(which python)`, `xargs`,
 a heredoc). So condition (i) is bounded by the project's PERMISSION posture (settings.json `deny`),
-not by hook logic, and `harness doctor` must weigh that rather than treat this gate's presence as
+not by hook logic, and `python scripts/harness.py doctor` must weigh that rather than treat this gate's presence as
 sufficient. The `known_hole`-marked tests in tools/test_hooks_v2.py enumerate what is still open,
 for BOTH capabilities.
 
@@ -49,7 +53,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
@@ -213,9 +217,17 @@ def _assert_state_write_allowed(rel, inside, task, data):
             "here would bypass the status automaton, the approval hashes and the index; and "
             "`approvals/pending/**` in particular holds mint codes, so a writable one forges a "
             "user approval outright." % rel,
-            remedy="use the `harness` commands (capture / transition / approve / submit-result / "
-                   "archive). Proposals that are not canonical yet belong in "
-                   "project_memory/staging/<task-id>/.")
+            remedy="write it through the entry point: `python scripts/harness.py <command>`, "
+                   "run from the project root and never with `--root` (this gate refuses a "
+                   "write-capable pipeline that NAMES the state directory, and the entry point "
+                   "resolves it itself). `python scripts/harness.py --help` lists the surface it "
+                   "HAS -- `capture`, `request-approval`, `create-task`, `dispatch`, "
+                   "`submit-result`, `evidence`, `transition` and `archive` are all on it. "
+                   "`approve` is SPLIT rather than absent: `request-approval` opens the "
+                   "kernel-generated question and the USER mints it by answering, which is "
+                   "why no command mints. What spec II.4 names and the surface still lacks is "
+                   "`migrate --dry-run`; that one is a gap to report. Proposals that are not "
+                   "canonical yet belong in project_memory/staging/<task-id>/.")
     if len(parts) < 2:
         _kernel.block(HOOK, "'%s' would write the staging ROOT — staging is keyed per task or per "
                             "root item (spec II.4)." % rel,
@@ -381,8 +393,9 @@ _PIPELINE_SEPARATORS = ("&&", "||", ";")
 # `\n` is NOT in that tuple, and must not be: shlex treats a newline as whitespace, so it never
 # becomes a token. A newline entry there was dead code, and multi-line commands merged into ONE
 # pipeline -- prefixing any refused command with `echo start` defeated the whole rule. Newlines are
-# rewritten to `;` before tokenising instead (heredoc bodies are already gone by then).
-_LINE_CONTINUATION_RX = re.compile(r"\\\s*\n")
+# rewritten to `;` before tokenising instead (heredoc bodies are already gone by then). The line
+# CONTINUATION that is not a separator comes from `_compat.join_line_continuations` — one rule,
+# one place, and it covers the PowerShell backtick this hook's own copy never did.
 _HEREDOC_RX = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?^\2\s*$",
                          re.MULTILINE | re.DOTALL)
 
@@ -508,13 +521,15 @@ def handle_shell(data):
     command = str((data.get("tool_input") or {}).get("command") or "")
     if not command.strip():
         sys.exit(0)
-    # message ARGUMENTS and heredoc BODIES removed: both are prose. Stripping all quoted spans
-    # (what `git_invocation_text` does) would remove the target path of every real write, and
+    # message ARGUMENTS and heredoc BODIES removed: both are prose. Stripping ALL quoted spans
+    # would remove the target path of every real write (`echo x > "project_memory/a.yaml"`), and
     # leaving heredoc bodies in made each of their LINES look like a command.
     code_view = _HEREDOC_RX.sub(" ", _MESSAGE_ARG_RX.sub(" ", command))
     # a continued line is ONE command; every other newline is a command separator that shlex
-    # would otherwise swallow as whitespace
-    code_view = _LINE_CONTINUATION_RX.sub(" ", code_view).replace("\n", " ; ")
+    # would otherwise swallow as whitespace. The continuation is removed, not spaced — this hook
+    # kept its own copy of that rule and its own copy of the bug, so `echo x >
+    # project_mem\<newline>ory/approvals/APR-0001.yaml` read as two words and named no state path.
+    code_view = _compat.join_line_continuations(code_view).replace("\n", " ; ")
     # DEPTH, not a boolean: assigning a flag on every `cd` could not tell "left the tree" from
     # "went deeper into it", so `cd project_memory && cd approvals && echo x > a.yaml` wiped the
     # very flag that should have blocked it.
@@ -557,8 +572,9 @@ def handle_shell(data):
                 _refuse(pipeline, "the canonical state directory",
                         "project_memory has exactly one writer, the kernel — and a shell write is "
                         "the path that bypasses every Edit/Write guard.",
-                        "use the `harness` commands; non-canonical proposals go to "
-                        "project_memory/staging/<task-id>/.")
+                        "use the entry point (`python scripts/harness.py <command>`, from the "
+                        "project root; `python scripts/harness.py --help` lists the surface); "
+                        "non-canonical proposals go to project_memory/staging/<task-id>/.")
         if _stage_verb(pipeline) in ("cd", "pushd", "popd", "set-location"):
             # everything after `cd project_memory` is inside it, and the later pipelines no longer
             # NAME it -- that shape walked straight past a path-only check. Mirrored for the
@@ -568,9 +584,16 @@ def handle_shell(data):
         _kernel.block(
             HOOK,
             "this command reaches into the state kernel with inline python. The kernel's vetted "
-            "surface is the `harness` CLI, which goes through the status automaton and the "
-            "approval checks; an ad-hoc import goes around them.",
-            remedy="use `harness <command>` (or `python -m kernel.cli <command>`).")
+            "surface is the installed entry point, which goes through the status automaton and "
+            "the approval checks; an ad-hoc import goes around them.",
+            remedy="use `python scripts/harness.py <command>` — installed kit-owned in every "
+                   "scaffolded project and run from the project root. Do NOT add `--root`: this "
+                   "gate refuses a write-capable pipeline that names the state directory, and "
+                   "the entry point resolves it itself. Importing the kernel package by its own "
+                   "name is no alternative either — it installs under `.claude/`, so that import "
+                   "fails in a project. `python scripts/harness.py --help` lists the surface; a "
+                   "command spec II.4 names and the surface lacks is a gap to report, never one "
+                   "to route around this gate for.")
     sys.exit(0)
 
 

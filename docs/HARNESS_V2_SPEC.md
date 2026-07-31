@@ -226,9 +226,23 @@ wandern nach `legacy_fields` statt verloren zu gehen.
 - WFR (Companion-YAML): id, title, derives_from [PR/RQ], revision, diagram_hash,
   render_check, scope_apr_ref (gesetzt beim Einfrieren über die scope-Freigabe — der WFR
   trägt keine eigene APR).
+- DSN (Manifest-YAML neben der eingefrorenen Revision): id, revision, file_hash, root
+  (PR/RQ — die Bindung, über die der Referenzgraph läuft), root_revision, frozen_at.
+  Wie ARC/WFR ohne eigenen Statusautomaten; Zustand = Ort + Wurzelrevision.
 - Decision: id, title, status (VALID|SUPERSEDED), context, decision, consequences, source.
-- Evidence: id, kind (test|review|acceptance|audit), related (TSK/PR/EXP), summary,
-  artifact_refs, created — trägt NIE eigenen Projektstatus.
+- Evidence: id, kind (test|review|acceptance|audit), related (das beurteilte Item — TSK/PR/RQ/EXP,
+  bei `audit` auch ein projektweiter Wurzelbezug, im office-Kit ein PROC), **result (pass|fail)**,
+  summary, artifact_refs, created — trägt NIE eigenen Projektstatus. `result` ist eine Ergänzung
+  aus der gate_git-Runde 2026-07-27: Evidence trägt keinen Status, muss aber ein URTEIL tragen,
+  sonst kann der Merge-Gate den bestandenen Lauf nicht vom gescheiterten unterscheiden und würde
+  auf der blossen EXISTENZ eines Berichts öffnen. Binär mit Absicht — ein „inconclusive" wäre der
+  Wert, auf den kein Gate handeln kann; ein Lauf, der nicht entscheiden konnte, ist ein `fail` mit
+  Begründung im `summary` (II.10a: ein Teillauf ist keine Merge-Evidenz). Ein Evidence-Item ist ein
+  PROTOKOLL: nach dem Erfassen unveränderlich, abgelöst nur durch ein neueres Urteil. `related` und
+  `artifact_refs` müssen etwas NENNEN — eine leere Liste ist dort dieselbe Aussage wie ein
+  fehlendes Feld (Nachtrag Prüfrunde 9): `result` ist die Behauptung und `summary` die Prosa dazu,
+  die Referenz ist das einzige Feld, das aus dem Protokoll hinaus auf etwas Nachlesbares zeigt —
+  und `gate_git` öffnet einen Merge auf diesem Protokoll.
 
 **Freigaben:** `APR.kind ∈ {analysis, scope, delivery, acceptance, routine}` — `routine`
 (z. B. Auditor-Takt) ist gebunden an Rolle, Read-only-Scope, Trigger, Ablaufdatum und
@@ -331,6 +345,30 @@ ARC/WFR haben bewusst KEINEN eigenen Automaten (II.6a: Zustand = Ort + approval_
 Querregeln: BLOCKED ist ein Flag (blocked_by), kein Status. TSK-Rückwege explizit:
 LEASED → READY bei Lease-Timeout/Spawnfehler; FAILED → READY nur bei genehmigtem Retry,
 sonst FAILED → CANCELLED; VALIDATED und CANCELLED sind terminal.
+
+**Freigabepflichtige Übergänge (Implementierungsnachtrag 2026-07-31):** Welche Kante eine
+Userfreigabe braucht, wird ABGELEITET statt gelistet. `approvals.APPROVAL_TRANSITIONS` sagt
+bereits, welche Kante eine Freigabe-Art BEGEHT (der Mint führt sie selbst aus); rückwärts gelesen
+sagt dieselbe Tabelle, welche Kante ohne eine solche Freigabe gesperrt ist. `transition` verlangt
+dafür eine gültige, nicht widerrufene, inhaltlich passende APR dieser Art, deren Herkunft über den
+konsumierten Request beweisbar ist — und es gibt bewusst KEIN Flag, das das abschaltet (II.4:
+„Bootstrap ist kein Config-Flag"). **Die Sperre hat einen begehbaren Gegenpart, und ohne den wäre sie
+eine Sackgasse:** `request-approval <kind> <ITEM-ID>` schreibt den Pending-Request und gibt die
+kernelgenerierte Frage aus (Phase 1); geprägt wird weiterhin ausschliesslich durch die ANTWORT des Users
+(Phase 3, `gate_approval` als PostToolUse). Vor diesem Kommando hatte `create_pending_request` im
+ausgelieferten Baum keinen Aufrufer — ein Wurzel-Item wäre nie aus DRAFT gekommen. Anlass war eine Messung: `transition PR-0002 APPROVED` bewegte
+ein Wurzel-Item an allen acht PreToolUse-Gates vorbei aus seinem DRAFT, während `gate_git` einen
+Merge genau deshalb verweigert, weil ein Item im Anfangsstatus als „nicht freigegeben" gilt.
+Zwei Folgen sind USERENTSCHEIDE und ausdrücklich keine Implementierungsdetails:
+- Die Ableitung fordert die delivery-Freigabe für `APPROVED → IN_DELIVERY` in JEDER Risikoklasse,
+  während die Klassentabelle unten die „zweite Delivery-Freigabe" nur für `large` nennt. Eine
+  Ausnahme über `class` wäre eine zweite Regel neben der Ableitung (und `class` existiert nicht auf
+  jedem betroffenen Typ), deshalb ist die Verschärfung BENANNT statt eingebaut.
+- `SR` (PROPOSED → ACCEPTED) bleibt ungesperrt, weil keine APR-Art ein `subject_manifest` für einen
+  SR hat. Das zu ändern heißt, zuerst eine Art mit einem Manifest zu definieren — Spezifikation,
+  nicht Implementierung. Aus demselben Grund deckt das scope-Manifest bei `PROC` und `SR` heute
+  nur `{item, revision}` ab (`_SCOPE_FIELDS` nennt keins ihrer Inhaltsfelder), sodass dort ein
+  Edit AM Kernel VORBEI vom Content-Hash nicht gefangen wird.
 
 **Freigabe-Invalidierung (typabhängig):** Inhaltsänderung an gehashten Feldern JEDES Items
 mit aktueller approval_ref — egal in welchem Status, auch IN_DELIVERY/DELIVERED — geschieht
@@ -457,8 +495,9 @@ aktivierbar nur über den expliziten Installer-/Migrationsbefehl mit Lock, leere
 und Userbestätigung.
 
 **Provider-Parität:** Claude erhält den getesteten veto-fähigen PreToolUse-Pfad auf
-Agent|Task. Für Codex ist mechanisch belegt (`gen_provider_artifacts.py`: `Agent|Task → None`,
-`AskUserQuestion → None`), dass Dispatch-Veto und Approval-Provenance dort NICHT hookbar
+Agent|Task. Für Codex ist mechanisch belegt (`gen_provider_artifacts.py`, deklarierte Lücke
+`CODEX_UNSUPPORTED_TOOLS`: `codex_matchers("Agent|Task") == ()`,
+`codex_matchers("AskUserQuestion") == ()`), dass Dispatch-Veto und Approval-Provenance dort NICHT hookbar
 sind → `spawn_veto` und `approval_provenance` sind auf Codex konstruktionsbedingt
 `unverified`, der Gesamtmodus dort höchstens `audited` (jeder Start protokolliert und
 nachträglich validiert); ein angeforderter `hard`-Modus deaktiviert dort Delegation.

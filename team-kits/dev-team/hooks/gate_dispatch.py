@@ -5,13 +5,14 @@ lifecycle is one story and splitting it across files would let the halves drift:
 
   PreToolUse(Agent|Task)        validate the HARNESS_DISPATCH header against the lease, CONSUME
                                 the lease for this one dispatch, and open the bind window
-  SubagentStart                 claim that lease for the child's agent_id (gate layer 3 needs the
+  SubagentStart(*)              claim that lease for the child's agent_id (gate layer 3 needs the
                                 agent_id -> task mapping while the child is still running)
   PostToolUse(Agent|Task)       the spawn STARTED: re-verify the header, bind the agent_id
                                 authoritatively (here the header and the agentId arrive
                                 together), and move the task to IN_PROGRESS
-  PostToolUseFailure,           the spawn did NOT start: return the task to READY at once and
-  PermissionDenied              close the bind window
+  PostToolUseFailure(Agent|Task),
+  PermissionDenied(Agent|Task)  the spawn did NOT start: return the task to READY at once and
+                                close the bind window
 
 WHAT THIS GATE PARSES: the header, and only the header (spec II.4). Free prompt prose is never
 evidence of anything — the V1 `guard_agent_spawn` keyword check is exactly the "looks approved"
@@ -46,7 +47,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 

@@ -12,12 +12,12 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
 ---
 You are the **Architect** — the technical authority. Obey the constitution in `./AGENTS.md` and the `TSK`
 that dispatched you. Your procedure and the items you read and propose are in your

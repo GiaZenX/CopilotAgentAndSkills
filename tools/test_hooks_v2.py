@@ -19,6 +19,7 @@ import hashlib
 import io
 import json
 import os
+import pathlib
 import re
 import shutil
 import subprocess
@@ -167,6 +168,816 @@ def test_only_comfort_hooks_opt_out_of_the_bound():
     # ...and the rule itself, asserted rather than trusted to the list above: nothing that can
     # BLOCK may opt out, whatever it is called.
     assert blockers == set(), "%s can exit 2 and must not tolerate overflow" % sorted(blockers)
+
+
+@pytest.mark.parametrize("command,subcommands", [
+    # the verb is the SUBCOMMAND, whatever the quoting or the line breaks do to its spelling
+    ("git push --force origin main", ["push"]),
+    ('git "push" --force origin main', ["push"]),
+    ("git pu''sh --force origin main", ["push"]),
+    ("git pu\\\nsh --force origin main", ["push"]),
+    ('"git" push --force origin main', ["push"]),
+    ("git.exe push origin main", ["push"]),
+    # git's own options, and the ones that eat the following token
+    ("git -c user.name=x push origin main", ["push"]),
+    ("git -C /repo push origin main", ["push"]),
+    ("git --git-dir /tmp/x push origin main", ["push"]),
+    # a message is an ARGUMENT: the verb is what git got, not what the text says
+    ('git commit -m "merge later"', ["commit"]),
+    ('git commit -m "docs: git push blocked by gate defect"', ["commit"]),
+    ('echo "git push --force"', []),
+    # ...but code is code, wherever it is written
+    ("sudo git push origin main", ["push"]),
+    ('bash -lc "git push origin main"', ["push"]),
+    ('eval "git push origin main"', ["push"]),
+    # PowerShell's eval, on a tool this kit gates in its own right (`SHELL_TOOLS`) — the wrapper
+    # family is a property ("hands its quoted string to a command parser"), and leaving these out
+    # left one of the two enforced shells with an eval nothing looked into
+    ('iex "git push --force origin main"', ["push"]),
+    ('Invoke-Expression "git push --force origin main"', ["push"]),
+    ('echo "git push --force origin main" | sh', ["push"]),
+    ("git status $(git push --force origin main)", ["push", "status"]),
+    ('echo "$(git push --force origin main)"', ["push"]),
+    ("$(git push origin main)", ["push"]),
+    # ...including when the verb is the LAST word before the closing parenthesis, which is the only
+    # shape in which the parenthesis can glue itself to the verb. Every parametrised substitution
+    # above has arguments after the verb, so the bracket lands on `main` — and a mutation that put
+    # the bracket back into the word (verb `push)`, no subcommand at all, the fail-OPEN reading of
+    # a real push) left every selector in this repo green.
+    ('echo "$(git push)"', ["push"]),
+    ("$(git push)", ["push"]),
+    ("(git push)", ["push"]),
+    ("git add -A && git commit -m wip; git push origin main", ["add", "commit", "push"]),
+    # ...and a word in FRONT of the command name decides nothing about it
+    ('sudo "git" push --force origin main', ["push"]),
+    ('env "git" push origin main', ["push"]),
+    ('nohup "git" merge feat/x', ["merge"]),
+    ('timeout 5 "git" merge feat/x', ["merge"]),
+    ('sudo "g"it push origin main', ["push"]),
+    # ANSI-C and locale quoting are QUOTING, not expansion
+    ("git $'push' --force origin main", ["push"]),
+    ('git $"push" --force origin main', ["push"]),
+    # git's own options that take their value as a separate token — all of them, not five of them
+    ("git --config-env a.b=C push origin main", ["push"]),
+    ("git --attr-source HEAD push origin main", ["push"]),
+    # ...and one this reader cannot know: it may or may not eat `HEAD`, so BOTH are candidates
+    ("git --brand-new HEAD push origin main", ["head", "push"]),
+    # a longer word that merely contains `git` is not git
+    ("gitk push", []),
+    ("git-lfs push origin main", []),
+    # a REDIRECTION is not part of the word it touches — see the dedicated test below for why
+    ("git push>/dev/null --force origin main", ["push"]),
+    ("git>/dev/null push --force origin main", ["push"]),
+    # ...and the counter-case: only a word that is ENTIRELY digits is a descriptor, so `push2`
+    # really is what git receives here, and it is not a git command
+    ("git push2>/dev/null", ["push2"]),
+])
+def test_git_invocations_reads_the_subcommand(command, subcommands):
+    """THE DEFINITION the whole git-gate layer now rests on, checked directly.
+
+    Every gate that used to spell "git … push" as a pattern had the same two holes, because a
+    pattern is a list of spellings and a shell has more of them than anyone enumerates. What a
+    push IS: `push` is the first token after `git` that is neither one of git's own options nor
+    the value of one — and when the option in front of it is one the reader does not know, BOTH
+    readings are returned rather than the convenient one. And what a git COMMAND is: a `git` that
+    ENDS a shell word, which the `git` in the middle of a quoted sentence does not, and which the
+    quoted word `"git"` does however many other words stand in front of it.
+    """
+    assert sorted(_compat.git_subcommands(command)) == subcommands, command
+
+
+@pytest.mark.parametrize("command,verb,arguments", [
+    # the operator ends the word BEFORE it — whichever word that is
+    ("git push>/dev/null --force origin main", "push", ["--force", "origin", "main"]),
+    ("git push</dev/null --force origin main", "push", ["--force", "origin", "main"]),
+    ("git push>>log --force origin main", "push", ["--force", "origin", "main"]),
+    ("git >/dev/null push --force origin main", "push", ["--force", "origin", "main"]),
+    ("git>/dev/null push --force origin main", "push", ["--force", "origin", "main"]),
+    ("git merge>/dev/null feat/PR-0001-x", "merge", ["feat/PR-0001-x"]),
+    ("git reset>/dev/null --hard HEAD~1", "reset", ["--hard", "HEAD~1"]),
+    ("git reset --hard>/dev/null HEAD~1", "reset", ["--hard", "HEAD~1"]),
+    ('git "push">/dev/null --force origin main', "push", ["--force", "origin", "main"]),
+    # ...and it takes its TARGET and its file DESCRIPTOR with it: neither was ever handed to git
+    ("git push origin main >/dev/null 2>&1", "push", ["origin", "main"]),
+    ("git push origin main 2>/dev/null", "push", ["origin", "main"]),
+    ("git push origin main >out 2>&1 </dev/null", "push", ["origin", "main"]),
+    # ...and the target is a WORD like any other, so a quoted one belongs to the redirection too —
+    # the Windows spelling of "send the output somewhere", which is where this direction bites
+    ('git push origin main > "C:\\My Logs\\out.txt"', "push", ["origin", "main"]),
+    # ...but only as far as the redirection reaches: the command separator after it still separates
+    ("git push>/dev/null origin main && echo ok", "push", ["origin", "main"]),
+])
+def test_a_redirection_is_shell_syntax_and_not_part_of_a_word(command, verb, arguments):
+    """A shell word ends at a METACHARACTER, and `<`/`>` are two of the ten.
+
+    The reader answered for `& | ; ( )` and not for these, so a redirection glued itself to the
+    word next to it. Measured as real hook processes in a scaffolded project, in both directions:
+
+      * `git push>/dev/null --force origin main` read as the subcommand `push>/dev/null`, which is
+        no git command, so NONE of the eight PreToolUse hooks applied — the unconditional
+        force-push ban, the evidence, pipeline, coverage, packaging and push-token gates all off,
+        for one character. `git>/dev/null push` was worse still: the `git` word itself no longer
+        ended a word, so the line held no git invocation at all. `git reset --hard>/dev/null` kept
+        its verb but lost `--hard` from its arguments, which is the same switch one flag further in.
+      * the other direction, from the same gap: `git push origin main >/dev/null 2>&1` handed
+        `gate_push_token` four positional tokens and it refused the most ordinary spelling of a
+        push as "more than one refspec". A gate that refuses the normal case teaches people to
+        write commands it cannot read.
+
+    Both are asserted here, on the verb AND on the arguments, because a fix that only ends the word
+    would leave the target standing as an argument.
+    """
+    invocations = [inv for inv in _compat.git_invocations(command, lower=False)
+                   if str(inv.subcommand).lower() == verb]
+    assert invocations, command
+    assert invocations[0].arguments == arguments, command
+
+
+@pytest.mark.parametrize("command,verb", [
+    ("git pu`sh --force origin main", "push"),
+    ("git `push --force origin main", "push"),
+    ("git mer`ge feat/x", "merge"),
+    ("git rese`t --hard HEAD~1", "reset"),
+])
+def test_the_reader_knows_powershell_escapes_with_a_backtick(command, verb):
+    """The escape character is a property of the SHELL, and this kit gates two of them.
+
+    `SHELL_TOOLS` puts the separate `PowerShell` tool through the same eight PreToolUse hooks as
+    `Bash`, and PowerShell escapes with a backtick, not a backslash — verified against a real
+    `powershell -File`, where `git pu``sh` arrives as the argument `push`. The reader knew the
+    backtick for line CONTINUATIONS only (`_CONTINUATION_RX`), so for every other character it
+    read one as a substitution marker and left it standing: measured as real hook processes with
+    `tool_name: "PowerShell"`, `git pu``sh --force origin main` matched none of the eight, and
+    `git push --for``ce` lifted the unconditional force-push ban — one character, shorter than the
+    quoted-verb bypass this layer was rebuilt for.
+
+    Asserted on the resolved SUBCOMMAND rather than on `runs`, because the POSIX reading of the
+    same text yields an unresolved verb that would answer yes to anything: only the second reading
+    can put the real verb in this set.
+    """
+    assert verb in _compat.git_subcommands(command), command
+
+
+def test_the_reader_keeps_the_posix_escape_while_it_knows_the_powershell_one():
+    """The counter-assertion: two readings, not one swapped for the other. A backslash inside the
+    verb is still the POSIX spelling of that verb, and a Windows path is still a path."""
+    assert "push" in _compat.git_subcommands("git pu\\sh --force origin main")
+    assert "push" in _compat.git_subcommands("git \\push origin main")
+    assert "C:\\src\\repo" in _compat.git_argument_text("git -C C:\\src\\repo push", lower=False)
+
+
+@pytest.mark.parametrize("command", [
+    "V=push; git $V --force origin main",
+    "git ${V} --force origin main",
+    "git $(echo push) --force origin main",
+    "git `echo push` --force origin main",
+    "git %VERB% --force origin main",
+])
+def test_a_verb_the_shell_builds_at_run_time_is_unknown_not_harmless(command):
+    """"Cannot read it" is not "it is something else" — and it used to be exactly that.
+
+    Every line here measured as a full ALLOW across all eight PreToolUse hooks while
+    `git push --force origin main` was refused by three of them, because the reader took `$v`,
+    `$(echo` or `` `echo `` for the subcommand and no gate asks about those. `gate_git` already
+    widens fail-closed when a REF is built at run time (`EXPANSION_RX`); applicability did not
+    know the state existed.
+
+    Both halves are asserted: the gate applies (`runs` says yes to every verb), and it applies
+    because of the UNRESOLVED rule rather than because the text accidentally spells the verb —
+    the second assertion is what goes red if someone "fixes" this by matching `push` in `$(echo
+    push)`, which would be a new list of spellings.
+    """
+    assert _compat.wants_push_or_merge(command), command
+    assert "push" not in _compat.git_subcommands(command), command
+    assert all(not invocation.resolved
+               for invocation in _compat.git_invocations(command)
+               if invocation.subcommand not in ("echo",)), command
+
+
+def test_an_unreadably_long_command_reads_as_every_git_command():
+    """`GIT_READ_LIMIT`: the answer over the bound is "this could be any git command".
+
+    A bound that returned "no git invocation here" would be a switch, not a bound — the whole
+    layer off by one long line. This is the same fail-closed shape `load()` uses for an oversized
+    payload (spec II.4)."""
+    payload = "echo " + "x" * (_compat.GIT_READ_LIMIT + 1)
+    invocations = _compat.git_invocations(payload)
+    assert [invocation.resolved for invocation in invocations] == [False]
+    assert _compat.wants_push_or_merge(payload)
+    assert invocations[0].runs("commit")
+
+
+def test_the_unresolved_verb_is_an_identity_no_command_text_can_spell():
+    """`UNRESOLVED_SUBCOMMAND` is an OBJECT, and that is the whole of its guarantee.
+
+    It used to be the string `"<unresolved>"`, defended by a claim about text: "`<` and `>` are
+    redirections, so no shell word ever comes out of `_argument_scan` looking like this". Both
+    halves were wrong on the day it was written — the reader did not treat `<`/`>` as syntax at all
+    (see the redirection tests above), and quoting makes any string a word regardless:
+    `git '<unresolved>'` hands git that exact token, and it came back as a RESOLVED subcommand
+    equal to the sentinel. A claim of that shape is only ever as true as the reader's completeness,
+    which is house rule 3 — a comment must not promise what the code does not implement.
+
+    Both directions are asserted, because "unspellable" is trivially satisfiable by a sentinel
+    nothing ever produces: the verb read out of a command is never the sentinel, AND the one
+    invocation that really cannot be read still carries it.
+    """
+    spelled = _compat.git_subcommands("git '<unresolved>' --force origin main")
+    assert _compat.UNRESOLVED_SUBCOMMAND not in spelled
+    assert not any(invocation.runs("push")
+                   for invocation in _compat.git_invocations("git '<unresolved>' --force"))
+    unreadable = _compat.git_subcommands("echo " + "x" * (_compat.GIT_READ_LIMIT + 1))
+    assert unreadable == {_compat.UNRESOLVED_SUBCOMMAND}
+    # ...and it still RENDERS, because a gate names the verb it refused in its message
+    assert "%s" % (_compat.UNRESOLVED_SUBCOMMAND,) == "<unresolved>"
+
+
+@pytest.mark.parametrize("command", [
+    # a brace SEQUENCE with equal ends is ONE word, and that word is `push` — measured against a
+    # real bash 5.2 (`echo pus{h..h}` -> `push`, and `git pus{h..h} --dry-run` answers
+    # "fatal: No configured push destination", i.e. the push ran)
+    "git pus{h..h} --force origin main",
+    "git mer{g..g}e feat/PR-0001-x",
+    "git re{s..s}et --hard HEAD~1",
+    # pathname expansion: these run a push the moment a file named `push` sits in the directory,
+    # and the directory is not in the command text
+    "git pus[h] --force origin main",
+    "git ?ush --force origin main",
+    "git pus* --force origin main",
+    # ANSI-C quoting: bash decodes all three to `push`, and NOTHING in `_compat` decodes anything.
+    # The backslash surviving into the finished token is what makes that readable rather than
+    # silently wrong — it can only have come out of a single-quoted span.
+    "git $'\\x70ush' --force origin main",
+    "git $'\\160ush' --force origin main",
+    "git $'\\u0070ush' --force origin main",
+    "git $'\\155erge' feat/PR-0001-x",
+    "git '\\x70ush' --force origin main",
+])
+def test_a_verb_the_text_does_not_fix_reads_as_every_git_command(command):
+    """THE INVERSION, on the verb: "cannot read it" answers YES, not "it is something else".
+
+    Each line here is a real push/merge/reset in a real bash and measured a full ALLOW across all
+    EIGHT PreToolUse hooks, because the reader took `pus{h..h}` and `\\x70ush` for ordinary,
+    resolved subcommands that no gate happens to ask about. That is fail-OPEN in the layer spec
+    II.4 requires to be fail-closed, and it is the same defect the round before found in `$V`:
+    three review rounds each produced the next spelling, which is what a spelling list does.
+
+    So the rule is not "these eleven spellings too". It is `_UNDETERMINED_RX`: a token in which
+    the command text stops fixing the value is UNRESOLVED, and `GitInvocation.runs` answers yes to
+    every question about it. Both halves are asserted — the gate applies, AND it applies for that
+    reason rather than because the text accidentally spells the verb out. The second assertion is
+    what goes red if someone "closes" this by teaching the reader to expand braces.
+    """
+    invocations = _compat.git_invocations(command)
+    assert invocations, command
+    assert all(not invocation.resolved for invocation in invocations), command
+    assert all(invocation.runs("push", "merge", "reset") for invocation in invocations), command
+
+
+@pytest.mark.parametrize("command", [
+    "git${IFS}push --force origin main",
+    "git$IFS push --force origin main",
+    "git${IFS}merge feat/PR-0001-x",
+    "git{,} push --force origin main",
+    "git`echo ' '`push --force origin main",
+])
+def test_an_expansion_glued_to_the_word_git_may_still_be_the_program(command):
+    """THE INVERSION, one question earlier: on WHICH `git` is a command.
+
+    Word splitting happens AFTER expansion (POSIX XCU 2.6.5), so the closed metacharacter set that
+    `_SYNTAX_CHARS` writes down answers "where does this word end" only for text that is already
+    the word. `git${IFS}push --force origin main` force-pushes in a real bash 5.2; the character
+    after `git` is `$`, which is in no metacharacter set, so the reader saw no word end, found no
+    git invocation, and all eight hooks stood down — a REGRESSION against the spelling-based
+    reader this definition replaced, which still caught it.
+
+    `_ends_word` reads an undetermined boundary as a possible one. The token then carries the same
+    character, so it is unresolved and the refusal says to spell the subcommand out — asserted
+    here, because "it blocks" would also be satisfied by a reader that blocked on every line.
+    """
+    invocations = _compat.git_invocations(command)
+    assert invocations, command
+    assert _compat.wants_push_or_merge(command), command
+    assert all(not invocation.resolved for invocation in invocations), command
+
+
+@pytest.mark.parametrize("command", [
+    # the six Windows lines the boundary question used to refuse, cross-checked in a real bash
+    # AND a real PowerShell with a logging `git` shim: not one of them starts a git process
+    "cd C:\\src\\git\\repo",
+    "cd C:\\git\\repo",
+    'cd "C:\\Program Files\\Git\\bin"',
+    "robocopy C:\\git\\a C:\\git\\b /E",
+    "Copy-Item C:\\a\\git\\x.txt D:\\b",
+    '$env:PATH = "C:\\git\\bin;" + $env:PATH',
+    'python -c "import os; os.chdir(r\'C:\\git\\x\')"',
+    # ...and the same character on the far side of the question: bash removes the backslash
+    # TOGETHER with the space, so this asks for a program called `git push` and runs no git
+    "git\\ push --force origin main",
+])
+def test_a_backslash_after_git_is_not_a_word_end(command):
+    """The one character where the VALUE question and the WORD question part company.
+
+    A backslash leaves a token's value undetermined — that is the other question, and it stays
+    there. It cannot END the word `git`, because every shell either removes it together with the
+    character it protects (bash: `git\\ push` is the single word `git push`) or keeps it as an
+    ordinary path character (PowerShell, cmd: `C:\\src\\git\\repo`). Asked at the boundary anyway,
+    it refused the most ordinary Windows lines in the repo: each line here measured rc 2 from
+    gate_git, gate_packaging_decision and gate_pipeline with no git call in it at all.
+
+    Kept as its own test rather than folded into the counter-battery below, because what is being
+    asserted is a DEFINITION and not a spelling: the sibling test above is the half that must stay
+    green, and it is the reason the answer cannot simply be "never read an unknown as a break".
+    """
+    assert not _compat.wants_push_or_merge(command), command
+    assert not _compat.git_invocations(command), command
+
+
+@pytest.mark.parametrize("command,question", [
+    # cmd's ESCAPE inside the verb — the VALUE question: `p^ush` is `push` to cmd
+    ('cmd /c "git p^ush --force origin main"', "value"),
+    ('cmd /c "git pu^sh --force origin main"', "value"),
+    # ...and cmd's DELAYED expansion, whose value is not in the line either
+    ('cmd /v:on /c "set V=push& git !V! --force origin main"', "value"),
+    # the same character at the word BOUNDARY — cmd removes the `^` and only the `^`, so the space
+    # behind it is still a separator and `git` really is the program
+    ('cmd /c "git^ push --force origin main"', "boundary"),
+])
+def test_cmd_is_a_shell_this_reader_is_pointed_at(command, question):
+    """`cmd` is in `_SHELL_NAMES` and `%VAR%` is in the undetermined set, so cmd was in scope by
+    construction — its ESCAPE was not, and neither was the option syntax that turns delayed
+    expansion on (`cmd /v:on /c`, whose `:` matched neither the option group nor the c-flag).
+
+    Every line here runs a real force-push. Measured through the PowerShell tool with a `git.bat`
+    shim that logs to a FILE (Git Bash rewrites the `/c` into a path, so a `cmd /c` line reaches
+    cmd from PowerShell; with MSYS_NO_PATHCONV=1 it reaches it from bash too, same result), and
+    every one measured a full ALLOW across all eight PreToolUse hooks.
+
+    The two questions are asserted apart, because that is the whole shape of the fix. Three lines
+    are caught on the VALUE of the verb. The fourth is caught one question earlier, on the
+    BOUNDARY: without `^` there, `git^` ends no word, the line holds no git invocation at all, and
+    it is the boundary answer — not the verb — that is being measured.
+    """
+    invocations = _compat.git_invocations(command)
+    assert invocations, command
+    assert _compat.wants_push_or_merge(command), command
+    if question == "value":
+        assert all(not invocation.resolved for invocation in invocations), command
+    else:
+        # the `git` ended a word that the text does not spell out to the end; what follows the
+        # escape is then read as the verb, and it is undetermined for the same reason
+        assert "push" not in {str(invocation.subcommand) for invocation in invocations}, command
+
+
+@pytest.mark.parametrize("command", [
+    "bash -c \"eval 'git push --force origin main'\"",
+    "bash -c \"bash -c 'git push --force origin main'\"",
+    "eval \"eval 'git push --force origin main'\"",
+    "bash -c \"sh -c 'git push --force origin main'\"",
+    "bash -c \"bash -c \\\"eval 'git push --force origin main'\\\"\"",
+    "echo \"eval 'git push --force origin main'\" | sh",
+    "bash <<< \"eval 'git push --force origin main'\"",
+])
+def test_a_payload_that_is_itself_a_wrapper_is_lifted_again(command):
+    """`re.sub` does not rescan what it substituted, and the membership test held TWICE.
+
+    Every line here pushes in a real bash 5.2 (measured with a logging `git` shim) and every one
+    measured a full ALLOW across all eight PreToolUse hooks, while `bash -c "git push --force
+    origin main"` — one nesting level less — was refused by three. The known-holes comment
+    justified the omission with "'this quoted text will later be executed' is not decidable from
+    the text", which is true of a filter or a file and false here: the second wrapper is written
+    out in the same line.
+
+    The verb is asserted RESOLVED, not merely unsure: lifting is what makes this a push the gates
+    can read, and a fixpoint loop that merely widened everything into "unknown" would pass a test
+    that only asked whether the gate applies.
+    """
+    assert _compat.wants_push_or_merge(command), command
+    assert "push" in _compat.git_subcommands(command), command
+
+
+@pytest.mark.parametrize("command", [
+    # the ordinary Windows spelling: an option whose VALUE is the next word
+    'powershell -ExecutionPolicy Bypass -Command "git push --force origin main"',
+    'powershell -NoProfile -ExecutionPolicy Bypass -Command "git push --force origin main"',
+    'bash -O extglob -c "git push --force origin main"',
+    'sh -o pipefail -c "git push --force origin main"',
+    # ...and the attached spelling, which is cmd's
+    'cmd /v:on /c "git push --force origin main"',
+])
+def test_an_option_before_the_c_flag_may_carry_a_value(command):
+    """An option is not just a `-word`, and both ways it carries a value were bypasses.
+
+    `powershell -ExecutionPolicy Bypass -Command "git push --force origin main"` pushes for real
+    (measured through the PowerShell tool with a logging `git.bat`) and reached NONE of the eight
+    PreToolUse hooks: `Bypass` starts with no dash, so the option group could not consume it, and
+    the c-flag alternative had to match there instead. `cmd /v:on /c` is the same defect with the
+    value attached after a colon.
+
+    The verb is asserted RESOLVED, because what is being measured is that the payload was LIFTED —
+    a reader that answered "unsure" for every line with an option in it would pass a test that
+    only asked whether the gate applies.
+    """
+    assert _compat.wants_push_or_merge(command), command
+    assert "push" in _compat.git_subcommands(command), command
+
+
+def test_a_wrapper_with_no_c_flag_at_all_is_not_a_wrapper():
+    """The counter-battery for the option group: it may not turn every `-flag` line into code.
+
+    Widening what may stand before the c-flag is the kind of change that quietly starts lifting
+    quoted arguments out of ordinary commands, and a quoted argument that is lifted becomes CODE
+    to every reader below.
+    """
+    assert not _compat.wants_push_or_merge('bash -x script.sh "git push --force origin main"')
+    assert not _compat.wants_push_or_merge('ssh host -p 22 "git push --force origin main"')
+    assert not _compat.wants_push_or_merge('docker run -it alpine "git push --force origin main"')
+    assert not _compat.wants_push_or_merge('echo -n "git push --force origin main"')
+    # ...and the shortest real wrapper still matches, which is what the backtracking is for
+    assert _compat.wants_push_or_merge('bash -lc "git push --force origin main"')
+
+
+@pytest.mark.parametrize("command", [
+    "bash -c $'bash -c \\'git \\x70ush --force\\''",
+    "bash -c $'sh -c \\'git \\x70ush --force origin main\\''",
+    "eval $'bash -c \\'git \\x70ush --force origin main\\''",
+    "bash -c $'bash -c \\'git \\x72eset --hard HEAD~1\\''",
+    "bash -c $'eval \\'git \\x6derge feat/PR-0001-x\\''",
+])
+def test_an_escaped_delimiter_does_not_stop_the_fixpoint(command):
+    """The two readings blinding EACH OTHER — the shape a fixpoint lift brought into reach.
+
+    Lifting the outer `$'…'` leaves the inner wrapper's quotes standing as `\\'`, and a span
+    pattern that only starts at a bare quote finds nothing, so the fixpoint stopped after one
+    round. What was left then defeated both readings at once: the POSIX one ate the payload's
+    backslashes and resolved the harmless verb `x70ush`, the PowerShell one kept them and thereby
+    read `\\'…\\'` as a real quote pair, inside which `git` ends no word. Every line here runs a
+    real push/reset/merge in a bash 5.2 and measured ALL EIGHT PreToolUse hooks ALLOW.
+
+    Closed by letting a span's DELIMITERS carry a backslash — not by decoding anything, which is
+    why the assertion is the same shape as the single-stage ANSI-C test rather than a stronger
+    one: ONE reading (the PowerShell one) answers "this verb is not fixed by the text", the other
+    still resolves the harmless `x70ush`, and one such answer is what the gates decide on. Both
+    halves are asserted, so a "fix" that made every line unsure would not pass either.
+    """
+    invocations = _compat.git_invocations(command)
+    assert invocations, command
+    assert _compat.wants_push_or_merge(command), command
+    assert any(not invocation.resolved for invocation in invocations), command
+    assert not {"push", "reset", "merge"} & {str(invocation.subcommand)
+                                             for invocation in invocations}, command
+
+
+@pytest.mark.parametrize("command", [
+    # the plain reference, and the one that needs no space at all: `!V!` with V=" " IS the
+    # separator, so `git!V!push` is two words
+    'cmd /v:on /c "set V=push& git !V! --force origin main"',
+    'cmd /v:on /c "set ""V= "" & git!V!push --force origin main"',
+    # ...and the MODIFIERS, which is where spelling the content `\\w+` put the hole back. Each of
+    # these hands git a real `push --force origin main` in cmd.exe and each reached NONE of the
+    # eight hooks while the plain `!V!` beside it was refused by three.
+    'cmd /v:on /c "set V=pushXX& git !V:~0,4! --force origin main"',      # substring
+    'cmd /v:on /c "set V=pash& git !V:a=u! --force origin main"',         # replacement
+    'cmd /v:on /c "git !ERRORLEVEL:0=! push --force origin main"',        # dynamic + replacement
+    # the percent form takes the same modifiers, and the reader must read it the same way even
+    # where cmd would not expand it (`%V:~0,4%` set in the SAME block stays literal — measured);
+    # "the text does not fix this token" is the question, not "does this particular block expand"
+    'cmd /c "git %VERB:~0,4% --force origin main"',
+])
+def test_cmds_delayed_expansion_is_matched_by_its_form(command):
+    """A variable reference has a FORM — and BOTH halves of the form are definitions.
+
+    The PAIRING is the first half: `%NAME%` and `!NAME!` are closed constructs, a lone `!` is no
+    metacharacter in cmd at all, and reading it as one cost six lines of ordinary prose (the
+    counter-test below). The CONTENT is the second half, and spelling it `\\w+` was an enumeration
+    one level down: cmd's reference is `!NAME[:modifier]!`, a modifier is `:~0,4` or `:a=u`, and
+    neither is `\\w`. Written as "not the delimiter and not a separator" it covers the modifiers,
+    the dynamic variables and whatever cmd adds next.
+
+    Parametrised per FORM rather than asserted in one line on purpose: this is the shape that
+    regressed once already, and a narrowing that only breaks one of them has to name which.
+    """
+    assert _compat.wants_push_or_merge(command), command
+
+
+@pytest.mark.parametrize("command", [
+    'echo "I love git!"',
+    'echo "finally done with git!"',
+    "echo git!",
+    "echo 'git!'",
+    'Write-Output "migrated to git!"',
+    'bash -c "echo git!"',
+    'echo "git!!"',
+    # ...including the two the FORM makes tempting to guess about rather than measure: a second
+    # `!` later in the same quoted span does open a possible word break (inside quotes the
+    # whitespace is not a separator, so `! and git!` IS a reference by the definition), but the
+    # token that reaches the VERB question keeps its spaces, matches no reference form, and
+    # resolves to something no gate asks about
+    'echo "git! and git!"',
+    'echo "git! done!"',
+    'echo "100% done with git"',
+])
+def test_a_lone_bang_is_not_a_variable_reference(command):
+    """The price of reading `!` as a metacharacter, and it is why the form matters.
+
+    Every line here is prose that mentions git and holds no git call in any shell — measured — and
+    the first seven were refused by gate_git, gate_packaging_decision and gate_pipeline while `!`
+    sat naked in the undetermined set. The exclamation mark after `git` is the most ordinary thing
+    a person writes about git.
+    """
+    assert not _compat.wants_push_or_merge(command), command
+
+
+def test_a_here_string_is_the_third_way_of_handing_a_shell_its_commands():
+    """`bash <<< 'git push --force origin main'` — a real push that reached no gate at all.
+
+    Not a hole of omission but one this file DUG: `_argument_scan` drops a redirection together
+    with its target, which is right for every other redirection (a target never reaches the
+    program) and here deletes the code itself. The known-holes comment covered it, if at all,
+    under "a heredoc fed to `sh`" — a different mechanism, and a comment that describes the wrong
+    mechanism does not name the hole.
+    """
+    assert _compat.wants_push_or_merge("bash <<< 'git push --force origin main'")
+    assert "push" in _compat.git_subcommands("bash <<< 'git push --force origin main'")
+    assert _compat.wants_push_or_merge('sh <<<"git merge feat/PR-0001-x"')
+    # ...and the rule this is an exception to still holds: `cat` is not a shell, so its here-string
+    # is data, and a redirection's target still reaches no program
+    assert not _compat.wants_push_or_merge("cat <<< 'git push --force origin main'")
+    assert not _compat.wants_push_or_merge("git status > 'git push --force origin main'")
+
+
+def test_an_escaped_space_does_not_open_a_comment():
+    """A `#` opens a comment at the start of a WORD, and an escaped space does not end one.
+
+    `bash -c 'echo a\\ # ; git rev-parse --short HEAD'` prints `a #` AND the hash: the escaped
+    space keeps the word open, so the `#` is data. The scan asked the question on the raw text,
+    where that space is still a space, cut the line at the `#`, and `echo a\\ # ; git push --force
+    origin main` reached none of the eight hooks — a class HEAD still caught. The word view holds
+    the answer (`\\x00`), and the counter-cases below are why the fix cannot simply be "never
+    treat `#` as a comment": a real comment must still take the rest of the line.
+    """
+    assert _compat.wants_push_or_merge("echo a\\ # ; git push --force origin main")
+    assert _compat.wants_push_or_merge("echo a\\ # ; git merge feat/PR-0001-x")
+    # ...an empty quote pair OPENS a word too, and emits nothing into either view — which is why
+    # `word_start` is carried per branch instead of read back off the characters emitted so far
+    assert _compat.wants_push_or_merge("echo ''# ; git push --force origin main")
+    # ...and a `#` that really does begin a word still comments out the rest of the line
+    assert not _compat.wants_push_or_merge("echo a # ; git push --force origin main")
+    assert not _compat.wants_push_or_merge("# git push --force origin main")
+    assert not _compat.wants_push_or_merge("git status # then git push --force origin main")
+
+
+def test_a_command_separator_ends_a_word_so_the_hash_after_it_is_a_comment():
+    """The other half of "start of a word", and it was answered by `.isspace()` alone.
+
+    `;`, `&` and `|` are not stop characters for the scan, so they arrive inside a RUN, and
+    `';'.isspace()` is False — which left `word_start` False after them. `git status;# git push
+    --force origin main` is one `git status` and a comment in a real bash 5.2 (measured with a
+    logging shim: only `GITCALL status`), and the reader read the push and had three gates refuse
+    it. Fail-closed, but a false alarm and a claim the code did not build: the docstring said a
+    `#` opens a comment "at the start of a word".
+
+    The counter-cases are the reason this cannot be "a `#` after a separator always comments":
+    a separator that is DATA (inside quotes) or ESCAPED must not open a word, or a commit message
+    ending in `;` would swallow the push after it.
+    """
+    assert not _compat.wants_push_or_merge("git status;# git push --force origin main")
+    assert not _compat.wants_push_or_merge("git status &# git push --force origin main")
+    # ...and the separator still separates, so what follows a real one is still read
+    assert _compat.wants_push_or_merge("git status; git push --force origin main")
+    assert _compat.wants_push_or_merge("git status && git push --force origin main")
+    # ...a separator inside a quoted span is data: it opens no word, so this `#` is data too
+    assert _compat.wants_push_or_merge('git commit -m "wip;#" && git push --force origin main')
+    # ...and an ESCAPED separator is data as well
+    assert _compat.wants_push_or_merge("echo a\\;# ; git push --force origin main")
+
+
+def test_an_ansi_c_wrapper_payload_is_code_one_level_down_like_any_other():
+    """`bash -c $'…'` is `bash -c '…'` with a decoder attached — one character, and the payload
+    was never lifted.
+
+    `_WRAPPER_RX` wanted the quoted span directly after `-c `, the `$` broke the match, and because
+    `$'…'` then reads as a single word the `git` inside it ended no word either: measured, these
+    lines reached NO gate at all. `bash -c` is explicitly listed as COVERED in the known-holes
+    comment, so this was a hole the file claimed not to have (house rule 3).
+    """
+    assert _compat.wants_push_or_merge("bash -c $'git push --force origin main'")
+    assert _compat.wants_push_or_merge("eval $'git push --force origin main'")
+    assert _compat.wants_push_or_merge("sh -c $'git merge feat/PR-0001-x'")
+    assert _compat.wants_push_or_merge("bash -lc $'git push --force origin main'")
+    # ...and lifting it out of its quotes hands its backslashes to the escape rule of whichever
+    # reading is doing the scanning, which is why there are two readings. The POSIX one consumes
+    # the `\\` and comes back with the RESOLVED verb `x70ush` — the escape eats exactly one
+    # character, the `x`, so it is `x70ush` and not `xush` — and no gate asks about that. The
+    # PowerShell one consumes no backslash at all, reads `\\x70ush`, and answers "the text does
+    # not fix this verb". ONE reading answering that is what the gates decide on, and asserting
+    # both halves is the point: the line applies, and it applies through the unresolved reading
+    # rather than because some reading accidentally spells `push`.
+    lifted = _compat.git_invocations("bash -c $'git \\x70ush --force origin main'")
+    assert lifted
+    assert any(not invocation.resolved for invocation in lifted)
+    assert "push" not in {str(invocation.subcommand) for invocation in lifted}
+    assert _compat.wants_push_or_merge("bash -c $'git \\x70ush --force origin main'")
+
+
+@pytest.mark.parametrize("command,verb,arguments", [
+    # the plain descriptor: digits that are the whole unquoted word in front of the operator
+    ("git push origin main 2>/dev/null", "push", ["origin", "main"]),
+    ("git push origin main >/dev/null 2>&1", "push", ["origin", "main"]),
+    # ...and the three ways digits in front of the operator are an ARGUMENT, which git receives.
+    # Each is decided by a DIFFERENT clause of the rule, which is why all three are here: the
+    # quoted one by the digit scan finding nothing in the TEXT, the escaped one by the neighbour
+    # test, the escaped-space one by the word view. Removing the neighbour test left all 81
+    # selected tests green until the `\\2>` line existed — bash hands git `push 2` there, measured.
+    ("git push2>/dev/null", "push2", []),
+    ('git push "2">/dev/null', "push", ["2"]),
+    ("git push \\2>/dev/null", "push", ["2"]),
+    ("git push a\\ 2>/dev/null", "push", ["a 2"]),
+])
+def test_a_descriptor_is_digits_that_open_an_unquoted_word(command, verb, arguments):
+    """Two facts, and neither view holds both — so the rule asks each view for its own.
+
+    UNQUOTED is a fact about the text (`"2"` is an argument), and WHOLE WORD is a fact about the
+    word view (`a\\ 2` is the single word `a 2`, so its `2` is no descriptor). Asked on the text
+    alone, the escaped-space case silently deleted a character out of an argument; asked on the
+    word view alone, the quoted case would. Both directions cost the same thing in the end — a
+    gate that miscounts refspecs refuses the most ordinary spelling of a push and teaches people
+    to write commands it cannot read.
+    """
+    invocations = [inv for inv in _compat.git_invocations(command, lower=False)
+                   if str(inv.subcommand).lower() == verb]
+    assert invocations, command
+    assert invocations[0].arguments == arguments, command
+
+
+@pytest.mark.parametrize("command", [
+    # the accepted price of the inversion is paid on the VERB, so an expansion anywhere else in
+    # the line is untouched — these are the lines a developer types all day
+    "ls $HOME",
+    "ls ${HOME}/src",
+    "echo $(date) && ls -la $HOME",
+    "cat *.py | wc -l",
+    "python -c 'print(1)'",
+    # ...and a git call whose verb IS fixed keeps every expansion it likes
+    'git commit -m "$MSG"',
+    'git commit -m "merge later"',
+    'git commit -m "docs: git push blocked by the gate"',
+    'git commit -m "fix #3 and push"',
+    "git status",
+    "git log --oneline -20",
+    "git diff --stat HEAD~1",
+    "git add -A",
+    "git -C $HOME/src status",
+    "gitk push",
+    "git-lfs push origin main",
+])
+def test_the_inversion_does_not_widen_past_the_verb(command):
+    """The counter-battery: "block when unsure" is trivially satisfiable by blocking everything.
+
+    Every line here has an expansion, a glob, a quoted `push` or a `#` in it, and not one of them
+    leaves the SUBCOMMAND undetermined — so not one of them may reach a git gate. Without this
+    the four tests above would all still pass with `runs` hardwired to True, which is the shape of
+    over-triggering that gets an enforcement layer switched off by the people it protects.
+    """
+    assert not _compat.wants_push_or_merge(command), command
+
+
+def test_the_git_reader_is_linear_in_the_length_of_the_command():
+    """A gate that cannot answer inside its budget is a gate that ALLOWS (spec II.4).
+
+    The host kills a hook at 60 s and a killed hook is not a refusal — the repo says so itself
+    (`gate_ledger_valid.TOTAL_BUDGET` exists for this). The reader used to slice the rest of the
+    segment out for EVERY `git` word, which is quadratic, and 120 KB of `git ` words — 0.7 % of
+    what `STDIN_LIMIT` accepts — took the real `gate_git` process 125.7 s and `gate_push_token`
+    59.6 s. Both measured, both past the kill, with the actual force-push at the end of the line.
+
+    Asserted as a RATIO rather than as a wall-clock number, because a threshold in seconds is a
+    machine-speed measurement and this is a complexity claim: four times the input must not cost
+    dramatically more than four times the work.
+    """
+    def cost(words):
+        command = ": " + "git " * words + "&& git push --force origin main"
+        taken = []
+        for _run in range(3):
+            _compat._scan_views.cache_clear()
+            start = time.time()
+            assert _compat.wants_push_or_merge(command)
+            taken.append(time.time() - start)
+        return sorted(taken)[1]
+
+    small = max(cost(2000), 0.005)
+    large = cost(16000)
+    # eight times the input. Linear is ~8x, the tail-slicing reader was ~64x and, at this size,
+    # three orders of magnitude in wall clock — the bound is loose on purpose, because what is
+    # being asserted is the SHAPE of the cost and not this machine's speed.
+    assert large < small * 40, (small, large)
+
+
+def test_lifting_wrapper_payloads_is_linear_in_the_length_of_the_command():
+    """The same budget, one step earlier — and the step that iterating made three times as costly.
+
+    Lifting used to ask ONE pattern for "a quoted span followed by `| sh`", which made the engine
+    try to build a span at every quote character in the line; every quote that never closes cost
+    it the rest of the line. Measured on `bash -c "…\\"…\\""` repeated: 0.18 s at 13 KB, 0.72 s at
+    26 KB, i.e. FOUR times the cost for twice the length, which puts `GIT_READ_LIMIT`'s own
+    512 KiB at some five minutes — and that was true before this round, with a single pass. A
+    fixpoint loop over it would have tripled it.
+
+    So the piped form is read by a left-to-right scan now (`_lift_piped_payloads`), and the
+    DISCRIMINATING assertion is a CEILING rather than a ratio — the opposite of the two tests
+    above, and the reason is arithmetic rather than taste. At FOUR times the input a linear reader
+    costs 4x and a quadratic one 16x (measured here: 0.165 s at 13 KB, 0.688 s at 26 KB, 3.609 s
+    at 52 KB — 4.2x per doubling, so ~17x per quadrupling). Those two numbers are too close for a
+    ratio to carry the test on its own: the two linearity tests above buy their headroom by
+    measuring 8x input against a 40x bound, and there is no bound between 4 and 17 with anything
+    like that margin.
+
+    Both bounds here are therefore MEASURED RATES, over TWO independent runs of 20 evaluations
+    each on an idle machine, so the next round does not have to derive them again:
+      * the previous `4 *` ratio bound: ratios ran 3.17–4.93 (median 4.02) and 3.22–4.71
+        (median 4.03), i.e. 12/20 RED in BOTH runs — a 60 % flake, and a flaky cost test is worse
+        than none: it broke two mutation runs and made a green full suite an accident.
+      * `10 *`: 0/40 red, twice the worst ratio observed and still 1.7x under the quadratic.
+      * the `< 1.0 s` ceiling at 1600 repetitions: 0.112–0.184 s and 0.126–0.189 s, medians 0.141
+        and 0.150 s, 0/40 red — six times the real cost and a fiftieth of the 57.6 s the quadratic
+        pattern takes at that same size.
+
+    BOTH lines are here because they fail in OPPOSITE directions as the machine changes, and that
+    is the only defence an absolute number has. On much FASTER hardware the ceiling stops
+    discriminating (everything fits under a second) and the ratio still fires; on much SLOWER
+    hardware or under load the ceiling is the one at risk of flaking and the ratio is unaffected,
+    because a ratio divides the machine out. The numbers above are from ONE machine (Windows 11,
+    CPython 3.13, idle), so they bound this host and not the class of hosts — which is why neither
+    line is trusted alone.
+
+    Measured with the quadratic pattern restored, both lines fire: cost(1600) 57.642 s (ceiling
+    RED) and cost(3200)/cost(800) = 17.37 (ratio RED), against 0.120 s and 3.89 for the shipped
+    scan. So the mutation that puts the cost back is caught twice, not once.
+    """
+    unit = 'bash -c "bash -c \\"eval \'git push\'\\"" '
+
+    def cost(repetitions):
+        command = unit * repetitions
+        taken = []
+        for _run in range(3):
+            start = time.time()
+            _compat.unwrap_shell_payload(command)
+            taken.append(time.time() - start)
+        return sorted(taken)[1]
+
+    # ~60 KB, an eighth of what `GIT_READ_LIMIT` accepts — the ceiling is what catches a quadratic
+    assert cost(1600) < 1.0
+    # ...and the shape beside it, so a small constant cannot hide a growing exponent
+    assert cost(3200) < 10 * max(cost(800), 0.005)
+
+
+def test_the_wrapper_pattern_does_not_backtrack_exponentially():
+    """A pattern whose cost explodes on ordinary-looking text is a bypass with no payload at all.
+
+    `_WRAPPER_OPTION` used to allow a dash right after the leading dashes, so `--no-cache` parsed
+    two ways and every option DOUBLED the work when the overall match failed. Measured on
+    `echo bash --a-b×N ; git push --force origin main`, medians of three: 0.020 s at 14 options,
+    0.270 s at 18, 4.011 s at 22, and **65.550 s at 26** — already PAST the host's 60 s kill,
+    where a killed hook is an ALLOW and not a refusal. That line was a complete bypass with no
+    quoting trick in it, and the pattern was HEAD's, so it was one before this round too.
+
+    Asserted as a wall-clock CEILING and not as a ratio, unlike the two tests above: exponential
+    growth does not show up as a shape at the sizes a test can afford, it shows up as the process
+    not coming back. A second is four orders of magnitude above the linear cost measured here
+    (0.007 s at FOUR THOUSAND options) and still well inside the kill, so the number is not this
+    machine's speed. Twenty-four options is the largest size that still FAILS in seconds rather
+    than in hours when the ambiguity is put back — which is what a mutation run needs.
+    """
+    for count in (12, 24):
+        command = "echo bash " + "--a-b " * count + "; git push --force origin main"
+        start = time.time()
+        assert _compat.wants_push_or_merge(command), count
+        assert time.time() - start < 1.0, count
+
+
+def test_an_unresolvable_verb_is_a_refusal_reason_of_its_own():
+    """A gate that applies because it could not READ the verb must say so.
+
+    `_ends_word` claimed in a comment that "the gate refuses with 'spell the subcommand literally'
+    rather than silently standing down"; measured, `cd C:\\src\\git\\repo` got "no quality pipeline
+    found (scripts/quality.py)" from gate_pipeline, "no QA Evidence in this project" from gate_git
+    and "the packaging/deployment decision is unmade" from gate_packaging_decision — three
+    refusals, none of them nameable and none of them compliable-with. The note exists so the
+    sentence the comment promised is actually in the message (`stop` appends it, so the eight
+    gates cannot each forget), and the negative half is what keeps it from being noise on every
+    ordinary push.
+    """
+    assert "spell the subcommand literally" in _compat.unresolved_verb_note("git $V --force")
+    assert "spell the subcommand literally" in _compat.unresolved_verb_note("git${IFS}push -f")
+    assert "spell the subcommand literally" in _compat.unresolved_verb_note('cmd /c "git p^ush"')
+    # ...and nothing at all where the text DOES fix the verb, or where there is no git call
+    assert _compat.unresolved_verb_note("git push --force origin main") == ""
+    assert _compat.unresolved_verb_note("git merge feat/PR-0001-x") == ""
+    assert _compat.unresolved_verb_note("ls $HOME") == ""
+    assert _compat.unresolved_verb_note("") == ""
+    # ...and silence over the read bound, where every verb is unresolved for a reason no spelling
+    # fixes — advice that cannot be followed is the defect this note exists to end
+    assert _compat.unresolved_verb_note("echo " + "x" * (_compat.GIT_READ_LIMIT + 1)) == ""
 
 
 def test_undersized_payload_passes_the_bridge(tmp_path):
@@ -428,7 +1239,7 @@ def test_internal_error_becomes_a_block(tmp_path):
     result = run_probe(tmp_path, "with _kernel.fail_closed('probe'):\n    1 / 0\n")
     assert result.returncode == 2
     assert "internal error" in result.stderr
-    assert "harness doctor" in result.stderr
+    assert "scripts/harness.py doctor" in result.stderr
 
 
 def test_the_diagnosis_names_the_line_that_actually_failed(tmp_path):
@@ -1507,7 +2318,7 @@ def test_a_corrupt_lease_blocks_the_spawn(tmp_path):
           "{[not: valid: yaml\n")
     result = run_dispatch(tmp_path, spawn_payload(tmp_path, header))
     assert result.returncode == 2
-    assert "harness doctor" in result.stderr
+    assert "scripts/harness.py doctor" in result.stderr
 
 
 # -- gate_approval: the two-phase approval protocol (spec II.2) ----------------
@@ -1892,7 +2703,7 @@ def test_running_the_shipped_hook_by_hand_still_mints(tmp_path):
     (`ls .claude/hooks/*.py | xargs rm`). What it cannot cover is a bundle the agent AUTHORED at an
     ordinary path, or a payload delivered through a file it may legitimately write. This test
     invokes the hook directly, so it measures what the KERNEL can defend on its own — nothing —
-    which is why `approval_provenance` stays `unverified` until `harness doctor` can also see a
+    which is why `approval_provenance` stays `unverified` until `python scripts/harness.py doctor` can also see a
     permission posture that prevents arbitrary execution."""
     state, pr, request, question = pending(tmp_path)
     payload = answered(tmp_path, question, approvals.approve_label(request["mint_code"]))
@@ -2162,11 +2973,19 @@ def test_inline_python_against_the_kernel_is_refused(tmp_path):
 
 
 def test_the_vetted_cli_surface_stays_allowed(tmp_path):
-    """`harness`/`kernel.cli` go through the automaton and the approval checks; blocking them would
-    leave no sanctioned way to move state at all."""
+    """The entry point and the kernel CLI go through the automaton and the approval checks;
+    blocking them would leave no sanctioned way to move state at all.
+
+    The spelling comes from `kernel.cli.INVOCATION`, so this measures the line a role is actually
+    told to type. `--root` is deliberately absent from it: the entry point resolves the state
+    directory itself precisely because this gate refuses a write-capable pipeline that names it,
+    and `test_the_entry_point_refuses_the_one_argument_the_write_gate_would_refuse` measures both
+    halves of that."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import cli
     dispatched_repo(tmp_path)
-    for command in ("harness validate", "python -m kernel.cli generate-index",
-                    "harness transition TSK-0001 READY"):
+    for command in ("%s validate" % cli.INVOCATION, "python -m kernel.cli generate-index",
+                    "%s transition TSK-0001 READY" % cli.INVOCATION):
         assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0, command
 
 
@@ -2194,8 +3013,8 @@ def test_reading_the_state_dir_from_a_shell_stays_allowed(tmp_path):
 
 
 def test_a_commit_message_mentioning_the_state_dir_is_not_a_write(tmp_path):
-    """Quoted prose is prose: `_compat.git_invocation_text` strips it, so a commit message about
-    project_memory does not read as a write into it."""
+    """Quoted prose is prose: the `-m` payload is removed before the code view is tokenised, so a
+    commit message about project_memory does not read as a write into it."""
     dispatched_repo(tmp_path)
     command = 'git commit -m "docs: explain why project_memory > everything else"'
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0
@@ -2318,15 +3137,55 @@ def test_the_pre_task_staging_key_is_the_root_id(tmp_path):
 
 # -- tool coverage -------------------------------------------------------------
 
-@pytest.mark.parametrize("tool", ["Edit", "MultiEdit", "NotebookEdit"])
-def test_every_file_tool_is_covered(tmp_path, tool):
-    """A gate that sees only Write scopes everything except the other three."""
+def _file_write_matcher_tools(script):
+    """The tools a gate is REGISTERED to see as file writes - derived, so a gate cannot shrink it.
+
+    Taken from the matcher that names `Write`, because that is the registration whose whole subject
+    is writing a file; the gate's own tool tuple cannot be the source here, since it is exactly
+    what is under test.
+
+    ACROSS EVERY KIT, as a union. The gate file is one file mirrored into three kits, so its tool
+    handling has to answer to every registration any of them writes - reading one kit's
+    settings.json made the answer depend on which kit the test happened to name, and a fourth tool
+    added to the office kit alone would have been unpinned exactly as `NotebookEdit` once was.
+    """
+    tools = set()
+    for kit in KITS:
+        matchers = [m for m in _hook_registrations(kit)[script]["PreToolUse"]
+                    if "Write" in _tools_in(m)]
+        assert len(matchers) == 1, "%s/%s: %r" % (kit, script, matchers)
+        tools |= _tools_in(matchers[0])
+    return sorted(tools)
+
+
+def test_every_tool_the_write_gate_is_registered_for_is_a_write_to_it(tmp_path):
+    """A gate that sees only Write scopes everything except the tools it does not see.
+
+    THE TOOL SET COMES FROM settings.json, and that is the whole difference to the three typed
+    names that stood here. Reading it from the gate's own `FILE_TOOLS` would make the test agree
+    with whatever that tuple happens to hold; typing it out again made the test agree with whoever
+    last edited the list — `NotebookEdit` was in it, but only because somebody added it to both
+    places on the same day, and the next tool added to the matcher would have been unpinned exactly
+    as it was before. A gate registered for a tool it does not handle is the most expensive kind of
+    gap: it looks present in the settings file, in the parity matrix and in `python scripts/harness.py doctor`.
+
+    The canonical-state write is the case that must be refused for every one of them: spec II.4
+    makes the kernel the only writer of `project_memory/**`, and a notebook is a file like any
+    other."""
     dispatched_repo(tmp_path)
-    payload = write_payload(tmp_path, tmp_path / "project_memory" / "approvals" / "APR-0001.yaml",
-                            tool=tool)
-    if tool == "NotebookEdit":
-        payload["tool_input"] = {"notebook_path": payload["tool_input"]["file_path"]}
-    assert run_scope(tmp_path, payload).returncode == 2
+    target = tmp_path / "project_memory" / "approvals" / "APR-0001.yaml"
+    tools = _file_write_matcher_tools("gate_write_scope.py")
+    assert "NotebookEdit" in tools, tools
+    for tool in tools:
+        payload = write_payload(tmp_path, target, tool=tool)
+        if tool == "NotebookEdit":
+            # the provider carries a notebook edit's path under `notebook_path`, which is why
+            # `_compat.file_paths` reads that key too — the payload shape has to be the real one
+            payload["tool_input"] = {"notebook_path": str(target), "new_source": "x"}
+        result = run_scope(tmp_path, payload)
+        assert result.returncode == 2, (
+            "gate_write_scope is registered for %s and let a write to canonical state through "
+            "(rc %d): %s" % (tool, result.returncode, result.stderr))
 
 
 def test_a_multi_file_patch_cannot_smuggle_a_blocked_path(tmp_path):
@@ -2368,9 +3227,25 @@ def test_a_non_pretooluse_event_does_nothing(tmp_path):
     "python -c open('project_memory/approvals/APR-0001.yaml','w').write('x')",
 ])
 def test_more_shell_write_spellings_are_refused(tmp_path, command):
-    """Quoting the target is the NORMAL spelling, and `git_invocation_text` deletes quoted spans —
-    so checking only the prose-stripped view missed it. The verb list grew for the same reason."""
+    """Quoting the target is the NORMAL spelling, and the prose-stripped view this gate once shared
+    deleted quoted spans wholesale — so it missed the path. The verb list grew for the same
+    reason."""
     dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 2
+    assert "canonical state directory" in result.stderr
+
+
+def test_a_state_path_broken_over_a_line_continuation_is_still_that_path(tmp_path):
+    """This hook kept its own copy of the continuation rule, and its own copy of the bug.
+
+    The shell removes `\\`+newline with NOTHING in its place, so the path below is exactly
+    `project_memory/approvals/APR-0001.yaml` and the write lands in the canonical state directory.
+    Joining with a SPACE spelled it `project_mem ory/...`, which matches no state-dir pattern, and
+    the write was waved through. One rule, one place: `_compat.join_line_continuations`.
+    """
+    dispatched_repo(tmp_path)
+    command = "echo x > project_mem\\\nory/approvals/APR-0001.yaml"
     result = run_scope(tmp_path, shell_payload(tmp_path, command))
     assert result.returncode == 2
     assert "canonical state directory" in result.stderr
@@ -2440,7 +3315,7 @@ def test_a_junction_hides_the_state_dir_from_the_shell_check(tmp_path):
     The FILE half realpaths its target, so a junction is resolved there. The SHELL half is textual
     and cannot be: `echo x > pm/approvals/APR-0001.yaml` names no protected path, and creating the
     junction (`cmd /c mklink /J pm project_memory`) is itself an ordinary command. Closing it needs
-    a PERMISSION posture, not more regex — `harness doctor` must weigh the permission set rather
+    a PERMISSION posture, not more regex — `python scripts/harness.py doctor` must weigh the permission set rather
     than this gate's presence. WHEN A POSTURE CLOSES IT, INVERT THIS TEST."""
     dispatched_repo(tmp_path)
     command = "echo x > pm/approvals/APR-0001.yaml"
@@ -3153,7 +4028,7 @@ def test_the_id_prefixes_match_the_kernels_item_types():
 
 def test_a_non_utf8_memory_file_can_still_be_edited(tmp_path):
     """A single cp1252 byte made every Edit to the file exit 2 with an internal-error diagnosis
-    and a remedy pointing at `harness doctor`, which would find nothing — and the file could then
+    and a remedy pointing at `python scripts/harness.py doctor`, which would find nothing — and the file could then
     never be repaired with Edit."""
     path = tmp_path / ".claude" / "agent-memory" / "backend-developer" / "legacy.md"
     os.makedirs(os.path.dirname(str(path)), exist_ok=True)
@@ -3263,7 +4138,7 @@ def test_a_five_digit_id_is_still_an_id(tmp_path):
 
 def test_the_budget_table_is_data():
     """spec II.5 asks for a matcher CONFIGURATION, so the table must be enumerable — by a test,
-    by `harness doctor`, by whatever wires the matchers — rather than re-derived from control
+    by `python scripts/harness.py doctor`, by whatever wires the matchers — rather than re-derived from control
     flow."""
     module = load_hook_module("guard_memory_budget")
     ids = [b["id"] for b in module.BUDGETS]
@@ -3342,11 +4217,29 @@ def ledger_repo(tmp_path, rows=GOOD_ROW):
     return path
 
 
+# The harness bound for a gate that has a wall-clock budget of its own, DERIVED from that budget
+# rather than typed as a number beside it. `gate_ledger_valid.TOTAL_BUDGET` is 40 s and the tests
+# below deliberately give it validators that never return, so the hook is expected to spend most
+# of that budget every time; a harness bound close to it measures the machine, not the gate. The
+# flat 120 s this replaces was 3x, and 3x was measurably not enough: the whole-suite run in which
+# `test_unjudged_files_are_reported_as_unjudged_not_as_broken` raised TimeoutExpired had other
+# pytest processes and a leftover busy-loop competing for the CPU. Measured idle afterwards, ten
+# runs of that test: 24.0–42.9 s wall with a median of 24.2 — the 42.9 s outlier on an IDLE
+# machine is what says 3x is the wrong factor, not the one failure. 5x is the margin the two
+# linearity tests above buy themselves. Read OFF the gate, so a kit that retunes its budget cannot
+# leave a stale multiple of it here.
+LEDGER_HARNESS_FACTOR = 5
+
+
+def ledger_harness_timeout():
+    return LEDGER_HARNESS_FACTOR * load_hook_module("gate_ledger_valid", OFFICE_HOOKS).TOTAL_BUDGET
+
+
 def run_ledger(tmp_path, payload):
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=TEAM_KITS)
     return subprocess.run([sys.executable, os.path.join(OFFICE_HOOKS, "gate_ledger_valid.py")],
                           input=json.dumps(payload), capture_output=True, text=True,
-                          env=env, timeout=120)
+                          env=env, timeout=ledger_harness_timeout())
 
 
 def edited(tmp_path, path, event="PostToolUse"):
@@ -3392,6 +4285,35 @@ def test_a_broken_ledger_edit_is_reported_to_the_model(tmp_path):
     assert "INVALID" in result.stderr
     assert "No rollback" in result.stderr
     assert "!= gross" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    'git "commit" -m x',
+    "git co''mmit -m x",
+    "git com\\\nmit -m x",
+    'eval "git commit -m x"',
+    'iex "git commit -m x"',
+    "git commit>/dev/null -m x",
+    "git>/dev/null commit -m x",
+])
+def test_a_disguised_commit_is_still_blocked_by_a_broken_ledger(tmp_path, command):
+    """II.9 keeps commit blocked until the books are correct, and quoting is not a correction.
+
+    This gate spelled the whole invocation as a regex and searched two views for it — the raw text
+    and the prose-stripped one. `git "commit"` is invisible to both: the raw text has a quote where
+    the pattern wants the verb, and the prose-stripped view deleted the span the verb was in. So an
+    INVALID ledger reached HEAD, which is the one outcome the gate exists to prevent. What an
+    operation IS cannot be a question about quoting; it is the git subcommand.
+
+    The last three are the same sentence about the shared reader's other two blind spots, both
+    measured reaching HEAD with broken books: PowerShell's `eval` (`iex`, on a tool this kit gates
+    in its own right), and a redirection, which ends a shell word and did not end this one —
+    `commit>/dev/null` was read as the subcommand.
+    """
+    ledger_repo(tmp_path, GOOD_ROW + BAD_ROW)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 2, command
+    assert "INVALID" in result.stderr, (command, result.stderr)
 
 
 # -- the enforcing path validates, it does not read a note --------------------
@@ -3486,6 +4408,47 @@ def test_the_follow_on_operations_are_blocked_while_invalid(tmp_path, command):
     result = run_ledger(tmp_path, shell(tmp_path, command))
     assert result.returncode == 2
     assert "INVALID" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    'sudo "git" commit -m x',
+    'env "git" commit -m x',
+    "git --attr-source HEAD commit -m x",
+    "git --config-env a.b=C commit -m x",
+    "git --brand-new HEAD commit -m x",
+    "git $'commit' -m x",
+    "V=commit; git $V -m x",
+    "git com`mit -m x",
+])
+def test_no_spelling_of_the_verb_lets_a_broken_ledger_reach_head(tmp_path, command):
+    """II.9 is about the OPERATION, and every line here is a commit however it is written.
+
+    Measured as real `gate_ledger_valid` processes against an INVALID ledger: `git "commit" -m x`
+    was refused (rc 2) and `sudo "git" commit -m x` was not (rc 0) — a broken cash book in HEAD
+    for the price of one word in front. Same for a global option the reader did not know
+    (`--attr-source HEAD commit` read its verb as `head`) and for ANSI-C quoting (`$'commit'` read
+    as `$commit`).
+    """
+    ledger_repo(tmp_path, GOOD_ROW + BAD_ROW)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 2, command
+    assert "INVALID" in result.stderr, (command, result.stderr)
+
+
+def test_a_ledger_path_broken_over_a_line_continuation_is_still_that_path(tmp_path):
+    """The half of the continuation fix this gate owns, and the half no test covered.
+
+    `_normalise_pipeline` was moved onto `_compat.join_line_continuations` because this hook's own
+    copy joined with a SPACE, which splits the very path the write-and-commit rule is about — the
+    comment at `_PIPE_AMP_RX` even names `led\\<newline>ger/2026.csv` as the case. Restoring the
+    space-join in a scratch copy left all 57 tests around this gate green: nothing in the suite
+    ever handed it a continuation INSIDE a token, so the fix was unmeasured.
+    """
+    ledger_repo(tmp_path)                       # CLEAN at the moment of the call
+    command = "sed -i s/119.00/150.00/ led\\\nger/2026.csv && git commit -m x"
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 2
+    assert "SAME call" in result.stderr
 
 
 def test_dispatch_is_blocked_while_invalid(tmp_path):
@@ -3676,6 +4639,91 @@ def test_the_early_warning_cache_is_on_the_enforcement_blocklist():
 
 # -- cross-kit copies must stay byte-identical --------------------------------
 
+def _hook_files(kit):
+    """The `.py` files a kit ships in its hooks directory."""
+    return {name for name in os.listdir(os.path.join(TEAM_KITS, kit, "hooks"))
+            if name.endswith(".py")}
+
+
+GATE_LAUNCHER = "_gate.py"
+
+
+def _registered_commands(kit):
+    """(event, matcher, command) for everything that puts a hook of this kit on an event.
+
+    BOTH SOURCES, because a kit registers in two places and a check that read one of them would
+    treat the other half as undocumented: `settings/settings.json` registers session-wide, and each
+    agent's frontmatter `hooks:` block registers role-scoped (that half is what
+    `gen_provider_artifacts.agent_hook_entries` translates for Codex). Read as DATA in both cases —
+    JSON and YAML — never as text over the file.
+
+    The two derivations below start here so they cannot disagree about what a registration IS while
+    disagreeing on purpose about what a registration NAMES.
+    """
+    import yaml
+
+    found = []
+
+    def walk(blocks):
+        for event, groups in (blocks or {}).items():
+            for group in groups or []:
+                for hook in (group.get("hooks") or []):
+                    if hook.get("type") == "command" and hook.get("command"):
+                        found.append((event, str(group.get("matcher", "")), hook["command"]))
+
+    with open(os.path.join(TEAM_KITS, kit, "settings", "settings.json"), encoding="utf-8") as fh:
+        walk(json.load(fh).get("hooks"))
+    agents = os.path.join(TEAM_KITS, kit, "agents")
+    for name in sorted(os.listdir(agents)):
+        with open(os.path.join(agents, name), encoding="utf-8-sig") as fh:
+            text = fh.read()
+        if text.startswith("---"):
+            walk((yaml.safe_load(text.split("---", 2)[1]) or {}).get("hooks"))
+    return found
+
+
+def _scripts_in(command):
+    """Every `.py` file name a registered command names, launcher included, in written order."""
+    return re.findall(r"[A-Za-z0-9_]+\.py", command.replace("\\", "/"))
+
+
+def _gates_in(command):
+    """The GATES a registered command runs — its scripts minus the launcher that starts them.
+
+    THE SCRIPT IS THE GATE, NOT THE LAUNCHER. Every V2 gate is registered as `_gate.py gate_x.py`,
+    so taking the first `.py` in the command would attribute every registration in the kit to one
+    file and make every statement derived from this vacuous — a search that saw only the launcher
+    is how the wiring check in this suite once came to assert nothing at all. A command that names
+    the launcher ALONE is credited to it, because then there is no gate to credit instead.
+
+    That is an ATTRIBUTION rule, and reading it as a delivery rule cost the launcher its coverage:
+    dropping `_gate.py` out of the mapping drops it out of everything derived from the mapping, so
+    the one file whose compile decides ~20 gates could be deleted from a kit with every check here
+    green (measured 2026-07-28). Delivery is asked of `_scripts_in` instead — see
+    `test_every_registered_hook_script_is_shipped_by_its_kit`.
+
+    A FUNCTION because it had been written out by hand four times, the last of them in the same
+    round that split attribution and delivery apart here — and that copy spelled the launcher as a
+    literal, so it would have kept its own answer through any rename of `GATE_LAUNCHER`.
+    """
+    names = _scripts_in(command)
+    return [name for name in names if name != GATE_LAUNCHER] or names
+
+
+def _hook_registrations(kit):
+    """{script filename: {event: {matcher, …}}} — which GATE is registered where (see `_gates_in`)."""
+    found = {}
+    for event, matcher, command in _registered_commands(kit):
+        for name in _gates_in(command):
+            found.setdefault(name, {}).setdefault(event, set()).add(matcher)
+    return found
+
+
+def _tools_in(matcher):
+    """A matcher as the SET OF TOOLS it names — `Write|Edit` and `Edit|Write` are one registration."""
+    return frozenset(part for part in re.split(r"[|,]", matcher) if part)
+
+
 def test_shared_helpers_are_identical_across_kits():
     """Three kits ship the same helpers; a drifted copy means one kit enforces differently than
     the others without anyone noticing (the phase-0 disposition lists them as cross-kit copies).
@@ -3685,23 +4733,157 @@ def test_shared_helpers_are_identical_across_kits():
     `_gate.py`, the one file whose compile decides ~20 gates, plus `gate_push_token`,
     `gate_shell_hygiene`, `kit_trust_state` and five more. `tools/test_hooks.py` carries the same
     rule with the same exception list; this one is the V2 half and asserts the stricter case: a
-    name present in ALL THREE kits."""
+    name present in ALL THREE kits.
+
+    WHICH names those are is not this test's business and used to be smuggled in as a number: a
+    floor of 15 against an actual 19, i.e. four shared helpers could vanish from a kit with the
+    suite green. A floor is unfixable in principle — it is either exactly the current value, which
+    makes every legitimate divergence red, or it has slack, and the slack is the hole. The two
+    tests below say instead what has to BE there, each derived from something that would break if
+    the file were missing."""
     from test_hooks import KIT_SPECIFIC_HOOKS
-    names = None
-    for kit in KITS:
-        here = {n for n in os.listdir(os.path.join(TEAM_KITS, kit, "hooks")) if n.endswith(".py")}
-        names = here if names is None else (names & here)
-    shared = sorted(names - set(KIT_SPECIFIC_HOOKS))
-    # A floor, not a count. It sat exactly on the current value for one round, which makes
-    # every legitimate kit-specific divergence a red test and every red test an invitation
-    # to lower the number — the mechanism that produced the nine-name list this replaced.
-    assert len(shared) >= 15, "only %d hooks are shared across all three kits" % len(shared)
+    shared = sorted(set.intersection(*[_hook_files(kit) for kit in KITS])
+                    - set(KIT_SPECIFIC_HOOKS))
     for helper in shared:
         bodies = set()
         for kit in KITS:
             with open(os.path.join(TEAM_KITS, kit, "hooks", helper), "rb") as fh:
                 bodies.add(fh.read())
         assert len(bodies) == 1, "%s has drifted between kits" % helper
+
+
+def test_every_kit_ships_the_hook_modules_its_own_hooks_import():
+    """The shared helper layer, derived from the IMPORTS instead of counted.
+
+    A helper disappearing from one kit is invisible to every mirror rule in the repo: identity is
+    only ever asked of the kits that still ship the file, so removing a copy removes the check
+    along with it. What makes the copy necessary is not a list — it is that `_gate.py` imports
+    `_audit`, `_root` and `_kernel`, and a gate whose import fails is a gate that cannot run. So
+    the question is asked that way round: for every module a kit's own hooks import, if any kit
+    ships a hook file by that name, THIS kit must ship it too.
+
+    Parsed with `ast` over the source, so an import mentioned in a docstring is not one and an
+    import written inside a function still is."""
+    hook_layer = set().union(*[_hook_files(kit) for kit in KITS])
+    for kit in KITS:
+        shipped = _hook_files(kit)
+        checked = set()
+        for name in sorted(shipped):
+            with open(os.path.join(TEAM_KITS, kit, "hooks", name), encoding="utf-8") as fh:
+                tree = ast.parse(fh.read())
+            imported = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    imported.update(alias.name.split(".")[0] for alias in node.names)
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    imported.add(node.module.split(".")[0])
+            for module in sorted(imported):
+                if module + ".py" in hook_layer:
+                    checked.add((name, module + ".py"))
+                    assert module + ".py" in shipped, (
+                        "%s/hooks/%s imports %s, which no file in that kit provides — the kit's "
+                        "own hooks cannot run" % (kit, name, module))
+        # ...and the derivation must not be empty FOR THIS KIT. An `ast` walk that finds no local
+        # import makes every assertion above vacuous while the test stays green, and the floor that
+        # stood here counted across all three kits (`>= len(KITS)` against an actual 166), so two
+        # working kits covered for a third whose extraction had stopped matching. Per kit and
+        # against emptiness rather than against a number: the property is "this kit's import
+        # closure was actually read", which a threshold can only approximate and, with slack,
+        # approximates wrongly.
+        assert checked, (
+            "%s: the `ast` walk found no hook-layer import at all — every statement this test "
+            "makes about that kit is vacuous" % kit)
+
+
+def test_every_registered_hook_script_is_shipped_by_its_kit():
+    """A registration is a promise that a file exists; nothing checked that it does.
+
+    This is the other half of what the vanished floor was reaching for. A gate that is registered
+    in `settings.json` and absent from `hooks/` produces a hook Claude Code cannot start — silently
+    on the enforcement side, since a hook that fails to launch is not a hook that blocks.
+
+    EVERY `.py` THE COMMAND NAMES, which is why this reads `_scripts_in` and not the attribution
+    map beside it. `_hook_registrations` deliberately drops `_gate.py` so a registration is credited
+    to its gate rather than to the launcher — and while THIS test inherited that exception, the
+    launcher was the one file no delivery check covered anywhere: it is imported by nobody (the
+    gates are its arguments, not its importers), so the import-closure test does not see it either.
+    Deleting `research-team/hooks/_gate.py` left all three checks in this section green and — once
+    the VERSION was re-stamped, which is the only thing that noticed — `validate.py` at rc 0, with
+    all 29 of that kit's registrations pointing through a file that is not there (measured
+    2026-07-28). A command that names a script promises that script, whatever its role in the
+    command is."""
+    for kit in KITS:
+        shipped = _hook_files(kit)
+        named = sorted({name for _e, _m, command in _registered_commands(kit)
+                        for name in _scripts_in(command)})
+        assert named, "no hook registrations found for %s" % kit
+        assert GATE_LAUNCHER in named, (
+            "%s registers no command through %s — if the launcher is gone this test has stopped "
+            "covering it and the exception it was written for needs re-deciding"
+            % (kit, GATE_LAUNCHER))
+        missing = [name for name in named if name not in shipped]
+        assert not missing, "%s registers hooks it does not ship: %s" % (kit, ", ".join(missing))
+
+
+def test_a_hook_header_names_the_matcher_it_is_actually_registered_under():
+    """The `Event(matcher)` a hook's own docstring claims, checked against what registers it.
+
+    SIX HEADERS SAID `PreToolUse(Bash)` while the registration had long been `Bash|PowerShell`
+    (measured 2026-07-27, after a round whose fix was to edit the strings — some of them). That is
+    what a fix consisting of string edits is worth. The claim is machine-checkable, so it is now
+    checked instead:
+    the docstring is taken with `ast.get_docstring` (a mention in code or a comment is not a header
+    claim), the registration with `_hook_registrations`, and matchers are compared as TOOL SETS so
+    that reordering `Edit|Write` is not a failure while dropping a tool is.
+
+    A REGISTERED GATE MUST CLAIM, AND CLAIM COMPLETELY. A header that mentions an event must
+    account for every matcher the kit registers that script under for it — `gate_ledger_valid`
+    names its two PreToolUse matchers and would be red for naming one.
+
+    The first half of that sentence is not decoration: while a claim was OPTIONAL, deleting the
+    parentheses was a cheaper way out of a red than fixing the header, and the repo had already
+    taken it — `gate_filing.py` went from `PostToolUse(Edit|Write)` to a bare `PreToolUse —` and
+    stopped being checked at all. So the set of scripts that carry a claim is asserted to BE the
+    set of scripts the kit registers: a gate cannot leave this test by saying less, and a helper
+    that is registered by nobody cannot enter it by mentioning an event in prose. That set is also
+    what replaced the floor of `claims_found > 20` (actual: 46) — a number with 26 claims of slack
+    says nothing about which claim went missing.
+
+    A registration with NO matcher is claimed as `Event()`, empty parentheses and all, because
+    "runs on every call of this event" is a statement and `SessionStart` in a sentence is not.
+
+    The event vocabulary is derived from the registrations too, so an event added to a kit is
+    covered without touching this test."""
+    for kit in KITS:
+        registered = _hook_registrations(kit)
+        events = sorted({event for entry in registered.values() for event in entry})
+        assert events, "no events registered in %s" % kit
+        claim_rx = re.compile(r"\b(%s)\(([^)\n]*)\)" % "|".join(events))
+        claiming = set()
+        for name in sorted(_hook_files(kit)):
+            with open(os.path.join(TEAM_KITS, kit, "hooks", name), encoding="utf-8") as fh:
+                docstring = ast.get_docstring(ast.parse(fh.read())) or ""
+            claimed = {}
+            for event, matcher in claim_rx.findall(docstring):
+                claimed.setdefault(event, set()).add(matcher)
+            if claimed:
+                claiming.add(name)
+            for event, matchers in sorted(claimed.items()):
+                actual = registered.get(name, {}).get(event, set())
+                assert {_tools_in(m) for m in matchers} == {_tools_in(m) for m in actual}, (
+                    "%s/hooks/%s says it runs on %s%s, but it is registered on %s — a header that "
+                    "names the wrong matcher is read as the contract by everyone who edits the "
+                    "hook" % (kit, name, event, sorted(matchers), sorted(actual) or "nothing"))
+            # A script that claims one of its events but not the others is half-covered, which the
+            # per-event comparison above cannot see: it only ever looks at events the header names.
+            assert not claimed or set(claimed) == set(registered.get(name, {})), (
+                "%s/hooks/%s names %s in its header but is registered for %s"
+                % (kit, name, sorted(claimed), sorted(registered.get(name, {}))))
+        assert claiming == set(registered), (
+            "%s: these registered gates carry no `Event(matcher)` header (%s), and these files "
+            "claim to run somewhere without being registered (%s)"
+            % (kit, sorted(set(registered) - claiming) or "none",
+               sorted(claiming - set(registered)) or "none"))
 
 
 # -- the lead instruction package (spec II.5) ---------------------------------
@@ -3721,12 +4903,33 @@ def test_the_lead_package_budget_is_measured_and_currently_exceeded():
     for kit in KITS:
         assert any(kit in line for line in over), kit
     # a WARNING, not a failure: phase 3 promotes it. Asserted on the CHANNEL, because an earlier
-    # cut checked neither the exit code nor the prefix -- and validate.py exits 1 today for an
-    # unrelated reason (the VERSION bump this phase deliberately defers), so "it warned" and "the
-    # build is green" are two different claims and only one of them is being made here.
+    # cut checked neither the exit code nor the prefix. The comment that used to stand here also
+    # said validate.py exits 1 anyway "for an unrelated reason (the VERSION bump this phase
+    # deliberately defers)", which stopped being true and then stood for a release as a written
+    # reason not to look at the exit code. Whether the build is green is asked by
+    # `test_validate_py_is_green`; this test asks only which channel the budget uses.
     for line in over:
         assert line.strip().startswith("[warn]"), line
     assert "becomes a hard failure" in "\n".join(over)
+
+
+def test_validate_py_is_green():
+    """A green pytest run is not a green build, and no test in this repo ever said otherwise.
+
+    `tools/validate.py` is the second half of the gate — it checks the things a unit test cannot
+    see: that every input the kit hash covers is git-tracked, that no kit was edited without a
+    VERSION bump, that no bytecode was left in a tree the installer copies. All of that lived
+    outside the suite, so "1200 passed" and "this commit installs" were separate claims and only
+    the first one was ever made. Worse, the coupling ran the wrong way: a forgotten
+    `bump_kit_version.py` was announced by a dozen unrelated tests failing with a message about
+    kit hashes, and by nothing that names validate.
+
+    RUN, not imported: the exit code is the deliverable, and a function call cannot produce one."""
+    result = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "validate.py")],
+                            capture_output=True, text=True, cwd=ROOT)
+    assert result.returncode == 0, (
+        "tools/validate.py fails — the tree does not install as it stands:\n"
+        + result.stdout + result.stderr)
     # The "is it a warning and not a failure" claim is carried by the two assertions ABOVE, and
     # only by them: a first cut filtered on a "[fail]" prefix that validate.py never emits
     # (failures print as "  - <text>" under a "VALIDATION FAILED" header), and the replacement,
@@ -4502,15 +5705,56 @@ def test_a_long_real_world_url_is_still_exempt(tmp_path):
     assert run_budget(tmp_path, payload).returncode == 0
 
 
-def test_a_legal_topic_stays_well_inside_the_latency_budget(tmp_path):
-    """II.5 targets ~300 ms p95. A file AT the byte ceiling, full of the two shapes that used to
-    be quadratic, is the worst legal input."""
+def test_the_id_scan_is_linear_on_the_worst_legal_input(tmp_path):
+    """A gate that cannot answer inside the host's budget is a gate that ALLOWS (spec II.4).
+
+    WHICH INPUT IS THE WORST LEGAL ONE, and the previous version of this test had it wrong twice
+    over. It used a file AT the byte ceiling (8 KB) and called that the worst case — but the
+    SHRINK allowance deliberately removes the size bound (`_check_size`: "no worse than the limit
+    OR the status quo"), so the one legal input class with NO ceiling is the large cleanup Write,
+    which is exactly the operation this gate exists to encourage. And at 8 KB the scan costs
+    ~5 ms against ~240 ms of interpreter start, so the number it asserted was the machine's
+    process-start time and nothing else. Measured: with `_FOREIGN_RX`'s bound removed
+    (`\\S{0,1000}` -> `\\S*`, the quadratic form its own comment records), that 8 KB input still
+    ran in 0.27 s and the old test stayed GREEN — it could not see the defect it was written for.
+
+    ASSERTED AS A RATIO against benign text of the SAME size through the SAME process, which is
+    what makes it independent of the machine and of what else is running. Both runs pay the
+    identical interpreter start, the identical stdin read and the identical file read; only the
+    scanning differs, so the quotient is the shape of the scan.
+
+    MEASURED RATES, so the next round does not have to derive them again (Windows 11, CPython
+    3.13, medians of 3 runs per point, 20 evaluations per condition):
+      * shipped, idle: ratio 0.81–1.04, median 1.02.
+      * shipped, under a `pytest tools/ -n 8` load: ratios stayed inside the same band while the
+        ABSOLUTE times swung 0.24–1.78 s — which is the whole reason the old `< 1.0 s` line
+        failed 15 times in 25 under load, a 60 % flake on a green codebase.
+      * quadratic form restored, same input: 74.8 s against 0.25 s benign — a ratio near 300, and
+        past the 60 s at which the host kills a PreToolUse hook, where a killed hook is an ALLOW.
+    A bound of 5 therefore sits five times above every observed honest ratio and sixty times
+    below the defect. There is deliberately no wall-clock line beside it: at this margin an
+    absolute number could only re-introduce the flake it replaces.
+    """
     import time as _time
-    body = ("word " * 14 + "https://example.com/spec `TSK-0001`\n") * 100   # ~8 KB
-    payload = memory_write(tmp_path, ".claude/agent-memory/backend-developer/legal.md", body[:8100])
-    started = _time.time()
-    run_budget(tmp_path, payload)
-    assert _time.time() - started < 1.0
+
+    def cost(name, body):
+        path = tmp_path / ".claude" / "agent-memory" / "backend-developer" / name
+        os.makedirs(str(path.parent), exist_ok=True)
+        # the file being SHRUNK — larger than the write, so the size check passes it through to
+        # the id scan. That IS the legal input class with no ceiling.
+        write(str(path), "x" * (len(body) + 10))
+        payload = memory_write(tmp_path, ".claude/agent-memory/backend-developer/" + name, body)
+        taken = []
+        for _run in range(3):
+            started = _time.time()
+            assert run_budget(tmp_path, payload).returncode == 0
+            taken.append(_time.time() - started)
+        return sorted(taken)[1]
+
+    size = 200 * 1024
+    dense = ("https://example.com/spec" * (size // 24 + 2))[:size]   # one whitespace-free run
+    benign = "x" * size
+    assert cost("dense.md", dense) < 5 * cost("benign.md", benign)
 
 
 # -- round 4: what the synchronous design and the cross-file lookup opened ----
@@ -4686,20 +5930,66 @@ def test_the_whole_ledger_is_judged_inside_the_host_hook_budget(tmp_path):
                          "through" % (12, elapsed)
 
 
-def test_an_ordinary_multi_year_ledger_commit_is_fast(tmp_path):
-    """The honest case paid the quadratic cost too: 12 x 2 000 rows with real cross-year stornos
-    cost 17s per commit and 6.5s per append before the sibling index."""
-    import time as _time
-    ledger_project(tmp_path)
-    for year in range(2020, 2027):
-        rows = [LEDGER_COLS] + [
-            "L%d-%04d,%d-01-05,%d-01-07,expense,invoice,ACME,R-%d,100.00,19.00,119.00,standard,"
-            "tools,archive/a.pdf,,\n" % (year, n, year, year, n) for n in range(1, 2001)]
-        write(str(tmp_path / "ledger" / ("%d.csv" % year)), "".join(rows))
-    started = _time.time()
-    result = run_ledger(tmp_path, shell(tmp_path, "git commit -m x"))
-    assert result.returncode == 0, result.stderr
-    assert _time.time() - started < 10
+def test_an_ordinary_multi_year_ledger_commit_costs_what_an_empty_one_costs(tmp_path):
+    """The honest case paid the quadratic cost too: 7 x 2 000 rows with real cross-year stornos
+    cost 17s per commit and 6.5s per append before the sibling index.
+
+    ASSERTED AGAINST A BASELINE, not against a wall-clock number, and the reason is a MEASURED
+    property of this gate rather than a preference: one commit through it costs ~2.0 s no matter
+    what is in the ledger — interpreter start, the kernel import, the git call — while parsing
+    14 000 rows adds ~0.15 s. The signal is 7 % of the measurement, so a threshold in seconds is
+    almost entirely a measurement of the machine. That is exactly how the previous `< 10` line
+    behaved: measured under a `pytest tools/ -n 8` run it took 10.51 s and failed, on a codebase
+    where the same commit takes 2.25 s idle. A baseline divides that constant out, because both
+    runs pay it.
+
+    A RATIO of run times is NOT usable here, unlike in the id-scan test one file up: there the
+    constant is 240 ms against a defect of 75 s, here the constant IS the measurement. What makes
+    this discriminating is the baseline being the SAME gate on the SAME shape with few rows.
+
+    MEASURED (Windows 11, CPython 3.13, medians of 3 runs per point):
+      * idle: 500 rows/year 2.10 s, 2000 rows/year 2.25 s -> ratio 1.07, so a bound of 4 sits
+        three times above the honest ratio.
+      * with the PRE-INDEX SHAPE restored -- `sibling_index`'s cache hit removed AND the
+        unresolved-target branch calling `sibling_index(year)` again instead of reading the built
+        index, which is the re-parse-per-target that function's own docstring records -- this test
+        goes RED, and on the FIRST assertion rather than the ratio: the gate runs out of its own
+        whole-ledger budget and REFUSES the honest commit ("a ledger that needs more than 20s is a
+        defect in its own right"). That is the strongest form the claim can take, because it is
+        the gate itself saying the ordinary case did not fit.
+      * removing ONLY the cache changes nothing measurable and the test stays green. Recorded so
+        nobody reads this as a pin on that memo: the call site builds the index once per file, and
+        the cache is a second-order saving across files.
+    """
+    def cost(rows_per_year):
+        ledger_project(tmp_path)
+        for year in range(2020, 2027):
+            rows = [LEDGER_COLS] + [
+                "L%d-%04d,%d-01-05,%d-01-07,expense,invoice,ACME,R-%d,100.00,19.00,119.00,"
+                "standard,tools,archive/a.pdf,,\n" % (year, n, year, year, n)
+                for n in range(1, rows_per_year + 1)]
+            # REAL CROSS-YEAR STORNOS, and enough of them to matter: each one is a target the
+            # validator has to resolve in a SIBLING file, which is the lookup the index exists
+            # for. One per year would be resolved by the first build of that index whether it is
+            # cached or not — measured: with a single storno, disabling the cache changes nothing
+            # at all, so a fixture with one would have been a cost test that cannot see its own
+            # defect. They scale with the file so that the baseline stays the same SHAPE.
+            for n in range(1, rows_per_year // 10 + 1):
+                if year == 2020:
+                    break
+                rows.append("L%d-9%03d,%d-02-01,%d-02-01,expense,reversal,ACME,R-9%03d,100.00,"
+                            "19.00,119.00,standard,tools,archive/a.pdf,L%d-%04d,\n"
+                            % (year, n, year, year, n, year - 1, n))
+            write(str(tmp_path / "ledger" / ("%d.csv" % year)), "".join(rows))
+        taken = []
+        for _run in range(3):
+            started = time.time()
+            result = run_ledger(tmp_path, shell(tmp_path, "git commit -m x"))
+            assert result.returncode == 0, result.stderr
+            taken.append(time.time() - started)
+        return sorted(taken)[1]
+
+    assert cost(2000) < 4 * cost(50)
 
 
 def test_is_ledger_is_pinned_to_the_canonical_directory():
@@ -5084,6 +6374,145 @@ def test_a_dry_run_and_non_push_commands_are_not_gated(tmp_path):
         assert run_push_gate(work, command).returncode == 0, command
 
 
+@pytest.mark.parametrize("command", [
+    'git "push" origin main',
+    "git pu''sh origin main",
+    "git pu\\\nsh origin main",
+    '"git" push origin main',
+    'eval "git push origin main"',
+    'iex "git push origin main"',
+    'Invoke-Expression "git push origin main"',
+    'echo "git push origin main" | sh',
+    'sudo "git" push origin main',
+    "git push>/dev/null origin main",
+    'nohup "git" push origin main',
+    "git --attr-source HEAD push origin main",
+    "git --brand-new HEAD push origin main",
+    "git $'push' origin main",
+    "V=push; git $V origin main",
+    "git pu`sh origin main",
+])
+def test_a_disguised_push_still_needs_the_token(tmp_path, command):
+    """This gate spelled the invocation itself and therefore had the shared bypass twice over.
+
+    `_PUSH_RX` wanted `git`, then git's global options, then the literal word `push`, and it was
+    run against the raw text and against the prose-stripped view. Both are blind to a quoted verb:
+    in the raw text the quote sits where the pattern wants the verb, and the prose-stripped view
+    had already deleted the span the verb was in. So `git "push" origin main` published with no
+    approval at all — the MINIMUM-KEEP rule of parity row 29 lifted by two characters. Same for a
+    continuation inside the verb, and for `eval`, whose quoted argument is code by definition.
+
+    The rest of the list is the same rule met at every seam the shared reader has since had to
+    close, and each of them published without an approval when it was open: a word in front of the
+    quoted verb, a global option the reader could not know, ANSI-C quoting, a verb the shell builds
+    at run time, the PowerShell escape, a payload handed to a shell through a pipe, PowerShell's own
+    eval (`iex`, on a tool this kit gates in its own right), and a redirection, which ends a shell
+    word and so cannot stay attached to the verb. R1 is a MINIMUM-KEEP rule, so all of them have to
+    answer the same way — nothing is published without the user saying so.
+    """
+    work = git_repo(tmp_path)
+    assert run_push_gate(work, command).returncode == 2, command
+
+
+def test_a_dry_run_flag_on_another_command_does_not_release_the_push(tmp_path):
+    """`--dry-run` is read off THIS push's own arguments, not off the whole line.
+
+    `-n` is an ordinary flag of other git commands (`git commit -n` skips the hooks), so searched
+    line-wide the exemption fired on a line whose push was entirely real. It exists for the
+    rehearsal that publishes nothing; it must not become a way to spell one that does.
+    """
+    work = git_repo(tmp_path)
+    assert run_push_gate(work, "git commit -n -m wip && git push origin main").returncode == 2
+
+
+@pytest.mark.parametrize("command", [
+    'git push -o "--dry-run" origin main',
+    'git push origin main --push-option="x --dry-run y"',
+    'git push origin main -o "release -n now"',
+    'git push --receive-pack "git-receive-pack --dry-run" origin main',
+])
+def test_a_push_option_cannot_spell_the_rehearsal_exemption(tmp_path, command):
+    """The rehearsal exemption is read as a FLAG, never as text — house rule: check the part that
+    runs.
+
+    The round before this one moved the `--dry-run` question off the whole line and onto "this
+    push's own arguments", which was the right boundary and the wrong reading: the arguments were
+    joined back into a string and searched with a regex. `-o`/`--push-option` sends an ARBITRARY
+    string to the server, so the caller writes the exemption into a value and the token gate — the
+    only gate enforcing parity row 29, a MINIMUM-KEEP rule — stands down on a push that really
+    publishes. All four measured rc 0.
+
+    A token is a token: `--dry-run`/`-n` counts when it IS an argument, and not when it is the
+    value of an option that takes one.
+    """
+    work = git_repo(tmp_path)
+    assert run_push_gate(work, command).returncode == 2, command
+
+
+@pytest.mark.parametrize("command", [
+    "git push --dry-run origin main",
+    "git push -n origin main",
+    "git push origin main --dry-run",
+])
+def test_the_real_rehearsal_flag_still_releases_the_push(tmp_path, command):
+    """THE COUNTER-ASSERTION to the above: `--dry-run` publishes nothing, and a gate that refuses
+    the safe rehearsal is a gate people stop rehearsing with. Read as a flag it still is one,
+    wherever in the argument list it stands."""
+    work = git_repo(tmp_path)
+    assert run_push_gate(work, command).returncode == 0, command
+
+
+@pytest.mark.parametrize("command", [
+    "git push origin main >/dev/null",
+    "git push origin main >/dev/null 2>&1",
+    "git push origin main 2>/dev/null",
+])
+def test_an_ordinary_redirection_leaves_the_push_pinnable(tmp_path, command):
+    """The other direction of the missing metacharacter, and the one that trains people to hide.
+
+    `>/dev/null` and `2>&1` were read as POSITIONAL tokens, so the most ordinary spelling of a push
+    arrived here as four refspecs and was refused with "more than one refspec in a single push" —
+    an approved push, blocked for its output redirection. Neither the operator, its target nor the
+    file descriptor in front of it was ever handed to git.
+
+    Asserted with a LIVE approval, so it can only pass by the tokens being read correctly; the
+    partner test below keeps the gate itself honest on the same spellings.
+    """
+    work = git_repo(tmp_path)
+    approve_push(work, "origin", "main", git_head(work))
+    assert run_push_gate(work, command).returncode == 0, command
+
+
+@pytest.mark.parametrize("command", [
+    "git push>/dev/null origin main",
+    "git push origin main >/dev/null 2>&1",
+])
+def test_a_redirected_push_without_a_token_is_still_refused(tmp_path, command):
+    """...and the same spellings with NO approval, so the test above cannot pass by the gate having
+    stopped applying. `git push>/dev/null` is the fail-open half: the verb read as `push>/dev/null`,
+    which is no subcommand, and the publication went out unapproved."""
+    work = git_repo(tmp_path)
+    result = run_push_gate(work, command)
+    assert result.returncode == 2, command
+    assert "no live user approval" in result.stderr, (command, result.stderr)
+
+
+def test_the_second_push_on_a_line_needs_its_own_token(tmp_path):
+    """A token names one remote, one branch and one commit — so it authorises ONE push.
+
+    The reader stopped at the first `git push` it found, so `git push origin main && git push
+    upstream main` was judged on the approved half and published the unapproved one in the same
+    call. The counter-assertion is the first line: the approved push alone still goes through, so
+    this is not just "everything blocks now".
+    """
+    work = git_repo(tmp_path)
+    approve_push(work, "origin", "main", git_head(work))
+    assert run_push_gate(work, "git push origin main").returncode == 0
+    result = run_push_gate(work, "git push origin main && git push upstream main")
+    assert result.returncode == 2
+    assert "upstream/main" in result.stderr
+
+
 def test_a_project_without_kernel_state_is_not_this_gates_business(tmp_path):
     """A repo with no canonical state has no approval protocol to check against — gating it would
     make the harness unusable in exactly the projects it has not been installed into."""
@@ -5223,9 +6652,9 @@ def hygiene_repo(tmp_path, dirty=False, name="myproject"):
     return work
 
 
-def run_hygiene(work, command):
+def run_hygiene(work, command, tool="Bash"):
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(work), HARNESS_KERNEL_PATH=TEAM_KITS)
-    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(work),
+    payload = {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": str(work),
                "tool_input": {"command": command}}
     return subprocess.run([sys.executable, HYGIENE_GATE], input=json.dumps(payload),
                           capture_output=True, text=True, env=env, timeout=120)
@@ -5303,6 +6732,117 @@ def test_a_directory_that_is_not_a_worktree_is_not_gated(tmp_path):
     plain = tmp_path / "plain"
     os.makedirs(str(plain), exist_ok=True)
     assert run_hygiene(plain, "git merge feat/x").returncode == 0
+
+
+@pytest.mark.parametrize("command", [
+    'git "reset" --hard HEAD~1',
+    "git rese''t --hard HEAD~1",
+    "git reset --ha\\\nrd HEAD~1",
+    'git "merge" feat/x',
+    "git reb''ase main",
+    'git "checkout" main',
+    'sudo "git" merge feat/x',
+    "git --attr-source HEAD merge feat/x",
+    "git $'merge' feat/x",
+    "V=merge; git $V feat/x",
+])
+def test_the_dirty_tree_rule_reads_the_same_verbs_every_other_git_gate_does(tmp_path, command):
+    """This hook kept its own regexes, so it kept the defects the shared reader was written to end.
+
+    It was not in the grep that converted the others (`git_invocation_text`/`wants_push_or_merge`
+    appear nowhere in it), and nothing noticed, because its own tests only ever spell the verbs
+    the plain way. Measured as real hook processes on a dirty tree: `git reset --hard HEAD~1`
+    blocked and `git "reset" --hard HEAD~1` ran, `git merge feat/x` blocked and `git "merge"
+    feat/x` ran, and `git reset --ha\\<newline>rd HEAD~1` was refused by NO hook in the kit — the
+    constitution's §8 data-loss protection off by two characters.
+
+    The last three are the classes the same conversion brings with it: a wrapper word, a global
+    option this reader cannot know, and a verb the shell builds at run time.
+    """
+    work = hygiene_repo(tmp_path, dirty=True)
+    result = run_hygiene(work, command)
+    assert result.returncode == 2, command
+    assert "dirty tree" in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    "git reset>/dev/null --hard HEAD~1",
+    "git reset --hard>/dev/null HEAD~1",
+    "git merge>/dev/null feat/x",
+    "git>/dev/null merge feat/x",
+    "git checkout>/dev/null main",
+])
+def test_the_dirty_tree_rule_reads_a_redirection_as_shell_syntax(tmp_path, command):
+    """Same §8 protection, switched off by one `>` instead of two quotes.
+
+    A redirection is a metacharacter: it ends the word before it and takes its target with it. The
+    word reader did not know that, so the verb came back as `reset>/dev/null` and this gate — which
+    now correctly asks for the SUBCOMMAND — matched nothing. `git reset --hard>/dev/null HEAD~1` is
+    the second half and the sharper one: the verb IS read, but `--hard` was spelled
+    `--hard>/dev/null` and the flag test that decides "this destroys uncommitted work" missed it.
+    Measured as real hook processes on a dirty tree, all of these ran.
+    """
+    work = hygiene_repo(tmp_path, dirty=True)
+    result = run_hygiene(work, command)
+    assert result.returncode == 2, command
+    assert "dirty tree" in result.stderr, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    "git reset --har`d HEAD~1",
+    "git mer`ge feat/x",
+    "git rese`t --hard HEAD~1",
+])
+def test_the_dirty_tree_rule_reads_the_powershell_escape_too(tmp_path, command):
+    """Same hook, second tool rail: this gate is registered on `PowerShell` (`SHELL_TOOLS`) and
+    PowerShell escapes with a backtick. Sent as the PowerShell tool, which is how it arrives."""
+    work = hygiene_repo(tmp_path, dirty=True)
+    result = run_hygiene(work, command, tool="PowerShell")
+    assert result.returncode == 2, command
+    assert "dirty tree" in result.stderr, (command, result.stderr)
+
+
+def test_a_command_too_long_to_read_still_names_a_verb_in_the_refusal(tmp_path):
+    """The `GIT_READ_LIMIT` answer — "this could be any git command" — travels all the way into a
+    real refusal, on the one gate that puts the verb into its message.
+
+    Two things meet here and neither has cover on its own: the fail-closed bound (a hook that
+    cannot finish reading must not ALLOW) and `UNRESOLVED_SUBCOMMAND` being an object rather than a
+    string. This gate renders that verb into its stderr, and it used to build the text with `+`,
+    which is a TypeError on anything but a string — i.e. a crash in the path that exists for the
+    case nobody exercises.
+    """
+    work = hygiene_repo(tmp_path, dirty=True)
+    result = run_hygiene(work, "echo " + "x" * (_compat.GIT_READ_LIMIT + 1))
+    assert result.returncode == 2
+    assert "dirty tree" in result.stderr
+    assert "<unresolved>" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    'git commit -m "merge the feature once the tree is clean"',
+    'git commit -m "reset --hard is what broke it"',
+    'echo "git checkout main"',
+    "git checkout -b feat/new",
+    "git checkout -- a.txt",
+])
+def test_the_dirty_tree_rule_still_reads_prose_and_remedies_as_what_they_are(tmp_path, command):
+    """THE COUNTER-ASSERTION for the conversion above — the reason a reader that simply searched
+    for the words would be the wrong fix. A commit MESSAGE naming a merge is an argument, and
+    `checkout -b` / `checkout -- <path>` are how the agent gets the tree clean again."""
+    work = hygiene_repo(tmp_path, dirty=True)
+    result = run_hygiene(work, command)
+    assert result.returncode == 0, (command, result.stderr)
+
+
+@pytest.mark.parametrize("command", ['docker "stop" neighbour-db', "docker st''op neighbour-db"])
+def test_the_docker_rule_reads_the_shell_view_as_well(tmp_path, command):
+    """The other half of this hook read the raw text too. There is no daemon in a test, so the
+    container lookup returns None and the gate falls open by design — what is asserted is that the
+    VERB is seen at all, through `_docker_targets`, which is the step the raw text lost."""
+    hygiene = load_kit_module("gate_shell_hygiene", HYGIENE_GATE)
+    assert hygiene._docker_targets(hygiene._shell_view(command)) == ["neighbour-db"], command
+    assert hygiene._docker_targets(command) == [], command   # the raw text sees nothing
 
 
 # -- round 8: the directory destination, and prose that only looks like code --
@@ -6301,6 +7841,72 @@ def test_doctor_does_not_report_unknown_for_what_it_has_read(tmp_path):
     assert result["specialists"] == ["backend-developer"]
 
 
+def test_a_bundle_changed_after_trust_is_still_visible_in_the_report(tmp_path):
+    """THE OBSERVATION SURVIVES THE CAPABILITY BEING PULLED DOWN — a regression, fixed.
+
+    `hook_trust` is held at `unverified` by a shipped `known_hole` whatever the hashes say, which
+    is honest: the recorder is forgeable by anyone who can run scripts. But that made the report
+    identical for a clean project and one whose spawn veto had been replaced by `sys.exit(0)` after
+    trust was recorded. Every typed field — capabilities, trust_status, known_holes, enforcement
+    and both blocker lists — came out the same, so no consumer could branch on the difference. A
+    measurement with two outcomes had been collapsed into a constant.
+
+    Both halves are asserted here, and the first is asserted on purpose: the capability MUST stay
+    down (that is the enumeration's contract), which is exactly why the measurement needs a field
+    of its own."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import report
+    trusted = {"state": "active", "hook_bundle_hash": "AUTO"}
+    _clean_root, clean_state = doctor_project(tmp_path / "clean", wired=ALL_WIRED,
+                                              kit_state=trusted)
+    clean = report.doctor(clean_state)
+    root, state = doctor_project(tmp_path / "tampered", wired=ALL_WIRED, kit_state=trusted)
+    write(os.path.join(root, ".claude", "hooks", "gate_dispatch.py"),
+          "import sys\nsys.exit(0)\n")   # the veto disarmed AFTER the bundle was recorded
+    tampered = report.doctor(state)
+
+    assert tampered["capabilities"] == clean["capabilities"], (
+        "the enumeration must keep pulling `hook_trust` down — if this ever flips, the capability "
+        "has stopped being a `known_hole` and this test should be reconsidered, not deleted")
+    assert tampered["enforcement_blockers"] == clean["enforcement_blockers"]
+    # ...and the difference is now typed, not buried in prose.
+    assert clean["bundle_matches_recorded"] is True
+    assert tampered["bundle_matches_recorded"] is False
+    assert tampered["recorded_hook_bundle_hash"] == clean["hook_bundle_hash"]
+    assert tampered["hook_bundle_hash"] != tampered["recorded_hook_bundle_hash"]
+    changed = [f for f in tampered["installation_errors"]
+               if f["item"] == ".claude/kit_state.json"]
+    assert len(changed) == 1, tampered["installation_errors"]
+    assert tampered["hook_bundle_hash"][:12] in changed[0]["message"]
+    assert not [f for f in clean["installation_errors"]
+                if f["item"] == ".claude/kit_state.json"]
+    # The one thing that DID differ before this field existed was free text, which is why the
+    # regression was easy to miss and why it did not count: nothing parses a reason string.
+    assert (tampered["capability_reasons"]["hook_trust"]
+            != clean["capability_reasons"]["hook_trust"])
+    # ...and because it is an installation error, `python scripts/harness.py doctor` now EXITS NONZERO over a bundle
+    # that changed after it was trusted, instead of printing an identical blob and exiting 0.
+    proc = subprocess.run(
+        [sys.executable, "-c",
+         "import sys; sys.path.insert(0, %r); from kernel.cli import main; "
+         "sys.exit(main(['--root', %r, 'doctor']))"
+         % (TEAM_KITS, os.path.join(root, "project_memory"))],
+        capture_output=True, text=True)
+    assert proc.returncode == 1, proc.stdout[-400:] + proc.stderr[-400:]
+    assert "[INSTALLATION] .claude/kit_state.json" in proc.stderr, proc.stderr
+
+
+def test_the_bundle_measurement_says_nothing_when_there_is_nothing_to_compare(tmp_path):
+    """`null` is a third answer and must not decay into `false`. A project that never ran a
+    scaffold has recorded no hash; reporting `bundle_matches_recorded: false` there would accuse an
+    untouched installation of the tampering the field exists to name."""
+    virgin = doctor_of(tmp_path / "virgin", wired=ALL_WIRED)
+    assert virgin["recorded_hook_bundle_hash"] is None
+    assert virgin["bundle_matches_recorded"] is None
+    assert not [f for f in virgin["installation_errors"]
+                if f["item"] == ".claude/kit_state.json"]
+
+
 def test_an_unconfirmed_hook_bundle_is_not_trusted(tmp_path):
     """spec II.8: a changed bundle needs /hooks confirmation and exactly one new session."""
     pending = doctor_of(tmp_path, wired=ALL_WIRED,
@@ -6317,28 +7923,27 @@ def _run_trust_hook(repo, kit="dev-team"):
     return proc
 
 
-def _scaffolded_bundle(repo):
-    """A repo with an installed hook bundle and the kit_state the scaffold would have written."""
-    # The WHOLE kit bundle, not a handful of helpers: `write_kit_state.py` now refuses to record
-    # trust for a bundle that is not the kit's, which is what stops an agent from laundering a
-    # tampered hook by re-running the recorder. A fixture that installs five files would be
-    # testing a bundle no scaffold produces.
-    hooks = os.path.join(str(repo), ".claude", "hooks")
-    src = os.path.join(TEAM_KITS, "dev-team", "hooks")
-    os.makedirs(hooks, exist_ok=True)
-    for name in sorted(os.listdir(src)):
-        if os.path.isfile(os.path.join(src, name)):
-            shutil.copyfile(os.path.join(src, name), os.path.join(hooks, name))
-    shutil.copytree(os.path.join(TEAM_KITS, "kernel"),
-                    os.path.join(str(repo), ".claude", "kernel"),
-                    ignore=shutil.ignore_patterns("__pycache__"))
-    write(os.path.join(str(repo), ".claude", "settings.json"), "{}")
-    proc = subprocess.run(
-        [sys.executable, os.path.join(TEAM_KITS, "write_kit_state.py"),
-         "--repo", str(repo), "--kit", "dev-team", "--kit-version", "2026.01.01-1"],
-        capture_output=True, text=True)
-    assert proc.returncode == 0, proc.stderr
-    return hooks
+def _scaffolded_bundle(repo, kit="dev-team"):
+    """A repo with an installed hook bundle and the kit_state the scaffold would have written.
+
+    The WHOLE kit bundle, not a handful of helpers: `write_kit_state.py` refuses to record trust
+    for a bundle that is not the kit's, which is what stops an agent from laundering a tampered
+    hook by re-running the recorder. A fixture that installed five files would be testing a bundle
+    no scaffold produces.
+
+    OUT OF A RE-STAMPED COPY, which is the difference between this fixture and the one that stood
+    here. Running the real recorder against the real `team-kits/` made every test that needs an
+    installed bundle depend on somebody having run `bump_kit_version.py` — the recorder's FIRST
+    check is that the kit still hashes to its own VERSION, so editing any kit file dropped a dozen
+    tests at once with "does not hash to the `content:` in its own VERSION". That message is true
+    and about something else entirely, and while it was on screen those dozen tests were asserting
+    nothing about what they were written for. `_restamped_staging` stamps its own copy, so the only
+    question left in these tests is the one they ask.
+    """
+    staging = _restamped_staging(pathlib.Path(str(repo)).parent)
+    proc = _install_from(staging, pathlib.Path(str(repo)), kit)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    return os.path.join(str(repo), ".claude", "hooks")
 
 
 def _kit_state(repo):
@@ -6408,10 +8013,25 @@ def test_the_scaffold_installs_the_kernel_the_hooks_import(tmp_path):
 
     RUNS THE SCAFFOLD. The first version of this test grepped the script for `.claude/kernel` —
     and the explanatory COMMENT above the copy block contains that string, so deleting the copy
-    itself left the test green. A delivery promise needs a delivery, not a mention."""
-    staging = tmp_path / "team-kits"
-    shutil.copytree(TEAM_KITS, str(staging), ignore=shutil.ignore_patterns(
-        "__pycache__", "*.pyc", ".pytest_cache", ".ruff_cache"))
+    itself left the test green. A delivery promise needs a delivery, not a mention.
+
+    OUT OF A RE-STAMPED COPY, for the reason `_restamped_staging` gives: the scaffold ends in the
+    trust recorder, whose first check is the kit's own stamp, so a raw copy of `team-kits/` made
+    this test fail with "the scaffold failed and rolled back" whenever nobody had run
+    `bump_kit_version.py` — a message pointing at the kernel copy, produced by an unbumped VERSION.
+    The leftovers below are planted AFTER the re-stamp on purpose and change no stamp: they are
+    exactly what `is_transient` excludes from what a kit CONTAINS, which is the claim this test
+    then holds the scaffold to at the moment source becomes installation."""
+    staging = _restamped_staging(tmp_path)
+    # ...and no tool leftover arrives with it. The installed bundle is hashed with NOTHING excluded,
+    # so `kit_hash` may leave leftovers out of what a kit CONTAINS only because no kit ships any —
+    # this prune is what makes that true at the moment source becomes installation, and without it
+    # a `.pyc` planted in a staging would ride in as an importable module on `sys.path[0]`. The
+    # cache DIRECTORY is the same defect one level up: it was outside `kit_hash` and inside the
+    # copy, so it arrived in `.claude/kernel` and was blessed with no stamp covering it.
+    write(str(staging / "dev-team" / "hooks" / "yaml.pyc"), "planted\n")
+    write(str(staging / "kernel" / "__pycache__" / "state.cpython-313.pyc"), "planted\n")
+    write(str(staging / "kernel" / ".ruff_cache" / "evil.py"), "planted\n")
     repo = tmp_path / "repo"
     os.makedirs(str(repo / "project_memory"), exist_ok=True)
     subprocess.run(["git", "init", "-q", str(repo)], capture_output=True)
@@ -6424,6 +8044,11 @@ def test_the_scaffold_installs_the_kernel_the_hooks_import(tmp_path):
         ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(tmp_path / ".claude" / "team-kits" / "scaffold_team.ps1"), "-Team", "dev-team"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=600)
+    # The scaffold rolls back on any failure, so an unfinished run looks exactly like a missing
+    # kernel copy. Reporting the exit status first keeps the message about what actually went wrong
+    # — a refused trust record reads as "the kernel was never installed" otherwise.
+    assert proc.returncode == 0, ("the scaffold failed and rolled back\n%s\n%s"
+                                  % (proc.stdout[-3000:], proc.stderr[-2000:]))
     installed = repo / ".claude" / "kernel" / "known_holes.json"
     assert installed.is_file(), (
         "the scaffold installed hooks but not the kernel they import\n%s\n%s"
@@ -6434,6 +8059,70 @@ def test_the_scaffold_installs_the_kernel_the_hooks_import(tmp_path):
     sys.path.insert(0, TEAM_KITS)
     from kernel.hashing import hook_bundle_hash
     assert state["hook_bundle_hash"] == hook_bundle_hash(str(repo / ".claude"))
+    assert _bundle_bytecode(str(repo / ".claude")) == [], (
+        "the scaffold carried planted bytecode into the enforcement bundle")
+    assert not (repo / ".claude" / "kernel" / ".ruff_cache").exists(), (
+        "the scaffold carried a planted tool cache into the enforcement bundle")
+
+
+def test_the_scaffold_removes_a_hook_an_earlier_kit_left_behind(tmp_path):
+    """THE OTHER HALF OF THE STRANGER REFUSAL, and without it the refusal would brick every update.
+
+    `write_kit_state.py` now refuses to record trust when the enforcement layer holds importable
+    code the kit did not ship. A hook DROPPED between releases is exactly that — `auto_dashboard.py`
+    disappeared from two kits in the V2 monolith — and the copy loop only ever overwrote, never
+    removed. So every project installed before such a release would have failed its next scaffold,
+    at the recorder, after the files had already been replaced.
+
+    The scaffold is the one actor that knows what it installed, which is why the prune belongs here
+    and not in the recorder: a script whose job is to say whether an installation is trustworthy
+    must not repair the installation to make its own answer come out yes.
+
+    Re-stamped copy, same reason as above — and here the off-topic red was worse than off-topic: an
+    unbumped VERSION rolled the scaffold back before the prune, and this test reported "the leftover
+    hook survived the scaffold", which names a prune that never ran."""
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    os.makedirs(str(repo / "project_memory"), exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(repo)], capture_output=True)
+    write(str(repo / "project_memory" / "project_config.yaml"),
+          "project:\n  name: leftover\n  preset: solo\nproviders: [claude]\n")
+    # the previous kit's hook, still in place — importable, and no longer shipped by anyone
+    write(str(repo / ".claude" / "hooks" / "auto_dashboard.py"), "import os  # an older kit\n")
+    env = dict(os.environ, USERPROFILE=str(tmp_path), HOME=str(tmp_path))
+    os.makedirs(str(tmp_path / ".claude"), exist_ok=True)
+    shutil.copytree(str(staging), str(tmp_path / ".claude" / "team-kits"), dirs_exist_ok=True)
+    proc = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         str(tmp_path / ".claude" / "team-kits" / "scaffold_team.ps1"), "-Team", "dev-team"],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=600)
+    assert not (repo / ".claude" / "hooks" / "auto_dashboard.py").exists(), (
+        "the leftover hook survived the scaffold\n%s\n%s"
+        % (proc.stdout[-3000:], proc.stderr[-2000:]))
+    # ...and the run got all the way to a trust record, which is the thing the leftover blocked
+    state = json.loads((repo / ".claude" / "kit_state.json").read_text(encoding="utf-8"))
+    assert state["state"] == "restart_required", proc.stdout[-3000:]
+    # ...while the hooks the kit DOES ship are still there — a prune that took the bundle with it
+    # would satisfy the first assertion perfectly
+    assert (repo / ".claude" / "hooks" / "gate_dispatch.py").is_file()
+
+
+def test_the_posix_scaffold_prunes_unshipped_hooks_like_its_windows_twin():
+    """The POSIX half cannot be executed on this runner and the Windows half is measured for real
+    above, so the two are compared on the part that runs — COMMENTS STRIPPED, because the paragraph
+    above this loop names `auto_dashboard.py` and `.claude/hooks` and would keep a grep green after
+    the loop itself was deleted."""
+    with open(os.path.join(TEAM_KITS, "scaffold_team.sh"), encoding="utf-8") as handle:
+        code = "\n".join(line for line in handle.read().splitlines()
+                         if not line.lstrip().startswith("#"))
+    # `\n\s*done`, because this loop is INDENTED: anchoring at column 0 made the match run past its
+    # own body to the next unindented `done` in the file, and the span only looked right for as
+    # long as such a loop happened to follow. It stopped following on 2026-07-27.
+    prune = re.search(r"(?s)for f in \"\$REPO\"/\.claude/hooks/\*(.*?)\n\s*done", code)
+    assert prune, "scaffold_team.sh never iterates the INSTALLED hooks directory"
+    body = prune.group(0)
+    assert "$KIT/hooks/" in body, "the prune does not compare against what the kit ships: " + body
+    assert re.search(r"(?m)^\s*rm -rf", body), "the prune removes nothing: " + body
 
 
 @pytest.mark.parametrize("script", ["scaffold_team.ps1", "scaffold_team.sh"])
@@ -6496,17 +8185,23 @@ def test_trust_cannot_be_reset_by_re_running_the_recorder(tmp_path):
 
     Running the real SCAFFOLD is safe by comparison: it re-copies the kit files and so undoes the
     tampering it would otherwise bless. The recorder now inherits that by refusing any bundle that
-    is not the kit's."""
+    is not the kit's.
+
+    THE RECORDER UNDER TEST IS THE ONE THE BUNDLE CAME FROM. It used to be the real `team-kits/`
+    one while the bundle came from a re-stamped copy, and the two disagreeing about the stamp made
+    this test refuse for the wrong reason: with any kit file edited and not bumped it failed on
+    "the kit source has been edited since it was stamped" — an rc 1 that is not the refusal this
+    test is about, reached before the bundle was ever compared. The anti-laundering property then
+    went unmeasured while the suite showed one red about VERSION stamps."""
     repo = tmp_path / "repo"
     hooks = _scaffolded_bundle(repo)
+    recorder_kits = _restamped_staging(tmp_path)
     _run_trust_hook(repo)
     assert _kit_state(repo)["state"] == "active"
     write(os.path.join(hooks, "guard_harness_selfmod.py"), "import sys\nsys.exit(0)\n")
     _run_trust_hook(repo)
     assert _kit_state(repo)["state"] == "hooks_trust_required"
-    proc = subprocess.run(
-        [sys.executable, os.path.join(TEAM_KITS, "write_kit_state.py"),
-         "--repo", str(repo), "--kit", "dev-team"], capture_output=True, text=True)
+    proc = _record_trust(recorder_kits, repo)
     assert proc.returncode == 1, proc.stdout + proc.stderr
     assert "not the 'dev-team' kit's" in proc.stderr
     assert _kit_state(repo)["state"] == "hooks_trust_required", "the reset must not have happened"
@@ -6524,7 +8219,7 @@ def test_trust_cannot_be_reset_by_re_running_the_recorder(tmp_path):
                   ["--kit", str(repo / ".claude")],
                   ["--kit", "../dev-team"],
                   ["--kit", "no-such-kit"]):
-        argv = [sys.executable, os.path.join(TEAM_KITS, "write_kit_state.py"),
+        argv = [sys.executable, str(recorder_kits / "write_kit_state.py"),
                 "--repo", str(repo), "--kit", "dev-team"] + extra
         bypass = subprocess.run(argv, capture_output=True, text=True)
         assert bypass.returncode != 0, (extra, bypass.stdout + bypass.stderr)
@@ -6534,8 +8229,7 @@ def test_trust_cannot_be_reset_by_re_running_the_recorder(tmp_path):
     # it with a perfectly ordinary argument. These two are the routes that needed no flag at all:
     # an empty directory with a legal kit name, and an unstamped mirror of the tampered bundle.
     staging = tmp_path / "staging"
-    shutil.copytree(TEAM_KITS, str(staging), ignore=shutil.ignore_patterns(
-        "__pycache__", "*.pyc", ".pytest_cache", ".ruff_cache"))
+    _copy_kit_tree(TEAM_KITS, staging)
     os.makedirs(str(staging / "x" / "hooks"), exist_ok=True)
     mirror = staging / "mirrored"
     os.makedirs(str(mirror), exist_ok=True)
@@ -6560,7 +8254,7 @@ def test_an_agent_that_can_run_scripts_can_still_forge_a_trust_record(tmp_path):
     That is not a fixable property at this layer. It rests on `state_write_protection.shell`,
     which is itself a declared hole: an agent that cannot run arbitrary scripts cannot do any of
     this, and one that can does not need a trust record to begin with. So `hook_trust` is declared
-    here, `harness doctor` reports it `unverified`, and the report stops claiming a guarantee the
+    here, `python scripts/harness.py doctor` reports it `unverified`, and the report stops claiming a guarantee the
     harness cannot make. INVERT THIS TEST the day shell writes are actually contained."""
     sys.path.insert(0, TEAM_KITS)
     from kernel.hashing import kit_hash
@@ -6575,8 +8269,7 @@ def test_an_agent_that_can_run_scripts_can_still_forge_a_trust_record(tmp_path):
     os.makedirs(str(evil / "dev-team"), exist_ok=True)
     shutil.copyfile(os.path.join(TEAM_KITS, "write_kit_state.py"),
                     str(evil / "write_kit_state.py"))
-    shutil.copytree(os.path.join(TEAM_KITS, "kernel"), str(evil / "kernel"),
-                    ignore=shutil.ignore_patterns("__pycache__"))
+    _copy_kit_tree(os.path.join(TEAM_KITS, "kernel"), evil / "kernel")
     shutil.copytree(hooks, str(evil / "dev-team" / "hooks"))
     (evil / "dev-team" / "VERSION").write_text("version: 9999.99.99-1\ncontent: placeholder\n",
                                                encoding="utf-8")
@@ -6594,22 +8287,175 @@ def test_an_agent_that_can_run_scripts_can_still_forge_a_trust_record(tmp_path):
     assert trusted is True, "…and doctor believes it, which is why hook_trust is a known_hole"
 
 
-def test_a_stranger_in_the_hook_directory_is_named(tmp_path):
-    """`.claude/hooks` is `sys.path[0]` for every gate process — GATE_PREAMBLE puts it there — so
-    a `yaml.py` dropped beside the hooks shadows PyYAML for the kernel in each one. Recording
-    trust rewrites the bundle hash AROUND such a file, so `hook_trust` will not mention it
-    afterwards. Not fatal (the usual cause is an older kit's hook the scaffold never pruned), but
-    it must not pass unremarked."""
+def _record_with_one_stranger(tmp_path, relative, content="X = 1\n"):
+    """Install a bundle from a self-stamped staging, plant one foreign path, re-record trust.
+
+    `relative` is under `.claude`, because the import path is wider than the bundle: `hooks/…` for
+    the directory `GATE_PREAMBLE` puts at `sys.path[0]`, a bare name for `.claude` itself, which
+    `_kernel.import_kernel` puts there while `kernel.state` runs its module-scope `import yaml`.
+    """
+    staging = _restamped_staging(tmp_path)
     repo = tmp_path / "repo"
-    hooks = _scaffolded_bundle(repo)
-    write(os.path.join(hooks, "yaml.py"), "SAFE_LOAD = None\n")
-    proc = subprocess.run(
-        [sys.executable, os.path.join(TEAM_KITS, "write_kit_state.py"),
-         "--repo", str(repo), "--kit", "dev-team"],
-        capture_output=True, text=True)
+    assert _install_from(staging, repo).returncode == 0
+    write(str(repo / ".claude" / relative.replace("/", os.sep)), content)
+    return _record_trust(staging, repo)
+
+
+@pytest.mark.parametrize("relative", [
+    "hooks/yaml.py",              # the plain shadow
+    "hooks/yaml/__init__.py",     # ...as a package, which a flat scan cannot see
+    "hooks/yaml.pyc",             # ...sourceless, which the hash used to skip as well
+    "yaml.py",                    # `.claude` ITSELF, which is on the path and in no subtree
+])
+def test_a_stranger_that_would_import_is_refused(tmp_path, relative):
+    """THE CHEAPEST ATTACK IN THE REPO, until this refused: write one file, run the recorder, and a
+    SessionStart later the bundle is `active` with the intruder hashed INTO it. It cost less than
+    the residual `hook_trust` declares as a `known_hole`, which at least demands a self-stamped
+    staging — and the `.claude/yaml.py` form cost even less than the others, because it produced no
+    warning line at all (the bundle hash does not cover that directory, so it was not even a
+    stranger). Measured before the fix: rc 0 and `state: restart_required` for all four.
+
+    Each of these owns the name `yaml` for every gate process, and `kernel.state` imports it at
+    module scope, so the winner parses the state files every gate decides on."""
+    proc = _record_with_one_stranger(tmp_path, relative)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert relative in proc.stderr.replace("\\", "/"), proc.stderr
+    assert "refusing to record trust" in proc.stderr
+
+
+def test_a_stranger_that_cannot_import_is_named_and_not_refused(tmp_path):
+    """THE BOUNDARY, so that what is tested is the rule and not a spelling. A foreign file the
+    import machinery would never load is the ordinary case — an older kit's data file the scaffold
+    never pruned — and turning that into a hard refusal would make re-scaffolding impossible for a
+    reason that is only untidiness. It is still named, because recording trust rewrites the bundle
+    hash around it and `hook_trust` will not mention it afterwards."""
+    proc = _record_with_one_stranger(tmp_path, "hooks/notes.txt", "read me\n")
     assert proc.returncode == 0, proc.stderr
-    assert "hooks/yaml.py" in proc.stderr, proc.stderr
-    assert "sys.path" in proc.stderr
+    assert "hooks/notes.txt" in proc.stderr.replace("\\", "/"), proc.stderr
+    assert "refusing" not in proc.stderr, proc.stderr
+
+
+def test_importability_is_the_interpreters_own_answer(tmp_path):
+    """A DEFINITION, NOT A LIST OF EXTENSIONS — and this test is what makes the difference bite.
+
+    The order that produced the fix said "`.py`, `.pyc`, package directories", which is an
+    enumeration, and the two halves it gets wrong are both here. An EXTENSION MODULE (`.pyd` on
+    Windows, `.so` on POSIX, whichever `importlib.machinery.EXTENSION_SUFFIXES` names on the host
+    running this) executes native code on import and would have been waved through. A `.pyo` has
+    not been importable since Python 3.5, so refusing an install over one would be a false alarm —
+    it is a stranger, and only that.
+
+    Both cases are derived from the machinery here rather than written down, so this test asks the
+    same question the code does: it cannot agree with a hand-written list by accident."""
+    import importlib.machinery
+    native = _record_with_one_stranger(
+        tmp_path / "native", "hooks/yaml" + importlib.machinery.EXTENSION_SUFFIXES[0], "\x00\n")
+    assert native.returncode == 1, native.stdout + native.stderr
+    assert "refusing to record trust" in native.stderr
+    stale = _record_with_one_stranger(tmp_path / "stale", "hooks/yaml.pyo", "junk\n")
+    assert stale.returncode == 0, stale.stderr
+    assert "hooks/yaml.pyo" in stale.stderr.replace("\\", "/"), stale.stderr
+
+
+def test_a_stranger_that_is_a_link_to_a_package_is_refused(tmp_path):
+    """The shape the measurement names instead of reading, asserted rather than assumed.
+
+    A directory symlink contributes `hooks/yaml/<symlink>` to the stranger list — a name with no
+    file behind it — so the refusal only holds if the importability question is asked of the LINK
+    (`_installed_path` strips the marker, `resolves_to_module` follows it). Get that wrong and the
+    stranger with the widest reach of all is the one waved through: `hooks/yaml -> <elsewhere>`
+    owns the parser of every gate process exactly as `hooks/yaml/` does, and until 2026-07-27 it
+    also left the bundle hash untouched.
+
+    Deliberately a link to a package rather than to a single file: the two answers must come from
+    the same question ("would an import load code from here"), and only the directory case can
+    prove the marker is stripped."""
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    target = tmp_path / "elsewhere"
+    write(str(target / "__init__.py"), "SHADOWED = True\n")
+    try:
+        os.symlink(str(target), str(repo / ".claude" / "hooks" / "yaml"),
+                   target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip("no privilege to create a directory symlink (%s)" % exc)
+    proc = _record_trust(staging, repo)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "refusing to record trust" in proc.stderr, proc.stderr
+    assert "hooks/yaml" in proc.stderr.replace("\\", "/"), proc.stderr
+
+
+@pytest.mark.skipif(os.name != "nt", reason="junctions are a Windows reparse point")
+def test_a_junction_is_measured_by_its_contents_not_by_a_marker(tmp_path):
+    """The fact two docstrings and one `pytest.skip` message now rest on, measured instead of
+    assumed. `mklink /J` needs no privilege, and `os.path.islink` is False for what it creates —
+    so `os.walk` descends and the linked files are hashed under their apparent names. That is why
+    a junction is HARMLESS where a symlink is not (the payload is inside the hash either way) and
+    why it cannot stand in for one in a drift test: both implementations descend, so both agree
+    even while they disagree about symlinks."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import _bundle_files
+    hooks = tmp_path / "hooks"
+    target = tmp_path / "elsewhere"
+    write(str(target / "__init__.py"), "SHADOWED = True\n")
+    os.makedirs(str(hooks), exist_ok=True)
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", str(hooks / "yaml"), str(target)],
+                          capture_output=True)
+    assert made.returncode == 0, made.stdout + made.stderr
+    assert not os.path.islink(str(hooks / "yaml"))
+    assert [rel for rel, _ in _bundle_files(str(hooks), False)] == ["yaml/__init__.py"]
+
+
+def test_the_import_path_scan_of_dot_claude_stops_at_what_would_load(tmp_path):
+    """The `.claude` half must not cry wolf, or the first real scaffold would be unable to record.
+
+    That directory is shared with the provider and the project — role files, skills, the scaffold's
+    own timestamped backups of a previous install, which DO contain `.py` files further down. None
+    of it is importable from `.claude`: `import agents` finds a namespace package with no module in
+    it, and `backups.<timestamp>` is not even a name Python can spell. A package planted directly
+    there is a different matter, and it is the shape the file form would take if only files were
+    checked.
+
+    So both directions in one test: everything a real installation carries passes, and one
+    `yaml/__init__.py` beside it does not."""
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    claude = repo / ".claude"
+    write(str(claude / "agents" / "backend-developer.md"), "---\n")
+    write(str(claude / "skills" / "project-manager" / "SKILL.md"), "# skill\n")
+    write(str(claude / "team_kit_roles.txt"), "backend-developer\n")
+    write(str(claude / "backups" / "20260727-1200" / ".claude" / "hooks" / "gate_x.py"), "# old\n")
+    clean = _record_trust(staging, repo)
+    assert clean.returncode == 0, clean.stdout + clean.stderr
+    assert "refusing" not in clean.stderr, clean.stderr
+
+    write(str(claude / "yaml" / "__init__.py"), "def safe_load(_):\n    return {}\n")
+    planted = _record_trust(staging, repo)
+    assert planted.returncode == 1, planted.stdout + planted.stderr
+    assert "yaml" in planted.stderr
+
+
+def test_a_directory_symlink_into_the_bundle_is_refused_like_a_planted_package(tmp_path):
+    """The link form of the same shadow, and the reason the stranger scan may not stop at the
+    marker it reports. `_bundle_files` names a directory link `hooks/yaml/<symlink>` and refuses to
+    descend — correct for a HASH, which must not follow a link to wherever it points — but an
+    IMPORT does follow it, so the question "would this load" has to be asked of the link's target.
+    `hooks/yaml -> <a package elsewhere>` shadows PyYAML exactly as `hooks/yaml/` does."""
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    target = tmp_path / "elsewhere"
+    write(str(target / "__init__.py"), "def safe_load(_):\n    return {}\n")
+    try:
+        os.symlink(str(target), str(repo / ".claude" / "hooks" / "yaml"),
+                   target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip("no privilege to create a directory symlink (%s)" % exc)
+    proc = _record_trust(staging, repo)
+    assert proc.returncode == 1, proc.stdout + proc.stderr
+    assert "hooks/yaml" in proc.stderr.replace("\\", "/"), proc.stderr
 
 
 def test_the_trust_hook_invents_nothing_without_a_record(tmp_path):
@@ -6639,7 +8485,19 @@ def test_the_trust_hook_never_refuses_a_session(tmp_path):
 
 
 def _adversarial_bundle(root):
-    """A hook directory with everything the two hashes could disagree about."""
+    """A hook directory with everything the two hashes could disagree about.
+
+    A DIRECTORY SYMLINK IS ONE OF THOSE THINGS, and its absence here is how the drift this fixture
+    exists to catch got through a whole release: the canonical hash learned to name a link instead
+    of walking past it, the inline Codex verifier — which is the ENFORCED measurement on that
+    provider — kept the old blind `os.walk`, and the pin test stayed green because no test in the
+    repo ever put a link in a bundle.
+
+    A junction is not a substitute: `os.path.islink` is False for one, so both implementations
+    descend into it and agree even while they disagree about symlinks (measured 2026-07-27). Where
+    real symlinks need a privilege nobody granted, the whole question is unaskable, and the tests
+    say `skipped` rather than passing on a tree that cannot express it.
+    """
     os.makedirs(os.path.join(root, "sub", "deeper"), exist_ok=True)
     os.makedirs(os.path.join(root, "__pycache__"), exist_ok=True)
     write(os.path.join(root, "gate_a.py"), "print(1)\n")
@@ -6649,6 +8507,28 @@ def _adversarial_bundle(root):
     write(os.path.join(root, "sub", "deeper", "z.py"), "Z = 2\n")
     write(os.path.join(root, "__pycache__", "gate_a.cpython-312.pyc"), "junk\n")
     write(os.path.join(root, "gate_a.pyc"), "junk\n")
+    # OUTSIDE the bundle, so what the link contributes can only come from the link itself
+    target = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(root))), "linked_pkg")
+    write(os.path.join(target, "__init__.py"), "SHADOWED = True\n")
+    link = os.path.join(root, "yaml")
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip("no privilege to create a directory symlink (%s); a junction cannot stand in, "
+                    "because os.path.islink() is False for one and both hashes then agree" % exc)
+    return link
+
+
+def _remove_link(path):
+    """Delete a directory symlink on either platform.
+
+    `os.unlink` is the POSIX answer and raises PermissionError on a Windows directory link, where
+    `os.rmdir` is the one that works — and `os.rmdir` is wrong on POSIX (ENOTDIR).
+    """
+    try:
+        os.unlink(path)
+    except OSError:
+        os.rmdir(path)
 
 
 def test_the_bundle_hash_has_exactly_one_definition(tmp_path):
@@ -6661,7 +8541,7 @@ def test_the_bundle_hash_has_exactly_one_definition(tmp_path):
     from kernel.hashing import hook_bundle_hash
     repo = tmp_path / "repo"
     hooks = repo / ".claude" / "hooks"
-    _adversarial_bundle(str(hooks))
+    link = _adversarial_bundle(str(hooks))
     sys.path.insert(0, TEAM_KITS)
     import importlib.util
     spec = importlib.util.spec_from_file_location(
@@ -6669,6 +8549,14 @@ def test_the_bundle_hash_has_exactly_one_definition(tmp_path):
     gpa = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gpa)
     claude = str(repo / ".claude")
+    # ...with one deliberate exception, and it is not a disagreement about the ALGORITHM. The
+    # generator refuses a bundle containing any reparse point outright (`assert_tree_no_reparse`),
+    # because the artifacts it is about to write bind trust to a tree whose hashed and executed
+    # bytes could then diverge. So a legitimate directory link does not yield Codex hooks that
+    # reject an unchanged bundle — it yields no Codex hooks and a readable message.
+    with pytest.raises(SystemExit):
+        gpa.hook_bundle_hash(str(repo))
+    _remove_link(link)
     assert gpa.hook_bundle_hash(str(repo)) == hook_bundle_hash(claude)
     from kernel.report import _hook_bundle_hash
     assert _hook_bundle_hash(str(repo)) == hook_bundle_hash(claude)
@@ -6686,7 +8574,13 @@ def test_the_inline_codex_verifier_agrees_with_the_canonical_hash(tmp_path):
     base64-embeds into every Codex hook command runs with no imports available, because its own
     bytes are what Codex hashes for trust. A copy that cannot be deleted has to be PINNED — if it
     drifts, every Codex hook refuses with "bundle changed" on a bundle that did not change, and
-    the kit is dead on that provider. Run both over a tree built from the disagreements."""
+    the kit is dead on that provider. Run both over a tree built from the disagreements.
+
+    IT DRIFTED, and this test did not see it. When the canonical hash learned to name a directory
+    symlink instead of walking past it, the copy kept the blind `os.walk` for a whole release —
+    green here the entire time, because `_adversarial_bundle` contained no link. It contains one
+    now, and the last third of this test exercises the branch in both directions: agreeing on a
+    tree that HAS a link, and noticing when the link is what changed."""
     import base64
     import importlib.util
     sys.path.insert(0, TEAM_KITS)
@@ -6696,21 +8590,1127 @@ def test_the_inline_codex_verifier_agrees_with_the_canonical_hash(tmp_path):
     gpa = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(gpa)
     claude = tmp_path / "repo" / ".claude"
-    _adversarial_bundle(str(claude / "hooks"))
+    link = _adversarial_bundle(str(claude / "hooks"))
     os.makedirs(str(claude / "kernel"), exist_ok=True)
     write(str(claude / "kernel" / "report.py"), "def validate_state(*a):\n    return [1]\n")
     expected = hook_bundle_hash(str(claude))
     verifier = tmp_path / "verify.py"
     verifier.write_bytes(base64.b64decode(gpa.hook_bundle_verifier_b64()))
-    ok = subprocess.run([sys.executable, str(verifier), str(claude), expected],
-                        capture_output=True, text=True)
+
+    def verify(against):
+        return subprocess.run([sys.executable, "-B", str(verifier), str(claude), against],
+                              capture_output=True, text=True)
+
+    ok = verify(expected)
     assert ok.returncode == 0, ok.stderr
     # ...and it must still NOTICE a change, or agreeing would be worthless. Changed in the KERNEL
     # half — the half a hooks-only hash missed entirely, which is why the scope grew.
     write(str(claude / "kernel" / "report.py"), "def validate_state(*a):\n    return []\n")
-    changed = subprocess.run([sys.executable, str(verifier), str(claude), expected],
-                             capture_output=True, text=True)
+    changed = verify(expected)
     assert changed.returncode == 2, changed.stdout + changed.stderr
+    # THE SYMLINK BRANCH, asserted as a difference the verifier can see rather than as agreement on
+    # a tree where the branch never runs: remove the link and the two must move together.
+    expected = hook_bundle_hash(str(claude))
+    assert verify(expected).returncode == 0
+    _remove_link(link)
+    stale = verify(expected)
+    assert stale.returncode == 2, (
+        "removing a directory symlink changed the canonical hash and the verifier did not "
+        "notice — the copy is walking past links again: " + stale.stdout + stale.stderr)
+    assert verify(hook_bundle_hash(str(claude))).returncode == 0
+
+
+def test_the_inline_verifiers_scope_is_read_from_the_definition(tmp_path):
+    """THE OTHER HALF OF THE COPY, and the half no fixture can pin: WHAT it measures.
+
+    The algorithm above is pinned by running both over a tree full of disagreements, but that pin
+    is only ever as wide as the tree — and `BUNDLE_SUBTREES` decides which directories exist in it
+    at all. A subtree added to the definition and not to the hand-written list inside the verifier
+    would be hashed by `python scripts/harness.py doctor` and ignored by the measurement Codex actually enforces,
+    which is the R5-F2 shape exactly: the enforced side blind to something the canonical side sees,
+    with every existing test green because the fixture predates the new directory.
+
+    So the definition is moved here and the generator must follow it. It can: the copy cannot
+    import while it RUNS, but `hook_bundle_verifier_b64` reads `BUNDLE_SUBTREES` while it WRITES.
+    A verifier that spelled its own scope out fails the first assertion below."""
+    import base64
+    import importlib.util
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import hashing
+    spec = importlib.util.spec_from_file_location(
+        "gpa_probe3", os.path.join(TEAM_KITS, "gen_provider_artifacts.py"))
+    gpa = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gpa)
+    # A subtree that does not exist yet, which is the only way to ask this question: any name the
+    # repo already uses would be covered by the copy's list by accident.
+    added = "policies"
+    assert added not in hashing.BUNDLE_SUBTREES
+    original = hashing.BUNDLE_SUBTREES
+    hashing.BUNDLE_SUBTREES = original + (added,)
+    try:
+        claude = tmp_path / ".claude"
+        for subtree in hashing.BUNDLE_SUBTREES:
+            write(str(claude / subtree / "gate_a.py"), "OWNER = %r\n" % subtree)
+        verifier = tmp_path / "verify.py"
+        verifier.write_bytes(base64.b64decode(gpa.hook_bundle_verifier_b64()))
+
+        def verify(against):
+            return subprocess.run([sys.executable, "-B", str(verifier), str(claude), against],
+                                  capture_output=True, text=True)
+
+        agreed = verify(hashing.hook_bundle_hash(str(claude)))
+        assert agreed.returncode == 0, (
+            "the verifier does not measure %r, which the definition now names — its scope is "
+            "written beside the definition instead of taken from it: %s"
+            % (added, agreed.stdout + agreed.stderr))
+        # ...and the agreement is not two blind spots cancelling out: changing ONLY the new subtree
+        # must be a change the enforced measurement refuses.
+        expected = hashing.hook_bundle_hash(str(claude))
+        write(str(claude / added / "gate_a.py"), "OWNER = 'rewritten'\n")
+        assert verify(expected).returncode == 2
+    finally:
+        hashing.BUNDLE_SUBTREES = original
+
+
+# -- is the thing that is HASHED the thing that RUNS? --------------------------
+
+
+def _restamped_staging(tmp_path):
+    """A private copy of `team-kits/`, re-stamped so every VERSION matches its own contents.
+
+    The recorder's first check is that the kit still hashes to its own VERSION, so running it
+    against the REAL `team-kits/` makes every test that needs an installed bundle fail whenever
+    someone has not yet run `bump_kit_version.py` — an off-topic red that hides whatever the test
+    was about, and hid it for a dozen tests at a time. A copy that stamps itself asks only the
+    question these tests ask; `_scaffolded_bundle` goes through here for the same reason.
+
+    ONE COPY PER tmp_path, REUSED. A test that installs into two repositories wants the same
+    staging both times, and re-copying would either raise or silently discard a staging the test
+    had just modified on purpose. Under its OWN directory name, because a test may need a second,
+    deliberately UNSTAMPED staging beside this one — `test_trust_cannot_be_reset_by_re_running_the_
+    recorder` builds exactly that to prove an unstamped mirror is refused, and sharing the name
+    would have handed it the stamped copy instead.
+    """
+    staging = pathlib.Path(str(tmp_path)) / "restamped-kits"
+    if staging.is_dir():
+        return staging
+    _copy_kit_tree(TEAM_KITS, staging)
+    _restamp(staging)
+    return staging
+
+
+def _copy_kit_tree(source, target):
+    """Copy a kit source tree the way an installer does: everything except the tool leftovers.
+
+    THE RULE COMES FROM `kernel.hashing`, WHERE THERE IS EXACTLY ONE OF IT. `transient_ignore_globs`
+    exists for precisely this shape of copy — `copytree` asks per directory ENTRY rather than per
+    relative path — and the helpers here had written another copy of the idea by hand, already
+    incomplete against the definition it was copying (`.mypy_cache` and `*.pyo` were missing).
+
+    What that costs is not hypothetical, and it is worth stating exactly rather than dramatically. A
+    leftover the copy keeps is installed by `_install_from` into `.claude/kernel`, and there it is a
+    STRANGER by construction: `_shipped_files` drops it from what the kit ships while `_bundle_files`
+    finds it anyway. What the recorder then does depends on the leftover — `foreign_importables`
+    refuses only what would load, so a `.mypy_cache/` holding a `.py` is rc 1 while `.mypy_cache/`
+    holding its usual JSON, or a `planted.pyo`, is a warning line and rc 0 with the file inside the
+    recorded hash. Either way these tests would be measuring an installation nobody meant to build,
+    out of a source tree that this checkout happens not to contain today.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import transient_ignore_globs
+    shutil.copytree(str(source), str(target), dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns(*transient_ignore_globs()))
+
+
+def test_the_staging_these_tests_install_from_carries_no_tool_leftover(tmp_path):
+    """The copy that stands in for an installer has to drop what an installer drops.
+
+    Derived from the definition rather than from the four globs that used to be written here: one
+    leftover per member of `TRANSIENT_DIRS` (at the root AND nested, since a cache directory is
+    found at any depth) and one per `BYTECODE_SUFFIXES`, then `is_transient` is asked what arrived.
+    A hand-written glob list that misses a member of either set is red, which the one it replaced
+    would have been."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import BYTECODE_SUFFIXES, TRANSIENT_DIRS, is_transient
+    source = tmp_path / "source"
+    write(str(source / "kept.py"), "x = 1\n")
+    for name in sorted(TRANSIENT_DIRS):
+        write(str(source / name / "leftover"), "x\n")
+        write(str(source / "nested" / name / "deep" / "leftover"), "x\n")
+    for suffix in BYTECODE_SUFFIXES:
+        write(str(source / ("planted" + suffix)), "x\n")
+    target = tmp_path / "copy"
+    _copy_kit_tree(source, target)
+    arrived = sorted(
+        os.path.relpath(os.path.join(current, name), str(target)).replace(os.sep, "/")
+        for current, _dirs, files in os.walk(str(target)) for name in files)
+    assert [name for name in arrived if is_transient(name)] == [], (
+        "the staging copy carried tool leftovers: %s" % arrived)
+    assert arrived == ["kept.py"], arrived
+
+
+def _restamp(staging):
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import kit_hash
+    for kit in KITS:
+        (staging / kit / "VERSION").write_text(
+            "version: 9999.01.01-1\ncontent: %s\n" % kit_hash(str(staging / kit)),
+            encoding="utf-8")
+
+
+def _install_from(staging, repo, kit="dev-team"):
+    """Install a kit's enforcement bundle out of `staging` and run THAT staging's recorder."""
+    hooks = repo / ".claude" / "hooks"
+    os.makedirs(str(hooks), exist_ok=True)
+    for entry in sorted(os.listdir(str(staging / kit / "hooks"))):
+        source = staging / kit / "hooks" / entry
+        if source.is_file():
+            shutil.copyfile(str(source), str(hooks / entry))
+    _copy_kit_tree(staging / "kernel", repo / ".claude" / "kernel")
+    write(str(repo / ".claude" / "settings.json"), "{}")
+    return _record_trust(staging, repo, kit)
+
+
+def _record_trust(staging, repo, kit="dev-team"):
+    return subprocess.run(
+        [sys.executable, str(staging / "write_kit_state.py"), "--repo", str(repo), "--kit", kit],
+        capture_output=True, text=True)
+
+
+def test_the_kit_stamp_covers_the_kernel_every_kit_installs(tmp_path):
+    """A kernel-only change must invalidate every kit's stamp, and it did not.
+
+    `KIT_SHARED_FILES` named nine files at the team-kits root; the scaffold also installs the whole
+    `kernel/` tree as `.claude/kernel`, and that subtree was in no kit's hash — including
+    `hashing.py`, which DEFINES the hash. Two consequences, and the second is the one that bites
+    daily:
+
+    (a) editing the kernel in a staging needed no re-stamp, so `write_kit_state.py` — whose job is
+        to refuse a source that no longer hashes to its own VERSION — recorded trust for it.
+    (b) a kernel-only release bumped no kit VERSION, so `session_status` announced no update and A
+        SECURITY FIX TO THE ENFORCEMENT KERNEL never reached an installed project unless some
+        unrelated kit file happened to change with it.
+
+    Both are asserted here against a re-stamped copy, so the claim is "this stamp covers that
+    tree", not "somebody ran the bumper".
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import kit_hash, recorded_kit_hash
+    staging = _restamped_staging(tmp_path)
+    for kit in KITS:
+        assert kit_hash(str(staging / kit)) == recorded_kit_hash(str(staging / kit)), kit
+
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+
+    write(str(staging / "kernel" / "report.py"), "def validate_state(*a):\n    return []\n")
+    # (b) — every kit is now unstamped, so the next release bumps every kit's VERSION and every
+    # installed project is told an update exists.
+    stale = [kit for kit in KITS
+             if kit_hash(str(staging / kit)) != recorded_kit_hash(str(staging / kit))]
+    assert sorted(stale) == sorted(KITS), (
+        "a kernel-only change left these kits' stamps valid: %s"
+        % sorted(set(KITS) - set(stale)))
+    # (a) — and the recorder refuses to bless an installation from that staging
+    refused = _install_from(staging, tmp_path / "repo2")
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "VERSION" in refused.stderr, refused.stderr
+
+
+def test_bytecode_planted_in_the_bundle_is_hashed_and_named(tmp_path):
+    """`.claude/hooks` is `sys.path[0]` of every gate process, so a bare `yaml.pyc` there is an
+    importable SOURCELESS MODULE that owns the YAML parser of every gate — and a forged
+    `__pycache__/state.cpython-313.pyc` replaces the executed code of a module whose source IS
+    hashed. Both were invisible: excluded from the bundle hash and from the stranger scan, so the
+    file could be written with no recorder run, no stamp, no change in `python scripts/harness.py doctor`.
+
+    The exclusion's stated reason was true (running the hooks used to create `__pycache__` there),
+    but the answer to that was to stop writing bytecode into the bundle, not to take the execution
+    paths out of the measurement."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import hook_bundle_hash, strangers_in_the_bundle
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    claude = str(repo / ".claude")
+    before = hook_bundle_hash(claude)
+
+    for planted in (os.path.join(claude, "hooks", "yaml.pyc"),
+                    os.path.join(claude, "kernel", "__pycache__", "state.cpython-313.pyc")):
+        os.makedirs(os.path.dirname(planted), exist_ok=True)
+        with open(planted, "wb") as handle:
+            handle.write(b"\x00\x0f\x0d\x0a" + b"forged bytecode")
+        assert hook_bundle_hash(claude) != before, "%s is outside the bundle hash" % planted
+        named = strangers_in_the_bundle(claude, str(staging / "dev-team" / "hooks"),
+                                        str(staging / "kernel"))
+        assert any(os.path.basename(planted) in name for name in named), (planted, named)
+        os.remove(planted)
+
+    # ...and the two consumers agree, in the order a project meets them. A session that starts
+    # after the file appeared withdraws trust — the whole point of hashing it.
+    assert _run_trust_hook(repo).returncode == 0
+    assert _kit_state(repo)["state"] == "active"
+    write(os.path.join(claude, "hooks", "yaml.pyc"), "not really bytecode\n")
+    proc = _run_trust_hook(repo)
+    assert proc.returncode == 0, proc.stderr
+    assert _kit_state(repo)["state"] == "hooks_trust_required"
+    # ...and the recorder REFUSES instead of quietly hashing around it: a bare `.pyc` in
+    # `sys.path[0]` is a sourceless module, which is the importable half of the stranger rule
+    # (`test_a_stranger_that_would_import_is_refused`). What this line adds to that one is the
+    # order a project meets the two answers in — the hash withdrew trust first, and the recorder
+    # will not hand it back.
+    recorded = _record_trust(staging, repo)
+    assert recorded.returncode == 1, recorded.stdout + recorded.stderr
+    assert "hooks/yaml.pyc" in recorded.stderr.replace("\\", "/"), recorded.stderr
+
+
+def test_bytecode_left_in_a_staging_is_not_demanded_of_the_installation(tmp_path):
+    """The other side of the same definition, and the reason it is two enumerations rather than
+    one rule. What is MEASURED is everything installed; what is SHIPPED is what the scaffold
+    copies, and it prunes bytecode. A staging that has accumulated a `.pyc` — someone ran python
+    in it — therefore describes an installation without one, and the recorder must not read that
+    difference as "these installed files are not the kit's" and refuse a clean install."""
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    write(str(staging / "dev-team" / "hooks" / "yaml.pyc"), "someone imported something\n")
+    write(str(staging / "kernel" / "__pycache__" / "state.cpython-313.pyc"), "likewise\n")
+    again = _record_trust(staging, repo)
+    assert again.returncode == 0, again.stdout + again.stderr
+    assert "not the 'dev-team' kit's" not in again.stderr, again.stderr
+
+
+def _bundle_bytecode(claude_dir):
+    """Every bytecode artifact under the installed enforcement subtrees, as posix paths."""
+    found = []
+    for subtree in ("hooks", "kernel"):
+        for current, _dirs, files in os.walk(os.path.join(claude_dir, subtree)):
+            for name in files:
+                if name.endswith((".pyc", ".pyo")):
+                    found.append(os.path.relpath(os.path.join(current, name),
+                                                 claude_dir).replace(os.sep, "/"))
+    return sorted(found)
+
+
+def _hooks_started_by_their_own_registration(kit):
+    """Bundle scripts an interpreter is pointed AT, as opposed to ones `_gate.py` launches.
+
+    THE DISTINCTION IS WHOSE REFUSAL APPLIES. `_gate.py` sets `sys.dont_write_bytecode` before it
+    imports anything, so every gate it launches inherits the refusal however the launcher itself was
+    started. A hook that is its own command inherits nothing: the `-B` in the registration is the
+    only thing standing between it and a `__pycache__` inside the hashed bundle, and `-B` is
+    precisely what a hand-started run does not have.
+
+    Derived rather than listed: every registration surface (`_all_registrations`) read with the
+    KERNEL's own definition of what a command runs (`_invoked_scripts`), whose first entry is the
+    script the interpreter is handed. A hook that gains a direct registration is covered the day it
+    does."""
+    from kernel.report import _invoked_scripts
+    started = set()
+    for _source, _event, _matcher, command in _all_registrations(kit):
+        names = _invoked_scripts(command)
+        if names and names[0] != GATE_LAUNCHER:
+            started.add(names[0])
+    return started
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_running_the_enforcement_layer_writes_no_bytecode_into_it(tmp_path, kit):
+    """The precondition for hashing bytecode at all: a bundle that changes by being RUN cannot be
+    trusted against, which is precisely why `.pyc` used to be excluded from the measurement.
+
+    THE SUBJECT IS EVERY ENTRY POINT, not the launcher plus one hook. `_gate.py` covers what it
+    launches, and its own comment says why the flag is there at all — a gate is also started by
+    hand, by the suite or by a person diagnosing one. The hooks a kit registers as commands of their
+    OWN are started the same way and inherit nothing from the launcher, so before
+    2026-07-27 a hand-started `session_status.py` left `_compat.pyc` and `_root.pyc` in the hashed
+    bundle and the next SessionStart reported `hooks_trust_required` — a diagnosis that destroys
+    what it diagnoses, which is the same defect this file's CLI half was fixed for.
+
+    THE CHILD ENVIRONMENT IS CLEANED FIRST: `conftest` sets `PYTHONPYCACHEPREFIX` for the whole
+    suite, which would redirect the bytecode out of the bundle all by itself and make this pass over
+    a kit that does nothing. The per-hook CONTROL is the other half of that, and it is the mutation
+    rather than a stand-in for it: the same file with its `sys.dont_write_bytecode` line deleted,
+    started identically, has to cache. So each assertion above is the hook's doing and not the
+    runner's, and no hook can pass by exiting before it imports anything."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import prune_transient
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo, kit).returncode == 0
+    claude = str(repo / ".claude")
+    hooks = os.path.join(claude, "hooks")
+    env = dict(os.environ)
+    env.pop("PYTHONPYCACHEPREFIX", None)
+    env.pop("PYTHONDONTWRITEBYTECODE", None)
+    payload = json.dumps({"cwd": str(repo), "tool_name": "Agent", "tool_input": {}})
+
+    def started(script):
+        return subprocess.run([sys.executable, script], input=payload, capture_output=True,
+                              text=True, cwd=str(repo), env=env)
+
+    # the launcher, WITHOUT -B on the command line: its own `sys.dont_write_bytecode` has to hold
+    launched = subprocess.run(
+        [sys.executable, os.path.join(hooks, "_gate.py"), "gate_dispatch.py"],
+        input=payload, capture_output=True, text=True, cwd=str(repo), env=env)
+    assert launched.returncode in (0, 2), launched.stdout + launched.stderr
+    assert _bundle_bytecode(claude) == [], "the launcher changed the bundle by being run"
+
+    directly = sorted(_hooks_started_by_their_own_registration(kit))
+    assert directly, "no directly registered hook found — the derivation no longer sees the kit"
+    for name in directly:
+        script = os.path.join(hooks, name)
+        assert os.path.isfile(script), "%s registers %s, which it does not ship" % (kit, name)
+        run = started(script)
+        assert "Traceback" not in run.stderr, run.stderr
+        assert _bundle_bytecode(claude) == [], (
+            "%s changed the hashed bundle by being run: %s" % (name, _bundle_bytecode(claude)))
+
+        # the control: this hook, minus the one line that makes the assertion above true
+        with open(script, encoding="utf-8") as handle:
+            source = handle.read()
+        refusal = "sys.dont_write_bytecode = True\n"
+        assert refusal in source, "%s states no refusal, so the control below tests nothing" % name
+        control_path = os.path.join(hooks, "_control_" + name)
+        write(control_path, source.replace(refusal, "", 1))
+        control = started(control_path)
+        assert "Traceback" not in control.stderr, control.stderr
+        assert _bundle_bytecode(claude) != [], (
+            "%s cached nothing even with its refusal removed, so it never got as far as importing "
+            "the bundle and the assertion above proves nothing about it" % name)
+        os.remove(control_path)
+        prune_transient(hooks, os.path.join(claude, "kernel"))
+
+
+def _env_disables_bytecode(value):
+    """The INTERPRETER's reading of `PYTHONDONTWRITEBYTECODE`, which is not "the name occurs".
+
+    CPython ignores the variable when it is unset or empty and when its value parses as the integer
+    0; anything else — text, a negative number — counts as 1 (`config_read_env_vars` via
+    `_Py_get_env_flag`). Measured 2026-07-27: `PYTHONDONTWRITEBYTECODE=0 python x.py` writes
+    `__pycache__` next to the import, so a check that only looked for the NAME would have called
+    that command incapable of caching.
+    """
+    if not value:
+        return False
+    try:
+        return int(value) != 0
+    except ValueError:
+        return True
+
+
+def _bytecode_is_disabled(command):
+    """Can the process this command starts write bytecode? None when it starts no interpreter.
+
+    Reads the INVOCATION rather than the string: the interpreter word, then the option cluster up
+    to the first token that is not an option. `-B` may travel inside a cluster (`-BE`), and an
+    exported `PYTHONDONTWRITEBYTECODE` answers the same question — what has to be true is the
+    property, not one spelling of it. The environment prefix is read with the interpreter's own
+    rule (`_env_disables_bytecode`), in both shells' spellings of an assignment: POSIX
+    `NAME=value cmd` and PowerShell `$env:NAME='value';`.
+    """
+    tokens = command.split()
+    for index, token in enumerate(tokens):
+        # backticks too: the same invocation appears inside prose and inside remedy strings, where
+        # it is quoted as `python -B -m kernel.cli …`, and a checker that only understood the
+        # settings.json spelling would silently answer None ("no interpreter here") to all of them
+        base = os.path.basename(token.strip("\"'`").replace("\\", "/")).lower()
+        if not re.fullmatch(r"(?:python[0-9.]*|py|pypy[0-9.]*)(?:\.exe)?", base):
+            continue
+        assigned = re.search(r"PYTHONDONTWRITEBYTECODE\s*=\s*[\"']?([^\s\"';]*)",
+                             " ".join(tokens[:index]))
+        if assigned and _env_disables_bytecode(assigned.group(1)):
+            return True
+        for option in tokens[index + 1:]:
+            if not option.startswith("-"):
+                return False
+            if "B" in option[1:].split("=")[0]:
+                return True
+        return False
+    return None
+
+
+def test_the_bytecode_rule_reads_the_value_and_not_the_name():
+    """The control on the checker every rule below is measured with.
+
+    `PYTHONDONTWRITEBYTECODE=0` is the shape that matters: the variable is present, and the
+    interpreter still caches (measured — see `_env_disables_bytecode`). A checker that answered
+    "disabled" to it would wave through exactly the registration it exists to catch, and every
+    green assertion in this section would mean nothing.
+    """
+    assert _bytecode_is_disabled("python -B .claude/hooks/x.py") is True
+    assert _bytecode_is_disabled("python -BE .claude/hooks/x.py") is True
+    assert _bytecode_is_disabled("PYTHONDONTWRITEBYTECODE=1 python .claude/hooks/x.py") is True
+    assert _bytecode_is_disabled("$env:PYTHONDONTWRITEBYTECODE='1'; python .claude/hooks/x.py") \
+        is True
+    assert _bytecode_is_disabled("python .claude/hooks/x.py") is False
+    assert _bytecode_is_disabled("PYTHONDONTWRITEBYTECODE=0 python .claude/hooks/x.py") is False
+    assert _bytecode_is_disabled("PYTHONDONTWRITEBYTECODE= python .claude/hooks/x.py") is False
+    assert _bytecode_is_disabled("node index.js") is None
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_no_registered_hook_may_write_bytecode(kit):
+    """The rule, over the surface that decides it. Every registration starts a Python process whose
+    `sys.path[0]` is the hashed bundle, so every one of them must be unable to cache anything into
+    it — otherwise the bundle hash reports `hooks_trust_required` for no reason but a session
+    having happened.
+
+    Both registration surfaces (see `_all_registrations`): the agents' own frontmatter carries
+    blocking hooks too, and a rule enforced over settings.json alone would leave thirty commands
+    out."""
+    for source, event, _matcher, command in _all_registrations(kit):
+        if not re.search(r"\.claude/hooks/[A-Za-z0-9_]+\.py", command.replace("\\", "/")):
+            continue
+        assert _bytecode_is_disabled(command) is True, (
+            "%s/%s (%s) may write bytecode into the hashed bundle: %s"
+            % (kit, source, event, command))
+
+
+def _options_handed_to(command, interpreter, payload):
+    """The interpreter options in the invocation that runs `payload` — everything between the two.
+
+    Located from the PAYLOAD backwards, because the two processes in a Codex hook command are told
+    apart by what they are asked to run and by nothing else. The last occurrence of the payload is
+    the operative one: both commands mention the hook script earlier, in the root walk that looks
+    for it.
+    """
+    prefix = command[:command.rindex(payload)]
+    return prefix[prefix.rindex(interpreter) + len(interpreter):]
+
+
+def test_the_generated_codex_commands_also_refuse_to_cache(tmp_path):
+    """Codex commands are REBUILT from the script path, so the `-B` in settings.json does not
+    travel — it has to be stated again in the generator. Two interpreter invocations per hook, and
+    the verifier's is the one that must not be forgotten: it runs FIRST on every tool call, so a
+    `.pyc` written by it would change the bundle between one verification and the next.
+
+    PER INVOCATION, not per command. Counting the flags said `2` to a command with two `-B` on the
+    verifier and none on the hook — the same number, and a bundle that changes under its own
+    gate."""
+    gpa = load_kit_module("gpa_bytecode", os.path.join(TEAM_KITS, "gen_provider_artifacts.py"))
+    posix, windows = gpa.codex_hook_commands(
+        'python -B "${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py" gate_dispatch.py',
+        bundle_hash="deadbeef")
+    for command, interpreter, verifier, hook in (
+            (posix, '"$py"', "import base64", ".claude/hooks/_gate.py"),
+            (windows, "$py.Source", "(Join-Path $root '.claude')", ".claude/hooks/_gate.py")):
+        for role, payload in (("verifier", verifier), ("hook", hook)):
+            options = _options_handed_to(command, interpreter, payload)
+            assert re.search(r"(?<![\w-])-[A-Za-z]*B", options), (
+                "the %s invocation may cache into the bundle it is verifying: %r" % (role, options))
+
+
+def _bundle_module_names():
+    """Every top-level module name an installed bundle would answer an `import` with.
+
+    Derived from what the kits ship, not listed: the hook basenames (`.claude/hooks` is
+    `sys.path[0]` for anything that adds it) plus the kernel package.
+    """
+    names = {"kernel"}
+    for kit in KITS:
+        for entry in os.listdir(os.path.join(TEAM_KITS, kit, "hooks")):
+            if entry.endswith(".py"):
+                names.add(entry[:-3])
+    return names
+
+
+def _kit_tree_module_names():
+    """Every top-level module name `team-kits/` itself would answer an `import` with.
+
+    The same derivation one layer out: whatever a `sys.path` entry pointing at that directory
+    exposes — the packages and the scripts sitting at its root. Read off the tree, so a new root
+    module is covered on the day it lands.
+    """
+    names = set()
+    for entry in sorted(os.listdir(TEAM_KITS)):
+        if entry.endswith(".py"):
+            names.add(entry[:-3])
+        elif os.path.isfile(os.path.join(TEAM_KITS, entry, "__init__.py")):
+            names.add(entry)
+    return names
+
+
+def _toplevel_imports(tree):
+    """The top-level module names an already-parsed module imports, absolute imports only.
+
+    A relative import cannot reach a `sys.path` entry, so it cannot be the thing that drags a
+    foreign tree into the process.
+    """
+    imported = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            imported.add(node.module.split(".")[0])
+    return imported
+
+
+def _disables_bytecode_itself(tree):
+    """Does this already-parsed module assign `sys.dont_write_bytecode = True` at module scope?"""
+    return any(
+        isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Attribute) and target.attr == "dont_write_bytecode"
+                for target in node.targets)
+        and isinstance(node.value, ast.Constant) and node.value.value is True
+        for node in tree.body)
+
+
+def test_a_shipped_script_that_imports_the_bundle_disables_bytecode_itself():
+    """Whoever imports the enforcement bundle from OUTSIDE it must refuse to cache it.
+
+    The bundle's own files are covered by how they are started, and that is three claims rather
+    than the two it used to be: the kits register every hook as `python -B`, `_gate.py` sets the
+    flag for anything it launches, and the CLI is documented and remedied as `python -B -m
+    kernel.cli` (`test_every_written_down_kernel_cli_invocation_refuses_to_cache`). The third was
+    missing, which made this sentence false for `kernel/cli.py` — the one bundle file a person is
+    told to run by hand. Nothing constrains how a
+    project's `scripts/*.py` is started — a person runs the dashboard generator, CI runs
+    `kit_checks` — and those DO import `_kernel` out of `.claude/hooks`, which drops
+    `__pycache__` into the two directories `hook_bundle_hash` measures. The symptom is not
+    subtle and would be blamed on anything but its cause: `hooks_trust_required` at the next
+    session because somebody generated a dashboard.
+
+    The subject is derived twice (`_bundle_module_names`, and the imports parsed out of each file)
+    so that a new script or a renamed hook is covered on the day it ships."""
+    bundle = _bundle_module_names()
+    candidates = sorted(globmodule.glob(os.path.join(TEAM_KITS, "*.py")) + globmodule.glob(
+        os.path.join(TEAM_KITS, "*", "templates", "repo", "scripts", "*.py")))
+    assert candidates, "no shipped scripts found — the glob no longer matches the tree"
+    checked = []
+    for path in candidates:
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), path)
+        imported = _toplevel_imports(tree)
+        if not imported & bundle:
+            continue
+        checked.append(os.path.relpath(path, TEAM_KITS).replace(os.sep, "/"))
+        assert _disables_bytecode_itself(tree), (
+            "%s imports the enforcement bundle (%s) without disabling bytecode writing, so running "
+            "it caches .pyc into the hashed bundle" % (checked[-1], sorted(imported & bundle)))
+    assert len(checked) >= 3, "the import detection found almost nothing: %s" % checked
+
+
+def _imports_out_of_the_kit_tree(tree):
+    """Does this module import something only `team-kits/` provides?
+
+    THE PROPERTY IS THE IMPORT, NOT THE `sys.path` LINE, and the first version got that wrong in a
+    way its own repo demonstrated. It looked for a `sys.path.insert(...)` whose CALL ARGUMENTS
+    literally contained the string `"team-kits"` — so the ordinary spelling, a module-level
+    `TEAM_KITS = os.path.join(ROOT, "team-kits")` followed by `sys.path.insert(0, TEAM_KITS)`, was
+    invisible. Measured: a tool written that way cached `team-kits/kernel/__pycache__` while the
+    test stayed green, which is the promise "a new tool is covered on the day it imports the tree"
+    failing on the likeliest case.
+
+    Asked the same way as for the shipped scripts (`_toplevel_imports` against
+    `_kit_tree_module_names`): a name that only that directory answers means the tree ends up on
+    `sys.path` somehow, and HOW is not this check's business.
+    """
+    return bool(_toplevel_imports(tree) & _kit_tree_module_names())
+
+
+def test_a_repo_tool_that_imports_the_kit_tree_leaves_no_bytecode_in_it(tmp_path):
+    """The same rule one layer out, over the tools the REPO runs rather than the ones it ships.
+
+    `team-kits/` is the source side of the two claims the bundle hash rests on: the installer
+    stages it, the scaffold copies `team-kits/kernel` into `.claude/kernel`, and `kit_hash` may
+    leave bytecode out of what a kit contains only because a kit ships none. A tool that imports
+    the kernel to compute that very hash and leaves a `hashing.cpython-*.pyc` behind is the one
+    thing that would make the exclusion untrue at its source — measured before the fix: a bare
+    `python tools/bump_kit_version.py` left `team-kits/kernel/__pycache__` on disk.
+
+    THE SUBJECT IS DERIVED, and both halves of the derivation matter. `_imports_out_of_the_kit_tree`
+    picks the tools that reach into the tree at all; the suite is then excluded by pytest's own
+    rule for what it collects (`conftest.py`, `test_*.py`), because the suite is shielded
+    differently — `conftest.PYCACHE_DIR` redirects its cache — and `test_hooks.py`'s
+    `test_the_suite_leaves_no_bytecode_in_the_kit_tree` is the assertion for that half. A new tool
+    is covered on the day it imports the tree.
+
+    RUN, NOT READ: the two tools state the property in different ways — `bump_kit_version.py`
+    with `sys.dont_write_bytecode`, `validate.py` with that plus an in-memory `compile()` — so
+    what has to hold is the outcome, not a spelling. Against a COPY, since the stamper writes
+    VERSION files. The control at the end is what keeps the assertion from being vacuous: the same
+    environment DOES cache the same import when nobody refuses it.
+    """
+    tools = sorted(path for path in globmodule.glob(os.path.join(ROOT, "tools", "*.py"))
+                   if not os.path.basename(path).startswith("test_")
+                   and os.path.basename(path) != "conftest.py")
+    assert tools, "no repo-side tools found — the glob no longer matches the tree"
+    subjects = []
+    for path in tools:
+        with open(path, encoding="utf-8") as handle:
+            if _imports_out_of_the_kit_tree(ast.parse(handle.read(), path)):
+                subjects.append(os.path.basename(path))
+    assert len(subjects) >= 2, "the import detection found almost nothing: %s" % subjects
+
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import transient_ignore_globs
+    ignore = shutil.ignore_patterns(*transient_ignore_globs())
+    copy = tmp_path / "repo"
+    shutil.copytree(TEAM_KITS, str(copy / "team-kits"), ignore=ignore)
+    shutil.copytree(os.path.join(ROOT, "tools"), str(copy / "tools"), ignore=ignore)
+    env = dict(os.environ)
+    env.pop("PYTHONPYCACHEPREFIX", None)
+    env.pop("PYTHONDONTWRITEBYTECODE", None)
+
+    def caches():
+        return sorted(
+            os.path.relpath(os.path.join(current, name), str(copy)).replace(os.sep, "/")
+            for current, dirs, _files in os.walk(str(copy / "team-kits"))
+            for name in dirs if name == "__pycache__")
+
+    for name in subjects:
+        proc = subprocess.run([sys.executable, str(copy / "tools" / name)],
+                              capture_output=True, text=True, env=env, cwd=str(copy))
+        # A tool that died on its way in would leave the tree clean for the wrong reason.
+        assert proc.returncode == 0, "%s: %s%s" % (name, proc.stdout, proc.stderr)
+        assert caches() == [], "%s cached bytecode into the kit tree: %s" % (name, caches())
+
+    # THE CONTROL IS A TOOL WRITTEN THE ORDINARY WAY, and it carries the second claim as well as the
+    # first. As a control it shows the same environment DOES cache the same import when nobody
+    # refuses it, so the green assertions above are the tools' doing. As a check on the DETECTOR it
+    # is the spelling the previous version could not see — a module-level `TEAM_KITS` constant fed
+    # to `sys.path.insert`, which is how this repo's own tools are written — and while that was
+    # missed, a tool of exactly this shape cached into the kit tree with the test green.
+    decoy = copy / "tools" / "newtool.py"
+    write(str(decoy),
+          "import os, sys\n"
+          "TEAM_KITS = os.path.join(\n"
+          "    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'team-kits')\n"
+          "sys.path.insert(0, TEAM_KITS)\n"
+          "import kernel.hashing  # noqa: F401\n")
+    with open(str(decoy), encoding="utf-8") as handle:
+        assert _imports_out_of_the_kit_tree(ast.parse(handle.read(), str(decoy))), (
+            "a tool that imports the kit tree the ordinary way is invisible to the detection "
+            "above, so 'a new tool is covered on the day it imports the tree' is not true")
+    control = subprocess.run([sys.executable, str(decoy)],
+                             capture_output=True, text=True, env=env, cwd=str(copy))
+    assert control.returncode == 0, control.stderr
+    assert caches() != [], (
+        "the control cached nothing either, so the assertions above prove nothing about the tools")
+
+
+SHIPPED_TEXT_SUFFIXES = (".py", ".md", ".json", ".sh", ".ps1", ".yaml", ".yml", ".toml")
+
+
+def _shipped_text_files():
+    """Every text file the harness ships — the surface a person or an agent reads a command off."""
+    for base in (TEAM_KITS, os.path.join(ROOT, "user")):
+        for current, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in ("__pycache__", ".ruff_cache")]
+            for name in sorted(files):
+                if name.endswith(SHIPPED_TEXT_SUFFIXES):
+                    yield os.path.join(current, name)
+
+
+def _starts_the_kernel_cli(command):
+    """Would the interpreter in this line RUN `kernel/cli.py`?
+
+    The first non-option argument decides, the way the interpreter decides: `-m kernel.cli` names
+    the module, and a path argument names it when it ends in `kernel/cli.py`. Anything else — a
+    line that merely mentions the module, a line that runs the installed entry point — is a
+    different command and a different question.
+    """
+    tokens = [token.strip("\"'`,;") for token in command.split()]
+    for index, token in enumerate(tokens):
+        base = os.path.basename(token.replace("\\", "/")).lower()
+        if not re.fullmatch(r"(?:python[0-9.]*|py|pypy[0-9.]*)(?:\.exe)?", base):
+            continue
+        rest = tokens[index + 1:]
+        while rest and rest[0].startswith("-") and rest[0] != "-m":
+            rest.pop(0)
+        if rest[:1] == ["-m"]:
+            return rest[1:2] == ["kernel.cli"]
+        return bool(rest) and rest[0].replace("\\", "/").lower().endswith("kernel/cli.py")
+    return False
+
+
+def test_every_written_down_kernel_cli_invocation_refuses_to_cache():
+    """`python -m kernel.cli` is the entry point every fail-closed remedy names, and `-m` imports
+    the whole package — into `.claude/kernel`, which `hook_bundle_hash` measures with nothing
+    excluded. Without `-B` the diagnosis command destroys the trust it is diagnosing.
+
+    THE SUBJECT IS EVERY PLACE THE COMMAND IS WRITTEN DOWN, not one of them. It appears in the
+    CLI's own docstring and twice each in the global constitutions the entry gate follows before a
+    kit is installed — and a line an agent copies out of a constitution is as executed as a line in
+    settings.json. The line is only judged when it actually starts an interpreter
+    (`_bytecode_is_disabled` answers None otherwise), so prose that merely mentions the module is
+    not the subject.
+
+    The three kits' `gate_write_scope` remedy used to be in here and is not any more: it named the
+    module at a role who cannot import it (the kernel installs as `.claude/kernel`), so the remedy
+    was rewritten to name the installed entry point instead of an invocation that fails.
+
+    WHAT MAKES A LINE THE SUBJECT is that the interpreter would START this module — `_starts_the_
+    kernel_cli`, which asks what the first non-option argument is. Selecting on "the line contains
+    `kernel.cli`" was one word wider than the question and it went red on a comment that names the
+    module while quoting the SHIM's command line; the shim is not this invocation and carries
+    `sys.dont_write_bytecode` in its own first statements, which
+    `test_the_evidence_the_merge_gate_demands_has_an_installed_producer` measures by running it and
+    then looking in the hashed bundle."""
+    offenders, invocations = [], []
+    for path in _shipped_text_files():
+        with open(path, encoding="utf-8", errors="ignore") as handle:
+            for number, line in enumerate(handle, 1):
+                if not _starts_the_kernel_cli(line) or _bytecode_is_disabled(line) is None:
+                    continue
+                where = "%s:%d %s" % (
+                    os.path.relpath(path, ROOT).replace(os.sep, "/"), number, line.strip())
+                invocations.append(where)
+                if _bytecode_is_disabled(line) is False:
+                    offenders.append(where)
+    assert not offenders, (
+        "these written-down kernel CLI invocations cache bytecode into the hashed bundle:\n"
+        + "\n".join(offenders))
+    # ...and the reason there is nothing to report is not that nothing was found. Five today: the
+    # CLI's own docstring and two lines each in the two global constitutions.
+    assert len(invocations) >= 5, "the scan found almost no invocations: %s" % invocations
+
+
+def _documented_cli_invocations():
+    """The interpreter invocations `kernel/cli.py` tells a reader to use, off its own docstring.
+
+    The DOCUMENTATION is the subject, parsed as a docstring rather than grepped, because what makes
+    this command dangerous is that people run what the module says to run.
+    """
+    with open(os.path.join(TEAM_KITS, "kernel", "cli.py"), encoding="utf-8") as handle:
+        doc = ast.get_docstring(ast.parse(handle.read())) or ""
+    found = re.findall(r"`([^`]*\bpython\b[^`]*-m kernel\.cli[^`]*)`", doc)
+    assert found, "kernel/cli.py documents no interpreter invocation any more"
+    return found
+
+
+def test_the_documented_cli_invocation_leaves_the_bundle_alone(tmp_path):
+    """RUNS WHAT THE DOCSTRING SAYS TO RUN, against a real installation.
+
+    Measured before the fix, and it is worse than a stale hash: `python -m kernel.cli doctor`
+    cached eleven `.pyc` into `.claude/kernel` and then reported, IN THE SAME RUN, that the bundle
+    "changed after trust was recorded, and every gate now runs code the project never confirmed" —
+    followed by `hooks_trust_required` at the next session. The one command every fail-closed
+    remedy points at broke the installation and blamed the user. On Codex the inline verifier runs
+    before each tool call, so the same keystroke blocks the session outright.
+
+    Taking the command FROM the docstring is what keeps the two honest: a `-B` dropped from the
+    documentation is a `-B` dropped from what this test runs, and the run then caches."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import hook_bundle_hash
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    claude = str(repo / ".claude")
+    before = hook_bundle_hash(claude)
+    assert _run_trust_hook(repo).returncode == 0
+    assert _kit_state(repo)["state"] == "active"
+
+    env = dict(os.environ, PYTHONPATH=claude)
+    env.pop("PYTHONPYCACHEPREFIX", None)
+    env.pop("PYTHONDONTWRITEBYTECODE", None)
+    os.makedirs(str(repo / "project_memory"), exist_ok=True)
+    for documented in _documented_cli_invocations():
+        argv = [sys.executable if token.strip("`") == "python" else token.strip("`")
+                for token in documented.split()]
+        argv = [token for token in argv if not token.startswith("<")] + ["doctor"]
+        proc = subprocess.run(argv, capture_output=True, text=True, cwd=str(repo), env=env)
+        assert "changed after trust was recorded" not in (proc.stdout + proc.stderr), (
+            "`%s` reported the bundle as tampered with in the same run that changed it:\n%s"
+            % (documented, proc.stdout + proc.stderr))
+        assert _bundle_bytecode(claude) == [], (
+            "`%s` cached bytecode into the hashed bundle: %s"
+            % (documented, _bundle_bytecode(claude)))
+    assert hook_bundle_hash(claude) == before
+    # ...and the consumer that would have withdrawn trust agrees, one session later.
+    assert _run_trust_hook(repo).returncode == 0
+    assert _kit_state(repo)["state"] == "active", (
+        "a diagnosis run dropped the project to %s" % _kit_state(repo)["state"])
+
+
+def test_a_tool_cache_in_the_source_kernel_never_reaches_an_installation(tmp_path):
+    """The same hole as the kernel one, one directory deeper, and it survived that fix.
+
+    `kit_hash` skipped `.ruff_cache`/`.mypy_cache`/`.pytest_cache` while both scaffolds copied the
+    kernel with a plain recursive copy and pruned only bytecode. So a
+    `team-kits/kernel/.ruff_cache/evil.py` was installed into `.claude/kernel`, counted as SHIPPED
+    (hence no stranger), was blessed into the recorded bundle hash — and left every kit stamp
+    byte-identical, so nothing had to be regenerated for it. Not importable today, which is why it
+    is this test and not an exploit; the docstring of `kit_hash` said the opposite of it, which is
+    why it is a defect either way.
+
+    THE RESOLUTION IS THE PRUNE, NOT THE HASH. A cache directory is a leftover wherever it sits, so
+    hashing it into a kit stamp would make every developer who ran ruff owe a bump; what had to
+    change is that it never arrives in an installation, and that whatever DOES arrive is a stranger.
+    Prune and shipped set therefore read one predicate (`is_transient`) and cannot disagree again.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import (_shipped_files, prune_transient, strangers_in_the_bundle)
+    staging = _restamped_staging(tmp_path)
+    write(str(staging / "kernel" / ".ruff_cache" / "evil.py"), "raise SystemExit(0)\n")
+    assert not any(relative.startswith(".ruff_cache/")
+                   for relative, _ in _shipped_files(str(staging / "kernel"), False)), (
+        "the shipped set still demands a tool cache of the installation, so an install without one "
+        "reads as modified and an install WITH one is blessed")
+
+    installed = tmp_path / "bundle"
+    shutil.copytree(str(staging / "kernel"), str(installed / "kernel"))
+    write(str(installed / "hooks" / "_gate.py"), "pass\n")
+    write(str(installed / "hooks" / "__pycache__" / "_gate.cpython-313.pyc"), "cached\n")
+    prune_transient(str(installed / "hooks"), str(installed / "kernel"))
+    assert not (installed / "kernel" / ".ruff_cache").exists(), (
+        "the prune left a tool cache inside the enforcement bundle")
+    assert not (installed / "hooks" / "__pycache__").exists()
+    assert (installed / "kernel" / "hashing.py").is_file(), "the prune ate the bundle"
+
+    # ...and one that appears afterwards is named rather than blessed
+    write(str(installed / "kernel" / ".ruff_cache" / "evil.py"), "raise SystemExit(0)\n")
+    named = strangers_in_the_bundle(str(installed), str(installed / "hooks"),
+                                    str(staging / "kernel"))
+    assert any("evil.py" in entry for entry in named), named
+
+
+def test_both_scaffolds_prune_the_installed_bundle_through_the_kernel(tmp_path):
+    """One prune, two callers — the property the shell twins could not have.
+
+    The Windows half is measured for real in `test_the_scaffold_installs_the_kernel_the_hooks_import`
+    and the POSIX half cannot run on this runner, so what is checked here is that they invoke the
+    SAME implementation over the SAME two directories: a `kernel.hashing.prune_transient` call
+    naming `.claude/hooks` and `.claude/kernel`. That is worth more than reading two prune loops,
+    because it is what stops one platform from installing an importable `yaml.pyc` the other
+    prunes. COMMENTS STRIPPED, so the paragraph above each call cannot satisfy the check."""
+    for name in ("scaffold_team.sh", "scaffold_team.ps1"):
+        with open(os.path.join(TEAM_KITS, name), encoding="utf-8") as handle:
+            code = "\n".join(line for line in handle.read().splitlines()
+                             if not line.lstrip().startswith("#"))
+        # a shell continuation is one command, not two lines
+        code = code.replace("\\\n", " ").replace("`\n", " ")
+        call = [line for line in code.splitlines() if "prune_transient" in line]
+        assert call, "%s no longer prunes the installed bundle through the kernel" % name
+        joined = " ".join(call)
+        assert ".claude/hooks" in joined.replace("\\", "/"), (name, joined)
+        assert ".claude/kernel" in joined.replace("\\", "/"), (name, joined)
+        # The interpreter is a shell variable the scaffold discovered, so what is read is the
+        # option cluster between it and the `-c` payload: a prune that cached the kernel it is
+        # cleaning would undo itself between its own last line and the recorder two steps later.
+        assert re.search(r"(?<![\w-])-[A-Za-z]*B(?![\w-])", joined[:joined.index("-c")]), (
+            "%s prunes bytecode with an interpreter that writes some: %s" % (name, joined))
+
+
+def test_no_shipped_script_knows_about_only_some_tool_caches():
+    """A place that knows tool caches exist must know about all of them.
+
+    The bundle's four spellings of this idea are now one (`is_transient`), but the scaffolds still
+    filter their `templates/repo` copy with a shell pattern of their own — a different subject, and
+    one no python can reach from inside a `find`/`Get-ChildItem` expression. What can be enforced is
+    the property that made the four dangerous: they DISAGREED, and the two that were short looked
+    exactly as authoritative as the two that were complete. So any shipped script naming one cache
+    directory must name every one `TRANSIENT_DIRS` holds; adding a fifth kind then fails loudly
+    where it is incomplete instead of silently letting one through."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import TRANSIENT_DIRS
+    caches = set(TRANSIENT_DIRS)
+    subjects = []
+    for path in sorted(globmodule.glob(os.path.join(TEAM_KITS, "*.py"))
+                       + globmodule.glob(os.path.join(TEAM_KITS, "*.sh"))
+                       + globmodule.glob(os.path.join(TEAM_KITS, "*.ps1"))
+                       + globmodule.glob(os.path.join(TEAM_KITS, "kernel", "*.py"))
+                       + [os.path.join(ROOT, "install.sh"), os.path.join(ROOT, "install.ps1")]):
+        with open(path, encoding="utf-8") as handle:
+            code = "\n".join(line for line in handle.read().splitlines()
+                             if not line.lstrip().startswith("#"))
+        named = {cache for cache in caches if cache in code}
+        if not named:
+            continue
+        subjects.append(os.path.relpath(path, ROOT).replace(os.sep, "/"))
+        assert named == caches, (
+            "%s knows about %s but not %s — one incomplete copy of this list is how a "
+            "`.ruff_cache` reached an installed enforcement bundle"
+            % (subjects[-1], sorted(named), sorted(caches - named)))
+    assert len(subjects) >= 2, "the scan found almost nothing: %s" % subjects
+
+
+def _staging_copy_program(installer):
+    """The python program `install.*` hands an interpreter to stage `team-kits/`.
+
+    READ OUT OF THE INSTALLER, because what is under test is the copy the installer performs and
+    not a restatement of it beside the installer. Both scripts spell it as `-c "<program>"` on one
+    line, and both are comment-stripped first so a `-c` quoted in prose cannot be mistaken for the
+    invocation.
+    """
+    with open(installer, encoding="utf-8") as handle:
+        code = "\n".join(line for line in handle.read().splitlines()
+                         if not line.lstrip().startswith("#"))
+    found = re.findall(r'-c\s+"([^"]*copytree[^"]*)"', code)
+    assert len(found) == 1, "%s: expected exactly one staging copy, found %d" % (installer,
+                                                                                len(found))
+    return found[0]
+
+
+@pytest.mark.parametrize("installer", ("install.sh", "install.ps1"))
+def test_the_installer_stages_no_tool_leftover(tmp_path, installer):
+    """`~/.claude/team-kits` is the tree every scaffold copies an installation out of, so a leftover
+    that reaches the staging reaches `.claude/kernel` next — the route by which a
+    `team-kits/kernel/.ruff_cache/evil.py` was once installed, counted as shipped, and blessed into
+    the recorded bundle hash.
+
+    The installers now derive the rule from the tree they are staging
+    (`kernel.hashing.transient_ignore_globs`) instead of carrying a list, and nothing executed that
+    derivation: the installer tests all run with `--target codex`, which stages no kits at all.
+
+    THE SUBJECT IS EVERY KIND OF LEFTOVER, derived from `TRANSIENT_DIRS`/`BYTECODE_SUFFIXES` rather
+    than named here, so a fifth kind is covered on the day it is added. What is NOT measured is the
+    shell around the invocation — that the installer reaches this line, and with these arguments;
+    the program text is extracted from the script and run by this interpreter."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import TRANSIENT_DIRS, BYTECODE_SUFFIXES
+    program = _staging_copy_program(os.path.join(ROOT, installer))
+
+    # a real kernel, because the program imports the rule out of the tree it is copying
+    source = tmp_path / "team-kits"
+    shutil.copytree(os.path.join(TEAM_KITS, "kernel"), str(source / "kernel"),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    write(str(source / "dev-team" / "hooks" / "gate_x.py"), "print(1)\n")
+    leftovers = []
+    for cache in sorted(TRANSIENT_DIRS):
+        for relative in ("dev-team/hooks/%s/left.py" % cache, "kernel/%s/deep/left.py" % cache):
+            leftovers.append(relative)
+            write(str(source / relative.replace("/", os.sep)), "print(2)\n")
+    for suffix in BYTECODE_SUFFIXES:
+        leftovers.append("dev-team/hooks/gate_x" + suffix)
+        write(str(source / "dev-team" / "hooks" / ("gate_x" + suffix)), "junk\n")
+
+    stage = tmp_path / "stage"
+    run = subprocess.run([sys.executable, "-B", "-c", program, str(source), str(stage)],
+                         capture_output=True, text=True)
+    assert run.returncode == 0, run.stdout + run.stderr
+    staged = set()
+    for current, _dirs, files in os.walk(str(stage)):
+        for name in files:
+            staged.add(os.path.relpath(os.path.join(current, name),
+                                       str(stage)).replace(os.sep, "/"))
+    assert "dev-team/hooks/gate_x.py" in staged, "the staging copied nothing at all"
+    assert sorted(set(leftovers) & staged) == [], "tool leftovers reached the staging"
+
+
+def test_the_project_memory_initializer_filters_directories_and_not_names(tmp_path):
+    """One rule, two spellings, and only the meaning matters. The POSIX initializer excludes a path
+    COMPONENT (`-path '*/__pycache__/*'`); the Windows one matched a regex against the whole path,
+    so the two disagreed about everything that merely CONTAINS a cache name — a template called
+    `notes__pycache__.yaml`, or any checkout living under a `.mypy_cache` directory. A template that
+    is silently not installed produces no message anywhere; it surfaces weeks later as a file the PM
+    cannot find.
+
+    The completeness check beside this one (`test_no_shipped_script_knows_about_only_some_tool_
+    caches`) sees both scripts and says nothing about meaning, which is how the divergence survived.
+    RUN, NOT READ — but only the half this platform can execute; the other's semantics rest on its
+    twin being run in CI."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import TRANSIENT_DIRS
+    home = tmp_path / "home"
+    template = home / ".claude" / "team-kits" / "demo-team" / "templates" / "project_memory"
+    expected = {"a.yaml"}
+    write(str(template / "a.yaml"), "x: 1\n")
+    for cache in sorted(TRANSIENT_DIRS):
+        write(str(template / cache / "left.yaml"), "leftover: true\n")   # under it: must not travel
+        decoy = "notes%s.yaml" % cache                                   # named after it: must
+        write(str(template / decoy), "decoy: true\n")
+        expected.add(decoy)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    if os.name == "nt":
+        if not shutil.which("powershell"):
+            pytest.skip("no powershell to run the Windows initializer with")
+        command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                   os.path.join(TEAM_KITS, "init_project_memory.ps1"), "-Team", "demo-team"]
+        env = dict(os.environ, USERPROFILE=str(home))
+    else:
+        if not shutil.which("bash"):
+            pytest.skip("no bash to run the POSIX initializer with")
+        command = ["bash", os.path.join(TEAM_KITS, "init_project_memory.sh"), "demo-team"]
+        env = dict(os.environ, HOME=str(home))
+    run = subprocess.run(command, cwd=str(repo), capture_output=True, text=True, env=env,
+                         timeout=120)
+    assert run.returncode == 0, run.stdout + run.stderr
+    installed = set()
+    for current, _dirs, files in os.walk(str(repo / "project_memory")):
+        for name in files:
+            installed.add(os.path.relpath(os.path.join(current, name),
+                                          str(repo / "project_memory")).replace(os.sep, "/"))
+    assert installed == expected
+
+
+def test_a_directory_link_in_a_hashed_source_tree_makes_the_stamp_stale(tmp_path):
+    """One directory, one answer — the property this module exists to hold, asked of `kit_hash`.
+
+    `hook_bundle_hash` names a directory symlink instead of walking past it and carries that in its
+    docstring as load-bearing; `kit_hash` kept the blind `os.walk` through the release that brought
+    the kernel INTO the kit stamp. Measured before the fix: `team-kits/kernel/evil -> <elsewhere>`
+    left all three stamps valid and contributed nothing, while the installed copy of the very same
+    link was reported as a stranger by the very same module.
+
+    Not an exploit — the recorder refuses further down — but `kit_hash` promises "everything a
+    scaffold run reads or installs", and a tree that now points somewhere else is a different
+    subject. BOTH HALVES of the walk are planted, because a shared tree is hashed into every kit and
+    a kit's own tree into exactly one."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import kit_hash, recorded_kit_hash
+    for planted, expected in ((os.path.join("kernel", "evil"), sorted(KITS)),
+                              (os.path.join("dev-team", "skills", "evil"), ["dev-team"])):
+        staging = _restamped_staging(tmp_path / planted.replace(os.sep, "_"))
+        for kit in KITS:
+            assert kit_hash(str(staging / kit)) == recorded_kit_hash(str(staging / kit)), kit
+        target = tmp_path / (planted.replace(os.sep, "_") + "_target")
+        write(str(target / "payload.py"), "SHADOWED = True\n")
+        try:
+            os.symlink(str(target), str(staging / planted), target_is_directory=True)
+        except (OSError, NotImplementedError) as exc:
+            pytest.skip("no privilege to create a directory symlink (%s); a junction cannot stand "
+                        "in, os.path.islink() is False for one and the walk then descends" % exc)
+        stale = sorted(kit for kit in KITS
+                       if kit_hash(str(staging / kit)) != recorded_kit_hash(str(staging / kit)))
+        assert stale == expected, (
+            "a directory link at %s left these stamps valid: %s"
+            % (planted, sorted(set(expected) - set(stale))))
+
+
+def test_the_kit_stamp_derives_the_shared_half_instead_of_listing_it(tmp_path):
+    """The answer to "a list missed `kernel/`" may not be a second list.
+
+    `KIT_SHARED_FILES` named nine root files and missed the tree every gate imports; replacing it
+    with `KIT_SHARED_FILES + KIT_SHARED_TREES` would leave the tenth root entry exactly as cheap to
+    miss, and nothing in the repo compared either list against the directory. So the rule is now
+    derived: everything at the `team-kits/` root that is not a kit (`is_kit_dir`) and not a tool
+    leftover (`is_transient`) is shared input, hashed into every kit.
+
+    Both shapes are planted, because the two used to be two enumerations."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import kit_hash, recorded_kit_hash
+    for planted in ("a_new_root_script.py", os.path.join("a_new_root_tree", "payload.py")):
+        staging = _restamped_staging(tmp_path / planted.replace(os.sep, "_"))
+        for kit in KITS:
+            assert kit_hash(str(staging / kit)) == recorded_kit_hash(str(staging / kit)), kit
+        write(str(staging / planted), "print('shipped with every kit')\n")
+        stale = [kit for kit in KITS
+                 if kit_hash(str(staging / kit)) != recorded_kit_hash(str(staging / kit))]
+        assert sorted(stale) == sorted(KITS), (
+            "%s at the team-kits root left these kits' stamps valid: %s"
+            % (planted, sorted(set(KITS) - set(stale))))
+
+
+def test_the_kit_hash_separates_a_name_from_its_content(tmp_path):
+    """Two different trees may not produce one byte stream — the property `hook_bundle_hash` states
+    in its own docstring and `kit_hash` did not implement.
+
+    A root file `ab` holding `c` and a root file `a` holding `bc` are different installations that
+    concatenate to the same bytes, and the `@shared/<tree>/…` namespace only widened the set of
+    cuts that collide. Delimiting is one NUL either side of the name."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import kit_hash
+    hashes = []
+    for name, content in (("ab", "c"), ("a", "bc")):
+        staging = tmp_path / ("cut_" + name)
+        _copy_kit_tree(TEAM_KITS, staging)
+        write(str(staging / name), content)
+        hashes.append(kit_hash(str(staging / "dev-team")))
+    assert hashes[0] != hashes[1], (
+        "two different shared halves hash the same — name and content are concatenated raw")
 
 
 # -- step 9: nothing ships inert ----------------------------------------------
@@ -6744,7 +9744,7 @@ def registered_hooks(kit):
 @pytest.mark.parametrize("kit", KITS)
 def test_every_v2_gate_is_actually_wired(kit):
     """A gate that ships but is not REGISTERED enforces nothing, and the whole of steps 2-7 was
-    inert until this wiring existed. `harness doctor` reads the same file for the same reason —
+    inert until this wiring existed. `python scripts/harness.py doctor` reads the same file for the same reason —
     "the file exists" is the kind of evidence that made the ledger gate's first design wrong."""
     wired = registered_hooks(kit)
     missing = [name for name in V2_GATES if name not in wired]
@@ -6815,24 +9815,31 @@ def test_no_shipped_hook_reads_stdin_raw(kit):
     assert offenders == [], "%s: unbounded stdin reads at %s" % (kit, offenders)
 
 
-def test_an_unreadable_proc_registry_refuses_the_spawn(tmp_path):
+def test_an_unreadable_procedure_is_not_an_approved_one(tmp_path):
     """"We cannot tell" and "yes" are the same outcome only if you are willing to ship the
-    difference. The old code exited 0 on a corrupt registry and delegated to `guard_yaml_valid` —
-    but that guard fires when the file is WRITTEN, not when a spawn is judged, so a registry
-    corrupted by any other route simply switched this gate off. The question it exists to answer
-    ("is this PROC approved?") is precisely the one an unreadable registry cannot."""
+    difference. The V1 gate exited 0 on a corrupt registry and delegated to `guard_yaml_valid` —
+    but that guard fires when the file is WRITTEN, not when a spawn is judged, so a store corrupted
+    by any other route simply switched this gate off. Per-item files move the question rather than
+    answering it: a `procedures/active/PROC-nnnn.yaml` that does not parse is a procedure whose
+    approval cannot be read, and a work order naming it is refused for exactly that reason.
+
+    Two refusals are measured here because they are different sentences: the whole store being
+    unreadable leaves the project with NO approved procedure, and one unreadable file beside a good
+    one leaves that one procedure unusable while the other still works.
+    """
     pm = tmp_path / "project_memory"
-    os.makedirs(str(pm), exist_ok=True)
-    write(str(pm / "process_definitions.yaml"), "processes: {oops\n  - broken: [yaml\n")
+    procedures = os.path.join(str(pm), "procedures", "active")
+    os.makedirs(procedures, exist_ok=True)
+    write(os.path.join(procedures, "PROC-0001.yaml"), "id: PROC-0001\n  status: [broken\n")
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
-               "tool_input": {"subagent_type": "bookkeeper", "prompt": "do the thing"}}
+               "tool_input": {"subagent_type": "bookkeeper", "prompt": "execute PROC-0001"}}
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=TEAM_KITS)
     result = subprocess.run(
         [sys.executable, os.path.join(OFFICE_HOOKS, "gate_proc_approved.py")],
         input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
     assert result.returncode == 2
-    assert "cannot be parsed" in result.stderr
-    assert "git restore" in result.stderr, "a fail-closed message must carry its remedy"
+    assert "no approved procedure" in result.stderr
+    assert "request-approval scope" in result.stderr, "a fail-closed message carries its remedy"
 
 
 @pytest.mark.parametrize("matcher,expected", [
@@ -6877,3 +9884,536 @@ def test_doctor_survives_the_input_it_exists_to_diagnose(tmp_path, settings):
     result = report.doctor(ProjectState(str(root / "project_memory")))
     assert result["enforcement"] == "audited"
     assert set(result["capabilities"].values()) == {"unverified"}
+
+
+# -- round-5 fixes that no test could see fail (round-6 finding 6) -------------
+#
+# Round 6 mutated six changes from round 5 and four of them left the suite green: the code was
+# right and nothing depended on it. Re-measured against this tree on 2026-07-27, after the lockstep
+# had landed, the picture is better and still not good: the symlink yield, the enumeration
+# `_hash_subtrees` delegates and `NotebookEdit` in the write gate DO go red now, but each only
+# through a test written for something else — the Codex pin, the stranger scan, a hand-typed tool
+# list — while the recorder's rc 2 was covered by nothing at all (full suite, 1353 passed with it
+# mutated to 0). A property asserted only as somebody else's side effect moves the day that other
+# test is rewritten, so what follows states each of them where it is defined. Every one was
+# verified by putting the old behaviour back and watching the named test fail.
+
+
+def _measured_bundle(claude, kit_source):
+    """A minimal installed bundle plus the kit source it is compared against.
+
+    Small on purpose: the shipped/measured pair is a statement about NAMES, and a fixture built
+    from the real kit would drown one name disagreement in two hundred agreeing ones.
+    """
+    write(os.path.join(claude, "hooks", "gate_a.py"), "A = 1\n")
+    write(os.path.join(claude, "kernel", "state.py"), "S = 1\n")
+    write(os.path.join(kit_source, "hooks", "gate_a.py"), "A = 1\n")
+    write(os.path.join(kit_source, "kernel", "state.py"), "S = 1\n")
+
+
+def test_a_directory_link_in_the_bundle_is_named_by_the_hash_itself(tmp_path):
+    """The headline fix of round 5, which for a whole release no test in the repo could see fail:
+    nothing planted a link in a bundle until the Codex pin's fixture grew one.
+
+    `os.walk` does not follow a directory symlink, so before the fix one was invisible to the
+    hash - while Python imports through it perfectly well: `.claude/hooks/yaml -> <elsewhere>`
+    owns the YAML parser of every gate process with the bundle hash unchanged and `hook_trust`
+    still `verified`. The fix has two halves and both were uncovered: `_bundle_files` yields the
+    link, and `_hash_subtrees` takes its enumeration from `_bundle_files` instead of walking on its
+    own (while it walked itself, the scan saw the link and the hash did not - one directory, two
+    answers). Each half alone makes the first assertion below false.
+
+    NAMED, NOT FOLLOWED is the other half of the definition, and it is asserted as such: what the
+    link points at may not enter the hash, or the measurement would depend on a tree outside the
+    bundle and could be changed from there.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import hook_bundle_hash, strangers_in_the_bundle
+    claude = str(tmp_path / "repo" / ".claude")
+    kit_source = str(tmp_path / "kit")
+    _measured_bundle(claude, kit_source)
+    before = hook_bundle_hash(claude)
+
+    target = str(tmp_path / "outside")
+    write(os.path.join(target, "__init__.py"), "SHADOWED = True\n")
+    link = os.path.join(claude, "hooks", "yaml")
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip("no privilege to create a directory symlink (%s); a junction cannot stand in, "
+                    "because os.path.islink() is False for one and the walk descends into it" % exc)
+    assert hook_bundle_hash(claude) != before, (
+        "a directory symlink planted in .claude/hooks left the bundle hash untouched - the hash is "
+        "walking past links again, either in _bundle_files or in a walk of its own")
+    linked = hook_bundle_hash(claude)
+
+    # what it POINTS AT is not in the hash: adding a file behind the link must change nothing
+    write(os.path.join(target, "parser.py"), "def load(s):\n    return {}\n")
+    assert hook_bundle_hash(claude) == linked, (
+        "the hash followed the directory link - its value now depends on a tree outside the bundle")
+    # ...but the NAME is, so the same link under a different name is a different bundle
+    os.rename(link, os.path.join(claude, "hooks", "json"))
+    assert hook_bundle_hash(claude) != linked
+    # and the scan that reports intruders agrees about what to call it
+    strangers = strangers_in_the_bundle(claude, os.path.join(kit_source, "hooks"),
+                                        os.path.join(kit_source, "kernel"))
+    assert "hooks/json/<symlink>" in strangers, strangers
+
+
+def test_a_link_to_a_file_is_one_file_to_both_halves_of_the_measurement(tmp_path):
+    """One entry, one name - the flat branch and the walk branch used to disagree about a FILE link.
+
+    `_bundle_files(flat=True)` enumerates what a scaffold copies out of `<kit>/hooks`; the walk
+    enumerates what is installed. The flat branch asked bare `os.path.islink` and gave a link to a
+    FILE the stand-in a DIRECTORY link gets, while the walk - which takes the answer from
+    `os.walk`, i.e. from `os.path.isdir` - read it as the file it is. So a kit shipping
+    `hooks/gate_b.py -> <somewhere>` had its installed copy reported as MODIFIED (the source
+    contributed `gate_b.py/<symlink>`, which nothing installed can match) and as a STRANGER (the
+    installed `gate_b.py` was in no shipped name) at the same time, on an installation that was
+    byte-for-byte what the kit ships.
+    """
+    claude = str(tmp_path / "repo" / ".claude")
+    kit_source = str(tmp_path / "kit")
+    _measured_bundle(claude, kit_source)
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import modified_bundle_files, strangers_in_the_bundle
+    kit_hooks = os.path.join(kit_source, "hooks")
+    kernel_dir = os.path.join(kit_source, "kernel")
+
+    real = str(tmp_path / "elsewhere" / "gate_b.py")
+    write(real, "B = 2\n")
+    try:
+        os.symlink(real, os.path.join(kit_hooks, "gate_b.py"))
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip("no privilege to create a file symlink (%s)" % exc)
+    # what the scaffold's copy produces from that source: a plain file with the target's bytes
+    write(os.path.join(claude, "hooks", "gate_b.py"), "B = 2\n")
+
+    assert modified_bundle_files(kit_hooks, kernel_dir, claude) == [], (
+        "an installation that is byte-for-byte the kit's is reported as modified")
+    assert strangers_in_the_bundle(claude, kit_hooks, kernel_dir) == [], (
+        "a file the kit ships is reported as a file the kit did not ship")
+    # ...and the comparison is still a comparison: the linked source decides what "unmodified" means
+    write(os.path.join(claude, "hooks", "gate_b.py"), "B = 99\n")
+    assert modified_bundle_files(kit_hooks, kernel_dir, claude) == ["hooks/gate_b.py"]
+
+
+def test_the_link_branches_are_measured_on_a_machine_without_symlink_privilege(tmp_path,
+                                                                               monkeypatch):
+    """The same two properties as the two tests above, with the OS privilege taken out of it.
+
+    Both of them create a real symlink and `skip` when the machine refuses — so on a Windows box
+    without Developer Mode, the very property whose UNCOVEREDNESS was round-6 finding 6 goes
+    unmeasured again, quietly, in a suite that reports 12 skips and looks fine.
+
+    WHAT IS SIMULATED IS THE PREDICATE, NOT THE MEASUREMENT. `_is_directory_link` is the single
+    condition both branches of `_bundle_files` ask, and it is `os.path.isdir(p) and
+    os.path.islink(p)`; patching `os.path.islink` to say True about one real directory and one real
+    file therefore drives exactly the branches a genuine link drives, through the real
+    `_bundle_files`, the real `_hash_subtrees` and the real stranger scan. `os.walk` classifies its
+    entries with `scandir`, not with `os.path.islink`, so the walk still sees what is on disk.
+
+    The two tests above remain the stronger evidence where the machine allows them: they also prove
+    that the OS reports a real link the way this test assumes. This one guarantees the branches are
+    never simply unmeasured.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import hashing
+    claude = str(tmp_path / "repo" / ".claude")
+    kit_source = str(tmp_path / "kit")
+    _measured_bundle(claude, kit_source)
+    kit_hooks = os.path.join(kit_source, "hooks")
+    kernel_dir = os.path.join(kit_source, "kernel")
+    before = hashing.hook_bundle_hash(claude)
+
+    declared_links = {os.path.join(claude, "hooks", "yaml"),
+                      os.path.join(kit_hooks, "gate_b.py")}
+    real_islink = os.path.islink
+    monkeypatch.setattr(os.path, "islink",
+                        lambda path: os.fspath(path) in declared_links or real_islink(path))
+
+    # (1) a DIRECTORY that the predicate calls a link: named in the hash, not descended into
+    os.makedirs(os.path.join(claude, "hooks", "yaml"))
+    write(os.path.join(claude, "hooks", "yaml", "__init__.py"), "SHADOWED = True\n")
+    linked = hashing.hook_bundle_hash(claude)
+    assert linked != before, (
+        "a directory link in .claude/hooks left the bundle hash untouched - either _bundle_files "
+        "stopped yielding it or _hash_subtrees is walking on its own again")
+    write(os.path.join(claude, "hooks", "yaml", "parser.py"), "def load(s):\n    return {}\n")
+    assert hashing.hook_bundle_hash(claude) == linked, (
+        "the measurement descended into the link - its value now depends on a tree outside the "
+        "bundle")
+    stand_in = "hooks/yaml/" + hashing.SYMLINK_MARKER
+    assert stand_in in hashing.strangers_in_the_bundle(claude, kit_hooks, kernel_dir)
+
+    # (2) a FILE that the predicate calls a link is a FILE to both branches: the flat branch reads
+    #     the kit source, the walk reads the installation, and they must produce one name for it
+    write(os.path.join(kit_hooks, "gate_b.py"), "B = 2\n")
+    write(os.path.join(claude, "hooks", "gate_b.py"), "B = 2\n")
+    assert hashing.modified_bundle_files(kit_hooks, kernel_dir, claude) == [], (
+        "an installation that is byte-for-byte the kit's is reported as modified")
+    assert [name for name in hashing.strangers_in_the_bundle(claude, kit_hooks, kernel_dir)
+            if name != stand_in] == [], (
+        "a file the kit ships is reported as a file the kit did not ship")
+    write(os.path.join(claude, "hooks", "gate_b.py"), "B = 99\n")
+    assert hashing.modified_bundle_files(kit_hooks, kernel_dir, claude) == ["hooks/gate_b.py"]
+
+
+def test_recording_no_bundle_at_all_is_a_failure_not_a_success(tmp_path):
+    """rc 2, not rc 0 - the difference between "recorded" and "there was nothing to record".
+
+    Both scaffolds branch on `rc != 0`, so returning 0 here made "I recorded nothing" read to them
+    as success, and the shape that reaches this branch is a plausible typo rather than an attack:
+    `--repo <project>/.claude` points the recorder one level too deep, finds no bundle there, and
+    used to leave a scaffold reporting success over a project with no trust record at all -
+    `hook_trust` then has nothing to compare against for the life of that project.
+
+    Asserted as 2 specifically, because the two failures a caller must be able to tell apart are
+    both non-zero: 1 is "I looked and refuse", 2 is "there was nothing to look at".
+    """
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    good = _kit_state(repo)["hook_bundle_hash"]
+
+    one_level_too_deep = _record_trust(staging, repo / ".claude")
+    assert one_level_too_deep.returncode == 2, (
+        "the recorder reported %d for a --repo with no enforcement bundle under it; both scaffolds "
+        "read anything but 0 as failure, so 0 here is a scaffold reporting success over a project "
+        "it never recorded: %s"
+        % (one_level_too_deep.returncode,
+           one_level_too_deep.stdout + one_level_too_deep.stderr))
+    assert not os.path.exists(str(repo / ".claude" / ".claude" / "kit_state.json"))
+    # and the record the project really has is untouched by the failed run
+    assert _kit_state(repo)["hook_bundle_hash"] == good
+
+
+def _recorder_module(staging, name):
+    """`write_kit_state` from a staging, as a module — so `main()` can be called with an argv."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, str(staging / "write_kit_state.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_bundle_that_cannot_be_measured_is_refused_not_reported_as_absent(tmp_path, monkeypatch,
+                                                                            capsys):
+    """`hook_bundle_hash` answers None twice over, and the recorder used to read both as "empty".
+
+    A subtree that does not exist and a file inside one that will not open produce the same None,
+    and the single message that stood here — "no enforcement bundle under X — nothing recorded" —
+    sent the reader of the second case looking for a missing installation instead of at the file
+    that would not open. The exit code said the same thing: 2 is "there was nothing to look at",
+    which is precisely what an unreadable bundle is not.
+
+    Both halves are measured here. The always-running one takes the None as the INPUT it is — the
+    branch under test is the recorder's classification of it, and which of the two situations
+    produced it is decided from `BUNDLE_SUBTREES` against the disk. The end-to-end one plants the
+    real shape, a broken link in `.claude/hooks`, wherever the machine can create one; it does not
+    `skip` when it cannot, because the property is already covered by then.
+    """
+    staging = _restamped_staging(tmp_path)
+    repo = tmp_path / "repo"
+    assert _install_from(staging, repo).returncode == 0
+    good = _kit_state(repo)["hook_bundle_hash"]
+
+    recorder = _recorder_module(staging, "recorder_unmeasurable_probe")
+    monkeypatch.setattr(recorder.kernel_hashing(), "hook_bundle_hash", lambda claude_dir: None)
+    assert recorder.main(["--repo", str(repo), "--kit", "dev-team"]) == 1
+    message = capsys.readouterr().err
+    assert "could not be read" in message, message
+    assert "nothing recorded" not in message, (
+        "an unreadable bundle is reported as an absent one: %s" % message)
+    assert _kit_state(repo)["hook_bundle_hash"] == good
+    monkeypatch.undo()
+
+    try:
+        os.symlink(str(tmp_path / "never-existed"),
+                   str(repo / ".claude" / "hooks" / "dangling.py"))
+    except (OSError, NotImplementedError):
+        return
+    planted = _record_trust(staging, repo)
+    assert planted.returncode == 1, planted.stdout + planted.stderr
+    assert "could not be read" in planted.stderr, planted.stderr
+    assert _kit_state(repo)["hook_bundle_hash"] == good
+
+
+
+# -- the Claude -> Codex matcher translation (round-6 findings 8 and 9) --------
+
+
+def _provider_generator(name):
+    """`gen_provider_artifacts` as a module. It ships in `team-kits/`, not on the import path."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        name, os.path.join(TEAM_KITS, "gen_provider_artifacts.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_matcher_naming_two_codex_vocabularies_translates_to_both():
+    """A Claude matcher names a SET of tools, so its translation is a set too.
+
+    The old translation returned the first table entry the tool set intersected, which silently
+    discarded everything after it. `Bash|Edit` became `apply_patch` alone: the shell half of that
+    registration simply did not exist on Codex, in a file that reads as enforcement."""
+    gpa = _provider_generator("gpa_matcher_probe")
+    assert gpa.codex_matchers("Bash|Edit") == ("Bash", "apply_patch")
+    assert gpa.codex_matchers("Edit|Write|MultiEdit|NotebookEdit") == ("apply_patch",)
+    assert gpa.codex_matchers("Bash|PowerShell") == ("Bash",)
+    # an MCP tool is spelled the same on both sides, so the name IS the translation - a branch the
+    # comment and the artifact test both allowed while the code could never produce it
+    assert gpa.codex_matchers("mcp__memory__search") == ("mcp__memory__search",)
+    # ...and the two ways of naming nothing keep meaning "every call"
+    assert gpa.codex_matchers("") == ("",)
+    assert gpa.codex_matchers("*") == ("*",)
+
+
+def test_an_untranslatable_tool_is_a_declared_gap_or_an_error():
+    """The difference `CODEX_UNSUPPORTED_TOOLS` exists to make, and did not make while nothing
+    referenced it.
+
+    A tool Codex has no equivalent for drops out of the registration - correct, and it is exactly
+    what `Agent|Task` and `AskUserQuestion` need. A tool nobody has TRANSLATED YET took the same
+    exit, which is how widening two matchers to include `NotebookEdit` removed the lead's
+    write-scope veto from Codex without a word. Declared gaps stay quiet; everything else stops the
+    generator with the name in the message."""
+    gpa = _provider_generator("gpa_gap_probe")
+    for declared in sorted(gpa.CODEX_UNSUPPORTED_TOOLS):
+        assert gpa.codex_matchers(declared) == (), declared
+    assert gpa.codex_matchers("Agent|Task") == ()
+    # ...and a tool from neither list is refused, loudly enough to act on
+    with pytest.raises(SystemExit) as refused:
+        gpa.codex_matchers("Agent|WebFetch")
+    assert "WebFetch" in str(refused.value)
+    assert "CODEX_UNSUPPORTED_TOOLS" in str(refused.value)
+    # a mixed matcher still yields its translatable half, or every gap would take a gate with it
+    assert gpa.codex_matchers("Agent|Task|Bash") == ("Bash",)
+
+
+def test_the_specs_codex_parity_evidence_is_still_produced_by_the_generator():
+    """The spec justifies two `unverified` capabilities by citing this generator — so run the cite.
+
+    `spawn_veto` and `approval_provenance` are declared unreachable on Codex, and the argument for
+    that is not prose: II.4 backs it with what `gen_provider_artifacts` does with those matchers.
+    The citation read `Agent|Task → None` and stayed that way after the function stopped returning
+    `None` at all — a dead reference in the paragraph that carries the parity claim, pinned by
+    nothing. A citation nobody executes decays exactly like a comment nobody reads.
+
+    So the spec now states the evidence as CALLS, and this runs them against the module:
+
+      * every `` `codex_matchers("X") == Y` `` claim anywhere in the spec is evaluated and its
+        rendering compared, so a changed return value is red in the document that depends on it;
+      * every backticked `CODEX_*` name the spec cites must be an attribute of the generator, so
+        the rename that produced this finding cannot happen silently a second time.
+
+    Both loops carry a floor, because a claim that has been DELETED from the spec would otherwise
+    leave this test green while the paragraph goes back to asserting the mechanism in prose."""
+    gpa = _provider_generator("gpa_spec_probe")
+    with open(os.path.join(ROOT, "docs", "HARNESS_V2_SPEC.md"), encoding="utf-8") as handle:
+        spec = handle.read()
+    calls = re.findall(r"`codex_matchers\(\"([^\"]*)\"\) == ([^`]+)`", spec)
+    assert calls, ("the spec no longer executes its Codex-parity evidence — II.4 derives "
+                   "spawn_veto/approval_provenance from what the generator does with those "
+                   "matchers, and that has to stay a claim a test can run")
+    for matcher, rendered in calls:
+        assert repr(gpa.codex_matchers(matcher)) == rendered, (
+            "the spec claims codex_matchers(%r) == %s, the generator answers %r"
+            % (matcher, rendered, gpa.codex_matchers(matcher)))
+    cited = sorted(set(re.findall(r"`(CODEX_[A-Z0-9_]+)`", spec)))
+    assert cited, "the spec cites no generator constant for the declared Codex gap"
+    for name in cited:
+        assert hasattr(gpa, name), (
+            "the spec cites %s in gen_provider_artifacts.py; no such name exists there" % name)
+
+
+def test_a_shipped_mixed_matcher_reaches_codex_on_both_vocabularies():
+    """The same defect in a kit that ships it, since a unit test proves only the unit.
+
+    `gate_filing.py` is registered `Bash|PowerShell|Edit|Write|MultiEdit` - the office kit's filing
+    rule applies to a shell command that moves a document exactly as it applies to writing one. On
+    Codex it arrived as `apply_patch` only, so the shell half of that gate was absent on that
+    provider for as long as the kit has existed."""
+    gpa = _provider_generator("gpa_kit_probe")
+    with open(os.path.join(TEAM_KITS, "office-team", "settings", "settings.json"),
+              encoding="utf-8") as handle:
+        settings = json.load(handle)
+    generated = gpa.gen_codex_hooks(settings)
+    triples = set()
+    for event, groups in generated["hooks"].items():
+        for group in groups:
+            for hook in group.get("hooks", []):
+                for script in _gates_in(hook.get("command", "")):
+                    triples.add((event, group.get("matcher", ""), script))
+    for matcher in ("Bash", "apply_patch"):
+        assert ("PreToolUse", matcher, "gate_filing.py") in triples, (
+            "gate_filing is registered for shell AND file tools on Claude but reaches Codex only "
+            "as %s: %s" % (sorted(m for _e, m, s in triples if s == "gate_filing.py"),
+                           sorted(triples)))
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_every_registration_a_kit_writes_survives_the_codex_translation(kit):
+    """Run the generator over each kit's OWN registrations — all of them, on every event.
+
+    The test above is the shape this repo keeps having to unlearn: one kit, one gate, two matcher
+    names. It proves the unit and nothing about the other two kits, and the round that wrote it
+    also turned an untranslatable tool from a silently dropped registration into a `SystemExit`.
+    That trade — a quiet hole for a loud stop — is only worth making if something runs the loud
+    part, and nothing ran it for research-team: adding a `WebFetch` matcher to that kit's
+    settings.json kills the generator, so no Codex project scaffolds at all, and the review that
+    found this measured the full suite green over exactly that mutation (2026-07-28).
+
+    So the subject is derived twice over, from the kit rather than from a list:
+
+      * `gen_codex_hooks` over the kit's real settings.json AND every agent's frontmatter hooks —
+        the two surfaces a kit registers on, both of which reach `codex_matchers`;
+      * `codex_matchers_for` over EVERY registration the kit writes anywhere, including the events
+        that do not reach Codex today. That second loop is what makes the `Notification` matcher
+        `agent_completed|agent_needs_input` a covered case: it is not a tool set, so running it
+        through the tool table stops the generator, and the only thing preventing that has been
+        `Notification` missing from `CODEX_EVENTS` — an agreement between two constants that
+        nobody had written down and no test could see broken.
+    """
+    gpa = _provider_generator("gpa_kits_probe_" + kit.replace("-", "_"))
+    with open(os.path.join(TEAM_KITS, kit, "settings", "settings.json"), encoding="utf-8") as fh:
+        settings = json.load(fh)
+    agents = os.path.join(TEAM_KITS, kit, "agents")
+    role_hooks = []
+    for name in sorted(os.listdir(agents)):
+        if name.endswith(".md"):
+            role_hooks.extend(gpa.agent_hook_entries(os.path.join(agents, name), name[:-3]))
+
+    generated = gpa.gen_codex_hooks(settings, role_hooks)["hooks"]
+    assert set(generated) <= set(gpa.CODEX_EVENTS), sorted(generated)
+    reached = {(event, group.get("matcher", ""), script)
+               for event, groups in generated.items() for group in groups
+               for hook in group["hooks"] for script in _gates_in(hook["command"])}
+    # A floor only against emptiness: WHICH registrations reach Codex is the generator's answer,
+    # and re-deriving it here would be the same computation twice. What must not pass unnoticed is
+    # a translation that produced nothing at all for a whole kit.
+    assert reached, "no Codex registration was generated for %s at all" % kit
+
+    for event, matcher, _command in _registered_commands(kit):
+        gpa.codex_matchers_for(event, matcher)
+
+
+# -- guard_harness_selfmod vs. the measured bundle -----------------------------
+
+def _guard_module():
+    """The running `guard_harness_selfmod`, imported as itself so its constants are the live ones."""
+    return load_kit_module("guard_selfmod_probe",
+                           os.path.join(HOOKS, "guard_harness_selfmod.py"))
+
+
+def _bare_name_literals(path, function):
+    """Every string tuple a function compares with `in`, read off the AST.
+
+    The guard blocks the constitution pair (`AGENTS.md` / `CLAUDE.md`) from a literal INSIDE
+    `check`, not from a module constant, so a reader that only imported the constants would miss
+    exactly the two entries whose omission made the old comment wrong. Parsed rather than
+    string-searched: this is the comparison the interpreter evaluates.
+    """
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    found = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.FunctionDef) and node.name == function):
+            continue
+        for inner in ast.walk(node):
+            if isinstance(inner, ast.Compare) and any(
+                    isinstance(op, ast.In) for op in inner.ops):
+                for comparator in inner.comparators:
+                    if isinstance(comparator, ast.Tuple) and all(
+                            isinstance(e, ast.Constant) and isinstance(e.value, str)
+                            for e in comparator.elts):
+                        found += [e.value for e in comparator.elts]
+    return found
+
+
+def test_the_bundle_measures_exactly_the_two_subtrees_this_guard_shares_with_it(tmp_path):
+    """Which of `guard_harness_selfmod`'s entries are INSIDE the hashed bundle — measured.
+
+    THE CLAIM THIS REPLACES was in that guard's own comment and was false: "`scripts/` sits
+    outside the measured bundle — and these two paths are the only entries in this whole file that
+    do." Measured here, the ratio is the other way round: `hook_bundle_hash` walks
+    `.claude/<s>` for `s` in `BUNDLE_SUBTREES`, so only the `hooks/` and `kernel/` prefixes are
+    inside and everything else the guard blocks — `skills/`, `backups/`, every `BLOCKED_FILES`
+    name, every provider prefix, both `BLOCKED_REPO_PATHS` and the constitution pair — is outside.
+
+    IT IS A DERIVATION ON BOTH SIDES, which is what makes it worth running rather than reading.
+    The subjects come from the guard's own constants plus the tuple its `check` compares against
+    (`_bare_name_literals`, AST), the verdict "is it blocked" comes from RUNNING the guard on a
+    Write payload, and "is it inside" comes from tampering with the file and recomputing the real
+    hash. Nothing here restates the two subtree names except the expectation, which is read from
+    `BUNDLE_SUBTREES` as well.
+
+    WHAT GOES RED, and it is two different things on purpose: an entry the guard blocks inside a
+    hashed subtree whose change does NOT move the hash (an exclusion sneaking back into the
+    measurement — mutation-checked by making `_hash_subtrees` skip `kernel`, which turns the first
+    assertion red), and the floor at the bottom, which is the old sentence written as a number: if
+    it were true, `outside` would hold exactly the two `scripts/` paths.
+    """
+    guard = _guard_module()
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import BUNDLE_SUBTREES, hook_bundle_hash
+
+    repo = pathlib.Path(str(tmp_path)) / "repo"
+    claude = repo / ".claude"
+    subjects = []
+    for prefix in guard.BLOCKED:
+        subjects.append(".claude/" + prefix + "probe_entry.py")
+    for name in guard.BLOCKED_FILES:
+        subjects.append(".claude/" + name)
+    for prefix in guard.BLOCKED_PROVIDER_PREFIXES:
+        subjects.append(prefix + "probe_entry.txt")
+    subjects += list(guard.BLOCKED_REPO_PATHS)
+    subjects += _bare_name_literals(os.path.join(HOOKS, "guard_harness_selfmod.py"), "check")
+    assert len(subjects) >= 18, subjects
+
+    def write(rel, text):
+        target = repo / rel.replace("/", os.sep)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+
+    claude.mkdir(parents=True)
+    for rel in subjects:
+        write(rel, "baseline\n")
+    # the two hashed subtrees must exist as real trees, or the hash is None for a missing bundle
+    for subtree in BUNDLE_SUBTREES:
+        (claude / subtree).mkdir(exist_ok=True)
+    baseline = hook_bundle_hash(str(claude))
+    assert baseline, "the fixture built no bundle to measure"
+
+    inside, outside, waved_through = [], [], []
+    for rel in subjects:
+        payload = {"tool_name": "Write", "hook_event_name": "PreToolUse",
+                   "tool_input": {"file_path": str(repo / rel.replace("/", os.sep))},
+                   "cwd": str(repo)}
+        blocked = run_hook("guard_harness_selfmod.py", payload, repo).returncode == 2
+        if not blocked:
+            waved_through.append(rel)
+        write(rel, "TAMPERED\n")
+        (inside if hook_bundle_hash(str(claude)) != baseline else outside).append(rel)
+        write(rel, "baseline\n")
+        assert hook_bundle_hash(str(claude)) == baseline, rel
+
+    assert not waved_through, (
+        "the guard did not refuse a write to %s, although its own constants name it" % waved_through)
+    expected_inside = sorted(rel for rel in subjects
+                             if any(rel.startswith(".claude/" + s + "/") for s in BUNDLE_SUBTREES))
+    assert sorted(inside) == expected_inside, (
+        "the hashed bundle and this guard disagree about which paths are measured: the hash moved "
+        "for %s, `BUNDLE_SUBTREES` %s says it should move for %s"
+        % (sorted(inside), BUNDLE_SUBTREES, expected_inside))
+    assert len(outside) > 2, (
+        "only %s of this guard's entries sit outside the measured bundle — the comment that "
+        "claimed exactly the two `scripts/` paths do would then have been right, and it was the "
+        "reason this test exists" % outside)
+    assert [rel for rel in outside
+            if not rel.startswith(".claude/") and not rel.startswith("scripts/")], (
+        "every blocked path outside the bundle is either under .claude or under scripts/ — the "
+        "narrow reading of the old claim would hold, and the constitution pair plus the provider "
+        "prefixes are what disproves it")

@@ -108,7 +108,7 @@ class KernelLock:
             if time.monotonic() >= deadline:
                 raise LockTimeout(
                     "kernel lock busy: %s (holder: %s). Remedy: wait for the other "
-                    "kernel operation to finish, or run `harness doctor` to inspect "
+                    "kernel operation to finish, or run `python scripts/harness.py doctor` to inspect "
                     "held/stale locks." % (self.lock_path, self._describe_holder())
                 )
             time.sleep(poll)
@@ -123,7 +123,7 @@ class KernelLock:
             raise LockLost(
                 "kernel lock %s was taken over while held (our TTL of %ss expired). "
                 "Writes made under this lock may have raced. Remedy: run the state "
-                "validator (`harness validate`) before continuing."
+                "validator (`python scripts/harness.py validate`) before continuing."
                 % (self.lock_path, self.ttl)
             )
         try:
@@ -207,7 +207,7 @@ class KernelLock:
            proven stale bytes -- if a FRESH lock slipped in between step 2 and
            step 3, restore it via exclusive create (never clobbering an even
            newer one) and back off.
-        Failed cleanups leave `.stale-*` remnants for `harness doctor`.
+        Failed cleanups leave `.stale-*` remnants for `python scripts/harness.py doctor`.
         Clock skew (acquired_at in the future) never breaks -- doctor territory.
         """
         lock = ext_path(self.lock_path)

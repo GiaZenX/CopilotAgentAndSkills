@@ -51,7 +51,60 @@ BLOCKED_PROVIDER_PREFIXES = (".codex/", ".agents/skills/", ".github/hooks/", ".g
 # block. The gate's docstring claimed this guard covered it while the path was nowhere in this
 # file — a stated protection that did not exist, which is worse than an open hole. Harmless in
 # kits without the file.
-BLOCKED_REPO_PATHS = ("scripts/ledger_add.py",)
+#
+# `scripts/harness.py` is the same class: it is the ONE entry point every fail-closed remedy hands
+# a blocked role, it is installed kit-owned (the scaffold overwrites it on every run), and it
+# imports the kernel — so a rewritten copy holds the whole kernel API, including the operations
+# the sanctioned command surface deliberately does not expose. Edit/Write/MultiEdit/NotebookEdit
+# are closed here, case-insensitively.
+#
+# WHAT THIS DOES NOT CLAIM, measured rather than reasoned, and the honest version is NARROWER than
+# "an agent could write some other script": a role can replace THIS EXACT FILE from a shell, and
+# nothing in the harness notices. Measured 2026-07-29 in a scaffolded project:
+#   * `cat > scripts/harness.py <<EOF … EOF` → every registered shell gate ALLOWS (the command line
+#     names neither the state directory nor `.claude`, which is what those gates read);
+#   * with a stub in place, `kernel.hashing.hook_bundle_hash` is UNCHANGED — the value recorded at
+#     scaffold time still equals the live one, which is the whole of what the trust comparison
+#     asks — and `report.doctor` gives `installation_errors: []` while `scripts/kit_checks.py`
+#     exits 0. Stated as the hash rather than as a `kit_state` name on purpose: which name a
+#     project carries depends on whether a SessionStart has run since the scaffold, so the name
+#     would be a fact about the fixture and the hash is the fact about the tampering.
+# WHY THE HASH DOES NOT MOVE — a derivation, not a count, because the count this comment used to
+# carry was wrong. `hook_bundle_hash` measures `<repo>/.claude/<s>` for every `s` in
+# `kernel/hashing.BUNDLE_SUBTREES`, today `("hooks", "kernel")`. So an entry of THIS file is INSIDE
+# the measurement exactly when the path it blocks lies under `.claude/hooks/` or `.claude/kernel/`,
+# and OUTSIDE otherwise — which can be read off each entry below without measuring anything:
+# `BLOCKED`'s first two prefixes are inside; its `skills/` and `backups/`, every name in
+# `BLOCKED_FILES`, every entry of `BLOCKED_PROVIDER_PREFIXES`, both `BLOCKED_REPO_PATHS` and the
+# constitution pair (`AGENTS.md` / `CLAUDE.md`, matched in `check`) are outside.
+# The sentence that stood here — "these two paths are the only entries in this whole file that
+# [sit outside the bundle]" — was false under both readings: measured 2026-07-31 by tampering with
+# one file per entry and recomputing the hash, 18 of the 20 paths this file blocks leave the bundle
+# hash untouched, and EIGHT of them are not under `.claude` at all (`AGENTS.md`, `CLAUDE.md`, the
+# four provider prefixes and the two `scripts/` paths), which is the narrower reading gone too.
+# `test_the_bundle_measures_exactly_the_two_subtrees_this_guard_shares_with_it` re-measures it
+# against the running guard rather than against this paragraph.
+# MINTING IS PART OF THE EXPOSURE, and the sentence that stood here said the opposite. It read
+# "minting is NOT part of the exposure (measured: `approvals.mint` refuses any caller whose
+# `__main__` is not `gate_approval.py`)", which describes only the IN-PROCESS refusal. Measured
+# 2026-07-31 in a scaffolded project: a replacement `scripts/harness.py` that writes its own
+# pending request and then STARTS the real hook as a subprocess with a forged PostToolUse payload
+# mints — every shell gate returns 0 on both the write and the run, and the hook answers
+# "approval APR-0007 recorded for PR-0004". That is not a new hole; it is the one
+# `test_running_the_shipped_hook_by_hand_still_mints` asserts as open under the `approval_provenance`
+# known_hole, reached from here. So what a replaced file buys is the kernel's write surface, a
+# role's trust in the output it prints, AND a forged user approval.
+# So: the TOOL path to the file every remedy points at is closed, the SHELL path to it is open and
+# undetected. Closing it needs either a shell rule that knows this path or `BUNDLE_SUBTREES`
+# widened to cover it — both decisions for the harness owner, and neither is claimed here.
+#
+# AND THE FINDING THAT FOLLOWS FROM THE SAME MEASUREMENT, stated because a paragraph that ends at
+# `scripts/harness.py` would read as if that were the widest hole here: `.claude/settings.json` is
+# shell-writable (the shell rule refuses a write-capable pipeline that NAMES `.claude`, and a
+# script that names nothing does not) AND unhashed. That file is the hook WIRING — what decides
+# whether any of these guards runs at all — so it is a larger surface than the entry point, not a
+# smaller one. Named for the harness owner; nothing in this file closes it.
+BLOCKED_REPO_PATHS = ("scripts/ledger_add.py", "scripts/harness.py")
 
 
 def block(rel):

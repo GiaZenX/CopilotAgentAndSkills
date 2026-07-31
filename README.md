@@ -314,6 +314,38 @@ under a lock. `gate_write_scope` closes the tool paths to the state directory (a
 task's `staging/<task-id>/`), so "two roles overwrote each other's YAML" is structurally gone rather than
 a rule someone follows.
 
+**The kernel has exactly ONE entry point, and it is installed:** `python scripts/harness.py <command>`,
+run from the project root. The scaffold writes `scripts/harness.py` into every project as a kit-owned
+file (overwritten on every run, like `scripts/kit_checks.py`), the same three tokens are what you type in
+bash and in PowerShell alike, and it resolves the state directory itself. That last part is what lets
+`gate_write_scope` go on refusing every write-capable pipeline that NAMES the state directory — so
+`--root` never belongs on this command line, and the entry point refuses it too, off its own parser.
+Measured against a scaffolded project as real hook processes: the `evidence` line below passes all eight
+`PreToolUse` gates under both shell tools, `python -B .claude/kernel/cli.py doctor` is refused for naming
+the enforcement layer, and `python scripts/harness.py --root project_memory` for naming the state
+directory (as do `--roo`, `--ro`, `--r` and the `=` form: argparse takes any unambiguous prefix, and the
+entry point asks the shipped parser rather than matching text).
+
+**Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
+authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
+`request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`,
+`sweep-leases`. Of the twelve spec II.4 asks for, two are absent under those names: `approve` is SPLIT —
+`request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
+by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also
+walks the status transition it commits. `migrate --dry-run` has no module yet. What has no writer at
+all either way: `project_config.yaml` and `product/masterplan.md` are not typed items, and an `ARC`/`WFR`/
+`DSN` is frozen through the promotion path (II.6a), which has no command. Those are infrastructure
+defects to report, not a licence to write state by hand, and the three constitutions say the same in
+their §0.
+
+`capture` takes the item's fields as a JSON object on **stdin**, and both halves of that are forced
+rather than chosen. Stdin, because an item carries lists of mappings no flag surface expresses and the
+obvious alternative — `--from project_memory/staging/…` — is refused by `gate_write_scope` for naming
+the state directory (measured, rc 2). JSON and not YAML, although the store is YAML, because the body
+decides the item's HASHED fields and YAML 1.1 retypes `no` to false and `12:30` to 750 on the way in —
+a value that means one thing to the role and another to the approval hash is the invalidation class this
+kernel exists to end.
+
 The user's idea lives as a proper **`product/masterplan.md`** (seeded richly at onboarding, PM-owned,
 critically engaged — never just blessed): frozen discovery prose and explicitly **not** a status source.
 The project then evolves through explicit item types, never silent edits: a user-story **`FR`** for new
@@ -416,10 +448,22 @@ all project-local `.codex/` layers until the repository and hooks are trusted.
   in a project that does not keep one the hook exits 0 and the rule binds as policy only.
 - **Real pipeline at merge** (`gate_pipeline`) — runs `scripts/quality.py` (lint/types/tests+coverage,
   secret/dep scan) and blocks on a red or missing pipeline; a self-reported "pass" does not suffice.
-- **Commit / merge gate** (`gate_git`) — always blocks force-push. It also blocks EVERY merge/push today,
-  because it still looks for a V1-era `project_memory/*report*.yaml` naming the branch's item and a V2
-  project has no such file — a known lockstep defect, not a QA verdict; until it reads evidence items the
-  QA duty binds as policy. Plus `gate_push_token`: a `git push` needs a user approval bound to
+- **Commit / merge gate** (`gate_git`) — always blocks force-push. It also blocks a merge or push whose QA
+  **Evidence** is missing or failing: the newest `test`/`review`/`acceptance` Evidence covering an item is
+  that kind's current verdict, so a re-run supersedes an older one and a `fail` recorded afterwards closes
+  the gate again (`kind: audit` judges the project and never opens a merge). Judged for every root id the
+  command names, and for the branch's item when the command names none; a merge that names nothing is
+  refused while any item is currently failing. It also refuses a merge for an item still in `DRAFT` or
+  already `REJECTED`/`SUPERSEDED`, and it does not apply at all before the project's first PR/RQ exists.
+  That evidence has exactly one producer, `python scripts/harness.py evidence`, and it is installed —
+  run from the project root, never with `--root`. Measured end to end in a scaffolded project outside
+  this repo: `git merge feat/PR-0001-x` refused with "no QA Evidence for PR-0001"; one
+  `python scripts/harness.py evidence --kind test --result pass --related PR-0001 --summary "qa run
+  green" --artifact-ref staging/TSK-0001/run.log` passed all eight `PreToolUse` gates as real hook
+  processes and then ran; the same merge was allowed. `gate_write_scope`
+  still decides by READING the command line, and a text check is enforcement rather than arithmetic, so
+  a spelling it does not recognise is a hole in that gate to report — never the way in.
+  Plus `gate_push_token`: a `git push` needs a user approval bound to
   remote + branch + HEAD, which a new commit invalidates. Plus `gate_shell_hygiene`: destructive `docker`
   on a foreign compose project or any `prune`, and merge/rebase/pull/`reset --hard`/branch-switch on a
   dirty tree.

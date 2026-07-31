@@ -309,10 +309,13 @@ for kit_dir_name in os.listdir(os.path.join(ROOT, "team-kits")):
 #     VERSION true only on THIS machine: a real .gitignore'd office seed kept local validate green
 #     while CI was red and fresh clones could not install (the hash walks the FILESYSTEM).
 import subprocess as _sp  # noqa: E402
-# The kit-hash inputs live with the hash, in the kernel (which ships) rather than in
-# tools/ (which does not) -- see kernel.hashing.kit_hash.
+# READ THE HASH'S OWN ENUMERATION, do not re-walk the tree beside it. This check used to walk the
+# kit directory with its own copy of the skip rules, which meant it covered the kit's half of the
+# subject and not the SHARED half -- an untracked file at the team-kits root is hashed into every
+# kit and was reported by nobody. `kit_hash_inputs` is what `kit_hash` iterates, so "hashed into
+# VERSION" is answered by the thing that does the hashing.
 sys.path.insert(0, os.path.join(ROOT, "team-kits"))  # noqa: E402
-from kernel.hashing import KIT_SKIP_DIRS as SKIP_DIRS  # noqa: E402
+from kernel.hashing import kit_hash_inputs  # noqa: E402
 try:
     _git = _sp.run(["git", "ls-files", "team-kits"], cwd=ROOT, capture_output=True,
                    text=True, timeout=30)
@@ -320,18 +323,22 @@ try:
 except Exception:
     _tracked = None  # no git available (e.g. an exported tree) — hash/track parity is then moot
 if _tracked is not None:
+    _untracked = set()
     for kit in discover_kits(ROOT):
-        kit_root = os.path.join(ROOT, "team-kits", kit)
-        for dirpath, dirnames, filenames in os.walk(kit_root):
-            dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-            for fn in sorted(filenames):
-                if fn.endswith(".pyc"):
-                    continue
-                relp = os.path.relpath(os.path.join(dirpath, fn), ROOT).replace("\\", "/")
-                if relp not in _tracked:
-                    fails.append("%s: %s is hashed into VERSION but not git-tracked "
-                                 "(check .gitignore) — CI and fresh clones will disagree "
-                                 "with the local hash" % (kit, relp))
+        for _name, _path in kit_hash_inputs(os.path.join(ROOT, "team-kits", kit)):
+            if _path is None:
+                # a directory link contributes its NAME to the hash and no content (see
+                # `_kit_files`); there is no file here to ask git about
+                continue
+            relp = os.path.relpath(_path, ROOT).replace("\\", "/")
+            if relp not in _tracked:
+                # deduplicated across kits: a shared input is in all three hashes and one finding
+                # per file is what a reader can act on
+                _untracked.add(relp)
+    for relp in sorted(_untracked):
+        fails.append("%s is hashed into a kit VERSION but not git-tracked "
+                     "(check .gitignore) — CI and fresh clones will disagree "
+                     "with the local hash" % relp)
 
 for w in warns:
     print("  [warn] " + w)

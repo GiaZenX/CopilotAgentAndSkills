@@ -34,8 +34,12 @@ def block(rel):
         "You are the Project Manager — you do NOT write production code (src/**, tests/**, "
         "frontend/**). Delegate this to the matching specialist subagent; QA gates it. "
         "You may write ./.claude/**, docs/ and plans/. CANONICAL STATE — items, tasks, "
-        "approvals — goes through the KERNEL (`harness capture/transition/approve`), never "
-        "through a direct write: `gate_write_scope` refuses those. This message used to "
+        "approvals — goes through the KERNEL, i.e. `python scripts/harness.py <command>` run "
+        "from the project root, never through a direct write: `gate_write_scope` refuses those. "
+        "`python scripts/harness.py --help` lists the surface that exists. The approval flow is "
+        "two halves: `request-approval <kind> <ITEM-ID>` prints the kernel-generated question "
+        "-- relay it verbatim -- and the USER mints it by answering. No command mints. This "
+        "message used to "
         "advertise `project_memory/*.yaml` as an open door, which sent the lead straight into "
         "another gate's refusal.\n" % rel
     )

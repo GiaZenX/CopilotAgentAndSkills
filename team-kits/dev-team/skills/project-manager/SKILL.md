@@ -26,7 +26,7 @@ are the log — never mirror them here anyway.** An accepted **change of directi
 lands as a `CR` against the approved revision, plus a reported infrastructure gap for the picture itself
 (constitution §0/§2.10) — never as an edit you make.
 
-## Work loop (every cycle — every "capture"/"transition" below runs through the kernel, whose entry point is not installed yet: constitution §0 write-lock)
+## Work loop (every cycle — every "capture"/"transition" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)
 
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,
    enforcement mode, active PRs with their next step, active TSKs, open approvals, staging pointers, budget
@@ -52,10 +52,10 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    user-`ACCEPTED` (or at least user-sighted — screenshots/live). The user is the only judge of "looks like the
    mockup"; a real run stacked FOUR unseen UI slices of visual drift before the user first looked.
    `class: technical_enabler` PRs may proceed in parallel; the state validator blocks the rest.
-4. **APPROVE** — ask ONE kernel-generated approval question and let the user mint the scope-APR → the PR goes
+4. **APPROVE** — `python scripts/harness.py request-approval scope PR-nnnn` prints the question the KERNEL
+   composed; relay it VERBATIM (the gate compares it character for character) and let the user mint the scope-APR → the PR goes
    `APPROVED`. For a UI scope the approved WIREFRAME is part of that scope manifest (step 5).
-5. **PLAN** — hand the approved PR to `software-architect` to derive SRs; create branch `pr/PR-nnnn-<slug>` and
-   transition the PR to `IN_DELIVERY`. When the team is genuinely uncertain about a library/datasheet/API, task
+5. **PLAN** — hand the approved PR to `software-architect` to derive SRs; create branch `pr/PR-nnnn-<slug>`, then ask ONE kernel-generated **delivery** approval question: that mint is what moves the PR to `IN_DELIVERY`, and transitioning it by hand is refused while no delivery-APR is in force. The kernel derives the gated edges from the map saying which edge each kind COMMITS (`approvals.APPROVAL_TRANSITIONS`), so it asks at EVERY class — wider than spec II.2's class table, which lists the second delivery approval under `large` only; named as a widening rather than carved out, since an exemption keyed on `class` would be a second rule beside the derivation. When the team is genuinely uncertain about a library/datasheet/API, task
    `research-engineer` (cited facts) before deciding. **A "not possible / blocked" never settles a decision** —
    demand the best alternative first (§14 dead-end rule).
    **Design pipeline for a UI-bearing PR** — the stage SEQUENCE is yours to run; the craft detail lives in the
@@ -67,7 +67,7 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    staged (`staging/<PR-id>/`, or the design task's key once one exists) and the **scope approval freezes it**
    into `design/wireframes/` with its hash in the scope manifest, so any later change invalidates that approval.
    **Both halves are PROSE duties today:** no gate refuses a scope-APR for a missing wireframe, and the kernel's
-   freeze function has no command line yet (constitution §0) — YOU are the only thing enforcing "no UI scope
+   freeze function has no command on the entry point's surface (constitution §0) — YOU are the only thing enforcing "no UI scope
    approved without a wireframe". Waiving it needs an explicit user Decision item, never your own call.
    (a0) **The design AMBITION is the user's call — ask before any visual work:** full **exploration** (2–3
    directions to choose from) or a deliberately **minimal**/utilitarian UI? **NEVER decide this silently** or
@@ -114,9 +114,11 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    `kind: acceptance`) whose `related` names the task/PR and whose summary names the acceptance criteria and
    invariants it covers (+ the coverage/completeness gates green). That evidence is also what lets a task go
    `DONE` → `VALIDATED`. If QA reports missing guidelines, task the `software-architect` to add the missing
-   rule(s) before accepting. On PASS, transition the PR to `DELIVERED` and merge — and expect `gate_git` to
-   refuse the merge anyway: it still demands a V1-era `project_memory/*report*.yaml` that no V2 project has, so
-   no Evidence you can produce unlocks it. Report that defect; never route around the gate.
+   rule(s) before accepting. On PASS, transition the PR to `DELIVERED` and merge — in that order, because
+   `gate_git` also refuses a merge for a PR still in `DRAFT` or already `REJECTED`/`SUPERSEDED`. It reads that
+   same Evidence — the NEWEST `test`/`review`/`acceptance` item covering the PR — so a re-run supersedes an
+   older verdict and a fresh `fail` closes the gate again. Name the PR in the branch (`feat/PR-0001-…`):
+   a merge that names no item binds to nothing and is then refused while ANY item is currently failing.
    **Handover honesty:** NEVER tell the user a PR is "ready to test" while any `real_run` / documented
    first-run evidence is missing or was SKIPPED (e.g. docker daemon off). If the environment needs the user
    (start Docker Desktop), request that FIRST, run the dogfood YOURSELF from a clean state, and only then
@@ -200,7 +202,7 @@ preserves the reminder state, and resolves nothing). Work them through — ideal
 the file merges need no restart: diff each against the kit template, have the owning role merge the kit's fixes
 (or record a conscious skip as a decision item under `decisions/active/`), then **DELETE the pending file(s)**.
 `session_status` reminds you every session until they are gone — a real project showed `[kept]` lines alone get
-ignored and kit fixes silently never arrive. Afterwards a new kit version may require fields the existing items do not carry yet. Those deltas go in through the kernel like any other item content — never with your editor, and today no installed command can write them at all (§0 write-lock), so a validator complaining about a missing new field is a defect to report. Nothing already filled is ever lost.
+ignored and kit fixes silently never arrive. Afterwards a new kit version may require fields the existing items do not carry yet. Those deltas go in through the kernel like any other item content — never with your editor. `capture` creates an item; there is still no command that EDITS one, so a validator complaining about a missing new field on an existing item is a defect to report (§0). Nothing already filled is ever lost.
 
 ## Defects (bugs)
 A bug found **during** development/QA stays in the QA loop — the task cycles `FAILED` → `READY` on an approved

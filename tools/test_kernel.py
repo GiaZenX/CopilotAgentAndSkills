@@ -307,7 +307,7 @@ def test_fresh_template_state_produces_no_finding_at_all(tmp_path):
 
     The staging-orphan scan reads the entries of `staging/` as item ids. Every kit template ships
     `staging/.gitkeep` so git can carry the empty directory, so it reported
-    `staging/.gitkeep: orphaned staging dir` in EVERY `harness validate` and every session brief of
+    `staging/.gitkeep: orphaned staging dir` in EVERY `python scripts/harness.py validate` and every session brief of
     every fresh project -- permanent noise in the one output that is supposed to mean something.
     Asserting on the whole finding list rather than on the absence of that one string is deliberate:
     any other rule that starts firing on an empty project is the same defect.

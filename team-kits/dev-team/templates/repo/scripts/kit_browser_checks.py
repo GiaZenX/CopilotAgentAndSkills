@@ -9,8 +9,9 @@ project (a dead send button, a white screen): jsdom/Node always have crypto.rand
 count as a secure context — the actual failure (randomUUID throwing on a plain-http LAN origin)
 is only observable in a real browser against the real build.
 
-Config (optional) in project_memory/testing_guidelines.yaml:
-  browser_smoke:
+Config (optional) as an INV item:
+  scope: browser_smoke
+  value:
     entry: /             # path to open on the preview server
     mount_selector: "#root"   # element that must render non-empty
 
@@ -23,50 +24,31 @@ Every kit update OVERWRITES this file (like kit_checks.py), so fixes reach exist
 """
 import hashlib
 import os
-import re
 import socket
 import subprocess
 import time
 
 
 def _config(root):
-    """entry + mount_selector from testing_guidelines.yaml `browser_smoke:` — structured read
-    via kit_checks.load_project_yaml (the ONE parser); regex block parse only without pyyaml."""
+    """entry + mount_selector from the `browser_smoke` invariant's `value` — one reader.
+
+    V1 read `browser_smoke:` out of `testing_guidelines.yaml`, a monolith V2 deleted and no kit
+    ships a template for, so the knob was unreachable and the smoke always tested `/` and `#root`.
+    It is an INV item now (`kit_checks.invariant_knob`). The regex fallback that used to stand
+    beside this is gone with it: it existed for a machine without pyyaml, and without pyyaml the
+    item store cannot be read at all — a second parser could only have disagreed with the first.
+    """
     entry, mount = "/", "#root"
     try:
         import sys
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import kit_checks
-        cfg = kit_checks.load_project_yaml(root, "testing_guidelines.yaml").get("browser_smoke")
-        if isinstance(cfg, dict):
-            entry = str(cfg.get("entry") or entry).strip() or entry
-            mount = str(cfg.get("mount_selector") or mount).strip() or mount
-            return entry, mount
-    except Exception:
-        pass
-    p = os.path.join(root, "project_memory", "testing_guidelines.yaml")
-    try:
-        txt = open(p, encoding="utf-8", errors="ignore").read()
+        cfg = kit_checks.invariant_knob(root, "browser_smoke")
     except Exception:
         return entry, mount
-    m = re.search(r"(?m)^browser_smoke:[ \t]*$", txt)
-    if not m:
-        return entry, mount
-    for line in txt[m.end():].splitlines():
-        # quoted values may CONTAIN '#' (a mount selector is usually "#root"); an unquoted
-        # value ends at a trailing ' #' comment (audit: the comment used to void the whole
-        # line and the smoke silently tested the default route)
-        mm = re.match(r"[ \t]+(entry|mount_selector):[ \t]*"
-                      r"(?:\"([^\"\n]*)\"|'([^'\n]*)'|([^#\n]+?))[ \t]*(?:#.*)?$", line)
-        if mm:
-            val = (mm.group(2) if mm.group(2) is not None
-                   else mm.group(3) if mm.group(3) is not None else mm.group(4) or "").strip()
-            if mm.group(1) == "entry":
-                entry = val or entry
-            else:
-                mount = val or mount
-        elif line.strip() and not line.startswith((" ", "\t")):
-            break  # left the block
+    if isinstance(cfg, dict):
+        entry = str(cfg.get("entry") or entry).strip() or entry
+        mount = str(cfg.get("mount_selector") or mount).strip() or mount
     return entry, mount
 
 

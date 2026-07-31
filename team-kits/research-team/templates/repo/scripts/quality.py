@@ -39,7 +39,7 @@ for _stream in (sys.stdout, sys.stderr):
     try:
         _stream.reconfigure(encoding="utf-8", errors="replace")
     except (AttributeError, ValueError):
-        pass  # non-reconfigurable stream (e.g. a test harness capture) — best effort
+        pass  # non-reconfigurable stream (e.g. a test runner capturing it) — best effort
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAILS, WARNS, OKS = [], [], []
@@ -119,32 +119,54 @@ def rootfile(*names):
     return any(os.path.isfile(os.path.join(ROOT, n)) for n in names)
 
 
+def _kit_checks():
+    """The kit-owned check library, or None when it cannot be imported."""
+    try:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import kit_checks
+        return kit_checks
+    except Exception:
+        return None
+
+
 def _project_yaml(name):
     """Structured project_memory read via the kit-owned reader (kit_checks.load_project_yaml —
     the ONE parser, so quality.py and the checks can never disagree about a knob again; an
     audit caught exactly that divergence). {} when kit_checks or pyyaml is unavailable —
     callers then use their regex fallback."""
+    module = _kit_checks()
     try:
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        import kit_checks
-        return kit_checks.load_project_yaml(ROOT, name)
+        return module.load_project_yaml(ROOT, name) if module else {}
     except Exception:
         return {}
 
 
+def _invariant_knob(scope, default=None):
+    """A config knob out of the project's own `INV` items — through the ONE reader, again."""
+    module = _kit_checks()
+    try:
+        return module.invariant_knob(ROOT, scope, default) if module else default
+    except Exception:
+        return default
+
+
 def coverage_threshold():
-    # type-guarded: `coverage_gate: streng` (scalar) crashed .get(); bool is an int subtype
-    # (`threshold: true` would have become --cov-fail-under=True) — both audit repros
-    gate = _project_yaml("testing_guidelines.yaml").get("coverage_gate")
+    """The coverage floor: the `coverage_gate` invariant's `value.threshold`, else 80.
+
+    V1 read `coverage_gate:` out of `testing_guidelines.yaml`, a monolith V2 deleted and no kit
+    ships a template for, so the knob was unreachable and every project silently ran on the
+    default. It is an INV item now (`kit_checks.invariant_knob`) — one reader, no regex fallback
+    beside it: the fallback existed for a pyyaml-less machine, and without pyyaml the item store
+    cannot be read at all, so a second parser would only have disagreed with the first.
+
+    Type-guarded: `coverage_gate: streng` (a scalar) crashed `.get()`, and `threshold: true` would
+    have become `--cov-fail-under=True` — bool is an int subtype. Both are audit repros.
+    """
+    gate = _invariant_knob("coverage_gate")
     thr = gate.get("threshold") if isinstance(gate, dict) else None
     if isinstance(thr, int) and not isinstance(thr, bool) and 0 < thr <= 100:
         return thr
-    p = os.path.join(ROOT, "project_memory", "testing_guidelines.yaml")
-    try:  # regex fallback (pyyaml-less machine)
-        m = re.search(r"(?m)^\s*threshold:\s*(\d+)", open(p, encoding="utf-8", errors="ignore").read())
-        return int(m.group(1)) if m else 80
-    except Exception:
-        return 80
+    return 80
 
 
 def declared_stacks():
@@ -217,48 +239,20 @@ def _sec(name, tool, cmd, detail):
 
 
 def _declared_source_areas():
-    """Top-level source dirs from the guidelines file's `source_areas:` — the same KEY as
-    kit_checks' file budget, read through the same structured reader (`_project_yaml` ->
-    kit_checks.load_project_yaml; an audit caught a block-only regex here silently skipping an
-    inline-declared area the budget check DID scan). What is NOT shared: the extraction/validation
-    around it, the pyyaml-less regex fallback below, and the guidelines FILENAMES — kit_checks
-    keeps those in `_GUIDELINE_FILES` and this is a second copy. Consolidating the two readers is
-    open; see the quality.py row in the phase-0 disposition. Dot-only names are rejected everywhere
-    (audit: '..' walked the parent dir)."""
-    raw = []
-    for name in ("coding_guidelines.yaml", "research_guidelines.yaml"):
-        data = _project_yaml(name)
-        if data:
-            declared = data.get("source_areas")
-            # list-guard: a scalar `source_areas: src` would iterate CHARACTERS (audit repro)
-            raw += [str(x) for x in declared] if isinstance(declared, list) else []
-            continue
-        p = os.path.join(ROOT, "project_memory", name)
-        try:
-            txt = open(p, encoding="utf-8", errors="ignore").read()
-        except Exception:
-            continue
-        mi = re.search(r"(?m)^source_areas:[ \t]*\[([^\]]*)\]", txt)
-        if mi:
-            raw += [s.strip().strip("'\"") for s in mi.group(1).split(",")]
-            continue
-        m = re.search(r"(?m)^source_areas:[ \t]*(?:#.*)?$", txt)
-        if not m:
-            continue
-        for line in txt[m.end():].splitlines():
-            mm = re.match(r"[ \t]*-[ \t]*['\"]?([A-Za-z0-9_.-]+)['\"]?[ \t]*(?:#.*)?$", line)
-            if mm:
-                raw.append(mm.group(1))
-            elif re.match(r"[ \t]*#", line):
-                continue  # a comment line inside the list must not end it
-            elif line.strip():
-                break
-    out = []
-    for item in raw:
-        item = item.strip().strip("/").replace("\\", "/")
-        if re.fullmatch(r"[A-Za-z0-9_.-]+", item) and set(item) != {"."} and item not in out:
-            out.append(item)
-    return out
+    """Top-level source dirs the project's own `INV` items govern — through the ONE reader.
+
+    V1 spelled this fact twice under two keys in two monoliths (`source_areas:` for the budget,
+    `coverage_areas:` for the test floor) and they drifted: an audit caught a block-only regex here
+    silently skipping an inline-declared area the budget check DID scan. There is one answer now,
+    and it is `kit_checks.governed_source_areas` — an invariant's `scope` says what it governs, so
+    a scope naming a directory of this repo IS a source area. The validation (dot-only names, the
+    '..' repro) lives there too rather than being repeated around this call.
+    """
+    module = _kit_checks()
+    try:
+        return module.governed_source_areas(ROOT) if module else []
+    except Exception:
+        return []
 
 
 def _python_targets():

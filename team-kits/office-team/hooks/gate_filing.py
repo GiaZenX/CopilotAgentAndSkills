@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-PreToolUse — nothing lands in archive/ that the filing plan does not have a rule for.
+PreToolUse(Bash|PowerShell|Edit|Write|MultiEdit) — nothing lands in archive/ that the filing
+plan does not have a rule for.
 
 WHAT CHANGED AND WHY. V1 checked filing_log.yaml: after the clerk wrote a `filed:` entry, the gate
 asked whether the target existed. Two things ended that. `filing_log.yaml` is now a REGENERATED
@@ -39,7 +40,7 @@ and "no plan yet" is precisely when a mis-filing is cheapest to make and dearest
 LOCKSTEP DEPENDENCY, so this is not re-diagnosed as "gate too strict": the shipped
 `filing_plan.yaml` template carries `rules: []`, so a fresh office project blocks on its FIRST
 filing, and the remedy below is not yet walkable — `gate_write_scope` refuses tool writes into
-`project_memory/**`, and no `harness` command writes the plan. The plan is CONFIG (like
+`project_memory/**`, and no entry-point command writes the plan. The plan is CONFIG (like
 `project_config.yaml` and `product/masterplan.md`), not canonical item state, and the open
 Phase-2 item is which of the two ways it becomes writable again: the write-scope gate exempting
 the non-item files, or the kernel getting a write path for them. The block itself is correct — an
@@ -53,7 +54,7 @@ try:
     import _kernel
 except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must not mean "allow"
     sys.stderr.write("[team-kit hook] refused: could not load hook helpers (%r). Remedy: run "
-                     "`harness doctor`; a partial checkout or half-finished kit update is the "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit update is the "
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
