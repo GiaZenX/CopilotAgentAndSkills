@@ -41,10 +41,13 @@ statements, so the sanctioned spelling needs no flag to be safe.
 from __future__ import annotations
 
 import argparse
+import builtins
+import inspect
 import json
+import os
 import sys
 
-from . import approvals, dispatch, report
+from . import approvals, dispatch, report, staging
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -73,6 +76,91 @@ class UsageError(ValueError):
 # this pair exists to prevent.
 ENTRY_POINT = "scripts/harness.py"
 INVOCATION = "python " + ENTRY_POINT
+
+
+# THE PROMOTION SURFACE (spec II.6/II.6a). `kernel/staging.py` has had these three operations since
+# 1.6 and its own docstring said "WHO calls freeze at mint time is phase-2 hook/orchestrator logic";
+# nothing ever did. Measured 2026-07-31 in a scaffolded project, before this: no subcommand named
+# freeze, `capture ARC` refused (`ARC` is not in `REQUIRED_FIELDS`), and `project_memory/**` is
+# kernel-only for tool writes -- so an ARC item, a frozen wireframe and a `design_refs` entry were
+# all unreachable. Three consequences, none of them theoretical: `gate_packaging_decision` blocked
+# every push and merge on a field no role could write (a block with no exit, which is exactly what
+# its own docstring said it was not); the UI-design tooth in `dispatch.validate_dispatch` only
+# fires on a non-empty `root.design_refs` and that list could never become non-empty; and no
+# wireframe could ever be frozen on scope approval.
+#
+# ONE MAPPING, and the surface is derived from it rather than restated: the subcommand names, their
+# `--help`, the body's required and optional keys and the type each key must carry all come from
+# `freeze_parameters` reading the operation's own signature. A fourth freeze operation is on the
+# command line the day it is written, with the right contract, and a renamed parameter cannot leave
+# a stale flag behind.
+FREEZE_OPERATIONS = {
+    "architecture": staging.freeze_architecture,
+    "design": staging.freeze_design,
+    "wireframe": staging.freeze_wireframe,
+}
+FREEZE_COMMANDS = {"freeze-" + kind: operation for kind, operation in FREEZE_OPERATIONS.items()}
+
+
+def freeze_parameters(operation):
+    """The body contract of a freeze operation, read off its signature: {name: (required, type)}.
+
+    `state` is dropped -- the CLI holds it, and it is the one parameter a body must never carry.
+    The TYPE is the parameter's own annotation resolved against `builtins`; `from __future__ import
+    annotations` makes those annotations strings, and anything that does not name a builtin type
+    simply carries no type check rather than an invented one. That matters because a body value of
+    the wrong shape reaches the kernel as a `TypeError` from inside `list()` or `dict.get`, which is
+    a traceback rather than a message a role can act on.
+    """
+    contract = {}
+    for name, parameter in list(inspect.signature(operation).parameters.items())[1:]:
+        declared = getattr(builtins, str(parameter.annotation), None)
+        contract[name] = (parameter.default is inspect.Parameter.empty,
+                          declared if isinstance(declared, type) else None)
+    return contract
+
+
+def _freeze_body(command, operation):
+    """The stdin body for a freeze, checked against the operation's declared contract.
+
+    Refusals are UsageErrors (exit 2) on purpose: a body with a missing or misspelled key is input
+    the kernel never got to look at, and reporting it as a state refusal would tell a role its
+    freeze was rejected when it was never attempted.
+    """
+    body = _json_body(command)
+    contract = freeze_parameters(operation)
+    missing = sorted(name for name, (required, _t) in contract.items()
+                     if required and name not in body)
+    unknown = sorted(key for key in body if key not in contract)
+    if missing or unknown:
+        raise UsageError(
+            "the %s body %s. Its keys are exactly the operation's own parameters -- required: %s; "
+            "optional: %s. Remedy: send that object on stdin, e.g. `%s %s <<'EOF'` … `EOF`."
+            % (command,
+               "; ".join(part for part in (
+                   "is missing %s" % ", ".join(missing) if missing else "",
+                   "carries %s, which the operation has no parameter for" % ", ".join(unknown)
+                   if unknown else "") if part),
+               ", ".join(sorted(n for n, (r, _t) in contract.items() if r)) or "none",
+               ", ".join(sorted(n for n, (r, _t) in contract.items() if not r)) or "none",
+               INVOCATION, command))
+    for name, value in sorted(body.items()):
+        _required, declared = contract[name]
+        if declared is None or isinstance(value, declared):
+            continue
+        if value is None:
+            # NULL IS THE SCHEMA'S QUESTION, NOT THIS ONE. The first cut allowed it only for a
+            # parameter with a default and thereby refused a legitimate body: `freeze_wireframe`
+            # takes `scope_apr_ref` as a REQUIRED parameter whose companion field is
+            # `nullable: true` (same for `arc_companion.approval_ref`), so "no approval yet" had no
+            # spelling. This check is about SHAPE -- a list stays a list -- and the strict companion
+            # schemas decide which fields may be absent or null.
+            continue
+        raise UsageError(
+            "the %s body gives %s as %s; the operation declares it %s. Remedy: send the field in "
+            "the shape the kernel hashes it in -- a list stays a list, a mapping stays a mapping."
+            % (command, name, type(value).__name__, declared.__name__))
+    return body
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -225,14 +313,37 @@ def build_parser() -> argparse.ArgumentParser:
     transition.add_argument("item_id")
     transition.add_argument("to_status")
     transition.add_argument("--approved-retry", action="store_true")
+    # THE PROMOTION COMMANDS (see FREEZE_OPERATIONS for what they unblock). Generated from that
+    # mapping, so the surface cannot fall behind the kernel; the body is on STDIN for the same two
+    # reasons `capture`'s is -- `derives_from`, `assets` and `packaging` are a list and two mappings
+    # no flag surface expresses, and a `--from project_memory/staging/...` cannot be typed at all
+    # (`gate_write_scope` refuses a write-capable pipeline whose COMMAND LINE names the state
+    # directory). Nothing on this line names it: a staging KEY, an item id and a file NAME are
+    # state-relative by construction, exactly as `evidence --artifact-ref` is.
+    for command, operation in sorted(FREEZE_COMMANDS.items()):
+        contract = freeze_parameters(operation)
+        sub.add_parser(command, help=(
+            "promote the staged %s to canonical state (spec II.6/II.6a); JSON body on stdin, "
+            "required: %s%s" % (
+                command.split("-", 1)[1],
+                ", ".join(sorted(name for name, (required, _t) in contract.items() if required)),
+                "; optional: %s" % ", ".join(
+                    sorted(name for name, (required, _t) in contract.items() if not required))
+                if any(not required for required, _t in contract.values()) else "")))
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
     return parser
 
 
-def _json_body() -> dict:
-    """The JSON object a `capture` was given on stdin, or a UsageError naming what went wrong.
+def _json_body(command: str = "capture") -> dict:
+    """The JSON object a body-taking command was given on stdin, or a UsageError naming what
+    went wrong.
+
+    `command` is the subcommand the role typed, so the remedy names the line they were running --
+    `capture` and the three `freeze-*` commands share this reader because they share the reason
+    for it (see the `capture` parser entry: a body carries lists and mappings no flag surface
+    expresses, and a `--from project_memory/...` cannot be typed past `gate_write_scope`).
 
     THE TTY CHECK IS NOT COSMETIC: `read()` on a terminal waits for EOF, so a role that forgets
     the heredoc would hang its own tool call until the harness times it out -- a command that
@@ -240,16 +351,17 @@ def _json_body() -> dict:
     """
     if sys.stdin is None or sys.stdin.isatty():
         raise UsageError(
-            "capture reads the item's fields as a JSON object on STDIN and nothing is piped in -- "
-            "it does not prompt for them. Remedy: `%s capture <TYPE> <<'EOF'` … `EOF`."
-            % INVOCATION)
+            "%s reads its fields as a JSON object on STDIN and nothing is piped in -- "
+            "it does not prompt for them. Remedy: `%s %s <<'EOF'` … `EOF`."
+            % (command, INVOCATION, command))
     raw = sys.stdin.read()
     if not raw.strip():
         raise UsageError(
-            "capture reads the item's fields as a JSON object on STDIN and got nothing. Remedy: "
-            "pipe or heredoc the body, e.g. `%s capture PR <<'EOF'` … `EOF`; the fields a type "
-            "needs are `kernel/backlog_types.REQUIRED_FIELDS`, and the kernel names any that are "
-            "missing." % INVOCATION)
+            "%s reads its fields as a JSON object on STDIN and got nothing. Remedy: "
+            "pipe or heredoc the body, e.g. `%s %s <<'EOF'` … `EOF`; the fields a capture type "
+            "needs are `kernel/backlog_types.REQUIRED_FIELDS` and a freeze body's keys are its "
+            "operation's own parameters, and the kernel names any that are missing."
+            % (command, INVOCATION, command))
     # THE BUDGET IS CHECKED ON THE BYTES, BEFORE THE PARSE, and both halves are deliberate.
     # Spec II.5 caps an active item at `report.ITEM_MAX_BYTES`, `guard_memory_budget` enforces it
     # on every TOOL write into the same tree, and `capture` went around both -- measured: a 2 MB
@@ -260,27 +372,27 @@ def _json_body() -> dict:
     # role could act on -- caught below for the same reason.
     if len(raw.encode("utf-8")) > report.ITEM_MAX_BYTES:
         raise UsageError(
-            "the capture body is %d bytes; an active item is capped at %d (spec II.5, the same "
+            "the %s body is %d bytes; an active item is capped at %d (spec II.5, the same "
             "limit `python scripts/harness.py validate` reports and `guard_memory_budget` enforces "
             "on tool writes). Remedy: an item REFERENCES its detail -- put the bulk in "
             "staging/<key>/ or an Evidence artefact and name it from the item."
-            % (len(raw.encode("utf-8")), report.ITEM_MAX_BYTES))
+            % (command, len(raw.encode("utf-8")), report.ITEM_MAX_BYTES))
     try:
         body = json.loads(raw)
     except ValueError as exc:
         raise UsageError(
-            "the capture body on stdin is not JSON (%s). Remedy: send a JSON object -- JSON and "
+            "the %s body on stdin is not JSON (%s). Remedy: send a JSON object -- JSON and "
             "not YAML because these fields are hashed into approvals, and YAML would retype `no` "
-            "as false and `1.10` as a float on the way in." % exc) from None
+            "as false and `1.10` as a float on the way in." % (command, exc)) from None
     except RecursionError:
         raise UsageError(
-            "the capture body on stdin nests too deeply for the parser. Remedy: an item is a flat "
+            "the %s body on stdin nests too deeply for the parser. Remedy: an item is a flat "
             "record that REFERENCES its detail; nothing in a field contract needs that depth."
-        ) from None
+            % command) from None
     if not isinstance(body, dict):
         raise UsageError(
-            "the capture body is a %s; an item is a JSON OBJECT of field -> value. Remedy: wrap "
-            "it in braces." % type(body).__name__)
+            "the %s body is a %s; an item is a JSON OBJECT of field -> value. Remedy: wrap "
+            "it in braces." % (command, type(body).__name__))
     return body
 
 
@@ -358,8 +470,23 @@ def main(argv=None) -> int:
             })
             print("%s %s: %s" % (item["id"], item["kind"], item["result"]))
             return 0
+        if args.command in FREEZE_COMMANDS:
+            operation = FREEZE_COMMANDS[args.command]
+            result = operation(state, **_freeze_body(args.command, operation))
+            # STATE-RELATIVE, like every other path this surface prints or accepts: the absolute
+            # one names `project_memory`, and a role who pastes it into the next command line meets
+            # `gate_write_scope` instead of an answer.
+            print(os.path.relpath(result["frozen"], state.root).replace(os.sep, "/"))
+            # `freeze_design` is the ONE producer of a `design_refs` entry, and that list is the
+            # input `dispatch` refuses a UI spawn against (II.6). Printed from the returned root
+            # rather than re-read, so what is shown is what the same lock hold wrote.
+            root_item = result.get("root")
+            if root_item is not None:
+                print("%s design_refs: %s" % (
+                    root_item["id"], ", ".join(root_item.get("design_refs") or []) or "-"))
+            return 0
         if args.command == "capture":
-            body = _json_body()
+            body = _json_body("capture %s" % args.item_type)
             # TSK goes through its own constructor even here: `root_revision` is denormalized from
             # the CURRENT root (spec II.2) and `dispatch.create_task` is the one thing that reads
             # it. Letting a hand-written body carry that field would be a second producer of one

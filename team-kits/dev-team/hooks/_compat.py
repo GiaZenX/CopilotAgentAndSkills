@@ -611,7 +611,7 @@ _WORD_RX = re.compile(r"\S+")
 # bash would (`git $'\x70ush'` is `push` to bash, `x70ush` here — the escape eats exactly the `x`),
 # and the PowerShell one (`_ESCAPE_CHARS[1]`) never consumes a backslash at all, so every one of
 # them stands in the token it read. Either way the honest answer to "which git command is that" is
-# "unknown", not "not a push". Such a token is `resolved=False` and `GitInvocation.runs` then
+# "unknown", not "not a push". Such a token is `resolved=False` and `Invocation.runs` then
 # answers YES to every question — measured as a full ALLOW across all eight PreToolUse hooks while
 # the literal spelling was refused by three: `git $V --force`, `git $(echo push)`, `git %VERB%`,
 # `git pus{h..h}` (a brace sequence with equal ends is ONE word, `push`), `git pus[h]` and
@@ -867,7 +867,7 @@ def _argument_scan(command, lower=True, escape="\\"):
         two readings — always in the PowerShell one, which consumes no backslash at all — where
         `_UNDETERMINED_VALUE_RX` reads it as a verb the text does not fix. In the POSIX reading the
         same line resolves to the harmless-looking `x70ush`; one reading answering "unknown" is
-        what the gates decide on (`GitInvocation.runs` over all of them).
+        what the gates decide on (`Invocation.runs` over all of them).
     CASE is the caller's decision: lowercasing is right for reading verbs and flags and wrong for
     reading a ref, because a branch is case-sensitive and `gate_push_token` binds its approval
     token to the branch NAME. That caller passes `lower=False`; the subcommand is lowercased by
@@ -1005,6 +1005,60 @@ _GIT_FLAG_OPTIONS = frozenset((
 # but reachable through a path (`/usr/bin/git`, `.\git.exe`).
 _GIT_WORD_RX = re.compile(r"(?<![\w.-])git(?:\.exe)?(?![\w.-])", re.IGNORECASE)
 _SEGMENT_SPLIT_RX = re.compile(r"[&|;\n]")
+
+
+class _ProgramReader(object):
+    """The three things that differ between one program's command line and another's.
+
+    Everything else about reading a command — which `git`/`docker` is the PROGRAM rather than a
+    piece of prose, which token is the VERB, what an expansion in the verb position means — is the
+    same question with the same fail-closed answer, and it is answered once below. This class
+    exists because the SECOND caller proved it: `gate_shell_hygiene`'s docker rule read its verb
+    POSITIONALLY (`docker\\s+(?:compose\\s+)?(stop|kill|…)`) and therefore let every global option
+    through as a bypass — measured 2026-07-31 as real `gate_shell_hygiene` processes in a repo
+    whose own compose project is `myproject`, and with no docker daemon reachable:
+    `docker --context remote system prune -af`, `docker -H tcp://x:2375 system prune -af`,
+    `docker --log-level debug volume prune` and `docker compose -p other down` were ALLOWED,
+    while `docker system prune -af` one word away was refused. That
+    is the same defect the git branch of the same file had fixed one rule earlier, so the fix is
+    the same reader rather than a second option list.
+    """
+
+    __slots__ = ("word_rx", "value_options", "flag_options")
+
+    def __init__(self, word_rx, value_options, flag_options):
+        self.word_rx = word_rx
+        self.value_options = frozenset(value_options)
+        self.flag_options = frozenset(flag_options)
+
+
+GIT_READER = _ProgramReader(_GIT_WORD_RX, _GIT_VALUE_OPTIONS, _GIT_FLAG_OPTIONS)
+
+# `docker`, and `docker-compose` because the v1 binary is a second spelling of the same daemon
+# reach (`docker-compose -p other down`). The suffix guard is the git one: not a piece of a longer
+# word, but reachable through a path.
+_DOCKER_WORD_RX = re.compile(r"(?<![\w.-])docker(?:-compose)?(?:\.exe)?(?![\w.-])", re.IGNORECASE)
+# docker's own options that CONSUME the next token, so that token can never be the verb
+# (`docker --context remote system prune` runs `system prune`, not `remote`).
+_DOCKER_VALUE_OPTIONS = frozenset((
+    "--config", "-c", "--context", "--host", "-l", "--log-level",
+    "--tlscacert", "--tlscert", "--tlskey",
+    # compose's own, because for the `docker-compose` spelling compose IS the program and its
+    # `-p <project>` stands where a verb otherwise would (`docker-compose -p other down`)
+    "-p", "--project-name"))
+# ...and the ones that take none. An option in NEITHER set leaves the following token ambiguous,
+# and `_subcommand_candidates` then returns both readings rather than guessing -- the same
+# fail-closed default that keeps `git --attr-source HEAD push` a push.
+#
+# `-H` AND `-h` ARE IN NEITHER, deliberately, and that is where docker differs from git. This
+# reader case-folds, git's `-C` and `-c` both take a value so the fold is harmless, and docker's do
+# not: `-H` is the daemon socket and takes one, `-h` is help and takes none. So the fold makes the
+# next token genuinely undecidable, and "undecidable" already has an answer here -- both readings.
+# Measured before that: `docker -H tcp://x:2375 system prune -af` read its verb as the SOCKET and
+# matched no rule.
+_DOCKER_FLAG_OPTIONS = frozenset((
+    "-D", "--debug", "--tls", "--tlsverify", "-v", "--version", "--help"))
+DOCKER_READER = _ProgramReader(_DOCKER_WORD_RX, _DOCKER_VALUE_OPTIONS, _DOCKER_FLAG_OPTIONS)
 class _UnresolvedVerb(object):
     """The verb of an invocation the reader could not resolve — an OBJECT, not a string.
 
@@ -1045,11 +1099,25 @@ UNRESOLVED_SUBCOMMAND = _UnresolvedVerb()
 # a refusal (spec II.4; `gate_ledger_valid.TOTAL_BUDGET` exists for the same reason). Over the
 # bound the answer is ONE unresolved invocation: "this could be any git command", which every gate
 # reads as applicable.
+#
+# WHAT THIS BOUND DOES NOT BOUND, said here because the sentence above reads as if the quadratic
+# class were closed and it is not. The READER is linear; a CALLER that walks `Invocation.arguments`
+# for every invocation is not, because each access rescans to the end of the SEGMENT (see the
+# property below). `gate_push_token._push_invocations` does exactly that, so a single segment with k
+# push invocations costs O(k * n). Measured as real hook processes with `$(git push origin main)`
+# repeated inside ONE segment (verified with a git shim that a real shell runs those
+# substitutions): 64 KB -> rc 2 in 5.4 s, 128 KB -> 26.1 s, 192 KB -> 58.6 s, 256 KB -> past the
+# host's 90 s and therefore an ALLOW on ~11 000 real pushes. On the SAME inputs `gate_git` stayed
+# at 0.3-0.5 s, which is what points at the caller rather than at this module. 256 KB is half of
+# this limit, so the limit does not reach it. This is HEAD's behaviour and not a regression of the
+# generalisation (measured identical at HEAD); it is written down rather than left to be found
+# again, and closing it means bounding the WORK per caller, not the text length.
 GIT_READ_LIMIT = 512 * 1024
 
 
-class GitInvocation(object):
-    """One `git …` the shell will run: which VERB, with which ARGUMENTS, inside which segment."""
+class Invocation(object):
+    """One program call the shell will run: which VERB, with which ARGUMENTS, inside which
+    segment. Not git-specific -- see `_ProgramReader` for what a second program changes."""
 
     __slots__ = ("subcommand", "resolved", "segment", "_words", "_start")
 
@@ -1083,7 +1151,7 @@ class GitInvocation(object):
         return not self.resolved or self.subcommand in names
 
     def __repr__(self):
-        return "GitInvocation(%r, resolved=%r)" % (self.subcommand, self.resolved)
+        return "Invocation(%r, resolved=%r)" % (self.subcommand, self.resolved)
 
 
 def _ends_word(word_view, position):
@@ -1109,25 +1177,25 @@ def _ends_word(word_view, position):
             or _UNDETERMINED_BREAK_RX.match(word_view, position) is not None)
 
 
-def _subcommand_candidates(segment, words, position):
-    """Every token that could be the subcommand of the git word ending at `position`, as
+def _subcommand_candidates(segment, words, position, reader):
+    """Every token that could be the subcommand of the program word ending at `position`, as
     (verb, argument offset, resolved).
 
-    Normally exactly one: the first token that is neither one of git's own options nor the value of
-    one. TWO when an option this reader does not know stands in front of it — such an option may or
-    may not take the following token as its value, so which of the two is the verb cannot be
-    decided here, and both are returned rather than guessed (`git --attr-source HEAD push --force`
-    really pushes, and reading only `head` switched every gate off).
+    Normally exactly one: the first token that is neither one of the program's own options nor the
+    value of one. TWO when an option this reader does not know stands in front of it — such an
+    option may or may not take the following token as its value, so which of the two is the verb
+    cannot be decided here, and both are returned rather than guessed (`git --attr-source HEAD push
+    --force` really pushes, and reading only `head` switched every gate off).
     """
     matches = _WORD_RX.finditer(words, position)
     ambiguous, found = False, []
     for match in matches:
         token = segment[match.start():match.end()]
         low = token.lower()
-        if low in _GIT_VALUE_OPTIONS:
+        if low in reader.value_options:
             next(matches, None)             # this option's VALUE, never the subcommand
         elif token.startswith("-"):
-            if "=" not in token and low not in _GIT_FLAG_OPTIONS:
+            if "=" not in token and low not in reader.flag_options:
                 ambiguous = True            # unknown option: the next token may be its value
         else:
             found.append((low, match.end(), _UNDETERMINED_VALUE_RX.search(token) is None))
@@ -1137,7 +1205,7 @@ def _subcommand_candidates(segment, words, position):
 
 
 def git_invocations(command, lower=True):
-    """Every git invocation in a RAW command, as `GitInvocation`s.
+    """Every git invocation in a RAW command, as `Invocation`s.
 
     THE DEFINITION every git gate decides applicability on, and it is about two things only.
 
@@ -1149,7 +1217,7 @@ def git_invocations(command, lower=True):
     later"` is a commit, because `merge` is not the first non-option token. That last case is the
     false positive the old prose-stripping existed to prevent, and it survives here WITHOUT
     throwing the message away. A verb the shell only builds at run time is UNRESOLVED and matches
-    every question (`GitInvocation.runs`).
+    every question (`Invocation.runs`).
 
     WHICH `git` IS A COMMAND. A command name is a WORD, and a word is what the shell's own word
     splitting produces — which quoting changes and quote marks do not. So a `git` counts exactly
@@ -1169,7 +1237,7 @@ def git_invocations(command, lower=True):
     BOTH halves default the SAME way when the text runs out of answers, and that default is the
     point of the whole layer. The reader does not ask "is this a push" and shrug; it asks "does
     this line name git, and does the text fix which command it runs" — and a no to the second
-    question is a yes to every gate (`GitInvocation.runs`, `_UNDETERMINED_VALUE_RX`, `_ends_word`,
+    question is a yes to every gate (`Invocation.runs`, `_UNDETERMINED_VALUE_RX`, `_ends_word`,
     `GIT_READ_LIMIT`). Four rounds of review each found the next spelling that read as a resolved,
     harmless, unknown-to-every-gate verb — `${IFS}`, `pus{h..h}`, `$'\\x70ush'`, `pus[h]`, then
     cmd's `p^ush` and `!V!` — because the reader answered no on unsureness, which is fail-OPEN in a
@@ -1227,29 +1295,49 @@ def git_invocations(command, lower=True):
     `echo x` to nothing — and is returned alongside them because a caller that reads REFS out of
     the command needs exactly the same boundary (`gate_git.target_items`).
     """
+    return invocations(command, GIT_READER, lower)
+
+
+def docker_invocations(command, lower=True):
+    """Every `docker`/`docker-compose` invocation in a RAW command, by the SAME definition.
+
+    See `git_invocations` for the whole of it — which word is the program, which token is the verb,
+    and why unsureness answers YES. Only the option table differs (`DOCKER_READER`), because that
+    is the only thing about a command line that is program-specific.
+
+    The caller that needs this is `gate_shell_hygiene`'s R10: `docker rm`/`stop`/`prune` reach
+    every project on the daemon, and its own reader used to find the verb by POSITION.
+    """
+    return invocations(command, DOCKER_READER, lower)
+
+
+def invocations(command, reader, lower=True):
+    """Every invocation of `reader`'s program in a RAW command."""
     if len(command or "") > GIT_READ_LIMIT:
-        return [GitInvocation(UNRESOLVED_SUBCOMMAND, False, "", "", 0)]
-    invocations = []
+        return [Invocation(UNRESOLVED_SUBCOMMAND, False, "", "", 0)]
+    found = []
     for text, words in _scan_views(command, lower):
-        _read_invocations(text, words, invocations)
-    return invocations
+        _read_invocations(text, words, found, reader)
+    return found
 
 
-def _read_invocations(text, words, out):
+def _read_invocations(text, words, out, reader):
     """One reading of the command, appended to `out`. Linear in the length of the text:
-    `_ends_word` answers "does this `git` end a word" from one position in the word view, and the
-    tokens after it are scanned lazily from that offset instead of being sliced out per match."""
+    `_ends_word` answers "does this program word end a word" from one position in the word view,
+    and the tokens after it are scanned lazily from that offset instead of being sliced out per
+    match."""
     start = 0
     for boundary in itertools.chain(_SEGMENT_SPLIT_RX.finditer(text), (None,)):
         end = len(text) if boundary is None else boundary.start()
         segment, word_view = text[start:end], words[start:end]
         limit = len(segment)
-        for match in _GIT_WORD_RX.finditer(segment):
+        for match in reader.word_rx.finditer(segment):
             tail = match.end()
             if tail < limit and not _ends_word(word_view, tail):
                 continue                    # inside a longer word, so it is text, not the program
-            for verb, position, resolved in _subcommand_candidates(segment, word_view, tail):
-                out.append(GitInvocation(verb, resolved, segment, word_view, position))
+            for verb, position, resolved in _subcommand_candidates(
+                    segment, word_view, tail, reader):
+                out.append(Invocation(verb, resolved, segment, word_view, position))
         if boundary is None:
             break
         start = boundary.end()
@@ -1259,7 +1347,7 @@ def git_subcommands(command):
     """The set of git subcommands a RAW command invokes, for callers that need nothing else.
 
     An invocation whose verb could not be resolved contributes `UNRESOLVED_SUBCOMMAND`; a caller
-    that tests membership against its own set must therefore use `GitInvocation.runs` instead of
+    that tests membership against its own set must therefore use `Invocation.runs` instead of
     this, and every gate does."""
     return {invocation.subcommand for invocation in git_invocations(command)}
 

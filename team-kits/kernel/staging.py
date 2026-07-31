@@ -64,8 +64,67 @@ def frozen_design_dirs():
     return (ACTIVE_DIRS[DESIGN_REF_TYPE],)
 
 
+def contained_child(base: str, name: str, what: str) -> str:
+    """`base/name`, refused unless `name` is ONE segment that really stays inside `base`.
+
+    THE CHOKEPOINT FOR EVERY PATH A FREEZE COMPOSES FROM A CALLER'S STRING, and it exists because
+    the day those strings became reachable from a command line they became a `shutil.rmtree` on any
+    directory. Every freeze ends in `clear_staging(..., mode="promoted")`, which is
+    `rmtree(<root>/staging/<key>)`, and `staging_dir` used to be a bare `os.path.join` -- so
+    `{"staging_key": "../.."}` on stdin deleted the whole repository, and `".."` deleted the whole
+    state directory. The body travels on STDIN, so no hook sees it: `gate_write_scope` reads command
+    LINES, and all three of those command lines pass all eight registered shell gates.
+
+    TWO CHECKS, AS DEFENCE IN DEPTH, and that wording is what the measurement supports rather than
+    the stronger one this paragraph first carried ("neither alone is the answer"). The SEGMENT
+    check refuses the text that names another place -- a separator, `.`, `..`, a drive letter
+    (`ntpath.join("D:\\\\a", "C:x")` returns `C:x`, so an absolute second argument silently replaces
+    the first on Windows). The REALPATH check refuses the link that goes somewhere else while
+    spelling ONE segment; a junction needs no admin rights to create, and
+    `gate_write_scope._repo_relative` resolves the target side for exactly this reason.
+
+    WHAT THE TEST ACTUALLY DISTINGUISHES, so nobody reads the pair as two measured teeth: against
+    the six escape shapes `test_no_freeze_parameter_can_reach_outside_the_state_root` feeds, EACH
+    HALF ALONE catches all of them -- deleting the realpath check, the drive-letter clause, the
+    `.`/`..` clause or the backslash normalisation each leaves that test GREEN. Only the whole
+    guard going away turns it red. The junction is the one case that needs the realpath half and
+    the escape list contains no such form; it was verified by hand and not pinned. That is the
+    mechanism to fix, and the fix is a junction in the fixture -- a symlink guard without a test
+    has rotted twice in this repo, and a docstring claiming two independent teeth would have been
+    the third time.
+
+    A LATENT EDGE, not exploitable today and written down before it becomes one: the containment
+    check accepts `resolved == container`, so a name Windows normalises AWAY (`".."` with trailing
+    spaces, `"..."`, `"   "`) passes the segment check and resolves to the container itself. Every
+    caller today appends a FILE NAME afterwards, where the component stays literal, so the
+    operation stops at "staged file does not exist" before `clear_staging` can run (measured). A
+    caller that used this for a directory alone would need `resolved != container` as well.
+
+    `what` names the parameter in the refusal, because the role typed it.
+    """
+    text = str(name or "")
+    normalised = text.replace("\\", "/")
+    if (not normalised or "/" in normalised or normalised in (".", "..")
+            or os.path.splitdrive(text)[0]):
+        raise StagingError(
+            "%s %r is not a single name inside %s -- refused. A staging key and a staged file name "
+            "are NAMES, not paths: the kernel joins them onto the state directory and then empties "
+            "what it promoted, so a value that walks out of that directory deletes or copies "
+            "somewhere nobody asked for. Remedy: pass the bare name (e.g. `TSK-0007`, "
+            "`preview.html`)." % (what, text, base))
+    target = os.path.join(base, text)
+    resolved = os.path.realpath(ext_path(target))
+    container = os.path.realpath(ext_path(base))
+    if resolved != container and not resolved.startswith(container + os.sep):
+        raise StagingError(
+            "%s %r resolves to %s, which is outside %s -- refused. A link may spell one name and "
+            "lead anywhere. Remedy: remove the link, or stage the artefact in the real directory."
+            % (what, text, resolved, container))
+    return target
+
+
 def staging_dir(state: ProjectState, key: str) -> str:
-    return os.path.join(state.root, "staging", key)
+    return contained_child(os.path.join(state.root, "staging"), key, "staging key")
 
 
 def _file_hash(path: str) -> str:
@@ -200,7 +259,12 @@ def freeze_design(
     Everything happens in ONE lock hold (Fable-Check 11/BUG-1): the refs are
     computed from the FRESH root read, so no parallel append is lost."""
     parse_id(dsn_id)
-    source = os.path.join(staging_dir(state, staging_key), source_name)
+    # `source_name` is the ONLY freeze parameter that names a file rather than deriving it from an
+    # id (`parse_id` bounds `wfr_id`/`arc_id` to `<TYP>-nnnn`, so those two compose nothing a caller
+    # chose). It goes through the same chokepoint: an absolute value would have replaced the staging
+    # directory outright under `os.path.join`, and the copy would have frozen any file on the disk
+    # into `design/revisions/` and pointed the root's `design_refs` at it.
+    source = contained_child(staging_dir(state, staging_key), source_name, "staged file name")
     with state.lock:
         if not os.path.exists(ext_path(source)) or os.path.getsize(ext_path(source)) == 0:
             raise StagingError(

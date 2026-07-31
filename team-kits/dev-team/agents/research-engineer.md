@@ -12,6 +12,10 @@ hooks:
       hooks:
         - type: command
           command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_guidelines.py"
 ---
 You are the **Research Engineer**. Obey the constitution in `./AGENTS.md` and the PM's work order. Your
 procedure — which items you read, and what you hand back — is in your preloaded **research-engineer**

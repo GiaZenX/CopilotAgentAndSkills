@@ -11,7 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from conftest import approve  # noqa: E402 -- the ONE minting helper for the suite
 from kernel import approvals, cli, dispatch, report, staging  # noqa: E402
-from kernel.backlog_types import ACTIVE_DIRS  # noqa: E402
+from conftest import walk_to_status  # noqa: E402
+from kernel.backlog_types import ACTIVE_DIRS, TransitionError  # noqa: E402
 from kernel.schemas import SchemaError  # noqa: E402
 from kernel.staging import StagingError  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
@@ -813,3 +814,297 @@ def test_a_probe_failure_cannot_take_the_whole_command_surface_down(state, monke
     assert cli.build_parser() is not None
     assert run_cli(state, "doctor") == 0
     assert '"state_version"' in capsys.readouterr().out
+
+
+# -- the freeze commands: the promotion path a role can reach ------------------------------
+
+BUG_FIELDS = {
+    "title": "checkout 500s", "related_pr": "PR-0001", "observed": "500 on POST /pay",
+    "expected": "200 and an order", "repro": "post /pay with a valid cart", "severity": "high",
+    "acceptance_criteria": [{"id": "AC-1", "text": "no 500 on /pay"}],
+}
+
+
+def test_the_freeze_body_contract_is_read_off_the_operations_own_signature(state, capsys):
+    """The three freeze commands validate their stdin body against `inspect.signature`, not a list.
+
+    That is what makes the surface follow the kernel: `FREEZE_OPERATIONS` is one mapping, and the
+    subcommand names, the `--help` text, the required keys, the optional keys and the type each
+    key must carry are all derived from it. Renaming a parameter of `staging.freeze_architecture`
+    moves every one of them together.
+
+    All four refusals are rc 2 and not 1: the kernel never looked, so calling it a state refusal
+    would tell the role its freeze was rejected when it was never attempted.
+    """
+    contract = cli.freeze_parameters(staging.freeze_architecture)
+    assert contract["derives_from"] == (True, list)
+    assert contract["packaging"] == (False, dict)
+    assert "state" not in contract, "the CLI holds the state; a body may never carry it"
+
+    stage_file(state, "PR-0001", "ARC-0001.drawio.svg")
+    body = {"staging_key": "PR-0001", "arc_id": "ARC-0001", "title": "t", "scope": "s",
+            "derives_from": ["PR-0001"]}
+
+    missing = dict(body)
+    missing.pop("scope")
+    assert run_cli_with_body(state, json.dumps(missing), "freeze-architecture") == 2
+    assert "is missing scope" in capsys.readouterr().err
+
+    unknown = dict(body, packagng={"method": "docker"})
+    assert run_cli_with_body(state, json.dumps(unknown), "freeze-architecture") == 2
+    assert "no parameter for" in capsys.readouterr().err
+
+    mistyped = dict(body, derives_from="PR-0001")
+    assert run_cli_with_body(state, json.dumps(mistyped), "freeze-architecture") == 2
+    err = capsys.readouterr().err
+    assert "derives_from" in err and "list" in err
+
+    smuggled = dict(body, state="somewhere else")
+    assert run_cli_with_body(state, json.dumps(smuggled), "freeze-architecture") == 2
+    assert "no parameter for" in capsys.readouterr().err
+
+
+def test_the_freeze_commands_write_the_state_no_other_producer_can(state, capsys):
+    """The measured hole this closes: `capture` refuses `ARC`, `project_memory/**` is kernel-only
+    for tool writes, and `staging.freeze_*` had no caller a role could reach -- so an ARC item, a
+    frozen wireframe and a `design_refs` entry were all unreachable in a shipped project.
+
+    The printed path is STATE-RELATIVE on purpose: the absolute one names `project_memory`, and
+    `gate_write_scope` refuses a write-capable pipeline whose command line does.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    stage_file(state, pr["id"], "ARC-0001.drawio.svg")
+    assert run_cli_with_body(state, json.dumps({
+        "staging_key": pr["id"], "arc_id": "ARC-0001", "title": "Deployment",
+        "scope": "whole system", "derives_from": [pr["id"]],
+        "packaging": {"method": "docker"}}), "freeze-architecture") == 0
+    printed = capsys.readouterr().out.strip()
+    assert printed == "architecture/revisions/ARC-0001.r01.drawio.svg", printed
+    assert "project_memory" not in printed
+    companion = os.path.join(state.root, "architecture", "active", "ARC-0001.yaml")
+    with open(companion, encoding="utf-8") as handle:
+        assert yaml.safe_load(handle)["packaging"] == {"method": "docker"}
+
+    stage_file(state, pr["id"], "WFR-0001.drawio.svg")
+    apr = approve(state, pr["id"])
+    assert run_cli_with_body(state, json.dumps({
+        "staging_key": pr["id"], "wfr_id": "WFR-0001", "scope_apr_ref": apr["id"],
+        "derives_from": [pr["id"]], "title": "Checkout screen"}), "freeze-wireframe") == 0
+    assert capsys.readouterr().out.strip() == "design/wireframes/WFR-0001.r01.drawio.svg"
+
+
+def test_freeze_design_is_the_only_thing_that_can_fill_design_refs(state, capsys):
+    """Minimum-keep 9 end to end: freeze -> `design_refs` -> the spawn tooth that reads it.
+
+    `dispatch.validate_dispatch` -- the one function `gate_dispatch` calls at a spawn -- refuses
+    a UI task whose `design_ref` is not one of the root's
+    CONFIRMED refs -- but only once that list is non-empty, and `staging.freeze_design` is the only
+    function in the harness that appends to it. Without a command for it the rule could not fire in
+    any shipped project, so it existed as prose. Both directions are measured here: the wrong ref
+    is refused, the frozen one dispatches.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    assert not state.read_item(pr["id"]).get("design_refs")
+    stage_file(state, pr["id"], "preview.html", content="<html><body>x</body></html>")
+    assert run_cli_with_body(state, json.dumps({
+        "staging_key": pr["id"], "dsn_id": "DSN-0001", "root_id": pr["id"],
+        "source_name": "preview.html"}), "freeze-design") == 0
+    out = capsys.readouterr().out
+    assert "design/revisions/DSN-0001.r01.html" in out
+    assert "PR-0001 design_refs: design/revisions/DSN-0001.r01.html" in out
+    frozen = state.read_item(pr["id"])["design_refs"]
+    assert frozen == ["design/revisions/DSN-0001.r01.html"]
+
+    walk_to_status(state, state.read_item(pr["id"]), "IN_DELIVERY")
+    order = {"product_requirement": pr["id"], "derives_from": pr["id"], "type": "ui",
+             "assigned_role": "frontend-developer", "acceptance_refs": ["AC-1"],
+             "allowed_scope": ["frontend/"], "forbidden_scope": [], "required_inputs": [],
+             "expected_outputs": [], "dependencies": []}
+    wrong = dispatch.create_task(state, dict(order, design_ref="DSN-9999"))
+    state.transition(wrong["id"], "READY")
+    header = json.loads(dispatch.dispatch_header(
+        dispatch.create_lease(state, wrong["id"])).split(" ", 1)[1])
+    with pytest.raises(dispatch.DispatchError) as refused:
+        dispatch.validate_dispatch(state, header, order["assigned_role"])
+    assert "design_ref" in str(refused.value)
+
+    good = dispatch.create_task(state, dict(order, design_ref=frozen[0]))
+    state.transition(good["id"], "READY")
+    header = json.loads(dispatch.dispatch_header(
+        dispatch.create_lease(state, good["id"])).split(" ", 1)[1])
+    assert dispatch.validate_dispatch(state, header, order["assigned_role"])
+
+
+def test_a_bug_cannot_be_verified_without_the_regression_evidence(state, capsys):
+    """Minimum-keep 8. The constitution says the regression test's Evidence is what moves a bug
+    from FIXED to VERIFIED; measured before this, `transition BUG-0001 VERIFIED` ran with no
+    Evidence in the project at all and `validate` then reported 0 errors.
+
+    Four steps, because the rule is about a CURRENT PASSING TEST verdict and each of the three
+    near-misses is a way of not being one: nothing at all, a failing test, and a passing review
+    (which judges the code, not the repro).
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    bug = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"]))
+    walk_to_status(state, bug, "FIXED")
+
+    with pytest.raises(TransitionError) as refused:
+        state.transition(bug["id"], "VERIFIED")
+    message = str(refused.value)
+    assert "'test' Evidence that PASSES" in message and "there is none" in message
+    assert "--related %s" % bug["id"] in message, "the remedy must be a line the role can type"
+
+    assert run_cli(state, "evidence", "--kind", "test", "--result", "fail",
+                   "--related", bug["id"], "--summary", "red",
+                   "--artifact-ref", "staging/x/run.log") == 0
+    capsys.readouterr()
+    with pytest.raises(TransitionError) as still:
+        state.transition(bug["id"], "VERIFIED")
+    assert "verdict is 'fail'" in str(still.value)
+
+    assert run_cli(state, "evidence", "--kind", "review", "--result", "pass",
+                   "--related", bug["id"], "--summary", "looks fine",
+                   "--artifact-ref", "staging/x/review.md") == 0
+    capsys.readouterr()
+    with pytest.raises(TransitionError):
+        state.transition(bug["id"], "VERIFIED")
+
+    assert run_cli(state, "evidence", "--kind", "test", "--result", "pass",
+                   "--related", bug["id"], "--summary", "regression green",
+                   "--artifact-ref", "staging/x/run2.log") == 0
+    capsys.readouterr()
+    assert state.transition(bug["id"], "VERIFIED")["status"] == "VERIFIED"
+
+
+def _tree_state(path):
+    """Every file under `path`, as {relative path: sha256} — the canary a freeze must not touch."""
+    import hashlib
+    state = {}
+    for current, _dirs, files in os.walk(path):
+        for name in sorted(files):
+            full = os.path.join(current, name)
+            try:
+                with open(full, "rb") as handle:
+                    state[os.path.relpath(full, path)] = hashlib.sha256(handle.read()).hexdigest()
+            except OSError:
+                state[os.path.relpath(full, path)] = "<unreadable>"
+    return state
+
+
+CANARY = "OUTSIDE-CANARY-8f2a"
+ARTEFACTS = ("WFR-0001.drawio.svg", "ARC-0001.drawio.svg")
+VALID_FREEZE_BODY = {
+    "staging_key": "PR-0001", "wfr_id": "WFR-0001", "arc_id": "ARC-0001", "dsn_id": "DSN-0001",
+    "root_id": "PR-0001", "source_name": "preview.html", "title": "t", "scope": "s",
+    "derives_from": ["PR-0001"], "scope_apr_ref": None, "approval_ref": None,
+}
+
+
+def _freeze_fixture(work, sibling):
+    """A state root under `work`, with the artefacts a freeze looks for placed BOTH inside the
+    staging key and at every place a traversal would land.
+
+    That second placement is what makes this an exploit reproduction rather than a spelling test:
+    without a source file at the traversal target the operation stops at `FileNotFoundError`, the
+    canary survives, and the test would pass over the unfixed kernel. Only the copies OUTSIDE the
+    state root carry `CANARY`, so "did something from outside get in" is decidable.
+    """
+    root = os.path.join(str(work), "project_memory")
+    os.makedirs(os.path.join(root, "staging", "PR-0001"), exist_ok=True)
+    state = ProjectState(root)
+    state.capture("PR", dict(PR_FIELDS))
+    for directory, preview in ((os.path.join(root, "staging", "PR-0001"), "<html>inside</html>"),
+                               (root, "<html>inside</html>"),
+                               (str(work), "<html>%s</html>" % CANARY),
+                               (sibling, "<html>%s</html>" % CANARY)):
+        os.makedirs(directory, exist_ok=True)
+        for name in ARTEFACTS:
+            with open(os.path.join(directory, name), "w", encoding="utf-8") as handle:
+                handle.write(DRAWIO_SVG)
+        with open(os.path.join(directory, "preview.html"), "w", encoding="utf-8") as handle:
+            handle.write(preview)
+    with open(os.path.join(str(work), "keepme.txt"), "w", encoding="utf-8") as handle:
+        handle.write(CANARY)
+    return state
+
+
+def _outside_state(work):
+    """Everything under the repo that is NOT canonical state — what a freeze may never touch."""
+    return {key: value for key, value in _tree_state(str(work)).items()
+            if not key.replace("\\", "/").startswith("project_memory/")}
+
+
+@pytest.mark.parametrize("command", sorted(cli.FREEZE_COMMANDS))
+def test_no_freeze_parameter_can_reach_outside_the_state_root(tmp_path, command):
+    """THE MECHANISM, not two parameter names: a freeze body arrives on STDIN, so no hook sees it —
+    `gate_write_scope` reads command LINES — and every freeze ends in
+    `clear_staging(..., mode="promoted")`, which is `shutil.rmtree(<root>/staging/<key>)`.
+
+    Measured before `staging.contained_child`: `{"staging_key": "../.."}` on stdin DELETED THE
+    WHOLE REPOSITORY (`.git`, `.claude`, `scripts`, everything), `".."` deleted the whole state
+    directory, and `freeze-design` with an absolute `source_name` copied any file on the disk into
+    `design/revisions/` and pointed the root's `design_refs` at it — all three command lines
+    passing all eight registered shell gates.
+
+    THE PARAMETER SET IS DERIVED from `cli.freeze_parameters`, so the next freeze parameter that
+    happens to reach a path join is covered on the day it is written. Every `str` parameter of the
+    command is substituted in turn with every escape shape, and FOUR universal invariants are
+    asserted, none of which needs to know which parameter is path-bearing:
+      * the repo outside the state directory is unchanged — same files, same hashes;
+      * a sibling directory outside the repo is unchanged;
+      * the root ITEM still exists (this is what `staging_key: ".."` destroyed: the whole state
+        directory, which the first two checks cannot see because they look past it);
+      * nothing from outside got IN — the canary content appears in no file under the state root,
+        which is the `source_name` case a deletion check cannot see.
+    """
+    sibling = os.path.join(str(tmp_path), "sibling")
+    contract = cli.freeze_parameters(cli.FREEZE_COMMANDS[command])
+    for name, (_required, declared) in sorted(contract.items()):
+        if declared is not str:
+            continue
+        for escape in ("..", "../..", r"..\..", "sub/deep", "../../../preview.html",
+                       os.path.join(sibling, "preview.html")):
+            work = tmp_path / ("%s-%s-%s" % (command, name, abs(hash(escape))))
+            os.makedirs(str(work), exist_ok=True)
+            state = _freeze_fixture(work, sibling)
+            before, before_sibling = _outside_state(work), _tree_state(sibling)
+
+            body = {key: value for key, value in VALID_FREEZE_BODY.items() if key in contract}
+            body[name] = escape
+            run_cli_with_body(state, json.dumps(body), command)
+
+            where = "%s %s=%r" % (command, name, escape)
+            assert _outside_state(work) == before, "%s changed the repo outside the state dir" % where
+            assert _tree_state(sibling) == before_sibling, "%s changed a sibling directory" % where
+            assert os.path.isfile(state.active_path("PR-0001")), (
+                "%s destroyed canonical state" % where)
+            for current, _dirs, files in os.walk(state.root):
+                for entry in files:
+                    with open(os.path.join(current, entry), encoding="utf-8",
+                              errors="ignore") as handle:
+                        assert CANARY not in handle.read(), (
+                            "%s pulled a file from outside the state root into %s" % (where, entry))
+
+
+def test_the_freeze_refusal_names_the_parameter_a_role_typed(state, capsys):
+    """The refusal has to be actionable: a role that typed `staging_key: "../.."` needs to read
+    which field it was, not `[Errno 2]`."""
+    stage_file(state, "PR-0001", "WFR-0001.drawio.svg")
+    body = {"staging_key": "../..", "wfr_id": "WFR-0001", "scope_apr_ref": None,
+            "derives_from": ["PR-0001"], "title": "t"}
+    assert run_cli_with_body(state, json.dumps(body), "freeze-wireframe") == 1
+    err = capsys.readouterr().err
+    assert "staging key" in err and "single name" in err
+
+
+def test_a_nullable_companion_field_may_be_sent_as_null(state, capsys):
+    """`freeze_wireframe` takes `scope_apr_ref` as a REQUIRED parameter whose companion field is
+    `nullable: true` — so "no scope approval yet" must have a spelling. The body check is about
+    SHAPE (a list stays a list); nullability is the strict companion schema's question, and the
+    first cut of `_freeze_body` refused this legitimate body."""
+    pr = state.capture("PR", dict(PR_FIELDS))
+    stage_file(state, pr["id"], "WFR-0001.drawio.svg")
+    assert run_cli_with_body(state, json.dumps({
+        "staging_key": pr["id"], "wfr_id": "WFR-0001", "scope_apr_ref": None,
+        "derives_from": [pr["id"]], "title": "Checkout"}), "freeze-wireframe") == 0
+    assert "design/wireframes/WFR-0001.r01.drawio.svg" in capsys.readouterr().out

@@ -6983,14 +6983,27 @@ def test_the_dirty_tree_rule_still_reads_prose_and_remedies_as_what_they_are(tmp
     assert result.returncode == 0, (command, result.stderr)
 
 
-@pytest.mark.parametrize("command", ['docker "stop" neighbour-db', "docker st''op neighbour-db"])
-def test_the_docker_rule_reads_the_shell_view_as_well(tmp_path, command):
-    """The other half of this hook read the raw text too. There is no daemon in a test, so the
-    container lookup returns None and the gate falls open by design — what is asserted is that the
-    VERB is seen at all, through `_docker_targets`, which is the step the raw text lost."""
+@pytest.mark.parametrize("command", [
+    'docker "stop" neighbour-db', "docker st''op neighbour-db",
+    # ...and the shapes a POSITIONAL reader lost: every global option stood where it expected the
+    # verb. Measured as real hook processes before the conversion, all four rc 0.
+    "docker --context remote stop neighbour-db",
+    "docker -H tcp://x:2375 stop neighbour-db",
+    "docker --log-level debug container rm -f neighbour-db",
+])
+def test_the_docker_rule_reads_the_verb_the_way_the_git_rule_does(tmp_path, command):
+    """R10 decides on `_compat.docker_invocations` — the same reader the git half of this hook
+    already uses — instead of on a position in a regex.
+
+    There is no daemon in a test, so the container lookup returns None and the gate falls open by
+    design; what is asserted is that the CALL is seen at all, with its verb and its target, which
+    is the step every one of these spellings used to lose.
+    """
     hygiene = load_kit_module("gate_shell_hygiene", HYGIENE_GATE)
-    assert hygiene._docker_targets(hygiene._shell_view(command)) == ["neighbour-db"], command
-    assert hygiene._docker_targets(command) == [], command   # the raw text sees nothing
+    calls = hygiene._destructive_docker_calls(command)
+    assert calls, command
+    assert any(hygiene._docker_targets(tokens) == ["neighbour-db"]
+               for _verb, tokens, _whole in calls), (command, calls)
 
 
 # -- round 8: the directory destination, and prose that only looks like code --
@@ -10565,3 +10578,127 @@ def test_the_bundle_measures_exactly_the_two_subtrees_this_guard_shares_with_it(
         "every blocked path outside the bundle is either under .claude or under scripts/ — the "
         "narrow reading of the old claim would hold, and the constitution pair plus the provider "
         "prefixes are what disproves it")
+
+
+@pytest.mark.parametrize("command", [
+    # a global option standing where the old pattern expected the verb -- all three measured
+    # ALLOWED as real hook processes on 2026-07-31, while the bare `docker system prune -af` was
+    # refused one word away
+    "docker --context remote system prune -af",
+    "docker -H tcp://x:2375 system prune -af",
+    "docker --log-level debug volume prune",
+    "docker --config /tmp/dc system prune",
+])
+def test_a_docker_global_option_is_not_a_bypass_of_the_prune_ban(tmp_path, command):
+    """R10's prune half. A prune reaches every project on the daemon by construction, so the ban
+    is unconditional — and an unconditional ban that any `--flag` walks past is not one."""
+    work = hygiene_repo(tmp_path)
+    result = run_hygiene(work, command)
+    assert result.returncode == 2, (command, result.stderr)
+    assert "WHOLE daemon" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    "docker compose -p other down",
+    "docker compose -p other stop",
+    "docker compose --project-name other down",
+    "docker compose --project-name=other rm -f",
+])
+def test_a_foreign_compose_project_named_on_the_command_line_is_refused(tmp_path, command):
+    """The half of R10 that needs no daemon, and the half that did not exist.
+
+    `-p <name>` is compose's OWN way of naming a project, so `docker compose -p other down` says
+    outright that it reaches a stack that is not this repo's — the reader is not guessing. Before
+    this the flag stood where the destructive-verb pattern expected the verb, so the command
+    matched nothing at all and ran (measured rc 0).
+
+    Deliberately measured on a machine with no docker daemon: a project named on the command line
+    is foreign whether or not docker is running, and the previous rule could only ever answer this
+    question by asking `docker inspect`.
+    """
+    work = hygiene_repo(tmp_path)
+    result = run_hygiene(work, command)
+    assert result.returncode == 2, (command, result.stderr)
+    assert "compose project 'other'" in result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # THE COUNTER-BATTERY: ordinary docker work, including this project's OWN compose project by
+    # name, and the one `-p` that means a port rather than a project.
+    "docker compose -p myproject down",
+    "docker compose down",
+    "docker compose up -d",
+    "docker ps -a",
+    "docker build -t app .",
+    "docker run -d -p 8080:80 nginx",
+    "docker logs -f api",
+    "docker inspect api",
+    "docker exec api rm -rf /tmp/cache",
+])
+def test_ordinary_docker_work_stays_open(tmp_path, command):
+    """A gate that blocks diagnosis gets worked around, and the widening above is only affordable
+    because reading, building, running and this project's own compose stack are untouched. The
+    repo directory is `myproject`, which is what compose defaults its project name to."""
+    work = hygiene_repo(tmp_path)
+    result = run_hygiene(work, command)
+    assert result.returncode == 0, (command, result.stderr)
+
+
+def test_a_container_name_keeps_its_case_on_the_way_to_the_daemon(tmp_path, monkeypatch):
+    """R10's target check hands the name STRAIGHT to `docker inspect`, and container names are
+    case-sensitive.
+
+    The conversion to `_compat.docker_invocations` took the reader's default (`lower=True`) and
+    lost that; the docstring which had said "Case is PRESERVED: a container name is case-sensitive
+    and goes straight into `docker inspect`" was deleted with the code it described. Measured with
+    a docker shim logging its argv: `docker rm OtherDB` reached the probe as
+    `inspect … otherdb`, the daemon answered "No such object", `_compose_project_of` returned None,
+    and this gate reads None as "the command will fail on its own" and ALLOWS. HEAD refused it.
+
+    Only the DAEMON is stubbed here — there is none on a test machine or a CI runner, which is why
+    the daemon-free half of R10 (`-p <project>`) exists at all. Everything between the command text
+    and the block runs: the reader, the verb search, the target extraction and `_check_docker`.
+    """
+    hygiene = load_kit_module("gate_shell_hygiene_case", HYGIENE_GATE)
+    work = hygiene_repo(tmp_path)
+    asked = []
+
+    def daemon(root, name):
+        asked.append(name)
+        return "neighbour-stack" if name == "OtherDB" else None
+
+    monkeypatch.setattr(hygiene, "_compose_project_of", daemon)
+    with pytest.raises(SystemExit) as stopped:
+        hygiene._check_docker(str(work), "docker rm OtherDB")
+    assert stopped.value.code == 2
+    assert asked == ["OtherDB"], (
+        "the gate probed the daemon for %r — a container the user did not name" % asked)
+
+    asked[:] = []
+    hygiene._check_docker(str(work), "docker stop otherdb")      # a different container: allowed
+    assert asked == ["otherdb"]
+
+
+def test_a_docker_command_too_long_to_read_is_not_read_as_harmless(tmp_path):
+    """`GIT_READ_LIMIT`'s own contract, applied to the rule the conversion attached to that reader.
+
+    Over the limit `_compat.docker_invocations` answers with ONE unresolved invocation carrying no
+    text, so the verb search has nothing to search and every R10 rule falls silent. HEAD had no
+    such hole -- its regex ran over `git_argument_text`, which returns the raw command over the
+    limit. Measured on a 524 329-byte command ending in `; docker system prune -af`: HEAD rc 2, the
+    converted gate rc 0. That is a regression of THIS round, found by asking what the new reader
+    makes reachable rather than whether the old cases still block.
+
+    The accepted cost is stated rather than hidden: over the limit a READ-ONLY docker command is
+    refused too (`docker ps` at that size), because at that point the gate cannot tell one from the
+    other -- and the remedy is to run the docker step as its own short command. An oversized
+    command that does not name docker at all is untouched, which is what keeps this rule about
+    docker.
+    """
+    work = hygiene_repo(tmp_path)
+    padding = "x" * (_compat.GIT_READ_LIMIT + 10)
+    refused = run_hygiene(work, "echo " + padding + " ; docker system prune -af")
+    assert refused.returncode == 2, refused.stderr
+    assert "too long" not in refused.stderr and "past the" in refused.stderr
+    assert run_hygiene(work, "echo " + padding + " ; docker ps -a").returncode == 2
+    assert run_hygiene(work, "echo " + padding + " ; ls -la").returncode == 0

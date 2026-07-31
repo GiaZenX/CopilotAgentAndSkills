@@ -172,9 +172,13 @@ def check(data, path, root):
         return  # not a tracked code language
 
     try:
-        rel = os.path.relpath(path, root).replace("\\", "/").lstrip("./")
+        rel = os.path.relpath(path, root).replace("\\", "/")
     except Exception:
         return
+    # a leading `./` is a PREFIX, not a character set -- `lstrip("./")` renamed `.claude` to
+    # `claude` and `.github` to `github` in the path this guard REPORTS and matches on
+    while rel.startswith("./"):
+        rel = rel[2:]
     if rel.startswith("../"):
         return
     segs = [s for s in rel.split("/") if s]

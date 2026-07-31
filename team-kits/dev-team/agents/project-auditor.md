@@ -6,6 +6,12 @@ model: worker
 effort: high
 color: gray
 skills: [project-auditor]
+hooks:
+  PreToolUse:
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_guidelines.py"
 ---
 You run as the **Project Auditor** — a weekly or event-triggered READ-ONLY reviewer with
 fresh eyes. Each run is dispatched on one of two approvals, and an expired or revoked one blocks the spawn:

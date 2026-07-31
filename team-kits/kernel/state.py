@@ -47,6 +47,7 @@ from .backlog_types import (
     TSK_PLAN_FIELDS,
     TransitionError,
     assert_transition,
+    confirming_edge,
     format_id,
     initial_status,
     invalidation_target,
@@ -56,6 +57,26 @@ from .backlog_types import (
 from .lock import KernelLock, ext_path
 
 _KERNEL_SET = ("id", "status", "revision", "approval_ref", "created")
+
+# WHAT A CONFIRMATION MUST SHOW, per item type: {type: Evidence kind}. WHICH edge this guards is
+# not written here -- `backlog_types.confirming_edge` derives it from the type's own automaton, so
+# a renamed status moves the rule with it.
+#
+# THE ROWS ARE THE PROMISES THE SHIPPED TEXTS MAKE, and there is exactly one of them. The three
+# constitutions' §2 ("mandatory regression test -- fails pre-fix, passes post; the Evidence for it
+# is what moves the bug from FIXED to VERIFIED") is a statement about a MECHANISM, and until
+# 2026-07-31 there was none: measured on a fresh state directory, `transition BUG-0001 VERIFIED`
+# ran with no Evidence in the project at all and `validate` then reported 0 errors.
+#
+# WHAT IS DELIBERATELY NOT IN HERE, named because an absence a reader cannot see is the thing this
+# file keeps being wrong about: `confirming_edge` also picks out TSK DONE->VALIDATED, PR/RQ
+# DELIVERED->ACCEPTED, CR APPROVED->APPLIED and EXP COMPLETED->ANALYZED. Those edges are NOT
+# guarded by anything here. The quality-engineer SKILL and the PM SKILL both say QA Evidence is
+# what lets a task go DONE -> VALIDATED, and that remains policy the roles follow rather than a
+# rule the kernel enforces -- `gate_git` demands the same Evidence at the MERGE, which is a
+# different moment. Adding a row is all it takes; inventing one for a type whose required proof no
+# shipped text states would be the kernel making up policy.
+CONFIRMING_EVIDENCE = {"BUG": "test"}
 
 # HOW THE KERNEL NAMES A FILE IT STORES PER REVISION -- composed and read back in ONE place.
 #
@@ -554,14 +575,16 @@ class ProjectState:
         and compares them against `APPROVAL_TRANSITIONS`, so a new writer needs no edit here and a
         new writer that could produce APPROVED/IN_DELIVERY/ACCEPTED turns it red.
 
-        THREE things stand between a status and its new value, and they are three because their
-        evidence lives in three different places:
+        FOUR things stand between a status and its new value, and they are four because their
+        evidence lives in four different places:
           * the AUTOMATON (`assert_transition`) -- is this edge defined at all;
           * the TSK retry rule -- its evidence is a caller argument, because spec II.2 records the
             retry approval as a Querregel and no APR kind has a manifest for it;
           * the APPROVAL (`approvals.assert_transition_approved`) -- derived from
             `APPROVAL_TRANSITIONS`, so which edges it guards follows from which edges an approval
-            commits, rather than from a list kept beside it.
+            commits, rather than from a list kept beside it;
+          * the CONFIRMING EVIDENCE (`_assert_confirmed`) -- the edge from
+            `backlog_types.confirming_edge`, the proof from `CONFIRMING_EVIDENCE`.
         """
         item_type, _ = parse_id(item_id)
         item = self.read_item(item_id)
@@ -578,10 +601,44 @@ class ProjectState:
         # import here would be a cycle. By the time any transition runs, both halves are loaded.
         from . import approvals
         approvals.assert_transition_approved(self, item, item_type, from_status, to_status)
+        self._assert_confirmed(item_id, item_type, from_status, to_status)
         item["status"] = to_status
         self._write_yaml_atomic(self.active_path(item_id), item)
         self._regenerate_index_locked()
         return item
+
+    def _assert_confirmed(self, item_id, item_type, from_status, to_status):
+        """A confirming edge needs the proof `CONFIRMING_EVIDENCE` names, in force RIGHT NOW.
+
+        `report.qa_verdicts` is asked rather than the Evidence store scanned here, and that is the
+        whole point of routing through it: it already answers "which Evidence covers this item"
+        (`evidence_covers`, including the indirect hop from a task to its root) and "which of
+        several counts" (newest per kind supersedes). A second reader of the same store would be a
+        second answer to the same question -- and the merge gate reads THIS one, so a BUG that
+        cannot be VERIFIED here is exactly a BUG whose merge `gate_git` would also refuse.
+
+        It is lock-safe from inside `_transition_locked` because `report._delivery_evidence` takes
+        no lock, by its own design note; the kernel lock is not reentrant, so a reader that did
+        would deadlock every transition.
+        """
+        kind = CONFIRMING_EVIDENCE.get(item_type)
+        if not kind or (from_status, to_status) != confirming_edge(item_type):
+            return
+        from . import report
+        verdict = report.qa_verdicts(self, item_id).get(kind)
+        if verdict and verdict.get("result") == "pass":
+            return
+        raise TransitionError(
+            "%s %s -> %s needs a %r Evidence that PASSES and covers %s; %s. The regression test "
+            "is what turns a fix into a verification -- without it the status says the bug is gone "
+            "and nothing measured that. Remedy: run the test that fails before the fix and passes "
+            "after it, then record the run: `python scripts/harness.py evidence --kind %s "
+            "--result pass --related %s --summary ... --artifact-ref <path to the raw proof>`, "
+            "from the project root."
+            % (item_id, from_status, to_status, kind, item_id,
+               "the current %r verdict is %r" % (kind, verdict.get("result")) if verdict
+               else "there is none",
+               kind, item_id))
 
     def archive(self, item_id: str) -> str:
         """Move a TERMINAL item to archive/<type>/<year>/ (never delete)."""

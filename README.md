@@ -329,14 +329,18 @@ entry point asks the shipped parser rather than matching text).
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`,
-`sweep-leases`. Of the twelve spec II.4 asks for, two are absent under those names: `approve` is SPLIT —
+`sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`. Of the twelve spec
+II.4 asks for, two are absent under those names: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also
 walks the status transition it commits. `migrate --dry-run` has no module yet. What has no writer at
-all either way: `project_config.yaml` and `product/masterplan.md` are not typed items, and an `ARC`/`WFR`/
-`DSN` is frozen through the promotion path (II.6a), which has no command. Those are infrastructure
-defects to report, not a licence to write state by hand, and the three constitutions say the same in
-their §0.
+all either way: `project_config.yaml` and `product/masterplan.md` are not typed items. Those are
+infrastructure defects to report, not a licence to write state by hand, and the three constitutions
+say the same in their §0. The promotion path (II.6a) DOES have one now: an `ARC`/`WFR`/`DSN` is
+frozen by `freeze-architecture`/`freeze-wireframe`/`freeze-design`, each taking the operation's own
+parameters as a JSON object on stdin. Until 2026-07-31 it did not, and `gate_packaging_decision`
+— which refuses every push and merge until some active `ARC` states a `packaging.method` — was
+therefore a block with no exit in every scaffolded project.
 
 `capture` takes the item's fields as a JSON object on **stdin**, and both halves of that are forced
 rather than chosen. Stdin, because an item carries lists of mappings no flag surface expresses and the

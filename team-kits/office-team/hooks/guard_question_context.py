@@ -67,8 +67,17 @@ _INVISIBLE_REF_RX = re.compile(
 # R2: vocabulary that belongs in a decision the TEAM makes. Deliberately narrow and
 # proper-noun-heavy -- "database" alone appears in perfectly good product questions ("should
 # customers see their order history?"), while "Postgres oder MySQL" cannot be anything but a
-# technical choice. Three or more distinct hits before it says anything: one mention is usually
-# context, a cluster is a technical question wearing a product costume.
+# technical choice.
+#
+# TWO distinct hits, and the number is the comment's own example rather than a guess about
+# clusters. It said "Postgres oder MySQL" and the threshold was three, so the sentence the
+# paragraph is built on measured SILENT -- a comment claiming a protection the code did not build,
+# in the guard whose whole subject is questions that point at something that is not there.
+# Two is the smallest number that can be a CHOICE; one is a mention. The direction is affordable
+# because this is a warning that exits 0 and its own text ends with "If it really is a product
+# question (cost, hosting, data location), ignore this" -- the cost of a false alarm is a line of
+# stderr, the cost of silence is the decision nobody on the team owns.
+_TECH_VOCAB_MIN = 2
 _TECH_VOCAB_RX = re.compile(
     r"\b(?:postgres(?:ql)?|mysql|mariadb|sqlite|mongodb|redis|kafka|rabbitmq"
     r"|react|vue|svelte|angular|next\.js|nuxt|django|flask|fastapi|rails|spring"
@@ -97,7 +106,7 @@ def _warn(kind, message):
 def _advisory_checks(texts):
     joined = "\n".join(texts)
     tech = sorted({m.group(0).lower() for m in _TECH_VOCAB_RX.finditer(joined)})
-    if len(tech) >= 3:
+    if len(tech) >= _TECH_VOCAB_MIN:
         _warn("R2", "this question asks the USER about technical choices (%s). The constitution's "
                     "boundary is product questions to the user, technical ones to the team — a "
                     "user picking a database acquires a decision nobody on the team owns. If it "

@@ -20,11 +20,19 @@ The directory is never spelled out here; it comes from `kernel.backlog_types.ACT
 
 HOW THE ANSWER GETS THERE. `project_memory/**` is kernel-only for tool writes (`gate_write_scope`,
 on Edit/Write AND Bash), so the field this gate reads has to be writable through the kernel or the
-gate is a block with no exit. It is: `staging.freeze_architecture(..., packaging={"method": ...})`
-is the one path that creates an ARC item — `capture` refuses the type — and `packaging` is an
-optional field of the `arc_companion` schema, whose own `method` is required. That schema is
-`strict`, which is also why this reads only `packaging.method` and no second spelling: nothing can
-write a `packaging_method:` variant, so tolerating one would be a branch no producer can reach.
+gate is a block with no exit. `kernel.staging.freeze_architecture(..., packaging={"method": ...})`
+is the one path that creates an ARC item — `capture` refuses the type — and until 2026-07-31 that
+function had no caller a role could reach, which made this gate exactly the block with no exit the
+paragraph above claimed it was not: measured in a scaffolded project, `git merge` was rc 2 for
+"no architecture item yet" and no command line existed that could produce one. The exit is the
+`freeze-architecture` subcommand (`kernel.cli.FREEZE_COMMANDS`), whose body is on stdin; the remedy
+below is that line, and `test_the_packaging_block_has_an_exit_a_role_can_type` runs it through
+every registered shell gate and then executes it.
+
+`packaging` is an optional field of the `arc_companion` schema, whose own `method` is required.
+That schema is `strict`, which is also why this reads only `packaging.method` and no second
+spelling: nothing can write a `packaging_method:` variant, so tolerating one would be a branch no
+producer can reach.
 
 Only fires on `git push`/`git merge`.
 """
@@ -133,10 +141,14 @@ def main():
         "silently forgotten."
         % ("no active architecture item states one" if seen else
            "this project has no architecture item yet"),
-        remedy="have the architect stage the architecture diagram and freeze it through the "
-               "kernel with the decision attached (`staging.freeze_architecture(..., "
-               "packaging={'method': '<docker|static-binary|none (library)|…>'})`), plus a "
-               "Decision item recording why, then merge again.")
+        remedy="have the architect stage the architecture diagram under "
+               "project_memory/staging/<ROOT-ID>/<ARC-ID>.drawio.svg, then freeze it through the "
+               "entry point with the decision attached — `python scripts/harness.py "
+               "freeze-architecture`, run from the project root, with the body on stdin: "
+               "{\"staging_key\": \"<ROOT-ID>\", \"arc_id\": \"ARC-0001\", \"title\": \"…\", "
+               "\"scope\": \"…\", \"derives_from\": [\"<ROOT-ID>\"], \"packaging\": {\"method\": "
+               "\"<docker|static-binary|none (library)|…>\"}}. Add a Decision item recording why, "
+               "then merge again.")
 
 
 if __name__ == "__main__":

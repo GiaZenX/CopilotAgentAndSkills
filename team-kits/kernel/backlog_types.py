@@ -216,6 +216,34 @@ def is_terminal(item_type: str, status: str) -> bool:
     return status in AUTOMATA[item_type].terminals
 
 
+def confirming_edge(item_type: str):
+    """The (from, to) edge on which a type is closed as CONFIRMED, or None.
+
+    DERIVED FROM THE TYPE'S OWN EDGE SET, because that set already draws the distinction: a
+    terminal a type can be dropped into is reachable from SEVERAL statuses at once, which is what
+    "closed because it was abandoned" looks like (REJECTED, DUPLICATE, CANCELLED, SUPERSEDED); the
+    chain's LAST status, when it is a terminal whose only incoming edge is from its chain
+    predecessor, can be reached only by walking the whole chain, which is what "closed because it
+    was confirmed" looks like. Measured over the shipped automata it picks out SIX types -- BUG
+    FIXED->VERIFIED, TSK DONE->VALIDATED, PR and RQ DELIVERED->ACCEPTED, CR APPROVED->APPLIED and
+    EXP COMPLETED->ANALYZED -- and it picks out the next such chain without an edit here. (An
+    earlier wording of this line said "exactly BUG, TSK, PR/RQ" and left CR and EXP out; the answer
+    is `test_the_confirming_edge_is_derived_from_each_types_own_edge_set`, not this sentence.)
+
+    What a confirmation must SHOW is a different question, and one no automaton answers -- see
+    `state.CONFIRMING_EVIDENCE`, which is where the promises the shipped texts actually make are
+    recorded, and where the ones nothing enforces are named as not enforced.
+    """
+    auto = AUTOMATA.get(item_type)
+    if auto is None or len(auto.chain) < 2:
+        return None
+    target = auto.chain[-1]
+    if target not in auto.terminals:
+        return None
+    sources = {src for src, dst in auto.allowed if dst == target}
+    return (auto.chain[-2], target) if sources == {auto.chain[-2]} else None
+
+
 def assert_transition(item_type: str, from_status: str, to_status: str) -> None:
     """Raise TransitionError unless (from -> to) is an allowed edge."""
     auto = AUTOMATA.get(item_type)

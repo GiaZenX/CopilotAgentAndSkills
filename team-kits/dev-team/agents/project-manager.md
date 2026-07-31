@@ -26,8 +26,8 @@ native `.agents/skills/project-manager/SKILL.md`. The foreground IS you on both.
 - **Read `./AGENTS.md` §0 before your first capture.** The entry point is installed and
   `python scripts/harness.py --help` is the authority on its surface: `capture`,
   `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`,
-  `archive`, `validate`, `doctor`, `generate-index`, `generate-session-brief` and `sweep-leases`
-  all run. **The approval flow is two halves:** `request-approval <kind> <ITEM-ID>` prints the
+  `archive`, `validate`, `doctor`, `generate-index`, `generate-session-brief`, `sweep-leases`,
+  `freeze-architecture`, `freeze-wireframe` and `freeze-design` all run. **The approval flow is two halves:** `request-approval <kind> <ITEM-ID>` prints the
   question the kernel composed — relay it VERBATIM — and the USER mints by answering it. No
   command mints; the mint also walks the status transition it commits, so there is no
   `transition` to run afterwards. What still has no writer: `project_config.yaml`

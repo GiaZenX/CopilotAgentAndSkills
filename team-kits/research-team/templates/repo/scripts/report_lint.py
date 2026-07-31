@@ -93,6 +93,41 @@ def lint(rel):
     return findings
 
 
+# WHO RUNS THIS. Until 2026-07-31 nobody did: measured across the whole shipped tree, this file
+# was named by no hook, no settings.json, no CI file, no pre-commit config and no SKILL -- a lint
+# that had been written, documented and tested and could not fire. `scripts/quality.py` discovers
+# every sibling that declares this pair (see `quality.auxiliary_stages`), so the wiring is a
+# property of the module rather than a name in a list the research kit's quality.py could not
+# carry anyway (it is byte-identical to the dev kit's, which ships no report_lint).
+#
+# `warn`, not `fail`, and that is the same decision the module docstring makes for its own exit
+# code: whether a claim is overstated is a judgement about the DATA. A pipeline that went RED on
+# the word "proves" would teach word-avoidance rather than honesty.
+#
+# quality.py READS this by parsing the file and then runs the checker as a SUBPROCESS
+# (`--quality-stage`); it never imports it. So this declaration is data, and nothing in this module
+# runs inside the process that owns the pipeline verdict.
+QUALITY_STAGE = ("research report lint", "warn")
+STAGE_FLAG = "--quality-stage"
+
+
+def quality_stage():
+    """(rc, text) for `scripts/quality.py`: rc 1 when there are markers, so the pipeline WARNS.
+
+    Separate from `main()` because `main()`'s contract is "exit 0 always" and a CI may rely on it.
+    A warning does not fail the pipeline either -- the exit code here only tells quality.py
+    whether there is anything to say.
+    """
+    targets = tracked_reports()
+    findings = [f for rel in targets for f in lint(rel)]
+    if not findings:
+        return 0, "[report_lint] %d report(s): no overstatement markers." % len(targets)
+    lines = ["[report_lint] %d marker(s) -- ADVISORY, nothing is blocked:" % len(findings)]
+    lines += ["  %s:%d  %s (%r)" % (rel, number, label, hit)
+              for rel, number, label, hit, _line, _advice in findings[:40]]
+    return 1, "\n".join(lines)
+
+
 def main():
     targets = [a for a in sys.argv[1:] if not a.startswith("-")] or tracked_reports()
     if not targets:
@@ -115,4 +150,10 @@ def main():
 
 
 if __name__ == "__main__":
+    # The pipeline's entry, kept OUT of `main()` so the stand-alone contract ("exit 0 always")
+    # stays what the module docstring says it is.
+    if STAGE_FLAG in sys.argv[1:]:
+        _rc, _text = quality_stage()
+        print(_text)
+        sys.exit(_rc)
     sys.exit(main())

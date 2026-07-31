@@ -7840,3 +7840,444 @@ def test_the_shell_gate_reader_sees_a_gate_registered_on_a_wider_matcher():
                 "%s registers %s on a matcher WIDER than `Bash|PowerShell` and the reader loses "
                 "it -- which is how the office kit was measured at 5 shell gates instead of 6"
                 % (kit, wider))
+
+
+# ---------------- guard_pm_scope: production code is a LANGUAGE, not a directory ----------------
+PM_CODE_PATHS = [
+    # the two the directory list already caught
+    "pay.py", "src/index.html",
+    # ...and the ones it did not, measured rc 0 before this: an ordinary project layout that is
+    # not called `src`, a nested one, a script directory, and a case the list could not fold
+    "services/pay.py", "modules/pay.py", "core/pay.go", "scripts/deploy.py",
+    "deep/nested/dir/util.ts", "pkg/handler/main.rs", "Ui/Widget.vue",
+]
+PM_UPKEEP_PATHS = [
+    "docs/architecture.md", "docs/adr/0001-choice.md", "docs/examples/snippet.py",
+    "plans/roadmap.md", "project_memory/staging/TSK-0001/proposal.md",
+    "README.md", "CHANGELOG.md", ".gitignore", "pyproject.toml", "package.json",
+    "docker-compose.yml", ".claude/agents/backend-developer.md", "Makefile", ".env.example",
+]
+
+
+def _pm_write(repo, rel):
+    return {"tool_name": "Write", "cwd": str(repo),
+            "tool_input": {"file_path": os.path.join(str(repo), *rel.split("/")),
+                           "content": "x"}}
+
+
+@pytest.mark.parametrize("rel", PM_CODE_PATHS)
+def test_guard_pm_scope_blocks_code_by_language_not_by_directory(tmp_path, rel):
+    """The PM writes no production code, and what makes a file production code is the LANGUAGE
+    it is written in -- at any depth, outside the PM's own areas.
+
+    Measured as real hook processes before this: `pay.py` and `src/index.html` were refused while
+    `services/pay.py`, `modules/pay.py`, `core/pay.go`, `scripts/deploy.py`,
+    `deep/nested/dir/util.ts` and `Ui/Widget.vue` all passed -- the guard decided on a list of
+    top-level directory names plus root files, so every layout not called `src` was unguarded and
+    `Ui` was a second spelling of a name that was in the list.
+    """
+    result = run_hook_process("guard_pm_scope.py", _pm_write(tmp_path, rel), tmp_path)
+    assert result.returncode == 2, (rel, result.stderr)
+    assert "production code" in result.stderr
+
+
+@pytest.mark.parametrize("rel", PM_UPKEEP_PATHS)
+def test_guard_pm_scope_leaves_ordinary_pm_upkeep_alone(tmp_path, rel):
+    """THE COUNTER-BATTERY, and the reason the widening above is affordable. A guard that lamed
+    the role it leads would be a worse defect than the one it closes, so the ordinary writes a PM
+    really makes are measured too: documentation at any depth (including a code SNIPPET under
+    docs/), plans, its own staging area, root configuration and the specialist frontmatter it
+    maintains."""
+    result = run_hook_process("guard_pm_scope.py", _pm_write(tmp_path, rel), tmp_path)
+    assert result.returncode == 0, (rel, result.stderr)
+
+
+def test_a_leading_dot_directory_keeps_its_name(tmp_path):
+    """`lstrip("./")` strips a character SET, not a prefix: `.claude/hooks/x.py` arrived inside
+    this guard as `claude/hooks/x.py`.
+
+    Two consequences, both measured as real hook processes and both closed here. `ALLOW_TOP`'s
+    `.claude` entry was UNREACHABLE, so once the rule above started deciding on the extension the
+    guard refused the one directory its own message promises the lead may write ("You may write
+    ./.claude/**"); `guard_harness_selfmod` is the guard that owns `.claude/hooks/**` and is
+    registered on the same matcher — measured here, so the allow is a handover and not a hole. And
+    the path in the refusal was not the path the role wrote, which is the first thing a reader
+    checks.
+    """
+    allowed = run_hook_process("guard_pm_scope.py", _pm_write(tmp_path, ".claude/hooks/x.py"),
+                               tmp_path)
+    assert allowed.returncode == 0, allowed.stderr
+    owner = run_hook_process("guard_harness_selfmod.py",
+                             _pm_write(tmp_path, ".claude/hooks/x.py"), tmp_path)
+    assert owner.returncode == 2 and "ENFORCEMENT LAYER" in owner.stderr, owner.stderr
+
+    refused = run_hook_process("guard_pm_scope.py", _pm_write(tmp_path, ".config/deploy.py"),
+                               tmp_path)
+    assert refused.returncode == 2
+    assert "'.config/deploy.py'" in refused.stderr, refused.stderr
+
+
+@pytest.mark.parametrize("rel", ["services/pay.py", "src/index.html"])
+def test_guard_pm_scope_still_ignores_subagents(tmp_path, rel):
+    """`agent_id` present means a SUBAGENT, which `gate_write_scope` scopes against its task. This
+    guard is the lead's alone, and the widening must not change that."""
+    payload = dict(_pm_write(tmp_path, rel), agent_id="agent-1")
+    assert run_hook_process("guard_pm_scope.py", payload, tmp_path).returncode == 0
+
+
+# ---------------- guard_question_context R2: the comment's own example must fire ----------------
+def _question(text, options):
+    return {"tool_name": "AskUserQuestion",
+            "tool_input": {"questions": [{"question": text, "header": "",
+                                          "options": [{"label": o, "description": ""}
+                                                      for o in options]}]}}
+
+
+@pytest.mark.parametrize("text,options", [
+    ("Postgres oder MySQL?", ["Postgres", "MySQL"]),
+    ("Welche Datenbank?", ["PostgreSQL nutzen", "MongoDB nutzen"]),
+    ("React oder Vue?", ["React", "Vue"]),
+])
+def test_the_two_word_technical_choice_the_comment_names_actually_warns(tmp_path, text, options):
+    """R2's own comment says "`Postgres oder MySQL` cannot be anything but a technical choice",
+    and the threshold under it was three distinct hits -- so the sentence the paragraph is built
+    on measured SILENT. A comment claiming a protection the code does not build, in the guard
+    whose subject is questions that point at something that is not there.
+
+    Two is the smallest number that can be a CHOICE. It stays a WARNING (rc 0): the cost of a
+    false alarm is a line of stderr the message itself tells the reader to ignore.
+    """
+    result = run_hook_process("guard_question_context.py", _question(text, options), tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "[team-kit note]" in result.stderr and "technical choices" in result.stderr
+
+
+@pytest.mark.parametrize("text,options", [
+    ("Sollen Kundinnen ihre Bestellhistorie sehen?", ["Ja", "Nein"]),
+    ("Wo sollen die Daten liegen?", ["In Deutschland", "Beim guenstigsten Anbieter"]),
+    ("Soll die App als Docker-Container ausgeliefert werden?", ["Ja", "Nein, nativ"]),
+    ("Welches Preis-Schema?", ["Pro Nutzer", "Pauschal"]),
+    ("Brauchen wir eine Migration der Altdaten?", ["Ja", "Nein"]),
+])
+def test_r2_stays_silent_on_product_questions(tmp_path, text, options):
+    """THE COUNTER-BATTERY for the threshold change. Every one of these is a product question a PM
+    is supposed to ask the user -- including three that mention exactly ONE technical word, which
+    is the case the lower bound must not turn into noise."""
+    result = run_hook_process("guard_question_context.py", _question(text, options), tmp_path)
+    assert result.returncode == 0
+    assert "technical choices" not in result.stderr, (text, result.stderr)
+
+
+# ---------------- the packaging block, and the exit it did not have ----------------
+_ARC_SVG = ('<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>\n')
+
+
+def test_the_packaging_block_has_an_exit_a_role_can_type(tmp_path):
+    """`gate_packaging_decision` refuses every push and merge until some active ARC item states a
+    resolved `packaging.method`. Its own docstring said the field "has to be writable through the
+    kernel or the gate is a block with no exit" and then said it was — measured 2026-07-31 in a
+    scaffolded project, it was not: no subcommand named freeze, `capture` refuses `ARC`
+    (`REQUIRED_FIELDS`), and `gate_write_scope` refuses every tool write under the state directory.
+
+    The same four steps as the Evidence producer's acceptance test, because either half alone
+    proves nothing: a command line the gates refuse is no remedy, and a command line the gates
+    allow but that writes nothing is no producer.
+
+      * the merge, REFUSED, with the gate's own reason;
+      * the freeze command line through EVERY `Bash|PowerShell` PreToolUse hook this project
+        registered — read off its settings.json, so a gate added later is covered the day it ships;
+      * the same line EXECUTED, with the body on stdin;
+      * the same merge, ALLOWED.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    assert "freeze-architecture" in cli.build_parser()._subparsers._group_actions[0].choices
+
+    repo, _created = _project_the_installers_produce(tmp_path / "scaffold")
+    capture_root_item(repo)
+    merge = "git merge feat/PR-0001-x"
+    blocked = _run_project_hook(repo, "gate_packaging_decision.py", merge)
+    assert blocked.returncode == 2, blocked.stdout + blocked.stderr
+    assert "packaging/deployment decision is unmade" in blocked.stderr
+
+    staged = os.path.join(str(repo), "project_memory", "staging", "PR-0001")
+    os.makedirs(staged, exist_ok=True)
+    write(os.path.join(staged, "ARC-0001.drawio.svg"), _ARC_SVG)
+    body = json.dumps({"staging_key": "PR-0001", "arc_id": "ARC-0001", "title": "Deployment",
+                       "scope": "whole system", "derives_from": ["PR-0001"],
+                       "packaging": {"method": "docker"}})
+    line = "%s freeze-architecture <<'EOF'\n%s\nEOF" % (cli.INVOCATION, body)
+    for gate in _shell_gates_of(repo):
+        seen = _run_project_hook(repo, gate, line)
+        assert seen.returncode == 0, (
+            "%s refuses the one command line that unblocks the packaging gate:\n%s"
+            % (gate, seen.stderr))
+
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONPATH", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")}
+    ran = subprocess.run([sys.executable, os.path.join(*cli.ENTRY_POINT.split("/")),
+                          "freeze-architecture"],
+                         input=body, cwd=str(repo), capture_output=True, text=True,
+                         env=env, timeout=120)
+    assert ran.returncode == 0, ran.stdout + ran.stderr
+    assert "architecture/revisions/ARC-0001.r01.drawio.svg" in ran.stdout
+
+    opened = _run_project_hook(repo, "gate_packaging_decision.py", merge)
+    assert opened.returncode == 0, (
+        "the merge is still refused after the architecture was frozen:\n%s" % opened.stderr)
+
+
+# ---------------- a text that PRESENTS the surface must present all of it ----------------
+_SURFACE_SPAN_MIN = 3
+_SUBCOMMAND_SPAN_RX = re.compile(r"`([a-z][a-z0-9-]*)`")
+
+
+def test_every_span_that_presents_the_command_surface_names_all_of_it():
+    """A block that lists the entry point's subcommands is telling a role what EXISTS, and a role
+    who reads such a list and does not find a command concludes it has none.
+
+    That is not hypothetical: on 2026-07-31 three constitutions, two PM agent definitions, the
+    README and three copies of `gate_write_scope`'s refusal all carried such a list, and six of
+    them also said in so many words that "an `ARC` is FROZEN through the promotion path (II.6a),
+    which has no command" — while `staging.freeze_architecture` was one subcommand away from
+    existing. The reader would report an infrastructure gap instead of freezing.
+
+    WHAT COUNTS AS SUCH A SPAN is measured, not guessed. Over the whole shipped corpus the
+    distribution of "distinct subcommands named in code spans per block" is bimodal WITH A WIDE
+    EMPTY BAND: the overwhelming majority name 0, 1 or 2, a handful name every member of the
+    surface, and nothing lands in between. A threshold inside that band separates prose that
+    MENTIONS a command from a text that LISTS them; 3 is its low edge, so a shrinking list cannot
+    slip under it.
+
+    THE ABSOLUTE COUNTS ARE DELIBERATELY NOT WRITTEN HERE, and that is a correction: an earlier
+    version of this docstring quoted a span total and a histogram, and they were stale INSIDE the
+    round that wrote them -- the comments this very round added moved the zero bucket by fifteen.
+    A number nothing asserts drifts with every comment anyone writes. What the check needs is the
+    BAND, and the assertions below are what measure it: every presenting span complete, and enough
+    of them found to prove the reader still matches.
+
+    The corpus is the same one its two sisters use (`_shipped_texts` split into blocks, plus the
+    AST-folded refusal texts), because an asymmetry nobody wrote down is an enumeration wearing a
+    different hat.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    surface = set(cli.build_parser()._subparsers._group_actions[0].choices)
+
+    spans = []
+    for where, text in _shipped_texts():
+        spans += [(where, block) for block in _markdown_blocks(text)]
+    for path in _shipped_python_modules():
+        where = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        spans += [(where, text) for text in _refusal_texts(path)]
+
+    seen, offenders = 0, []
+    for where, span in spans:
+        named = {word for word in _SUBCOMMAND_SPAN_RX.findall(span) if word in surface}
+        if len(named) < _SURFACE_SPAN_MIN:
+            continue
+        seen += 1
+        missing = sorted(surface - named)
+        if missing:
+            offenders.append("%s: names %d, misses %s" % (where, len(named), ", ".join(missing)))
+    assert not offenders, (
+        "these blocks present the entry point's surface and leave commands out of it — either "
+        "name them, or stop presenting a list and point at `--help`:\n%s" % "\n".join(offenders))
+    # A FLOOR, because every assertion above is vacuously true over an empty set. Six spans were
+    # measured; the floor is three, which is the number of kit constitutions -- each of those
+    # really does present the surface in its §0, and a reader that finds fewer than one per kit has
+    # stopped matching. It is deliberately not six: a document that stops presenting a list and
+    # points at `--help` instead is the RIGHT change (that is what the refusal texts just did), and
+    # a floor that forbade it would pin the enumeration this check exists to keep honest.
+    assert seen >= 3, (
+        "only %d surface-presenting span(s) found — the reader stopped matching rather than the "
+        "documents stopping listing" % seen)
+
+
+# ---------------- the kit checkers that had no caller ----------------
+def test_a_kit_checker_that_declares_a_quality_stage_is_run_by_the_pipeline(tmp_path):
+    """`report_lint.py` and `pii_scan.py` were written, documented and tested and then named by
+    NOTHING — no hook, no settings.json, no CI file, no pre-commit config, no SKILL. A check with
+    no caller is prose with a shebang.
+
+    `quality.py` now DISCOVERS every sibling in `scripts/` that declares the pair
+    (`QUALITY_STAGE`, `quality_stage()`), which is what a list here could not do: quality.py is
+    byte-identical across the dev and research kits (the mirror rule), and only research ships
+    `report_lint.py`.
+
+    Measured both ways in one run — with the checker present its findings reach the report as a
+    `warn`, and the same project without it is green and silent, which is what says the wiring is
+    the checker's declaration rather than something quality.py knows.
+    """
+    research_scripts = os.path.join(ROOT, "team-kits", "research-team", "templates", "repo",
+                                    "scripts")
+    verdicts = {}
+    for present in (False, True):
+        work = tmp_path / ("with" if present else "without")
+        os.makedirs(str(work / "reports"))
+        write(str(work / "reports" / "final.md"),
+              "The intervention proves the effect and improved outcomes dramatically.\n")
+        subprocess.run(["git", "init", "-q"], cwd=str(work), capture_output=True, timeout=60)
+        subprocess.run(["git", "add", "-A"], cwd=str(work), capture_output=True, timeout=60)
+        if present:
+            os.makedirs(str(work / "scripts"), exist_ok=True)
+            shutil.copy(os.path.join(research_scripts, "report_lint.py"),
+                        str(work / "scripts" / "report_lint.py"))
+        verdicts[present] = run_quality_proc(str(work))
+
+    assert verdicts[True].returncode == 0, verdicts[True].stdout
+    assert "warn  research report lint" in verdicts[True].stdout, verdicts[True].stdout
+    assert "causal claim without a hedge" in verdicts[True].stdout
+    assert verdicts[False].returncode == 0
+    assert "report lint" not in verdicts[False].stdout
+
+
+def test_the_declared_stage_of_every_shipped_checker_is_callable():
+    """The contract is two names, so a checker that declares one and not the other would be
+    discovered and then silently skipped — which is the inert state this whole item is about.
+
+    Derived over every script the kits ship, so a fourth checker is covered the day it declares
+    itself.
+    """
+    for path in sorted(glob.glob(os.path.join(
+            ROOT, "team-kits", "*", "templates", "repo", "scripts", "*.py"))):
+        with open(path, encoding="utf-8") as handle:
+            source = handle.read()
+        if "QUALITY_STAGE" not in source or os.path.basename(path) == "quality.py":
+            continue
+        module = load_kit_module("checker_" + os.path.basename(path)[:-3], path)
+        label, severity = module.QUALITY_STAGE
+        assert isinstance(label, str) and label
+        assert severity in ("warn", "fail"), (path, severity)
+        assert callable(getattr(module, "quality_stage", None)), path
+        rc, text = module.quality_stage()
+        assert rc in (0, 1) and isinstance(text, str), path
+
+
+# ---------------- which roles the guidelines guard is registered for ----------------
+def test_every_dev_specialist_that_can_write_carries_the_guidelines_guard():
+    """`guard_guidelines` refuses a code write no `INV` item governs. It is registered in the
+    AGENTS' OWN FRONTMATTER rather than in settings.json — deliberately, because settings hooks
+    fire for the lead too and this rule is the specialists'.
+
+    Measured 2026-07-31: it was registered for `backend-developer` and `frontend-developer` only,
+    while six further dev specialists ship `Edit`/`Write` in their tool list — among them
+    `devops-engineer`, which writes deployment code, and `software-architect`, which is the role
+    the guard's own refusal tells you to ask.
+
+    THE RULE IS DERIVED, not a list of role names: every agent the kit ships that is not the
+    SESSION agent (settings.json `agent`) and whose tools include Edit or Write registers the
+    guard on the write matcher. Registering it where no code is ever written costs nothing — the
+    guard decides per FILE whether the language is one it governs — so there is no role for which
+    the answer is legitimately "no", and a new specialist is covered the day it ships.
+
+    The frontmatter is PARSED as YAML, never scanned: a reviewer who moves a hook to single quotes
+    or a folded scalar writes the same registration, and a line reader would call it missing.
+    """
+    yaml = pytest.importorskip("yaml")
+    kit = os.path.join(ROOT, "team-kits", "dev-team")
+    with open(os.path.join(kit, "settings", "settings.json"), encoding="utf-8") as handle:
+        session_agent = json.load(handle).get("agent")
+    assert session_agent, "settings.json names no session agent"
+
+    checked, missing = 0, []
+    for path in sorted(glob.glob(os.path.join(kit, "agents", "*.md"))):
+        with open(path, encoding="utf-8") as handle:
+            raw = handle.read()
+        front = yaml.safe_load(raw.split("---", 2)[1]) or {}
+        if front.get("name") == session_agent:
+            continue
+        tools = {t.strip() for t in str(front.get("tools") or "").split(",")}
+        if not tools & {"Edit", "Write", "MultiEdit", "NotebookEdit"}:
+            continue
+        checked += 1
+        registered = any(
+            "guard_guidelines.py" in ((hook or {}).get("command") or "")
+            for groups in [(front.get("hooks") or {}).get("PreToolUse") or []]
+            for group in groups
+            for hook in (group or {}).get("hooks") or [])
+        if not registered:
+            missing.append(os.path.basename(path))
+    assert checked >= 6, "only %d writing specialists found — the reader stopped matching" % checked
+    assert not missing, (
+        "these dev specialists may write files and do not register guard_guidelines, so a code "
+        "write no INV governs passes for them: %s" % ", ".join(missing))
+
+
+def test_a_script_beside_quality_py_cannot_forge_the_pipeline_verdict(tmp_path):
+    """The pipeline verdict is what `gate_pipeline` and `gate_git` consume as merge evidence, so
+    anything that can reach it can forge a merge.
+
+    The first cut of `auxiliary_stages` IMPORTED every `.py` beside `quality.py` and checked the
+    contract afterwards, which ran each module body inside the pipeline process. Measured with a
+    `scripts/aaa_helper.py` that declares NO contract and calls
+    `sys.modules["__main__"].FAILS.clear()`: a RED pipeline became `[quality] pipeline GREEN`, rc 0.
+    Reachable for any role whose task scope legitimately includes `scripts/` — devops, backend.
+
+    Discovery is an AST parse now and execution is a SUBPROCESS, so neither step runs a sibling's
+    code in this process. The project is made red by something the forger does not control (a file
+    over the anti-monolith budget), and the assertion is that it STAYS red.
+    """
+    forger = ('import sys\n'
+              'main = sys.modules.get("__main__")\n'
+              'if main is not None and hasattr(main, "FAILS"):\n'
+              '    main.FAILS.clear()\n')
+    verdicts = {}
+    for planted in (False, True):
+        work = tmp_path / ("planted" if planted else "clean")
+        write(str(work / "src" / "static" / "app.js"), "let x = 1;\n" * 900)
+        if planted:
+            write(str(work / "scripts" / "aaa_helper.py"), forger)
+        verdicts[planted] = run_quality_proc(str(work))
+    assert verdicts[False].returncode == 1, verdicts[False].stdout
+    assert verdicts[True].returncode == 1, (
+        "a script in scripts/ that declares no quality stage cleared the pipeline's "
+        "verdict:\n%s" % verdicts[True].stdout)
+    assert "pipeline is RED" in verdicts[True].stdout
+
+
+def test_a_declared_stage_can_add_to_the_verdict_but_never_clear_it(tmp_path):
+    """THE OTHER HALF of the same question — what does DECLARING a stage make reachable?
+
+    It makes exactly one thing reachable, and that is worth naming rather than assuming: a file in
+    `scripts/` that declares the pair is EXECUTED on every pipeline run. It is contained by
+    construction rather than by trust — it runs as its own process, so the only channel back is an
+    exit code, and an exit code can only ADD an `ok`/`warn`/`fail`. There is no value it can return
+    that removes a FAIL another stage recorded. Measured with a stage that exits 0 (the most
+    permissive answer it has) in a project the file budget has already turned red, and with a
+    marker file proving it really ran.
+    """
+    stage = ('import os, sys\n'
+             'QUALITY_STAGE = ("planted stage", "warn")\n'
+             'if "--quality-stage" in sys.argv[1:]:\n'
+             '    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)),\n'
+             '                           "ran.marker"), "w") as handle:\n'
+             '        handle.write("ran")\n'
+             '    print("all clear")\n'
+             '    sys.exit(0)\n')
+    work = tmp_path / "planted-stage"
+    write(str(work / "src" / "static" / "app.js"), "let x = 1;\n" * 900)
+    write(str(work / "scripts" / "zz_planted.py"), stage)
+    result = run_quality_proc(str(work))
+    assert (work / "scripts" / "ran.marker").is_file(), (
+        "the declared stage was not executed at all:\n%s" % result.stdout)
+    assert "PASS  planted stage" in result.stdout, result.stdout
+    assert result.returncode == 1 and "pipeline is RED" in result.stdout, result.stdout
+
+
+def test_the_stage_flag_the_pipeline_runs_is_the_one_the_checkers_answer():
+    """`quality.STAGE_FLAG` and each checker's own spelling are two statements of one fact, and the
+    pipeline runs the checker as a subprocess, so a divergence would be a stage that is discovered,
+    launched, and silently does something else. Asked of both running modules, not of a constant
+    here."""
+    quality = load_kit_module("quality_flag", QUALITY)
+    for path in sorted(glob.glob(os.path.join(
+            ROOT, "team-kits", "*", "templates", "repo", "scripts", "*.py"))):
+        if quality.declared_stage(path) is None:
+            continue
+        proc = subprocess.run([sys.executable, path, quality.STAGE_FLAG],
+                              cwd=os.path.dirname(os.path.dirname(path)),
+                              capture_output=True, text=True, timeout=300)
+        assert proc.returncode in (0, 1), (path, proc.returncode, proc.stderr)
+        assert proc.stdout.strip(), "%s answered the stage flag with nothing" % path

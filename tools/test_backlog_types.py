@@ -6,12 +6,16 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
 
+from kernel.state import CONFIRMING_EVIDENCE  # noqa: E402
 from kernel.backlog_types import (  # noqa: E402
     AUTOMATA,
+    _Automaton,
+    EVIDENCE_KINDS,
     INVALIDATION_TARGET,
     TransitionError,
     UnknownV1Status,
     assert_transition,
+    confirming_edge,
     format_id,
     initial_status,
     invalidation_target,
@@ -216,3 +220,67 @@ def test_the_delivery_judging_kinds_are_derived_from_the_kinds_not_listed_again(
         "EVIDENCE_KINDS would then have to be remembered here too, and forgetting it is silent: "
         "the kind stays legal at capture and stops counting for the merge gate."
         % ", ".join(sorted(spelled)))
+
+
+def test_the_confirming_edge_is_derived_from_each_types_own_edge_set():
+    """`confirming_edge` tells "closed because it was confirmed" from "closed because it was
+    abandoned", and it reads that off the automaton instead of a table.
+
+    The property: the chain's LAST status, when it is a terminal whose only incoming edge comes
+    from its chain predecessor. A terminal a type can be dropped into (REJECTED, DUPLICATE,
+    CANCELLED, SUPERSEDED) has several sources and is therefore not one.
+
+    This matters because `state.CONFIRMING_EVIDENCE` hangs the regression-test rule on that edge:
+    renaming BUG's FIXED or VERIFIED moves the rule with the automaton, and a chain that gains a
+    second way into its final status stops being a confirmation by construction.
+    """
+    assert confirming_edge("BUG") == ("FIXED", "VERIFIED")
+    assert confirming_edge("TSK") == ("DONE", "VALIDATED")
+    assert confirming_edge("PR") == ("DELIVERED", "ACCEPTED")
+    # FR/HYP/SR/PROC end in a terminal reachable from several statuses, or have no terminal on
+    # the chain at all -- there is nothing to confirm, so there is no edge
+    assert confirming_edge("FR") is None
+    assert confirming_edge("HYP") is None
+    assert confirming_edge("SR") is None
+    assert confirming_edge("unknown-type") is None
+    # ...and the derivation really is over the EDGES: every answer names a real edge of the type
+    for item_type, edge in ((t, confirming_edge(t)) for t in AUTOMATA):
+        if edge is not None:
+            assert edge in AUTOMATA[item_type].allowed, item_type
+
+
+def test_a_final_status_reachable_without_the_chain_is_not_a_confirmation(monkeypatch):
+    """THE HALF NO SHIPPED AUTOMATON EXERCISES TODAY, measured on a synthetic one rather than
+    asserted in prose -- without this the "only incoming edge" clause of `confirming_edge` was
+    unfalsifiable: every current type whose chain ends in a terminal happens to have exactly one
+    edge into it, so removing the clause changed no answer.
+
+    It is the clause that carries the meaning. A status the item can be DROPPED into is not proof
+    that the work was done, so hanging a "show me the regression test" rule on it would demand
+    evidence for an abandonment -- and, worse, would let a type that gains such a shortcut keep
+    the rule's NAME while losing its content.
+    """
+    both_ways = _Automaton(
+        chain=("OPEN", "FIXING", "CLOSED"),
+        terminals=("CLOSED",),
+        terminal_from={"CLOSED": ("OPEN",)},      # ...and straight from OPEN, skipping the work
+    )
+    one_way = _Automaton(
+        chain=("OPEN", "FIXING", "CLOSED"), terminals=("CLOSED",), terminal_from={})
+    monkeypatch.setitem(AUTOMATA, "XX", both_ways)
+    assert confirming_edge("XX") is None
+    monkeypatch.setitem(AUTOMATA, "XX", one_way)
+    assert confirming_edge("XX") == ("FIXING", "CLOSED")
+
+
+def test_the_evidence_rule_names_only_edges_the_automaton_has():
+    """`state.CONFIRMING_EVIDENCE` may not carry a type whose automaton has no confirming edge --
+    that row would be a rule that can never fire, which is the shape this repo keeps finding.
+
+    It also pins the SCOPE honestly: the map is deliberately smaller than the set of confirming
+    edges, because a required proof is a promise a shipped text makes and only BUG's is written
+    down. A new row is fine; a row for a type with no such edge is not.
+    """
+    for item_type, kind in CONFIRMING_EVIDENCE.items():
+        assert confirming_edge(item_type) is not None, item_type
+        assert kind in EVIDENCE_KINDS, (item_type, kind)

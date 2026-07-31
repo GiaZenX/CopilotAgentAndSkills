@@ -23,6 +23,7 @@ and says so loudly — it is never merge evidence; the gate_pipeline hook always
 
 Exit 0 = all green. Exit 1 = at least one hard failure. Cross-platform (uses shutil.which).
 """
+import ast
 import importlib.util
 import os
 import re
@@ -450,6 +451,82 @@ def kit_checks_stage():
         fail("kit checks", "run_kit_checks errored: %s" % e)
 
 
+STAGE_FLAG = "--quality-stage"
+
+
+def declared_stage(path):
+    """The `QUALITY_STAGE = (label, severity)` a sibling declares, or None — read by PARSING the
+    module, never by importing it.
+
+    THE FIRST CUT IMPORTED EVERY `.py` BESIDE THIS FILE and checked the contract afterwards, so
+    every module body in `scripts/` ran inside the process that owns the pipeline verdict.
+    Measured with a `scripts/aaa_helper.py` that declares NOTHING and calls
+    `sys.modules["__main__"].FAILS.clear()` on import: a RED pipeline (rc 1, "3 state error(s)")
+    became "[quality] pipeline GREEN", rc 0 — and that verdict is what `gate_pipeline` and
+    `gate_git` consume as merge evidence. Any role whose task scope legitimately includes
+    `scripts/` (devops, backend) could forge it.
+
+    `ast.literal_eval` on the assigned value, so even the DECLARATION cannot execute anything: a
+    checker states two constants, and a module that states something else is not a stage.
+    """
+    try:
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=path)
+    except (OSError, SyntaxError, ValueError):
+        return None
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        if not any(isinstance(t, ast.Name) and t.id == "QUALITY_STAGE" for t in node.targets):
+            continue
+        try:
+            label, severity = ast.literal_eval(node.value)
+        except (ValueError, SyntaxError, TypeError):
+            return None
+        if isinstance(label, str) and label and severity in ("warn", "fail"):
+            return label, severity
+    return None
+
+
+def auxiliary_stages():
+    """Every kit-owned checker installed BESIDE this script that asks to be in the pipeline.
+
+    DISCOVERED, not listed, and that is the whole point. Two shipped checkers had been written,
+    documented and tested and then had NO CALLER AT ALL — measured 2026-07-31 across the whole
+    tree: `research-team/.../report_lint.py` and `office-team/.../pii_scan.py` were named by no
+    hook, no settings.json, no CI file, no pre-commit config and no SKILL. A list here would have
+    been the same defect one file along, because the kits do not ship the same scripts: this file
+    is byte-identical in the dev and research kits (the mirror rule), so a name only one of them
+    has could not be written down here at all.
+
+    THE CONTRACT a checker declares, in its own module:
+        QUALITY_STAGE = ("<label the report shows>", "<warn|fail>")
+        `python scripts/<name>.py --quality-stage` -> exit 0 clean, exit 1 has findings
+    RUN AS A SUBPROCESS, so the checker never touches this process's `FAILS`/`WARNS`/`OKS` — see
+    `declared_stage` for the measurement that forced that. A separate flag rather than the plain
+    `main()`, because a checker is also a stand-alone command with its own exit-code contract
+    (`report_lint` documents "exit 0 always", for a reason about writers and not about pipelines).
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in sorted(os.listdir(here)):
+        path = os.path.join(here, name)
+        if not name.endswith(".py") or path == os.path.abspath(__file__):
+            continue
+        declaration = declared_stage(path)
+        if not declaration:
+            continue
+        label, severity = declaration
+        rc, text = run([sys.executable, path, STAGE_FLAG])
+        if text:
+            print(text.rstrip())
+        if rc == 0:
+            ok(label)
+        elif severity == "fail":
+            fail(label, _tail(text))
+        else:
+            warn(label, _tail(text))
+
+
 def secret_scan():
     if have("gitleaks"):
         rc, out = run(["gitleaks", "detect", "--no-banner", "-r", os.devnull])
@@ -526,6 +603,7 @@ def main():
                  "auto-detect is not a substitute (this is exactly how a critical tool gets forgotten)."
                  % ", ".join(sorted(set(detected))))
     kit_checks_stage()
+    auxiliary_stages()
     secret_scan()
     sbom()
     _report()
