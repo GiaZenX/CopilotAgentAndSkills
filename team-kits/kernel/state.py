@@ -29,6 +29,7 @@ Interim notes (Fable-Check 7):
 from __future__ import annotations
 
 import os
+import re
 import time
 
 import yaml
@@ -55,6 +56,73 @@ from .backlog_types import (
 from .lock import KernelLock, ext_path
 
 _KERNEL_SET = ("id", "status", "revision", "approval_ref", "created")
+
+# HOW THE KERNEL NAMES A FILE IT STORES PER REVISION -- composed and read back in ONE place.
+#
+# `staging` freezes some items per revision (spec II.6/II.6a): the wireframe `WFR-0001` lives at
+# `design/wireframes/WFR-0001.r02.drawio.svg` with the companion `WFR-0001.r02.yaml` beside it.
+# FOUR places have to agree on that shape -- three readers (`_frozen_revision_path`: which
+# revision IS the item; `iter_active_items`: which files in a directory are items at all;
+# `staging._next_frozen_revision`: which number has already been used) and `staging`'s own
+# composition of the names -- and for one round they did not: the first read the directory per
+# revision while the second read every `*.yaml` as its own item, so a SECOND `freeze_wireframe`
+# made `report.validate_state` report `WFR-0001 duplicate id` and `gate_memory_complete` turned
+# that into a blocked merge for the whole project (measured 2026-07-28, disposition row 6.5).
+#
+# The rule is read off the NAME, never off a list of types: an item stored per revision is
+# recognised by how the kernel wrote it, so whichever type is frozen that way next arrives here
+# already understood. An id carries no dot, which is what lets `[^.]+` separate the base from the
+# revision and the revision from the suffixes (`.drawio.svg`, `.yaml`, `.html`).
+_REVISION_RE = re.compile(r"(?P<base>[^.]+)\.r(?P<revision>\d+)(?P<suffix>\..*)?\Z", re.ASCII)
+
+
+def revision_name(item_id: str, revision: int, suffix: str) -> str:
+    """The file name of ONE frozen revision -- the only composer, read back by `split_revision`."""
+    return "%s.r%02d%s" % (item_id, int(revision), suffix)
+
+
+def split_revision(name: str):
+    """(base, revision, suffix) for a per-revision file name; (None, None, None) otherwise."""
+    match = _REVISION_RE.match(name or "")
+    if not match:
+        return None, None, None
+    return match.group("base"), int(match.group("revision")), match.group("suffix") or ""
+
+
+def _is_item_id(value) -> bool:
+    """Does this name an item at all? -- the question `parse_id` answers, without the raise."""
+    try:
+        parse_id(str(value))
+    except ValueError:
+        return False
+    return True
+
+
+# The suffix an ITEM file carries. Items are YAML whatever else lies beside them: a frozen
+# wireframe revision is a `.drawio.svg` PLUS a `.yaml` companion, a frozen design a `.html` plus a
+# `.yaml` manifest, and only the companion is the item.
+ITEM_SUFFIX = ".yaml"
+
+
+def item_revision(name: str):
+    """(item id, revision) when `name` is the file of ONE stored revision of an item, else
+    (None, None).
+
+    THE predicate, and it is one function because the first cut of this fix had it twice and they
+    disagreed within the hour. `_frozen_revision_path` demanded the revision be followed by
+    exactly `.yaml`; `iter_active_items` accepted any suffix -- so a hand-placed
+    `WFR-0001.r03.backup.yaml` was measured as the ACTIVE item by the second reader while
+    `read_anywhere` still resolved `WFR-0001` to `r02`. That is the identical two-readings defect
+    disposition row 6.5 is about, one file shape further along, and it is why the question is
+    asked here rather than answered in each caller.
+
+    A name that fails any part of it is not a revision file at all: it stays a file in its own
+    right, and if its content claims an id another file also claims, the duplicate-id rule says so.
+    """
+    base, revision, suffix = split_revision(name)
+    if revision is None or suffix != ITEM_SUFFIX or not _is_item_id(base):
+        return None, None
+    return base, revision
 
 
 class StateError(ValueError):
@@ -122,6 +190,46 @@ class ProjectState:
             )
         return item
 
+    def iter_active_items(self, item_type: str):
+        """(stem, path) for every file in the type's active dir that IS an active item.
+
+        ONE reading of one directory, for every reader that asks what a project is working on
+        now -- the state validator and the session brief through `report._iter_active`, and
+        `generated/index.yaml` through `_regenerate_index_locked`. Both used to answer it
+        themselves with the older rule "every `*.yaml` in here is an item", which contradicted
+        `_frozen_revision_path` next door and cost a merge (see `_REVISION_RE`).
+
+        THE RULE, in one sentence: files whose names differ only in their `.rNN` are REVISIONS
+        of one item, and the item is the highest of them. A superseded revision is HISTORY --
+        still on disk, still in git, read by nobody who asks what is active, exactly as an
+        archived item is. `read_anywhere` resolves the id to that same newest file, so the two
+        readings can no longer disagree about which file an id names.
+
+        TWO THINGS IT DELIBERATELY DOES NOT COLLAPSE, because each is a real contradiction the
+        validator has to keep reporting rather than resolve by picking one:
+          * a plain `<ID>.yaml` beside `<ID>.rNN.yaml` -- one directory then claims two homes
+            for one id, and `read_anywhere` silently prefers the plain one;
+          * a base that is no item id at all -- the revision rule is about items stored per
+            revision, so `notes.r01.yaml` and `notes.r02.yaml` stay two files.
+        Both leave the duplicate-id rule to speak, which is the counter-direction that must
+        survive: two DIFFERENT items claiming one id is still an error.
+        """
+        base = self.active_dir(item_type)
+        if not os.path.isdir(ext_path(base)):
+            return
+        newest, plain = {}, []
+        for name in sorted(os.listdir(ext_path(base))):
+            if not name.endswith(ITEM_SUFFIX):
+                continue
+            item_id, revision = item_revision(name)
+            if item_id is None:
+                plain.append(name)
+                continue
+            if item_id not in newest or revision > newest[item_id][0]:
+                newest[item_id] = (revision, name)
+        for name in sorted(plain + [name for _revision, name in newest.values()]):
+            yield name[: -len(ITEM_SUFFIX)], os.path.join(base, name)
+
     def _frozen_revision_path(self, item_id: str):
         """The newest `<id>.rNN.yaml` in the type's active dir, or None.
 
@@ -137,18 +245,9 @@ class ProjectState:
 
         The rule is read off the file names, not off a list of types: an item stored
         per revision IS its newest revision, so whichever type is frozen that way next
-        arrives here already resolved.
-
-        THAT DEFINITION IS NOT YET THE WHOLE KERNEL'S. `report._iter_active` still reads
-        the same directory by the older rule "every `*.yaml` is an item", so a SECOND
-        freeze of the same wireframe produces two files, and the validator reports
-        `WFR-0001 duplicate id` -- which `gate_memory_complete` turns into a blocked
-        merge. Pre-existing (the per-revision file names and the duplicate rule are both
-        older than this method), measured 2026-07-28, and filed as disposition row 6.5
-        rather than fixed here: the repair belongs in `_iter_active`, whose readers are
-        the validator, the session brief, the generated index and the dashboard. Said
-        here so this docstring does not read as a settled rule while a second reader
-        contradicts it.
+        arrives here already resolved. `iter_active_items` reads the same names through
+        the same `split_revision`, which is what makes that one sentence the whole
+        kernel's rather than this method's.
 
         Deliberately NOT in `active_path`: that path is where a write LANDS, and a write
         must be deterministic -- a frozen revision is immutable, and the way to change
@@ -158,13 +257,13 @@ class ProjectState:
         base = self.active_dir(item_type)
         if not os.path.isdir(ext_path(base)):
             return None
-        prefix, best = item_id + ".r", None
+        best = None
         for name in sorted(os.listdir(ext_path(base))):
-            if not name.startswith(prefix) or not name.endswith(".yaml"):
+            found, revision = item_revision(name)
+            if found != item_id:
                 continue
-            digits = name[len(prefix):-5]
-            if digits.isdigit() and (best is None or int(digits) > best[0]):
-                best = (int(digits), os.path.join(base, name))
+            if best is None or revision > best[0]:
+                best = (revision, os.path.join(base, name))
         return best[1] if best else None
 
     def read_anywhere(self, item_id: str):
@@ -512,21 +611,19 @@ class ProjectState:
     def _regenerate_index_locked(self) -> str:
         rows = []
         for item_type in sorted(ACTIVE_DIRS):
-            base = self.active_dir(item_type)
-            if not os.path.isdir(ext_path(base)):
-                continue
-            for name in sorted(os.listdir(ext_path(base))):
-                if not name.endswith(".yaml"):
-                    continue
+            # through `iter_active_items`, not a second listing of the same directory: the index
+            # is what the dashboard and every "what is open" reader work from, and with its own
+            # copy of the rule it listed a twice-frozen wireframe as two rows carrying one id
+            for stem, path in self.iter_active_items(item_type):
                 try:
-                    item = self._read_yaml(os.path.join(base, name))
+                    item = self._read_yaml(path)
                 except Exception:
                     item = None
                 if not isinstance(item, dict):
-                    rows.append({"id": name[:-5], "type": item_type, "corrupt": True})
+                    rows.append({"id": stem, "type": item_type, "corrupt": True})
                     continue
                 row = {
-                    "id": item.get("id", name[:-5]),
+                    "id": item.get("id", stem),
                     "type": item_type,
                     "title": item.get("title"),
                     "status": item.get("status"),

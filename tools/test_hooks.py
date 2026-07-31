@@ -618,6 +618,39 @@ def test_memory_complete_reports_the_validator_verdict_not_its_own(prd_repo):
     assert "duplicate id" in result.stderr
 
 
+def test_freezing_a_second_wireframe_revision_does_not_block_every_merge(tmp_path):
+    """Disposition row 6.5, measured where it actually hurt: at the merge.
+
+    A second `freeze_wireframe` is the normal course of design work. It wrote
+    `WFR-0001.r02.yaml` beside `WFR-0001.r01.yaml`, the validator called that `WFR-0001 duplicate
+    id`, and THIS gate blocks on validator ERRORS -- so the project's every merge and every push
+    was refused, with the only remedy being to delete a frozen, immutable artefact by hand. Both
+    ends are asserted: the freeze really happened (two companions on disk), and the merge line
+    really passes the shipped hook process.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals as kernel_approvals
+    from kernel import staging as kernel_staging
+    from kernel.state import ProjectState
+
+    item = capture_root_item(tmp_path, status=None)
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    conftest.mint_via_hook(
+        state, kernel_approvals.create_pending_request(state, "scope", item["id"]))
+    apr_ref = state.read_item(item["id"])["approval_ref"]
+    for body in ("first cut", "second cut"):
+        key = "%s-%s" % (item["id"], body.split()[0])
+        write(os.path.join(kernel_staging.staging_dir(state, key), "WFR-0001.drawio.svg"),
+              '<svg xmlns="http://www.w3.org/2000/svg"><g>%s</g></svg>' % body)
+        kernel_staging.freeze_wireframe(state, key, "WFR-0001", apr_ref, [item["id"]], "Checkout")
+    frozen = sorted(n for n in os.listdir(state.active_dir("WFR")) if n.endswith(".yaml"))
+    assert frozen == ["WFR-0001.r01.yaml", "WFR-0001.r02.yaml"], frozen
+
+    result = run_hook_process("gate_memory_complete.py", _merge_payload(tmp_path), tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert "duplicate id" not in result.stderr
+
+
 # ---------------- quality.py ----------------
 BROWSER_CHECKS = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts",
                               "kit_browser_checks.py")
@@ -3952,24 +3985,46 @@ def test_no_instruction_file_names_a_hook_its_own_kit_does_not_ship():
                     % (os.path.relpath(path, ROOT), name, kit))
 
 
+DISPATCH_AUTHORISER = "_assert_dispatch_authorised_locked"
+
+
 def _dispatch_authorising_kinds():
     """APR kinds that really authorise a dispatch, read out of the kernel that decides.
 
-    Two routes exist, and each keeps its answer in a different place: the ROOT route in the
-    `ROOT_DISPATCH_KINDS` constant, the task-listing route as a literal comparison inside
-    `_covering_analysis_apr`. Both are read here rather than restated, because the point of the test
-    is that instruction text must not name a THIRD kind — `APR.kind: routine` was documented as the
-    auditor's dispatch basis while the kernel refused it (measured 2026-07-26).
+    DERIVED OVER THE CALL GRAPH of `_assert_dispatch_authorised_locked`, which is the one function
+    every dispatch passes through: the root route keeps its answer in the `ROOT_DISPATCH_KINDS`
+    constant, and each task route compares `apr["kind"]` against a literal inside the helper it
+    delegates to. So the answer is that constant plus every `APR_KINDS` string appearing in the
+    authoriser or in any module-level function of `dispatch.py` it reaches.
+
+    The predecessor named `_covering_analysis_apr` outright and its docstring said "two routes
+    exist". Both statements aged the day the `routine` route shipped: the helper's answer would
+    have stayed {scope, delivery, analysis}, and this test would have gone on asserting that a
+    role naming `routine` names a kind the kernel refuses — the over-alarming half of exactly the
+    defect it was written to catch (`APR.kind: routine` documented as the auditor's dispatch basis
+    while the kernel refused it, measured 2026-07-26; the route measured working 2026-07-31).
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel.approvals import APR_KINDS, ROOT_DISPATCH_KINDS
     source = open(os.path.join(ROOT, "team-kits", "kernel", "dispatch.py"),
                   encoding="utf-8").read()
+    functions = {node.name: node for node in ast.parse(source).body
+                 if isinstance(node, ast.FunctionDef)}
+    assert DISPATCH_AUTHORISER in functions, (
+        "%s is gone from kernel/dispatch.py — this derivation has lost its entry point and would "
+        "silently answer with the root route alone" % DISPATCH_AUTHORISER)
+    reached, queue = set(), [DISPATCH_AUTHORISER]
+    while queue:
+        name = queue.pop()
+        if name in reached or name not in functions:
+            continue
+        reached.add(name)
+        queue += [node.func.id for node in ast.walk(functions[name])
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)]
     kinds = set(ROOT_DISPATCH_KINDS)
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.FunctionDef) and node.name == "_covering_analysis_apr":
-            kinds |= {n.value for n in ast.walk(node)
-                      if isinstance(n, ast.Constant) and n.value in APR_KINDS}
+    for name in reached:
+        kinds |= {node.value for node in ast.walk(functions[name])
+                  if isinstance(node, ast.Constant) and node.value in APR_KINDS}
     return kinds
 
 
@@ -3977,10 +4032,11 @@ def test_the_auditor_names_an_approval_kind_that_can_actually_dispatch_it():
     """The auditor's own SKILL must name a kind the dispatch gate accepts.
 
     It documented `APR.kind: routine` — the kind spec II.10a designs for this role — as the approval
-    it "is dispatched on", and added that an expired one blocks the spawn. Measured: a valid,
-    unexpired, unrevoked routine APR on the root authorises nothing, so the promised expiry check is
-    unreachable code and an auditor following its instruction cannot be spawned at all. Until the
-    kernel grows the route, the text has to name the kind that works.
+    it "is dispatched on", and added that an expired one blocks the spawn. Measured 2026-07-26: a
+    valid, unexpired, unrevoked routine APR on the root authorised nothing, so the promised expiry
+    check was unreachable code and an auditor following its instruction could not be spawned at
+    all. The kernel has the route since 2026-07-31; what this keeps pinned is the property, not
+    that round's answer — the text may name only kinds the running authoriser accepts.
     """
     authorising = _dispatch_authorising_kinds()
     assert authorising, "could not read the dispatch routes out of the kernel"

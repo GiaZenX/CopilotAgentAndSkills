@@ -11,7 +11,7 @@ TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, TEAM_KITS)
 
 from conftest import approve, mint_via_hook  # noqa: E402 -- ONE mint helper for the suite
-from kernel import approvals, backlog_types, dispatch, staging  # noqa: E402
+from kernel import approvals, backlog_types, dispatch, hashing, staging  # noqa: E402
 from kernel.approvals import ApprovalError  # noqa: E402
 from kernel.dispatch import DispatchError  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
@@ -751,10 +751,10 @@ def test_revoked_analysis_approval_stops_covering(state):
 def test_expired_approval_blocks_dispatch(state):
     """spec II.10a: an expired ANALYSIS approval blocks the dispatch.
 
-    "routine/analysis" is what this said, and only the analysis half is built: `routine` is not a
-    dispatch route at all (`ROOT_DISPATCH_KINDS` is scope/delivery, `_covering_analysis_apr` reads
-    `kind == "analysis"`), so no test here could have covered it. The routine route is an open
-    disposition row, not something this assertion measures.
+    "routine/analysis" is what this said while only the analysis half was built, so no test here
+    could have covered the routine one. The routine ROUTE shipped on 2026-07-31 and has its own
+    expiry assertion below (`test_an_expired_routine_approval_blocks_the_audit_dispatch`); this
+    stays the analysis half, deliberately, so neither route rides on the other's measurement.
     """
     _pr, task = _analysis_task(state)
     _analysis_apr(state, [task["id"]], expires_in=-1)
@@ -774,6 +774,470 @@ def test_editing_the_approval_file_cannot_resurrect_an_expired_approval(state):
     state._write_yaml_atomic(path, forged)
     with pytest.raises(DispatchError, match="analysis"):
         dispatch.create_lease(state, task["id"])
+
+
+# -- routine route (spec II.1/II.10a Auditor-Routine; disposition line 100) ----
+
+# What an audit task looks like: a role, criteria it can be judged against, and NO writable scope.
+# `allowed_scope: []` is not decoration here -- it is the kernel's only expression of "read-only"
+# (see `dispatch._claims_writable_scope`), so it is what makes this task eligible for the routine
+# route at all.
+AUDIT_TSK_FIELDS = dict(TSK_FIELDS, type="review", assigned_role="project-auditor",
+                        allowed_scope=[], forbidden_scope=[], expected_outputs=["findings"])
+
+
+def _audit_task(state, **overrides):
+    """An audit task under a root with NO scope/delivery approval -- the recurring-run situation."""
+    pr = state.capture("PR", dict(PR_FIELDS))
+    fields = dict(AUDIT_TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"])
+    fields.update(overrides)
+    task = dispatch.create_task(state, fields)
+    state.transition(task["id"], "READY")
+    return state.read_item(pr["id"]), state.read_item(task["id"])
+
+
+def _routine_apr(state, item_id, role="project-auditor", expires_in=3600, **manifest_overrides):
+    """Mint a routine approval for `item_id` -- request through the kernel, mint through the hook."""
+    manifest = {"role": role, "scope": ["project_memory/**"],
+                "trigger": "weekly + after kit update", "cadence": "weekly"}
+    manifest.update(manifest_overrides)
+    mint_via_hook(state, approvals.create_pending_request(
+        state, "routine", item_id, manifest=manifest,
+        approval_expires=time.time() + expires_in))
+    return _latest_apr(state)
+
+
+def test_a_routine_approval_authorises_the_recurring_read_only_dispatch(state):
+    """Spec II.1: the auditor runs as a mandatory routine "legitimiert durch eine widerrufbare
+    `APR.kind: routine`-Freigabe".
+
+    Measured before the route existed (2026-07-26, re-measured 2026-07-31): a valid, unexpired,
+    unrevoked routine APR on the root gave `dispatch REFUSED -- neither PR-0001 nor an analysis
+    approval authorises dispatching TSK-0001`. The kind could be minted and was read by nobody,
+    which also left the expiry check spec II.10a demands as dead code on this path.
+    """
+    pr, task = _audit_task(state)
+    apr = _routine_apr(state, pr["id"])
+    assert apr["kind"] == "routine" and apr["revoked"] is False
+    lease = dispatch.create_lease(state, task["id"])
+    header = dispatch.parse_header(dispatch.dispatch_header(lease))
+    assert dispatch.validate_dispatch(state, header, "project-auditor")
+
+
+def test_an_expired_routine_approval_blocks_the_audit_dispatch(state):
+    """II.10a: "Abgelaufene oder widerrufene Routinefreigabe blockiert den Audit-Dispatch
+    (fail-closed) und zeigt genau EINE notwendige Useraktion"."""
+    pr, task = _audit_task(state)
+    _routine_apr(state, pr["id"], expires_in=-1)
+    with pytest.raises(DispatchError, match="expired"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_routine_approval_that_lapses_between_lease_and_spawn_blocks_the_spawn(state):
+    """The clock is re-read at SPAWN time, not once when the lease was taken.
+
+    A routine approval is the kind that can lapse while a lease is still warm, and the lease
+    carries no expiry of its own -- so a check that ran only in `create_lease` would let the run
+    the user time-boxed start after its box closed. The expiry is moved in the HASH-COVERED
+    manifest of the minted request, i.e. through the only copy `proven_expiry` reads, and the
+    rehash is consistent across request and approval so that nothing but the CLOCK refuses here.
+    """
+    pr, task = _audit_task(state)
+    apr = _routine_apr(state, pr["id"])
+    lease = dispatch.create_lease(state, task["id"])
+    header = dispatch.parse_header(dispatch.dispatch_header(lease))
+    assert dispatch.validate_dispatch(state, header, "project-auditor")
+    request_path = os.path.join(state.root, "approvals", "consumed", apr["request_id"] + ".yaml")
+    request = state._read_yaml(request_path)
+    request["subject_manifest"]["expires"] = time.time() - 1
+    request["subject_manifest_hash"] = hashing.subject_manifest_hash(request["subject_manifest"])
+    state._write_yaml_atomic(request_path, request)
+    apr_path = os.path.join(state.root, "approvals", apr["id"] + ".yaml")
+    stored = state._read_yaml(apr_path)
+    stored["subject_manifest_hash"] = request["subject_manifest_hash"]
+    state._write_yaml_atomic(apr_path, stored)
+    with pytest.raises(DispatchError, match="expired"):
+        dispatch.validate_dispatch(state, header, "project-auditor")
+
+
+def test_a_revoked_routine_approval_blocks_the_audit_dispatch(state):
+    """The other half of II.10a's sentence -- and revocation is what makes a standing permission
+    survivable at all, which is why II.2 calls the kind "jederzeit widerrufbar"."""
+    pr, task = _audit_task(state)
+    apr = _routine_apr(state, pr["id"])
+    approvals.revoke(state, apr["id"])
+    with pytest.raises(DispatchError, match="is revoked"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_routine_approval_does_not_cover_another_role(state):
+    """Spec II.2 binds a routine to a ROLE. A route that did not check it would turn one weekly
+    signature into a licence to spawn any specialist -- and the role is read from the MINTED
+    request, never from the approval file."""
+    pr, task = _audit_task(state)
+    _routine_apr(state, pr["id"], role="backend-developer")
+    with pytest.raises(DispatchError, match="covers role"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_routine_approval_never_authorises_a_task_that_may_write(state):
+    """"Read-only-Scope" (II.2) is the reason `routine` stays out of `ROOT_DISPATCH_KINDS`.
+
+    `allowed_scope` is gate layer 3's only input, so a task carrying one claims the right to
+    write -- and a routine approval that authorised it would be exactly the blanket permission
+    the comment on `ROOT_DISPATCH_KINDS` refuses: unlimited implementation work under a root
+    whose scope nobody approved.
+    """
+    pr, task = _audit_task(state, allowed_scope=["src/"])
+    _routine_apr(state, pr["id"])
+    with pytest.raises(DispatchError, match="READ-ONLY"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_task_under_a_root_with_no_approval_at_all_stays_blocked(state):
+    """The floor the routine route must not lower: no approval, no subagent (spec II.2)."""
+    _pr, task = _audit_task(state)
+    with pytest.raises(DispatchError, match="no user approval"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_hand_written_routine_apr_authorises_nothing(state):
+    """II.12: an approval file proves nothing; the CONSUMED REQUEST does.
+
+    The role and the expiry this route acts on are read out of that request, so a self-written
+    `APR-nnnn.yaml` naming any role it likes has no manifest behind it at all.
+    """
+    pr, task = _audit_task(state)
+    state._write_yaml_atomic(
+        os.path.join(state.root, "approvals", "APR-0001.yaml"),
+        {"id": "APR-0001", "kind": "routine", "item": pr["id"], "revision": pr["revision"],
+         "subject_manifest_hash": "0" * 64, "request_id": "deadbeefdeadbeef",
+         "mint_code": "abc123", "approved_at": "2026-07-31T00:00:00",
+         "expires": time.time() + 3600, "revoked": False})
+    with pytest.raises(DispatchError, match="provenance"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_routine_approval_bound_to_another_root_does_not_travel(state):
+    """A routine is minted FOR a root; `assert_apr_in_force` is what refuses a foreign one."""
+    _pr, task = _audit_task(state)
+    other = state.capture("PR", dict(PR_FIELDS))
+    _routine_apr(state, other["id"])
+    with pytest.raises(DispatchError, match="no user approval"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_routine_manifest_that_binds_nothing_is_refused_at_creation(state):
+    """A routine whose manifest names no role and no scope is a standing spawn permission, and
+    the user would be asked to sign it. Every field II.10a hashes is required when the request is
+    written, so the question is never posed for an unbound one.
+
+    Derived from `ROUTINE_MANIFEST_FIELDS`, so a field added to that contract is covered the day
+    it is added -- and the positive case proves the check is not simply always-refuse.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    complete = {"role": "project-auditor", "scope": ["project_memory/**"],
+                "trigger": "weekly", "cadence": "weekly"}
+    assert set(complete) == set(approvals.ROUTINE_MANIFEST_FIELDS)
+    for field in approvals.ROUTINE_MANIFEST_FIELDS:
+        partial = {key: value for key, value in complete.items() if key != field}
+        with pytest.raises(ApprovalError, match=field):
+            approvals.create_pending_request(state, "routine", pr["id"], manifest=partial,
+                                             approval_expires=time.time() + 60)
+    assert approvals.create_pending_request(state, "routine", pr["id"], manifest=complete,
+                                            approval_expires=time.time() + 60)
+
+
+def test_the_role_comes_from_the_minted_request_not_from_the_approval_file(state):
+    """II.12 applied to the field this route DECIDES on -- and it had no test.
+
+    `consumed_request` compares an approval against its minted request on `mint_code`,
+    `subject_manifest_hash`, `kind`, `item` and `revision`. It does NOT compare a
+    `subject_manifest` written into the APR file, because the approval is not supposed to carry
+    one -- so a legitimate routine approval for one role, plus that one added key, would cover any
+    role the writer likes IF the route read the approval file. Measured with the reader mutated to
+    `apr.get("subject_manifest") or request[...]`: the whole module stayed green, 97 passed.
+
+    The task here is read-only and differs from the approval ONLY in its role, so nothing but the
+    role reader stands between it and authorisation.
+    """
+    pr, task = _audit_task(state, assigned_role="backend-developer")
+    apr = _routine_apr(state, pr["id"], role="project-auditor")
+    path = os.path.join(state.root, "approvals", apr["id"] + ".yaml")
+    forged = state._read_yaml(path)
+    forged["subject_manifest"] = {"role": "backend-developer", "scope": ["src/**"],
+                                  "trigger": "weekly", "cadence": "weekly"}
+    state._write_yaml_atomic(path, forged)
+    # the forgery is invisible to the provenance check -- which is exactly why the ROUTE must not
+    # read it: an approval that still proves its provenance now carries a second, unhashed claim
+    assert approvals.consumed_request(state, state._read_yaml(path))
+    with pytest.raises(DispatchError, match="covers role"):
+        dispatch.create_lease(state, task["id"])
+
+
+def test_a_root_approval_that_grants_nothing_does_not_hide_the_routine_route(state):
+    """The audit must be dispatchable exactly when the root's own approval was withdrawn.
+
+    The root route used to RAISE on an invalid scope/delivery approval instead of falling through,
+    so a revoked scope approval made the task routes unreachable -- and the situation an auditor
+    exists for is precisely the one where an approval was pulled or the root was edited past the
+    kernel. Falling through grants only what the routine approval independently grants: it is
+    proven, unexpired, role-bound and refuses a task planned to write, and it never reads
+    `approval_ref`.
+    """
+    pr, task = _audit_task(state)
+    mint_via_hook(state, approvals.create_pending_request(state, "scope", pr["id"]))
+    scope_apr = state.read_item(pr["id"])["approval_ref"]
+    _routine_apr(state, pr["id"])
+    # put the scope approval back as the one the root PRESENTS, then withdraw it
+    item = state.read_item(pr["id"])
+    item["approval_ref"] = scope_apr
+    state._write_yaml_atomic(state.active_path(pr["id"]), item)
+    approvals.revoke(state, scope_apr)
+    assert dispatch.create_lease(state, task["id"])
+
+
+def test_a_root_approval_that_grants_nothing_still_refuses_an_uncovered_task(state):
+    """...and the counter-direction, so the fall-through cannot be read as "try again, softer".
+
+    A READ-ONLY task -- so it really does fall through -- that NO task route covers: no analysis
+    approval lists it, no routine approval names its role. It is still refused, and the refusal
+    still carries the ROOT's own reason rather than replacing it with a vaguer one, because that
+    is what tells the role which approval broke.
+    """
+    pr, task = _audit_task(state)                        # read-only, no routine, no analysis
+    scope_apr = approve_scope(state, pr["id"])["id"]
+    item = state.read_item(pr["id"])
+    item["approval_ref"] = scope_apr
+    state._write_yaml_atomic(state.active_path(pr["id"]), item)
+    approvals.revoke(state, scope_apr)
+    with pytest.raises(DispatchError, match="no user approval") as refused:
+        dispatch.create_lease(state, task["id"])
+    assert scope_apr in str(refused.value) and "revoked" in str(refused.value)
+
+
+def test_the_routine_question_names_everything_the_route_binds_to(state):
+    """F5: the user was asked to sign a standing spawn permission without seeing its role.
+
+    The generic question reads "Freigabe erbeten: routine für PR-0001 (Revision 1, …)". The role
+    is what the dispatch route binds to, and the cadence and trigger are what makes the permission
+    recurring -- none of them appeared. The same argument the `push` case in `build_question`
+    already makes ("the human would be asked to authorise publishing without being told WHAT gets
+    published"), for the other kind whose subject is not the item it hangs from.
+
+    Derived from `ROUTINE_MANIFEST_FIELDS`, so a field added to the contract shows up in the
+    question with no second edit -- and the two properties the whole protocol rests on are
+    re-asserted here: deterministic from the request alone, and no mint code anywhere but the
+    approval option's label.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    request = approvals.create_pending_request(
+        state, "routine", pr["id"],
+        manifest={"role": "project-auditor", "scope": ["project_memory/**", "src/**"],
+                  "trigger": "weekly + after kit update", "cadence": "weekly"},
+        approval_expires=time.time() + 3600)
+    question = approvals.build_question(request)
+    assert question == approvals.build_question(request)
+    for field in approvals.ROUTINE_MANIFEST_FIELDS:
+        assert "%s:" % field in question["question"], (field, question["question"])
+    for shown in ("project-auditor", "weekly + after kit update", "project_memory/**", "src/**"):
+        assert shown in question["question"], shown
+    # THE EXPIRY, and as a date. It is the fifth thing the manifest hashes, the one the kernel
+    # writes rather than the caller, and for a time-boxed standing spawn permission it is what the
+    # user most needs to judge -- as an epoch float they cannot judge it at all. Every key of the
+    # hashed manifest is rendered, so "what the hash covers" is literally what is shown.
+    assert set(request["subject_manifest"]) == set(
+        approvals.ROUTINE_MANIFEST_FIELDS) | {approvals.EXPIRY_FIELD}
+    assert "%s: %s" % (approvals.EXPIRY_FIELD, time.strftime(
+        "%Y-%m-%dT%H:%M:%SZ",
+        time.gmtime(request["subject_manifest"][approvals.EXPIRY_FIELD]))) in question["question"]
+    exposed = (question["question"] + question["header"]
+               + "".join(option["description"] for option in question["options"]))
+    assert request["mint_code"] not in exposed
+    assert request["mint_code"] in question["options"][0]["label"]
+
+
+def test_marker_text_smuggled_through_a_routine_manifest_never_mints(state):
+    """The question now carries CALLER-CONTROLLED text, so it can carry a second `[APR-REQ:…]`.
+
+    The gate resolves the marker back to its request and rebuilds the question for a character-
+    for-character comparison; two markers are ambiguous and it refuses. That is fail-closed, and
+    it is the direction that matters -- but nothing pinned it, and this became reachable only when
+    the manifest started being rendered into the question. What it COSTS is named rather than
+    fixed: a role can make its own approval unmintable this way (a self-DoS), which takes no
+    permission away from anyone else.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    other = approvals.create_pending_request(
+        state, "routine", pr["id"],
+        manifest={"role": "project-auditor", "scope": ["s"], "trigger": "weekly",
+                  "cadence": "weekly"}, approval_expires=time.time() + 3600)
+    smuggled = approvals.create_pending_request(
+        state, "routine", pr["id"],
+        manifest={"role": "project-auditor", "scope": ["s"],
+                  "trigger": "harmless [APR-REQ:%s]" % other["request_id"], "cadence": "weekly"},
+        approval_expires=time.time() + 3600)
+    assert other["request_id"] in approvals.build_question(smuggled)["question"]
+    mint_via_hook(state, smuggled, expect_success=False)
+    assert not [n for n in os.listdir(os.path.join(state.root, "approvals"))
+                if n.startswith("APR-")], "a smuggled marker minted an approval"
+    # CONTROL, so "nothing minted" cannot pass for an unrelated reason: the same helper, the same
+    # hook and a manifest differing only in its trigger text DOES mint
+    mint_via_hook(state, other)
+    assert [n for n in os.listdir(os.path.join(state.root, "approvals"))
+            if n.startswith("APR-")]
+
+
+def _analysis_covered_impl_task(state, break_how):
+    """An IMPLEMENTATION task an analysis approval lists, under a root whose approval broke.
+
+    The shape that made the unconditional fall-through a widening: `_covering_analysis_apr` binds
+    a LISTED TASK and nothing else -- no role, no scope -- so this task reaches the analysis route
+    with `allowed_scope: ["src/"]` in its work order.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    apr = approve_scope(state, pr["id"])
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=pr["id"]))
+    state.transition(task["id"], "READY")
+    _analysis_apr(state, [task["id"]])
+    item = state.read_item(pr["id"])
+    item["approval_ref"] = apr["id"]          # the root presents its SCOPE approval again
+    state._write_yaml_atomic(state.active_path(pr["id"]), item)
+    if break_how == "revoke":
+        approvals.revoke(state, apr["id"])
+    elif break_how == "edit":
+        # out of band: revision NOT bumped, so the root_revision check cannot see it either
+        edited = state._read_yaml(state.active_path(pr["id"]))
+        edited["goal"] = "edited past the kernel"
+        state._write_yaml_atomic(state.active_path(pr["id"]), edited)
+    elif break_how == "missing":
+        os.remove(os.path.join(state.root, "approvals", apr["id"] + ".yaml"))
+    return pr, task, apr
+
+
+@pytest.mark.parametrize("break_how,expected", [
+    ("revoke", "is revoked"),
+    ("edit", "content hash"),
+    ("missing", "no approval"),
+])
+def test_a_writable_task_may_not_run_under_a_root_whose_approval_grants_nothing(
+        state, break_how, expected):
+    """THE condition on the read-only fall-through -- and without it, a measured widening.
+
+    A root whose approval no longer grants anything may still be READ, never WRITTEN. The first
+    cut of the fall-through argued that the task routes "read no approval_ref, so falling through
+    can widen nothing"; that is true of the ROUTINE route, which refuses a task claiming a
+    writable scope, and false of the ANALYSIS route, which binds a listed task and nothing else.
+    Measured 2026-07-31 with the analysis approval in place: root revoked -> IMPLEMENTATION
+    dispatch ALLOWED, root edited out of band -> ALLOWED. Both are exactly the two tripwires
+    `assert_apr_in_force` exists for, and the revocation is the worse of them because a user
+    deliberately withdrew it.
+
+    The refusal must also still carry the ROOT's own reason rather than the aggregated one -- a
+    role that broke its scope approval needs to be told which approval broke.
+    """
+    _pr, task, _apr = _analysis_covered_impl_task(state, break_how)
+    assert task["allowed_scope"], "this task must claim a writable scope or it measures nothing"
+    with pytest.raises(DispatchError, match=expected):
+        dispatch.create_lease(state, task["id"])
+
+
+@pytest.mark.parametrize("break_how", ["revoke", "edit", "missing"])
+def test_a_read_only_task_still_runs_under_a_root_whose_approval_grants_nothing(state, break_how):
+    """...and the counter-direction, over ALL THREE reasons a root approval stops granting.
+
+    `missing` is here because it used to be the odd one out: `read_apr` was called outside the
+    try, so a deleted APR file raised `ApprovalError` -- not a `DispatchError` -- and the audit
+    stayed blocked for that one reason while revocation and an out-of-band edit fell through.
+    Inconsistent, and it reached the user as "the harness is broken, run the doctor".
+    """
+    pr, task = _audit_task(state)
+    apr = approve_scope(state, pr["id"])
+    _routine_apr(state, pr["id"])
+    item = state.read_item(pr["id"])
+    item["approval_ref"] = apr["id"]
+    state._write_yaml_atomic(state.active_path(pr["id"]), item)
+    if break_how == "revoke":
+        approvals.revoke(state, apr["id"])
+    elif break_how == "edit":
+        edited = state._read_yaml(state.active_path(pr["id"]))
+        edited["goal"] = "edited past the kernel"
+        state._write_yaml_atomic(state.active_path(pr["id"]), edited)
+    else:
+        os.remove(os.path.join(state.root, "approvals", apr["id"] + ".yaml"))
+    assert not state.read_item(task["id"])["allowed_scope"]
+    assert dispatch.create_lease(state, task["id"])
+
+
+def test_a_root_approval_that_cannot_be_read_refuses_in_the_dispatch_vocabulary(state):
+    """`ApprovalError` is not a `DispatchError`, and the hook reports anything else as an internal
+    error -- so a stale `approval_ref` reached the user as "the harness is broken, run the doctor"
+    instead of "this root's approval is gone". The same re-raise `_assert_root_approval_locked`
+    argues for, on the one path that reaches `read_apr` before it."""
+    _pr, task, apr = _analysis_covered_impl_task(state, "missing")
+    with pytest.raises(DispatchError) as refused:
+        dispatch.create_lease(state, task["id"])
+    assert not isinstance(refused.value, ApprovalError) or isinstance(refused.value, DispatchError)
+    assert apr["id"] in str(refused.value)
+
+
+def test_minting_a_routine_on_a_live_root_takes_its_approval_ref(state):
+    """A NAMED consequence of the routine route, pinned rather than claimed away.
+
+    `mint` writes `approval_ref` for every item-bound approval, and the DELIVERY route reads that
+    one field ("the approval the root PRESENTS", `_assert_root_approval_locked`). So a routine
+    approval minted for a root that already carries a scope or delivery approval takes the
+    reference with it, and implementation tasks under that root stop dispatching until the scope
+    approval is obtained again.
+
+    The interaction is older than this route -- an `analysis` approval minted with an item id does
+    the same, and so does `acceptance` after `delivery` -- but this route is the first that INVITES
+    it, so it is measured here instead of being discovered by a project. It is not fixed by
+    widening the delivery route to search the approval store: which APR that route rides on is a
+    written decision next to it, and changing it would change a route this round was asked to
+    leave alone. What the kernel does give is a message that names the cause and the one action.
+    """
+    pr, task = make_ready_task(state)                      # scope approval, task dispatchable
+    assert dispatch.create_lease(state, task["id"])
+    dispatch._remove_lease(state, task["id"])
+    state.transition(task["id"], "READY")
+    scope_apr = state.read_item(pr["id"])["approval_ref"]
+
+    _routine_apr(state, pr["id"])
+    moved = state.read_item(pr["id"])["approval_ref"]
+    assert moved != scope_apr, "the routine mint no longer takes approval_ref -- rewrite this"
+    assert approvals.read_apr(state, scope_apr)["revoked"] is False   # still valid, just unread
+    with pytest.raises(DispatchError, match="obtain the scope approval") as refused:
+        dispatch.create_lease(state, task["id"])
+    assert "covers role" in str(refused.value)
+
+
+def test_the_routine_route_leaves_the_other_three_alone(state):
+    """The routes are independent, and this asserts it instead of assuming it.
+
+    Each of scope, delivery and analysis authorises its own dispatch with no routine approval
+    anywhere, and none of those tasks is read-only -- so a routine route that had leaked into the
+    shared path would show up here as an ALLOWANCE, not only as a refusal somewhere else.
+    """
+    pr, task = make_ready_task(state)                      # the scope route
+    assert approvals.read_apr(
+        state, state.read_item(pr["id"])["approval_ref"])["kind"] == "scope"
+    assert dispatch.create_lease(state, task["id"])
+
+    delivered = state.capture("PR", dict(PR_FIELDS))       # the delivery route
+    mint_via_hook(state, approvals.create_pending_request(state, "scope", delivered["id"]))
+    mint_via_hook(state, approvals.create_pending_request(state, "delivery", delivered["id"]))
+    second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=delivered["id"],
+                                              derives_from=delivered["id"]))
+    state.transition(second["id"], "READY")
+    assert approvals.read_apr(
+        state, state.read_item(delivered["id"])["approval_ref"])["kind"] == "delivery"
+    assert dispatch.create_lease(state, second["id"])
+
+    _root, analysis_task = _analysis_task(state)           # the analysis route
+    _analysis_apr(state, [analysis_task["id"]])
+    assert dispatch.create_lease(state, analysis_task["id"])
 
 
 def test_editing_the_minted_manifest_breaks_provenance(state):

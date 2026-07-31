@@ -36,7 +36,7 @@ import xml.etree.ElementTree as ET
 from .backlog_types import ACTIVE_DIRS, parse_id
 from .lock import ext_path
 from .schemas import validate
-from .state import ProjectState, StateError, _now_iso
+from .state import ProjectState, StateError, _now_iso, revision_name, split_revision
 
 
 class StagingError(StateError):
@@ -93,18 +93,21 @@ def _assert_xml_wellformed(path: str) -> None:
 
 
 def _next_frozen_revision(target_dir: str, item_id: str) -> int:
-    """Max-parse over EVERY file carrying the <id>.rNN. prefix (frozen file AND
-    companion/manifest): a manually deleted frozen revision must never cause an
-    rNN number to be REUSED (Fable-Check 11/NIT-1)."""
+    """Max-parse over EVERY file carrying this item's `.rNN` (frozen file AND
+    companion/manifest, whatever the suffix): a manually deleted frozen revision must
+    never cause an rNN number to be REUSED (Fable-Check 11/NIT-1).
+
+    Through `state.split_revision`, the same reader `_frozen_revision_path` and
+    `iter_active_items` use, so "which number has been used" and "which revision IS the
+    item" cannot come apart -- and the names this module COMPOSES (`revision_name`) are
+    read back by that same rule.
+    """
     highest = 0
-    prefix = item_id + ".r"
     if os.path.isdir(ext_path(target_dir)):
         for name in os.listdir(ext_path(target_dir)):
-            if not name.startswith(prefix):
-                continue
-            digits = name[len(prefix):].split(".", 1)[0]
-            if digits.isdigit():
-                highest = max(highest, int(digits))
+            found, revision, _suffix = split_revision(name)
+            if found == item_id:
+                highest = max(highest, revision)
     return highest + 1
 
 
@@ -119,7 +122,7 @@ def freeze_wireframe(
         _assert_xml_wellformed(source)
         target_dir = os.path.join(state.root, "design", "wireframes")
         revision = _next_frozen_revision(target_dir, wfr_id)
-        frozen = os.path.join(target_dir, "%s.r%02d.drawio.svg" % (wfr_id, revision))
+        frozen = os.path.join(target_dir, revision_name(wfr_id, revision, ".drawio.svg"))
         companion = {
             "id": wfr_id,
             "title": title,
@@ -133,7 +136,7 @@ def freeze_wireframe(
         os.makedirs(ext_path(target_dir), exist_ok=True)
         shutil.copyfile(ext_path(source), ext_path(frozen))
         state._write_yaml_atomic(
-            os.path.join(target_dir, "%s.r%02d.yaml" % (wfr_id, revision)), companion
+            os.path.join(target_dir, revision_name(wfr_id, revision, ".yaml")), companion
         )
         clear_staging(state, staging_key, mode="promoted", _locked=True)
         state._regenerate_index_locked()
@@ -159,7 +162,7 @@ def freeze_architecture(
         _assert_xml_wellformed(source)
         revisions_dir = os.path.join(state.root, "architecture", "revisions")
         revision = _next_frozen_revision(revisions_dir, arc_id)
-        frozen = os.path.join(revisions_dir, "%s.r%02d.drawio.svg" % (arc_id, revision))
+        frozen = os.path.join(revisions_dir, revision_name(arc_id, revision, ".drawio.svg"))
         companion = {
             "id": arc_id,
             "title": title,
@@ -209,7 +212,7 @@ def freeze_design(
         # into" is one fact rather than a literal here and a tuple there
         revisions_dir = os.path.join(state.root, *ACTIVE_DIRS[DESIGN_REF_TYPE].split("/"))
         revision = _next_frozen_revision(revisions_dir, dsn_id)
-        frozen = os.path.join(revisions_dir, "%s.r%02d.html" % (dsn_id, revision))
+        frozen = os.path.join(revisions_dir, revision_name(dsn_id, revision, ".html"))
         os.makedirs(ext_path(revisions_dir), exist_ok=True)
         shutil.copyfile(ext_path(source), ext_path(frozen))
         manifest = {
@@ -226,13 +229,14 @@ def freeze_design(
         # record and the declared contract drift, and the graph would walk the declaration.
         validate(manifest, "dsn_manifest")
         state._write_yaml_atomic(
-            os.path.join(revisions_dir, "%s.r%02d.yaml" % (dsn_id, revision)), manifest
+            os.path.join(revisions_dir, revision_name(dsn_id, revision, ".yaml")), manifest
         )
         clear_staging(state, staging_key, mode="promoted", _locked=True)
         # hashed design_refs change through the kernel edit path -- invalidates
         # an existing approval atomically (spec II.6a scope-manifest semantics)
         refs = list(root.get("design_refs") or [])
-        refs.append("design/revisions/%s.r%02d.html" % (dsn_id, revision))
+        refs.append("%s/%s" % (ACTIVE_DIRS[DESIGN_REF_TYPE],
+                               revision_name(dsn_id, revision, ".html")))
         updated_root = state._update_item_locked(root_id, {"design_refs": refs})
         return {"frozen": frozen, "manifest": manifest, "root": updated_root}
 

@@ -4,6 +4,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 import pytest
 import yaml
@@ -12,7 +13,8 @@ TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, TEAM_KITS)
 
 from conftest import mint_via_hook, walk_to_status  # noqa: E402 -- ONE mint helper for the suite
-from kernel import approvals, dispatch, report  # noqa: E402
+from kernel import approvals, dispatch, report, staging  # noqa: E402
+from kernel import state as kernel_state  # noqa: E402 -- the module, for its naming rule
 from kernel.backlog_types import PARENT_FIELDS, REQUIRED_FIELDS  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
 
@@ -903,3 +905,196 @@ def test_doctor_says_unknown_only_where_it_really_cannot_tell(state):
     result = report.doctor(state)
     assert result["kit"] == "unknown" and result["kit_version"] == "unknown"
     assert result["lead_role"] == "unknown"
+
+
+# -- per-revision items: ONE reading of one directory (disposition row 6.5) ----
+
+def _freeze_wireframe(state, wfr_id, root_id, apr_ref, body):
+    """Freeze one wireframe revision through the kernel -- the only producer of these files."""
+    key = "%s-%s" % (root_id, body)
+    directory = staging.staging_dir(state, key)
+    os.makedirs(directory, exist_ok=True)
+    with open(os.path.join(directory, wfr_id + ".drawio.svg"), "w", encoding="utf-8") as handle:
+        handle.write('<svg xmlns="http://www.w3.org/2000/svg"><g>%s</g></svg>' % body)
+    return staging.freeze_wireframe(state, key, wfr_id, apr_ref, [root_id], "Checkout wireframe")
+
+
+def _approved_root(state):
+    pr = state.capture("PR", dict(PR_FIELDS))
+    mint_via_hook(state, approvals.create_pending_request(state, "scope", pr["id"]))
+    return state.read_item(pr["id"])
+
+
+def test_a_second_frozen_revision_is_one_item_and_not_a_duplicate_id(state):
+    """THE merge-blocking defect of disposition row 6.5, measured at the validator.
+
+    A second `freeze_wireframe` is the normal course of design work, and it wrote
+    `WFR-0001.r02.yaml` beside `WFR-0001.r01.yaml`. `_iter_active` read every `*.yaml` as its own
+    item, so the validator reported `WFR-0001 duplicate id` -- an ERROR, which
+    `gate_memory_complete` turns into a blocked merge for the whole project, with no remedy a role
+    is allowed to take: a frozen revision is immutable and deleting one is exactly what II.6a
+    forbids.
+
+    Both files stay on disk. The older revision is HISTORY, not garbage -- the fix is a reading
+    rule, not a cleanup.
+    """
+    pr = _approved_root(state)
+    apr_ref = pr["approval_ref"]
+    _freeze_wireframe(state, "WFR-0001", pr["id"], apr_ref, "first")
+    _freeze_wireframe(state, "WFR-0001", pr["id"], apr_ref, "second")
+    directory = state.active_dir("WFR")
+    assert sorted(n for n in os.listdir(directory) if n.endswith(".yaml")) == [
+        "WFR-0001.r01.yaml", "WFR-0001.r02.yaml"]
+    assert errors(report.validate_state(state)) == []
+    # ...and the ONE item it is, is the newest revision -- the reading `read_anywhere` already had
+    item, archived = state.read_anywhere("WFR-0001")
+    assert (item["revision"], archived) == (2, False)
+
+
+def test_the_generated_index_lists_a_per_revision_item_once(state):
+    """The index is the second reader that had its own copy of the rule.
+
+    `_regenerate_index_locked` listed a twice-frozen wireframe as TWO rows carrying one id, which
+    is what the dashboard and every "what is open" reader work from. It now reads the same
+    `iter_active_items` the validator does, so the row count follows from the definition rather
+    than from a second implementation of it.
+    """
+    pr = _approved_root(state)
+    for body in ("first", "second", "third"):
+        _freeze_wireframe(state, "WFR-0001", pr["id"], pr["approval_ref"], body)
+    index = state._read_yaml(os.path.join(state.root, "generated", "index.yaml"))
+    rows = [row for row in index["items"] if row["id"] == "WFR-0001"]
+    assert len(rows) == 1 and rows[0]["revision"] == 3, rows
+
+
+def test_every_active_item_is_the_one_its_own_id_resolves_to(state):
+    """The property behind both fixes, asserted over the running readers rather than per type.
+
+    `read_anywhere` and `_iter_active` are the kernel's two answers to "which file is this item",
+    and disposition row 6.5 is what happens when they differ: the validator judged a file that
+    `read_anywhere` says is not the item, and reported the disagreement as a duplicate id. Stated
+    as a property it needs no list of per-revision types -- a type frozen that way tomorrow is
+    covered by the same assertion.
+    """
+    pr = _approved_root(state)
+    for body in ("first", "second"):
+        _freeze_wireframe(state, "WFR-0001", pr["id"], pr["approval_ref"], body)
+    dispatch.create_task(state, dict(
+        product_requirement=pr["id"], derives_from=pr["id"], type="implementation",
+        assigned_role="backend-developer", acceptance_refs=["AC-1"], required_inputs=[],
+        allowed_scope=["src/"], forbidden_scope=[], expected_outputs=["src/x.py"],
+        dependencies=[]))
+    seen = 0
+    for _item_type, _stem, item, path, exc in report._iter_active(state):
+        assert exc is None, (path, exc)
+        resolved, _archived = state.read_anywhere(item["id"])
+        assert resolved == item, (
+            "%s is judged as %s, but its id resolves to a different file" % (item["id"], path))
+        seen += 1
+    assert seen >= 3, seen   # the PR, the wireframe and the task -- not the superseded revision
+
+
+def test_two_different_items_claiming_one_id_are_still_a_duplicate(state):
+    """The counter-direction: the revision rule must PRECISE the duplicate rule, not abolish it.
+
+    Two frozen files that differ in more than their `.rNN` are two items, and one id between them
+    is the thing gate 5 exists to catch. Written by hand because the kernel cannot produce it --
+    which is exactly why the validator has to.
+    """
+    pr = _approved_root(state)
+    _freeze_wireframe(state, "WFR-0001", pr["id"], pr["approval_ref"], "first")
+    _freeze_wireframe(state, "WFR-0002", pr["id"], pr["approval_ref"], "other")
+    path = os.path.join(state.active_dir("WFR"), "WFR-0002.r01.yaml")
+    forged = state._read_yaml(path)
+    forged["id"] = "WFR-0001"
+    state._write_yaml_atomic(path, forged)
+    assert [f["message"] for f in errors(report.validate_state(state))
+            if "duplicate id" in f["message"]], report.validate_state(state)
+
+
+def test_a_plain_file_beside_a_revision_file_is_still_a_duplicate(state):
+    """One directory claiming two homes for one id is a contradiction, not a revision.
+
+    `read_anywhere` silently prefers the plain `<ID>.yaml`, so collapsing this into "the newest
+    revision" would hide the disagreement instead of reporting it. Only files that differ in
+    nothing but their `.rNN` are revisions of one another.
+    """
+    pr = _approved_root(state)
+    _freeze_wireframe(state, "WFR-0001", pr["id"], pr["approval_ref"], "first")
+    companion = state._read_yaml(os.path.join(state.active_dir("WFR"), "WFR-0001.r01.yaml"))
+    state._write_yaml_atomic(os.path.join(state.active_dir("WFR"), "WFR-0001.yaml"), companion)
+    assert [f["message"] for f in errors(report.validate_state(state))
+            if "duplicate id" in f["message"]], report.validate_state(state)
+
+
+def test_the_name_the_kernel_composes_is_the_name_it_reads_back():
+    """Compose and parse are one rule, so a change to either cannot pass this by halves.
+
+    `staging` writes `<ID>.rNN` with three different suffixes and three readers take it apart
+    again; the round trip is what makes "an item stored per revision IS its newest revision" a
+    definition instead of four agreeing implementations.
+    """
+    for suffix in (".yaml", ".drawio.svg", ".html"):
+        for revision in (1, 9, 10, 137):
+            name = kernel_state.revision_name("WFR-0001", revision, suffix)
+            assert kernel_state.split_revision(name) == ("WFR-0001", revision, suffix), name
+    # a name that is NOT one of these carries no revision -- the answer the readers fall back on
+    for plain in ("WFR-0001.yaml", "notes.yaml", "WFR-0001.rXX.yaml", "WFR-0001.r.yaml"):
+        assert kernel_state.split_revision(plain) == (None, None, None), plain
+    # ...and the two conditions `item_revision` adds on top, each one a sentence the docstrings
+    # promise and neither of which had a test: a base that is no item id is not an item stored per
+    # revision (`notes.r01.yaml` and `notes.r02.yaml` stay two files), and a NON-ASCII digit is not
+    # a number -- `re.ASCII` is why `WFR-0001.r١٢.yaml` is not revision 12.
+    assert kernel_state.split_revision("notes.r01.yaml") == ("notes", 1, ".yaml")
+    assert kernel_state.item_revision("notes.r01.yaml") == (None, None)
+    assert kernel_state.item_revision("WFR-0001.r١٢.yaml") == (None, None)
+    assert kernel_state.item_revision("WFR-0001.r02.drawio.yaml") == (None, None)
+    assert kernel_state.item_revision("WFR-0001.r02.yaml") == ("WFR-0001", 2)
+
+
+def test_a_revision_file_carrying_a_second_suffix_is_not_the_active_revision(state):
+    """The defect the FIRST cut of THIS fix introduced, measured before it shipped.
+
+    `_frozen_revision_path` demanded that the `.rNN` be followed by exactly the item suffix;
+    `iter_active_items` accepted any suffix. So `WFR-0001.r03.backup.yaml` -- a name a hand or a
+    half-finished copy produces, never the kernel -- was the ACTIVE item for the validator and the
+    index while `read_anywhere` still resolved the id to `r02`: the identical two-readings defect
+    disposition row 6.5 is about, one file shape further along. Both readers ask
+    `state.item_revision` now, so the stray file is not a revision at all -- it is a second file
+    claiming an id, which is what the duplicate rule is for.
+    """
+    pr = _approved_root(state)
+    for body in ("first", "second"):
+        _freeze_wireframe(state, "WFR-0001", pr["id"], pr["approval_ref"], body)
+    stray = os.path.join(state.active_dir("WFR"), "WFR-0001.r03.backup.yaml")
+    state._write_yaml_atomic(stray, state._read_yaml(
+        os.path.join(state.active_dir("WFR"), "WFR-0001.r02.yaml")))
+    assert os.path.basename(state._frozen_revision_path("WFR-0001")) == "WFR-0001.r02.yaml"
+    assert "WFR-0001.r02" in [stem for stem, _path in state.iter_active_items("WFR")]
+    assert [f for f in errors(report.validate_state(state)) if "duplicate id" in f["message"]]
+
+
+def test_a_root_presenting_a_non_dispatching_approval_is_reported(state):
+    """The blind spot behind the `approval_ref` move -- nothing reported it at all.
+
+    `mint` writes `approval_ref` for every item-bound approval and the dispatch gate's root route
+    reads that one field, so minting a routine (or analysis) approval for a root that already
+    carries a valid scope approval silently stops every implementation task under it. The project
+    used to learn that at the next spawn, as a refusal -- and since a routine is time-boxed and
+    recurring by construction, it recurs at EVERY renewal, on a root long since APPROVED.
+
+    A WARNING: the state is legal and the remedy is a user action. The counter-direction is
+    asserted in the same test, so "warn always" cannot satisfy it.
+    """
+    pr = _approved_root(state)
+    assert not [f for f in report.validate_state(state) if "presents" in f["message"]]
+    mint_via_hook(state, approvals.create_pending_request(
+        state, "routine", pr["id"],
+        manifest={"role": "project-auditor", "scope": ["project_memory/**"],
+                  "trigger": "weekly", "cadence": "weekly"},
+        approval_expires=time.time() + 3600))
+    reported = [f for f in report.validate_state(state) if "presents" in f["message"]]
+    assert len(reported) == 1, report.validate_state(state)
+    assert reported[0]["severity"] == "warning"
+    assert "routine" in reported[0]["message"] and "scope" in reported[0]["message"]
+    assert "re-run the scope approval flow" in reported[0]["remedy"]

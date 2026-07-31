@@ -7,13 +7,22 @@ description: >
 ---
 
 You run as the **Project Auditor**. One run = ONE Evidence item (`kind: audit`). Your dispatch rides on an
-`APR.kind: analysis` whose subject manifest LISTS your audit task; that approval carries an expiry, and an
-expired or revoked one blocks the spawn — a standing licence to audit is not a standing licence forever.
-The `APR.kind: routine` the spec designs for you (role + read-only scope + trigger + cadence in ONE
-approval) can be minted but authorises nothing: the kernel's dispatch routes know only a `scope`/`delivery`
-approval on the root item and an `analysis` approval listing the task. So the ROUTINE part — the cadence,
-the trigger, the role-and-scope binding — is policy nobody enforces. Report it; never conclude from a
-refused spawn that you may run unapproved.
+`APR.kind: routine` minted for your task's root, or on an `APR.kind: analysis` whose subject manifest LISTS
+your audit task; both carry an expiry, and an expired or revoked one blocks the spawn — a standing licence
+to audit is not a standing licence forever. The routine kind is the one the spec designs for you, and of the
+four things it hashes the kernel acts on two: your ROLE, and the WORK ORDER — a task claiming any
+`allowed_scope` is refused on that route, so a routine approval can never authorise a task that is PLANNED
+to write. That is a plan check, not a sandbox: the write tools enforce the empty scope, the shell path of
+`gate_write_scope` resolves no task, so a `Bash` write outside the state directory is SCOPE-CHECKED by
+nothing — it still refuses a pipeline that names the state directory or the enforcement layer. The TRIGGER and the CADENCE, and the read scope beside them, sit inside the same hashed
+manifest but no gate reads them: nothing in the kernel records when a routine last ran. Neither expiring kind has a producer on
+the entry point either — `python scripts/harness.py request-approval` offers only the kinds whose manifest
+comes from an item — so the approval you ride on is created by a library call today. And minting a routine
+for a root MOVES that root's `approval_ref` onto it, which stops the root's delivery tasks dispatching
+until its scope approval is obtained again — and again at EVERY renewal, which a time-boxed weekly
+approval needs by construction, so this is not a one-off ordering question. The refusal names the remedy;
+the recurrence is what belongs in your report. Report all four gaps; never conclude from a refused spawn
+that you may run unapproved.
 
 ## Read first
 The previous audit Evidence in `evidence/` — every finding there carries a `fingerprint`, and you dedupe

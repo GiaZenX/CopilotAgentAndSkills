@@ -2030,6 +2030,63 @@ def test_dispatch_gate_allows_a_valid_spawn(tmp_path):
     assert lease.get("awaiting_bind_until")  # the child may now claim it
 
 
+AUDIT_TSK_FIELDS = dict(TSK_FIELDS, type="review", assigned_role="project-auditor",
+                        allowed_scope=[], forbidden_scope=[], expected_outputs=["findings"])
+
+
+def routine_dispatched_repo(tmp_path):
+    """A repo whose ONLY approval is a routine one, with the audit task leased under it.
+
+    The root gets no scope and no delivery approval at all, so nothing but the routine route can
+    produce this lease -- which is what makes the spawn below a measurement of that route rather
+    than of the one beside it.
+    """
+    state = ProjectState(str(tmp_path / "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    pr = state.capture("PR", dict(PR_FIELDS))
+    mint_via_hook(state, approvals.create_pending_request(
+        state, "routine", pr["id"],
+        manifest={"role": "project-auditor", "scope": ["project_memory/**"],
+                  "trigger": "weekly + after kit update", "cadence": "weekly"},
+        approval_expires=time.time() + 3600))
+    task = dispatch.create_task(state, dict(AUDIT_TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=pr["id"]))
+    state.transition(task["id"], "READY")
+    lease = dispatch.create_lease(state, task["id"])
+    apr_id = state.read_item(pr["id"])["approval_ref"]
+    return state, task, dispatch.dispatch_header(lease), apr_id
+
+
+def test_the_audit_spawn_runs_on_a_routine_approval(tmp_path):
+    """Spec II.1 gives the auditor a routine approval as its legitimation; this is that spawn,
+    through the shipped PreToolUse gate process.
+
+    Measured 2026-07-31 before the kernel had the route: the lease could not even be created
+    ("neither PR-0001 nor an analysis approval authorises dispatching TSK-0001"), so the auditor
+    the constitution calls MANDATORY could only be spawned by re-listing every single run in an
+    `analysis` manifest.
+    """
+    state, task, header, _apr = routine_dispatched_repo(tmp_path)
+    result = run_dispatch(tmp_path, spawn_payload(tmp_path, header, role="project-auditor"))
+    assert result.returncode == 0, result.stderr
+    lease = state._read_yaml(os.path.join(state.root, "tasks", "leases",
+                                          task["id"] + ".lease.yaml"))
+    assert lease.get("awaiting_bind_until")
+
+
+def test_revoking_the_routine_approval_stops_the_audit_spawn(tmp_path):
+    """II.10a: "Abgelaufene oder widerrufene Routinefreigabe blockiert den Audit-Dispatch
+    (fail-closed)". The lease already exists and its nonce is still good, so the only thing that
+    can refuse here is the approval being re-read at SPAWN time -- which is the whole reason
+    `validate_dispatch` re-runs the authorisation instead of trusting the lease."""
+    _state, _task, header, apr_id = routine_dispatched_repo(tmp_path)
+    state = ProjectState(str(tmp_path / "project_memory"))
+    approvals.revoke(state, apr_id)
+    result = run_dispatch(tmp_path, spawn_payload(tmp_path, header, role="project-auditor"))
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "revoked" in result.stderr.lower(), result.stderr
+
+
 def test_dispatch_gate_refuses_a_spawn_without_a_header(tmp_path):
     """II.12: "Spawn ohne Header -> Block" and "freie Prosa mit zufaelliger TSK-ID -> Block".
     Prose is never evidence — that is the V1 keyword check this replaces."""
@@ -2880,6 +2937,97 @@ def test_a_specialist_may_write_its_own_staging(tmp_path):
     payload = write_payload(tmp_path, tmp_path / "project_memory" / "staging" / task["id"]
                             / "proposal.html", agent_id="child-1")
     assert run_scope(tmp_path, payload).returncode == 0
+
+
+def _bound_routine_auditor(tmp_path, agent_id="auditor-1"):
+    """A live auditor: routine-authorised, spawned through the gate, bound to its lease."""
+    state, task, header, _apr = routine_dispatched_repo(tmp_path)
+    assert run_dispatch(tmp_path, spawn_payload(
+        tmp_path, header, role="project-auditor")).returncode == 0
+    dispatch.bind_agent_by_role(state, agent_id, task["assigned_role"])
+    assert dispatch.task_for_agent(state, agent_id)["id"] == task["id"]
+    assert state.read_item(task["id"])["allowed_scope"] == []
+    return state, task
+
+
+def test_the_write_tools_refuse_a_routine_tasks_writes_outside_its_own_staging(tmp_path):
+    """Half of what `dispatch._claims_writable_scope` rests on, measured against the running gate.
+
+    The routine route refuses a task whose work order claims an `allowed_scope`; what an EMPTY one
+    then means is enforced here and only here — `gate_write_scope.handle_file_write` resolves the
+    bound task and blocks, while the specialist keeps its own `staging/<task-id>/`, the one
+    exception the auditor role is written around. The other half (the shell) is the known hole
+    below; the two are separate tests because they have separate answers.
+    """
+    _state, task = _bound_routine_auditor(tmp_path)
+    refused = run_scope(tmp_path, write_payload(tmp_path, tmp_path / "src" / "quickfix.py",
+                                                agent_id="auditor-1"))
+    assert refused.returncode == 2, refused.stderr
+    assert "allowed_scope" in refused.stderr
+    allowed = run_scope(tmp_path, write_payload(
+        tmp_path, tmp_path / "project_memory" / "staging" / task["id"] / "findings.md",
+        agent_id="auditor-1"))
+    assert allowed.returncode == 0, allowed.stderr
+
+
+def _registered_shell_gates(kit="dev-team"):
+    """The hooks settings.json really registers for PreToolUse(Bash|PowerShell).
+
+    Read out of the shipped registration, never listed here: which gates a shell command passes is
+    a question for `settings.json`, and a test that carried its own list would keep measuring the
+    gates it knew about after a ninth one shipped.
+    """
+    with open(os.path.join(TEAM_KITS, kit, "settings", "settings.json"), encoding="utf-8") as fh:
+        settings = json.load(fh)
+    names = []
+    for group in settings["hooks"]["PreToolUse"]:
+        if "Bash" not in (group.get("matcher") or ""):
+            continue
+        names += [re.findall(r"([a-z_]+\.py)", hook["command"])[-1] for hook in group["hooks"]]
+    return names
+
+
+@pytest.mark.known_hole("state_write_protection.shell")
+def test_a_bound_specialists_shell_writes_are_scope_checked_by_nothing(tmp_path):
+    """MEASURED OPEN HOLE — gate layer 3 does not exist on the shell path.
+
+    `gate_write_scope`'s own table said "the same two rules, for the shell" and had said it since
+    the gate shipped. `handle_shell` never resolves the bound task: it decides on whether the
+    command line names the state directory or the enforcement layer, so `allowed_scope` and
+    `forbidden_scope` are read by nothing there. A specialist whose work order permits no writes
+    at all — the auditor under a routine approval is the case that surfaced it, and every bound
+    role has the same shape — writes anywhere outside `project_memory/` through `Bash`.
+
+    THE CAPABILITY is `state_write_protection.shell`, i.e. what `gate_write_scope` protects on the
+    shell path; the two holes already filed under it are about the state directory and this one is
+    about the task scope, which is the OTHER of that module's two rules. Filed there rather than
+    under a new name because the matrix is spec II.8's and widening it is a spec decision.
+
+    Every registered Bash gate is run, and the SANITY case is what makes the rc 0 above mean
+    anything: a shell write into canonical state must still block, or the fixture is mis-wired and
+    a passing "hole" would only be measuring a broken harness. Invert this test the day the shell
+    path reads the bound task.
+    """
+    _state, _task = _bound_routine_auditor(tmp_path)
+    gates = _registered_shell_gates()
+    assert len(gates) >= 5, gates
+
+    def rc_by_gate(command):
+        payload = dict(shell_payload(tmp_path, command), agent_id="auditor-1")
+        return {name: subprocess.run(
+            [sys.executable, os.path.join(TEAM_KITS, "dev-team", "hooks", name)],
+            input=json.dumps(payload), capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path),
+                     HARNESS_KERNEL_PATH=TEAM_KITS), timeout=120).returncode
+                for name in gates}
+
+    sanity = rc_by_gate("echo x > project_memory/product/active/PR-0001.yaml")
+    assert 2 in sanity.values(), (
+        "the sanity case did not block — this fixture proves nothing about the cases below: %s"
+        % sanity)
+    for command in ("echo pwned > src/x.py", "rm -rf src", "git commit -am wip"):
+        codes = rc_by_gate(command)
+        assert set(codes.values()) == {0}, (command, codes)
 
 
 def test_a_specialist_may_not_write_another_tasks_staging(tmp_path):

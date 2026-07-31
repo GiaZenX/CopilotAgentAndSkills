@@ -167,7 +167,7 @@ shop-curator; `full` adds compliance-researcher + marketing-planner + office-dev
   ledger/YAMLs/kit scripts); deterministic, self-contained output; self-verifies (no QA/CI here).
 - **project-auditor:** weekly / event-triggered READ-ONLY reviewer — samples filing/ledger/report
   claims for real, scores the judge rubric, and records ONE Evidence item (`kind: audit`) per run;
-  every finding becomes a follow-up item or a Decision item recording the conscious skip, never shelf-ware. Its DISPATCH rides on an `APR.kind: analysis` listing the audit task (expiry + revocation block there); the `APR.kind: routine` the spec gives this role authorises no spawn in today's kernel, so cadence and read-only scope binding are policy — an infrastructure defect (§8).
+  every finding becomes a follow-up item or a Decision item recording the conscious skip, never shelf-ware. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (§8).
 
 ## 6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)
 

@@ -31,8 +31,11 @@ import time
 
 from .approvals import (
     APPROVED_CONTENT_HASH_FIELD,
+    ROOT_DISPATCH_KINDS,
+    ApprovalError,
     approved_content_hash,
     approved_statuses,
+    assert_apr_in_force,
     consumed_request,
     item_subject_manifest,
 )
@@ -70,19 +73,23 @@ def _finding(severity: str, item: str, message: str, remedy: str) -> dict:
 
 
 def _iter_active(state: ProjectState):
+    """(type, stem, item, path, read error) for every ACTIVE item, over every type.
+
+    WHICH FILES ARE ITEMS is `ProjectState.iter_active_items` and no longer this function's own
+    answer. It was, with the rule "every `*.yaml` in the directory is an item", and that rule
+    contradicted `state._frozen_revision_path` for the types the kernel stores per revision: a
+    second `freeze_wireframe` wrote `WFR-0001.r02.yaml` beside `WFR-0001.r01.yaml`, this loop
+    yielded two items carrying one id, `validate_state` reported `WFR-0001 duplicate id` and
+    `gate_memory_complete` refused every merge in the project until a frozen, immutable artefact
+    was deleted by hand (measured 2026-07-28, disposition row 6.5).
+    """
     for item_type in sorted(ACTIVE_DIRS):
-        base = state.active_dir(item_type)
-        if not os.path.isdir(ext_path(base)):
-            continue
-        for name in sorted(os.listdir(ext_path(base))):
-            if not name.endswith(".yaml"):
-                continue
-            path = os.path.join(base, name)
+        for stem, path in state.iter_active_items(item_type):
             try:
                 item = state._read_yaml(path)
-                yield item_type, name[:-5], item, path, None
+                yield item_type, stem, item, path, None
             except Exception as exc:
-                yield item_type, name[:-5], None, path, exc
+                yield item_type, stem, None, path, exc
 
 
 # -- session brief -------------------------------------------------------------
@@ -370,6 +377,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_experiment_reports(active_items))
     findings.extend(_check_premise_recheck(active_items))
     findings.extend(_check_ui_delivery_sequence(active_items))
+    findings.extend(_check_dispatch_approval_presented(state, active_items))
     # staging orphans: neither an active task nor an active root item
     staging_dir = os.path.join(state.root, "staging")
     if os.path.isdir(ext_path(staging_dir)):
@@ -404,6 +412,79 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                 "warning", name, "stale-break remnant lockfile",
                 "safe to delete after inspection (doctor)",
             ))
+    return findings
+
+
+def _check_dispatch_approval_presented(state: ProjectState, active_items: dict) -> list:
+    """WARN when a root presents a non-dispatching approval while a dispatching one is in force.
+
+    `mint` writes `approval_ref` for every item-bound approval, and the dispatch gate's ROOT route
+    reads that one field -- "the approval the root presents". So minting a `routine` or `analysis`
+    approval for a root that already carries a valid scope or delivery approval MOVES the
+    reference, and every implementation task under that root stops dispatching. The older approval
+    is still valid; it is simply no longer the one the root presents.
+
+    Measured 2026-07-31, and the reason this exists: nothing reported the state at all. The
+    project only learns of it at the next spawn, as a refusal -- and because a `routine` is
+    time-boxed and recurring by construction, it recurs at EVERY renewal, on a root that has long
+    been APPROVED, where "mint them in the right order" is no advice at all.
+
+    A WARNING, not an error: the state is legal, the remedy is a user action (re-run the scope
+    approval), and a gate that blocked the merge here would block it for a permission the project
+    may not need this cycle. Terminal items are skipped -- they dispatch nothing, and they already
+    carry their own "awaiting archive" warning.
+
+    THE STORE IS READ ONCE, and that is not tidiness. The first cut re-listed and re-parsed the
+    whole approvals directory INSIDE the item loop, with `assert_apr_in_force` -- which reads the
+    consumed request and recomputes its hash -- in the inner branch. `validate_state` runs from
+    `gate_memory_complete` on every Bash call, and the shape this very round creates is the bad
+    one: a routine approval is per root and is re-minted WEEKLY, so the store grows linearly while
+    those roots permanently present a non-dispatching approval. Measured over 400 approvals and
+    300 items: 1 affected item 0.20 s, 5 -> 1.34 s, 20 -> 5.33 s, 50 -> 13.23 s, 300 -> 87.97 s --
+    past the 60 s hook timeout, and a killed hook is an ALLOW. One pass over the directory into
+    `{item id: [approval, ...]}` makes it O(approvals + items) with the same verdicts.
+    """
+    findings = []
+    approvals_dir = os.path.join(state.root, "approvals")
+    if not os.path.isdir(ext_path(approvals_dir)):
+        return findings
+    by_item, presented_by_ref = {}, {}
+    for name in sorted(os.listdir(ext_path(approvals_dir))):
+        if not (name.startswith("APR-") and name.endswith(".yaml")):
+            continue
+        try:
+            apr = state._read_yaml(os.path.join(approvals_dir, name))
+        except Exception:  # noqa: BLE001 -- an unreadable approval grants nothing
+            continue
+        if not isinstance(apr, dict):
+            continue
+        presented_by_ref[name[:-5]] = apr
+        if apr.get("kind") in ROOT_DISPATCH_KINDS and apr.get("item"):
+            by_item.setdefault(str(apr["item"]), []).append((name[:-5], apr))
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        apr_ref = item.get("approval_ref")
+        auto = AUTOMATA.get(item_type)
+        if not apr_ref or (auto and item.get("status") in auto.terminals):
+            continue
+        # a missing APR file is the neighbouring finding's business, not this one's
+        presented = presented_by_ref.get(str(apr_ref))
+        if presented is None or presented.get("kind") in ROOT_DISPATCH_KINDS:
+            continue
+        for name, apr in by_item.get(item_id, ()):
+            try:
+                assert_apr_in_force(state, apr, item)
+            except ApprovalError:
+                continue
+            findings.append(_finding(
+                "warning", item_id,
+                "presents %s approval %s, while %s approval %s is still in force -- the dispatch "
+                "gate's root route reads approval_ref, so tasks under this item are refused"
+                % (presented.get("kind"), apr_ref, apr.get("kind"), apr.get("id") or name),
+                "re-run the %s approval flow for %s to make it the presented one again; the "
+                "routine/analysis approval keeps working through its own route"
+                % (apr.get("kind"), item_id),
+            ))
+            break
     return findings
 
 
@@ -593,15 +674,14 @@ def _delivery_evidence(state: ProjectState):
     -- a second acquisition on that event is the interaction that turns a slow validate
     into a blocked push (see the note in that gate).
     """
-    base = state.active_dir("EVD")
-    if not os.path.isdir(ext_path(base)):
-        return
-    for name in sorted(os.listdir(ext_path(base))):
-        if not name.endswith(".yaml"):
-            continue
+    # through `iter_active_items` like every other "what is active" reader. `EVD` is not stored
+    # per revision today, so this changes nothing measurable -- it is here because a private
+    # listing of an active directory is the shape that produced disposition row 6.5, and this was
+    # the last one inside the kernel.
+    for stem, path in state.iter_active_items("EVD"):
         try:
-            evidence = state._read_yaml(os.path.join(base, name))
-            _type, number = parse_id(str((evidence or {}).get("id") or name[:-5]))
+            evidence = state._read_yaml(path)
+            _type, number = parse_id(str((evidence or {}).get("id") or stem))
         except Exception:  # noqa: BLE001 -- a corrupt/misnamed file is no verdict; the
             continue       # state validator is what reports it as a finding
         if not isinstance(evidence, dict):

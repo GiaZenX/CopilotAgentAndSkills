@@ -60,10 +60,36 @@ APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push")
 # push token that outlives its session is a standing permission to publish.
 EXPIRING_KINDS = frozenset(("routine", "analysis", "push"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
-# approval_ref. analysis/routine deliberately excluded: they are read-only,
-# task-listed permissions (II.2/II.3) and their manifests are not item-derived,
-# so no content hash could catch an out-of-band edit of the root.
+# approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
+# analysis/routine deliberately excluded and NOT because they authorise nothing:
+# they are read-only permissions bound to something OTHER than the root's content
+# (II.2/II.3), so each has its own route in `dispatch` that checks that binding --
+# the listed task for `analysis`, the role and the read-only scope for `routine`.
+# Granting them the blanket route instead would authorise unlimited IMPLEMENTATION
+# work under a still-DRAFT root, and because their manifests are not item-derived
+# no content hash could catch an out-of-band edit of that root either.
 ROOT_DISPATCH_KINDS = frozenset(("scope", "delivery"))
+
+# WHAT A `routine` APPROVAL IS BOUND TO. Spec II.2: "`routine` (z. B. Auditor-Takt) ist gebunden
+# an Rolle, Read-only-Scope, Trigger, Ablaufdatum und jederzeit widerrufbar"; II.10a: the approval
+# "hasht Rolle, Read-only-Scope, Trigger, Takt und Ablaufdatum". `expires` is not in this tuple
+# because `create_pending_request` puts it into the manifest itself for every EXPIRING_KIND -- it
+# is the one field the caller must NOT be able to leave out or spell differently.
+#
+# REQUIRED AT CREATION, not merely read later, and that is the point of naming them here: a
+# routine manifest that carries none of them is a standing permission bound to nothing, and the
+# user would be asked to sign it. `dispatch` reads the same names back out of the MINTED request
+# and fails closed on a missing one, so the two ends read one contract rather than two lists.
+# The one of them a gate can act on -- the role a routine dispatch must be spawned as -- named
+# once and then PART OF the contract below, so the key `dispatch` reads and the key
+# `create_pending_request` demands cannot become two spellings of one field.
+ROUTINE_ROLE_FIELD = "role"
+ROUTINE_MANIFEST_FIELDS = (ROUTINE_ROLE_FIELD, "scope", "trigger", "cadence")
+# The fifth thing II.10a hashes, and the one the CALLER does not write: `create_pending_request`
+# puts it into the manifest itself for every EXPIRING_KIND, `proven_expiry` reads it back from
+# there (the only tamper-evident copy), `mint` carries it into the APR as a display value, and the
+# approval question renders it. Five readers of one key, spelled once.
+EXPIRY_FIELD = "expires"
 _CHANGE_LABEL = "Ändern"
 _REJECT_LABEL = "Ablehnen"
 
@@ -526,16 +552,29 @@ def create_pending_request(
         if manifest is None:
             raise ApprovalError(
                 "kind %r needs an explicit manifest (analysis: question/scope/"
-                "expected result/listed tasks; routine: role/scope/trigger/"
-                "cadence/expires; push: remote/branch/head via "
-                "`push_subject_manifest`). Remedy: pass `manifest=`." % kind
+                "expected result/listed tasks; routine: %s plus the expiry; push: "
+                "remote/branch/head via `push_subject_manifest`). Remedy: pass "
+                "`manifest=`." % (kind, "/".join(ROUTINE_MANIFEST_FIELDS))
             )
+        if kind == "routine":
+            # see ROUTINE_MANIFEST_FIELDS: a routine bound to nothing is a standing spawn
+            # permission, which is the one thing the revocable time-boxed design exists to
+            # prevent -- so it is refused before the user is ever asked to sign it
+            missing = [field for field in ROUTINE_MANIFEST_FIELDS if not manifest.get(field)]
+            if missing:
+                raise ApprovalError(
+                    "a routine approval must name %s (spec II.2: bound to role, read-only "
+                    "scope, trigger and cadence; II.10a hashes all four) -- %s missing. "
+                    "Remedy: pass them in `manifest=`; an unbound routine would be a standing "
+                    "spawn permission."
+                    % ("/".join(ROUTINE_MANIFEST_FIELDS), ", ".join(missing))
+                )
         if approval_expires is not None:
             # spec II.10a: the routine approval HASHES role, read-only scope,
             # trigger, cadence AND the expiry date -- so the expiry has to sit
             # inside the hashed manifest, not merely beside it. Otherwise the
             # date could be moved without invalidating the approval.
-            manifest = dict(manifest, expires=float(approval_expires))
+            manifest = dict(manifest, **{EXPIRY_FIELD: float(approval_expires)})
         request = {
             "request_id": uuid.uuid4().hex,
             "kind": kind,
@@ -552,6 +591,29 @@ def create_pending_request(
         return request
 
 
+def _render_manifest_value(field: str, value) -> str:
+    """One manifest value as the user reads it in the approval question.
+
+    A list is joined rather than repr'd (`['a', 'b']` in a sentence a human has to judge is
+    noise), and a missing value is shown as missing rather than as `None`.
+
+    The EXPIRY is rendered as a date, in UTC. As an epoch float it is the one field a human
+    cannot judge at all, and it is the field that decides how long a standing spawn permission
+    lasts. UTC rather than local time because this string is compared CHARACTER FOR CHARACTER by
+    the PreToolUse gate, in a different process: a machine whose timezone changed between the
+    request and the answer would otherwise render a different question and the approval could not
+    be completed.
+    """
+    if field == EXPIRY_FIELD:
+        try:
+            return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(value)))
+        except (TypeError, ValueError, OSError, OverflowError):
+            return "unreadable (%r)" % (value,)
+    if isinstance(value, (list, tuple)):
+        return " / ".join(str(entry) for entry in value) or "-"
+    return "-" if value is None else str(value)
+
+
 def build_question(request: dict) -> dict:
     """The COMPLETE approval question, deterministic from the request alone.
 
@@ -559,6 +621,24 @@ def build_question(request: dict) -> dict:
     equality of question text, header AND all options for marked questions.
     """
     target = request["item"] if request["item"] else request["kind"]
+    if request["kind"] == "routine":
+        # THE SAME RULE THE PUSH CASE BELOW STATES, applied to the other kind whose subject is not
+        # the item it hangs from. A routine approval is a STANDING, recurring spawn permission, and
+        # what the dispatch route binds it to is the manifest -- the role first of all. Asked as
+        # "Freigabe erbeten: routine für PR-0001" the user was signing a role they were never
+        # shown, for a period they were never shown either.
+        # EVERY KEY OF THE HASHED MANIFEST is rendered, sorted, rather than the four of
+        # `ROUTINE_MANIFEST_FIELDS`: those are what a CALLER must provide, while the manifest also
+        # carries the expiry the kernel adds -- and for a time-boxed permission that is the field
+        # the user most needs to judge. Reading the manifest itself makes "what the hash covers"
+        # literally what is shown, and a key added on either side appears with no second edit.
+        # Deterministic from the request alone, which the PreToolUse gate needs (it rebuilds this
+        # text and compares it character for character), and it carries no mint code -- that lives
+        # only in the option label.
+        manifest = request.get("subject_manifest") or {}
+        target = "%s [%s]" % (target, ", ".join(
+            "%s: %s" % (field, _render_manifest_value(field, manifest[field]))
+            for field in sorted(manifest)))
     if request["kind"] == "push" and not request["item"]:
         # A push approval has no ITEM, so the generic target would read "push" and the human would
         # be asked to authorise publishing without being told WHAT gets published. The manifest is
@@ -786,7 +866,7 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
             # inside the minted manifest. Duty for the 1.4c validator: assert the
             # two agree, so a human can never read "valid until 2030" from a
             # record the gate correctly refuses.
-            "expires": (request.get("subject_manifest") or {}).get("expires"),
+            EXPIRY_FIELD: (request.get("subject_manifest") or {}).get(EXPIRY_FIELD),
             "revoked": False,
         }
         state._write_yaml_atomic(
@@ -994,7 +1074,7 @@ def proven_expiry(request: dict):
     surface is closed by making the state directory kernel-only for tool writes
     (gate layer 3), not by arithmetic.
     """
-    expires = (request.get("subject_manifest") or {}).get("expires")
+    expires = (request.get("subject_manifest") or {}).get(EXPIRY_FIELD)
     if expires is None:
         return None
     try:

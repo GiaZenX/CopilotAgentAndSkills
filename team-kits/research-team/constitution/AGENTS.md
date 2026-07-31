@@ -168,7 +168,7 @@ terminal item moves to `archive/<type>/<year>/`; and direction-setting Decision 
 Any role may flag a method/design problem (concrete cause); the Methodologist owns the proposal
 (change only on real cause — invalid design, confounding, insufficient power); the Reviewer
 verifies; the user confirms. **`project-auditor` findings MUST NOT verpuffen:** each becomes a TSK/BUG/CR or a
-Decision item recording the conscious skip, in the same cycle. The auditor runs weekly or event-triggered. Its DISPATCH rides on an `APR.kind: analysis` listing the audit task (expiry + revocation block there); the `APR.kind: routine` the spec gives this role authorises no spawn in today's kernel, so cadence and read-only scope binding are policy — an infrastructure defect (§2.10), not a reason to skip the audit.
+Decision item recording the conscious skip, in the same cycle. The auditor runs weekly or event-triggered. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (§2.10), not a reason to skip the audit.
 
 ## 14. Behavior (all roles)
 

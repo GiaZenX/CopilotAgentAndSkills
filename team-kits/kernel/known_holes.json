@@ -15,6 +15,7 @@
       "test_an_agent_that_can_run_scripts_can_still_forge_a_trust_record"
     ],
     "state_write_protection.shell": [
+      "test_a_bound_specialists_shell_writes_are_scope_checked_by_nothing",
       "test_a_junction_hides_the_state_dir_from_the_shell_check",
       "test_a_payload_carried_inside_a_file_is_invisible"
     ]

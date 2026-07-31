@@ -18,6 +18,7 @@ import uuid
 
 from .approvals import (
     ROOT_DISPATCH_KINDS,
+    ROUTINE_ROLE_FIELD,
     ApprovalError,
     assert_apr_in_force,
     consumed_request,
@@ -637,7 +638,7 @@ def _assert_dependencies_met_locked(state: ProjectState, task: dict) -> None:
 
 def _assert_dispatch_authorised_locked(state: ProjectState, task: dict, root: dict) -> None:
     """No subagent without a user approval (spec II.2 Risikoklassen) -- via one
-    of the TWO legitimate routes, never neither.
+    of the THREE legitimate routes, never neither.
 
     1. DELIVERY route: the root item carries a current scope or delivery
        approval, and the task rides on it. ONLY those two kinds (see
@@ -651,25 +652,83 @@ def _assert_dispatch_authorised_locked(state: ProjectState, task: dict, root: di
        several listed tasks, and such an approval is usually not item-bound at
        all -- so the root may legitimately have no approval_ref while the task
        is still fully approved.
+    3. ROUTINE route: an `APR.kind: routine` on this root covers this task's
+       ROLE and the task claims no writable scope (see `_covering_routine_apr`).
+       Spec II.1 makes the auditor "eine VERPFLICHTENDE Routine ... legitimiert
+       durch eine widerrufbare `APR.kind: routine`-Freigabe" and II.10a demands
+       that an expired or revoked one block that dispatch fail-closed. Until
+       this route existed the kernel had no reader for the kind at all, so the
+       expiry branch it demands was dead code on this path and the auditor rode
+       an `analysis` approval whose manifest has to list every single run
+       (measured 2026-07-26, re-measured 2026-07-31, disposition line 100).
+
+    THE TWO TASK ROUTES ARE NOT BOUND ALIKE, and the difference decides what happens
+    when the ROOT's own approval has stopped granting anything: the routine route
+    refuses a task that claims a writable scope, the analysis route binds a listed
+    task and nothing else. So the read-only fall-through below is conditional on the
+    TASK, never on which route might catch it -- see the `except` branch.
     """
+    refusals = []
     apr_ref = root.get("approval_ref")
     if apr_ref:
-        apr = read_apr(state, apr_ref)
-        if apr.get("kind") in ROOT_DISPATCH_KINDS:
-            _assert_root_approval_locked(state, root)
-            return
-        # an approval of a non-dispatching kind is NOT an error on the item -- it
-        # simply does not authorise a spawn, so fall through to the task route
-    covering = _covering_analysis_apr(state, task["id"])
-    if covering is None:
-        raise DispatchError(
-            "neither %s nor an analysis approval authorises dispatching %s -- "
-            "blocked (spec II.2: no subagent without a user approval, and a "
-            "draft analysis needs its own APR.kind: analysis). Remedy: obtain "
-            "the scope approval for %s, or an analysis approval that LISTS %s "
-            "in its subject manifest."
-            % (root["id"], task["id"], root["id"], task["id"])
-        )
+        try:
+            apr = _read_root_apr(state, apr_ref)
+            if apr.get("kind") in ROOT_DISPATCH_KINDS:
+                _assert_root_approval_locked(state, root)
+                return
+        except DispatchError as exc:
+            # A ROOT WHOSE APPROVAL NO LONGER GRANTS ANYTHING MAY STILL BE READ, NEVER WRITTEN.
+            # That is the whole condition, and getting it wrong once is why it is stated as a
+            # rule rather than as a route: refusing outright made the audit unreachable in
+            # exactly the situation an audit exists for (scope approval REVOKED, or the root
+            # edited past the kernel), while falling through UNCONDITIONALLY -- what the first
+            # cut of this did -- handed the same amnesty to implementation work. `analysis` is
+            # what made that measurable: `_covering_analysis_apr` binds a LISTED TASK and nothing
+            # else, so any task some analysis approval lists walked past both tripwires
+            # `assert_apr_in_force` exists for. Measured 2026-07-31: root edited out of band
+            # (revision unchanged, content hash broken) -> IMPLEMENTATION dispatch ALLOWED; root
+            # approval revoked -> ALLOWED. The revocation is the worse of the two, because a user
+            # deliberately withdrew it.
+            # So the fall-through is conditional on the TASK claiming no writable scope -- the
+            # same `_claims_writable_scope` the routine route binds to. A writable task gets the
+            # root's own refusal, verbatim and unaggregated, exactly as before.
+            if _claims_writable_scope(task):
+                raise
+            refusals.append("the approval %s presents (%s): %s" % (root["id"], apr_ref, exc))
+        # an approval of a non-dispatching kind raises nothing and is NOT an error on the item --
+        # it simply does not authorise a spawn, so fall through to the task routes
+    if _covering_analysis_apr(state, task["id"]) is not None:
+        return
+    covering, routine_refusals = _covering_routine_apr(state, task, root)
+    if covering is not None:
+        return
+    refusals += routine_refusals
+    raise DispatchError(
+        "no user approval authorises dispatching %s under %s -- blocked (spec II.2: no "
+        "subagent without a user approval). Remedy: obtain the scope approval for %s, or "
+        "an analysis approval that LISTS %s in its subject manifest, or -- for a recurring "
+        "read-only run -- a routine approval on %s naming role %r (spec II.10a).%s"
+        % (task["id"], root["id"], root["id"], task["id"], root["id"],
+           task.get("assigned_role"),
+           (" The approvals that name %s and why none of them covers it: %s"
+            % (root["id"], "; ".join(refusals))) if refusals else "")
+    )
+
+
+def _read_root_apr(state: ProjectState, apr_ref: str) -> dict:
+    """The APR a root presents, refused in the DISPATCH vocabulary when it cannot be read.
+
+    `read_apr` raises `ApprovalError`, which is not a `DispatchError` -- and the hook classifies
+    anything else as an internal error, so a MISSING approval file reached the user as "the
+    harness is broken, run the doctor" instead of "this root's approval is gone". The same
+    argument `_assert_root_approval_locked` makes for its own re-raise; it lived one call too far
+    in, so the one failure that skipped that function skipped the translation too, and with it the
+    read-only fall-through that every other reason for "grants nothing" gets.
+    """
+    try:
+        return read_apr(state, apr_ref)
+    except ApprovalError as exc:
+        raise DispatchError("dispatch blocked (spec II.4): %s" % exc) from None
 
 
 def _covering_analysis_apr(state: ProjectState, task_id: str):
@@ -703,6 +762,108 @@ def _covering_analysis_apr(state: ProjectState, task_id: str):
         if task_id in [str(entry) for entry in listed]:
             return apr
     return None
+
+
+def _claims_writable_scope(task: dict) -> bool:
+    """Does this task's work order CLAIM the right to write outside the state directory?
+
+    `allowed_scope` is the claim, and this asks only about the claim. Truthy rather than a length
+    test on purpose: a single unusable entry (`[""]`, `["."]`) is a claim to something, and
+    `gate_write_scope._scope_entries` refuses those loudly rather than reading them as
+    "everything", so a task carrying one is not read-only here either.
+
+    WHAT REFUSING SUCH A TASK BUYS, AND WHERE IT STOPS -- measured 2026-07-31, because the first
+    version of this docstring claimed the whole of it and the harness builds half:
+      * a work order with an empty `allowed_scope` is refused every write outside the state
+        directory BY THE WRITE TOOLS: `gate_write_scope.handle_file_write` reads the bound task
+        and blocks Edit/Write/MultiEdit/NotebookEdit (measured rc 2). Inside the state directory
+        it never consults the field -- the specialist keeps its own `staging/<task-id>/`, which is
+        the one exception the auditor role is written around.
+      * THE SHELL PATH CHECKS NO TASK SCOPE AT ALL. `gate_write_scope.handle_shell` never resolves
+        the bound task; it decides on whether the command line names the state directory or the
+        enforcement layer. Measured with a bound auditor whose `allowed_scope` is empty, against
+        all eight registered `Bash|PowerShell` PreToolUse hooks: `echo pwned > src/x.py`,
+        `rm -rf src` and `git commit -am wip` all rc 0. The auditor carries `Bash`.
+    So what this route enforces is the WORK ORDER, not a sandbox: a routine approval cannot
+    authorise a task that is planned to write, and it does not stop a spawned agent from writing
+    through a shell. Gate layer 3 for the shell is an open hole of `gate_write_scope`, older than
+    this route and shared by every bound specialist; it is pinned as such in
+    `tools/test_hooks_v2.py` under the `state_write_protection.shell` capability, so
+    `python scripts/harness.py doctor` reports that capability `unverified` rather than green.
+    """
+    return bool(task.get("allowed_scope"))
+
+
+def _covering_routine_apr(state: ProjectState, task: dict, root: dict):
+    """(approval, refusals): a `routine` approval that authorises THIS dispatch, plus why the
+    others did not.
+
+    WHAT A ROUTINE BINDS, and therefore what this checks -- spec II.2 makes it "gebunden an
+    Rolle, Read-only-Scope, Trigger, Ablaufdatum und jederzeit widerrufbar", II.10a hashes all
+    of those plus the Takt:
+      * the ROOT it was minted for, and everything `assert_apr_in_force` means by "in force":
+        revoked, unprovable (`consumed_request`), foreign, or past its expiry. The expiry is
+        re-read on EVERY dispatch, from the hash-covered manifest of the minted request, so a
+        lease taken before the clock ran out does not carry the spawn past it -- `create_lease`
+        and `validate_dispatch` both come through here.
+      * the ROLE. A route that did not bind it would let one signature spawn any specialist.
+      * READ-ONLY, via `_claims_writable_scope`. This is what keeps the route from being the
+        blanket permission `ROOT_DISPATCH_KINDS` deliberately withholds: a routine can authorise
+        a recurring audit, and it can never authorise implementation work under the same root.
+    Read out of the CONSUMED REQUEST, never the approval file, for the reason the analysis route
+    is: the request is the part only `mint` can produce, so a hand-written `APR-0001.yaml`
+    claiming any role it likes authorises nothing (spec II.12).
+
+    WHAT IT DOES NOT CHECK, named because the manifest carries it and a reader would otherwise
+    assume the kernel acts on it: `trigger` and `cadence` say WHEN the routine may run, and
+    nothing in this kernel records when it last did -- II.10a's `last_completed`/`next_due` have
+    no producer. `scope` says where the run may READ, and there is no read gate at any layer. All
+    three are inside the hashed manifest, so they cannot be moved without breaking the approval;
+    they are simply not enforced, and the auditor's role text says so in the same words.
+
+    AND WHAT MINTING ONE COSTS, which is the interaction this route invites rather than creates:
+    `mint` writes `approval_ref` for every item-bound approval, and the DELIVERY route above reads
+    that ONE field. So a routine minted for a root that already carries a scope or delivery
+    approval takes the reference with it, and implementation tasks under that root stop
+    dispatching until the scope approval is obtained again -- the older approval is still valid,
+    it is simply no longer the one the root presents. The refusal names both the cause and that
+    action. Not repaired by making the delivery route search the store: which APR it rides on is a
+    decision written next to it, and this route may not quietly rewrite the one beside it.
+    """
+    refusals = []
+    approvals_dir = os.path.join(state.root, "approvals")
+    if not os.path.isdir(approvals_dir):
+        return None, refusals
+    for name in sorted(os.listdir(approvals_dir)):
+        if not (name.startswith("APR-") and name.endswith(".yaml")):
+            continue
+        try:
+            apr = state._read_yaml(os.path.join(approvals_dir, name))
+        except Exception:  # noqa: BLE001 -- an unreadable approval authorises nothing
+            continue
+        if not isinstance(apr, dict) or apr.get("kind") != "routine":
+            continue
+        if str(apr.get("item") or "") != root["id"]:
+            continue
+        apr_id = apr.get("id") or name[:-5]
+        try:
+            request = assert_apr_in_force(state, apr, root)
+        except ApprovalError as exc:
+            refusals.append("%s: %s" % (apr_id, exc))
+            continue
+        manifest = request.get("subject_manifest") or {}
+        role = str(manifest.get(ROUTINE_ROLE_FIELD) or "")
+        if role != str(task.get("assigned_role") or ""):
+            refusals.append(
+                "%s covers role %r, not %r" % (apr_id, role or "<none>", task.get("assigned_role")))
+            continue
+        if _claims_writable_scope(task):
+            refusals.append(
+                "%s is a READ-ONLY routine (spec II.2), but %s claims allowed_scope %s"
+                % (apr_id, task["id"], task.get("allowed_scope")))
+            continue
+        return apr, refusals
+    return None, refusals
 
 
 def _assert_root_approval_locked(state: ProjectState, root: dict) -> None:

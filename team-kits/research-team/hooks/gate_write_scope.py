@@ -16,10 +16,21 @@ it, and not a second time here, where the last widening of it left this table a 
                          2. a bound specialist writes only inside its task's `allowed_scope` and
                             never inside `forbidden_scope`; an UNBOUND subagent writes nothing,
                             because there is no scope to check it against.
-  the shell              3. the same two rules, for the shell — shell writes bypass Edit/Write
-                            hooks entirely (guard_harness_selfmod has said so since V1), and the
+  the shell              3. RULE 1 ONLY, for the shell — shell writes bypass Edit/Write hooks
+                            entirely (guard_harness_selfmod has said so since V1), and the
                             approval protocol's condition (i) is exactly "an agent cannot invoke
-                            the hooks or the kernel directly".
+                            the hooks or the kernel directly". `handle_shell` decides on what the
+                            COMMAND LINE names; it never resolves the bound task, so RULE 2 —
+                            `allowed_scope`/`forbidden_scope` — does not exist on this path.
+                            Measured 2026-07-31 with a bound specialist whose `allowed_scope` is
+                            empty: `echo pwned > src/x.py`, `rm -rf src` and `git commit -am wip`
+                            pass all eight registered Bash gates, while the same target refuses
+                            through Write. The line above said "the same two rules" and had said
+                            it since the gate shipped. The gap is pinned, not merely written
+                            down: `tools/test_hooks_v2.py` asserts it as a `known_hole` on
+                            `state_write_protection.shell`, which is what keeps
+                            `python scripts/harness.py doctor` from reporting that capability
+                            green.
 
 WHY THE STATE DIR IS ABSOLUTE, no orchestrator exemption: `approvals/pending/**` holds mint codes
 in cleartext, and a writable pending file mints a real approval with a self-consistent consumed
