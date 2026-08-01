@@ -1,0 +1,518 @@
+{
+  "dev-team": {
+    "agents/project-manager.md": {
+      "(preamble)": {
+        "digest": "d23ec620fb861ebf",
+        "hooks": []
+      },
+      "Delegation": {
+        "digest": "73202b49a9aefba2",
+        "hooks": []
+      },
+      "Git": {
+        "digest": "f2da83578b3ca25d",
+        "hooks": []
+      },
+      "Memory (project truth vs optional provider hints)": {
+        "digest": "3aefaa4775826489",
+        "hooks": []
+      },
+      "Questions": {
+        "digest": "0d9e6f10d4bc03d8",
+        "hooks": []
+      },
+      "Startup gate (MUST pass before delegating)": {
+        "digest": "5d98576152131d09",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "What you are and are not": {
+        "digest": "9478e46991281b3f",
+        "hooks": []
+      },
+      "Work loop (Claude preloads the skill; Codex discovers `.agents/skills/project-manager` — follow every cycle)": {
+        "digest": "455c6218665dbfe4",
+        "hooks": []
+      }
+    },
+    "constitution/AGENTS.md": {
+      "(preamble)": {
+        "digest": "db039fe97b8548dd",
+        "hooks": []
+      },
+      "0. Authority & who you are (READ FIRST)": {
+        "digest": "ce633ac9052cf372",
+        "hooks": [
+          "gate_write_scope",
+          "guard_harness_selfmod"
+        ]
+      },
+      "1. Roles — who talks to whom": {
+        "digest": "903af26a52563ccd",
+        "hooks": []
+      },
+      "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
+        "digest": "6a78123abb9b8e7d",
+        "hooks": [
+          "session_status"
+        ]
+      },
+      "13. Refactoring & findings": {
+        "digest": "e72c32ced4364a0b",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "14. Behavior (all roles)": {
+        "digest": "9dbb27c5b83acb21",
+        "hooks": []
+      },
+      "14a. Loops & failures": {
+        "digest": "ab3dea132fce1fdb",
+        "hooks": []
+      },
+      "15. Upkeep": {
+        "digest": "e9ee6529f42e42c2",
+        "hooks": []
+      },
+      "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
+        "digest": "d80bdc1ffb5db095",
+        "hooks": [
+          "format_on_write",
+          "gate_approval",
+          "gate_dispatch",
+          "gate_git",
+          "gate_memory_complete",
+          "gate_packaging_decision",
+          "gate_pipeline",
+          "gate_push_token",
+          "gate_shell_hygiene",
+          "gate_subagent_output",
+          "gate_test_coverage",
+          "gate_write_scope",
+          "guard_agent_spawn",
+          "guard_guidelines",
+          "guard_harness_selfmod",
+          "guard_memory_budget",
+          "guard_no_adhoc",
+          "guard_pm_scope",
+          "guard_question_context",
+          "guard_scratchpad_ref",
+          "guard_yaml_valid",
+          "kit_trust_state",
+          "notify_agent_events",
+          "session_status"
+        ]
+      },
+      "3. Dialog rule": {
+        "digest": "dce0f8990f1914f4",
+        "hooks": []
+      },
+      "4. Requirement hierarchy": {
+        "digest": "eb3d1a806a808f0b",
+        "hooks": []
+      },
+      "5. Phase model": {
+        "digest": "c374454d5d368c7b",
+        "hooks": []
+      },
+      "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
+        "digest": "8ef3aea366008a43",
+        "hooks": [
+          "gate_memory_complete",
+          "gate_test_coverage"
+        ]
+      },
+      "7. Evolution: CR / BUG — explicit, never silent": {
+        "digest": "4e8e05dc94643c52",
+        "hooks": []
+      },
+      "8. Git": {
+        "digest": "d401b91c4b4109f3",
+        "hooks": []
+      },
+      "9. IDs & status automata (ONE definition, in code)": {
+        "digest": "766cfd1f864f7d7b",
+        "hooks": []
+      }
+    },
+    "skills/project-manager/SKILL.md": {
+      "(preamble)": {
+        "digest": "cae3fa41b46f9162",
+        "hooks": []
+      },
+      "Defects (bugs)": {
+        "digest": "8a0116b4eab79404",
+        "hooks": []
+      },
+      "First start after a fresh install": {
+        "digest": "66f9db26eaeed769",
+        "hooks": []
+      },
+      "Infrastructure defects (a guard/hook/pipeline misfires)": {
+        "digest": "4200d554ed9dcc0b",
+        "hooks": [
+          "guard_yaml_valid"
+        ]
+      },
+      "Kit updates (session start flags a version mismatch)": {
+        "digest": "9b3a00d6641c5afb",
+        "hooks": [
+          "gate_write_scope",
+          "session_status"
+        ]
+      },
+      "Models & escalation (constitution §11 — full mechanics)": {
+        "digest": "1bfbf06c137900eb",
+        "hooks": [
+          "session_status"
+        ]
+      },
+      "Onboarding an existing codebase (constitution §5 phase 0.5)": {
+        "digest": "2865f06d231d4147",
+        "hooks": []
+      },
+      "Ownership, status and git — one place each": {
+        "digest": "cd6e5ae4a5899ba3",
+        "hooks": []
+      },
+      "Retro (read-only feedback)": {
+        "digest": "5916b137a6ea9a76",
+        "hooks": [
+          "guard_pm_scope"
+        ]
+      },
+      "The masterplan — the user's IDEA, not a work order": {
+        "digest": "8e07012909d52ffa",
+        "hooks": []
+      },
+      "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
+        "digest": "28fef2827d14426d",
+        "hooks": [
+          "gate_dispatch",
+          "gate_git"
+        ]
+      }
+    }
+  },
+  "office-team": {
+    "agents/office-manager.md": {
+      "(preamble)": {
+        "digest": "74315f56a4b37182",
+        "hooks": []
+      },
+      "Memory": {
+        "digest": "a96cc2bbf49805bd",
+        "hooks": []
+      },
+      "Startup gate (before any delegation)": {
+        "digest": "d9d23a778675f98f",
+        "hooks": [
+          "gate_proc_approved"
+        ]
+      },
+      "What you are and are not": {
+        "digest": "06ec73df6e3778a6",
+        "hooks": []
+      },
+      "Work loop": {
+        "digest": "10d756058ab9a1e2",
+        "hooks": []
+      }
+    },
+    "constitution/AGENTS.md": {
+      "(preamble)": {
+        "digest": "a135b04be0090ea5",
+        "hooks": []
+      },
+      "0. Authority & who you are (READ FIRST)": {
+        "digest": "47009f8bce36a722",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "1. The PROC model (processes are the product)": {
+        "digest": "3f777f9e29b46b42",
+        "hooks": [
+          "gate_proc_approved"
+        ]
+      },
+      "2. Hard rules (deterministic where possible)": {
+        "digest": "d35da0da85688308",
+        "hooks": [
+          "gate_approval",
+          "gate_dispatch",
+          "gate_filing",
+          "gate_ledger_valid",
+          "gate_proc_approved",
+          "gate_push_token",
+          "gate_shell_hygiene",
+          "gate_subagent_output",
+          "gate_write_scope",
+          "guard_agent_spawn",
+          "guard_fs_tripwire",
+          "guard_harness_selfmod",
+          "guard_memory_budget",
+          "guard_question_context",
+          "guard_scratchpad_ref",
+          "guard_yaml_valid",
+          "kit_trust_state",
+          "notify_agent_events",
+          "session_status"
+        ]
+      },
+      "3. Dialog rule": {
+        "digest": "c9daf92d75e0f933",
+        "hooks": []
+      },
+      "4. Phase model": {
+        "digest": "e5a7d4727b8c4f66",
+        "hooks": [
+          "gate_filing",
+          "gate_proc_approved"
+        ]
+      },
+      "5. Roles (presets: `core` = records-clerk + bookkeeper; `commerce` adds product-editor +": {
+        "digest": "7bdf1cdf983ad004",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
+        "digest": "7f9d22fe1063dfbb",
+        "hooks": []
+      },
+      "7. Models & presets": {
+        "digest": "9d8e8fa6c95d22e8",
+        "hooks": [
+          "session_status"
+        ]
+      },
+      "8. Behavior": {
+        "digest": "34fc0d18aa33965e",
+        "hooks": []
+      },
+      "9. Git & data": {
+        "digest": "c7faa8e362be08c1",
+        "hooks": []
+      }
+    },
+    "skills/office-manager/SKILL.md": {
+      "(preamble)": {
+        "digest": "9b743847ffb14a48",
+        "hooks": []
+      },
+      "Kit updates": {
+        "digest": "4dada00077d35581",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "What you OWN (the content — the kernel writes it)": {
+        "digest": "6c0d8dc514c74ba1",
+        "hooks": []
+      },
+      "Work loop (every cycle)": {
+        "digest": "fcafa5d4cf152dea",
+        "hooks": [
+          "gate_proc_approved",
+          "session_status"
+        ]
+      }
+    }
+  },
+  "research-team": {
+    "agents/project-manager.md": {
+      "(preamble)": {
+        "digest": "126b187ca3550069",
+        "hooks": []
+      },
+      "Delegation": {
+        "digest": "dccb8064f8ded888",
+        "hooks": []
+      },
+      "Git": {
+        "digest": "6ad6322f114ba5db",
+        "hooks": []
+      },
+      "Memory (project truth vs optional provider hints)": {
+        "digest": "f25aab2d46802747",
+        "hooks": []
+      },
+      "Questions": {
+        "digest": "aa98c6533bed84dc",
+        "hooks": []
+      },
+      "Startup gate (MUST pass before delegating)": {
+        "digest": "79c5945ca7c7c9a7",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "What you are and are not": {
+        "digest": "35e55a1f81d3f121",
+        "hooks": []
+      },
+      "Work loop (Claude preloads the skill; Codex discovers `.agents/skills/project-manager` — follow every cycle)": {
+        "digest": "a4e0a2eae758c3ec",
+        "hooks": []
+      }
+    },
+    "constitution/AGENTS.md": {
+      "(preamble)": {
+        "digest": "abc42189fa4f0c03",
+        "hooks": []
+      },
+      "0. Authority & who you are (READ FIRST)": {
+        "digest": "200bbf932a86f0a1",
+        "hooks": [
+          "gate_write_scope",
+          "guard_harness_selfmod"
+        ]
+      },
+      "1. Roles — who talks to whom": {
+        "digest": "b116fbd309d331e4",
+        "hooks": []
+      },
+      "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
+        "digest": "2579e277a43a3ce7",
+        "hooks": [
+          "session_status"
+        ]
+      },
+      "13. Method changes & findings": {
+        "digest": "14352cc0d5818387",
+        "hooks": [
+          "gate_write_scope"
+        ]
+      },
+      "14. Behavior (all roles)": {
+        "digest": "104f87869c6984b3",
+        "hooks": []
+      },
+      "14a. Loops & failures": {
+        "digest": "bd52afda1808a0c9",
+        "hooks": []
+      },
+      "15. Upkeep": {
+        "digest": "f9282c3deb45f31a",
+        "hooks": []
+      },
+      "16. FZulG / BSFZ application layer": {
+        "digest": "3db6e3e1073741a6",
+        "hooks": []
+      },
+      "17. Experiment & application reports": {
+        "digest": "3bd340db68621a54",
+        "hooks": []
+      },
+      "2. Hard enforcement (NEVER skip)": {
+        "digest": "f977326cc4b99ffe",
+        "hooks": [
+          "format_on_write",
+          "gate_approval",
+          "gate_dispatch",
+          "gate_git",
+          "gate_memory_complete",
+          "gate_pipeline",
+          "gate_push_token",
+          "gate_shell_hygiene",
+          "gate_subagent_output",
+          "gate_write_scope",
+          "guard_agent_spawn",
+          "guard_harness_selfmod",
+          "guard_memory_budget",
+          "guard_no_adhoc",
+          "guard_pm_scope",
+          "guard_question_context",
+          "guard_scratchpad_ref",
+          "guard_yaml_valid",
+          "kit_trust_state",
+          "notify_agent_events",
+          "session_status"
+        ]
+      },
+      "3. Dialog rule": {
+        "digest": "0370d206c65562ad",
+        "hooks": []
+      },
+      "4. Requirement hierarchy": {
+        "digest": "b0fe1e12ff994a0d",
+        "hooks": []
+      },
+      "5. Phase model": {
+        "digest": "9133624d659ee0c0",
+        "hooks": []
+      },
+      "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
+        "digest": "3566fe6eb658bda5",
+        "hooks": [
+          "gate_memory_complete"
+        ]
+      },
+      "8. Git": {
+        "digest": "a9f32a162c020205",
+        "hooks": []
+      },
+      "9. IDs & status automata (ONE definition, in code)": {
+        "digest": "c033252d9b000a44",
+        "hooks": []
+      }
+    },
+    "skills/project-manager/SKILL.md": {
+      "(preamble)": {
+        "digest": "467b0245bfba0d63",
+        "hooks": []
+      },
+      "FZulG / BSFZ application (you own the application; the Methodologist assesses the science)": {
+        "digest": "99386f846801ff27",
+        "hooks": []
+      },
+      "First start after a fresh install": {
+        "digest": "7794008100a7a070",
+        "hooks": []
+      },
+      "Git": {
+        "digest": "4ae595704b960554",
+        "hooks": []
+      },
+      "Kit updates (session start flags a version mismatch)": {
+        "digest": "c0ccae601cbe244c",
+        "hooks": [
+          "gate_write_scope",
+          "session_status"
+        ]
+      },
+      "Models & escalation (constitution §11 — full mechanics)": {
+        "digest": "e2476843ef56d1ef",
+        "hooks": [
+          "session_status"
+        ]
+      },
+      "Onboarding an existing effort (constitution §5 phase 0.5)": {
+        "digest": "1829624674eda8d9",
+        "hooks": []
+      },
+      "Retro (read-only feedback)": {
+        "digest": "3686e5955c8d31e5",
+        "hooks": []
+      },
+      "Status (you own the RQ chain)": {
+        "digest": "83e52ab641319a28",
+        "hooks": []
+      },
+      "What you OWN (the content — the kernel writes it)": {
+        "digest": "afd0fdb1f953999c",
+        "hooks": []
+      },
+      "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
+        "digest": "c541b0e93349a5c5",
+        "hooks": [
+          "gate_dispatch",
+          "guard_yaml_valid"
+        ]
+      }
+    }
+  }
+}

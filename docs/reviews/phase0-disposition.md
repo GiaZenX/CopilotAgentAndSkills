@@ -9,7 +9,7 @@ Opus-Paritätsmatrix-Agent (24+ Dateien, 116 Regeln), 1 Claude-Code-Doku-Agent (
 1 eigener empirischer Spike-Lauf (S1, Python 3.13.0/win32). Fable-Gegenprüfung dieses
 Berichts folgt als Check 3 (Arbeitsmodus 2026-07-24).
 
-**Kurzfazit:** 283 Dateien disponiert — 95 übernehmen · 144 anpassen · 43 durch V2-Mechanik
+**Kurzfazit:** 284 Dateien disponiert — 96 übernehmen · 144 anpassen · 43 durch V2-Mechanik
 ersetzt · **1 bewusst
 entfernen** (`guard_ledger_direct.py`, User-Entscheid I.3/1). Lockstep-Menge: **82 Dateien**
 (⚓) statt der v2.1-Schätzung ~76 — Differenz erklärt (Abschnitt 2). Paritätsmatrix: 116
@@ -24,15 +24,15 @@ Ende-zu-Ende** (headless-Lauf: SubagentStart.agent_id == Kind-PreToolUse.agent_i
 
 ---
 
-## 1. Vollinventar (283 Dateien)
+## 1. Vollinventar (284 Dateien)
 
 | Disposition | Teil 1 | Teil 2 | Summe |
 |---|---|---|---|
-| übernehmen | 28 | 67 | **95** |
+| übernehmen | 29 | 67 | **96** |
 | anpassen | 58 | 86 | **144** |
 | durch V2-Mechanik ersetzt | 20 | 23 | **43** |
 | bewusst entfernen | 0 | 1 | **1** |
-| **Summe** | **106** | **177** | **283** |
+| **Summe** | **107** | **177** | **284** |
 
 **Diese Zahlen werden GEZÄHLT, nicht gepflegt.** `tools/test_disposition.py` liest die Zeilen
 der beiden Inventartabellen und vergleicht jede Zelle oben und jede Zahl im Kurzfazit damit;
@@ -140,7 +140,7 @@ V2-Flow umgestellt — Result-Envelope ≤4 KB statt Monolith-YAML-Ownership):
 | hooks/guard_scratchpad_ref.py | übernehmen | Reproduzierbarkeits-Guard, provider-neutral. |
 | ⚓ hooks/guard_yaml_valid.py | anpassen | YAML-Wohlgeformtheit bleibt Komfort; harter progress.yaml-Branch (Z. 130) entfällt, Schema → State-Validator. |
 | hooks/notify_agent_events.py | übernehmen | Lifecycle-Audit-Log; im audited-Modus Pflichtprotokoll (II.8). |
-| ⚓ hooks/session_status.py | anpassen | Wird Update-Zustandsautomat + session_brief-Verweis; alle ~6 injizierten Blöcke disponiert → kit_state.json/generated (II.8). |
+| ⚓ hooks/session_status.py | anpassen | Wird Update-Zustandsautomat + session_brief-Verweis; die injizierten Blöcke disponiert → kit_state.json/generated (II.8). **Gemessen 2026-08-01 (Netz-Runde), zweimal und mit verschiedenen Mitteln:** der Hook hat **14 Emissionsstellen** (`parts.append` plus die beiden Initialzuweisungen, per AST gezählt), die sich zu **9 Blöcken** gruppieren — **7 davon schaltbar** (als echter Prozess in Projekten ausserhalb des Repos per Ablation gemessen) und 2 unbedingt: die Identitätszeile und das State-Verzeichnis-Briefing, das ein `if/else` ist und den Wortlaut TAUSCHT statt zu verschwinden. Beide Zahlen sind gepinnt, weil keine die andere abdeckt: die Ablation kann einen unbedingten Block nicht sehen (gemessen: Identitätszeile in beiden Provider-Wortlauten gelöscht → Vollsuite grün), die AST-Zählung keinen, der aufgehört hat auf seinen Input zu reagieren. Drei davon haben mehrere Wortlaute (die Versionsansage drei, das State-Verzeichnis-Briefing zwei, das Update-Banner eine Codex-Erweiterung, die nur zusammen mit ihm erscheint und gemessen >200 Zeichen zusätzlich beiträgt); das sind Varianten EINES Blocks. Gepinnt in `test_shortening_net.py:test_the_session_start_hook_emits_what_the_disposition_counts`, damit die Umschreibung eine gemessene Ausgangszahl hat statt einer geschätzten. **Was II.8 wegnimmt und was danach niemand trägt:** (a) Identitätszeile, (b) Git-Branch, (d) State-Verzeichnis-Briefing (das IST der geforderte session_brief-Verweis, schon gebaut), (g) Model/Effort-Drift und (i) Projektpfad-Wechsel sind von II.8 gar nicht disponiert und bleiben. (c) Versionsansage: der `kit_updated_from`-Marker fällt laut II.8 restlos, die Ansage selbst wird ein Zustandsübergang. (e) `KIT UPDATE AVAILABLE` wird der Zustand `update_available` — der Name existiert in II.8, ein PRODUZENT existiert nicht: gemessen schreibt `write_kit_state.py` nur `restart_required` und `kit_trust_state.py:transition` nur `active`/`hooks_trust_required`; `update_available`, `approved`, `applying` und `failed_rolled_back` kommen im ganzen ausgelieferten Baum in keiner Schreibstelle vor. (f) `KIT MERGE BACKLOG` + Nag-Zähler und (h) der Transkript-Hinweis sind die zwei Blöcke, die II.8 ausdrücklich „restlos ersetzt" — **und ihren Inhalt trägt danach nichts**: welche Projektdateien nach einem Update von den Kit-Templates abweichen, erzeugen die Scaffold-Skripte in `kit_update_pending.*`, und `kit_state.json` hat kein Feld dafür; der Transkript-Hinweis beantwortet „was hat die letzte Session entschieden und nicht protokolliert", was der session_brief per Definition nicht weiss (er liest den State, nicht das Gespräch). Beides ist Befund, nicht Aufräumarbeit — die Umschreibung braucht dafür einen Entscheid, keine Zeile weniger. |
 
 **team-kits/dev-team/skills** (geteilte Begründung: Prozedur auf V2 umgeschrieben und
 gekürzt — Kürzung erst nach Ersatz-Gates, Paritätsmatrix-belegt; jede Datei referenziert
@@ -217,6 +217,7 @@ Per-Item-Templates, II.2):
 | tools/test_kernel.py · tools/test_state.py · tools/test_schemas.py · tools/test_report.py · tools/test_backlog_types.py · tools/test_approvals_dispatch.py · tools/test_staging_cli.py | übernehmen | Fehlten im Inventar (nachgetragen 2026-07-27). V2-eigene Testmodule — sie sind mit dem State-Kernel entstanden und beschreiben V2-Mechanik, es gibt an ihnen nichts umzustellen. |
 | tools/gen_known_holes.py | übernehmen | Fehlte im Inventar (nachgetragen 2026-07-27). Erzeugt `kernel/known_holes.json` + Digest aus pytests eigener Marker-Sammlung; V2-Mechanik, unverändert gültig. |
 | tools/probes/** | übernehmen | Fehlten im Inventar (nachgetragen 2026-07-27). Manuelle Sonden für Hook-/Settings-Verhalten des Providers, kit- und zustandsunabhängig. |
+| tools/test_shortening_net.py · tools/pin_constitution_sections.py · tools/constitution_section_pins.json | übernehmen | Neu 2026-08-01 (Netz-Runde), das Netz für die II.11/3-Kürzung. Das Testmodul löst das Mechanismus-Feld der Paritätsmatrix gegen laufenden Code auf (AST + Registrierung auf BEIDEN Oberflächen), pinnt jede Verfassungssektion aller drei Kits gegen einen Digest ihres eigenen Rumpfs und zählt die SessionStart-Blöcke per Ablation am echten Prozess. Der Pin wird mit `python tools/pin_constitution_sections.py --write` erneuert — bewusst von Hand, weil ein Pin, der sich im Testlauf selbst heilt, nichts aufzeichnet. V2-eigen; es gibt daran nichts umzustellen. |
 | tools/validate.py | anpassen | Self-Check prüft künftig typisierte Item-Templates + Schemadateien (Envelope/session_brief/ARC/WFR). **Nachtrag 2026-07-26 (Gegenprüfung 2):** der §-Referenz-Check (Z. 282–301) prüfte `hooks/*.py`, `skills/*/SKILL.md`, `agents/*.md` — nicht die Verfassung selbst, obwohl sie sich häufiger auf sich selbst beruft als jede andere Datei; und ein `§2.7`-artiger Sub-Verweis wurde per `continue` GANZ übersprungen, sodass `§99.1` durchfiel. Beides behoben (Verfassung im Glob, Sub-Verweis prüft den Elternabschnitt); mit je einer Mutation (`§77` und `§77.3`) rot gesehen, danach wieder grün. |
 
 **.codex/agents (untracked, generator-verwaltet):**
@@ -275,7 +276,7 @@ Per-Item-Templates, II.2):
 | hooks/guard_scratchpad_ref.py | übernehmen | Bleibt gültig. |
 | ⚓ hooks/guard_yaml_valid.py | anpassen | Harten progress.yaml-Branch entfernen; typisierte Items/State-Validator (II.11/2). |
 | hooks/notify_agent_events.py | übernehmen | Komfort-Benachrichtigung (fail-open). |
-| ⚓ hooks/session_status.py | anpassen | Update-Zustandsautomat, ~6 Blöcke → kit_state.json + session_brief (II.8). |
+| ⚓ hooks/session_status.py | anpassen | Update-Zustandsautomat, Blöcke → kit_state.json + session_brief (II.8). Blockzahl und Nachfolger-Befund stehen bei der dev-Fassung dieser Datei in Teil 1 (§1.1) und gelten für die geteilten Blöcke; die office-Fassung hat zusätzlich `due_reports` und `stale_register_entries`, die dort NICHT mitgezählt und nicht gemessen sind. |
 
 **office-team presets/settings/skills:**
 
@@ -366,7 +367,7 @@ Per-Item-Templates, II.2):
 | hooks/guard_scratchpad_ref.py | übernehmen | Bleibt gültig. |
 | ⚓ hooks/guard_yaml_valid.py | anpassen | progress.yaml-Branch entfernen (II.11/2). |
 | hooks/notify_agent_events.py | übernehmen | Komfort-Hook. |
-| ⚓ hooks/session_status.py | anpassen | Update-Zustandsautomat (II.8). |
+| ⚓ hooks/session_status.py | anpassen | Update-Zustandsautomat (II.8); Blockzahl und Nachfolger-Befund bei der dev-Fassung in §1.1 — die research-Fassung ist deren Zwilling. |
 
 **research-team presets/settings/skills:**
 
@@ -512,121 +513,208 @@ templates/repo/scripts/{kit_checks, retro}.py · user/{claude/CLAUDE.md, codex/A
 
 ## 3. Verhaltens-Paritätsmatrix (116 Regeln)
 
-Quellen-Kürzel: `dev/off/res` = Kit · `AGENTS` = constitution/AGENTS.md · `pm`/`om` =
-Lead-agents-Datei · `pm-sk`/`om-sk` = Lead-SKILL · Spezialisten: `arch, be, fe, qa, design,
+Quellen-Kürzel: `dev/off/res` = Kit · `AGENTS` = constitution/AGENTS.md · Lead-Dateien
+(`pm`/`om` = agents-Datei, `pm-sk`/`om-sk` = Lead-SKILL): `pm, pm-sk` (dev) · `om, om-sk` (off) ·
+`pm, pm-sk` (res) · Spezialisten: `arch, be, fe, qa, design,
 audit, re, devops` (dev) · `clerk, book, editor, curator, compl, mkt, odev, audit` (off) ·
 `method, rschr, analyst, review, writer, audit, re` (res).
+**Jedes hier deklarierte Kürzel löst der Test gegen ein Kit auf; ein Kürzel, das die Legende
+nicht nennt, ist ein Fehler und keine leere Menge.**
 v2.1-Gate-Kürzel: GS1 Spawn-Form · GS2 gate_dispatch · GS3 Write-Scope · GS4
 State-Validator · GS5 CI/Merge · APR2 Zwei-Phasen-Freigabeprotokoll.
+
+**⚙ = das MECHANISMUS-FELD, und es ist der Grund, warum diese Tabelle beim Kürzen etwas wert
+ist.** Eine Zeile mit Löschlizenz (siehe Vokabular unten) erlaubt, die Regel als Prosa zu
+streichen — also muss sie den Ersatz BENENNEN, als auflösbares `<datei>.py:<symbol>`, und zwar
+FÜR JEDES KIT, in dessen Text die Regel steht. `tools/test_shortening_net.py` löst jedes Symbol
+per AST auf; liegt die Datei in einem Kit-`hooks/`-Verzeichnis, verlangt derselbe Test, dass der
+Hook dort REGISTRIERT ist (`settings/settings.json`, gelesen mit `report.py:_wired_hooks`, oder
+die `hooks:`-Frontmatter einer ausgelieferten Agent-Datei) UND dass der Matcher ihn für die
+Tool-Namen erreichen kann, die der Hook selbst prüft — ein Gate, das nie feuern kann, ist kein
+Mechanismus. Gemessen vor dieser Runde — gezählt über die DESIGNATION, also die Klassifikation
+vor dem ersten datierten Nachtrag, weil ein Nachtrag, der zufällig Code zitiert, nicht die Zeile
+ist, die ihren Mechanismus benennt: von 43 Zeilen mit Mechanismus-Anspruch nannten 0 ein
+auflösbares Symbol, 21 einen Hook-Namen im Fliesstext, 9 nur ein GS-Kürzel und 13 gar nichts.
+(Über die ganze Zelle gelesen kommt man auf 0/22/10/11 — dieselben 43, andere Frage.)
+
+**Feldsyntax.** Einträge werden mit ` · ` getrennt; ein Eintrag darf mit `dev:` / `off:` /
+`res:` / `dev+res:` beginnen und gilt dann nur für diese Kits, ein Eintrag ohne Präfix für alle
+übrigen Quell-Kits der Zeile. Das ist nötig, weil die Matrix eine Regel EINMAL klassifiziert,
+während sie in bis zu drei Verfassungen steht, die verschiedene Hooks ausliefern.
+
+**Klassifikationsvokabular — geschlossen, und der Test liest es HIER:** `behalten` ·
+`bewusst geändert` · `bewusst entfernt` · `durch Gate ersetzt` · `durch Test ersetzt` ·
+`durch Gate+Test ersetzt` · `durch Gate ersetzt + behalten` · `durch Test GEPINNT → behalten`.
+
+**Löschlizenz tragen genau diese vier:** `durch Gate ersetzt` · `durch Test ersetzt` ·
+`durch Gate+Test ersetzt` · `durch Gate ersetzt + behalten`. Alle anderen lassen die Regel
+stehen, wo sie steht.
+
+**`durch Test GEPINNT → behalten` ist neu (2026-08-01) und korrigiert eine umgekehrte Lizenz.**
+Ein Test, der einen AUSGELIEFERTEN Instruktionstext LIEST, ist ein Pin auf diesen Text: er wird
+rot, wenn der Text verschwindet. Die Zeilen 25 und 97 nannten
+`test_hooks_v2.py:test_the_ui_inventory_snapshot_rule_is_shipped` als „Ersatz“ und lizenzierten
+damit das Löschen genau der Prosa, die dieser Test verlangt — gemessen: die lizenzierte Zeile aus
+`dev-team/constitution/AGENTS.md` §7 entfernt, und der „Ersatz“ fällt mit „constitution/AGENTS.md
+no longer names the UI inventory snapshot“. Der Test erkennt diese Eigenschaft per AST
+(`test_shortening_net.py:_reads_shipped_instructions`) und verbietet sie in der Lizenzklasse.
+
+**Was das Feld NICHT sagt:** dass der Mechanismus die Regel durchsetzt. Es sagt, dass er
+existiert und läuft. Die Passung Regel↔Mechanismus bleibt eine Leseentscheidung — der Test macht
+ZWEI Fälle unmöglich: ein Ersatz, den es nicht gibt, und einer, der rot wird, sobald man die
+Lizenz benutzt.
+
+**Der dritte Fall ist nur halb geschlossen, und die Hälfte ist gezählt.** Ein Matcher lässt sich
+nur gegen einen Hook beurteilen, der sagt, auf welche Tools er reagiert (`data.get("tool_name")`);
+zehn der registrierten dev-Hooks sagen es nicht — darunter `gate_write_scope`, der meistzitierte
+Mechanismus dieser Tabelle. Gemessen: beide `gate_write_scope`-Registrierungen durch eine auf
+`matcher: "WebFetch"` ersetzt, der Hook sieht danach weder einen Datei-Write noch ein Kommando,
+und das Netz blieb grün. **12 der 32 wirksamen Lizenzen ruhen auf einem Hook ohne Tool-Wächter**
+(4, 15, 17, 19, 34, 36, 37, 41, 56, 62, 73, 106). Die naheliegende Reparatur — die Tool-Klasse aus
+dem gelesenen Payload-Feld ableiten — braucht eine Tabelle (`file_paths` = Datei-Tools,
+`tool_input.command` = Shell-Tools, `questions` = `AskUserQuestion`, `subagent_type` =
+`Agent`/`Task`), also genau die Aufzählung von Sonderfällen, die dieses Repo wiederholt bezahlt
+hat, und sie schlägt fehl, sobald ein Hook ein Feld aus einem anderen Grund anfasst. Eine falsche
+Ableitung verweigert Lizenzen mit einer unwahren Begründung. Deshalb steht hier eine ZAHL, die rot
+wird, wenn sie wächst, und keine Heuristik.
+
+**Der Pin-Detektor erkennt drei Schreibweisen, nicht vier.** `open(...)`, `Path(...).read_text()`
+und `Path(...).open()` werden erkannt (gemessen an einem Probemodul mit denselben Konstanten);
+ein Lesezugriff HINTER einem Helfer nicht. Und „ausgelieferter Instruktionstext" heisst
+`constitution/`, `agents/`, `skills/` — abgeleitet aus dem Lead-Paket, nicht getippt —, damit
+Projektskripte unter `templates/` nicht als Text-Pin gelesen werden (gemessen: `render`, `main`
+und `lint` in `generate_dashboard.py`/`pii_scan.py`/`report_lint.py` wären es sonst).
+
+**9 Zeilen tragen mindestens ein `⚙ offen`** (3, 6, 14, 48, 49, 54, 80, 82, 99): dort behauptet
+die Klassifikation einen Gate-/Test-Ersatz, und im laufenden Code steht keiner — bei 3, 6, 14 und
+49 nur für eines der Quell-Kits, was genügt, denn die Prosa steht in jedem. Das ist Befund, nicht
+Vorschlag: ob diese neun umklassifiziert werden (wie Zeile 108 es 2026-07-26 wurde), ist ein
+Userentscheid und wurde hier bewusst NICHT vorweggenommen.
+**32 Zeilen tragen nach dieser Runde eine wirksame Löschlizenz** — nur an diesen darf die
+Kürzung Prosa streichen. Beide Zahlen zählt der Test aus der Tabelle und prüft sie gegen diese
+Sätze.
+
+**Und die Grenze, die der Ausführende VOR dem ersten Schnitt kennen muss: 17 der 32 wirksamen
+Lizenzen** (26, 30, 62, 64, 65, 66, 73, 86, 88, 90, 92, 94, 98, 102, 106, 115, 116) nennen
+mindestens eine SPEZIALISTEN-Rollendatei als Quelle, und Spezialisten-SKILLs liegen ausserhalb des
+Lead-Pakets, das der Sektionspin bewacht. Gemessen: „Never change SRs, architecture, or
+requirements." aus `skills/backend-developer/SKILL.md` gelöscht — drei Tests grün. Reihenfolge
+Diese Menge wird gezählt, nicht gepflegt: die von Hand geschriebene Fassung nannte Zeile 49, die
+dieselbe Runde per Quell-Kit-Korrektur offen gemacht hatte, und übersah Zeile 88 (`res/re:22-30`,
+ein kit-präfigiertes Spezialistenkürzel) — dieselbe Zahl, andere Menge. Reihenfolge
+daher: **Lead-Pakete zuerst** (voll bewacht), **Spezialisten-Dateien danach und einzeln**, und
+`python tools/pin_constitution_sections.py --write --note "…"` **nach jeder abgeschlossenen
+Datei** statt einmal am Ende — sonst steht im Journal ein Grund für neunzig Zeilen, und das ist
+wieder die Geste, gegen die es gebaut wurde.
 
 | # | Regel (Kurzform) | Quelle(n) | Klassifikation |
 |---|---|---|---|
 | 1 | Deutsch zum User, Code/Artefakte Englisch | dev/AGENTS:4; off/AGENTS:4-6; res/AGENTS:4; dev/pm:15; off/om:14-15; res/pm:15 | behalten (min-keep) |
 | 2 | Dokumentinhalt bleibt Originalsprache | off/AGENTS:6; off/om:15 | behalten |
-| 3 | Orchestrator schreibt keinen Produktcode | dev/AGENTS:57; dev/pm:19; res/AGENTS:56; res/pm:20; off/om:20-22 | durch Gate ersetzt (→GS3; heute guard_pm_scope) |
-| 4 | Kein Spawn ohne freigegebenen Task / Userfreigabe | dev/AGENTS:39; off/AGENTS:36-37; dev/pm-sk:81-88 | durch Gate ersetzt (→GS2 + analysis-APR) |
+| 3 | Orchestrator schreibt keinen Produktcode | dev/AGENTS:57; dev/pm:19; res/AGENTS:56; res/pm:20; off/om:20-22 | durch Gate ersetzt (→GS3; heute guard_pm_scope) ⚙ dev+res: `guard_pm_scope.py:check` · off: offen — das office-Kit liefert `guard_pm_scope` nicht aus; welcher Mechanismus dort den Orchestrator vom Produktcode fernhält, ist nicht gemessen |
+| 4 | Kein Spawn ohne freigegebenen Task / Userfreigabe | dev/AGENTS:39; off/AGENTS:36-37; dev/pm-sk:81-88 | durch Gate ersetzt (→GS2 + analysis-APR) ⚙ `gate_dispatch.py:handle_pre_tool_use`, `dispatch.py:_assert_dispatch_authorised_locked` |
 | 5 | „Ein Writer pro Datei" (PM pflegt project_memory) | dev/AGENTS:48,122-133; off/AGENTS:82,156-169; res/AGENTS:45,117-129 | bewusst geändert (Kernel wird einziger Schreiber; Rollen liefern Envelopes, II.1) |
-| 6 | Single Source of Truth; keine Ad-hoc-Dateien | dev/AGENTS:44-47; off/AGENTS:47-50; res/AGENTS:42-44 | durch Gate ersetzt (→GS3+GS4) |
-| 7 | Kein DONE/Merge ohne QA-PASS in Reports | dev/AGENTS:51-52; res/AGENTS:48-49; dev/pm-sk:105-108 | durch Gate ersetzt (→GS4 DONE→VALIDATED via Evidence; GS5) — **korrigiert 2026-07-26:** GS5 ist NICHT wirksam; `gate_git` verlangt weiter einen V1-`project_memory/*report*.yaml` und blockt daher JEDEN merge/push, ohne dass Evidence ihn lösen kann (Dispositionszeile 115/338 offen). **Nachtrag 2026-07-27:** ERLEDIGT. `gate_git` liest den Evidence-Store (`kernel.backlog_types.ACTIVE_DIRS["EVD"]`) über die eine Definition `kernel.report.qa_verdicts`: je Evidence-Art (`test`/`review`/`acceptance`; `audit` beurteilt das Projekt und öffnet nie einen Merge) zählt die NEUESTE Evidence, die das gemergte Item deckt — direkt oder über den Referenzgraphen (TSK→PR, auch archiviert). Der Merge öffnet bei mindestens einem Urteil und keinem `fail`; ein nach einem PASS erfasster FAIL schliesst ihn wieder. Produzent: `python scripts/harness.py evidence` (`kernel/cli.py`), also derselbe Kernel-Schreibweg wie für jedes andere Item — der verbleibende Block ist der fehlende CLI-Shim (Zeile 87), nicht mehr eine Datei, die niemand schreiben KANN. Rollen-Text (QA-, Reviewer-, drei Auditor-SKILLs) und beide Verfassungszeilen nennen den Mechanismus. **Nachtrag 2026-07-27 (Prüfrunde 7 eingearbeitet):** drei Nachschärfungen, jede mit einem gemessenen Fehlakzept als Anlass. (a) Ziel = JEDES vom Kommando genannte Wurzel-Item statt der ersten ID im Rohtext (Zeile 115b) — sonst hob ein `-m "… PR-0002"` die Bindung auf. (b) Ohne jede Bindung (Branch nennt kein Item) fällt das Gate NICHT mehr auf ein globales „neuestes pro Art" zurück, sondern verlangt „kein offenes `fail` irgendwo", gruppiert je (Item, Art) — `report.qa_verdicts_by_subject`; das flache Lesen war der V1-Fehlakzept auf Dateiebene, aus typisierten Items nachgebaut (gemessen: `git push origin main` war durch ein fremdes PASS offen). (c) `EVD` ist nach dem Erfassen UNVERÄNDERLICH (`backlog_types.IMMUTABLE_TYPES`) — über den sanktionierten Edit-Pfad wurde ein `fail` in ein `pass` umgeschrieben und eine `related`-Bindung auf ein anderes Item gesetzt, beides ohne neues Item und ohne Spur; zusätzlich läuft `_assert_origins_resolve` jetzt auch auf dem Edit-Pfad. Die Vokabulare (`QA_EVIDENCE_KINDS`/`EVIDENCE_RESULTS`) sind gegen die sechs Rollentexte, beide `gate_git`-Kopien und die README gepinnt (`test_no_instruction_text_names_an_evidence_kind_or_verdict_the_kernel_refuses`). **Nachtrag 2026-07-27 (Prüfrunde 9 eingearbeitet):** drei Nachschärfungen am Beleg selbst. (a) `--artifact-ref` ist PFLICHT (`backlog_types.NONEMPTY_FIELDS`, im Kernel erzwungen, nicht nur in argparse) — vorher lief `python scripts/harness.py evidence … --summary "sieht gut aus"` ohne jeden Beleg durch und öffnete den Merge, während jeder Rollentext und jeder Remedy-Satz des Gates die Referenz als DEN Beweis präsentierte; `related` fällt unter dieselbe Regel, weil eine Evidence ohne Bindung kein Delivery beurteilt. Ein neuer Sweep prüft, dass jede in einem ausgelieferten Text buchstabierte `python scripts/harness.py evidence`-Zeile jedes vom echten Parser verlangte Argument nennt. (b) `QA_EVIDENCE_KINDS` ist abgeleitet statt zweitgelistet (`EVIDENCE_KINDS - PROJECT_EVIDENCE_KINDS`, Ausnahme `audit`) — eine nur in `EVIDENCE_KINDS` ergänzte Art wäre sonst stillschweigend zu „beurteilt kein Delivery“ geworden. (c) Der Test für einen unlesbaren `result` hat jetzt eine ältere, legale `pass`-Evidence derselben Art daneben: mit nur einem Datensatz führten „als kein-Pass gelesen“ und „still übersprungen“ beide zu rc 2, der fail-closed-Charakter war an nichts gepinnt (per Mutation gemessen). **Nachtrag 2026-07-28 (Prüfrunde 11 eingearbeitet):** die Merge-Blockade ist damit VERSCHOBEN, nicht beseitigt — `python scripts/harness.py evidence` ist der einzige Produzent, kein Kit installiert ein `harness`-Executable, `python -m kernel.cli` findet den als `.claude/kernel` installierten Kernel nicht, und jede Kommandozeile, die `.claude` nennt, lehnt `gate_write_scope` ab; gemessen blockt `git push` weiter mit „no QA Evidence in this project“. Diese Tatsache trägt jetzt ein PIN statt eines Berichtssatzes: `conftest.NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM/_DOCS` plus `test_the_evidence_the_merge_gate_demands_has_no_producer_a_project_can_run` (misst die BEDINGUNG, nicht einen Pfad) und `test_every_document_that_teaches_the_merge_rule_says_the_evidence_cannot_be_produced` (der Satz steht wieder in der README, gleichlautend zu §0 der drei Verfassungen). Beide werden ROT, sobald der CLI-Shim (Zeile 87) ausgeliefert wird — das ist der Moment, in dem Konstanten, Tests und Caveat gemeinsam gelöscht werden. Zusätzlich: der Referenzgraph zählte seine Typen auf und kannte `SR` nicht (`SR.derives_from` ist Pflichtfeld) — eine Evidence an einem `SR` deckte dessen Wurzel nicht, der Merge wurde der Rolle, die genau diese Arbeit beurteilt hatte, mit „nothing judges this work“ verweigert. `backlog_types.PARENT_FIELDS` leitet die Bindungsfelder jetzt aus den Feldkontrakten ab; `report._parent_bindings`, `report._root_of`, der Referenzgraph-Block des Validators und `state._assert_origins_resolve` lesen alle diese eine Definition. **Nachtrag 2026-07-28 (Prüfrunde 11b eingearbeitet):** vier Nachschärfungen, jede mit einer Messung als Anlass. (a) Der gepinnte Satz war ZU STARK: „kein Subkommando kann aufgerufen werden“ ist keine Aussage, die eine Textprüfung tragen kann — `gate_write_scope` liest die Kommandozeile, und gemessen kam eine Schreibweise durch, die sie nicht erkennt. Behauptet wird jetzt nur noch, was die INSTALLATION hergibt („entry point is not installed“); was am Gate vorbeikommt, ist dessen Lücke (Runde-11-Befund 1), kein Einstieg. Der Testschritt, der `python .claude/kernel/cli.py` als „vom Gate geschlossen“ vorführte, ist gestrichen: der Pfad scheitert ohnehin am relativen Import, ist also gar kein lauffähiger Einstieg. (b) Die Dokumentliste ist ABGELEITET statt aufgezählt (vier Pfade wären grün geblieben, während fünf weitere ausgelieferte Texte dieselbe Tatsache in eigener Formulierung tragen): geprüft wird jeder BLOCK, der `python scripts/harness.py evidence` nennt — inklusive der vier Remedy-Texte beider `gate_git`-Kopien, gelesen als zusammengesetzter String — und jeder ABSCHNITT, der `gate_git` samt Evidence erklärt. Die gemeldete Regression (ehrlicher Satz aus dem Merge-Gate-Absatz der README gelöscht) ist damit rot; vorher blieb sie grün, weil die Phrase in einem thematisch fremden Absatz stand. (c) `PARENT_FIELDS` wird aus BEIDEN Kontraktquellen abgeleitet (`REQUIRED_FIELDS` ∪ `kernel/schemas/*` über `schemas.item_field_contracts`); `ARC`/`WFR`/`DSN` erzeugten sonst exakt denselben Schaden wie `SR` — gemessen: Review-Evidence an einer `ARC` deckte die Wurzel nicht. `DSN` hat dafür ein eigenes Manifest-Schema bekommen (`root` ist seine Bindung), und der Feldpflicht-Block des Validators liest jetzt `DECLARED_REQUIRED_FIELDS` — vorher lief er für genau die drei eingefrorenen Typen nullmal, obwohl II.8 ihm „ARC ohne derives_from → Validator-Flag“ zuweist. (d) Die neuen Tests assertieren gegen UNABHÄNGIGE Quellen (Schema-Dateien mit eigenem Leser, plus ein Korpus echter, über den Kernel erfasster Items), nachdem drei von ihnen ihre Erwartung aus der geprüften Landkarte gebaut hatten und bei deren Mutation grün blieben. Zusätzlich: `gate_write_scope`s Remedy nennt kein `kernel.cli` mehr (in einem Projekt nicht importierbar), und der Shim-Pin liest neben dem Dateibaum die Schreibstellen beider Installer — `scaffold_team.sh` erzeugt `CLAUDE.md` inline, ein generierter Shim hätte den Pin grün gelassen. **Nachtrag 2026-07-29 (Einstiegspunkt-Runde):** die Blockade ist GELÖST, nicht mehr nur verschoben. `scripts/harness.py` wird von beiden Scaffolds kit-owned installiert; Abnahme in einem gescaffoldeten Projekt AUSSERHALB des Repos, alles als echte Hook-Prozesse: `git merge feat/PR-0001-x` → rc 2 „no QA Evidence for PR-0001"; `python scripts/harness.py evidence --kind test --result pass --related PR-0001 --summary … --artifact-ref staging/TSK-0001/run.log` → alle acht PreToolUse-Gates rc 0, danach wirklich ausgeführt (`EVD-0001 test: pass`); derselbe Merge → rc 0. Damit sind `conftest.NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM`, `conftest.EVIDENCE_PRODUCER_CLAIM_SCOPE` und die vier daran hängenden Tests GELÖSCHT, zusammen mit dem Caveat in allen ausgelieferten Texten. An ihre Stelle treten zwei abgeleitete Prüfungen: jeder Code-Span in einem ausgelieferten Text, der mit dem blossen Wort `harness` beginnt, ist verboten (die EINE Schreibweise kommt aus `kernel.cli.INVOCATION`), und jede in einem Rollentext genannte `python scripts/harness.py <cmd>`-Zeile muss ein Subkommando des echten Parsers nennen oder im selben Block sagen, dass es die Oberfläche noch nicht hat. |
+| 6 | Single Source of Truth; keine Ad-hoc-Dateien | dev/AGENTS:44-47; off/AGENTS:47-50; res/AGENTS:42-44 | durch Gate ersetzt (→GS3+GS4) — **Gemessen 2026-08-01 (Netz-Runde):** das office-Kit liefert `guard_no_adhoc` nicht aus; dort sperrt nur `gate_write_scope.py:handle_file_write` das Zustandsverzeichnis, und die Ad-hoc-Dateiregel selbst hat keinen Leser. ⚙ dev+res: `guard_no_adhoc.py:check`, `gate_write_scope.py:handle_file_write` · off: offen — die Ad-hoc-Hälfte der Regel hat im office-Kit keinen Mechanismus |
+| 7 | Kein DONE/Merge ohne QA-PASS in Reports | dev/AGENTS:51-52; res/AGENTS:48-49; dev/pm-sk:105-108 | durch Gate ersetzt (→GS4 DONE→VALIDATED via Evidence; GS5) — **korrigiert 2026-07-26:** GS5 ist NICHT wirksam; `gate_git` verlangt weiter einen V1-`project_memory/*report*.yaml` und blockt daher JEDEN merge/push, ohne dass Evidence ihn lösen kann (Dispositionszeile 115/338 offen). **Nachtrag 2026-07-27:** ERLEDIGT. `gate_git` liest den Evidence-Store (`kernel.backlog_types.ACTIVE_DIRS["EVD"]`) über die eine Definition `kernel.report.qa_verdicts`: je Evidence-Art (`test`/`review`/`acceptance`; `audit` beurteilt das Projekt und öffnet nie einen Merge) zählt die NEUESTE Evidence, die das gemergte Item deckt — direkt oder über den Referenzgraphen (TSK→PR, auch archiviert). Der Merge öffnet bei mindestens einem Urteil und keinem `fail`; ein nach einem PASS erfasster FAIL schliesst ihn wieder. Produzent: `python scripts/harness.py evidence` (`kernel/cli.py`), also derselbe Kernel-Schreibweg wie für jedes andere Item — der verbleibende Block ist der fehlende CLI-Shim (Zeile 87), nicht mehr eine Datei, die niemand schreiben KANN. Rollen-Text (QA-, Reviewer-, drei Auditor-SKILLs) und beide Verfassungszeilen nennen den Mechanismus. **Nachtrag 2026-07-27 (Prüfrunde 7 eingearbeitet):** drei Nachschärfungen, jede mit einem gemessenen Fehlakzept als Anlass. (a) Ziel = JEDES vom Kommando genannte Wurzel-Item statt der ersten ID im Rohtext (Zeile 115b) — sonst hob ein `-m "… PR-0002"` die Bindung auf. (b) Ohne jede Bindung (Branch nennt kein Item) fällt das Gate NICHT mehr auf ein globales „neuestes pro Art" zurück, sondern verlangt „kein offenes `fail` irgendwo", gruppiert je (Item, Art) — `report.qa_verdicts_by_subject`; das flache Lesen war der V1-Fehlakzept auf Dateiebene, aus typisierten Items nachgebaut (gemessen: `git push origin main` war durch ein fremdes PASS offen). (c) `EVD` ist nach dem Erfassen UNVERÄNDERLICH (`backlog_types.IMMUTABLE_TYPES`) — über den sanktionierten Edit-Pfad wurde ein `fail` in ein `pass` umgeschrieben und eine `related`-Bindung auf ein anderes Item gesetzt, beides ohne neues Item und ohne Spur; zusätzlich läuft `_assert_origins_resolve` jetzt auch auf dem Edit-Pfad. Die Vokabulare (`QA_EVIDENCE_KINDS`/`EVIDENCE_RESULTS`) sind gegen die sechs Rollentexte, beide `gate_git`-Kopien und die README gepinnt (`test_no_instruction_text_names_an_evidence_kind_or_verdict_the_kernel_refuses`). **Nachtrag 2026-07-27 (Prüfrunde 9 eingearbeitet):** drei Nachschärfungen am Beleg selbst. (a) `--artifact-ref` ist PFLICHT (`backlog_types.NONEMPTY_FIELDS`, im Kernel erzwungen, nicht nur in argparse) — vorher lief `python scripts/harness.py evidence … --summary "sieht gut aus"` ohne jeden Beleg durch und öffnete den Merge, während jeder Rollentext und jeder Remedy-Satz des Gates die Referenz als DEN Beweis präsentierte; `related` fällt unter dieselbe Regel, weil eine Evidence ohne Bindung kein Delivery beurteilt. Ein neuer Sweep prüft, dass jede in einem ausgelieferten Text buchstabierte `python scripts/harness.py evidence`-Zeile jedes vom echten Parser verlangte Argument nennt. (b) `QA_EVIDENCE_KINDS` ist abgeleitet statt zweitgelistet (`EVIDENCE_KINDS - PROJECT_EVIDENCE_KINDS`, Ausnahme `audit`) — eine nur in `EVIDENCE_KINDS` ergänzte Art wäre sonst stillschweigend zu „beurteilt kein Delivery“ geworden. (c) Der Test für einen unlesbaren `result` hat jetzt eine ältere, legale `pass`-Evidence derselben Art daneben: mit nur einem Datensatz führten „als kein-Pass gelesen“ und „still übersprungen“ beide zu rc 2, der fail-closed-Charakter war an nichts gepinnt (per Mutation gemessen). **Nachtrag 2026-07-28 (Prüfrunde 11 eingearbeitet):** die Merge-Blockade ist damit VERSCHOBEN, nicht beseitigt — `python scripts/harness.py evidence` ist der einzige Produzent, kein Kit installiert ein `harness`-Executable, `python -m kernel.cli` findet den als `.claude/kernel` installierten Kernel nicht, und jede Kommandozeile, die `.claude` nennt, lehnt `gate_write_scope` ab; gemessen blockt `git push` weiter mit „no QA Evidence in this project“. Diese Tatsache trägt jetzt ein PIN statt eines Berichtssatzes: `conftest.NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM/_DOCS` plus `test_the_evidence_the_merge_gate_demands_has_no_producer_a_project_can_run` (misst die BEDINGUNG, nicht einen Pfad) und `test_every_document_that_teaches_the_merge_rule_says_the_evidence_cannot_be_produced` (der Satz steht wieder in der README, gleichlautend zu §0 der drei Verfassungen). Beide werden ROT, sobald der CLI-Shim (Zeile 87) ausgeliefert wird — das ist der Moment, in dem Konstanten, Tests und Caveat gemeinsam gelöscht werden. Zusätzlich: der Referenzgraph zählte seine Typen auf und kannte `SR` nicht (`SR.derives_from` ist Pflichtfeld) — eine Evidence an einem `SR` deckte dessen Wurzel nicht, der Merge wurde der Rolle, die genau diese Arbeit beurteilt hatte, mit „nothing judges this work“ verweigert. `backlog_types.PARENT_FIELDS` leitet die Bindungsfelder jetzt aus den Feldkontrakten ab; `report._parent_bindings`, `report._root_of`, der Referenzgraph-Block des Validators und `state._assert_origins_resolve` lesen alle diese eine Definition. **Nachtrag 2026-07-28 (Prüfrunde 11b eingearbeitet):** vier Nachschärfungen, jede mit einer Messung als Anlass. (a) Der gepinnte Satz war ZU STARK: „kein Subkommando kann aufgerufen werden“ ist keine Aussage, die eine Textprüfung tragen kann — `gate_write_scope` liest die Kommandozeile, und gemessen kam eine Schreibweise durch, die sie nicht erkennt. Behauptet wird jetzt nur noch, was die INSTALLATION hergibt („entry point is not installed“); was am Gate vorbeikommt, ist dessen Lücke (Runde-11-Befund 1), kein Einstieg. Der Testschritt, der `python .claude/kernel/cli.py` als „vom Gate geschlossen“ vorführte, ist gestrichen: der Pfad scheitert ohnehin am relativen Import, ist also gar kein lauffähiger Einstieg. (b) Die Dokumentliste ist ABGELEITET statt aufgezählt (vier Pfade wären grün geblieben, während fünf weitere ausgelieferte Texte dieselbe Tatsache in eigener Formulierung tragen): geprüft wird jeder BLOCK, der `python scripts/harness.py evidence` nennt — inklusive der vier Remedy-Texte beider `gate_git`-Kopien, gelesen als zusammengesetzter String — und jeder ABSCHNITT, der `gate_git` samt Evidence erklärt. Die gemeldete Regression (ehrlicher Satz aus dem Merge-Gate-Absatz der README gelöscht) ist damit rot; vorher blieb sie grün, weil die Phrase in einem thematisch fremden Absatz stand. (c) `PARENT_FIELDS` wird aus BEIDEN Kontraktquellen abgeleitet (`REQUIRED_FIELDS` ∪ `kernel/schemas/*` über `schemas.item_field_contracts`); `ARC`/`WFR`/`DSN` erzeugten sonst exakt denselben Schaden wie `SR` — gemessen: Review-Evidence an einer `ARC` deckte die Wurzel nicht. `DSN` hat dafür ein eigenes Manifest-Schema bekommen (`root` ist seine Bindung), und der Feldpflicht-Block des Validators liest jetzt `DECLARED_REQUIRED_FIELDS` — vorher lief er für genau die drei eingefrorenen Typen nullmal, obwohl II.8 ihm „ARC ohne derives_from → Validator-Flag“ zuweist. (d) Die neuen Tests assertieren gegen UNABHÄNGIGE Quellen (Schema-Dateien mit eigenem Leser, plus ein Korpus echter, über den Kernel erfasster Items), nachdem drei von ihnen ihre Erwartung aus der geprüften Landkarte gebaut hatten und bei deren Mutation grün blieben. Zusätzlich: `gate_write_scope`s Remedy nennt kein `kernel.cli` mehr (in einem Projekt nicht importierbar), und der Shim-Pin liest neben dem Dateibaum die Schreibstellen beider Installer — `scaffold_team.sh` erzeugt `CLAUDE.md` inline, ein generierter Shim hätte den Pin grün gelassen. **Nachtrag 2026-07-29 (Einstiegspunkt-Runde):** die Blockade ist GELÖST, nicht mehr nur verschoben. `scripts/harness.py` wird von beiden Scaffolds kit-owned installiert; Abnahme in einem gescaffoldeten Projekt AUSSERHALB des Repos, alles als echte Hook-Prozesse: `git merge feat/PR-0001-x` → rc 2 „no QA Evidence for PR-0001"; `python scripts/harness.py evidence --kind test --result pass --related PR-0001 --summary … --artifact-ref staging/TSK-0001/run.log` → alle acht PreToolUse-Gates rc 0, danach wirklich ausgeführt (`EVD-0001 test: pass`); derselbe Merge → rc 0. Damit sind `conftest.NO_INSTALLED_EVIDENCE_PRODUCER_CLAIM`, `conftest.EVIDENCE_PRODUCER_CLAIM_SCOPE` und die vier daran hängenden Tests GELÖSCHT, zusammen mit dem Caveat in allen ausgelieferten Texten. An ihre Stelle treten zwei abgeleitete Prüfungen: jeder Code-Span in einem ausgelieferten Text, der mit dem blossen Wort `harness` beginnt, ist verboten (die EINE Schreibweise kommt aus `kernel.cli.INVOCATION`), und jede in einem Rollentext genannte `python scripts/harness.py <cmd>`-Zeile muss ein Subkommando des echten Parsers nennen oder im selben Block sagen, dass es die Oberfläche noch nicht hat. ⚙ `gate_git.py:_refuse_unless_the_item_is_green`, `report.py:qa_verdicts` |
 | 8 | Nur Produktfragen an User; Technik ans Team | dev/AGENTS:53; res/AGENTS:50; off/AGENTS:113-114 | behalten — **kein Gate (R2)** |
 | 9 | Technische Frage an User = Defekt | dev/AGENTS:200-203; res/AGENTS:179-181 | behalten — **kein Gate (R2)** |
 | 10 | Anti-Sycophancy: nie stumm zustimmen | dev/AGENTS:198; res/AGENTS:176-177; off/AGENTS:186 | behalten |
 | 11 | Immer eine Option empfehlen | dev/AGENTS:199; res/AGENTS:178; dev/pm-sk:124 | behalten |
 | 12 | Eigeninitiative 3 Stufen; nie eigenmächtig | dev/AGENTS:204-207; res/AGENTS:182-184 | behalten |
 | 13 | Vor Vorschlag bestehende Items lesen; nie duplizieren | dev/AGENTS:54; res/AGENTS:52 | behalten (GS5 ID-Eindeutigkeit stützt) |
-| 14 | Guidelines VOR Implementierung | dev/AGENTS:56; res/AGENTS:53-55; arch:59-62; method:35-43 | durch Gate ersetzt (→guard_guidelines; ggf. INV/SR) — **korrigiert 2026-07-26:** `guard_guidelines` ist KONDITIONAL (ohne `coding_guidelines.yaml` exit 0) und V2 liefert kein Template dafür; die Datei kann derzeit auch von niemandem angelegt werden (`gate_write_scope`). Im Default-V2-Projekt also **behalten (Prosa)** bis die Heimat des Knopfes entschieden ist (Zeilen 156/189) |
-| 15 | Nur installierte Rolle; kein Generic/zweiter PM; explizites run_in_background | dev/AGENTS:38-40; off/AGENTS:38-41; res/AGENTS:35-38 | durch Gate ersetzt (→GS1+GS2) |
+| 14 | Guidelines VOR Implementierung | dev/AGENTS:56; res/AGENTS:53-55; arch:59-62; method:35-43 | durch Gate ersetzt (→guard_guidelines; ggf. INV/SR) — **korrigiert 2026-07-26:** `guard_guidelines` ist KONDITIONAL (ohne `coding_guidelines.yaml` exit 0) und V2 liefert kein Template dafür; die Datei kann derzeit auch von niemandem angelegt werden (`gate_write_scope`). Im Default-V2-Projekt also **behalten (Prosa)** bis die Heimat des Knopfes entschieden ist (Zeilen 156/189) **Überholt, gemessen 2026-08-01 (Netz-Runde):** diese Korrektur beschreibt einen Zustand, den es nicht mehr gibt. `guard_guidelines` wurde auf `INV`-Items umgeschrieben (`invariants/active/`, Auswahl über `guard_guidelines.py:_governs`), ist über die Agent-Frontmatter der acht schreibenden dev-Spezialisten REGISTRIERT (nicht über `settings.json`, weil er nicht für den Lead feuern soll) und `python scripts/harness.py capture INV ...` kann die Items anlegen. Konditional bleibt er: ein Projekt ohne einen einzigen `INV` hat hier kein Regime, und der dev-Verfassungstext sagt genau das. ⚙ dev: `guard_guidelines.py:_governs` · res: offen — das research-Kit liefert `guard_guidelines` nicht aus, die Regel steht dort aber im Text (`res/AGENTS:53-55`, dieselben Zeilen, die Zeile 80 als offen führt) |
+| 15 | Nur installierte Rolle; kein Generic/zweiter PM; explizites run_in_background | dev/AGENTS:38-40; off/AGENTS:38-41; res/AGENTS:35-38 | durch Gate ersetzt (→GS1+GS2) ⚙ `guard_agent_spawn.py:main`, `gate_dispatch.py:handle_pre_tool_use` |
 | 16 | Nach Parallelarbeit alle Ergebnisse abwarten | dev/AGENTS:40; res/AGENTS:38 | behalten |
-| 17 | Gleiche Dateien serialisieren | dev/pm-sk:90-93 | durch Gate ersetzt (→GS3 + Kernel-Lock) |
-| 18 | Pflicht-Work-Order-Template | dev/pm-sk:85-88; res/pm-sk:36-37; off/om-sk:37-39 | durch Gate ersetzt (→GS2; TSK-Pflichtfelder) |
-| 19 | Output-Contract (summary/verdict) sonst Block | dev/AGENTS:68; off/AGENTS:99; res/AGENTS:68 | durch Gate ersetzt (→Envelope-Schema/submit-result) |
+| 17 | Gleiche Dateien serialisieren | dev/pm-sk:90-93 | durch Gate ersetzt (→GS3 + Kernel-Lock) ⚙ `lock.py:KernelLock`, `gate_write_scope.py:_assert_in_scope` |
+| 18 | Pflicht-Work-Order-Template | dev/pm-sk:85-88; res/pm-sk:36-37; off/om-sk:37-39 | durch Gate ersetzt (→GS2; TSK-Pflichtfelder) ⚙ `dispatch.py:create_task`, `schemas.py:item_required_fields` |
+| 19 | Output-Contract (summary/verdict) sonst Block | dev/AGENTS:68; off/AGENTS:99; res/AGENTS:68 | durch Gate ersetzt (→Envelope-Schema/submit-result) ⚙ `gate_subagent_output.py:main`, `dispatch.py:submit_result` |
 | 20 | Claims gegen Artefakte verifizieren | dev/pm:67; off/om-sk:40 | behalten |
 | 21 | Startup-Gate: kein Spawn vor bestätigtem Preset | dev/AGENTS:24-25; off/AGENTS:21-22; res/AGENTS:24 | behalten (II.10a Erster Projektstart) |
 | 22 | Draft-Pickup: nie Discovery bei Null | dev/AGENTS:22-23; res/AGENTS:22-23 | behalten (masterplan eingefroren) |
 | 23 | Masterplan kritisch prüfen | dev/pm-sk:18-27; res/pm:43 | behalten — **kein Gate (R13)** |
-| 24 | Änderung an APPROVED nur via CR+Freigabe | dev/AGENTS:100-102,144-150; res/AGENTS:96-97 | durch Gate ersetzt (→Freigabe-Invalidierung, II.2) |
-| 25 | Sichtbares UI-Element entfernen = IMMER CR | dev/AGENTS:146-148; fe:40; qa:33; design:93 | durch Test ersetzt — **nicht in II.12 (R5)** |
-| 26 | BUG → Regressionstest (rot vor Fix) | dev/AGENTS:149-150; qa:81-83 | durch Gate+Test ersetzt (BUG VERIFIED via Evidence) |
+| 24 | Änderung an APPROVED nur via CR+Freigabe | dev/AGENTS:100-102,144-150; res/AGENTS:96-97 | durch Gate ersetzt (→Freigabe-Invalidierung, II.2) ⚙ `approvals.py:approved_content_hash`, `backlog_types.py:invalidation_target` |
+| 25 | Sichtbares UI-Element entfernen = IMMER CR | dev/AGENTS:146-148; fe:40; qa:33; design:93 | durch Test GEPINNT → behalten — **korrigiert 2026-08-01 (Netz-Runde):** die Einstufung war umgekehrt. Der genannte Test LIEST die drei ausgelieferten Texte und wird rot, sobald die Regel dort fehlt — er pinnt die Prosa, er ersetzt sie nicht. **nicht in II.12 (R5)** ⚙ `test_hooks_v2.py:test_the_ui_inventory_snapshot_rule_is_shipped` |
+| 26 | BUG → Regressionstest (rot vor Fix) | dev/AGENTS:149-150; qa:81-83 | durch Gate+Test ersetzt (BUG VERIFIED via Evidence) ⚙ `state.py:_assert_confirmed`, `state.py:CONFIRMING_EVIDENCE` |
 | 27 | Branch pro PRD/RQ (`feat/PRD-…`) | dev/AGENTS:154; res/AGENTS:137 | bewusst geändert (V2 `<typ>/<ITEM-ID>-<slug>`, II.10) |
 | 28 | Conventional Commits pro Task | dev/AGENTS:154; res/AGENTS:137; off/AGENTS:196 | behalten |
 | 29 | Push nur nach expliziter Userfreigabe | dev/AGENTS:156; res/AGENTS:138; off/AGENTS:198 | behalten — **kein Consent-Gate (R1)** |
-| 30 | Nie force-push | dev/AGENTS:156; devops:49 | durch Gate ersetzt (→gate_git, GS5) |
+| 30 | Nie force-push | dev/AGENTS:156; devops:49 | durch Gate ersetzt (→gate_git, GS5) ⚙ `gate_git.py:FORCE_RX` |
 | 31 | Nie auf dirty Worktree arbeiten | dev/AGENTS:156; res/AGENTS:139; dev/pm:72 | behalten (Migration gated; Normalfall **R11**) |
 | 32 | End-of-Phase: YAML→Dashboard→Commit | dev/AGENTS:49-50; res/AGENTS:46-47 | bewusst geändert (Index atomar im Kernel, II.2/II.7) |
 | 33 | progress.yaml ONE-Line + append-only log | dev/pm-sk:118-123; off/om-sk:45; res/pm-sk:60-61 | bewusst entfernt (progress.yaml entfällt → session_brief, II.2/II.5) |
-| 34 | Dashboard nur generiert | dev/AGENTS:141; res/AGENTS:133; off/AGENTS:168 | durch Gate ersetzt — **präzisiert 2026-07-26 (Gegenprüfung 2):** der Mechanismus ist nicht „nicht committet“, sondern `gate_write_scope`: der einzige Produzent schreibt nach `project_memory/generated/`, und dorthin ist JEDER Tool-Write gesperrt (gemessen). Der dev-Satz „`progress.dashboard.html` is generated only, **never hand-edited**“ ist mit §6a restlos gestrichen (nur die Vollständigkeits-Regel derselben Passage wurde nach §6 gerettet); office/research behalten je eine Textfassung („generated/ is kernel output, never hand-edited“). |
-| 35 | Pflicht-YAML-Vollständigkeit bei Abnahme | dev/AGENTS:139-140; res/AGENTS:131-132 | durch Gate ersetzt (→gate_memory_complete-Nachfolger; GS4) |
-| 36 | Kein Projektstatus in Agent-Memory | dev/AGENTS:18-21; off/AGENTS:17-20; res/AGENTS:19-21 | durch Gate ersetzt (→guard_memory_budget + GS4) |
-| 37 | MEMORY.md INDEX ≤40 Zeilen | dev/AGENTS:21; off/AGENTS:20; res/AGENTS:21 | durch Gate ersetzt (→guard_memory_budget; II.12) |
+| 34 | Dashboard nur generiert | dev/AGENTS:141; res/AGENTS:133; off/AGENTS:168 | durch Gate ersetzt — **präzisiert 2026-07-26 (Gegenprüfung 2):** der Mechanismus ist nicht „nicht committet“, sondern `gate_write_scope`: der einzige Produzent schreibt nach `project_memory/generated/`, und dorthin ist JEDER Tool-Write gesperrt (gemessen). Der dev-Satz „`progress.dashboard.html` is generated only, **never hand-edited**“ ist mit §6a restlos gestrichen (nur die Vollständigkeits-Regel derselben Passage wurde nach §6 gerettet); office/research behalten je eine Textfassung („generated/ is kernel output, never hand-edited“). **Nachtrag 2026-08-01 (Netz-Runde):** die Quellenspalte ist für dev VERALTET — `dev/AGENTS:141` zeigt heute in §6, und dev trägt den Satz seit derselben Korrektur nicht mehr (nur office/research tun es). Das ist der Grund, warum diese Runde KEINE Regel→Sektion-Landkarte aus den Zeilennummern abgeleitet hat: sie hätte hier eine Sektion für eine Regel haften lassen, die sie nicht trägt. ⚙ `gate_write_scope.py:_assert_state_write_allowed` |
+| 35 | Pflicht-YAML-Vollständigkeit bei Abnahme | dev/AGENTS:139-140; res/AGENTS:131-132 | durch Gate ersetzt (→gate_memory_complete-Nachfolger; GS4) ⚙ `gate_memory_complete.py:state_errors`, `report.py:validate_state` |
+| 36 | Kein Projektstatus in Agent-Memory | dev/AGENTS:18-21; off/AGENTS:17-20; res/AGENTS:19-21 | durch Gate ersetzt (→guard_memory_budget + GS4) ⚙ `guard_memory_budget.py:_check_ids` |
+| 37 | MEMORY.md INDEX ≤40 Zeilen | dev/AGENTS:21; off/AGENTS:20; res/AGENTS:21 | durch Gate ersetzt (→guard_memory_budget; II.12) ⚙ `guard_memory_budget.py:_check_size` |
 | 38 | Enforcement-Layer tabu (Settings/Hooks) | dev/AGENTS:84-87; res/AGENTS:81-83; off/AGENTS:189-192 | behalten (→guard_harness_selfmod, II.4) |
 | 39 | Fehlblockende Guard = Defekt melden, nie umgehen | dev/AGENTS:86-87; dev/pm-sk:162-170 | behalten |
 | 40 | Fragen von Prosa eingeleitet; Ask-Loops begrenzt | dev/AGENTS:91-92; off/AGENTS:112-114 | behalten |
-| 41 | Fragen selbst-enthaltend, nie „oben" | dev/pm-sk:34-40; off/om-sk:24-28; res/pm-sk:23-27 | durch Gate ersetzt (→guard_question_context; APR2) |
+| 41 | Fragen selbst-enthaltend, nie „oben" | dev/pm-sk:34-40; off/om-sk:24-28; res/pm-sk:23-27 | durch Gate ersetzt (→guard_question_context; APR2) ⚙ `guard_question_context.py:main`, `gate_approval.py:handle_pre_tool_use` |
 | 42 | Presets mechanisch; Upgrade=OK→Scaffold→Restart | dev/AGENTS:170-172; res/AGENTS:153-154 | behalten |
 | 43 | Modell-Eskalationsleiter user-gated | dev/AGENTS:173-179; res/AGENTS:155-160 | behalten |
 | 44 | Codex-TOMLs read-only; nur Full-Scaffold | dev/AGENTS:180-184; off/AGENTS:177-180 | behalten |
 | 45 | Nach 3 QA-Fails: STOP + Optionen | dev/AGENTS:212-214; res/AGENTS:189-191 | behalten |
 | 46 | Toter Spezialist: 1 Retry, dann eskalieren | dev/AGENTS:213-214 | behalten (Lease-Timeout→READY gated) |
 | 47 | Tech-Debt geflaggt, nie still refactoren | dev/AGENTS:188; res/AGENTS:168-169; arch:66 | behalten |
-| 48 | Flags/Findings verpuffen nicht (TSK oder Skip-Log) | dev/AGENTS:190-194; res/AGENTS:170-172 | durch Gate ersetzt (→Auditor-Routine, II.10a) |
-| 49 | File-Budget harte Grenze | dev/AGENTS:75,192-193; audit:26 | durch Gate ersetzt (→gate_pipeline / `scripts/kit_checks.py` + GS4) — **korrigiert 2026-07-25:** guard_memory_budget deckt NUR agent-memory, nicht das Quelldatei-Budget |
+| 48 | Flags/Findings verpuffen nicht (TSK oder Skip-Log) | dev/AGENTS:190-194; res/AGENTS:170-172 | durch Gate ersetzt (→Auditor-Routine, II.10a) — **gemessen 2026-08-01 (Netz-Runde):** die Routine-Route `dispatch.py:_covering_routine_apr` autorisiert den Auditor-LAUF und bindet Rolle und Read-only-Scope; dass ein Flag oder ein Finding danach zu TSK/BUG/CR oder zu einem Skip-Decision-Item wird, liest kein Gate und kein Validator-Check. Die Regel selbst hat also keinen Ersatz. ⚙ offen — die Verpuffungs-Regel trägt heute nichts ausser Prosa. |
+| 49 | File-Budget harte Grenze | dev/AGENTS:75,192-193; audit:26 | durch Gate ersetzt (→gate_pipeline / `scripts/kit_checks.py` + GS4) — **korrigiert 2026-07-25:** guard_memory_budget deckt NUR agent-memory, nicht das Quelldatei-Budget — **Gemessen 2026-08-01 (Netz-Runde):** die Quelle `audit:26` ist die Auditor-Rolle ALLER DREI Kits, `kit_checks.py` liefern aber nur dev und research aus; im office-Kit hat die Budget-Regel keinen Mechanismus. ⚙ dev+res: `kit_checks.py:check_file_budget` · off: offen — das office-Kit liefert kein `kit_checks.py` aus |
 | 50 | Auditor täglich/PM-getriggert | dev/AGENTS:194; res/AGENTS:172 | bewusst geändert (wöchentlich+ereignisbasiert, APR routine, II.10a) |
 | 51 | Auditor read-only; ein Lauf=ein review_findings-Eintrag | dev/audit:34-36; off/audit:34-36; res/audit:34-36 | bewusst geändert (read-only via APR-Scope+GS3; Evidence statt review_findings, II.10a) |
-| 52 | Artefakte sofort aktuell; derives_from-Impact prüfen | dev/AGENTS:218-219; res/AGENTS:195 | durch Gate ersetzt (→GS4 Referenzgraph/Invalidierung) |
+| 52 | Artefakte sofort aktuell; derives_from-Impact prüfen | dev/AGENTS:218-219; res/AGENTS:195 | durch Gate ersetzt (→GS4 Referenzgraph/Invalidierung) ⚙ `report.py:_check_task_origins`, `approvals.py:approved_content_hash` |
 | 53 | Kit-Update pending-file-Contract; nie Scaffold-Wiederholung | dev/AGENTS:219-221; dev/pm-sk:172-190; res/pm-sk:72-90 | bewusst geändert (kit_state.json ersetzt restlos, II.8) |
-| 54 | Session mit Versionswechsel: nicht delegieren, EIN Restart | dev/AGENTS:220; dev/pm-sk:176-179 | durch Gate ersetzt (→kit_state.json + /hooks-Trust, II.8) |
+| 54 | Session mit Versionswechsel: nicht delegieren, EIN Restart | dev/AGENTS:220; dev/pm-sk:176-179 | durch Gate ersetzt (→kit_state.json + /hooks-Trust, II.8) — **Gemessen 2026-08-01 (Netz-Runde):** `kit_trust_state.py:transition` SCHREIBT den Zustand und gibt Text für einen SessionStart-Hook aus, der nicht blocken kann. Die Regel lautet „nicht delegieren“ — und kein Dispatch-Gate liest den Trust-State (`gate_dispatch.py` und `dispatch.py` nennen `kit_state` nirgends). ⚙ offen — der Zustand wird geschrieben, aber von keinem Gate gelesen |
 | 55 | Onboarding: read-only zuerst, User bestätigt | dev/pm-sk:147-152; res/pm-sk:104-109 | behalten (II.10a) |
-| 56 | Work-Order nennt APPROVED PROC (office) | off/AGENTS:36-37,100; off/om:50-51 | durch Gate ersetzt (→gate_proc_approved OHNE Bootstrap-Loch) — **korrigiert 2026-07-26:** das Loch ist NICHT geschlossen; der Hook liest den gelöschten V1-Monolithen und exit(0) bei Abwesenheit, blockt also in jedem V2-Projekt nichts. Bis zur Umstellung **behalten (Prosa)**, so auch in Verfassung/Agent/SKILL formuliert |
-| 57 | PROC-Edit entwertet Freigabe; re-hash bei User-OK | off/AGENTS:32-34; off/om:60 | durch Gate ersetzt (→Invalidierung PROC→DRAFT; Hash II.2) — **teilweise, korrigiert 2026-07-26:** die Invalidierung greift (Kernel hasht `steps`+`roles`), das RE-HASH nicht: `proc_hash.py` crasht am gelöschten Monolithen und der Kernel liefert kein Hash-Kommando, während `report.py` `approved_hash` bei APPROVED/ACTIVE als error verlangt |
+| 56 | Work-Order nennt APPROVED PROC (office) | off/AGENTS:36-37,100; off/om:50-51 | durch Gate ersetzt (→gate_proc_approved OHNE Bootstrap-Loch) — **korrigiert 2026-07-26:** das Loch ist NICHT geschlossen; der Hook liest den gelöschten V1-Monolithen und exit(0) bei Abwesenheit, blockt also in jedem V2-Projekt nichts. Bis zur Umstellung **behalten (Prosa)**, so auch in Verfassung/Agent/SKILL formuliert **Überholt, gemessen 2026-08-01 (Netz-Runde):** auch diese Korrektur ist eingeholt. `gate_proc_approved` liest die PROC-ITEMS (`gate_proc_approved.py:_executable_procs`), ein leerer Bestand BLOCKT jetzt (spec II.4) statt durchzulassen, und der Hook ist im office-Kit auf `PreToolUse(Agent|Task)` registriert. Das Bootstrap-Loch ist zu; was offen bleibt, ist nichts an dieser Zeile. ⚙ `gate_proc_approved.py:_executable_procs` |
+| 57 | PROC-Edit entwertet Freigabe; re-hash bei User-OK | off/AGENTS:32-34; off/om:60 | durch Gate ersetzt (→Invalidierung PROC→DRAFT; Hash II.2) — **teilweise, korrigiert 2026-07-26:** die Invalidierung greift (Kernel hasht `steps`+`roles`), das RE-HASH nicht: `proc_hash.py` crasht am gelöschten Monolithen und der Kernel liefert kein Hash-Kommando, während `report.py` `approved_hash` bei APPROVED/ACTIVE als error verlangt ⚙ `approvals.py:approved_content_hash` |
 | 58 | `processes:` muss Mapping bleiben | off/AGENTS:42-43 | bewusst geändert (PROC Per-Item; Monolith entfällt, II.9) |
 | 59 | NICHTS wird gesendet; Outbound nur DRAFT in outbox/ | off/AGENTS:52-55; off/om:23-25; curator:23-24 | behalten — Codex nur Policy → **Teil-Enforcement (R4)** |
 | 60 | Live-Shop-Mutation braucht PROC + Bestätigung | off/AGENTS:143; curator:24 | behalten |
 | 61 | Ledger append-only + guard_ledger_direct | off/AGENTS:56-61; book:23-28 | bewusst geändert (I.3: Append-only ABGESCHAFFT; Guard GELÖSCHT; gate_ledger_valid) |
-| 62 | Ledger-Zeilenvalidierung | off/AGENTS:58-59; book:23 | durch Gate ersetzt (→gate_ledger_valid, II.9/II.12) |
+| 62 | Ledger-Zeilenvalidierung | off/AGENTS:58-59; book:23 | durch Gate ersetzt (→gate_ledger_valid, II.9/II.12) ⚙ `gate_ledger_valid.py:judge` |
 | 63 | Reports generiert, nie handgeschrieben | off/AGENTS:63-65; book:31-33 | behalten |
-| 64 | Filing verifiziert; gate_filing blockt | off/AGENTS:66-68; clerk:22-24 | durch Gate ersetzt (→gate_filing; filing_log→Scan-Index) |
-| 65 | fs_tripwire: nie Delete/Move auf inbox/archive | off/AGENTS:68-69; clerk:20-24 | durch Gate ersetzt (→guard_fs_tripwire/Integrity-Guard) |
-| 66 | Unklassifizierbare Datei: unberührt + User fragen | clerk:26 | durch Test ersetzt (II.12 vorhanden) |
+| 64 | Filing verifiziert; gate_filing blockt | off/AGENTS:66-68; clerk:22-24 | durch Gate ersetzt (→gate_filing; filing_log→Scan-Index) ⚙ `gate_filing.py:check` |
+| 65 | fs_tripwire: nie Delete/Move auf inbox/archive | off/AGENTS:68-69; clerk:20-24 | durch Gate ersetzt (→guard_fs_tripwire/Integrity-Guard) ⚙ `guard_fs_tripwire.py:main` |
+| 66 | Unklassifizierbare Datei: unberührt + User fragen | clerk:26 | durch Test ersetzt (II.12 vorhanden) ⚙ `gate_filing.py:rule_matches`, `test_hooks.py:test_gate_filing_blocks_a_target_no_rule_covers` |
 | 67 | filing_plan = einzige Maschinen-Wahrheit | clerk:16-20 | bewusst geändert (Ableitungsrichtung umgedreht, II.9) |
 | 68 | Clerk löscht nie; Quarantäne; sha256-Dubletten | clerk:35-42 | behalten |
 | 69 | Kein Steuer-/Rechtsrat; Disclaimer bleiben | off/AGENTS:70-73; book:9; compl:9,27 | behalten |
 | 70 | Privacy-Honesty (kein DPA-Versprechen) | off/AGENTS:74-77 | behalten |
 | 71 | Datenminimierung: Personennamen nur im Ledger | off/AGENTS:77-81; clerk:38-40 | behalten — **kein Gate (R3; 140-Namen-Vorfall)** |
 | 72 | inbox/archive/outbox NICHT getrackt (GDPR) | off/AGENTS:196-198 | behalten (→Scaffold-.gitignore) |
-| 73 | office-developer: nur konsumieren, nie mutieren | off/AGENTS:149-151; odev:16-20 | durch Gate ersetzt (→GS3 allowed_scope) |
+| 73 | office-developer: nur konsumieren, nie mutieren | off/AGENTS:149-151; odev:16-20 | durch Gate ersetzt (→GS3 allowed_scope) ⚙ `gate_write_scope.py:_assert_in_scope` |
 | 74 | office-developer deterministisch+self-verify | odev:22-31 | behalten |
 | 75 | product-editor einziger Produkttext-Writer | off/AGENTS:139; editor:22-26 | behalten (→GS3) |
 | 76 | bookkeeper: UNCLEAR statt erfinden | book:17-27 | behalten |
 | 77 | compliance: kein Eintrag ohne Quelle | compl:19-27 | behalten |
 | 78 | marketing: keine Credentials; nichts posten | mkt:16-25 | behalten |
 | 79 | shop-curator v1 read-only; Claims mit Quelle | curator:16-25 | behalten |
-| 80 | Research-Guidelines (Repro/Seeds/kein p-Hacking) | res/AGENTS:53-55; rschr:16-19 | durch Gate ersetzt (→INV/gate_pipeline) — behavioral **R9** |
+| 80 | Research-Guidelines (Repro/Seeds/kein p-Hacking) | res/AGENTS:53-55; rschr:16-19 | durch Gate ersetzt (→INV/gate_pipeline) — behavioral **R9** ⚙ offen — `gate_pipeline` führt die Projekt-Pipeline aus, aber nichts darin liest Seeds, Repro-Rezept oder Auswertungsdisziplin; die INV-Hälfte hat im research-Kit keinen Leser (`guard_guidelines.py` liefert nur dev aus). |
 | 81 | Scientific Honesty | res/AGENTS:176-177; analyst:22-23 | behalten — **kein Gate (R9)** |
-| 82 | Reproduzierbarkeit zuerst; Ausreißer nie still droppen | rschr:16-20; analyst:15-18 | durch Gate ersetzt (→Reviewer-Repro; gate_pipeline) |
+| 82 | Reproduzierbarkeit zuerst; Ausreißer nie still droppen | rschr:16-20; analyst:15-18 | durch Gate ersetzt (→Reviewer-Repro; gate_pipeline) ⚙ offen — dieselbe Lage wie Zeile 80: die Reviewer-Reproduktion ist Rollenprosa, und `gate_pipeline` beurteilt den Pipeline-Exitcode, nicht die Reproduktion. |
 | 83 | Report-Writer ändert nie Daten/Schlüsse | writer:11-12,44 | behalten |
 | 84 | Report pro EXP sofort nach PASS; sonst incomplete | res/AGENTS:214-220; review:29-30 | behalten — **kein Gate (R7)** |
 | 85 | FZulG-Regeln (Stunden, DOIs, ≤7 Jahre) | res/AGENTS:198-211; method:30-34 | behalten (Domänenregel) |
-| 86 | Reviewer reproduziert; rote Pipeline/PII = FAIL | review:18-27 | durch Gate ersetzt (→gate_pipeline; GS5) |
+| 86 | Reviewer reproduziert; rote Pipeline/PII = FAIL | review:18-27 | durch Gate ersetzt (→gate_pipeline; GS5) ⚙ `gate_pipeline.py:main`, `gate_git.py:_refuse_unless_the_item_is_green` |
 | 87 | premise_invalidation_triggers-Re-Check | dev/AGENTS:167; arch:52-58; method:24-29 | behalten — **kein Gate (R8)** |
-| 88 | research-engineer: Provenance/Checksums, nie fabrizieren | res/re:22-30 | durch Gate ersetzt + behalten |
+| 88 | research-engineer: Provenance/Checksums, nie fabrizieren | res/re:22-30 | durch Gate ersetzt + behalten ⚙ `backlog_types.py:NONEMPTY_FIELDS` |
 | 89 | Architect hält Mermaid-Diagramm aktuell | arch:20-21 | bewusst geändert (→.drawio.svg-ARC; Mermaid nur ephemer, II.6a) |
-| 90 | packaging.method Pflicht; Gate blockt TODO | arch:42-48; dev/AGENTS:78 | durch Gate ersetzt (→gate_packaging_decision auf Architektur-Item) |
+| 90 | packaging.method Pflicht; Gate blockt TODO | arch:42-48; dev/AGENTS:78 | durch Gate ersetzt (→gate_packaging_decision auf Architektur-Item) ⚙ `gate_packaging_decision.py:resolved_packaging` |
 | 91 | Richtige Domänen-Toolchain, nie aus Gedächtnis | arch:24-40; method:38-42 | behalten — **kein Gate** |
-| 92 | Stacks deklariert; ohne Checks = FAIL | arch:40-41; devops:17 | durch Gate ersetzt (→gate_pipeline stacks) |
+| 92 | Stacks deklariert; ohne Checks = FAIL | arch:40-41; devops:17 | durch Gate ersetzt (→gate_pipeline stacks) ⚙ `gate_pipeline.py:main` |
 | 93 | Load-Test-Weglassen = explizite ADR-Zeile; STRIDE | arch:57-65 | behalten |
-| 94 | testing_guidelines je Stack Pflicht; Coverage | qa:35-44; dev/AGENTS:76 | durch Gate ersetzt (→gate_test_coverage-Nachfolger) |
+| 94 | testing_guidelines je Stack Pflicht; Coverage | qa:35-44; dev/AGENTS:76 | durch Gate ersetzt (→gate_test_coverage-Nachfolger) ⚙ `gate_test_coverage.py:_governed_source_areas` |
 | 95 | Design-Fidelity: Build MUSS design matchen | qa:16-34; fe:23-41; design:88-102 | behalten (min-keep #9; →design_ref-Gate II.6a) |
 | 96 | A11y-Audit (WCAG AA) = FAIL wenn fehlend | qa:26-29; design:81 | behalten |
-| 97 | Consistency gemessen; UI-Inventar-Snapshot | qa:30-34; fe:38-41 | durch Test ersetzt — **nicht in II.12 (R5)** |
-| 98 | Staged Testing; Vollsuite 1× pro Verdikt | qa:46-66; be:20-23; dev/pm-sk:98-104 | durch Gate ersetzt (→Fast Mode, II.10a) |
-| 99 | real_run ist Testobjekt; SKIPPED ≠ PASS | qa:58-64; dev/pm-sk:109-117 | durch Test ersetzt (II.5 Regressionstests) |
+| 97 | Consistency gemessen; UI-Inventar-Snapshot | qa:30-34; fe:38-41 | durch Test GEPINNT → behalten — **korrigiert 2026-08-01 (Netz-Runde):** wie Zeile 25 — derselbe Test, dieselbe umgekehrte Lizenz. **nicht in II.12 (R5)** ⚙ `test_hooks_v2.py:test_the_ui_inventory_snapshot_rule_is_shipped` |
+| 98 | Staged Testing; Vollsuite 1× pro Verdikt | qa:46-66; be:20-23; dev/pm-sk:98-104 | durch Gate ersetzt (→Fast Mode, II.10a) ⚙ `gate_pipeline.py:main` |
+| 99 | real_run ist Testobjekt; SKIPPED ≠ PASS | qa:58-64; dev/pm-sk:109-117 | durch Test ersetzt (II.5 Regressionstests) ⚙ offen — kein Test im Harness und kein Kit-Skript beurteilt, ob ein Projektlauf übersprungene Tests als Erfolg verbucht; die Regel ist Rollenprosa. |
 | 100 | Delivery-Freshness: served Hash == Build | qa:64-66; fe:35-37 | behalten — **kein Gate/Test (R6)** |
 | 101 | jsdom-grün ≠ Browser-grün | fe:29-31 | behalten |
-| 102 | high/critical Security = FAIL; DoD vollständig | qa:70-80; devops:24 | durch Gate ersetzt (→gate_pipeline; GS4/GS5) — **korrigiert 2026-07-26:** die DoD-Hälfte trägt nicht. Der Ersatz für `definition_of_done.yaml` war „AC + `INV` mit existierendem Test“, und die INV-check-Existenzprüfung ist in `report.py` ausdrücklich AUFGESCHOBEN (Phase 2, B.2-10; gemessen null Findings). Jetzt als **Prüfpflicht der QA/Reviewer-Rolle** formuliert; Validator-Regel = offener Phase-2-Rest |
+| 102 | high/critical Security = FAIL; DoD vollständig | qa:70-80; devops:24 | durch Gate ersetzt (→gate_pipeline; GS4/GS5) — **korrigiert 2026-07-26:** die DoD-Hälfte trägt nicht. Der Ersatz für `definition_of_done.yaml` war „AC + `INV` mit existierendem Test“, und die INV-check-Existenzprüfung ist in `report.py` ausdrücklich AUFGESCHOBEN (Phase 2, B.2-10; gemessen null Findings). Jetzt als **Prüfpflicht der QA/Reviewer-Rolle** formuliert; Validator-Regel = offener Phase-2-Rest ⚙ `gate_pipeline.py:main` |
 | 103 | perf-Regression >25% untersucht | qa:66,69 | behalten |
 | 104 | Devs legen eigene TSKs an (TODO→…) | be:16-24; fe:17-42 | bewusst geändert (Kernel/Orchestrator legt Tasks VOR Spawn an; V2-Automat, II.2/II.3) |
 | 105 | Mockup-as-Base; nie umfärben | fe:23-27; design:64-68 | behalten (min-keep #9) |
-| 106 | Devs erfinden keine Dauerregeln; ändern nie SRs | be:25-30; fe:43-48 | durch Gate ersetzt (→GS3 forbidden_scope) |
+| 106 | Devs erfinden keine Dauerregeln; ändern nie SRs | be:25-30; fe:43-48 | durch Gate ersetzt (→GS3 forbidden_scope) ⚙ `gate_write_scope.py:_assert_not_forbidden` |
 | 107 | UI-Sequenz: kein neues UI-PRD vor Sichtung | dev/pm-sk:46-49 | behalten — **kein Gate (R12)** |
 | 108 | Design-Ambition = User-Entscheid ZUERST | dev/pm-sk:57-70; design:104-109 | ~~durch Gate ersetzt~~ → **behalten (Prosa), korrigiert 2026-07-26:** es gibt kein Gate. `approvals.py`/`dispatch.py`/`report.py` kennen `WFR`/`wireframe` nirgends, und die II.6a-Freeze-Funktionen (`freeze_wireframe`/`freeze_design`/`freeze_architecture`) haben KEINEN Produktionsaufrufer (nur `tools/test_staging_cli.py`) und kein CLI-Subkommando. Das ist die Regel des synaipse-Vorfalls: sie steht jetzt ausdrücklich als Prosa-Pflicht mit dem PM als einzigem Wächter im Lead-SKILL. **Nachzubauen:** Freeze-Subkommandos + eine Validator-/Approval-Regel „UI-Scope ohne WFR blockt den scope-APR“ |
 | 109 | Designer-Qualitätslatte non-negotiable | design:13-33 | behalten |
@@ -635,8 +723,8 @@ State-Validator · GS5 CI/Merge · APR2 Zwei-Phasen-Freigabeprotokoll.
 | 112 | DevOps pusht/deployt nie eigeninitiativ | devops:49-50; res/re:31 | behalten (→gate_git) — Consent-Teil **R1** |
 | 113 | Fremde Docker-Projekte tabu | devops:46-48 | behalten — **kein Gate (R10)** |
 | 114 | Compose-Projektname gepinnt | devops:40-45 | behalten (kit_checks warnt) |
-| 115 | Partielle Läufe NIE Merge-Evidence | devops:56-58; qa:51 | durch Gate ersetzt (→Fast Mode, II.10a/II.12) — **Nachtrag 2026-07-27:** umgesetzt über `EVD.result`, das im Kernel auf `pass|fail` geschlossen ist; ein Lauf, der nicht entscheiden konnte, ist ein `fail` mit Begründung im `summary`. Ein drittes „inconclusive“ wäre der Wert, auf den ein Gate nicht handeln kann. |
-| 116 | Pipeline bei Projektstart (Format→…→SCA) | devops:15-33; res/re:15-19 | durch Gate ersetzt (→gate_pipeline, GS5) |
+| 115 | Partielle Läufe NIE Merge-Evidence | devops:56-58; qa:51 | durch Gate ersetzt (→Fast Mode, II.10a/II.12) — **Nachtrag 2026-07-27:** umgesetzt über `EVD.result`, das im Kernel auf `pass|fail` geschlossen ist; ein Lauf, der nicht entscheiden konnte, ist ein `fail` mit Begründung im `summary`. Ein drittes „inconclusive“ wäre der Wert, auf den ein Gate nicht handeln kann. ⚙ `backlog_types.py:EVIDENCE_RESULTS`, `quality.py:_report` |
+| 116 | Pipeline bei Projektstart (Format→…→SCA) | devops:15-33; res/re:15-19 | durch Gate ersetzt (→gate_pipeline, GS5) ⚙ `gate_pipeline.py:main` |
 
 **Minimum-Keep-Cross-Check (II.10a):** Alle 9 Items sind gedeckt — #1 behalten · #3→GS3 ·
 #4→GS2 · #24 Invalidierung · #29 behalten (aber R1!) · #31 behalten (R11) · #8 behalten
@@ -810,3 +898,42 @@ II.11/1) und die beiden Plattform-Spikes sind empirisch entschieden (§5) — di
 10-Minuten-Userproben entfielen dadurch. **Nächster Schritt: Phase 2** (Hook-Schicht,
 II.11/2) in frischer Session; jede Phase besteht ihre II.12-Abnahmetests UND eine
 unabhängige Gegenprüfung (Arbeitsmodus 2026-07-24; Prüfmodell ab Phase 2: Opus 5).
+
+**Netz-Runde 2026-08-01 — was vor der Kürzung (II.11/3) noch entschieden werden muss.** Die
+Kürzung hat jetzt Rückmeldung: `tools/test_shortening_net.py`. Offen und ausdrücklich NICHT von
+dieser Runde entschieden:
+
+1. **Die neun Zeilen mit `⚙ offen` (3, 6, 14, 48, 49, 54, 80, 82, 99).** Ihre Klassifikation sagt
+   „durch Gate/Test ersetzt", der laufende Code hat keinen Ersatz — bei 3, 6, 14 und 49 nur für
+   eines der Kits, in deren Text die Regel steht, was genügt. Entweder wird der Mechanismus
+   gebaut, oder die Zeile wird umklassifiziert, wie Zeile 108 es 2026-07-26 wurde. Bis dahin darf
+   die Prosa dieser neun Regeln beim Rückbau NICHT wegfallen. Gegenzahl: **32 Zeilen** tragen eine
+   wirksame Löschlizenz — davon ruhen **12 auf einem Hook ohne Tool-Wächter** (§3) und **17
+   nennen eine Spezialisten-Rollendatei**, die kein Pin bewacht. Beide Einschränkungen stehen in
+   §3, wo der Ausführende sie liest.
+2. **Die Regel→Sektion-Landkarte gibt es nicht.** Der Sektionspin merkt, DASS eine Sektion
+   verschwindet, sich ändert oder umbenannt wird, aber nicht, WELCHE Matrixzeilen dabei ihr
+   Zuhause verlieren — die Quellenspalte nennt Zeilennummern, und mindestens eine davon ist
+   gemessen veraltet (Zeile 34, dev). Eine belastbare Landkarte sind 122 handgeprüfte
+   Zeile↔Sektion-Zuordnungen; sie wurde bewusst nicht aus den Zeilennummern abgeleitet, weil eine
+   falsche Landkarte schlechter ist als keine. Was das Netz stattdessen leistet: die Quellen-KITS
+   werden aufgelöst, also fällt eine Lizenz auf, die nur in einem der Kits gilt — und ein
+   Kürzel, das die Legende nicht kennt, ist ein Fehler statt einer leeren Menge.
+3. **Die Zustandsautomat-Umschreibung von `session_status`** ist gemessen, aber nicht gebaut:
+   Blockzahl, Nachfolger und die zwei Blöcke ohne Nachfolger stehen bei der Datei in §1.1.
+
+
+---
+
+## 9. Sektionspin-Journal (append-only)
+
+Jede übernommene Änderung an einer Lead-Paket-Sektion, eine Zeile pro Sektion, geschrieben
+von `tools/pin_constitution_sections.py --write`. Der Pin selbst steht in
+`tools/constitution_section_pins.json`; dieses Journal ist der Grund, warum das Übernehmen
+einer Änderung ein Vorgang ist und keine Geste. Wer hier nichts schreiben will, hat den Pin
+nicht gelesen.
+
+
+- 2026-08-01 · **ERSTPIN** · 91 Sektionen über 9 Dateien (drei Lead-Pakete) · keine
+  Einzelbestätigung, weil es keinen Vorzustand gab, gegen den zu bestätigen wäre. Ab hier
+  schreibt jede übernommene Änderung ihre eigene Zeile.
