@@ -77,7 +77,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "d80bdc1ffb5db095",
+        "digest": "014bb5c61766ca05",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -239,7 +239,7 @@
         ]
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "d35da0da85688308",
+        "digest": "7f77534998709f1d",
         "hooks": [
           "gate_approval",
           "gate_dispatch",
@@ -254,6 +254,8 @@
           "guard_fs_tripwire",
           "guard_harness_selfmod",
           "guard_memory_budget",
+          "guard_no_adhoc",
+          "guard_pm_scope",
           "guard_question_context",
           "guard_scratchpad_ref",
           "guard_yaml_valid",
@@ -408,7 +410,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "f977326cc4b99ffe",
+        "digest": "88c4fd184501f0b5",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -421,6 +423,7 @@
           "gate_subagent_output",
           "gate_write_scope",
           "guard_agent_spawn",
+          "guard_guidelines",
           "guard_harness_selfmod",
           "guard_memory_budget",
           "guard_no_adhoc",

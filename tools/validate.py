@@ -253,7 +253,7 @@ MIRROR_DEV_RESEARCH = [
     "hooks/guard_yaml_valid.py", "hooks/guard_agent_spawn.py", "hooks/notify_agent_events.py",
     "hooks/guard_scratchpad_ref.py", "hooks/gate_subagent_output.py", "hooks/guard_harness_selfmod.py",
     "hooks/guard_pm_scope.py", "hooks/guard_no_adhoc.py", "hooks/guard_question_context.py",
-    "hooks/gate_memory_complete.py", "hooks/gate_pipeline.py",
+    "hooks/gate_memory_complete.py", "hooks/gate_pipeline.py", "hooks/guard_guidelines.py",
     "hooks/_root.py", "hooks/_audit.py", "hooks/_compat.py",
     "templates/repo/scripts/quality.py", "templates/repo/scripts/kit_checks.py",
     "templates/repo/scripts/kit_browser_checks.py", "templates/repo/scripts/retro.py",
@@ -267,7 +267,7 @@ MIRROR_DEV_RESEARCH = [
 MIRROR_DEV_OFFICE = [
     "hooks/guard_yaml_valid.py", "hooks/guard_agent_spawn.py", "hooks/notify_agent_events.py",
     "hooks/guard_scratchpad_ref.py", "hooks/gate_subagent_output.py", "hooks/guard_harness_selfmod.py",
-    "hooks/guard_question_context.py",
+    "hooks/guard_question_context.py", "hooks/guard_pm_scope.py", "hooks/guard_no_adhoc.py",
     "hooks/_root.py", "hooks/_audit.py", "hooks/_compat.py",
 ]
 for other, names in (("research-team", MIRROR_DEV_RESEARCH), ("office-team", MIRROR_DEV_OFFICE)):

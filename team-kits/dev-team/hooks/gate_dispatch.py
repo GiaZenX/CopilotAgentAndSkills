@@ -3,8 +3,10 @@
 Dispatch gate — gate layer 2 of spec II.4. Registered on FIVE events, because the dispatch
 lifecycle is one story and splitting it across files would let the halves drift:
 
-  PreToolUse(Agent|Task)        validate the HARNESS_DISPATCH header against the lease, CONSUME
-                                the lease for this one dispatch, and open the bind window
+  PreToolUse(Agent|Task)        refuse while the installed enforcement bundle is not the one this
+                                project recorded trust for (`_kernel.bundle_trust`); then validate
+                                the HARNESS_DISPATCH header against the lease, CONSUME the lease
+                                for this one dispatch, and open the bind window
   SubagentStart(*)              claim that lease for the child's agent_id (gate layer 3 needs the
                                 agent_id -> task mapping while the child is still running)
   PostToolUse(Agent|Task)       the spawn STARTED: re-verify the header, bind the agent_id
@@ -89,9 +91,42 @@ def _state_for_recording(data):
     return _kernel.open_state(root)
 
 
+def _refuse_untrusted_bundle(data):
+    """No delegation while the enforcement bundle is not the one this project trusts.
+
+    THE HOLE THIS CLOSES, measured 2026-08-01: `.claude/kit_state.json` was WRITTEN by the
+    scaffold and by `kit_trust_state`, and read by exactly two places — `kernel/report.py` for the
+    doctor's `hook_trust` capability and `guard_harness_selfmod` for its write-protection list.
+    No authorising code path read it. An ablation over four trust states with one identical spawn
+    payload produced four identical verdicts with identical reasons: the trust record was not a
+    term in the decision, so a project could delegate on a bundle it had never vouched for.
+
+    A SPAWN is where it binds, because a spawn is the moment the harness hands a task's
+    `allowed_scope` to a child — the grant every downstream gate is measured against. What
+    `withdrawn` means is `_kernel.bundle_trust`'s business, and deliberately: this file must not
+    grow a second opinion about which trust states are which.
+    """
+    trust = _kernel.bundle_trust(_kernel.find_repo_root(data.get("cwd")))
+    if not trust.withdrawn:
+        return
+    _kernel.block(
+        HOOK,
+        "specialist spawn refused: %s.\nDelegation hands a child the task's `allowed_scope`, and "
+        "the gates that would hold it to that scope are the very files whose integrity is in "
+        "question — so no spawn is authorised until somebody has vouched for the bundle again."
+        % trust.reason,
+        event="PreToolUse",
+        remedy="open /hooks and review what changed in `.claude/hooks` and `.claude/kernel`; if "
+               "the change is not yours, treat it as a finding. Re-running the scaffold "
+               "reinstalls the kit files and records the reviewed bundle; then start ONE new "
+               "session. `python scripts/harness.py doctor` reports the same state as "
+               "`hook_trust`.")
+
+
 def handle_pre_tool_use(data):
     if data.get("tool_name") not in SPAWN_TOOLS:
         sys.exit(0)
+    _refuse_untrusted_bundle(data)
     state = _state_for_prevention(data)
     if state is None:
         sys.exit(0)

@@ -8162,6 +8162,171 @@ def test_a_changed_bundle_falls_back_to_needing_trust(tmp_path):
     assert trusted is False, why
 
 
+def test_a_spawn_is_refused_while_the_bundle_is_not_the_one_the_project_trusts(tmp_path):
+    """Parity row 54: the trust record was WRITTEN by two producers and read by no authorisation.
+
+    Measured 2026-08-01 before this, over four trust states with one identical spawn payload:
+    four identical verdicts with identical reasons. `kit_state.json` was read by `kernel/report.py`
+    (the doctor's `hook_trust` capability) and by `guard_harness_selfmod` (its write-protection
+    list), and by nothing that decides whether a specialist may start — so a project could hand a
+    child a task's `allowed_scope` on a bundle it had never vouched for.
+
+    THE ABLATION IS THE BUNDLE AND NOTHING ELSE. One repo, one lease, one payload; the only thing
+    varied between the two runs is one byte in an installed hook, and it is restored in place.
+    What makes the difference in verdict a fact about the BUNDLE and not about the lease is the
+    stderr assertion — `_refuse_untrusted_bundle` runs before the lease is even looked at, so a
+    generic rc 2 would be satisfied by any refusal, and only the trust wording can be. An earlier
+    version of this paragraph credited the ORDER of the two runs for that, which is wrong: the
+    order is only the order of these statements and enforces nothing.
+    """
+    pytest.importorskip("yaml")
+    repo = tmp_path / "repo"
+    hooks = _scaffolded_bundle(repo)
+    assert _kit_state(repo)["state"] == "restart_required"
+    _state, _task, header = dispatched_repo(repo)
+    payload = spawn_payload(repo, header)
+
+    victim = os.path.join(hooks, "_audit.py")
+    with open(victim, "rb") as handle:
+        original = handle.read()
+    with open(victim, "ab") as handle:
+        handle.write(b"\n# tampered\n")
+    refused = run_dispatch(repo, payload)
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "is not the one this project trusts" in refused.stderr, refused.stderr
+
+    with open(victim, "wb") as handle:
+        handle.write(original)
+    allowed = run_dispatch(repo, payload)
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+
+
+def test_a_stray_pyc_stops_delegation_and_removing_it_is_the_way_back(tmp_path):
+    """The escalation the trust gate introduced, measured because the constitutions now claim it.
+
+    Bytecode is inside the MEASURED bundle on purpose (`kernel/hashing.py`: `.claude/hooks` is
+    `sys.path[0]`, so a bare `yaml.pyc` there owns every gate's parser). Before parity row 54 a
+    cached `.pyc` cost a SessionStart nag; now it is a total stop on delegation — and that is not
+    hypothetical, `hashing.py` records a release in which `doctor` itself cached eleven of them
+    into `.claude/kernel`.
+
+    So the way out is measured beside it, and it is the cheap one rather than a re-scaffold:
+    bytecode is not part of what the scaffold installs, so removing the `__pycache__` directory
+    restores the recorded hash by itself. A constitution that named the escalation without a way
+    out would be an alarm nobody can act on.
+    """
+    pytest.importorskip("yaml")
+    repo = tmp_path / "repo"
+    _scaffolded_bundle(repo)
+    _state, _task, header = dispatched_repo(repo)
+    payload = spawn_payload(repo, header)
+
+    cache = os.path.join(str(repo), ".claude", "kernel", "__pycache__")
+    write(os.path.join(cache, "report.cpython-313.pyc"), "not really bytecode\n")
+    refused = run_dispatch(repo, payload)
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "is not the one this project trusts" in refused.stderr, refused.stderr
+
+    shutil.rmtree(cache)
+    assert run_dispatch(repo, payload).returncode == 0
+
+
+def test_the_state_a_fresh_scaffold_leaves_behind_still_permits_delegation(tmp_path):
+    """The half that keeps the gate above from being "anything but active blocks".
+
+    `restart_required` is what `write_kit_state` records on EVERY scaffold, and the only thing
+    that clears it is `kit_trust_state` — a SessionStart COMFORT hook that fails open by design.
+    Blocking on it would mean a project whose SessionStart never ran, or whose comfort hook
+    somebody removed, could never delegate again: one fail-open hook's absence turned into a
+    total stop. The fixture above already delegates in that state; here it is the assertion
+    rather than a side effect, and the `active` case is measured beside it so the pair says the
+    gate keys off the HASH and not off the name.
+    """
+    pytest.importorskip("yaml")
+    repo = tmp_path / "repo"
+    _scaffolded_bundle(repo)
+    _state, _task, header = dispatched_repo(repo)
+    assert _kit_state(repo)["state"] == "restart_required"
+    assert run_dispatch(repo, spawn_payload(repo, header)).returncode == 0
+
+    _run_trust_hook(repo)
+    assert _kit_state(repo)["state"] == "active"
+    _state2, _task2, header2 = dispatched_repo(repo)   # a second PR + a fresh lease
+    assert run_dispatch(repo, spawn_payload(repo, header2)).returncode == 0
+
+
+def test_a_project_with_no_trust_record_is_not_stopped_and_the_hole_is_named(tmp_path):
+    """The deliberate non-closure, asserted so it stays a decision rather than becoming a belief.
+
+    A repo that carries no `kit_state.json` has never had a trust measurement made about it —
+    there is nothing to compare — so `_kernel.bundle_trust` reports no withdrawal and the spawn
+    proceeds. The cost is that WRITING the record — deleting it or replacing it — disarms this
+    gate.
+
+    WHICH WRITES ARE ACTUALLY OPEN is measured here rather than asserted in prose, because the
+    prose has been wrong twice: first in both directions ("no gate sees an `rm`"), then too narrow
+    by speaking only of deletion. A shell pipeline that NAMES the enforcement layer is refused by
+    `gate_write_scope`; what is open is the complement — a command line that names it nowhere.
+
+    THE THIRD LEG IS THE ONE THAT MATTERS MOST, and it was missing while the texts described the
+    hole as "the record can disappear": through that same complement a role can RE-BLESS a
+    tampered bundle, and the gate then compares two values the guarded party chose. Measured
+    below end to end — tamper, refuse, re-bless, pass — so the limit keeps the shape the
+    constitutions give it. `kit_state.json` cannot move inside the hashed set; it holds that
+    set's hash.
+    """
+    pytest.importorskip("yaml")
+    repo = tmp_path / "repo"
+    hooks = _scaffolded_bundle(repo)
+    _state, _task, header = dispatched_repo(repo)
+
+    def shell(command):
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(repo),
+                   "tool_input": {"command": command}}
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo), HARNESS_KERNEL_PATH=TEAM_KITS)
+        return subprocess.run(
+            [sys.executable, os.path.join(TEAM_KITS, "dev-team", "hooks", "gate_write_scope.py")],
+            input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
+
+    named = shell("rm .claude/kit_state.json")
+    assert named.returncode == 2, named.stdout + named.stderr
+    assert "enforcement layer" in named.stderr, named.stderr
+    assert shell("find . -name kit_state.json -delete").returncode == 0
+
+    # LEG 3 — re-blessing, the half the texts used to leave out. Tamper first, confirm the gate
+    # refuses, then rewrite the record with the hash OF THE TAMPERED BUNDLE and watch the refusal
+    # disappear. Nothing here goes through `write_kit_state`, which is exactly the point: that
+    # recorder re-copies the kit and refuses a modified bundle, and no gate forces a role to use
+    # it.
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import hook_bundle_hash
+    state_file = os.path.join(str(repo), ".claude", "kit_state.json")
+    write(os.path.join(hooks, "_audit.py"), "# tampered beyond recognition\n")
+    refused = run_dispatch(repo, spawn_payload(repo, header))
+    assert refused.returncode == 2 and "is not the one this project trusts" in refused.stderr
+
+    with open(state_file, encoding="utf-8") as handle:
+        record = json.load(handle)
+    record["hook_bundle_hash"] = hook_bundle_hash(os.path.join(str(repo), ".claude"))
+    write(state_file, json.dumps(record))
+    reblessed = run_dispatch(repo, spawn_payload(repo, header))
+    assert "is not the one this project trusts" not in reblessed.stderr, (
+        "re-blessing no longer works — the hole changed shape and the texts that describe it "
+        "have to change with it")
+
+    # LEG 2 — and with the record gone entirely, the same tampered bundle passes outright. A
+    # FRESH lease: the run above got past the trust gate and CONSUMED the first one, so reusing
+    # its header would fail on a spent claim and say nothing about trust.
+    os.remove(state_file)
+    _state2, _task2, header2 = dispatched_repo(repo)
+    assert run_dispatch(repo, spawn_payload(repo, header2)).returncode == 0
+
+    kernel_bridge = load_kit_module(
+        "kernel_bridge_under_test", os.path.join(TEAM_KITS, "dev-team", "hooks", "_kernel.py"))
+    kernel_bridge.disarm()
+    assert kernel_bridge.bundle_trust(str(repo)).withdrawn is False
+
+
 def test_the_scaffold_installs_the_kernel_the_hooks_import(tmp_path):
     """Found while wiring the trust record, and larger than what it was found under.
 

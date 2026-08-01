@@ -12,6 +12,10 @@ hooks:
       hooks:
         - type: command
           command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_no_adhoc.py"
+    - matcher: "Edit|Write|MultiEdit|NotebookEdit"
+      hooks:
+        - type: command
+          command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_guidelines.py"
   PostToolUse:
     - matcher: "Edit|Write"
       hooks:

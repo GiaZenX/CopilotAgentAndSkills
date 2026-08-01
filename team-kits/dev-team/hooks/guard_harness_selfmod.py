@@ -38,6 +38,12 @@ BLOCKED_FILES = ("settings.json", "settings.local.json", "kit_version",
                  # spec II.4 insists bootstrap is "kein Config-Flag (der Lead könnte sein
                  # eigenes Gate umgehen)". Writable by an agent, it would be exactly that flag.
                  "kit_state.json",
+                 # the tray list the scaffold derives from the kit it installed
+                 # (`kernel/trays.py`). `guard_no_adhoc` stands its name rule down inside a
+                 # directory named here, so an agent that could write this file could exempt any
+                 # directory it liked from that rule — the exemption has to be a fact about the
+                 # INSTALLED KIT, and this is what keeps it one.
+                 "document_trays.txt",
                  # the office ledger gate's early-warning cache (spec II.9). It is NOT what
                  # decides the block -- that is re-validated live, precisely because a decision
                  # taken from a writable note is a decision the guarded party can make. It is

@@ -293,6 +293,100 @@ def bootstrap_active(repo_root=None):
     return now < expires <= now + BOOTSTRAP_MAX_TTL
 
 
+class BundleTrust(object):
+    """What this project's own record says about the enforcement bundle that is installed NOW.
+
+    `withdrawn` is the only field a caller acts on, and what it means is stated as a PROPERTY
+    rather than as a state name: the project recorded which bundle it trusts, and the bundle
+    running today is not that one. `hooks_trust_required` is merely the name `kit_trust_state`
+    gives the same finding at session start; deciding on the measurement instead of on the name
+    means the finding also holds for a bundle changed DURING a session, which that hook cannot
+    see, and does not depend on a comfort hook having run.
+
+    WHAT IS DELIBERATELY NOT THIS CLASS. `restart_required` is what `write_kit_state` leaves
+    behind after every scaffold — the honest verdict that hooks were installed but are not yet
+    running — and only the SessionStart comfort hook clears it. It carries the SAME hash as the
+    installed bundle, so it never reaches `withdrawn` here, and that is the point: a project whose
+    SessionStart never ran (or whose comfort hook somebody killed) must still be able to delegate,
+    or one fail-open hook's absence would silently become a total stop.
+
+    `reason` is None when trust holds, and otherwise says which of the two findings it is.
+    """
+
+    def __init__(self, withdrawn, reason=None):
+        self.withdrawn = withdrawn
+        self.reason = reason
+
+
+def bundle_trust(repo_root=None):
+    """Measure the installed enforcement bundle against the hash this project recorded.
+
+    THE UNMEASURABLE CASE BLOCKS. A recorded hash plus a bundle whose hash cannot be computed
+    (an unreadable file, a broken link under `.claude/hooks`) is an integrity gate that cannot
+    verify what it is standing on — spec II.4's fail-closed direction, and the same verdict
+    `write_kit_state` reaches for the same input.
+
+    THE UNRECORDED CASE DOES NOT BLOCK, and this is a hole with a name rather than an oversight:
+    a project with no `kit_state.json`, or one whose record carries no `hook_bundle_hash`, has
+    never had a trust measurement made about it — there is nothing this function could compare,
+    and refusing there would strand every project scaffolded before the recorder existed.
+    `python scripts/harness.py doctor` is what reports `hook_trust` as unverified for such a
+    project.
+
+    THE COST IS STATED WHERE IT IS PAID, and this paragraph has been wrong twice — first in both
+    directions ("no gate sees a shell `rm`"), then too NARROW, by saying the record could be
+    deleted when it can equally be REWRITTEN. Measured 2026-08-01 as real hook processes in all
+    three kits: `rm`, `rm -f`, `del`, `Remove-Item`, an inline
+    `python -c "os.remove('.claude/kit_state.json')"` and `cd .claude && rm kit_state.json` are
+    every one of them refused rc 2 by `gate_write_scope`, on top of `guard_harness_selfmod`
+    refusing the Edit/Write path. What gets through is the COMPLEMENT, and that is a class rather
+    than a verb: a shell command whose COMMAND LINE does not NAME the enforcement layer —
+    `find . -name kit_state.json -delete`, a glob (`mv ./.cla*/kit_state.json /tmp/`), `git clean
+    -xfd`, or any script the agent runs.
+
+    AND THE WORSE HALF OF THAT CLASS IS RE-BLESSING, NOT DELETING. Measured: append one byte to
+    `.claude/hooks/_audit.py` and the next spawn is refused with the bundle reason; then rewrite
+    `kit_state.json` with the hash OF THE TAMPERED BUNDLE — through the same unnamed command line
+    — and the refusal is gone. A re-blessed bundle is indistinguishable from a legitimate one
+    here, because the comparison is then between two values the guarded party chose. `write_kit_
+    state` refuses exactly this (it re-copies the kit and compares), but nothing forces a role to
+    go through it. `kit_state.json` cannot move into the hashed set — it CONTAINS that set's hash
+    — so this is a limit of the record, not something a better location fixes. It is the reason
+    `hook_trust` is a doctor CAPABILITY rather than a proof.
+
+    WHAT IT SPENDS, because this now sits on a BLOCKING path and a cost nobody measured is how a
+    gate gets disarmed by a timeout: 6.0 ms per call over a real installed bundle (`.claude/hooks`
+    + `.claude/kernel`, 20 runs, 2026-08-01). The walk covers what EXISTS under those two
+    subtrees, not what the kit shipped — an earlier line here claimed the latter and was simply
+    false. Measured with a 512 MB stranger dropped in: 0.54 s, and past what fits in memory
+    `_hash_subtrees` raises, which lands in the `actual is None` branch above, i.e. fail-closed.
+    So the unbounded direction ends in a REFUSAL rather than in a timeout that would allow, which
+    is why no cap is needed here while `guard_guidelines`, whose oversize case must not block
+    every write, carries two.
+    """
+    repo_root = repo_root or find_repo_root()
+    claude_dir = os.path.join(repo_root, ".claude")
+    try:
+        with open(os.path.join(claude_dir, KIT_STATE_FILE), encoding="utf-8-sig") as fh:
+            record = json.load(fh)
+        recorded = (record or {}).get("hook_bundle_hash") if isinstance(record, dict) else None
+    except Exception:
+        recorded = None
+    if not recorded:
+        return BundleTrust(False)
+    try:
+        actual = kernel_module("hashing", repo_root).hook_bundle_hash(claude_dir)
+    except Exception:
+        actual = None
+    if actual is None:
+        return BundleTrust(True, "the installed enforcement bundle could not be measured at all, "
+                                 "so it cannot be compared with the one this project trusts")
+    if actual != recorded:
+        return BundleTrust(True, "the installed enforcement bundle (%s) is not the one this "
+                                 "project trusts (%s)" % (str(actual)[:12], str(recorded)[:12]))
+    return BundleTrust(False)
+
+
 def open_state(repo_root=None):
     """The ProjectState for this repo. Raises KernelUnavailable when there is no state dir."""
     repo_root = repo_root or find_repo_root()

@@ -104,6 +104,29 @@ def main(argv=None):
         if not os.path.isdir(kit_dir):
             continue
         vfile = os.path.join(kit_dir, "VERSION")
+        # DERIVED KIT FILES ARE REGENERATED BEFORE THE HASH, never remembered by a human. The
+        # tray record (`kernel.trays`) is computed from the kit's own `templates/repo`, so a kit
+        # that gains or loses a tray would otherwise ship a stale list until somebody noticed —
+        # the drift shape this repo keeps paying for. Regenerating first means the stamped hash
+        # covers the regenerated file, and `--check` sees the resulting content change as the
+        # pending bump it is.
+        #
+        # `--check` STAYS READ-ONLY, which is the whole reason this is not one call: writing in a
+        # mode a reader assumes is read-only is the defect `--check` itself was added for.
+        from kernel.trays import document_trays, record_path, stamp_document_trays
+        if check_only:
+            wanted = "".join(name + "\n" for name in document_trays(kit_dir))
+            try:
+                with open(record_path(kit_dir), encoding="utf-8", newline="") as fh:
+                    stale = fh.read() != wanted
+            except OSError:
+                stale = True
+            if stale:
+                print("  %s: BUMP DUE (document_trays.txt is stale)" % kit)
+                changed = True
+                continue
+        else:
+            stamp_document_trays(kit_dir)
         digest = kit_hash(kit_dir)
         old = ""
         if os.path.isfile(vfile):
