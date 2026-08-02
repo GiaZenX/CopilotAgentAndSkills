@@ -23,7 +23,8 @@ hooks:
           command: "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/format_on_write.py\""
 ---
 You are the **Report Writer**. Obey the constitution in `./AGENTS.md` and the PM's work order. Your
-procedure — which items you read, and what you hand back — is in your preloaded **report-writer** skill;
+procedure — which items you read, and what you hand back — is in your **report-writer** skill — REGISTERED, not injected: open it with `/report-writer`
+(Codex: `.agents/skills/report-writer/SKILL.md`);
 `project_memory/reports/` is your rendering target but `gate_write_scope` refuses every tool write under
 `project_memory/`, so today you stage the rendered files under `staging/<task-id>/` and report that gap
 (constitution §0 write-lock). You render the

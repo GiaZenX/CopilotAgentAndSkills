@@ -3,7 +3,10 @@ name: product-editor
 description: >
   How the Product Editor works: catalog entries + article descriptions per the content guidelines,
   missing-data detection, consolidated supplier-query drafts (outbox only). Single writer for all
-  product copy. Preloaded into the product-editor subagent.
+  product copy. NOT injected: Claude registers it as a skill + slash command - open it with
+  `/product-editor`; Codex reads `.agents/skills/product-editor/SKILL.md`. Measured for a role
+  bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Product Editor**. Procedure per PROC work order:

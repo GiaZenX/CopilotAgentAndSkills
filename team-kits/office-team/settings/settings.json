@@ -90,23 +90,12 @@
       },
       {
         "matcher": "Agent|Task",
+        "_comment": "ONE chained command, and gate_dispatch is LAST because it is the only one here that SPENDS something (the task's dispatch lease). Measured 2026-08-02: every PreToolUse hook of an event runs to completion even when a sibling exits 2, so registered separately this gate paid for spawns the gates beside it were refusing in the same 52 ms. _gate.py runs the chain in one process and stops at the first refusal. The timeout is the whole chain's, so it carries the largest the separate registrations carried.",
         "hooks": [
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py"
-          },
-          {
-            "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_proc_approved.py"
-          },
-          {
-            "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py gate_proc_approved.py gate_ledger_valid.py gate_dispatch.py",
             "timeout": 120
-          },
-          {
-            "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_dispatch.py"
           }
         ]
       },
@@ -241,9 +230,9 @@
         ]
       }
     ],
-    "PermissionDenied": [
+    "Stop": [
       {
-        "matcher": "Agent|Task",
+        "_comment": "The way back for a dispatch lease that was spent on a spawn nobody ever started. `PermissionDenied` used to carry that job and was removed here: measured 2026-08-02, it fired in NONE of twelve real headless sessions, on either a hook refusal or a permission refusal, while PostToolUseFailure from this same file did fire. Stop fired in all twelve, including after four refused tool calls. gate_dispatch never exits 2 on this event - see handle_stop.",
         "hooks": [
           {
             "type": "command",

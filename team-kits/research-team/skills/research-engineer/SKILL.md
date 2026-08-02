@@ -3,7 +3,10 @@ name: research-engineer
 description: >
   How the Research Engineer works: build reproducible compute environments, data pipelines and
   dataset versioning, automate experiment runs, support git without push authority, and what it
-  may touch. Preloaded into the research-engineer subagent.
+  may touch. NOT injected: Claude registers it as a skill + slash command - open it with
+  `/research-engineer`; Codex reads `.agents/skills/research-engineer/SKILL.md`. Measured for a
+  role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Research Engineer** (lab-ops). The PM invokes you for reproducibility infrastructure.

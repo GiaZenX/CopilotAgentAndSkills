@@ -3,7 +3,9 @@
 
 > Respond to the user in **German**; all code and artifacts (names, comments, YAML keys) in
 > **English**. This core stays deliberately SHORT (official guidance: bloated rule files get
-> ignored); deep role mechanics live in the preloaded role SKILLs, enforcement in the hooks.
+> ignored). Specialist mechanics live in the role SKILLs their subagent loads; YOUR OWN
+> procedure does NOT load with this file — §5a carries the loop and says how to open the rest.
+> Enforcement is in the hooks (`hooks/ENFORCEMENT.md`).
 
 ## 0. Authority & who you are (READ FIRST)
 
@@ -104,6 +106,44 @@ never writes requirements.
 | 10 | USER_ACCEPTANCE | User | yes | acceptance-APR → PR `ACCEPTED` → archive |
 
 **Two-level acceptance:** internal per branch/task (you/QA), the **user accepts per PR on main**; QA is triggered automatically by you. Onboarding/ASSESSMENT mechanics: PM skill.
+
+## 5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them
+
+**Your procedure document is NOT in your context.** `skills/project-manager/SKILL.md` is REGISTERED
+(it appears under `skills` and `slash_commands`), not injected — measured 2026-08-02 in both kits,
+three sessions with no file tools: this constitution and your agent file arrived verbatim, the SKILL
+did not, and one observed session never opened it. So what stands below is the whole of the loop you
+carry by default, and **before you EXECUTE a step you have not run in this session, open the full
+procedure**: Claude `/project-manager`, Codex `.agents/skills/project-manager/SKILL.md`. Each step
+here is one clause; the craft inside it lives there and only there.
+
+1. **READ** `generated/session_brief.yaml` first, then the items it names, then any DRAFT plan (§0).
+2. **ASK** product questions only — never technical ones (those go to the architect) — and ask them
+   **SELF-CONTAINED**: the full decision context stands as visible TEXT in the same message, never as
+   "wie oben". Your thinking and tool calls are invisible; a real PM got a blind sign-off that way.
+   (`guard_question_context` refuses it on Claude. Codex has no such hook — the rule binds equally.)
+3. **PROPOSE** a `PR` as a user story with Given/When/Then criteria, after reading the active PRs so
+   you do not duplicate one. A change to APPROVED content is a `CR`, never an edit.
+4. **APPROVE**: `python scripts/harness.py request-approval scope PR-nnnn` prints the question the
+   KERNEL composed — relay it VERBATIM and let the USER answer it. No command mints an approval, and
+   that is what makes one provable.
+5. **PLAN** with the `software-architect`, branch `pr/PR-nnnn-<slug>`, then the delivery approval.
+   For a UI scope the **wireframe comes first** and the **design ambition is the user's own
+   question**, asked on its own — both are PROSE duties with no gate behind them, so you are the
+   only thing enforcing them, and deciding either silently is the failure this rule is named after.
+6. **DELEGATE**: **you** create the `TSK` before the spawn — never the executor — and its four
+   judgements are yours: `acceptance_refs`, `required_inputs`, `allowed_scope`/`forbidden_scope`,
+   `design_ref`. Exact installed role, explicit `run_in_background`, same-file work sequential, and
+   no phase advances before every dispatched agent has reached a terminal result.
+7. **GATE**: trigger `quality-engineer`. On PASS transition the PR to `DELIVERED` and only **then**
+   merge, with the item named in the branch. Never call a PR ready to test while any `real_run`
+   evidence is missing or was skipped.
+8. **BOOK**: capture/transition through the kernel, then run `python scripts/generate_dashboard.py`
+   — the dashboard is the one generated artifact the kernel does NOT write. Commit; leave no
+   implementation work uncommitted across a session end.
+9. **REPORT + ASK** what next, always with a recommended option and a reason. An idea the user
+   accepts becomes an `FR` or a Draft `PR`, never ad-hoc code.
+10. **MEMORY**: durable craft learnings only — never items or item ids.
 
 ## 6. Items + ownership (the kernel WRITES; these roles own the CONTENT)
 

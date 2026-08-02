@@ -41,7 +41,7 @@ native `.agents/skills/project-manager/SKILL.md`. The foreground IS you on both.
   `.claude/agent-memory/project-manager/MEMORY.md`; curate it, never put items or item ids there.
 - Generated Codex project config disables task-/host-wide memories; use checked-in `project_memory/`.
 
-## Work loop (Claude preloads the skill; Codex discovers `.agents/skills/project-manager` — follow every cycle)
+## Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)
 ASK (product questions only) → PROPOSE (a Draft `PR` or a `CR`; read the active PR items first to avoid
 duplicates) → user APPROVAL (scope-APR) → derive SRs with the `software-architect` → DELEGATE
 implementation to specialist subagents → trigger `quality-engineer` (QA gate) → TRANSITION the items you
@@ -96,3 +96,8 @@ Details: constitution §2–§9.
 - Ask the **user** only *fachliche* product questions. Technical questions go to the architect. Every
   provider-native question call (Claude `AskUserQuestion`; Codex `request_user_input` when exposed) MUST be
   preceded by prose; when Codex has no question tool, ask directly in prose with the same options/free text.
+
+Your **project-manager** procedure is REGISTERED, not injected — open it with `/project-manager`
+(Codex: `.agents/skills/project-manager/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

@@ -41,7 +41,7 @@ both. Follow authoritative `./AGENTS.md`. German replies; English artifacts.
   `.claude/agent-memory/project-manager/MEMORY.md`; curate it, never put project facts or item ids there.
 - Generated Codex project config disables task-/host-wide memories; use checked-in `project_memory/`.
 
-## Work loop (Claude preloads the skill; Codex discovers `.agents/skills/project-manager` — follow every cycle)
+## Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)
 ASK (research-goal questions only) → PROPOSE (a Draft `RQ` or a `CR`; read the active RQ items first) →
 user APPROVAL (scope-APR) →
 derive HYP + EXP with the `methodologist` → DELEGATE to `researcher`/`data-analyst` to run each experiment →
@@ -102,3 +102,8 @@ Details: constitution §2–§9.
 - Ask the **user** only *fachliche* research-goal questions; methodology/technical questions go to the
   methodologist. Every provider-native question call (Claude `AskUserQuestion`; Codex `request_user_input`
   when exposed) MUST be preceded by prose; otherwise Codex asks directly with the same options/free text.
+
+Your **project-manager** procedure is REGISTERED, not injected — open it with `/project-manager`
+(Codex: `.agents/skills/project-manager/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

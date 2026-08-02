@@ -112,6 +112,255 @@ def test_the_spec_states_the_byte_budget_the_validator_enforces():
         "II.5 still carries the per-file line budget as a live requirement")
 
 
+OBSERVATIONS = json.load(io.open(os.path.join(ROOT, "tools", "provider_observations.json"),
+                                 encoding="utf-8"))
+
+
+def _lead(kit):
+    return lead_package.lead_role(_kit_dir(kit))
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_the_budget_weighs_what_a_session_was_measured_to_receive(kit):
+    """The budget's subject is a MEASUREMENT, and for a round it was a belief.
+
+    `files()` counted the lead SKILL because the SKILL's own frontmatter said Claude preloads it.
+    Measured (2026-08-02, `tools/provider_observations.json` → `session_context`): the constitution
+    and the agent file arrive verbatim, the SKILL does not, and the provider's `init` line lists it
+    under `skills` and `slash_commands`. For dev-team that is 21 572 of 49 758 bytes weighed
+    against a budget they never enter — a measurement of the wrong subject, and the reason the
+    shortening was being aimed at a file that costs no context at all.
+
+    WHAT THIS TEST CAN DO AND WHAT IT CANNOT: it cannot observe a context window. It holds the
+    derivation to the record, and the record carries its own provenance. Both halves are asserted,
+    because dropping the SKILL from `files()` is only right if it lands in `on_demand_files()` —
+    the pin's subject (`test_shortening_net.py::_pinned_files`) reads that one, and a file in
+    neither list is a file nothing watches."""
+    kit_dir = _kit_dir(kit)
+    lead = _lead(kit)
+    assert lead, kit
+    loaded = {os.path.relpath(path, kit_dir).replace(os.sep, "/")
+              for path in lead_package.files(kit_dir)}
+    on_demand = {os.path.relpath(path, kit_dir).replace(os.sep, "/")
+                 for path in lead_package.on_demand_files(kit_dir)}
+    expected_loaded = {name.replace("<lead>", lead)
+                       for name in OBSERVATIONS["session_context"]["loaded"]}
+    expected_on_demand = {name.replace("<lead>", lead)
+                          for name in OBSERVATIONS["session_context"]["registered_not_loaded"]}
+    assert loaded == expected_loaded, kit
+    assert on_demand == expected_on_demand, kit
+    assert not loaded & on_demand, "%s: a file cannot be both" % kit
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_an_instruction_that_does_not_load_is_reachable_from_one_that_does(kit):
+    """The other half of taking the SKILL out of the package, and without it the correction would
+    have been a demotion: a procedure that does not load and is not asked for is a procedure that
+    does not exist. One observed session never opened it.
+
+    So the LOADED text has to hand over the invocation, in BOTH provider vocabularies — the Claude
+    slash command and the Codex path — because a lead that only knows one of them is a lead on the
+    wrong provider. Derived from the role `settings.json` binds, so renaming the lead moves this
+    with it rather than leaving it checking a name nobody uses.
+
+    The old text failed this while looking like it passed it: it named the Codex DIRECTORY inside
+    the sentence "Claude preloads the skill", which is a description of a load, not an
+    instruction to fetch anything."""
+    kit_dir = _kit_dir(kit)
+    lead = _lead(kit)
+    loaded_text = "\n".join(io.open(path, encoding="utf-8").read()
+                            for path in lead_package.files(kit_dir))
+    for invocation in ("`/%s`" % lead, ".agents/skills/%s/SKILL.md" % lead):
+        assert invocation in loaded_text, (
+            "%s: nothing that LOADS tells the lead how to open its own procedure (%s missing). "
+            "The SKILL is registered on demand, so an unmentioned SKILL is an unread one."
+            % (kit, invocation))
+
+
+def _occurrences(haystack, needle):
+    index = haystack.find(needle)
+    while index != -1:
+        yield index
+        index = haystack.find(needle, index + 1)
+
+
+def _skills_reachable(kit):
+    """{role: (agent .md, SKILL.md)} for every skill an agent's `skills:` frontmatter names.
+
+    Both files, because the correction has two halves that live in different places: the SKILL is
+    what makes the false claim, and the AGENT FILE is the one that actually loads — so it is the
+    only place where naming the retrieval route can reach anybody.
+
+    THE SUBJECT IS DERIVED, not listed. "The 23 files that carry the sentence" would be a rule
+    about today's tree; what the rule is about is the ROUTE — a skill a session can be handed
+    through frontmatter — so a skill added tomorrow is covered the day its agent names it, and a
+    skill nobody names is nobody's claim.
+    """
+    yaml = pytest.importorskip("yaml")
+    reachable = {}
+    for path in sorted(glob.glob(os.path.join(_kit_dir(kit), "agents", "*.md"))):
+        with io.open(path, encoding="utf-8") as handle:
+            raw = handle.read()
+        front = yaml.safe_load(raw.split("---", 2)[1]) if raw.count("---") >= 2 else {}
+        for skill in (front or {}).get("skills") or []:
+            candidate = os.path.join(_kit_dir(kit), "skills", str(skill), "SKILL.md")
+            if os.path.isfile(candidate):
+                reachable[str(skill)] = (path, candidate)
+    return reachable
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_no_skill_a_session_can_reach_claims_to_be_preloaded(kit):
+    """Twenty-three shipped SKILLs said `Preloaded into the X subagent.` and the frontmatter route
+    they meant delivers nothing.
+
+    MEASURED (`provider_observations.json` → `session_context.any_role_bound_as_session_agent`): a
+    scaffolded dev project with `agent: backend-developer` and `--tools ""`, one session, a control
+    word in the agent file and a counter-control word at the end of the SKILL — the agent file's
+    word came back, the SKILL's did not.
+
+    THE LIMIT IS PART OF THE CORRECTION, not a footnote to it: what was measured is the
+    SESSION-agent path, and the sentence claimed the SUBAGENT-SPAWN path. Same mechanism, same
+    result as for the lead, and still not measured — two attempts at a real child ended with the
+    child refusing the work order before it answered. So the texts now say what holds and name the
+    open half, and the record carries why it stayed open.
+
+    Both directions are asserted, and the positive one is where the first cut of this test was
+    wrong in a way worth recording: it demanded the retrieval route inside the SKILL, which is the
+    one document a session that needs the route does not have. The route belongs in the AGENT
+    FILE — the half of the pair that was measured to arrive — and that is also where the same
+    false claim stood in thirteen files ("in your preloaded **X** skill").
+    """
+    forbidden = OBSERVATIONS["session_context"]["claims_of_loading"]
+    reachable = _skills_reachable(kit)
+    assert reachable, "%s: no agent names a skill — the subject derived to nothing" % kit
+    for role, (agent, path) in sorted(reachable.items()):
+        with io.open(path, encoding="utf-8") as handle:
+            skill_text = handle.read()
+        with io.open(agent, encoding="utf-8") as handle:
+            agent_text = handle.read()
+        # WHITESPACE IS COLLAPSED FIRST, and that is not tidiness — it is the spelling this whole
+        # correction exists for. Two of the twenty-three SKILLs wrapped the sentence mid-phrase
+        # ("Preloaded\n  into the devops-engineer subagent."), which is what 100-column prose does
+        # by default, and it is why the first survey counted twenty-one. A guard that compares
+        # against a single-spaced phrase repeats the very miss it was written to end: measured on
+        # `dev-team/skills/devops-engineer/SKILL.md`, the wrapped sentence passed and the same
+        # sentence on one line failed.
+        lowered = re.sub(r"\s+", " ", (skill_text + "\n" + agent_text).lower())
+        # A NEGATED phrase is the opposite claim, and the corrected texts are full of them — "NOT
+        # loaded at session start" is the sentence this test exists to produce, so a plain
+        # substring search would fail every file it just fixed. The negation is read as such
+        # rather than by dropping the phrase from the inventory, which would leave the positive
+        # spelling unwatched.
+        #
+        # THE WINDOW DICTATES A SENTENCE FORM, and it is a cost rather than a solved problem: the
+        # negation has to stand IMMEDIATELY before the phrase. "The SKILL is NOT, despite the name,
+        # preloaded into the subagent" is a correct sentence and goes red here; write it without
+        # the interjection. What the window does NOT cost is protection — any UNNEGATED occurrence
+        # flags the file, so "this file is not the one that is preloaded; the SKILL is preloaded"
+        # is caught on its second half (measured). The error direction is the safe one.
+        claims = [phrase for phrase in forbidden
+                  if any(not re.search(r"\b(not|never|no)\W{0,3}$", lowered[max(0, index - 12):index])
+                         for index in _occurrences(lowered, phrase))]
+        assert not claims, (
+            "%s: %s / %s says %s, and a session bound to that role was measured NOT to receive "
+            "the skill (tools/provider_observations.json)."
+            % (kit, os.path.relpath(agent, ROOT), os.path.relpath(path, ROOT), claims))
+        for invocation in ("`/%s`" % role, ".agents/skills/%s/SKILL.md" % role):
+            assert invocation in agent_text, (
+                "%s: %s does not name %s — the SKILL is registered rather than loaded, so the file "
+                "that DOES load has to say how to fetch it."
+                % (kit, os.path.relpath(agent, ROOT), invocation))
+
+
+def _claim_survives(text):
+    """The guard's own predicate, over one string — so the probes below drive the running rule."""
+    forbidden = OBSERVATIONS["session_context"]["claims_of_loading"]
+    lowered = re.sub(r"\s+", " ", text.lower())
+    return [phrase for phrase in forbidden
+            if any(not re.search(r"\b(not|never|no)\W{0,3}$", lowered[max(0, index - 12):index])
+                   for index in _occurrences(lowered, phrase))]
+
+
+@pytest.mark.parametrize("spelling", [
+    "Preloaded into the devops-engineer subagent.",
+    "Preloaded\n  into the devops-engineer subagent.",
+    "Preloaded into\n  the records-clerk subagent.",
+    "How it works. Preloaded\ninto\nthe reviewer subagent.",
+])
+def test_the_guard_reads_the_claim_however_the_line_is_wrapped(spelling):
+    """THE MISS THIS GUARD WAS BUILT TO END, one level up — in the guard.
+
+    Two of the twenty-three SKILLs broke the phrase across a line, which is what 100-column prose
+    does by default, and a `grep "Preloaded into"` counted twenty-one. The guard then compared
+    against the same single-spaced phrase: measured on
+    `dev-team/skills/devops-engineer/SKILL.md`, the wrapped sentence passed the guard and the
+    identical sentence on one line failed it. Whoever reflowed the paragraph would have brought the
+    claim back with nothing going red.
+
+    The probes run the RUNNING predicate rather than a copy of it, and the last one carries two
+    breaks inside one phrase so "collapse a single newline" is not enough to pass."""
+    assert _claim_survives(spelling) == ["preloaded into"], spelling
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("The SKILL is NOT preloaded into the subagent.", []),
+    ("It is never preloaded into anything.", []),
+    ("This file is not the one that is preloaded; the SKILL is preloaded into the subagent.",
+     ["is preloaded", "preloaded into"]),
+])
+def test_the_guard_reads_a_negation_as_the_opposite_claim(text, expected):
+    """The other direction, and its cost stated as a case rather than as prose: a negation
+    IMMEDIATELY before the phrase clears it, an unnegated occurrence ANYWHERE flags the file — so a
+    text that denies the claim once and makes it once is caught on the second half.
+
+    What is deliberately NOT covered is an interjected negation ("is NOT, despite the name,
+    preloaded into…"): it goes red although it is correct. That costs a sentence form, not a
+    protection, and the trade is the safe one."""
+    assert sorted(_claim_survives(text)) == sorted(expected), text
+
+
+def test_the_reachable_subject_survives_the_shapes_a_kit_can_have(tmp_path):
+    """Three edge cases of the DERIVATION, none of which exists in the shipped kits today and each
+    of which would silently empty or crash it tomorrow: an agent with no `skills:` at all, a
+    `skills:` entry naming a directory that ships no `SKILL.md`, and one skill named by two agents.
+
+    The third is the one with a wrong-looking alternative: a dict keyed by role collapses the two
+    agents into one entry, so only ONE of them would ever be checked for the retrieval route. It is
+    asserted here as the behaviour that holds today AND as the limit it carries — `project-auditor`
+    ships in all three kits and is named by one agent in each, so the case is one edit away.
+    """
+    kit = tmp_path / "probe-team"
+    (kit / "agents").mkdir(parents=True)
+    (kit / "skills" / "alpha").mkdir(parents=True)
+    (kit / "skills" / "empty").mkdir(parents=True)
+    (kit / "skills" / "alpha" / "SKILL.md").write_text("alpha body\n", encoding="utf-8")
+    (kit / "agents" / "plain.md").write_text("---\nname: plain\n---\nno skills here\n",
+                                             encoding="utf-8")
+    (kit / "agents" / "one.md").write_text(
+        "---\nname: one\nskills: [alpha, empty]\n---\nbody\n", encoding="utf-8")
+    (kit / "agents" / "two.md").write_text(
+        "---\nname: two\nskills: [alpha]\n---\nbody\n", encoding="utf-8")
+
+    saved = _kit_dir.__globals__["TEAM_KITS"]
+    try:
+        _kit_dir.__globals__["TEAM_KITS"] = str(tmp_path)
+        reachable = _skills_reachable("probe-team")
+    finally:
+        _kit_dir.__globals__["TEAM_KITS"] = saved
+
+    # the agent without `skills:` contributes nothing and raises nothing
+    assert set(reachable) == {"alpha"}
+    # a `skills:` entry with no shipped SKILL.md is dropped rather than pointing at a missing file
+    assert "empty" not in reachable
+    # a skill named twice resolves to ONE pair — the LAST agent wins, and that is the limit
+    agent, skill = reachable["alpha"]
+    assert os.path.basename(agent) == "two.md", (
+        "a skill named by two agents no longer collapses to one pair — if that changed on purpose, "
+        "the retrieval-route assertion now has to hold for every naming agent, not just one")
+    assert os.path.basename(skill) == "SKILL.md"
+
+
 def test_the_budget_is_a_byte_comparison_over_the_files_the_kit_names(tmp_path):
     """The floor under the number: `size()` counts bytes of the files `files()` derives, and the
     comparison is strict.
@@ -132,21 +381,24 @@ def test_the_budget_is_a_byte_comparison_over_the_files_the_kit_names(tmp_path):
     (kit / "skills" / "chief" / "SKILL.md").write_text("s" * 1000, encoding="utf-8")
 
     assert [os.path.basename(p) for p in lead_package.files(str(kit))] == \
-        ["AGENTS.md", "chief.md", "SKILL.md"]
-    assert lead_package.size(str(kit)) == 3000
+        ["AGENTS.md", "chief.md"]
+    # the SKILL is a file of this kit's lead and is deliberately NOT weighed — it does not load
+    assert [os.path.basename(p) for p in lead_package.on_demand_files(str(kit))] == ["SKILL.md"]
+    assert lead_package.size(str(kit)) == 2000
 
     # exactly at the ceiling is NOT over it, one byte past it is
     (kit / "constitution" / "AGENTS.md").write_text(
-        "c" * (lead_package.MAX_BYTES - 2000), encoding="utf-8")
+        "c" * (lead_package.MAX_BYTES - 1000), encoding="utf-8")
     assert lead_package.size(str(kit)) == lead_package.MAX_BYTES
     assert not lead_package.size(str(kit)) > lead_package.MAX_BYTES
     (kit / "constitution" / "AGENTS.md").write_text(
-        "c" * (lead_package.MAX_BYTES - 1999), encoding="utf-8")
+        "c" * (lead_package.MAX_BYTES - 999), encoding="utf-8")
     assert lead_package.size(str(kit)) > lead_package.MAX_BYTES
 
     # a lead the settings do not name contributes nothing — the subject follows the kit
     (kit / "settings" / "settings.json").write_text(json.dumps({}), encoding="utf-8")
-    assert lead_package.size(str(kit)) == lead_package.MAX_BYTES - 1999 + 1000 - 1000
+    assert lead_package.size(str(kit)) == lead_package.MAX_BYTES - 999
+    assert lead_package.on_demand_files(str(kit)) == ()
 
 
 def _validate_over_a_copy(tmp_path, mutate):

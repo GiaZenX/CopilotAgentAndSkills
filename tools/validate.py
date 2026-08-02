@@ -227,12 +227,20 @@ for kit in discover_kits(ROOT):
         #
         # The package is a CI-side budget, not a hook: nothing writes these files at runtime.
         # WARNING until phase 3 (II.11/3) does the shrinking; promote to `fails` there.
+        #
+        # IT NAMES WHAT IT WEIGHED, from the same derivation it weighed it with. The sentence used
+        # to read "agent.md + Lead-SKILL + constitution all load at every session start", and one
+        # third of that was false: the lead SKILL is registered on demand, not injected (measured
+        # 2026-08-02 — `lead_package.files` carries the measurement). A warning that misnames its
+        # own subject sends the shortening at the wrong file.
         total = lead_package.size(kit_dir)
         if total > lead_package.MAX_BYTES:
-            warns.append("%s: lead instruction package is %d bytes (> %d, spec II.5) — "
-                         "agent.md + Lead-SKILL + constitution all load at every session "
-                         "start. Phase 3 (II.11/3) shrinks these; this becomes a hard failure "
-                         "then." % (kit, total, lead_package.MAX_BYTES))
+            warns.append("%s: lead instruction package is %d bytes (> %d, spec II.5) — %s load at "
+                         "every session start. Phase 3 (II.11/3) shrinks these; this becomes a "
+                         "hard failure then."
+                         % (kit, total, lead_package.MAX_BYTES,
+                            " + ".join(os.path.relpath(path, kit_dir).replace(os.sep, "/")
+                                       for path in lead_package.files(kit_dir))))
 
 # 10) intended-identical hooks/scripts must stay byte-identical across kits (audit finding: a fix
 #    applied in one kit silently diverges the others — exactly the drift class this repo hunts).

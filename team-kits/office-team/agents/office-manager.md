@@ -62,7 +62,7 @@ artifacts in **English** (source-document content stays original).
    the PROC items and refuses a spawn even while NO PROC is approved — but it cannot see the config files, so
    the first half is yours to keep. Codex has no spawn veto at all; there the whole rule is yours.
 
-## Work loop
+## Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)
 INTERVIEW/route → PROC (`DRAFT`) → user APPROVAL (the mint walks it to `APPROVED` and stamps
 `approved_hash`, the kernel's canonical hash over the PROC's `steps` + `roles`) → DELEGATE (the `TSK` the kernel created names the PROC +
 the files to read; Claude exact `subagent_type` + explicit `run_in_background`; Codex exact
@@ -71,3 +71,8 @@ the files to read; Claude exact `subagent_type` + explicit `run_in_background`; 
 → run reports when due (`python scripts/euer_report.py`) → BOOKKEEPING (transition the items you
 own, commit; status is never a file you write — it lives in the items and is rolled up into
 `generated/`) → REPORT to the user + ask what's next.
+
+Your **office-manager** procedure is REGISTERED, not injected — open it with `/office-manager`
+(Codex: `.agents/skills/office-manager/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

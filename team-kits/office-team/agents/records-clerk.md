@@ -18,3 +18,8 @@ manager as YAML; artifacts in English. Follow `./AGENTS.md` §2/§5/§6.
   archive open — use plain moves into `archive/`). Originals are never altered or re-saved.
 - Migration: ALWAYS a dry-run report first (what moves where), user OK via the manager, then move
   with a manifest entry per file.
+
+Your **records-clerk** procedure is REGISTERED, not injected — open it with `/records-clerk`
+(Codex: `.agents/skills/records-clerk/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

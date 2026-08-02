@@ -18,7 +18,7 @@
         "hooks": []
       },
       "Questions": {
-        "digest": "0d9e6f10d4bc03d8",
+        "digest": "c2791b3d6ec45b78",
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
@@ -31,14 +31,14 @@
         "digest": "9478e46991281b3f",
         "hooks": []
       },
-      "Work loop (Claude preloads the skill; Codex discovers `.agents/skills/project-manager` — follow every cycle)": {
-        "digest": "455c6218665dbfe4",
+      "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
+        "digest": "cdbd2e421f7a0fde",
         "hooks": []
       }
     },
     "constitution/AGENTS.md": {
       "(preamble)": {
-        "digest": "db039fe97b8548dd",
+        "digest": "44fca8143ccb2b40",
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
@@ -117,6 +117,12 @@
         "digest": "c374454d5d368c7b",
         "hooks": []
       },
+      "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
+        "digest": "36ebb770c64b7394",
+        "hooks": [
+          "guard_question_context"
+        ]
+      },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
         "digest": "6466384a22343f65",
         "hooks": [
@@ -145,7 +151,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "91f80b45f503ce4a",
+        "digest": "6501922fd764b621",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -176,7 +182,7 @@
     },
     "skills/project-manager/SKILL.md": {
       "(preamble)": {
-        "digest": "cae3fa41b46f9162",
+        "digest": "9a5ce1ce3e0bed9f",
         "hooks": []
       },
       "Defects (bugs)": {
@@ -253,8 +259,8 @@
         "digest": "06ec73df6e3778a6",
         "hooks": []
       },
-      "Work loop": {
-        "digest": "3d6af7d7b81af082",
+      "Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
+        "digest": "153b4fb983e3fc43",
         "hooks": []
       }
     },
@@ -316,6 +322,12 @@
           "gate_proc_approved"
         ]
       },
+      "4a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
+        "digest": "4f5f39ad7915b2b2",
+        "hooks": [
+          "guard_question_context"
+        ]
+      },
       "5. Roles (presets: `core` = records-clerk + bookkeeper; `commerce` adds product-editor +": {
         "digest": "7bdf1cdf983ad004",
         "hooks": [
@@ -352,7 +364,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "0e223949dec3db1f",
+        "digest": "03942e2ddcf757ca",
         "hooks": [
           "gate_approval",
           "gate_dispatch",
@@ -380,7 +392,7 @@
     },
     "skills/office-manager/SKILL.md": {
       "(preamble)": {
-        "digest": "9b743847ffb14a48",
+        "digest": "4124ad0e79797577",
         "hooks": []
       },
       "Kit updates": {
@@ -425,7 +437,7 @@
         "hooks": []
       },
       "Questions": {
-        "digest": "aa98c6533bed84dc",
+        "digest": "9e4c8f4ad20a3d23",
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
@@ -438,14 +450,14 @@
         "digest": "35e55a1f81d3f121",
         "hooks": []
       },
-      "Work loop (Claude preloads the skill; Codex discovers `.agents/skills/project-manager` — follow every cycle)": {
-        "digest": "a4e0a2eae758c3ec",
+      "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
+        "digest": "36b1d0396f0ecc17",
         "hooks": []
       }
     },
     "constitution/AGENTS.md": {
       "(preamble)": {
-        "digest": "abc42189fa4f0c03",
+        "digest": "000f734e9c015a97",
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
@@ -530,6 +542,12 @@
         "digest": "9133624d659ee0c0",
         "hooks": []
       },
+      "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
+        "digest": "8ae2c2591bfe4017",
+        "hooks": [
+          "guard_question_context"
+        ]
+      },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
         "digest": "d789f7c0a51d7023",
         "hooks": []
@@ -556,7 +574,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "b3fbe2caf0b8c627",
+        "digest": "2174541140d432dd",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -585,7 +603,7 @@
     },
     "skills/project-manager/SKILL.md": {
       "(preamble)": {
-        "digest": "467b0245bfba0d63",
+        "digest": "59c4bd9874b44109",
         "hooks": []
       },
       "Defects, changes and the inbox": {

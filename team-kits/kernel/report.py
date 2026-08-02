@@ -1057,10 +1057,17 @@ def _invoked_scripts(command: str) -> list:
         if base and base not in names:
             names.append(base)
     # ...then follow the launcher chain: `A.py B.py` runs B as well, and `A.py B.py C.py` both.
-    for _pass in range(4):
+    #
+    # THE SECOND SCRIPT IS MATCHED IN A LOOKAHEAD, so consecutive pairs OVERLAP. Without it
+    # `re.finditer` consumed `A.py B.py` whole and resumed after it, so the pair `B.py C.py` was
+    # never seen and a three-link chain reported only its first two. That stopped being
+    # hypothetical the day the kits registered their spawn gates as ONE chained command — office
+    # runs four gates behind the launcher — and it would have read as `gate_dispatch` being
+    # unregistered on PreToolUse in doctor's own capability matrix.
+    for _pass in range(8):
         grew = False
         for match in re.finditer(
-                r"([^\s\"';|&]+\.py)[\"']?\s+[\"']?([^\s\"';|&]+\.py)", command or ""):
+                r"([^\s\"';|&]+\.py)[\"']?\s+(?=[\"']?([^\s\"';|&]+\.py))", command or ""):
             first = os.path.basename(match.group(1).replace("\\", "/"))
             second = os.path.basename(match.group(2).replace("\\", "/"))
             if first in names and second not in names:

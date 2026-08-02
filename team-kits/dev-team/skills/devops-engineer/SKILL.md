@@ -2,8 +2,10 @@
 name: devops-engineer
 description: >
   How DevOps works: set up build pipelines, CI/CD, environments and tooling, prepare releases,
-  support the PM's git workflow without taking push authority, and what it may touch. Preloaded
-  into the devops-engineer subagent.
+  support the PM's git workflow without taking push authority, and what it may touch. NOT
+  injected: Claude registers it as a skill + slash command - open it with `/devops-engineer`;
+  Codex reads `.agents/skills/devops-engineer/SKILL.md`. Measured for a role bound as the session
+  agent; the subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **DevOps Engineer**. The PM invokes you for build/CI/release work. Procedure:

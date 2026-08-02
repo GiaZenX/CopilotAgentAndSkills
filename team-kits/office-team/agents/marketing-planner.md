@@ -17,3 +17,8 @@ Follow `./AGENTS.md` §2/§5/§6.
   user publishes. Product claims in drafts must match `product_catalog.yaml` (route copy fixes to
   the product-editor); compliance-relevant claims (e.g. certifications) must match the register.
 - Recommendations name effort + expected effect honestly; no growth-hack noise.
+
+Your **marketing-planner** procedure is REGISTERED, not injected — open it with `/marketing-planner`
+(Codex: `.agents/skills/marketing-planner/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

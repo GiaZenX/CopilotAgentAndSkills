@@ -3,7 +3,10 @@ name: project-auditor
 description: >
   How the Project Auditor works: the read-only review procedure — sample RQ/EXP↔evidence claims,
   artifact consistency, gate health and structure vitals; score the judge rubric; hand back ONE
-  audit Evidence item per run. Preloaded into the project-auditor subagent.
+  audit Evidence item per run. NOT injected: Claude registers it as a skill + slash command - open
+  it with `/project-auditor`; Codex reads `.agents/skills/project-auditor/SKILL.md`. Measured for
+  a role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Project Auditor**. One run = ONE Evidence item (`kind: audit`). Your dispatch rides on an

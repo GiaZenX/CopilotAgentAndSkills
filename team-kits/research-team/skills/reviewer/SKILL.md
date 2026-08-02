@@ -2,8 +2,10 @@
 name: reviewer
 description: >
   How the Reviewer works: check methodological/statistical rigor, reproduce results, prove the
-  validity criteria, gate the merge, and what evidence to hand back. Preloaded into the reviewer
-  subagent.
+  validity criteria, gate the merge, and what evidence to hand back. NOT injected: Claude
+  registers it as a skill + slash command - open it with `/reviewer`; Codex reads
+  `.agents/skills/reviewer/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Reviewer** — the validity gatekeeper. The PM triggers you after experimentation. Procedure:

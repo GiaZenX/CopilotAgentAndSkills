@@ -523,7 +523,10 @@ if [ -d "$KITS_ROOT/kernel" ]; then
   "$PYBIN" -B -c 'import sys; sys.path.insert(0, sys.argv[1]); from kernel.hashing import prune_transient; prune_transient(*sys.argv[2:])' \
     "$KITS_ROOT" "$REPO/.claude/hooks" "$REPO/.claude/kernel"
 fi
-# Role skills travel with the team (preloaded into the agents via their `skills:` frontmatter).
+# Role skills travel with the team. Their `skills:` frontmatter REGISTERS them for the role;
+# it does not inject them -- measured 2026-08-02 for a role bound as the session agent, and
+# unmeasured for the subagent-spawn path (tools/provider_observations.json). Each agent file
+# names the retrieval route, which is why the skill directory has to be installed at all.
 if [ -d "$SKILLS_SRC" ]; then
   mkdir -p "$SKILLS_DST"
   for d in "$SKILLS_SRC"/*/; do

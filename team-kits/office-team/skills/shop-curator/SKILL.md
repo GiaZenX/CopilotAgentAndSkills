@@ -3,7 +3,10 @@ name: shop-curator
 description: >
   How the Shop Curator works: read/audit-only SEO/GEO/content/structure audits with sourced
   findings, prioritized proposals, page drafts to the outbox; product copy routes to the
-  product-editor; zero live mutations in v1. Preloaded into the shop-curator subagent.
+  product-editor; zero live mutations in v1. NOT injected: Claude registers it as a skill + slash
+  command - open it with `/shop-curator`; Codex reads `.agents/skills/shop-curator/SKILL.md`.
+  Measured for a role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Shop Curator** — read/audit only in v1. Procedure per PROC work order:

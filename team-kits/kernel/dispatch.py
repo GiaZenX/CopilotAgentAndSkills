@@ -1,10 +1,16 @@
 """Dispatch leases + result submission (HARNESS_V2_SPEC.md II.4) -- step 1.4b.
 
 READY -> short-lived lease (nonce + TTL) -> `HARNESS_DISPATCH` header ->
-PreToolUse validates the lease (hook, phase 2) -> SubagentStart binds the
-child's agent_id to the lease -> spawn outcome moves the task
-(success: IN_PROGRESS, failure: straight back to READY) -> an orphaned lease
+PreToolUse validates the lease and CLAIMS it for one dispatch (hook, phase 2) ->
+SubagentStart binds the child's agent_id to the lease -> spawn outcome moves the
+task (success: IN_PROGRESS, failure: straight back to READY) -> an orphaned lease
 falls back to READY after TTL. The gate parses ONLY the header, never prose.
+
+A claim that produces NO child is undone by the clock, not by an event:
+`spent_claim_reason` says what makes a claim still stand and
+`reconcile_unstarted_dispatches` returns the task to READY once it does not.
+Measured 2026-08-02: the provider delivers no hook event for a permission
+refusal at all, so a rollback that needs one is a rollback that may never run.
 
 submit_result validates the <=4 KB result envelope against its schema and
 moves IN_PROGRESS -> SUBMITTED; the envelope is stored beside the task.
@@ -31,9 +37,15 @@ from .state import ProjectState, StateError, _now_iso
 
 HEADER_PREFIX = "HARNESS_DISPATCH "
 DEFAULT_LEASE_TTL = 15 * 60.0
-# how long a validated dispatch waits for its SubagentStart to claim it (see
+# How long a validated dispatch waits for its SubagentStart to claim it (see
 # mark_awaiting_bind); generous enough for a slow spawn, short enough that a
-# failed spawn does not leave a claimable slot lying around
+# failed spawn does not leave a claimable slot lying around.
+#
+# It bounds the CLAIM as well, and that is one window rather than two on purpose:
+# "the child may still arrive" and "the claim still stands" are the same
+# question. See `spent_claim_reason` and `reconcile_unstarted_dispatches` -- past
+# this window a dispatch that produced no child is not evidence of anything, and
+# the task goes back to READY without any hook event having to say so.
 BIND_WINDOW = 120.0
 # where an `APR.kind: analysis` lists the tasks it covers (spec II.2 Buendelung:
 # "EINE analysis- oder scope-APR darf MEHRERE im subject_manifest GELISTETE
@@ -264,8 +276,110 @@ def _validate_lease_locked(state: ProjectState, header: dict) -> dict:
     return lease
 
 
+def spent_claim_reason(lease: dict):
+    """Why this lease may not be claimed (again), or None -- ONE definition of a spent claim.
+
+    WHEN A CLAIM MAY COME INTO EXISTENCE, stated as a property rather than as a
+    flag: a claim is the record that a child was ASKED FOR. It may stand only
+    while that ask can still produce a child, or while one exists. Nothing else
+    about it is evidence of anything.
+
+    Two terms, and both are things that were OBSERVED rather than assumed:
+      * `agent_id` -- a child is bound to this lease. It exists; a second claim
+        would be a second child under one grant.
+      * an ask that is still in flight -- the bind window opened when the claim
+        was made has not closed yet, so the child may still arrive.
+
+    TWO HERE, FOUR IN `reconcile_unstarted_dispatches`, and they are not one list
+    counted twice -- the two functions answer opposite questions. This one asks
+    "may this lease be claimed (again) NOW", and needs only the reasons a claim
+    still stands. The other asks "may this lease be GIVEN BACK", which is a
+    stronger question: it adds that a claim was ever made (an undispatched lease
+    is nobody's failure) and that the task is still LEASED (an outcome already
+    recorded must not be undone). Anyone quoting a number should say which of the
+    two functions it belongs to.
+
+    WHAT WAS HERE BEFORE AND WHY IT WAS A DEAD END, measured 2026-08-02 in a real
+    headless session: the term was `dispatched_at`, an eternal flag written at
+    PreToolUse. Every PreToolUse hook of one event runs to completion even when a
+    sibling exits 2, so the flag was written for a spawn another gate was
+    refusing at the same moment; the retry was then refused for the remaining
+    ~900 s of DEFAULT_LEASE_TTL. The rollback that was supposed to undo it hung
+    on a `PermissionDenied` hook event, which fired in NONE of twelve measured
+    sessions. A consumption whose undo depends on an event nobody has seen is a
+    consumption without a way out, so the undo is now the clock plus
+    `reconcile_unstarted_dispatches`, which needs no event at all.
+
+    THE RESIDUAL, named rather than implied: two spawns of the SAME header issued
+    inside one parallel batch both land inside the open window, so the second is
+    refused -- that half holds. Two spawns MORE than BIND_WINDOW apart where the
+    first really did start but neither `SubagentStart` nor `PostToolUse` was ever
+    delivered would both be allowed. Such a first child is UNBOUND (nothing set
+    `agent_id`), and gate layer 3 refuses every write from an unbound agent, so
+    what is lost there is tokens, not scope.
+    """
+    if lease.get("agent_id"):
+        return ("a child (%s) is already bound to the lease for %s"
+                % (lease["agent_id"], lease["task_id"]))
+    left = _window_open_until(lease) - time.time()
+    if lease.get("dispatched_at") and left > 0:
+        return ("the lease for %s was dispatched at %s and is still awaiting its child "
+                "(%d s left)" % (lease["task_id"], lease["dispatched_at"], int(left)))
+    return None
+
+
+def reconcile_unstarted_dispatches(state: ProjectState) -> list:
+    """Every claim that never produced a child -> the task back to READY. Returns the ids.
+
+    THE WAY BACK FOR A SPENT LEASE, and it depends on no hook event whatsoever --
+    which is the whole point. Spec II.4 wants "Fehlschlag -> sofort zurueck auf
+    READY"; the events that could say "this spawn failed" are the provider's to
+    deliver, and a real run showed the harness cannot rely on getting them:
+    `PostToolUseFailure` does fire, a permission refusal fires NOTHING, and
+    `PermissionDenied` -- which the rollback was registered on -- was never seen.
+    So the condition here is the ABSENCE of evidence after the window in which
+    evidence could still arrive, which is decidable locally:
+
+        dispatched, no bound child, bind window closed, task still LEASED.
+
+    Every one of the four is load-bearing. Without `dispatched` this would sweep
+    a lease its owner has not spawned against yet. Without the `agent_id` check
+    it would free a task whose child is running. Without the closed window it
+    would race the child that is just starting. Without `LEASED` it would undo an
+    outcome one of the post-spawn events already recorded.
+
+    FOUR HERE, TWO IN `spent_claim_reason`: giving a lease back is a stronger
+    claim than refusing to re-issue it, so it takes two conditions more. See that
+    docstring for the pairing.
+
+    Cost is BIND_WINDOW rather than DEFAULT_LEASE_TTL: 120 s instead of 900 s,
+    and `sweep_expired_leases` remains the backstop for everything else (a bound
+    child that never finished, a lease nobody dispatched).
+    """
+    released = []
+    with state.lock:
+        now = time.time()
+        for lease in _iter_leases(state):
+            if lease.get("agent_id") or not lease.get("dispatched_at"):
+                continue
+            if _window_open_until(lease) >= now:
+                continue
+            task_id = str(lease["task_id"])
+            try:
+                task = state.read_item(task_id)
+            except StateError:
+                continue
+            if task.get("status") != "LEASED":
+                continue
+            _release_lease_locked(state, task_id, to_ready=True)
+            released.append(task_id)
+        if released:
+            state._regenerate_index_locked()
+    return released
+
+
 def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
-                      claim: bool = False) -> dict:
+                      claim: bool = False, prompt_id: str = None) -> dict:
     """The full gate-layer-2 check (spec II.4), re-run at SPAWN time.
 
     `create_lease` checked the same ground when the lease was made, but that was
@@ -285,18 +399,25 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
     could spawn N children -- and only the first would ever get bound. Callers
     that merely VERIFY an already-dispatched spawn (the PostToolUse path) pass
     claim=False.
+
+    A claim OPENS THE BIND WINDOW in the SAME write, under the same lock hold,
+    and that is not tidiness: `spent_claim_reason` reads that window to decide
+    whether a claim still stands, so a claim recorded in one write and its window
+    in the next would leave a moment in which the claim counted for nothing.
+    `prompt_id` narrows the window exactly as `mark_awaiting_bind` documents.
     """
     with state.lock:
         task_id = header["task_id"]
         lease = _validate_lease_locked(state, header)
-        if claim and lease.get("dispatched_at"):
-            raise DispatchError(
-                "the lease for %s was already dispatched at %s -- a second claim "
-                "on one lease is blocked (spec II.4). Remedy: create a fresh "
-                "lease for a second attempt; the specialist carries the nonce in "
-                "its prompt, so re-using it would spawn under a spent claim."
-                % (task_id, lease["dispatched_at"])
-            )
+        if claim:
+            spent = spent_claim_reason(lease)
+            if spent:
+                raise DispatchError(
+                    "%s -- a second claim on one lease is blocked (spec II.4). "
+                    "Remedy: create a fresh lease for a second attempt; the "
+                    "specialist carries the nonce in its prompt, so re-using it "
+                    "would spawn under a spent claim." % spent
+                )
         task = state.read_item(task_id)
         if task.get("status") != "LEASED":
             raise DispatchError(
@@ -393,6 +514,7 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
                 )
         if claim:
             lease["dispatched_at"] = _now_iso()
+            _open_bind_window(lease, prompt_id)
             state._write_yaml_atomic(_lease_path(state, task_id), lease)
         return {"lease": lease, "task": task, "root": root}
 
@@ -453,13 +575,23 @@ def mark_awaiting_bind(state: ProjectState, task_id: str, prompt_id: str = None)
     window left by an earlier turn can neither collide with, nor be stolen by, a
     child from a later one. It cannot separate two same-role dispatches inside
     ONE turn -- that is the residual ambiguity, and it is refused, not guessed.
+
+    `validate_dispatch(claim=True)` opens the same window in its own write; both
+    go through `_open_bind_window` so there is one description of what an open
+    window is, and `spent_claim_reason` reads that same description back.
     """
     with state.lock:
         lease = _read_lease(state, task_id)
-        lease["awaiting_bind_until"] = time.time() + BIND_WINDOW
-        lease["awaiting_bind_prompt"] = prompt_id
+        _open_bind_window(lease, prompt_id)
         state._write_yaml_atomic(_lease_path(state, task_id), lease)
         return lease
+
+
+def _open_bind_window(lease: dict, prompt_id: str = None) -> dict:
+    """Mark a lease as awaiting its child for BIND_WINDOW seconds (caller writes)."""
+    lease["awaiting_bind_until"] = time.time() + BIND_WINDOW
+    lease["awaiting_bind_prompt"] = prompt_id
+    return lease
 
 
 def clear_awaiting_bind(state: ProjectState, task_id: str) -> None:

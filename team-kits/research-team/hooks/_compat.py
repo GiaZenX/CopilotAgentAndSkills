@@ -79,6 +79,29 @@ _TOOL_ALIASES = {"edit": "Edit", "write": "Write", "bash": "Bash", "powershell":
 # previous payload's command.
 _LAST_PAYLOAD = []
 
+# THE PROCESS'S STDIN, REMEMBERED AS BYTES — because one process may now hold SEVERAL gates.
+# `_gate.py` runs a CHAIN when the registration names more than one gate (see its docstring for
+# why the chain exists at all: a gate that CONSUMES state must not decide before every other
+# refusal reason for the same call is known). Every gate in that chain reads "the payload", and a
+# pipe can only be drained once, so the second one used to get b"" -> {} -> "could not be
+# inspected". Caching the RAW BYTES rather than the parsed dict is deliberate: `load()` normalizes
+# and its callers mutate what they get (`tool_input`, `_file_paths`), so handing out one shared
+# dict would let gate 1 change what gate 2 decides on.
+#
+# ONLY for the process's own stdin (`stream is None`). An explicit stream is a caller handing over
+# a payload it already has — a test, the CLI — and must neither fill nor read this.
+_STDIN_BYTES = []
+
+
+def forget_stdin():
+    """Drop the remembered stdin (see `_STDIN_BYTES`) — for in-process consumers only.
+
+    Hook processes are one-shot, so the cache is invisible to them. A test or a long-lived CLI
+    that feeds stdin twice would otherwise be answered with the first payload forever;
+    `_kernel.reset_payload()` calls this so there is ONE thing to forget rather than two.
+    """
+    del _STDIN_BYTES[:]
+
 
 def last_command():
     """The shell command of the payload this process read, or "" — see `_LAST_PAYLOAD`."""
@@ -97,23 +120,31 @@ def load(stream=None, limit=None, tolerate_overflow=False):
     EXITS 2 with a block message — see STDIN_LIMIT for why that is the default rather than a
     return value. Comfort hooks pass tolerate_overflow=True and get the `_stdin_overflow`
     sentinel instead. The limit default is resolved HERE, not in the signature, so the
-    module-level cap stays adjustable at runtime (tests, tuning)."""
+    module-level cap stays adjustable at runtime (tests, tuning).
+
+    The process's OWN stdin is read once and remembered (`_STDIN_BYTES`), so every gate of a
+    chained registration decides on the same bytes; an explicit `stream` bypasses that entirely."""
     limit = STDIN_LIMIT if limit is None else limit
     del _LAST_PAYLOAD[:]
     raw = None
-    try:
-        source = stream if stream is not None else sys.stdin
-        buffer = getattr(source, "buffer", None)
-        if stream is None and buffer is not None:
-            raw = buffer.read(limit + 1)
-        else:
-            # text stream (tests): read(n) counts CHARACTERS, so the encoded result may exceed
-            # the cap slightly — the overflow check below is on bytes and errs toward blocking
-            raw = source.read(limit + 1)
-            if isinstance(raw, str):
-                raw = raw.encode("utf-8", "replace")
-    except Exception:
-        return {}
+    if stream is None and _STDIN_BYTES:
+        raw = _STDIN_BYTES[0]          # already drained by an earlier gate in this process
+    else:
+        try:
+            source = stream if stream is not None else sys.stdin
+            buffer = getattr(source, "buffer", None)
+            if stream is None and buffer is not None:
+                raw = buffer.read(limit + 1)
+            else:
+                # text stream (tests): read(n) counts CHARACTERS, so the encoded result may exceed
+                # the cap slightly — the overflow check below is on bytes and errs toward blocking
+                raw = source.read(limit + 1)
+                if isinstance(raw, str):
+                    raw = raw.encode("utf-8", "replace")
+        except Exception:
+            return {}
+        if stream is None and raw is not None:
+            _STDIN_BYTES.append(raw)
     if raw is None:
         return {}
     if len(raw) > limit:

@@ -3,7 +3,10 @@ name: compliance-researcher
 description: >
   How the Compliance Researcher works: sourced register entries per product-category x market,
   review dates, watch runs for regulation changes, honest uncertainty. Research and flags only —
-  never legal advice. Preloaded into the compliance-researcher subagent.
+  never legal advice. NOT injected: Claude registers it as a skill + slash command - open it with
+  `/compliance-researcher`; Codex reads `.agents/skills/compliance-researcher/SKILL.md`. Measured
+  for a role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Compliance Researcher** — research + flags, NEVER legal advice. Procedure per

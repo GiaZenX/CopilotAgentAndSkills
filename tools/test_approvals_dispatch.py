@@ -1416,6 +1416,117 @@ def test_task_for_agent_is_none_for_an_unbound_agent(state):
     assert dispatch.task_for_agent(state, None) is None
 
 
+# -- what makes a claim stand, and what returns one that produced nothing ----------------------
+
+def _age_the_claim(state, task_id):
+    """Push a claim's bind window into the past -- the only lever a test has on a clock."""
+    path = os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml")
+    lease = state._read_yaml(path)
+    lease["awaiting_bind_until"] = time.time() - 1
+    state._write_yaml_atomic(path, lease)
+    return lease
+
+
+def test_a_claim_stands_only_while_its_child_can_still_arrive(state):
+    """The definition, read off the running code: a claim is evidence that a child was asked for,
+    and it is worth something for exactly as long as the ask can still produce one.
+
+    The term it replaces was an eternal `dispatched_at`, undone only by two hook events -- one of
+    which (`PermissionDenied`) fired in none of twelve measured real sessions. That made a claim
+    on a spawn nobody ever started a ~900 s dead end."""
+    _task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    lease = state._read_yaml(os.path.join(state.root, "tasks", "leases",
+                                          header["task_id"] + ".lease.yaml"))
+    assert "awaiting its child" in dispatch.spent_claim_reason(lease)
+    assert dispatch.spent_claim_reason(_age_the_claim(state, header["task_id"])) is None
+
+
+def test_a_bound_child_makes_a_claim_stand_for_as_long_as_it_runs(state):
+    """The term that never expires. A child can outlive any window, and its lease must stay
+    unclaimable while it does -- otherwise the second-claim rule would evaporate BIND_WINDOW
+    seconds after every successful spawn."""
+    _task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    dispatch.bind_agent(state, header["task_id"], "child-1")
+    _age_the_claim(state, header["task_id"])
+    lease = state._read_yaml(os.path.join(state.root, "tasks", "leases",
+                                          header["task_id"] + ".lease.yaml"))
+    assert "already bound" in dispatch.spent_claim_reason(lease)
+
+
+def test_a_claim_that_produced_no_child_is_reconciled_back_to_ready(state):
+    """The way back, and it asks no hook event for permission -- which is the point: measured
+    2026-08-02, a permission refusal delivers no event at all. Four conditions, all four
+    load-bearing; the three tests below take one away each."""
+    task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    _age_the_claim(state, task["id"])
+    assert dispatch.reconcile_unstarted_dispatches(state) == [task["id"]]
+    assert state.read_item(task["id"])["status"] == "READY"
+    with pytest.raises(DispatchError, match="no lease"):
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+
+
+def test_the_reconciliation_leaves_an_undispatched_lease_alone(state):
+    """No claim, nothing failed. Sweeping here would take a task away from the role that is about
+    to spawn against it."""
+    task, _lease, _header = leased(state)
+    assert dispatch.reconcile_unstarted_dispatches(state) == []
+    assert state.read_item(task["id"])["status"] == "LEASED"
+
+
+def test_the_reconciliation_leaves_a_running_child_alone(state):
+    """A bound child is a child that started. Freeing its task would let somebody else lease work
+    that is already being done, by an agent still holding that task's allowed_scope."""
+    task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    dispatch.bind_agent(state, task["id"], "child-1")
+    _age_the_claim(state, task["id"])
+    assert dispatch.reconcile_unstarted_dispatches(state) == []
+    assert state.read_item(task["id"])["status"] == "LEASED"
+
+
+def test_the_reconciliation_leaves_a_claim_inside_its_window_alone(state):
+    """The child may still be on its way. Reconciling here would race the spawn it is about to
+    clean up after."""
+    task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    assert dispatch.reconcile_unstarted_dispatches(state) == []
+    assert state.read_item(task["id"])["status"] == "LEASED"
+
+
+def test_the_sweep_command_reports_a_claim_that_produced_no_child(state, capsys):
+    """THE THIRD CALL SITE, and the one a role is SENT to. `create_lease`'s refusal says "wait,
+    then `python scripts/harness.py sweep-leases`", and the sweep only ran the TTL backstop — so a
+    lease spent on a spawn the permission layer refused was reported as "released to READY: -" by
+    the very command the message named, and stayed for the rest of its 900 s.
+
+    Both lines are read, because the second is what made the wait measurable in the first place:
+    the id must appear as released, and nothing must still be listed as leased."""
+    from kernel import cli
+    task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    _age_the_claim(state, task["id"])
+    assert cli.main(["--root", state.root, "sweep-leases"]) == 0
+    output = capsys.readouterr().out
+    assert "released to READY: %s" % task["id"] in output, output
+    assert "still leased: -" in output, output
+    assert state.read_item(task["id"])["status"] == "READY"
+
+
+def test_the_reconciliation_does_not_undo_a_recorded_outcome(state):
+    """`IN_PROGRESS` means PostToolUse already said the spawn started. A window that closed
+    afterwards says nothing about that, and rolling the task back would contradict a measurement
+    with the absence of one."""
+    task, _lease, header = leased(state)
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    dispatch.spawn_outcome(state, task["id"], True)
+    _age_the_claim(state, task["id"])
+    assert dispatch.reconcile_unstarted_dispatches(state) == []
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+
+
 # -- the transition gate: an edge an approval COMMITS is that approval's to walk ----------------
 
 def _gated_edges():

@@ -3,7 +3,10 @@ name: frontend-developer
 description: >
   How the Frontend Developer works: implement the assigned UI/client task against the SRs, the
   frozen design revision and the coding guidelines, write component/unit tests, commit per task,
-  and what to hand back. Preloaded into the frontend-developer subagent.
+  and what to hand back. NOT injected: Claude registers it as a skill + slash command - open it
+  with `/frontend-developer`; Codex reads `.agents/skills/frontend-developer/SKILL.md`. Measured
+  for a role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Frontend Developer**. The PM dispatches you ONE `TSK` naming the SR(s) to implement.

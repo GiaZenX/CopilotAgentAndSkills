@@ -1992,6 +1992,171 @@ def test_the_launcher_makes_the_gate_the_real___main__(tmp_path):
     assert proc.returncode == 0, proc.stdout + proc.stderr
 
 
+def _chain_hooks(tmp_path):
+    """A hooks directory with the shipped launcher and three probes that log what they saw."""
+    hooks = tmp_path / "hooks"
+    os.makedirs(str(hooks))
+    shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_gate.py"),
+                    str(hooks / "_gate.py"))
+    shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_compat.py"),
+                    str(hooks / "_compat.py"))
+    for name, code in (("a", 0), ("b", 2), ("c", 0)):
+        write(str(hooks / ("gate_%s.py" % name)),
+              "import os, sys\n"
+              "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+              "import _compat\n"
+              "data = _compat.load()\n"
+              "sys.stderr.write('%s saw %%r\\n' %% data.get('tool_name'))\n"
+              "assert __file__.endswith('gate_%s.py') and "
+              "sys.modules['__main__'].__file__ == __file__\n"
+              "sys.exit(%d)\n" % (name, name, code))
+    return hooks
+
+
+def test_the_launcher_chain_stops_at_the_first_refusal(tmp_path):
+    """WHY THERE IS A CHAIN AT ALL. Measured 2026-08-02: every PreToolUse hook of one event runs
+    to completion even when a sibling exits 2, so a gate that SPENDS state (the dispatch lease)
+    paid for calls another gate was refusing at the same moment. Registered as one chained
+    command, a refusal ends the chain and the consuming gate never runs.
+
+    The refusing gate's code is what the launcher must return — not "non-zero": Claude Code blocks
+    on 2 alone, and any other code lets the call through."""
+    hooks = _chain_hooks(tmp_path)
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"),
+                           "gate_a.py", "gate_b.py", "gate_c.py"],
+                          input=json.dumps({"tool_name": "Agent"}), capture_output=True, text=True)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "a saw 'Agent'" in proc.stderr and "b saw 'Agent'" in proc.stderr
+    assert "c saw" not in proc.stderr, "the chain ran past a refusal: %s" % proc.stderr
+
+
+def test_every_gate_of_a_chain_reads_the_same_payload(tmp_path):
+    """stdin is a pipe and drains once. Without the raw-bytes memo in `_compat` the second gate of
+    a chain would read b"" — which every gate in this repo turns into `{}`, i.e. "no tool_name",
+    i.e. ALLOW. A chain that disarms its own second half is worse than no chain."""
+    hooks = _chain_hooks(tmp_path)
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"), "gate_a.py", "gate_c.py"],
+                          input=json.dumps({"tool_name": "Agent"}), capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stderr.count("saw 'Agent'") == 2, proc.stderr
+
+
+def test_a_four_link_chain_hands_the_same_payload_to_its_last_gate(tmp_path):
+    """The longest chain any kit registers is four (office). Two links prove the memo exists; four
+    prove it is not consumed by being read — an early cut that POPPED the cache would pass the
+    two-link test and hand link three an empty payload, i.e. ALLOW on every gate after the first."""
+    hooks = _chain_hooks(tmp_path)
+    write(str(hooks / "gate_d.py"), (hooks / "gate_a.py").read_text(encoding="utf-8")
+          .replace("'a saw", "'d saw").replace("gate_a.py", "gate_d.py"))
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"),
+                           "gate_a.py", "gate_c.py", "gate_d.py"],
+                          input=json.dumps({"tool_name": "Agent"}), capture_output=True, text=True)
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+    assert proc.stderr.count("saw 'Agent'") == 3, proc.stderr
+
+
+def test_a_chain_carries_a_payload_of_megabytes_to_its_last_gate(tmp_path):
+    """The memo holds the WHOLE payload, not a truncated read. A tool_input carrying a large file's
+    contents is ordinary (`_compat.STDIN_LIMIT` is 16 MB precisely because of that), and a memo
+    filled from a short first read would hand the next gate a payload cut off mid-value — which
+    parses as garbage and, through `_compat.load`'s `{}`, reads as ALLOW."""
+    hooks = _chain_hooks(tmp_path)
+    write(str(hooks / "gate_big.py"),
+          "import hashlib, os, sys\n"
+          "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+          "import _compat\n"
+          "body = (_compat.load().get('tool_input') or {}).get('content') or ''\n"
+          "sys.stderr.write('%d:%s\\n' % (len(body), hashlib.sha256(body.encode()).hexdigest()))\n"
+          "sys.exit(0)\n")
+    shutil.copyfile(str(hooks / "gate_big.py"), str(hooks / "gate_big2.py"))
+    payload = json.dumps({"tool_name": "Write",
+                          "tool_input": {"content": "x" * (4 * 1024 * 1024)}})
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"), "gate_big.py", "gate_big2.py"],
+                          input=payload, capture_output=True, text=True, timeout=300)
+    assert proc.returncode == 0, proc.stdout + proc.stderr[:2000]
+    lines = [line for line in proc.stderr.splitlines() if line]
+    assert len(lines) == 2 and lines[0] == lines[1], lines
+    assert lines[0].startswith("%d:" % (4 * 1024 * 1024)), lines
+
+
+def test_an_oversized_payload_still_stops_the_chain_at_its_first_gate(tmp_path):
+    """The bound survives the memo. `_compat.load` blocks past STDIN_LIMIT because a payload it
+    could not inspect must not read as permission — and the memo must not turn that into "the
+    first gate already read it, so the rest is fine". The cheap way to get this wrong is to fill
+    the memo before the overflow check; then gate two would decide on an over-long payload."""
+    hooks = _chain_hooks(tmp_path)
+    limit = 4096
+    write(str(hooks / "gate_small.py"),
+          "import os, sys\n"
+          "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+          "import _compat\n"
+          "_compat.STDIN_LIMIT = %d\n"
+          "_compat.load()\n"
+          "sys.stderr.write('small ran\\n')\n"
+          "sys.exit(0)\n" % limit)
+    write(str(hooks / "gate_after.py"),
+          "import sys\nsys.stderr.write('after ran\\n')\nsys.exit(0)\n")
+    payload = json.dumps({"tool_name": "Write", "tool_input": {"content": "x" * (limit * 2)}})
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"),
+                           "gate_small.py", "gate_after.py"],
+                          input=payload, capture_output=True, text=True, timeout=120)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "stdin bound" in proc.stderr, proc.stderr
+    assert "after ran" not in proc.stderr, "the chain ran on past an uninspectable payload"
+
+
+def test_a_gate_that_crashes_stops_the_chain_rather_than_letting_it_finish(tmp_path):
+    """A gate that cannot RUN must not be read as permission (spec II.4), and in a chain that has
+    a second edge: the gates BEHIND it must not run either, because the launcher has no idea what
+    the broken one would have said. Both directions are measured — a crash in the middle stops the
+    rest, and the exit code is 2 rather than the interpreter's 1, which Claude Code reads as ALLOW.
+    """
+    hooks = _chain_hooks(tmp_path)
+    write(str(hooks / "gate_boom.py"), "raise MemoryError('out of room')\n")
+    write(str(hooks / "gate_after.py"),
+          "import sys\nsys.stderr.write('after ran\\n')\nsys.exit(0)\n")
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"),
+                           "gate_a.py", "gate_boom.py", "gate_after.py"],
+                          input=json.dumps({"tool_name": "Agent"}), capture_output=True, text=True)
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "a saw 'Agent'" in proc.stderr          # the control: the chain did start
+    assert "after ran" not in proc.stderr, "the chain ran on past a gate that crashed"
+
+
+def test_a_gate_that_drains_stdin_itself_breaks_the_chain_fail_closed(tmp_path):
+    """THE LIMIT OF THE MEMO, measured rather than implied. It is filled by `_compat.load`; a gate
+    that reads `sys.stdin` directly drains the pipe without filling it, and the next gate then
+    finds nothing. That is a REAL hole and it is left open on purpose — the fix would be a second
+    reader of stdin in `_gate.py` with a second copy of the bound `_compat` owns.
+
+    What makes it survivable is the DIRECTION: the next gate gets `{}`, and an integrity gate
+    turns `{}` into a refusal (`_kernel.payload` blocks on an unreadable payload), so the chain
+    fails closed rather than open. And what keeps it hypothetical is
+    `test_no_shipped_hook_reads_stdin_raw`, which parses every shipped hook and refuses a raw
+    stdin read. This test measures the direction; that one measures that nobody takes it."""
+    hooks = _chain_hooks(tmp_path)
+    shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_kernel.py"),
+                    str(hooks / "_kernel.py"))
+    for name in ("_root.py", "_audit.py"):
+        shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", name), str(hooks / name))
+    write(str(hooks / "gate_raw.py"),
+          "import sys\nsys.stdin.buffer.read()\nsys.stderr.write('raw drained\\n')\n"
+          "sys.exit(0)\n")
+    write(str(hooks / "gate_needs.py"),
+          "import os, sys\n"
+          "sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))\n"
+          "import _kernel\n"
+          "_kernel.payload('gate_needs')\n"
+          "sys.stderr.write('needs ran\\n')\n"
+          "sys.exit(0)\n")
+    proc = subprocess.run([sys.executable, str(hooks / "_gate.py"),
+                           "gate_raw.py", "gate_needs.py"],
+                          input=json.dumps({"tool_name": "Agent"}), capture_output=True, text=True)
+    assert "raw drained" in proc.stderr, proc.stderr
+    assert proc.returncode == 2, proc.stdout + proc.stderr
+    assert "could not be read or parsed" in proc.stderr, proc.stderr
+
+
 def dispatched_repo(tmp_path, **task_overrides):
     """A repo with an approved PR and one leased task — the state a real spawn happens in."""
     state = ProjectState(str(tmp_path / "project_memory"))
@@ -2190,22 +2355,354 @@ def test_post_tool_use_leaves_an_unrecognised_status_alone(tmp_path):
     assert state.read_item(task["id"])["status"] == "LEASED"
 
 
-@pytest.mark.parametrize("event", ["PostToolUseFailure", "PermissionDenied"])
-def test_a_spawn_that_never_started_returns_the_task_to_ready(tmp_path, event):
-    """spec II.4 "Fehlschlag -> sofort zurueck auf READY". A failing tool call fires
-    PostToolUseFailure and a denial fires PermissionDenied — never PostToolUse — so a gate
-    listening only on PostToolUse would leave the task LEASED until the TTL sweep.
+def test_a_failed_spawn_returns_the_task_to_ready_at_once(tmp_path):
+    """spec II.4 "Fehlschlag -> sofort zurueck auf READY", on the ONE failure event that was
+    measured to arrive. A failing tool call fires PostToolUseFailure, so a gate listening only on
+    PostToolUse would leave the task LEASED.
 
-    MEASUREMENT GAP, recorded rather than papered over: the hooks reference defines
-    PermissionDenied as the AUTO-MODE CLASSIFIER's denial, and documents no event for a HUMAN
-    rejecting a tool call. Whether that surfaces as PostToolUseFailure is plausible but unmeasured
-    — it needs an interactive session, which this suite cannot drive. Until it is measured, the
-    human-rejection path may still leave a task LEASED until the TTL sweep. Carried as an open
-    probe (tools/probes/), not as a claim."""
+    This event is an ACCELERATOR and no longer the guarantee. What it used to sit beside —
+    `PermissionDenied` — fired in none of twelve real sessions (see tools/provider_observations.json),
+    and the two together were the ONLY way back from a spent claim. The guarantee is now the bind
+    window closing empty; the two tests below measure that half."""
     state, task, header = dispatched_repo(tmp_path)
     run_dispatch(tmp_path, spawn_payload(tmp_path, header))
-    assert run_dispatch(tmp_path, spawn_payload(tmp_path, header, event=event)).returncode == 0
+    assert run_dispatch(tmp_path, spawn_payload(tmp_path, header,
+                                                event="PostToolUseFailure")).returncode == 0
     assert state.read_item(task["id"])["status"] == "READY"
+
+
+def _lease_of(state, task_id):
+    return state._read_yaml(os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml"))
+
+
+def _close_the_bind_window(state, task_id):
+    """Age a lease's bind window into the past — the only thing a test can do about a clock."""
+    path = os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml")
+    lease = state._read_yaml(path)
+    lease["awaiting_bind_until"] = time.time() - 1.0
+    state._write_yaml_atomic(path, lease)
+
+
+def test_a_claim_whose_child_never_arrived_returns_the_task_to_ready_at_stop(tmp_path):
+    """THE WAY BACK for a lease spent on a spawn that never happened, and it needs no failure
+    event at all.
+
+    Measured 2026-08-02: a permission refusal delivers NO hook event, and `PermissionDenied` —
+    which carried the rollback — fired in none of twelve sessions. So the rollback is decided
+    locally: dispatched, no bound child, bind window closed, task still LEASED. `Stop` is where it
+    runs at the latest, because `Stop` is the event those twelve sessions did all deliver, even
+    after four refused tool calls.
+
+    What only a real session can show is that Stop keeps arriving; that this gate does the right
+    thing when it does is what this measures."""
+    state, task, header = dispatched_repo(tmp_path)
+    assert run_dispatch(tmp_path, spawn_payload(tmp_path, header)).returncode == 0
+    assert state.read_item(task["id"])["status"] == "LEASED"
+    _close_the_bind_window(state, task["id"])
+    result = run_dispatch(tmp_path, {"hook_event_name": "Stop", "cwd": str(tmp_path)})
+    assert result.returncode == 0, result.stderr          # Stop CAN block; this one never does
+    assert "returned to READY" in result.stderr
+    assert state.read_item(task["id"])["status"] == "READY"
+
+
+def test_a_running_child_is_not_swept_by_the_reconciliation(tmp_path):
+    """The counterpart, and the reason the rollback names four conditions instead of one: a child
+    that DID start holds `agent_id`, and freeing its task would leave it running against a task
+    somebody else can now lease."""
+    state, task, header = dispatched_repo(tmp_path)
+    run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    run_dispatch(tmp_path, {"hook_event_name": "SubagentStart", "cwd": str(tmp_path),
+                            "agent_id": "child-live", "agent_type": "backend-developer"})
+    _close_the_bind_window(state, task["id"])
+    assert run_dispatch(tmp_path, {"hook_event_name": "Stop",
+                                   "cwd": str(tmp_path)}).returncode == 0
+    assert state.read_item(task["id"])["status"] == "LEASED"
+    assert dispatch.task_for_agent(state, "child-live")["id"] == task["id"]
+
+
+def test_a_lease_nobody_dispatched_is_not_swept_by_the_reconciliation(tmp_path):
+    """The other half of the same guard. A lease its owner has created but not spawned against
+    carries no claim, so nothing about it has failed — sweeping it would take a task away from the
+    role that is about to dispatch it."""
+    state, task, _header = dispatched_repo(tmp_path)
+    assert run_dispatch(tmp_path, {"hook_event_name": "Stop",
+                                   "cwd": str(tmp_path)}).returncode == 0
+    assert state.read_item(task["id"])["status"] == "LEASED"
+    assert _lease_of(state, task["id"])["nonce"]          # the lease is still there to spawn with
+
+
+def test_a_bound_child_blocks_a_second_claim_even_after_the_window(tmp_path):
+    """`agent_id` is the term that does not expire, and it is the one that matters: a lease with a
+    running child must stay unclaimable however long that child runs. Without this term the whole
+    second-claim rule would evaporate BIND_WINDOW seconds after every spawn."""
+    state, task, header = dispatched_repo(tmp_path)
+    run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    run_dispatch(tmp_path, {"hook_event_name": "SubagentStart", "cwd": str(tmp_path),
+                            "agent_id": "child-bound", "agent_type": "backend-developer"})
+    _close_the_bind_window(state, task["id"])
+    result = run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    assert result.returncode == 2
+    assert "already bound" in result.stderr
+
+
+def test_the_retry_after_a_reconciled_claim_is_told_what_to_do(tmp_path):
+    """A dead end is only ended if the way out is walkable. After the reconciliation the lease is
+    gone and the task is READY, so the next spawn on the OLD header must not merely fail — it has
+    to name the one command that gets the role moving again."""
+    state, task, header = dispatched_repo(tmp_path)
+    run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    _close_the_bind_window(state, task["id"])
+    result = run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    assert result.returncode == 2
+    assert "create a lease from READY first" in result.stderr
+    assert state.read_item(task["id"])["status"] == "READY"
+
+
+def _install_enforcement_bundle(tmp_path, kit, roles=("project-manager", "backend-developer")):
+    """Put a kit's hooks, kernel, settings and agent files where a scaffolded project has them.
+
+    So the command under test can be the one settings.json really spells, `${CLAUDE_PROJECT_DIR}`
+    and all, instead of a path this test invents.
+    """
+    claude = os.path.join(str(tmp_path), ".claude")
+    shutil.copytree(os.path.join(TEAM_KITS, kit, "hooks"), os.path.join(claude, "hooks"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(os.path.join(TEAM_KITS, "kernel"), os.path.join(claude, "kernel"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(os.path.join(TEAM_KITS, kit, "settings", "settings.json"),
+                os.path.join(claude, "settings.json"))
+    for role in roles:
+        write(os.path.join(claude, "agents", role + ".md"),
+              "---\nname: %s\n---\nrole body\n" % role)
+    return claude
+
+
+def _registered_spawn_command(claude_dir, tmp_path):
+    """The PreToolUse(Agent|Task) command line, read off the INSTALLED settings.json.
+
+    Read rather than reconstructed: the whole finding this measures is about how the kits REGISTER
+    their spawn gates, so a test that assembled its own command line would be measuring itself.
+    """
+    settings = json.load(open(os.path.join(claude_dir, "settings.json"), encoding="utf-8"))
+    entries = [entry for entry in settings["hooks"]["PreToolUse"]
+               if (entry.get("matcher") or "") == "Agent|Task"]
+    assert len(entries) == 1, "expected ONE PreToolUse(Agent|Task) group, got %d" % len(entries)
+    commands = [hook["command"] for hook in entries[0]["hooks"]]
+    assert len(commands) == 1, (
+        "the spawn gates are registered as %d separate commands. Every PreToolUse hook of an "
+        "event runs to completion even when a sibling exits 2 (measured 2026-08-02), so a gate "
+        "that SPENDS a lease must not be one of several parallel processes." % len(commands))
+    command = commands[0].replace("${CLAUDE_PROJECT_DIR}", str(tmp_path)).replace('"', "")
+    parts = command.split()
+    assert parts[0].startswith("python"), parts
+    # WHICH gate has to be last is NOT decided here, and deliberately not: a named last token is a
+    # rule about one filename, and the rule is about a property. It is measured — by running each
+    # gate of this chain alone and watching the canonical state — in
+    # `test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refuse`.
+    return [sys.executable] + parts[1:]
+
+
+def _chain_gates(claude_dir, tmp_path):
+    """[(gate filename, argv to run that gate ALONE through the shipped launcher)], in order."""
+    command = _registered_spawn_command(claude_dir, tmp_path)
+    scripts = [index for index, token in enumerate(command) if token.endswith(".py")]
+    assert len(scripts) >= 2, command          # the launcher plus at least one gate
+    prefix, launcher = command[:scripts[0]], command[scripts[0]]
+    return [(os.path.basename(command[index]),
+             prefix + [launcher, command[index]]) for index in scripts[1:]]
+
+
+def _canonical_state(root):
+    """{relpath: sha256} of every CANONICAL artifact under `project_memory`.
+
+    "Canonical" is the KERNEL's own answer (`_kernel.CANONICAL_SUFFIXES`), not a second one
+    invented here — which also settles what is deliberately NOT in the subject: the append-only
+    `.audit/*.jsonl` trail carries no suffix from that tuple, so a gate that REFUSES and records
+    the refusal does not thereby count as touching the state. That distinction is the whole
+    measurement: refusing is free, mutating is not.
+    """
+    digest, state_root = {}, os.path.join(str(root), "project_memory")
+    for directory, _subdirs, files in os.walk(state_root):
+        for name in files:
+            if not name.lower().endswith(_kernel.CANONICAL_SUFFIXES):
+                continue
+            path = os.path.join(directory, name)
+            with open(path, "rb") as handle:
+                digest[os.path.relpath(path, state_root)] = hashlib.sha256(
+                    handle.read()).hexdigest()
+    return digest
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refuse(tmp_path, kit):
+    """THE PROPERTY, DERIVED BY RUNNING IT — not a filename asserted to be last.
+
+    The rule behind the chained registration is: a gate that CHANGES the project state must not
+    decide before every gate that could still refuse the same call has spoken, because a PreToolUse
+    sibling's exit 2 does not stop it (measured 2026-08-02). Written as "gate_dispatch is the last
+    token" that rule covered exactly one file and exactly today: a SECOND gate that started
+    mutating, or an existing one that grew a write, would walk straight past it.
+
+    So membership is measured instead of named. Each gate of the registered chain is run ALONE,
+    as a real process through the shipped launcher, against its own restored copy of one project
+    state, on a spawn payload the chain as a whole accepts. A gate is MUTATING when the canonical
+    state differs afterwards. The verdict the gate returns is not part of the question — a gate
+    that refuses AND writes is exactly the case being hunted.
+
+    Two assertions follow from the rule, and they are the whole of it:
+      * at most ONE gate of a chain may mutate, because a second mutating gate necessarily stands
+        in front of the first one's refusal;
+      * that one must be LAST.
+    The control is the third assertion: some gate must have mutated, or the fixture never reached
+    the code under test and the two above are vacuous.
+
+    WHAT IT STILL CANNOT SEE, named rather than implied: a gate that mutates only on an input this
+    fixture does not produce reads as non-mutating here. The measurement is as good as the payload,
+    which is why the payload is the same accepted spawn the chain test above uses.
+    """
+    claude = _install_enforcement_bundle(tmp_path, kit)
+    state, _task, header = dispatched_repo(tmp_path)
+    gates = _chain_gates(claude, tmp_path)
+    payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Agent",
+                          "cwd": str(tmp_path),
+                          "tool_input": {"subagent_type": "backend-developer",
+                                         "run_in_background": False,
+                                         "prompt": "objective: do it\n%s\noutput: a result"
+                                                   % header}})
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    env.pop("HARNESS_KERNEL_PATH", None)
+
+    pristine = os.path.join(str(tmp_path), "pristine")
+    shutil.copytree(state.root, pristine)
+    mutating = []
+    for gate, argv in gates:
+        shutil.rmtree(state.root)
+        shutil.copytree(pristine, state.root)           # every gate meets the SAME state
+        before = _canonical_state(tmp_path)
+        subprocess.run(argv, input=payload, capture_output=True, text=True, env=env, timeout=180)
+        if _canonical_state(tmp_path) != before:
+            mutating.append(gate)
+    shutil.rmtree(state.root)
+    shutil.copytree(pristine, state.root)
+
+    names = [gate for gate, _argv in gates]
+    assert mutating, (
+        "%s: no gate of the spawn chain %s changed the state on an accepted spawn — the fixture "
+        "never reached the mutating step, so this measurement proves nothing" % (kit, names))
+    assert len(mutating) == 1, (
+        "%s: %s both mutate the state on one call, so the earlier one pays for a spawn the later "
+        "one can still refuse. Chain order: %s" % (kit, mutating, names))
+    assert mutating[0] == names[-1], (
+        "%s: %s changes the state and is not last in the chain %s — every gate after it can still "
+        "exit 2, and nothing gives back what it wrote." % (kit, mutating[0], names))
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_a_refused_spawn_does_not_spend_the_lease_through_the_registered_chain(tmp_path, kit):
+    """THE MEASURED DEAD END, driven through the command settings.json really registers.
+
+    2026-08-02, real session: `guard_agent_spawn` refused a spawn with rc 2 for a missing
+    `run_in_background`, and `gate_dispatch` — a separate process of the same event, which the
+    provider runs to completion regardless — claimed the lease anyway. The retry was then refused
+    with "a second claim on one lease is blocked" for the remaining ~900 s, and the rollback that
+    should have undone it was registered on `PermissionDenied`, which does not fire.
+
+    The INVARIANT is asserted on every outcome the chain produces, not just on the refusal: a
+    lease is spent exactly when the chain allowed the call. Asserting only the exit code would
+    pass on a chain that refuses and spends anyway, which is the defect itself; asserting only the
+    refusal would pass on a chain that never claims at all."""
+    claude = _install_enforcement_bundle(tmp_path, kit)
+    role = "backend-developer"
+    state, task, header = dispatched_repo(tmp_path)
+    command = _registered_spawn_command(claude, tmp_path)
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    env.pop("HARNESS_KERNEL_PATH", None)          # the installed bundle carries its own kernel
+
+    def spawn(**tool_input):
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
+                   "tool_input": dict({"subagent_type": role,
+                                       "prompt": "objective: do it\n%s\noutput: a result"
+                                                 % header}, **tool_input)}
+        return subprocess.run(command, input=json.dumps(payload), capture_output=True, text=True,
+                              env=env, timeout=180)
+
+    refused = spawn()                                    # no run_in_background -> guard refuses
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "run_in_background" in refused.stderr
+    assert "dispatched_at" not in _lease_of(state, task["id"]), (
+        "a gate refused this spawn and the lease was spent anyway: %s" % refused.stderr)
+
+    allowed = spawn(run_in_background=False)             # the corrected retry, seconds later
+    spent = bool(_lease_of(state, task["id"]).get("dispatched_at"))
+    assert spent == (allowed.returncode == 0), (
+        "rc %d but lease spent=%s — a chain must spend the lease exactly when it lets the spawn "
+        "through.\n%s" % (allowed.returncode, spent, allowed.stderr))
+    if kit == "dev-team":
+        # the kit whose whole chain this fixture satisfies: here the retry really does go through,
+        # which is the half a same-turn retry needs. The other kits put further gates of their own
+        # in front of it, and what they measure above is the invariant, not this outcome.
+        assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+
+
+def test_the_longest_registered_chain_runs_all_four_gates_on_one_payload(tmp_path):
+    """THE FOUR-LINK CHAIN IN FULL OPERATION, which is a different measurement from four links of
+    probe code: office registers `guard_agent_spawn`, `gate_proc_approved`, `gate_ledger_valid` and
+    `gate_dispatch` behind one launcher, and every one of them reads the payload for itself.
+
+    The fixture has to SATISFY all three gates in front, or the run stops at the first refusal and
+    the fourth is never reached — which is exactly what a dev-shaped fixture does here (measured:
+    `gate_proc_approved` refuses with "no approved procedure at all"). So the project gets a real
+    approved `PROC`, minted through the hook like a user answer, and the work order names it.
+
+    What the last link doing its job PROVES is the memo: `gate_dispatch` can only claim the lease
+    if it parsed the HARNESS_DISPATCH header out of the same stdin the first three already read."""
+    from conftest import walk_to_status
+    kit = "office-team"
+    claude = _install_enforcement_bundle(tmp_path, kit,
+                                         roles=("office-manager", "backend-developer"))
+    state, task, header = dispatched_repo(tmp_path)
+    procedure = state.capture("PROC", {"title": "inbox sweep", "steps": ["read", "file"],
+                                       "roles": ["backend-developer"]})
+    procedure = walk_to_status(state, procedure, "APPROVED")
+    command = _registered_spawn_command(claude, tmp_path)
+    assert len(_chain_gates(claude, tmp_path)) == 4, command
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    env.pop("HARNESS_KERNEL_PATH", None)
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
+               "tool_input": {"subagent_type": "backend-developer", "run_in_background": False,
+                              "prompt": "objective: run %s\n%s\noutput: a result"
+                                        % (procedure["id"], header)}}
+    result = subprocess.run(command, input=json.dumps(payload), capture_output=True, text=True,
+                            env=env, timeout=180)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert _lease_of(state, task["id"]).get("dispatched_at"), (
+        "the fourth gate of the chain never saw the payload the first three read")
+
+
+PROVIDER_EVENTS = json.load(open(os.path.join(ROOT, "tools", "provider_observations.json"),
+                                 encoding="utf-8"))["hook_events"]
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_no_kit_registers_a_hook_on_an_event_the_provider_never_sent(kit):
+    """A registration on an event nobody has ever seen is a mechanism that reads as protection and
+    is not one — and this repo shipped exactly that: `gate_dispatch` on `PermissionDenied`, as one
+    of the only two ways a spent dispatch lease could ever come back, on an event measured absent
+    in twelve real sessions.
+
+    WHAT THIS CAN AND CANNOT MEASURE, because that boundary is the whole reason the record is a
+    file: nothing in this repo can make a provider emit a hook event, so the observation itself is
+    not reproducible here. `tools/provider_observations.json` carries it with its provenance, and this
+    test holds the KITS to it — every event any kit registers must be one that was observed. A new
+    event therefore costs a new measurement, which is the price the old design did not pay."""
+    observed = set(PROVIDER_EVENTS["observed"])
+    settings = json.load(open(os.path.join(TEAM_KITS, kit, "settings", "settings.json"),
+                              encoding="utf-8"))
+    unmeasured = sorted(set(settings.get("hooks") or {}) - observed)
+    assert unmeasured == [], (
+        "%s registers hooks on %s, which tools/provider_observations.json does not list as observed "
+        "(absent: %s). Measure the event in a real session and record it there, or drop the "
+        "registration." % (kit, unmeasured, sorted(PROVIDER_EVENTS["observed_absent"])))
 
 
 def test_a_revocation_mid_flight_does_not_freeze_the_task(tmp_path):
@@ -2232,13 +2729,13 @@ def test_a_revocation_mid_flight_still_records_a_started_spawn(tmp_path):
     assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
 
 
-def test_a_denied_spawn_does_not_poison_the_next_sequential_dispatch(tmp_path):
-    """The bind window opens at PreToolUse, before the tool runs. Left behind by a denied spawn,
-    it collided with the NEXT same-role dispatch and told a user who was already working
+def test_a_failed_spawn_does_not_poison_the_next_sequential_dispatch(tmp_path):
+    """The bind window opens at PreToolUse, before the tool runs. Left behind by a spawn that
+    failed, it collided with the NEXT same-role dispatch and told a user who was already working
     sequentially to work sequentially."""
     state, _task, header = dispatched_repo(tmp_path)
     run_dispatch(tmp_path, spawn_payload(tmp_path, header))
-    run_dispatch(tmp_path, spawn_payload(tmp_path, header, event="PermissionDenied"))
+    run_dispatch(tmp_path, spawn_payload(tmp_path, header, event="PostToolUseFailure"))
     second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
     state.transition(second["id"], "READY")
     second_header = dispatch.dispatch_header(dispatch.create_lease(state, second["id"]))
@@ -2252,12 +2749,18 @@ def test_a_denied_spawn_does_not_poison_the_next_sequential_dispatch(tmp_path):
 def test_one_lease_cannot_be_spawned_twice(tmp_path):
     """II.12 "zweiter Claim derselben Lease -> Block", at the moment a claim really happens. The
     specialist carries the nonce in its own prompt, so a re-used header would spawn again under a
-    spent claim."""
+    spent claim.
+
+    The half that must NOT be lost while the dead end above it is being fixed: two spawns of one
+    header issued in a single parallel batch both land inside the open bind window, and the second
+    is refused. The message names the remaining seconds, because "blocked" without a duration is
+    what turned a bounded wait into a stall the last time."""
     _state, _task, header = dispatched_repo(tmp_path)
     assert run_dispatch(tmp_path, spawn_payload(tmp_path, header)).returncode == 0
     result = run_dispatch(tmp_path, spawn_payload(tmp_path, header))
     assert result.returncode == 2
-    assert "already dispatched" in result.stderr
+    assert "awaiting its child" in result.stderr
+    assert "s left" in result.stderr
 
 
 def test_post_tool_use_refuses_a_payload_without_a_role(tmp_path):
@@ -5040,8 +5543,13 @@ def test_the_lead_package_budget_is_measured_and_currently_exceeded():
     """spec II.5 names this budget FIRST ("Das Paket zaehlt ALLES sessionfix Geladene") and it was
     enforced NOWHERE — so the shrink II.11/3 has to perform had no measuring stick and no baseline.
     A WARNING for now, deliberately: phase 2 must not fail its own build on work phase 3 owns.
-    The test pins both halves — that it measures the three files, and that it is honest about all
-    three kits being over today."""
+    The test pins both halves — that it measures the package, and that it is honest about all
+    three kits being over today.
+
+    THE WARNING MUST NAME WHAT IT WEIGHED, and it did not: the sentence said "agent.md +
+    Lead-SKILL + constitution all load at every session start" while the SKILL does not load at
+    all (measured — `lead_package.files`). Checked against the derivation rather than against a
+    remembered wording, so the message and the measurement cannot drift into two answers."""
     import subprocess as sp
     result = sp.run([sys.executable, os.path.join(ROOT, "tools", "validate.py")],
                     capture_output=True, text=True, cwd=ROOT)
@@ -5059,6 +5567,21 @@ def test_the_lead_package_budget_is_measured_and_currently_exceeded():
     for line in over:
         assert line.strip().startswith("[warn]"), line
     assert "becomes a hard failure" in "\n".join(over)
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import lead_package
+    for kit in KITS:
+        line = next(entry for entry in over if kit in entry)
+        kit_dir = os.path.join(TEAM_KITS, kit)
+        weighed = [os.path.relpath(path, kit_dir).replace(os.sep, "/")
+                   for path in lead_package.files(kit_dir)]
+        for name in weighed:
+            assert name in line, "%s: the warning does not name %s, which it weighed:\n%s" % (
+                kit, name, line)
+        for name in lead_package.on_demand_files(kit_dir):
+            rel = os.path.relpath(name, kit_dir).replace(os.sep, "/")
+            assert rel not in line, (
+                "%s: the warning names %s, which it did NOT weigh — the SKILL is registered on "
+                "demand, not loaded:\n%s" % (kit, rel, line))
 
 
 def test_validate_py_is_green():
@@ -10112,11 +10635,15 @@ def test_the_write_scope_gate_covers_both_doors(kit):
 @pytest.mark.parametrize("kit", KITS)
 def test_the_dispatch_gate_sees_the_whole_spawn_lifecycle(kit):
     """Lease binding needs the events spike S3 identified: PreToolUse claims, SubagentStart binds
-    by role, PostToolUse binds by the reported agentId, and the two failure events roll the claim
-    back. A missing failure event leaks a lease that nothing releases."""
+    by role, PostToolUse binds by the reported agentId, PostToolUseFailure rolls a failed claim
+    back at once — and `Stop` is where a claim nobody ever reported on is reconciled.
+
+    `Stop` replaced `PermissionDenied` here, and that is the point of the row rather than a
+    cosmetic swap: the old pair of failure events was the only way back from a spent lease, and
+    one of the two was measured never to fire. Stop needs no cooperation from the failing call —
+    see `test_a_claim_whose_child_never_arrived_returns_the_task_to_ready_at_stop`."""
     events = set(registered_hooks(kit).get("gate_dispatch.py", {}))
-    for event in ("PreToolUse", "SubagentStart", "PostToolUse", "PostToolUseFailure",
-                  "PermissionDenied"):
+    for event in ("PreToolUse", "SubagentStart", "PostToolUse", "PostToolUseFailure", "Stop"):
         assert event in events, "%s: gate_dispatch missing %s" % (kit, event)
 
 

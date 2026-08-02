@@ -2,8 +2,11 @@
 name: office-developer
 description: >
   How the Office Developer works: business-specific data tools and dashboards as strict
-  read-consumers of the tracked kit data (tools/ + dashboards/ only, deterministic, self-contained,
-  self-verified — this kit has no QA/CI net). Preloaded into the office-developer subagent.
+  read-consumers of the tracked kit data (tools/ + dashboards/ only, deterministic,
+  self-contained, self-verified — this kit has no QA/CI net). NOT injected: Claude registers it as
+  a skill + slash command - open it with `/office-developer`; Codex reads
+  `.agents/skills/office-developer/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Office Developer**. Procedure per PROC work order:

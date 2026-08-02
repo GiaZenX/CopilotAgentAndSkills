@@ -514,12 +514,20 @@ schreibt in den Projektzustand.
 
 - Lead-Instruktionspaket **≤ 25 600 B** (= 25 KB zu 1024 B); generierter Session-Bootstrap
   ≤25 KB (`kernel/schemas/session_brief.yaml: max_serialized_bytes`). **Zählweise:** Das Paket
-  zählt ALLES sessionfix Geladene (agent.md + Lead-SKILL + Verfassung — die Verfassung lädt via
-  Import immer mit). **Eine Definitionsstelle:** die Zahl UND die Ableitung, welche Dateien das
-  Paket sind, stehen in `tools/lead_package.py` (`MAX_BYTES`, `files()`); `tools/validate.py`
-  liest von dort, und ein Test misst diesen Satz gegen die Konstante. Die Zahl stand vorher
-  dreifach im Baum (Spec „≤25 KB", Code `25 * 1024`, ein Auftrag „25 000") — 25 600 gewinnt, weil
-  es die laufende Implementierung und die natürliche Lesart von „25 KB" ist.
+  zählt ALLES sessionfix Geladene — und das ist **agent.md + Verfassung**, nicht mehr. Die
+  Verfassung lädt via `CLAUDE.md`-Shim (Codex liest `AGENTS.md` nativ) immer mit; das **Lead-SKILL
+  lädt NICHT** und zählt darum nicht: gemessen 2026-08-02 in drei Sitzungen und zwei Kits, mit
+  Kontrollwörtern am Dateiende und `--tools ""`, kamen Verfassung und agent.md wörtlich an, das
+  SKILL fehlte, und die `init`-Zeile des Streams führt es unter `skills` **und** `slash_commands` —
+  auf Abruf registriert, nicht injiziert. Was der Lead trotzdem ohne Abruf braucht, steht seither
+  als Arbeitsschleife IN der Verfassung (dev/research §5a, office §4a), also innerhalb des
+  Budgets. **Eine Definitionsstelle:** die Zahl UND die Ableitung, welche Dateien das Paket sind,
+  stehen in `tools/lead_package.py` (`MAX_BYTES`, `files()`); `tools/validate.py` liest von dort
+  und benennt in seiner Warnung genau die Dateien, die es gewogen hat. `on_demand_files()` daneben
+  ist die andere Hälfte derselben Messung: was Regeln trägt, ohne zu laden (der Sektionspin in
+  `tools/test_shortening_net.py` fragt danach). Die Zahl stand vorher dreifach im Baum (Spec
+  „≤25 KB", Code `25 * 1024`, ein Auftrag „25 000") — 25 600 gewinnt, weil es die laufende
+  Implementierung und die natürliche Lesart von „25 KB" ist.
 - **Keine Zeilengrenze mehr für Verfassung und Lead-SKILL.** Die frühere Vorgabe „je ≤150 Zeilen"
   (interim 220, erzwungen in `tools/validate.py`) ist ersatzlos gestrichen, weil sie gemessen
   nichts über Grösse aussagte: die drei Verfassungen hielten 220 nur, weil 31–46 ihrer Zeilen

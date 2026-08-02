@@ -31,26 +31,63 @@ import os
 MAX_BYTES = 25 * 1024
 
 
+def lead_role(kit_dir):
+    """The role `settings/settings.json` binds as the session agent, or None."""
+    settings = os.path.join(kit_dir, "settings", "settings.json")
+    if not os.path.isfile(settings):
+        return None
+    with open(settings, encoding="utf-8") as handle:
+        return json.load(handle).get("agent") or None
+
+
 def files(kit_dir):
-    """The files a session loads and never unloads, for the kit in `kit_dir`.
+    """The files a session LOADS and never unloads, for the kit in `kit_dir`.
 
     DERIVED FROM THE KIT, not listed: the constitution (it reaches the session through the
-    `CLAUDE.md` import shim, so it is loaded whether or not anybody asked for it) plus the agent
-    file and SKILL of whichever role `settings/settings.json` names as `agent`. A kit that renames
-    its lead therefore moves its own budget subject, and no reader has to be told.
+    `CLAUDE.md` import shim, and Codex reads `AGENTS.md` natively, so it is loaded whether or not
+    anybody asked for it) plus the agent file of whichever role `settings/settings.json` names as
+    `agent`. A kit that renames its lead therefore moves its own budget subject, and no reader has
+    to be told.
 
-    Files that do not exist are dropped rather than counted as zero, so a kit missing its lead SKILL
+    THE LEAD SKILL IS NOT IN HERE ANY MORE, and that correction is the reason this docstring is
+    longer than the function. It was counted as loaded on the strength of its own frontmatter. What
+    a real measurement showed (2026-08-02, three sessions, two kits, control words at each file's
+    end, `--tools ""` so the session could not read anything back): the constitution came through
+    the `CLAUDE.md` shim VERBATIM, the agent file came through VERBATIM, and the SKILL was ABSENT.
+    The provider's own `init` line lists it under `skills` AND `slash_commands` — registered on
+    demand, not injected. Counting 21 572 bytes of dev-team SKILL as loaded made this budget a
+    measurement of the wrong subject in both directions at once.
+
+    What replaced the SKILL's content in the start context is not this function's business: it is
+    the work-loop skeleton in the constitutions (§5a in dev/research, the office equivalent), which
+    is in here because the constitution is.
+
+    Files that do not exist are dropped rather than counted as zero, so a kit missing one of them
     reports the size it really has.
     """
-    settings = os.path.join(kit_dir, "settings", "settings.json")
+    lead = lead_role(kit_dir)
     paths = [os.path.join(kit_dir, "constitution", "AGENTS.md")]
-    if os.path.isfile(settings):
-        with open(settings, encoding="utf-8") as handle:
-            lead = json.load(handle).get("agent")
-        if lead:
-            paths += [os.path.join(kit_dir, "agents", lead + ".md"),
-                      os.path.join(kit_dir, "skills", lead, "SKILL.md")]
+    if lead:
+        paths.append(os.path.join(kit_dir, "agents", lead + ".md"))
     return tuple(path for path in paths if os.path.isfile(path))
+
+
+def on_demand_files(kit_dir):
+    """Instruction files the session can REACH but does not load — the lead SKILL.
+
+    A separate answer to a separate question, and keeping the two apart is the whole point of the
+    correction above. The budget weighs what LOADS; other readers ask what carries RULES, and a
+    document that only loads when the session invokes it carries rules all the same
+    (`tools/test_shortening_net.py::_pinned_files` is the one that asks). Merging the two lists
+    either way reopens a hole: merged INTO `files()` the budget lies, merged OUT of the pin the
+    lead SKILL becomes deletable with the suite green — which is measured, and is why the pin
+    exists.
+    """
+    lead = lead_role(kit_dir)
+    if not lead:
+        return ()
+    path = os.path.join(kit_dir, "skills", lead, "SKILL.md")
+    return (path,) if os.path.isfile(path) else ()
 
 
 def size(kit_dir):

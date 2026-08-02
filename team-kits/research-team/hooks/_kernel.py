@@ -545,8 +545,14 @@ def reset_payload():
     The companion to `disarm()`, and for the same constituency: hook processes are one-shot, so
     the memo is invisible to them, but an in-process consumer — a test, a long-lived CLI — would
     otherwise be handed the FIRST payload it ever read for the rest of its life.
+
+    There are TWO memos of one payload since `_gate.py` learned to run a chain (`_compat` now
+    remembers the raw stdin so the second gate of a chain reads the same bytes as the first), and
+    forgetting one of them would hand a caller the previous payload through the other. So this
+    forgets both, and stays the ONE thing to call.
     """
     del _PAYLOAD_CACHE[:]
+    _compat.forget_stdin()
 
 
 def disarm():

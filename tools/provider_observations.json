@@ -1,0 +1,79 @@
+{
+  "_comment": "WHAT REAL SESSIONS SHOWED. This file is a MEASUREMENT RECORD, not a specification. Nothing in this repo can make a provider emit a hook event or assemble a context window, so no test can re-derive what is written here; what the tests DO is hold the kits and the tooling to it, which is the step that was missing when a rollback was registered on an event nobody had seen and a budget counted a file nobody had measured. Re-measuring means running real sessions again and rewriting this file WITH its provenance.",
+
+  "hook_events": {
+    "measurement": {
+      "date": "2026-08-02",
+      "provider": "claude.exe",
+      "provider_version": "2.1.220",
+      "mode": "headless",
+      "sessions": 12,
+      "method": "a PATH shim logging every hook process with a timestamp and its exit code, plus an observer hook registered on eleven events in one settings.json",
+      "location": "a scaffolded testbed project outside this repo"
+    },
+    "observed": [
+      "SessionStart",
+      "PreToolUse",
+      "PostToolUse",
+      "PostToolUseFailure",
+      "SubagentStart",
+      "SubagentStop",
+      "Notification",
+      "Stop"
+    ],
+    "observed_absent": {
+      "PermissionDenied": "fired in NONE of the twelve sessions - not after a hook refusal (exit 2 from a PreToolUse gate) and not after a permission refusal (the stream counted permission_denials: 1 and no hook process ran). Two controls rule out a registration artifact: PostToolUseFailure, registered in the SAME settings.json with the SAME matcher form, did fire, and the observer saw no PermissionDenied on any of its eleven events either."
+    },
+    "not_measured": [
+      "UserPromptSubmit",
+      "PreCompact",
+      "SessionEnd",
+      "PermissionRequest"
+    ],
+    "_not_measured_comment": "Events the twelve sessions gave no occasion to trigger. Absence here means UNKNOWN, not absent - a kit that wants to register one of these has to measure it first, which is what `observed` is for.",
+
+    "also_measured": {
+      "sibling_hooks_of_one_event_all_run": "Every PreToolUse hook of an event runs to completion even when another exits 2: all five Edit|Write gates started within 52 ms of each other and all eight Bash gates started, on a call one of them refused. This is why a gate that CONSUMES state is registered last in one chained command rather than as a process of its own."
+    }
+  },
+
+  "session_context": {
+    "measurement": {
+      "date": "2026-08-02",
+      "provider": "claude.exe",
+      "provider_version": "2.1.220",
+      "mode": "headless",
+      "runs": 3,
+      "kits": ["dev-team", "office-team"],
+      "method": "a control word appended at the end of each candidate file, then `--tools \"\"` so the session had no way to read any file back; the session was asked to reproduce each control word",
+      "location": "a scaffolded testbed project outside this repo"
+    },
+    "loaded": {
+      "constitution/AGENTS.md": "arrived VERBATIM, through the two-line CLAUDE.md import shim the scaffold writes",
+      "agents/<lead>.md": "arrived VERBATIM"
+    },
+    "registered_not_loaded": {
+      "skills/<lead>/SKILL.md": "ABSENT from the session. The artifact rather than the session's own word: the stream's `init` line lists the skill under `skills` AND under `slash_commands` - registered on demand, not injected. The lead agent's own `skills:` frontmatter does not change this for the SESSION agent (it is bound via settings.json `agent:`, not spawned as a subagent)."
+    },
+    "any_role_bound_as_session_agent": {
+      "measured": "2026-08-02, a scaffolded dev project with settings.json `agent: backend-developer` and `--tools \"\"`, one session carrying a control word in the agent file and a counter-control word at the end of the SKILL: the agent file's word came back (`WALNUSS-3350`), the SKILL's did not (`NICHTS GELADEN`). So `skills:` frontmatter delivers nothing to a role bound as the SESSION agent, whichever role it is - the lead is not a special case.",
+      "consequence": "No shipped instruction file may say it is preloaded. `claims_of_loading` below is what a test holds them to."
+    },
+    "claims_of_loading": [
+      "preloaded into",
+      "preloads it into",
+      "is preloaded",
+      "injected at startup",
+      "loaded at session start"
+    ],
+    "_claims_of_loading_comment": "An INVENTORY of wordings that assert injection, not a definition of one - and it lives here, beside the measurement it would contradict, so the two cannot drift into separate files. It is only ever as complete as the last review; what it is measured against is the sentence this repo really shipped in 23 SKILLs (`Preloaded into the X subagent.`), and a new wording escapes it until somebody adds it. The POSITIVE half of the same test does not depend on this list: every reachable SKILL must name its own retrieval route, which no text claiming to be preloaded would carry.",
+    "injectable": {
+      "session_status.additionalContext": "1588 B arrived verbatim. Not used to carry procedure: it is a comfort hook, fail-open by design, so what it delivers is absent exactly when the kit is half-installed - and being generated at runtime it cannot be weighed by a static budget."
+    },
+    "not_measured": [
+      "whether a SUBAGENT receives its own SKILL through the spawning agent's `skills:` frontmatter",
+      "whether Codex expands an @path import inside AGENTS.md"
+    ],
+    "_not_measured_comment": "Both would change a decision if measured. THE FIRST is the half the SKILL descriptions now name as unmeasured rather than assert: what was measured is the SESSION-agent path (`any_role_bound_as_session_agent`), and the sentence that used to stand there claimed the SUBAGENT-SPAWN path. That the two behave alike is plausible - same frontmatter mechanism, same result as for the lead - and it is not measured: two attempts to ask a real child failed because the child refused the work order on its own terms before answering, so the counter-control word never came back either way and the run distinguished nothing. THE SECOND decides whether an @-import is a provider-neutral delivery path; until it is measured the lead's loop lives in the constitution itself, which needs no import."
+  }
+}

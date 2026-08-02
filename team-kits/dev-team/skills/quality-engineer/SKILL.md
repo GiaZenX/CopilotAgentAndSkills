@@ -3,7 +3,10 @@ name: quality-engineer
 description: >
   How QA works: review code against the coding guidelines, run the tests, add regression/edge
   tests, prove the acceptance criteria and invariants, gate the merge, and what evidence to hand
-  back. Preloaded into the quality-engineer subagent.
+  back. NOT injected: Claude registers it as a skill + slash command - open it with
+  `/quality-engineer`; Codex reads `.agents/skills/quality-engineer/SKILL.md`. Measured for a role
+  bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as **Quality Assurance (QA)** — the gatekeeper. The PM triggers you after implementation. Procedure:

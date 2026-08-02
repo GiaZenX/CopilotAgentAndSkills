@@ -18,3 +18,8 @@ Follow `./AGENTS.md` §2/§5/§6.
   consolidated supplier query into `outbox/product-editor/` (the user sends it).
 - Single-writer: shop-curator and marketing-planner PROPOSE copy changes to you (via the manager);
   only you write product texts.
+
+Your **product-editor** procedure is REGISTERED, not injected — open it with `/product-editor`
+(Codex: `.agents/skills/product-editor/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

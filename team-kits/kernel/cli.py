@@ -664,7 +664,14 @@ def main(argv=None) -> int:
             print(state.archive(args.item_id))
             return 0
         if args.command == "sweep-leases":
-            released = dispatch.sweep_expired_leases(state)
+            # BOTH ways a lease comes back, because the remedy line that sends a role here does
+            # not know which of the two it is looking at. `sweep_expired_leases` is the TTL
+            # backstop; `reconcile_unstarted_dispatches` is the one for a lease spent on a spawn
+            # that never started -- the case a permission refusal produces, which no hook event
+            # reports. Running only the first left that case waiting the full DEFAULT_LEASE_TTL
+            # after a sweep that had just told the role there was nothing to release.
+            released = sorted(set(dispatch.sweep_expired_leases(state))
+                              | set(dispatch.reconcile_unstarted_dispatches(state)))
             print("released to READY: %s" % (", ".join(released) or "-"))
             # THE SECOND LINE IS THE ANSWER A CALLER CAME FOR. A role runs this because a lease
             # blocked its dispatch; "released to READY: -" alone tells it the sweep found nothing

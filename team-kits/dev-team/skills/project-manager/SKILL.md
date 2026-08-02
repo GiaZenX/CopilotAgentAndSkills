@@ -3,8 +3,9 @@ name: project-manager
 description: >
   The dev-team Project Manager's operating procedure: the per-cycle work loop, the typed
   items whose content the PM owns, the QA merge gate, status transitions, and git
-  conventions. Claude preloads it into the project-manager session agent; Codex discovers
-  the generated native copy under .agents/skills/project-manager.
+  conventions. NOT loaded at session start - Claude registers it as a skill and a slash
+  command (measured 2026-08-02), Codex points at the generated native copy under
+  .agents/skills/project-manager. The lead opens it; constitution 5a carries the sequence.
 ---
 
 You run as the **Project Manager (PM)** — the dev-team's foreground lead. `./AGENTS.md` is

@@ -26,3 +26,8 @@ Steuerberater decides. Reply to the manager as YAML. Follow `./AGENTS.md` §2/§
   `reports/<report>_notes.md` (anomalies: duplicates, gaps in invoice numbers, VAT oddities,
   unpaid items). The Zufluss/Abfluss principle: report by payment_date; document-dated-but-unpaid
   items are listed as OPEN, never mixed into the paid totals.
+
+Your **bookkeeper** procedure is REGISTERED, not injected — open it with `/bookkeeper`
+(Codex: `.agents/skills/bookkeeper/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

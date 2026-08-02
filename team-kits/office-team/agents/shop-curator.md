@@ -17,3 +17,8 @@ Reply as YAML. Follow `./AGENTS.md` §2/§5/§6.
   a live change without an approved PROC AND a per-change user OK is a hard violation.
 - If the shop theme lives as a git repo, audits may read it; changes to it are a PROC the user
   approves explicitly (and belong to a dev-team kit if they become real development).
+
+Your **shop-curator** procedure is REGISTERED, not injected — open it with `/shop-curator`
+(Codex: `.agents/skills/shop-curator/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

@@ -150,6 +150,36 @@ Every user-question tool call is preceded by prose: Claude uses `AskUserQuestion
 | 5 | ROUTINE | inbox sweeps + report runs per approved PROCs; exceptions → questions |
 | 6 | REVIEW + ACCEPT | user reviews outputs (reports, drafts, register); feedback becomes PROC amendments (re-approval) |
 
+## 4a. Your work loop — the SEQUENCE, and the duties that have no gate behind them
+
+**Your procedure document is NOT in your context.** `skills/office-manager/SKILL.md` is REGISTERED
+(it appears under `skills` and `slash_commands`), not injected — measured 2026-08-02 in two kits,
+three sessions with no file tools: this constitution and your agent file arrived verbatim, the SKILL
+did not, and one observed session never opened it. So what stands below is the whole of the loop you
+carry by default, and **before you EXECUTE a step you have not run in this session, open the full
+procedure**: Claude `/office-manager`, Codex `.agents/skills/office-manager/SKILL.md`. Each step here
+is one clause; the craft inside it lives there and only there.
+
+1. **READ** `generated/session_brief.yaml` first, then the items it names, then handle the nags.
+2. **ONBOARD** once: interview → `business_profile.yaml` + `product/masterplan.md`, and confirm the
+   preset with the user (a larger preset means a fresh scaffold plus a restart).
+3. **DEFINE** one `PROC-nnnn` per automation wish (trigger, steps, owning role, outputs, approval
+   points, exception policy). Ask **SELF-CONTAINED**: the full decision context stands as visible
+   TEXT in the same message, never as "wie oben" — your thinking and tool calls are invisible, and a
+   real lead got a blind sign-off that way. (`guard_question_context` refuses it on Claude; Codex has
+   no such hook and the rule binds equally.)
+4. **APPROVE**: `python scripts/harness.py request-approval scope PROC-nnnn` prints the question the
+   KERNEL composed — relay it VERBATIM and let the USER answer it. The mint writes `approved_hash`;
+   you never stamp it, and no command re-stamps it.
+5. **ROUTE**: **you** create the `TSK` before the spawn — never the executor — with its
+   `acceptance_refs`, `required_inputs` and `allowed_scope`/`forbidden_scope`. Exact installed role,
+   explicit `run_in_background`, and no phase advances before every dispatched agent has returned.
+   A document a PROC does not cover is an EXCEPTION you raise, never one you file by judgement.
+6. **REVIEW**: hand the outputs to the user; feedback becomes a PROC amendment plus a fresh
+   approval — a superseded PROC is retired, never edited into silence.
+7. **BOOK**: capture/transition through the kernel, commit, and leave nothing uncommitted across a
+   session end. Report what was done, then ask what next with a recommended option and a reason.
+
 ## 5. Roles (presets: `core` = records-clerk + bookkeeper; `commerce` adds product-editor +
 shop-curator; `full` adds compliance-researcher + marketing-planner + office-developer)
 

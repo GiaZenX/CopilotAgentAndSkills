@@ -3,18 +3,20 @@
 Dispatch gate — gate layer 2 of spec II.4. Registered on FIVE events, because the dispatch
 lifecycle is one story and splitting it across files would let the halves drift:
 
-  PreToolUse(Agent|Task)        refuse while the installed enforcement bundle is not the one this
-                                project recorded trust for (`_kernel.bundle_trust`); then validate
-                                the HARNESS_DISPATCH header against the lease, CONSUME the lease
-                                for this one dispatch, and open the bind window
-  SubagentStart(*)              claim that lease for the child's agent_id (gate layer 3 needs the
+  PreToolUse(Agent|Task)        reconcile claims that never produced a child; refuse while the
+                                installed enforcement bundle is not the one this project recorded
+                                trust for (`_kernel.bundle_trust`); then validate the
+                                HARNESS_DISPATCH header against the lease and CLAIM the lease for
+                                this one dispatch, which opens the bind window
+  SubagentStart(*)              bind that lease to the child's agent_id (gate layer 3 needs the
                                 agent_id -> task mapping while the child is still running)
   PostToolUse(Agent|Task)       the spawn STARTED: re-verify the header, bind the agent_id
                                 authoritatively (here the header and the agentId arrive
                                 together), and move the task to IN_PROGRESS
-  PostToolUseFailure(Agent|Task),
-  PermissionDenied(Agent|Task)  the spawn did NOT start: return the task to READY at once and
-                                close the bind window
+  PostToolUseFailure(Agent|Task) the spawn did NOT start: return the task to READY at once and
+                                close the bind window — an ACCELERATOR, not the guarantee
+  Stop()                        reconcile again at the end of the turn, so a claim that produced
+                                no child does not wait for the next spawn attempt to be noticed
 
 WHAT THIS GATE PARSES: the header, and only the header (spec II.4). Free prompt prose is never
 evidence of anything — the V1 `guard_agent_spawn` keyword check is exactly the "looks approved"
@@ -23,11 +25,28 @@ that is not leased to it is refused.
 
 WHICH EVENTS CAN ACTUALLY REFUSE (hooks reference, exit-code-2 table — this decides the whole
 design, so it is written down rather than assumed): PreToolUse blocks. PostToolUse,
-PostToolUseFailure and SubagentStart do NOT — their stderr is shown and the action stands;
-PermissionDenied ignores the exit code entirely. So PREVENTION lives in PreToolUse alone. In the
-later events this gate protects the only thing it still can: it REFUSES TO MUTATE STATE on
-anything it cannot verify, and says so on stderr. Calling that a "block" would be theatre, and
-theatre is what V2 is removing.
+PostToolUseFailure and SubagentStart do NOT — their stderr is shown and the action stands. Stop
+does block, but this gate never refuses there: a Stop that exits 2 forces the assistant to keep
+going, which is not what "a lease was returned to READY" should do. So PREVENTION lives in
+PreToolUse alone. In the later events this gate protects the only thing it still can: it REFUSES
+TO MUTATE STATE on anything it cannot verify, and says so on stderr. Calling that a "block" would
+be theatre, and theatre is what V2 is removing.
+
+THE ROLLBACK DOES NOT DEPEND ON ANY EVENT, and it used to. Measured 2026-08-02 across twelve real
+headless sessions with an observer on eleven events: `PermissionDenied` fired NOT ONCE — neither
+after a hook refusal nor after a permission refusal (the stream counted the denial and no hook
+saw it), while `PostToolUseFailure` registered from the same file with the same matcher shape did
+fire. The claim was previously an eternal flag undone only by `PostToolUseFailure|PermissionDenied`,
+so a refused spawn stranded its task for the remaining ~900 s of the lease TTL. What returns a
+spent claim now is time: `dispatch.spent_claim_reason` says when a claim still stands and
+`dispatch.reconcile_unstarted_dispatches` returns the task to READY when it does not. The two
+events above only make that verdict arrive sooner.
+
+AND A CLAIM IS NOT MADE UNTIL EVERY HARNESS REFUSAL IS KNOWN. Also measured: every PreToolUse
+hook of one event runs to completion even when a sibling exits 2, so this gate used to spend the
+lease while another gate of the same event was refusing the very same spawn. The kits therefore
+register the PreToolUse(Agent|Task) gates as ONE chained command with this one LAST (see
+`_gate.py`); which gates precede it is each kit's business, and office has four where dev has two.
 
 THE PLATFORM LIMIT, stated plainly: SubagentStart carries `agent_id`, `agent_type` and
 `prompt_id`, but no key back to the tool call that started it — no tool_use_id, no prompt
@@ -61,7 +80,9 @@ SPAWN_TOOLS = ("Agent", "Task")
 # with isAsync: true. Treating anything-but-"completed" as failure sent every background
 # specialist's task back to READY while the child was still running: unbound, so every write
 # refused, and the freed task immediately re-leasable — breaking the very "second claim blocked"
-# rule this gate enforces. Real failure arrives as PostToolUseFailure/PermissionDenied instead.
+# rule this gate enforces. A tool call that FAILS arrives as PostToolUseFailure; a call the
+# permission layer refuses arrives as nothing at all, which is why the rollback does not wait for
+# an event (see the module docstring and `dispatch.reconcile_unstarted_dispatches`).
 STARTED_STATUSES = ("completed", "async_launched")
 
 
@@ -133,20 +154,27 @@ def handle_pre_tool_use(data):
     dispatch = _kernel.kernel_module("dispatch")
     tool_input = data.get("tool_input") or {}
     try:
+        # BEFORE judging this spawn, and that order is the point: a claim whose bind window has
+        # closed with no child is not evidence of anything, so it must not be what refuses the
+        # next attempt. Reconciling here means the way out is walked by the very act of trying
+        # again, without waiting for the turn to end.
+        dispatch.reconcile_unstarted_dispatches(state)
         header = dispatch.parse_header(str(tool_input.get("prompt") or ""))
-        dispatch.validate_dispatch(state, header, tool_input.get("subagent_type"), claim=True)
-        dispatch.mark_awaiting_bind(state, header["task_id"], data.get("prompt_id"))
+        dispatch.validate_dispatch(state, header, tool_input.get("subagent_type"), claim=True,
+                                   prompt_id=data.get("prompt_id"))
     except dispatch.DispatchError as exc:
         _kernel.block(HOOK, "specialist spawn refused.\n%s" % exc, event="PreToolUse")
     sys.exit(0)
 
 
 def _report(message):
-    """Say something on an event that cannot refuse, and audit it.
+    """Say something WITHOUT claiming to have prevented anything, and audit it.
 
-    Deliberately not `_kernel.block`: exit 2 does not block PostToolUse, PostToolUseFailure or
-    SubagentStart, so exiting 2 there would dress a notification up as enforcement. The real
-    protection on those events is that we DID NOT MUTATE state.
+    Deliberately not `_kernel.block`. Every event this gate uses it on is one where a refusal
+    would be a lie of a different kind: on PostToolUse, PostToolUseFailure and SubagentStart exit
+    2 does not block at all (the action stands and only stderr is shown), and on Stop it blocks
+    something nobody asked about — the assistant finishing its turn. The real protection on the
+    first three is that we DID NOT MUTATE state; on Stop it is that the mutation is a rollback.
     """
     _kernel.record_note(HOOK, message)
     sys.stderr.write("[team-kit %s] %s\n" % (HOOK, message))
@@ -246,11 +274,13 @@ def handle_post_tool_use(data):
 
 
 def handle_spawn_failure(data):
-    """The spawn did NOT start (tool failure or denied permission) -> READY at once.
+    """The spawn did NOT start -> READY at once. An ACCELERATOR, not the guarantee.
 
     Spec II.4 wants "Fehlschlag -> sofort zurueck auf READY". A failing tool call fires
-    PostToolUseFailure, and a denial fires PermissionDenied — never PostToolUse — so a gate
-    listening only on PostToolUse would leave the task LEASED until the TTL sweep.
+    PostToolUseFailure and this makes that immediate. It is deliberately NOT the only way back:
+    measured 2026-08-02, a permission refusal delivers no hook event at all, so a task whose
+    return to READY hung on one would simply never return. `handle_stop` and the reconciliation
+    at the next PreToolUse cover the silent cases; this one only saves the wait.
     """
     if data.get("tool_name") not in SPAWN_TOOLS:
         sys.exit(0)
@@ -270,12 +300,37 @@ def handle_spawn_failure(data):
     sys.exit(0)
 
 
+def handle_stop(data):
+    """End of the turn: return every claim that produced no child to READY.
+
+    WHY THIS EVENT. It is the one that was MEASURED to arrive: `Stop` fired in all twelve real
+    headless sessions of 2026-08-02, including the ones that ended after four refused tool calls,
+    while `PermissionDenied` fired in none of them. A reconciliation that runs here therefore
+    needs no cooperation from the failure path it is cleaning up after.
+
+    It never refuses. Stop CAN block (exit 2 makes the assistant continue), and using that here
+    would turn "a task went back to READY" into "you may not stop" — a refusal nobody asked for,
+    on an event where the tool call it would be about is long over.
+    """
+    state = _state_for_recording(data)
+    if state is None:
+        sys.exit(0)
+    dispatch = _kernel.kernel_module("dispatch")
+    released = dispatch.reconcile_unstarted_dispatches(state)
+    if released:
+        _report("returned to READY — dispatched, but no subagent ever started for %s. A spawn "
+                "that the permission layer or the provider refused delivers no hook event, so "
+                "this is measured by the bind window closing empty, not reported by anything."
+                % ", ".join(released))
+    sys.exit(0)
+
+
 HANDLERS = {
     "PreToolUse": handle_pre_tool_use,
     "SubagentStart": handle_subagent_start,
     "PostToolUse": handle_post_tool_use,
     "PostToolUseFailure": handle_spawn_failure,
-    "PermissionDenied": handle_spawn_failure,
+    "Stop": handle_stop,
 }
 
 

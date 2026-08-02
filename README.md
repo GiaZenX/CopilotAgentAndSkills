@@ -587,7 +587,7 @@ Role instructions live in three tiers, each loaded where it's needed — no dupl
 |---|---|---|
 | **Constitution** (`./AGENTS.md`; Claude imports it through `./CLAUDE.md`) | shared law: hierarchy, phases, git, anti-sycophancy, memory rules, enforcement | the PM + every subagent |
 | **Agent body** (short) | who the agent is, who it obeys, its core duty | the agent's system prompt |
-| **Role skill** (`skills: [<role>]`) | *how* it works + which `project_memory/` files it reads/writes | preloaded into the agent |
+| **Role skill** (`skills: [<role>]`) | *how* it works + which `project_memory/` files it reads/writes | REGISTERED for the agent, not injected -- the agent file names the route (`/<role>`, Codex `.agents/skills/<role>/SKILL.md`); measured 2026-08-02 for a role bound as the session agent, unmeasured for the subagent spawn (`tools/provider_observations.json`) |
 
 Each team kit ships **one role skill per agent** (incl. the PM's `project-manager`) under
 `team-kits/<kit>/skills/`. The scaffold installs the shared source into `./.claude/skills/`; Codex

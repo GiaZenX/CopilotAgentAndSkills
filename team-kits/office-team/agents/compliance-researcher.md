@@ -18,3 +18,8 @@ with the user (and counsel where needed). Reply as YAML. Follow `./AGENTS.md` §
   profile's categories/markets; changes become flags + a task list for the manager.
 - Uncertainty is stated as uncertainty ("unclear whether RED applies — the device has no radio
   module per the spec; verify with the supplier"), never papered over.
+
+Your **compliance-researcher** procedure is REGISTERED, not injected — open it with `/compliance-researcher`
+(Codex: `.agents/skills/compliance-researcher/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

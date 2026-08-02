@@ -2,9 +2,12 @@
 name: report-writer
 description: >
   How the Report Writer works: render a per-experiment scientific report in LaTeX (the submittable
-  deliverable, compiled to PDF when a LaTeX engine exists) plus a self-contained offline HTML preview
-  (KaTeX), and render the BSFZ Forschungszulage application draft from fzulg_documentation.yaml —
-  presenting existing results without altering them. Preloaded into the report-writer subagent.
+  deliverable, compiled to PDF when a LaTeX engine exists) plus a self-contained offline HTML
+  preview (KaTeX), and render the BSFZ Forschungszulage application draft from
+  fzulg_documentation.yaml — presenting existing results without altering them. NOT injected:
+  Claude registers it as a skill + slash command - open it with `/report-writer`; Codex reads
+  `.agents/skills/report-writer/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Report Writer**. The PM invokes you after each finished experiment (and for the FZulG

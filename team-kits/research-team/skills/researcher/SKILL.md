@@ -2,8 +2,10 @@
 name: researcher
 description: >
   How the Researcher works: execute the assigned experiment task per the EXP design, collect raw
-  data with provenance, write analysis code, commit per task, and what to hand back. Preloaded into
-  the researcher subagent.
+  data with provenance, write analysis code, commit per task, and what to hand back. NOT injected:
+  Claude registers it as a skill + slash command - open it with `/researcher`; Codex reads
+  `.agents/skills/researcher/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Researcher** (experimenter). The PM dispatches you ONE `TSK` for an experiment. Procedure:

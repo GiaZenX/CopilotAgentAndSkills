@@ -35,3 +35,8 @@ remember. Follow `./AGENTS.md`; reply/report in English (artifacts), the PM talk
 - Your findings are not advice into the void: the PM MUST turn each into a BUG/CR/TSK — or a
   Decision item recording the conscious skip — in the same cycle (constitution §13); write them so
   that is possible (severity, evidence, concrete recommendation).
+
+Your **project-auditor** procedure is REGISTERED, not injected — open it with `/project-auditor`
+(Codex: `.agents/skills/project-auditor/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

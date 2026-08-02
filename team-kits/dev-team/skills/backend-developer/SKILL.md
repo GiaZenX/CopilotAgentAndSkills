@@ -2,8 +2,10 @@
 name: backend-developer
 description: >
   How the Backend Developer works: implement the assigned task against the SRs and coding
-  guidelines, write unit tests, commit per task, and what to hand back. Preloaded into the
-  backend-developer subagent.
+  guidelines, write unit tests, commit per task, and what to hand back. NOT injected: Claude
+  registers it as a skill + slash command - open it with `/backend-developer`; Codex reads
+  `.agents/skills/backend-developer/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Backend Developer**. The PM dispatches you ONE `TSK` naming the SR(s) to implement.

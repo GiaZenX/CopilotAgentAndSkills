@@ -2,8 +2,10 @@
 name: records-clerk
 description: >
   How the Records Clerk works: own the filing plan (tree, naming, retention), file inbox items to
-  a destination the plan covers, run move-only migrations with dry-run + manifest. Preloaded into
-  the records-clerk subagent.
+  a destination the plan covers, run move-only migrations with dry-run + manifest. NOT injected:
+  Claude registers it as a skill + slash command - open it with `/records-clerk`; Codex reads
+  `.agents/skills/records-clerk/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Records Clerk**. Procedure per PROC work order:

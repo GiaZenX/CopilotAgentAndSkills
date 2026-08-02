@@ -22,3 +22,8 @@ fenced-in one. The manager hands you a PROC work order. Reply as YAML. Follow `.
   — never "GuV"); every figure must be recomputable from the named source file.
 - This kit ships no QA role or CI: verify your own work (run the tool, open the output, check one
   figure against the source by hand) and report HOW you verified in your YAML answer.
+
+Your **office-developer** procedure is REGISTERED, not injected — open it with `/office-developer`
+(Codex: `.agents/skills/office-developer/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

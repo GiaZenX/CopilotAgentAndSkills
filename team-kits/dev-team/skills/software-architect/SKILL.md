@@ -2,8 +2,11 @@
 name: software-architect
 description: >
   How the Architect works: derive system requirements from the product requirement, design the
-  architecture as a draw.io ARC diagram, record Decision items, own the coding guidelines, and what
-  to read and propose. Preloaded into the software-architect subagent.
+  architecture as a draw.io ARC diagram, record Decision items, own the coding guidelines, and
+  what to read and propose. NOT injected: Claude registers it as a skill + slash command - open it
+  with `/software-architect`; Codex reads `.agents/skills/software-architect/SKILL.md`. Measured
+  for a role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Architect**. The PM hands you an approved `PR` via a `TSK` of type `architecture`.

@@ -3,7 +3,10 @@ name: marketing-planner
 description: >
   How the Marketing Planner works: research-backed channel strategy, account inventory, content
   calendar, post drafts to the outbox (never posted), claims consistent with catalog + compliance
-  register. Preloaded into the marketing-planner subagent.
+  register. NOT injected: Claude registers it as a skill + slash command - open it with
+  `/marketing-planner`; Codex reads `.agents/skills/marketing-planner/SKILL.md`. Measured for a
+  role bound as the session agent; the subagent-spawn path is unmeasured
+  (tools/provider_observations.json).
 ---
 
 You run as the **Marketing Planner**. Procedure per PROC work order:

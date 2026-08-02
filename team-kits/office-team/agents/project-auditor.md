@@ -29,3 +29,8 @@ remember. Follow `./AGENTS.md`; reply/report in English (artifacts), the manager
 - Your findings are not advice into the void: the manager MUST turn each into a follow-up item — or
   a Decision item recording the conscious skip — in the same cycle (the constitution's follow-up
   duty); write them so that is possible (severity, evidence, concrete recommendation).
+
+Your **project-auditor** procedure is REGISTERED, not injected — open it with `/project-auditor`
+(Codex: `.agents/skills/project-auditor/SKILL.md`). Measured 2026-08-02: a role's own `skills:`
+frontmatter delivers nothing to a session bound to it; the subagent-spawn path is
+unmeasured (`tools/provider_observations.json`).

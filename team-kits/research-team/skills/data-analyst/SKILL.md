@@ -1,9 +1,11 @@
 ---
 name: data-analyst
 description: >
-  How the Data Analyst works: run the pre-registered analysis, report effect sizes and
-  uncertainty honestly, decide per hypothesis supported/refuted, and what to hand back. Preloaded
-  into the data-analyst subagent.
+  How the Data Analyst works: run the pre-registered analysis, report effect sizes and uncertainty
+  honestly, decide per hypothesis supported/refuted, and what to hand back. NOT injected: Claude
+  registers it as a skill + slash command - open it with `/data-analyst`; Codex reads
+  `.agents/skills/data-analyst/SKILL.md`. Measured for a role bound as the session agent; the
+  subagent-spawn path is unmeasured (tools/provider_observations.json).
 ---
 
 You run as the **Data Analyst**. The PM dispatches you ONE `TSK` of type `analysis`. Procedure:

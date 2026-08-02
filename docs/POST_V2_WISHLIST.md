@@ -122,10 +122,51 @@ der sich schnell etwas ergänzen oder verschieben lässt.
 Passt in die vorhandene Werkzeugkette: ARC- und WFR-Artefakte sind bereits `.drawio.svg`, das
 Format ist also schon Teil des Zustandsmodells und wird bereits versioniert.
 
-Offen: ob das Diagramm **generiert** wird (aus dem Zustand, damit es nie veraltet) oder **gepflegt**
-(von Hand, dafür freier in der Darstellung). Ein generiertes Bild ist ehrlich, ein gepflegtes ist
-lesbarer. Die Erfahrung aus diesem Umbau spricht für generiert: jede handgepflegte Zweitfassung
-eines Zustands ist hier veraltet, sobald jemand nicht hinsieht.
+~~Offen: ob das Diagramm **generiert** wird oder **gepflegt**.~~ **Beantwortet durch
+`docs/research/2026-07-27-plan-als-diagramm.md`: generiert.** Der übliche Einwand („generiert sieht
+schlecht aus") heisst technisch „ein Programm kann keinen Graphen layouten" — das stimmt, die
+mxGraph-Layoutalgorithmen leben im Editor, nicht in einer Python-Bibliothek. **Ein Umsetzungsplan ist
+aber kein Graph, den man layouten muss.** Er ist ein Raster: Spalten sind Stufen, Zeilen sind
+Vorgänge, Koordinaten sind eine Multiplikation. Damit fällt der einzige echte Nachteil weg. Ein
+`.drawio.svg` ist ein gültiges SVG mit dem `<mxfile>`-XML im `content`-Attribut, derselbe
+Layoutdurchgang kann also beide Hälften ausgeben — reines Python, kein Chromium, keine JVM. Mermaid
+und PlantUML sind genau daran gescheitert: sie zögen eine fremde Laufzeit in einen Hook-Pfad, der
+heute mit nichts als Python auskommt.
+
+**Heutiger Stand, gemessen (2026-07-27):** die Werkzeugkette aus Spec II.6a existiert **als Zusage,
+nicht als Datei** — `git ls-files | grep drawio` liefert null Treffer, es gibt kein Vorlagendiagramm
+und kein `.vscode/extensions.json`-Template. Die einzige maschinelle Prüfung ist ein `ET.parse()` in
+`kernel/staging.py`, während das Feld daneben `render_check: True` heisst. Das behauptet mehr, als es
+prüft — dieselbe Klasse, die dieser Umbau an sechs anderen Stellen gefunden hat.
+
+### 3a. Nachtrag des Users (2026-08-03): der Zweck, und wo er der Ablage widerspricht
+
+> „Weil so fallen schneller Unstimmigkeiten oder Missverständnisse auf als mit einer reinen
+> Masterplan-MD-Datei."
+
+Das ist ein **schärferer Zweck** als „sehen, wo man steht", und er entscheidet zwei Dinge, die bisher
+offen waren:
+
+**Erstens den Adressaten.** Ein Bild, das `SR-0004 → TSK-0011 (blocked by APR-0002)` zeigt, findet
+keine Missverständnisse — es setzt voraus, dass der Leser die Typen kennt. Ein Bild, das „Anmeldung
+funktioniert, bevor irgendetwas anderes gebaut wird" zeigt, findet sie. Die Flughöhe aus dem Absatz
+oben ist damit keine Stilfrage, sondern die Funktionsbedingung: **wer den Jargon braucht, um das Bild
+zu lesen, kann damit den Plan nicht mehr prüfen.**
+
+**Zweitens die Ablage — und hier steht der Wunsch gegen die bisherige Empfehlung.** Der User will
+Masterplan **und** Diagramm immer lokal im jeweiligen Repo. Die Recherche legt das Bild nach
+`generated/` und committet es ausdrücklich **nicht** (Spec II.2: Ausgabe, kein Zustand — und genau
+dadurch kann es nie veralten). Beides zusammen geht nur mit einer Entscheidung:
+
+- **regeneriert bei jedem Zustandswechsel** — dann ist es immer aktuell, aber ein frischer Clone ist
+  erst nach dem ersten Lauf bebildert;
+- **mitcommittet mit Frischeprüfung** — dann ist es sofort da, kann aber veralten, und es braucht ein
+  Gate, das die Abweichung meldet (dasselbe Muster wie die Delivery-Freshness aus II.12/R6).
+
+**Empfehlung: mitcommittet mit Frischeprüfung**, weil der Zweck es verlangt. Ein Bild, das
+Missverständnisse finden soll, muss jemand ansehen können, der das Repo gerade erst geöffnet und noch
+nichts ausgeführt hat. Ein `generated/`-Artefakt ist für den Fortschrittsblick richtig und für den
+Verständnisblick zu spät.
 
 ## 4. Effort-Stufen pro Rolle statt pro Modell (2026-07-31, User)
 
@@ -236,3 +277,66 @@ ausserhalb der Reichweite des Harness. Niemand misst nach, ob der Browser wirkli
 macht aus einer Ehrlichkeitspflicht einen Zustand, keine Messung — es verbessert, was ein späterer
 Leser erfährt, und es fügt der Frage „ist das wahr?" nichts hinzu. Wer es einbaut, muss diesen Satz
 mit einbauen, sonst liest der nächste `blocked` als geprüfte Tatsache.
+
+## 8. Ein Projekt vollautonom von Anfang bis Ende (2026-08-03, User)
+
+> „Wie bekommen wir es hin, dass ein neues Projekt vollautonom von Anfang bis Ende durchläuft — mit
+> perfekter und getesteter UI, sauberem und sicherem Backend? Einen gereviewten Plan erstellen mit
+> allen Wenn und Aber, alles so zerrupfen, dass am Ende ein Produktplan steht, und diesen vollautonom
+> vom PM durchziehen lassen."
+
+Das ist kein Einzelwunsch, sondern der Zweck, auf den die anderen sieben Punkte zulaufen. Deshalb
+steht hier nicht „was man bauen müsste", sondern **woran heute gemessen fehlt**.
+
+### Der Massstab existiert bereits, er hiess nur anders
+
+Beim ersten Durchlauf des Lebenszyklus am Stück (2026-08-02, Testbed) musste ein Mensch **dreimal**
+aus dem Harness ausbrechen, um bis zu einem Merge zu kommen: den Masterplan von Hand schreiben, eine
+leere `requirements.txt` anlegen, `archive` raten. Ein autonomer Lauf hat diese Auswege nicht — er
+folgt der Anweisung, die nicht hilft, und wiederholt sich.
+
+**Damit ist Autonomiereife prüfbar statt gefühlt: die Zahl der Stellen, an denen zuletzt ein Mensch
+improvisieren musste.** Sie ist endlich, sie wird bei jedem Durchlauf neu gemessen, und sie muss null
+werden. Jede Sackgasse ist ein Autonomie-Stopper, unabhängig davon, wie klein sie aussieht.
+
+### Was nach heutigem Stand fehlt
+
+**Die Schreibsperre auf den Planungsdateien.** `masterplan.md`, `project_config.yaml` und
+`filing_plan.yaml` haben keinen Schreiber (Wurzel 1 + Stufe II.11/4). Ein autonomer PM kann seinen
+eigenen Plan nicht füllen. Härteste Blockade von allen.
+
+**Anweisungen, die das Gate nicht aufheben.** Items sind nach dem Anlegen unveränderlich, also ist
+jede Abhilfe der Form „korrigiere Feld X" strukturell unausführbar. Ein Mensch rät `archive`; ein
+autonomer Lauf rät nicht.
+
+**Die Freigaben — und das ist die Designentscheidung, nicht ein Defekt.** Das Harness prägt einen
+Token NUR aus einer echten Antwort auf eine echte Frage. Das ist der Kern seiner Sicherheit und
+zugleich genau das, was „vollautonom" ausschliesst. Die Frage lautet nicht „wie schalten wir das
+ab", sondern **welche Freigabeklassen ein autonomer Richter erteilen darf und welche am Menschen
+bleiben.** Scope und Delivery sind vermutlich verschieden zu behandeln; ein Push wahrscheinlich nie.
+Ohne diese Entscheidung ist der Rest dieses Abschnitts akademisch.
+
+**Das UI-Review mit Screenshots existiert nicht.** Die Design-Pipeline (Wireframe → Ambition →
+Richtungen → Mockups → Fidelity) steht in der Verfassung ausdrücklich als **Prosa ohne Gate**. Kein
+Mechanismus rendert, vergleicht oder urteilt. Der grösste echte Neubau: Headless-Render, Bild-Diff
+gegen den eingefrorenen Mockup, und ein Richter über die Abweichung. II.12/R5 nennt einen
+UI-Inventar-Snapshot — der fängt entfernte Elemente, nicht Aussehen.
+
+**Das Backend-Testen hat einen Boden, keinen Beweis.** `quality.py` fährt Ruff, Mypy, Pytest, Bandit,
+pip-audit, Dateibudget. Das schliesst Schlamperei aus, nicht Fehler. Für „sauber und sicher" fehlen
+ein e2e-Lauf, der als solcher zählt (heute ist ein übersprungener Lauf nicht darstellbar — Punkt 7),
+und eine Abdeckungsaussage über die *richtigen* Zeilen.
+
+**Und die Planungsstufe selbst.** Das Kit kennt Masterplan → PR → SR → TSK. Was fehlt, ist die Stufe
+davor: ein **gereviewter Plan**, der die kritischen Stellen benennt, bevor irgendetwas zerlegt wird.
+Genau das, was für diesen V2-Umbau von Hand entstand — Paritätsmatrix, Löschlizenzen, benannte
+Grenzen — nur als Produktplan. Punkt 3a gehört dazu: der Plan muss als Bild lesbar sein, sonst prüft
+ihn niemand.
+
+### Die Reihenfolge, die sich daraus ergibt
+
+1. Sackgassen schliessen (Wurzel 1, Stufe II.11/4) — ohne das ist jeder weitere Punkt wirkungslos.
+2. Die Freigabefrage entscheiden — sie bestimmt, was „autonom" überhaupt heissen darf.
+3. Die Planungsstufe bauen, samt Bild (Punkt 3/3a).
+4. UI-Review und e2e-Beweis (Punkt 1, Punkt 7).
+5. Erst dann ein Durchlauf, dessen Ergebnis etwas über das Produkt aussagt statt über das Harness.

@@ -548,8 +548,13 @@ def _instruction_dirs():
     """The directories a kit ships INSTRUCTION TEXT in — derived from the lead package itself.
 
     `constitution/`, `agents/`, `skills/` are not typed here: they are the first path segment of
-    every file `_lead_package` returns, so the day a kit ships its lead instructions from a fourth
-    place, this follows. The narrowing matters because "somewhere under `team-kits/`" was too wide:
+    every file the lead's instruction texts live in — `_lead_package` PLUS
+    `lead_package.on_demand_files`, because the lead SKILL stopped being part of what LOADS without
+    stopping being instruction text (see `_pinned_files`). Deriving from the loaded half alone
+    silently dropped `skills/` the day that split happened, and the probe below went red for two of
+    its six cases, which is what it is for. So the day a kit ships its lead instructions from a
+    fourth place, this follows. The narrowing matters because "somewhere under `team-kits/`" was
+    too wide:
     a swept tree found `generate_dashboard.py:render`, `pii_scan.py:main` and `report_lint.py:lint`
     reading files under a path that resolves inside `team-kits/` in THIS repo and under
     `<project>/scripts/` once installed. None is cited today; the day one is, the licence would
@@ -557,7 +562,7 @@ def _instruction_dirs():
     """
     dirs = set()
     for kit in _kit_dirs():
-        for path in _lead_package(kit):
+        for path in _lead_package(kit) + tuple(lead_package.on_demand_files(kit)):
             dirs.add(os.path.relpath(path, kit).replace(os.sep, "/").split("/")[0])
     assert dirs, "no lead package resolved — the instruction directories cannot be derived"
     return frozenset(dirs)
@@ -1181,8 +1186,17 @@ def _pinned_files(kit_dir):
     8 KB of enforcement description that no session loads. Left out of here, its rows would have
     become exactly what the pin was written for after an independent run deleted thirteen
     constitution sections whole with the suite green.
+
+    THE LEAD SKILL IS THE SECOND SUCH FILE, as of the measurement that took it out of the budget:
+    it is registered on demand and not injected at session start (see `lead_package.files`), so it
+    stopped being part of what LOADS while losing none of its rules. It comes in here through
+    `lead_package.on_demand_files` — derived from the same kit, not typed out — because the
+    alternative was the exact regression this docstring's own last paragraph describes: deleting
+    the "Serialize agents that edit the same files" rule from the dev PM SKILL with the suite
+    green.
     """
-    return _lead_package(kit_dir) + (_reference_doc(kit_dir),)
+    return (_lead_package(kit_dir) + tuple(lead_package.on_demand_files(kit_dir))
+            + (_reference_doc(kit_dir),))
 
 
 def _sections(path):
@@ -1378,7 +1392,10 @@ def test_every_hand_built_item_type_is_ruled_on_and_not_merely_assigned():
     """
     thin = []
     for kit in _kit_dirs():
-        package = _lead_package(kit)
+        # THE LEAD'S INSTRUCTION TEXT, loaded or on demand. The floor is about what the lead can
+        # READ about a type, and the lead SKILL carries most of it — it left the LOADED package
+        # (measured: it is registered, not injected) without leaving the instructions.
+        package = _lead_package(kit) + tuple(lead_package.on_demand_files(kit))
         for item_type in sorted(_hand_built_evolution_types()):
             where = _sections_naming(package, item_type)
             if len(where) < 3:
@@ -1736,15 +1753,20 @@ def test_the_refusal_sweep_covers_the_texts_its_docstring_claims_and_no_others()
 
     The subject is derived twice over and named nowhere: the pinned texts are `_pinned_files`, the
     reference is `_compat.REFERENCE_NAME`, and "the lead agent file and the lead SKILL" is simply
-    the lead package minus whatever the sweep can see. Giving either of those a `# ` title that
-    shares a word with its path widens the sweep and fails HERE, which is the sentence in the
-    docstring above going stale rather than a behaviour breaking.
+    the pinned texts minus the reference minus whatever the sweep can see. Giving either of those a
+    `# ` title that shares a word with its path widens the sweep and fails HERE, which is the
+    sentence in the docstring above going stale rather than a behaviour breaking.
+
+    IT ASKS `_pinned_files` AND NOT `_lead_package`, because the question is which shipped RULE
+    texts the sweep reaches — the lead SKILL is one of those whether or not a session loads it, and
+    it stopped loading in the same round this line was written.
     """
     for kit in _kit_dirs():
         visible = {os.path.normcase(os.path.join(kit, name.replace("/", os.sep)))
                    for name in _self_named_docs(kit).values()}
-        package = [os.path.normcase(path) for path in _lead_package(kit)]
         reference = os.path.normcase(_reference_doc(kit))
+        package = [path for path in map(os.path.normcase, _pinned_files(kit))
+                   if path != reference]
         blind = [path for path in package if path not in visible]
 
         assert reference in visible, (
@@ -1754,10 +1776,10 @@ def test_the_refusal_sweep_covers_the_texts_its_docstring_claims_and_no_others()
             "%s: the sweep now sees %d pinned texts, not 2 — its docstring says which two and why"
             % (os.path.basename(kit), len(visible)))
         assert len(package) - len(blind) == 1, (
-            "%s: the sweep sees %d of the %d lead-package texts; the docstring claims exactly the "
+            "%s: the sweep sees %d of the %d pinned rule texts; the docstring claims exactly the "
             "constitution" % (os.path.basename(kit), len(package) - len(blind), len(package)))
         assert len(blind) == 2, (
-            "%s: %d lead-package texts are invisible to the sweep, not 2 — the docstring names the "
+            "%s: %d pinned rule texts are invisible to the sweep, not 2 — the docstring names the "
             "agent file and the SKILL: %s"
             % (os.path.basename(kit), len(blind),
                ", ".join(sorted(os.path.relpath(path, kit) for path in blind))))

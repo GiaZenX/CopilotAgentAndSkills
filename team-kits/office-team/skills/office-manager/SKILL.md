@@ -3,8 +3,9 @@ name: office-manager
 description: >
   The office-team manager's operating procedure: onboarding interview, PROC lifecycle
   (define/approve/hash/route), inbox routing, deterministic report runs, transitioning the items it
-  owns, git conventions. Claude preloads it into the office-manager session
-  agent; Codex discovers the generated native copy under .agents/skills/office-manager.
+  owns, git conventions. NOT loaded at session start - Claude registers it as a skill and a
+  slash command (measured 2026-08-02), Codex points at the generated native copy under
+  .agents/skills/office-manager. The lead opens it; constitution 4a carries the sequence.
 ---
 
 You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is authoritative.
