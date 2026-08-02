@@ -1359,6 +1359,41 @@ def wants_push_or_merge(command):
     return any(invocation.runs("push", "merge") for invocation in git_invocations(command))
 
 
+# WHAT A FORCE PUSH IS -- the flags AND the `+refspec` form (`git push origin +main`), in every
+# spelling a shell can build one out of. It lives HERE and not in a gate because two gates decide
+# on it and they do not ship to the same kits: `gate_git` is absent from the office kit
+# (`settings.json` registers `gate_push_token` there and no `gate_git`), so a definition kept in
+# `gate_git` is a definition one of the three kits does not have. The office kit is exactly where
+# that mattered -- measured 2026-08-02 with a live push approval, `git push --force origin main`
+# was answered rc 0 by the only git gate that kit registers.
+#
+# Matched on the NORMALISED view (`git_argument_text`) and on the raw command, and each reading
+# catches what the other cannot. The NORMALISED one carries the spellings that only become
+# `--force` once the shell is done with them: a flag broken over a line continuation
+# (`--f\<newline>orce`), the PowerShell escape (`--for`ce`), a flag assembled out of adjacent
+# quoted pieces (`--fo''rce`). The RAW one is the belt for the opposite risk -- a normaliser may
+# drop characters, it may never invent them -- and it is what covers the quoted flags
+# (`git push "--force"`, `"+main"`), because the pattern's own `["']` alternatives match those in
+# the raw text.
+FORCE_PUSH_RX = re.compile(
+    r"--force(-with-lease)?|(^|[\s\"'])-f([\s\"']|$)|[\s\"']\+[\w./-]+(:|[\s\"']|$)")
+
+
+def names_force_push(command):
+    """True when this command LINE spells a force push -- one question, one answer, two gates.
+
+    Deliberately a question about the LINE rather than about one invocation: the two readings above
+    are readings of a whole command, and re-deriving a per-invocation normalised view would be a
+    second answer to the same question, which is what this module exists to prevent. The cost is an
+    over-trigger nobody should read as an accident -- a line that pushes normally AND force-pushes
+    is refused as a whole, and so is a line whose comment or unrelated flag spells `-f`. For an
+    action that is forbidden either way that is the direction to fail in, and it is the behaviour
+    `gate_git` has shipped with all along.
+    """
+    return bool(FORCE_PUSH_RX.search(git_argument_text(command))
+                or FORCE_PUSH_RX.search((command or "").lower()))
+
+
 # The sentence a refusal owes a command whose git VERB the text does not fix. An unresolvable verb
 # is a DIFFERENT reason to refuse than "no QA Evidence" or "no quality pipeline", and until this
 # existed no gate said so: `_ends_word` promised in a comment that "the gate refuses with 'spell
@@ -1404,6 +1439,29 @@ def run_captured(cmd, cwd=None, timeout=60, **kw):
     (TimeoutExpired etc.) — callers keep their existing try/except semantics."""
     return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                           encoding="utf-8", errors="replace", timeout=timeout, **kw)
+
+
+# A kit version stamp is ORDERED, not merely equal or unequal. One definition, three readers: the
+# session briefing of each kit compares the staged kit against the installed one, and until
+# 2026-08-02 all three compared with `!=` and called every difference "usually a newer harness.
+# Propose the update to the user". Measured against the real staging of a live machine: a 07-18 kit
+# was offered to an 08-02 project as an update, and accepting it prunes the V2 hooks while leaving
+# the V2 kernel in place. Direction is what the message claims, so direction is what gets computed.
+_VERSION_NUMBER_RX = re.compile(r"\d+")
+
+
+def kit_version_order(stamp):
+    """The comparable key of a kit VERSION stamp, or None when it has none.
+
+    A stamp is `version: YYYY.MM.DD-N` on its first line, and every part of it that ORDERS the
+    stamp is a number -- so the key is the numbers, in the order they appear, as a tuple. That is
+    a property of the format rather than a parse of it: a stamp gaining a fourth component sorts
+    correctly with no edit here, and anything carrying no number at all (a corrupt or hand-edited
+    file) answers None, which callers must read as "cannot say which is newer" and never as equal.
+    """
+    first = str(stamp or "").splitlines()[0] if str(stamp or "").strip() else ""
+    numbers = _VERSION_NUMBER_RX.findall(first)
+    return tuple(int(number) for number in numbers) or None
 
 
 # The reference the constitution stopped carrying. The §2 hook table moved out of the three

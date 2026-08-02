@@ -64,6 +64,17 @@ def frozen_design_dirs():
     return (ACTIVE_DIRS[DESIGN_REF_TYPE],)
 
 
+def architecture_revisions_dir(state: ProjectState) -> str:
+    """Where `freeze_architecture` lands a frozen ARC diagram.
+
+    A builder rather than an inline join, for the reason `ProjectState.generated_path` is one:
+    `kernel.layout` asks each writer where it writes, and this is the one canonical directory no
+    other builder in the kernel composes -- it is under `architecture/` but beside, not inside,
+    `ACTIVE_DIRS["ARC"]`.
+    """
+    return os.path.join(state.root, "architecture", "revisions")
+
+
 def contained_child(base: str, name: str, what: str) -> str:
     """`base/name`, refused unless `name` is ONE segment that really stays inside `base`.
 
@@ -219,7 +230,7 @@ def freeze_architecture(
     source = os.path.join(staging_dir(state, staging_key), arc_id + ".drawio.svg")
     with state.lock:
         _assert_xml_wellformed(source)
-        revisions_dir = os.path.join(state.root, "architecture", "revisions")
+        revisions_dir = architecture_revisions_dir(state)
         revision = _next_frozen_revision(revisions_dir, arc_id)
         frozen = os.path.join(revisions_dir, revision_name(arc_id, revision, ".drawio.svg"))
         companion = {

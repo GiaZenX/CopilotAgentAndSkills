@@ -294,15 +294,47 @@ def check_python():
                 rc, out = run(prefix + ["-q", "--cov=" + tgt, "--cov-fail-under=" + str(thr)])
             ok(name) if rc == 0 else fail(name, "tests failed or coverage below %d%%" % thr + _tail(out))
     _sec("bandit (SAST)", "bandit", ["bandit", "-r", tgt, "-ll", "-q"], "high-severity finding")
-    # audit only the project's own DECLARED dependencies, never the whole host interpreter —
-    # unrelated user-site packages (e.g. a globally installed torch) caused false-red audits
+    _check_declared_dependencies()
+
+
+def _check_declared_dependencies():
+    """SCA over what the PROJECT declares — and nothing at all when it declares nothing.
+
+    THE COMMENT THAT USED TO STAND HERE claimed exactly this ("audit only the project's own
+    DECLARED dependencies, never the whole host interpreter — unrelated user-site packages caused
+    false-red audits") and the `else` branch two lines below it ran `pip-audit --local`, which
+    audits the interpreter. A freshly scaffolded dev project has neither `pyproject.toml` nor
+    `requirements.txt` (the kit ships `requirements-dev.txt`), so that branch was the NORMAL case:
+    measured 2026-08-02 in a fresh scaffold on a machine with a globally installed torch,
+    `FAIL pip-audit (SCA) — torch (2.7.1+cu118)`, pipeline exit 1, and `gate_pipeline` then
+    blocking merge and push in a project where nobody had written a line of code. No message named
+    the way out.
+
+    WHAT IS AUDITED is the project's own dependency DECLARATION, in pip-audit's own two input
+    shapes: a `pyproject.toml` project directory, or a `requirements.txt` resolution. Both are
+    files the project ships as its dependency contract.
+
+    `requirements-dev.txt` is deliberately NOT one of them, and the reason is the same property:
+    it declares the harness's own toolchain (ruff, pytest, pip-audit itself), not what the built
+    artefact depends on — and it is unpinned, so `-r` on it resolves against the network and would
+    turn an offline run into a merge block.
+
+    NO MANIFEST IS NOT A PASS. A project that declares no dependencies has no SCA surface, which
+    is a fact worth showing rather than a green tick; it is reported on the WARN channel, the same
+    non-blocking channel a missing security tool uses, with the condition that makes the check run.
+    """
     if rootfile("pyproject.toml"):
         _sec("pip-audit (SCA)", "pip-audit", ["pip-audit", ROOT], "vulnerable dependency")
-    elif rootfile("requirements.txt"):
+        return
+    if rootfile("requirements.txt"):
         _sec("pip-audit (SCA)", "pip-audit",
              ["pip-audit", "-r", os.path.join(ROOT, "requirements.txt")], "vulnerable dependency")
-    else:
-        _sec("pip-audit (SCA)", "pip-audit", ["pip-audit", "--local"], "vulnerable dependency")
+        return
+    warn("pip-audit (SCA)",
+         "this project declares no Python dependencies (no pyproject.toml, no requirements.txt at "
+         "the repo root), so there is nothing of the project's to audit — the check runs the "
+         "moment one of those files exists. It is NOT run against the interpreter's installed "
+         "packages: that measures the machine, not the project")
 
 
 def _frontend_build_with_retry(fe):

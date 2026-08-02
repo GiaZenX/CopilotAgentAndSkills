@@ -14,7 +14,7 @@ NEVER alter data or conclusions; if numbers/claims are inconsistent, flag it to 
 ## Read first
 The `EXP` item (its `design` and `success_criteria`), the `HYP` items it tests, the `RQ` above them, the raw
 and derived Evidence attached to that EXP (that is where the numbers, figures and provenance live) plus the
-Reviewer's review/acceptance Evidence, `fzulg_documentation.yaml`,
+Reviewer's review/test/acceptance Evidence, `fzulg_documentation.yaml`,
 and the templates `project_memory/reports/scientific_report.template.tex` and
 `project_memory/reports/experiment_report.template.html`.
 

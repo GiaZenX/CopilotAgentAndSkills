@@ -411,8 +411,14 @@ def test_e2e_the_merge_gate_opens_on_evidence_a_role_produced_and_shuts_on_a_fre
             env=dict(os.environ, HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits")),
             cwd=str(tmp_path), timeout=120)
 
-    recorded = record("test", "pass")
-    assert recorded.returncode == 0, recorded.stdout + recorded.stderr
+    # One Evidence per delivery-judging kind, because that is what the gate now waits for — and
+    # the kinds come from the kernel, so a widened vocabulary changes this run instead of leaving
+    # it asserting rc 0 against a set the gate refuses.
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import QA_EVIDENCE_KINDS
+    for kind in sorted(QA_EVIDENCE_KINDS):
+        recorded = record(kind, "pass")
+        assert recorded.returncode == 0, recorded.stdout + recorded.stderr
     assert launched_hook("gate_git.py", merge, tmp_path).returncode == 0
 
     # ...and the gate is not simply stuck open afterwards: a regression found later re-blocks it,

@@ -49,12 +49,23 @@ not by hook logic, and `python scripts/harness.py doctor` must weigh that rather
 sufficient. The `known_hole`-marked tests in tools/test_hooks_v2.py enumerate what is still open,
 for BOTH capabilities.
 
-No bootstrap exemption either, unlike gate_dispatch -- but NOT because the bootstrap goes through the
-kernel. The entry gate writes the masterplan, the first root item and `project_config.yaml` by hand, and
-for the prose and the config the kernel has no path at all. It needs no exemption because it runs BEFORE
-the scaffold, when this hook is not installed yet. What follows from that is a gap, not a protected
-window: once the kit is installed nothing can write those two files, which is why the entry gate is told
-to finish them there and every later role is told to report the gap instead of editing a state file.
+NO EXIT FOR A KIT DOCUMENT, AND THE REFUSAL NOW SAYS SO. The entry gate writes the masterplan, the
+first root item and `project_config.yaml` by hand, BEFORE the scaffold, when this hook is not
+installed yet. It needs no exemption because of that timing — but what follows is a gap, not a
+protected window, and until 2026-08-02 the refusal below described it wrongly. Measured in a
+scaffolded dev project, all three routes to `product/masterplan.md`: Write rc 2, shell heredoc rc 2,
+and `grep -rn masterplan .claude/kernel/*.py` finds no writer at all — while the remedy sent the
+role to `python scripts/harness.py <command>`, a surface that has none. `gate_memory_complete`
+meanwhile blocks merge AND push for as long as the file carries its template line, and the office
+kit's `filing_plan.yaml` is the same class of file.
+
+So the refusal distinguishes the two cases with `kernel.layout.is_project_document` — a definition
+derived from the kernel writers' own path builders, not a list of file names. For canonical state
+the remedy is the entry point, as before; for a kit document it says plainly that NO command writes
+it and that the gap is the user's to close outside the session, which is what §0 of all three
+constitutions already instructs ("a gap you report, not an edit you make"). The permission itself is
+unchanged: §0 is a constitutional rule that this gate is the enforcement of, and widening it is a
+constitution change, not a hook change.
 """
 import os
 import sys
@@ -218,10 +229,47 @@ def _assert_not_forbidden(rel, task):
                                  "working around it.")
 
 
-def _assert_state_write_allowed(rel, inside, task, data):
+def _is_project_document(root, inside):
+    """Is this state-relative path a kit DOCUMENT rather than canonical state?
+
+    Asked of `kernel.layout`, which derives it from the kernel writers' own path builders — this
+    gate must not carry a second opinion about what the kernel writes, and least of all a list of
+    the three file names that surfaced the dead end.
+
+    A kernel that cannot be reached answers NO, which keeps the refusal: `_kernel.kernel_module`
+    raises `KernelUnavailable` and the preamble turns that into exit 2 anyway, but the explicit
+    fallback says which direction this predicate fails in.
+    """
+    try:
+        layout = _kernel.kernel_module("layout")
+    except Exception:  # noqa: BLE001 — no kernel, no carve-out (fail-closed)
+        return False
+    return layout.is_project_document(_kernel.state_dir(root), inside)
+
+
+def _assert_state_write_allowed(rel, inside, task, data, root):
     """The state dir is the kernel's. Only `staging/<own key>/` is an agent's to write."""
     parts = [p for p in inside.split("/") if p]
     if not parts or parts[0] != _norm(STAGING):
+        if _is_project_document(root, inside):
+            # A KIT DOCUMENT, and the honest refusal for one. Sending a role to the entry point
+            # here was the measured defect: no `harness.py` command writes this file, so the
+            # remedy named a route that does not exist and the merge gate that reads the file
+            # blocked forever. §0 of every constitution already says what to do instead.
+            _kernel.block(
+                HOOK,
+                "'%s' is a kit DOCUMENT inside the write-locked state directory — prose or "
+                "configuration, not a typed item. Being a document is no exception: this gate "
+                "refuses the write (constitution §0), and NO `python scripts/harness.py` command "
+                "writes it either — the kernel has a path builder for every canonical file and "
+                "none for this one. So there is no route from inside this session, and this "
+                "refusal is not one to work around." % rel,
+                remedy="report the gap to the user and name this file. It is filled by the entry "
+                       "gate BEFORE the kit is installed, or by the user in an editor outside "
+                       "this session; `init_project_memory` is copy-if-absent and will not "
+                       "overwrite what they write. If a merge gate is blocking on its content, "
+                       "say that in the same breath — retrying the write or the push changes "
+                       "nothing.")
         _kernel.block(
             HOOK,
             "'%s' is canonical project state — only the kernel writes it (spec II.4). A tool write "
@@ -304,7 +352,7 @@ def handle_file_write(data):
         _assert_not_forbidden(rel, task)
         inside = _state_relative(rel)
         if inside is not None:
-            _assert_state_write_allowed(rel, inside, task, data)
+            _assert_state_write_allowed(rel, inside, task, data, root)
         elif task is not None:
             _assert_in_scope(rel, task)
         elif data.get("agent_id"):

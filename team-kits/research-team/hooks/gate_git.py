@@ -19,10 +19,11 @@ store for itself would give the harness two answers to the question the harness 
 the same way.
 
 THE RULE, in one sentence: the merge opens when every item it is about could still be delivered,
-has a current verdict from at least one delivery-judging Evidence kind, and has no current verdict
-that is a fail. "Current verdict of a kind" is the newest Evidence of that kind covering the item
-— see `report.qa_verdicts` for why newest-wins rather than any-pass-wins, and for what "covering"
-means.
+has a current verdict from EVERY delivery-judging Evidence kind, and has no current verdict that is
+a fail. "Current verdict of a kind" is the newest Evidence of that kind covering the item — see
+`report.qa_verdicts` for why newest-wins rather than any-pass-wins, and for what "covering" means.
+"Every kind" is `backlog_types.QA_EVIDENCE_KINDS`, read at run time and never listed here, so the
+gate owes exactly what the kernel calls a delivery verdict.
 
 WHAT THE MERGE IS ABOUT is every root item the git invocation NAMES, and the gate requires all of
 them rather than picking one. Picking would need a rule for which token is the ref being merged,
@@ -61,6 +62,12 @@ Two situations are handled deliberately rather than by the main rule:
     the V1 blockage rather than remove it. Naming the item in the branch is what makes the gate
     specific — unnamed, a green run on one item does not silence another item's open FAIL, but
     neither does this gate know which of them the push carries.
+    THE COMPLETENESS HALF IS NOT ASKED HERE, and the limit is stated rather than left to be
+    discovered: with no item, "every kind has answered" has no subject, and demanding it per
+    subject over the whole store would refuse every push while ANY item in the project is still
+    mid-flight — the V1 blockage in a new spelling. So an unnamed merge is judged on open failures
+    alone, which is strictly weaker than the named case. Naming the item is what buys the strict
+    reading; nothing in this gate makes an unnamed push carry it.
 """
 import os
 import sys
@@ -88,17 +95,12 @@ HOOK = "gate_git"
 # branch from half-matching and being treated as a `PR`.
 TARGET_RX = re.compile(r"\b(?:%s)-\d{4,}\b" % "|".join(_root.ROOT_ITEM_TYPES), re.IGNORECASE)
 
-# Force-push in every spelling: the flags AND the `+refspec` form (`git push origin +main`).
-# Matched on the NORMALISED view (`_compat.git_argument_text`) and on the raw command, and each
-# check catches what the other cannot. The NORMALISED one carries the spellings that only become
-# `--force` once the shell is done with them: a flag broken over a line continuation
-# (`--f\<newline>orce`), the PowerShell escape (`--for`ce` — measured ALLOW as a real hook process
-# with tool_name PowerShell), a flag assembled out of adjacent quoted pieces (`--fo''rce`). The
-# RAW one is the belt for the opposite risk — a normaliser may drop characters, it may never
-# invent them — and it is what already covered the quoted flags (`git push "--force"`, `"+main"`),
-# because the pattern's own `["']` alternatives match those in the raw text. Over-triggering is
-# acceptable for an action that is forbidden either way.
-FORCE_RX = re.compile(r"--force(-with-lease)?|(^|[\s\"'])-f([\s\"']|$)|[\s\"']\+[\w./-]+(:|[\s\"']|$)")
+# Force-push in every spelling. BOUND, not copied: this is `_compat.names_force_push` itself, and
+# the name exists here because a gate should say under its own roof which rule it decides on. The
+# definition moved out of this file because `gate_git` is not installed in the office kit, and a
+# rule that kit also needs cannot live in a module it never runs — see `_compat.FORCE_PUSH_RX` for
+# the two readings and for what the over-trigger costs.
+names_force_push = _compat.names_force_push
 
 # A ref the shell EXPANDS at run time — `$B`, `${B}`, `$(git …)`, `$env:B`, `%B%` — is a ref this
 # gate cannot read, and "cannot read" must not become "names nothing". Seeing one means the item is
@@ -165,10 +167,12 @@ def _remedy(target):
             "--kind <test|review|acceptance> --result pass --related %s --summary ... "
             "--artifact-ref <path to the raw proof>`). Recording the newer verdict is what "
             "supersedes the old one — the kernel refuses to EDIT an Evidence, because a verdict "
-            "changed in place leaves no item behind to notice. Archiving the failing Evidence "
-            "lifts this gate too and is equally visible in git, but it retires a verdict without "
-            "replacing it, so it belongs after a newer run, not instead of one. The proof itself "
-            "goes under %s/staging/<task-id>/."
+            "changed in place leaves no item behind to notice. Archiving the failing Evidence is "
+            "equally visible in git, but it retires a verdict without REPLACING it: the merge then "
+            "opens only if an older passing Evidence of that same kind is left to become the "
+            "current verdict, and with none left the kind is simply unanswered and this gate stays "
+            "closed on that. So archiving belongs after a newer run, not instead of one. The proof "
+            "itself goes under %s/staging/<task-id>/."
             % (target or "<ITEM-ID>", _kernel.STATE_DIRNAME)) + _FROM_THE_ROOT
 
 
@@ -223,7 +227,28 @@ def _refuse_a_status_no_delivery_can_follow(state, types, target):
 
 
 def _refuse_unless_the_item_is_green(types, target, verdicts):
-    """The main rule for ONE item: at least one current verdict, and none of them a fail."""
+    """The main rule for ONE item: a current verdict of EVERY delivery-judging kind, none a fail.
+
+    "Every kind" is `types.QA_EVIDENCE_KINDS`, asked of the kernel at run time. Not a tuple here,
+    and that is the whole point of taking it from there: it is the same set
+    `report._delivery_evidence` filters the store with, so a kind the kernel starts calling a
+    delivery verdict is owed the day it exists, instead of becoming a verdict a role records in
+    good faith and no merge ever waits for.
+
+    WHY COMPLETENESS rather than "at least one". The kinds ask different questions — today,
+    whether the work was read, whether the suite was run, whether the criteria were walked one by
+    one — and under the weaker rule any one answer stood in for the others: a merge opened on a
+    green test run that no reviewer had looked at, and on a reviewer's nod with no suite behind
+    it. The QA/reviewer role skill of the kit this hook ships in is where the role is told which
+    kinds it owes; this is the same demand at the moment it is collected.
+
+    A `fail` is reported BEFORE an unanswered kind, so a role that has one of each is sent to fix
+    the red verdict first and meets this refusal on the next attempt. Deliberate: the two are
+    different work, and one message that mixed them would bury the failing verdict.
+
+    WHAT IT DOES NOT REACH is decided one caller up in `main`: only a merge that NAMES a root item
+    reaches this function at all (module docstring, NO ITEM NAMED).
+    """
     failing = {kind: entry for kind, entry in verdicts.items() if entry["result"] != "pass"}
     if failing:
         _kernel.block(
@@ -241,6 +266,21 @@ def _refuse_unless_the_item_is_green(types, target, verdicts):
             remedy="run the QA gate and have the reviewing role record the outcome as an Evidence "
                    "item: `python scripts/harness.py evidence --kind <test|review|acceptance> --result pass "
                    "--related %s --summary ... --artifact-ref <path to the raw proof>`." % target
+                   + _FROM_THE_ROOT)
+    unanswered = sorted(set(types.QA_EVIDENCE_KINDS) - set(verdicts))
+    if unanswered:
+        _kernel.block(
+            HOOK,
+            "QA has judged %s only in part — %s, and no %s Evidence covers it at all. Each kind "
+            "answers a question the others do not, so a delivery merge rests on all of them (%s); "
+            "an unanswered kind is work not finished, not a verdict to leave out."
+            % (target, _describe(target, verdicts), "/".join(unanswered),
+               ", ".join(sorted(types.QA_EVIDENCE_KINDS))),
+            remedy="have the judging role record the missing verdict — one Evidence per kind, each "
+                   "naming the run that produced it: `python scripts/harness.py evidence --kind "
+                   "<test|review|acceptance> --result pass --related %s --summary ... "
+                   "--artifact-ref <path to the raw proof>`. A kind that cannot be answered yet is "
+                   "the merge arriving early; it is not this gate to route around." % target
                    + _FROM_THE_ROOT)
 
 
@@ -298,9 +338,8 @@ def main():
     if not _compat.wants_push_or_merge(command):
         sys.exit(0)
 
-    text = _compat.git_argument_text(command)
     if (any(invocation.runs("push") for invocation in _compat.git_invocations(command))
-            and (FORCE_RX.search(text) or FORCE_RX.search(command.lower()))):
+            and names_force_push(command)):
         # NAMES NO SOURCE DOCUMENT, and that is structural rather than a wording taste. This file
         # is byte-identical in the dev and research kits (the mirror rule), so a refusal that cites
         # "the team constitution" cites a DIFFERENT text in each of them and can be wrong in one

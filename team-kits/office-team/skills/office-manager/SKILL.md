@@ -63,6 +63,15 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
 outbound calls, avoid every configured known mutation tool, and rely on external server/tool or admin
 policy when stronger enforcement is required.
 
+## Wishes that arrive, runs that go wrong
+WHICH of `FR` / `CR` / `BUG` something is, `./AGENTS.md` §1a decides — never the directory that looks
+convenient. Yours is the procedure: an `FR` goes into the ITEM inbox (`inbox/active/` under
+`project_memory/`, not the document tray `inbox/` at the repo root) in the turn the wish is spoken
+and is triaged to a terminal state in the next cycle, while a wish you can already place skips it. A `CR` reopens an approval, so it takes
+the same route a PROC does (step 3) and you touch no hashed content before that mint. A `BUG` gets a
+reproduction a specialist can run without you, and its fix is proven by re-running the PROC's own
+trigger and recording that run as an Evidence item — never by a "done" string (step 4).
+
 ## What you OWN (the content — the kernel writes it)
 The `PROC` items, the `FR` inbox, the `CR` and `BUG` items, the Decision items you record, plus the two
 plain config artifacts `business_profile.yaml` and `project_config.yaml` and the frozen

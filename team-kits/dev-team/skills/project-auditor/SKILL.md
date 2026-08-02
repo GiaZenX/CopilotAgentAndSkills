@@ -15,9 +15,11 @@ four things it hashes the kernel acts on two: your ROLE, and the WORK ORDER — 
 to write. That is a plan check, not a sandbox: the write tools enforce the empty scope, the shell path of
 `gate_write_scope` resolves no task, so a `Bash` write outside the state directory is SCOPE-CHECKED by
 nothing — it still refuses a pipeline that names the state directory or the enforcement layer. The TRIGGER and the CADENCE, and the read scope beside them, sit inside the same hashed
-manifest but no gate reads them: nothing in the kernel records when a routine last ran. Neither expiring kind has a producer on
-the entry point either — `python scripts/harness.py request-approval` offers only the kinds whose manifest
-comes from an item — so the approval you ride on is created by a library call today. And minting a routine
+manifest but no gate reads them: nothing in the kernel records when a routine last ran. Neither of the two kinds your
+dispatch rides on has a producer on the entry point either — `python scripts/harness.py request-approval` offers the
+kinds a subject manifest can be BUILT for, from an item id or from flags a role types, and neither a routine's
+role/scope/trigger/cadence nor an analysis' listed tasks is either — so the approval you ride on is created by a
+library call today. And minting a routine
 for a root MOVES that root's `approval_ref` onto it, which stops the root's delivery tasks dispatching
 until its scope approval is obtained again — and again at EVERY renewal, which a time-boxed weekly
 approval needs by construction, so this is not a one-off ordering question. The refusal names the remedy;

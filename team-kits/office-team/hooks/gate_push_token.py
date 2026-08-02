@@ -26,6 +26,13 @@ uses for every other gate.
 FAIL-CLOSED ON AMBIGUITY. If the command's refspec cannot be resolved to "this HEAD, that branch",
 the push is refused with an instruction to name remote and branch explicitly, rather than guessed
 at. A guess here authorises publishing something the user did not see.
+
+AND A FORCE PUSH IS REFUSED BEFORE ANY OF THAT, on `_compat.names_force_push` — the definition
+`gate_git` decides on too, and before this gate's rehearsal and state-directory stand-downs both.
+The manifest binds remote, branch and commit; it cannot bind "and the remote history survives", so
+no approval this gate reads is able to cover one. `gate_git` is absent from the office kit
+(`settings.json` there registers this gate and no `gate_git`), which is why the rule may not live
+in that file alone.
 """
 import os
 import sys
@@ -45,9 +52,20 @@ import _compat  # noqa: E402
 
 HOOK = "gate_push_token"
 SHELL_TOOLS = ("Bash", "PowerShell")
-# flags that take a value, so the following token is not a remote
+# Force-push in every spelling. BOUND, not copied: this is `_compat.names_force_push` itself, the
+# same object `gate_git` decides on, named here because a gate should say under its own roof which
+# rule it enforces. This file used to know one spelling (`+refspec`, in `_resolve`) while the
+# other gate knew all of them -- and the office kit installs this gate and no `gate_git` at all.
+names_force_push = _compat.names_force_push
+# flags that take a value AS A SEPARATE TOKEN, so the token after them is not a remote. The test
+# is that separateness and nothing else: `--force-with-lease` sat here and takes no such value --
+# git spells its value with `=` (`--force-with-lease=origin/main`) -- so listing it made
+# `_push_arguments` swallow the remote and `_resolve` answer "cannot be pinned down". Measured
+# 2026-08-02 with a live approval: `git push --force-with-lease origin main` was refused for the
+# wrong reason while `--force-with-lease=origin/main` resolved and was ALLOWED. Both forms are
+# now ordinary `-` flags to this reader, and both are refused by the force check in `main`.
 _VALUE_FLAGS = ("--repo", "--exec", "--receive-pack", "-o", "--push-option",
-                "--force-with-lease", "--recurse-submodules", "--signed")
+                "--recurse-submodules", "--signed")
 _REHEARSAL_FLAGS = ("--dry-run", "-n")
 
 
@@ -158,8 +176,11 @@ def _resolve(root, invocation):
     if len(tokens) > 2:
         return None, ("more than one refspec in a single push — approve and run them one at a "
                       "time, so each approval names exactly what it releases")
-    if refspec.startswith("+"):
-        return None, "a `+refspec` is a force-push, which this gate refuses outright"
+    # No `+refspec` branch here any more. It used to be this function's own account of one force
+    # spelling, and being one spelling is what let `--force` and `-f` past: `main` now asks
+    # `_compat.names_force_push`, which covers `+refspec` too, and it asks BEFORE resolving. A
+    # second copy here would be a second definition of the same rule with nothing keeping them
+    # equal, which is how the two answers differed in the first place.
     if ":" in refspec:
         source, target = refspec.split(":", 1)
         resolved = _git(root, "rev-parse", source) if source else None
@@ -214,11 +235,46 @@ def main():
     if data.get("tool_name") not in SHELL_TOOLS:
         sys.exit(0)
     raw = str((data.get("tool_input") or {}).get("command") or "")
+    invocations = _push_invocations(raw)
+    if not invocations:
+        sys.exit(0)
+
+    # A FORCE PUSH IS NOT A PUSH THIS GATE CAN LET AN APPROVAL COVER. The token is bound to
+    # remote + branch + HEAD (`approvals.push_subject_manifest`), and that manifest says nothing
+    # about whether the remote history survives — so a live approval for `origin/main @ abc123`
+    # was answered rc 0 for `git push --force origin main`, which publishes the same commit AND
+    # discards what other clones already have. Measured 2026-08-02 through the real hook process
+    # with a minted token: `--force` and `-f` rc 0, `--force-with-lease=origin/main` rc 0, quoted
+    # `"--force"` rc 0, and `--force-with-lease` rc 2 only because the flag list mis-swallowed the
+    # remote.
+    #
+    # UNCONDITIONAL, so it stands before BOTH stand-downs this function has, and each was measured
+    # rather than reasoned about. The rehearsal filter below excuses a `--dry-run` because it
+    # publishes nothing — but `gate_git` refuses a rehearsed force push, and letting this gate
+    # answer differently would put the same incoherence back one spelling further out, in the kit
+    # where `gate_git` is not installed. The state-directory stand-down means "no state, nothing to
+    # approve against", and a force push is refused with no approval in the question at all.
+    #
+    # ASKED OF `_compat.names_force_push`, which is also what `gate_git` decides on. Two gates
+    # answering "is this a force push" from two places is the defect this replaced: this file knew
+    # `+refspec` and nothing else, `gate_git` knew all of them, and `gate_git` does not ship to the
+    # office kit at all.
+    if names_force_push(raw):
+        _kernel.block(
+            HOOK,
+            "force-push is refused: it rewrites history other clones already have, and a push "
+            "approval cannot cover it — the token is bound to remote, branch and commit "
+            "(`approvals.push_subject_manifest`) and says nothing about discarding what the "
+            "remote already holds.",
+            remedy="push without rewriting the remote's history — that is what `--force`, `-f`, "
+                   "`--force-with-lease` and a `+refspec` all ask for. If history really has to be "
+                   "rewritten, that is a user decision, not a task decision: report it and let "
+                   "them run it themselves.")
+
     # Read off EACH push's own arguments, as TOKENS — see `_is_rehearsal`. `-n` is an ordinary flag
     # of other git commands (`git commit -n`), so a line-wide search let one of those release a
     # real push, and a search over the joined tokens let a push OPTION do the same.
-    pushes = [invocation for invocation in _push_invocations(raw)
-              if not _is_rehearsal(invocation)]
+    pushes = [invocation for invocation in invocations if not _is_rehearsal(invocation)]
     if not pushes:
         sys.exit(0)
 
@@ -249,15 +305,14 @@ def main():
                 "MINIMUM-KEEP rule: nothing is published without the user saying so). An approval "
                 "for an earlier commit does not carry over: the token is bound to the exact HEAD, "
                 "which is what makes it single-use." % (head[:8], remote, branch),
-                remedy="ask the user with the approval flow (`python scripts/harness.py approve "
-                       "push --remote %s --branch %s`), relay the question verbatim, and push "
-                       "once they have chosen the Freigeben option. NOTE: `approve` is not on the "
-                       "entry point's command surface yet (spec II.4 names it, "
-                       "`python scripts/harness.py --help` does not list it), so today that "
-                       "command is one to NAME in your report as the missing piece — the "
-                       "AskUserQuestion approval path is what actually mints the token. Do not "
-                       "hand-write an approval file: only the PostToolUse hook can mint "
-                       "one." % (remote, branch))
+                remedy="run `python scripts/harness.py request-approval push --remote %s --branch "
+                       "%s` from the project root (HEAD is read from the worktree; pass `--head` "
+                       "only to name a different commit), relay the printed question to the user "
+                       "VERBATIM with AskUserQuestion, and push once they have chosen the "
+                       "Freigeben option — answering it is what mints the token, and the mint "
+                       "runs in the PostToolUse hook. Do not hand-write an approval file: it "
+                       "would have no consumed request behind it and this gate reads that, not "
+                       "the file." % (remote, branch))
     sys.exit(0)
 
 

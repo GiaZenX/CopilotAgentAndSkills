@@ -192,6 +192,33 @@ def push_subject_manifest(remote: str, branch: str, head: str) -> dict:
     }
 
 
+# THE OTHER HALF OF THE KIND SPLIT, and the reason B2 was a wall: `item_derived_kinds` names the
+# kinds a command line can open because it can carry an item id, and `cli` asked ONLY for those.
+# `push` is in `APR_KINDS`, has its manifest builder right above, and `gate_push_token` refuses
+# every push without one -- but nothing could create the request, so no project could ever push.
+# Measured 2026-08-02 before this: `approvals/pending/` never held a push request, and the gate's
+# own remedy pointed at a command the parser did not have.
+#
+# A kind belongs here when its subject is a handful of SCALAR facts a role can type. The CLI reads
+# the flags off the builder's SIGNATURE (the pattern `cli.freeze_parameters` already uses for the
+# freeze bodies), so a second line kind arrives on the command line with the right flags and no
+# edit there.
+LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest}
+
+# How long an approval minted from a command-line manifest stays valid. Every kind in this map is
+# in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
+# one to choose how long, or the supervised party decides how long its own permission lasts.
+# One hour, on `push`'s reason: the token is ALREADY single-use through HEAD (see
+# `push_subject_manifest`), so this clock only bounds how long an unused one lingers, and a push
+# token that outlives the working session is a standing permission to publish.
+LINE_APPROVAL_VALIDITY = 3600.0
+
+
+def line_manifest_kinds() -> tuple:
+    """The APR kinds whose subject manifest a COMMAND LINE can build -- see LINE_MANIFEST_BUILDERS."""
+    return tuple(sorted(LINE_MANIFEST_BUILDERS))
+
+
 def item_subject_manifest(item: dict, kind: str) -> dict:
     """Deterministic manifest for an item-bound approval kind."""
     if kind == "scope":
@@ -463,17 +490,28 @@ def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
             rejected.append("%s (%s): %s" % (apr.get("id") or name[:-5], apr.get("kind"), exc))
             continue
         return apr
+    # THE REMEDY NAMES THE COMMAND AND THE KIND, and the second half is not decoration: the KIND
+    # is derived per edge, and a role that guesses it guesses wrong on the edges where the name of
+    # the status does not match the name of the kind. `EXP DESIGNED -> APPROVED` is committed by a
+    # `delivery` approval, and "run the approval flow" sent a role to `request-approval scope EXP-…`
+    # -- a request that opens, mints, and still does not walk the edge. Spelled from `kinds`, so an
+    # (item type, kind) pair added to APPROVAL_TRANSITIONS arrives here correctly named.
+    wanted = sorted(kinds)
     raise ApprovalError(
         "%s %s -> %s is the transition a %s approval commits, and none is in force for %s at "
         "revision %s -- refused (fail-closed). A status the supervised party can set itself is a "
-        "status no gate may read as approval.%s Remedy: run the kernel approval flow for %s -- "
-        "the mint walks this transition itself once the user approves, so there is nothing left "
-        "to transition by hand afterwards."
-        % (item["id"], from_status, to_status, "/".join(sorted(kinds)), item["id"],
+        "status no gate may read as approval.%s Remedy: run `python scripts/harness.py "
+        "request-approval %s %s`%s and relay the printed question to the user VERBATIM -- their "
+        "answer mints the approval AND walks this transition, so there is nothing left to "
+        "transition by hand afterwards."
+        % (item["id"], from_status, to_status, "/".join(wanted), item["id"],
            item.get("revision"),
            (" The approvals that name this item do not count: %s." % "; ".join(rejected))
            if rejected else "",
-           item["id"])
+           wanted[0], item["id"],
+           "" if len(wanted) == 1
+           else " (or %s in place of %s -- either kind commits this edge)"
+                % ("/".join(wanted[1:]), wanted[0]))
     )
 
 

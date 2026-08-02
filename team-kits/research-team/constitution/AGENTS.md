@@ -111,7 +111,7 @@ requirements. The **CR** replaces the old Protocol Amendment — same rule, one 
 | `HYP` (hypotheses/active), Decision items (decisions/active, incl. `premise_invalidation_triggers`), `methodology.yaml`, `literature.yaml`, `research_guidelines.yaml` | **Methodologist** |
 | analysis `src/**` + `tests/**` — inside the task's `allowed_scope` | **Researcher / Data Analyst** |
 | Evidence for raw data (Researcher) and derived results/findings (Data Analyst), attached to the `EXP` | **partitioned** |
-| Evidence `kind: review` / `kind: acceptance`; `INV` items for the standing validity criteria | **Reviewer** |
+| Evidence of every delivery kind — `review`/`test`/`acceptance`, all three needed for the merge; `INV` items for the standing validity criteria | **Reviewer** |
 | Evidence `kind: audit` + the BUG/CR/TSK each finding turns into | **Project-Auditor** |
 | `reports/EXP-*.{tex,pdf,html}`, `reports/fzulg_application_RQ-*.md` | **Report-Writer** |
 | pipelines/environments/datasets | **Research-Engineer** · `git push` | **PM** |
@@ -121,6 +121,29 @@ a typed item have no writer at all once the kit is installed (§0), so a wanted 
 infrastructure gap you report, not an edit you make.
 `TSK` items are created by the kernel BEFORE dispatch and belong to no specialist — a work order the executor
 could rewrite is not one; executors move a task's status by submitting their result envelope.
+
+## 7. Evolution: CR / BUG — explicit, never silent
+
+(The `FR` inbox — the undecided wish — is §6 + PM skill.) Which of the two you are writing follows
+from ONE question: **is the approved RQ revision still what we want to find out?** Which fields each
+then demands is defined once, in code (§9), and a capture missing one is refused there, naming them.
+
+- **No** → **`CR`** (§4): the approval is REOPENED, so the item names WHICH RQ revision it targets
+  and WHAT replaces it, with acceptance criteria. A design change to an already-approved `EXP` is
+  such a change and not an edit — its `design`, `variables` and `success_criteria` are hashed, so
+  rewriting them voids that approval.
+- **Yes, and the work did not deliver it** → **`BUG`** (`bugs/active`): observed against what the
+  accepted result claims, the exact pipeline/dataset invocation that reproduces it, urgency, and
+  what proves it fixed. During experimentation, analysis and review a defect stays INSIDE the loop
+  (task `FAILED` → `READY` on an approved retry, reviewer's Evidence decides) and no `BUG` exists;
+  it becomes one after the user ACCEPTED the RQ, or when an accepted result stops reproducing, on a
+  `bug/BUG-nnnn-<slug>` branch (§8). It hangs from the **RQ**, the root of the tree — not the `EXP`
+  that produced the number. The kernel checks only that the referenced id exists
+  (`state._assert_origins_resolve` leaves the tree question to the validator), so this one is on you.
+  The proof is a regression check that FAILS before the fix and passes after.
+
+A `BUG` is therefore never a `CR` and never a new `RQ`: it is a defect against what was already
+accepted. An auditor finding that is neither becomes a `TSK` or a Decision item (§13), never prose.
 
 ## 8. Git
 

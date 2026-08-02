@@ -328,6 +328,26 @@ def capture_evidence(repo, kind="test", result="pass", related=("PR-0001",), sum
     return sorted(os.listdir(evidence_dir(repo)))[-1][:-5]
 
 
+def qa_kinds():
+    """The delivery-judging Evidence kinds, asked of the kernel — the set a merge now rests on."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import QA_EVIDENCE_KINDS
+    return sorted(QA_EVIDENCE_KINDS)
+
+
+def capture_full_qa(repo, related=("PR-0001",), result="pass"):
+    """One Evidence of EVERY delivery-judging kind — a COMPLETE QA verdict for `related`.
+
+    What `gate_git` needs before it opens a merge, and derived from `QA_EVIDENCE_KINDS` rather
+    than typed out: a kind added to the kernel's delivery vocabulary is then recorded here too,
+    instead of leaving every "and now it merges" test below asserting rc 0 against a set the gate
+    would refuse — which is the shape that makes a suite go red all at once for a reason none of
+    its docstrings mention.
+    """
+    return [capture_evidence(repo, kind=kind, result=result, related=related)
+            for kind in qa_kinds()]
+
+
 def _merge(repo, item="PR-0001"):
     return {"tool_name": "Bash", "tool_input": {"command": "git merge feat/%s-x" % item},
             "cwd": str(repo)}
@@ -492,12 +512,12 @@ def test_gate_git_blocks_a_merge_with_no_qa_evidence_at_all(prd_repo):
 
 
 def test_gate_git_opens_once_the_evidence_a_role_can_produce_exists(prd_repo):
-    """...and the other half: the SAME repo merges once QA has recorded a passing Evidence.
+    """...and the other half: the SAME repo merges once QA has recorded its full verdict.
 
     Blocked-then-allowed in one test on purpose — separately, either half could pass while the
     gate was stuck open or stuck shut."""
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
-    capture_evidence(prd_repo, kind="test", result="pass")
+    capture_full_qa(prd_repo)
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
 
 
@@ -2289,7 +2309,7 @@ def test_gate_git_a_fail_for_another_item_does_not_close_this_merge(prd_repo):
     """The counter-direction, so the test above cannot be satisfied by blocking everything."""
     capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
     capture_evidence(prd_repo, result="fail", related=("PR-0002",))
-    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    capture_full_qa(prd_repo, related=("PR-0001",))
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
 
 
@@ -2297,7 +2317,7 @@ def test_gate_git_evidence_bound_to_a_task_resolves_to_its_root(prd_repo):
     """QA judges a TASK; the merge is of the PR it hangs from. V1 could only fall back to matching
     the PR's name anywhere in the file — including in a comment. V2 walks the reference graph."""
     task = capture_task(prd_repo)
-    capture_evidence(prd_repo, related=(task["id"],))
+    capture_full_qa(prd_repo, related=(task["id"],))
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
 
 
@@ -2308,7 +2328,7 @@ def test_gate_git_evidence_bound_to_an_archived_task_still_resolves(prd_repo):
     from kernel.state import ProjectState
     state = ProjectState(os.path.join(str(prd_repo), "project_memory"))
     task = capture_task(prd_repo)
-    capture_evidence(prd_repo, related=(task["id"],))
+    capture_full_qa(prd_repo, related=(task["id"],))
     for status in ("READY", "LEASED", "IN_PROGRESS", "SUBMITTED", "DONE", "VALIDATED"):
         state.transition(task["id"], status)
     state.archive(task["id"])
@@ -2318,7 +2338,7 @@ def test_gate_git_evidence_bound_to_an_archived_task_still_resolves(prd_repo):
 def test_gate_git_a_fail_recorded_after_a_pass_closes_the_gate_again(prd_repo):
     """Newest-wins, not any-pass-wins: a regression found after a green run is what re-blocks the
     merge, and "there is a passing Evidence somewhere" cannot express that."""
-    capture_evidence(prd_repo, kind="test", result="pass")
+    capture_full_qa(prd_repo)
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
     capture_evidence(prd_repo, kind="test", result="fail")
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
@@ -2326,25 +2346,117 @@ def test_gate_git_a_fail_recorded_after_a_pass_closes_the_gate_again(prd_repo):
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
 
 
-def test_gate_git_a_failing_kind_blocks_although_another_kind_passes(prd_repo):
+def test_gate_git_a_failing_kind_blocks_although_every_other_kind_passes(prd_repo):
     """Per KIND, because the kinds ask different questions: a green test run does not answer the
-    reviewer's finding, and reading only "some kind passed" would let it."""
-    capture_evidence(prd_repo, kind="test", result="pass")
+    reviewer's finding, and reading only "some kind passed" would let it.
+
+    The verdict set is COMPLETE apart from the one fail, and the refusal REASON is asserted —
+    otherwise the completeness rule would satisfy this test for free (a repo missing two kinds
+    also exits 2) and the fail tooth could be gone without anything going red.
+    """
+    capture_full_qa(prd_repo)
     capture_evidence(prd_repo, kind="review", result="fail")
-    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
+    result = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "not a pass" in result.stderr and "review fail" in result.stderr, result.stderr
 
 
-def test_gate_git_archiving_a_superseded_verdict_retires_it(prd_repo):
-    """Archiving is a kernel operation and visible in git, so it does lift the gate — and the
-    remedy text says so rather than pretending otherwise. What it must NOT be is the cheap way
-    out, which is why the kernel refuses to edit an Evidence at all (test_state.py)."""
+def test_gate_git_archiving_a_superseded_verdict_uncovers_the_older_one(prd_repo):
+    """Archiving is a kernel operation and visible in git, so it does lift the gate — but ONLY as
+    far as what it uncovers, and the remedy text has to say exactly that much.
+
+    Both halves are here because the remedy makes both claims. Archiving the newer FAIL leaves the
+    older pass of that kind as the current verdict and the merge opens. Archiving the only
+    Evidence of a kind leaves that kind unanswered, and under the completeness rule the gate stays
+    closed on it — so archiving cannot be the cheap way out of a red verdict. (The kernel also
+    refuses to EDIT an Evidence at all; that is test_state.py's.)
+    """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(prd_repo), "project_memory"))
+    capture_full_qa(prd_repo)
     failed = capture_evidence(prd_repo, kind="review", result="fail")
-    capture_evidence(prd_repo, kind="test", result="pass")
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 2
-    ProjectState(os.path.join(str(prd_repo), "project_memory")).archive(failed)
+    state.archive(failed)
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+    # ...and the second claim, on a second item so the first one's history stays readable: with a
+    # kind's ONLY record archived, that kind is unanswered. The kind is taken from the kernel's
+    # set, not chosen — any one of them has to behave this way.
+    capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
+    sole_kind = qa_kinds()[0]
+    sole = None
+    for kind in qa_kinds():
+        recorded = capture_evidence(prd_repo, kind=kind,
+                                    result="fail" if kind == sole_kind else "pass",
+                                    related=("PR-0002",))
+        sole = recorded if kind == sole_kind else sole
+    second = _merge(prd_repo, item="PR-0002")
+    assert run_hook("gate_git.py", second, prd_repo) == 2
+    state.archive(sole)
+    blocked = run_hook_process("gate_git.py", second, prd_repo)
+    assert blocked.returncode == 2
+    assert "no %s Evidence covers it" % sole_kind in blocked.stderr, blocked.stderr
+
+
+@pytest.mark.parametrize("withheld", qa_kinds())
+def test_gate_git_refuses_a_merge_one_evidence_kind_has_not_judged(prd_repo, withheld):
+    """EVERY delivery-judging kind is load-bearing, measured one withheld kind at a time.
+
+    The rule this replaces opened the merge on ONE non-fail verdict, so any single kind could
+    stand in for the other two: a green test run merged work no reviewer had read, and a
+    reviewer's nod merged work no suite had run. Parametrised over the kernel's own set rather
+    than dropping a fixed kind, because "always withhold `acceptance`" stays green for an
+    implementation that hard-wires the other two.
+
+    BOTH DIRECTIONS, in one test and against the real hook process: the merge is refused with the
+    withheld kind NAMED (a block that does not say which kind is missing is not actionable), and
+    the very same repo merges as soon as that one kind is recorded — which is what keeps this from
+    being satisfiable by a gate that simply refuses everything.
+    """
+    for kind in qa_kinds():
+        if kind != withheld:
+            capture_evidence(prd_repo, kind=kind, result="pass")
+    blocked = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo)
+    assert blocked.returncode == 2, blocked.stderr
+    assert "no %s Evidence covers it" % withheld in blocked.stderr, blocked.stderr
+    assert "PR-0001" in blocked.stderr
+    capture_evidence(prd_repo, kind=withheld, result="pass")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def test_gate_git_owes_whatever_the_kernel_calls_a_delivery_verdict(prd_repo, tmp_path_factory):
+    """The set is DERIVED, and this is the measurement that says so rather than the docstring.
+
+    A kernel copy OUTSIDE the repo gets a fourth delivery-judging kind, and the shipped hook is
+    pointed at it. Nothing in the hook changes, no test constant changes — the gate must now wait
+    for a verdict of a kind that did not exist a moment ago. A hook carrying its own tuple of
+    three passes the parametrised test above and fails here, which is the difference between an
+    enumeration and a definition.
+
+    The counter-half is the first assertion: against the SHIPPED kernel the same complete-by-
+    today's-vocabulary repo merges, so the block below is the widened vocabulary and not the
+    fixture being broken.
+    """
+    capture_full_qa(prd_repo)
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+    widened = str(tmp_path_factory.mktemp("widened-kernel"))
+    shutil.copytree(os.path.join(ROOT, "team-kits", "kernel"),
+                    os.path.join(widened, "kernel"),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    types_path = os.path.join(widened, "kernel", "backlog_types.py")
+    with open(types_path, encoding="utf-8") as fh:
+        source = fh.read()
+    marker = 'EVIDENCE_KINDS = frozenset(("test", "review", "acceptance", "audit"))'
+    assert marker in source, "the kernel's kind vocabulary moved — this fixture has to follow it"
+    with open(types_path, "w", encoding="utf-8") as fh:
+        fh.write(source.replace(
+            marker, marker.replace('"audit"', '"audit", "reproduction"')))
+
+    blocked = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo,
+                               extra_env={"HARNESS_KERNEL_PATH": widened})
+    assert blocked.returncode == 2, blocked.stderr
+    assert "no reproduction Evidence covers it" in blocked.stderr, blocked.stderr
 
 
 def test_gate_git_names_recording_the_re_run_as_the_way_out_of_a_fail(prd_repo):
@@ -2389,7 +2501,7 @@ def test_gate_git_ignores_an_item_named_only_in_a_shell_comment(prd_repo):
     Without it "require every named item" would be satisfiable by blocking on anything that looks
     like an id anywhere on the line, and a trailing note would start failing merges.
     """
-    capture_evidence(prd_repo, result="pass", related=("PR-0001",))
+    capture_full_qa(prd_repo, related=("PR-0001",))
     assert run_hook("gate_git.py",
                     _bash(prd_repo, "git merge feat/PR-0001-x  # follow-up to PR-0002"),
                     prd_repo) == 0
@@ -2710,7 +2822,7 @@ def test_gate_git_reads_the_branch_only_when_the_command_names_nothing(prd_repo)
     """
     capture_root_item(prd_repo, dict(PR_FIELDS, title="Second"))   # PR-0002
     _git_repo_on_branch(prd_repo, "feat/PR-0002-x")
-    capture_evidence(prd_repo, result="pass", related=("PR-0002",))
+    capture_full_qa(prd_repo, related=("PR-0002",))
     capture_evidence(prd_repo, result="fail", related=("PR-0001",))
     named = run_hook_process("gate_git.py", _bash(prd_repo, "git merge feat/PR-0001-x"), prd_repo)
     assert named.returncode == 2 and "PR-0001" in named.stderr
@@ -2751,11 +2863,12 @@ def test_gate_git_judges_the_merged_items_status_against_its_own_automaton(tmp_p
     """"Branch↔item + a status appropriate to the TYPE" — the second half of the disposition row.
 
     Which statuses those are is read off `AUTOMATA[type]` rather than listed in the hook, so the
-    rule travels with a kit that adds a root type. Passing evidence is recorded in every case, so
-    a block here can only come from the status and an allow only from both teeth agreeing.
+    rule travels with a kit that adds a root type. A COMPLETE passing verdict set is recorded in
+    every case, so a block here can only come from the status and an allow only from both teeth
+    agreeing.
     """
     capture_root_item(tmp_path, status=status)
-    capture_evidence(tmp_path, result="pass")
+    capture_full_qa(tmp_path)
     assert run_hook("gate_git.py", _merge(tmp_path), tmp_path) == expected
 
 
@@ -5401,8 +5514,9 @@ def test_the_evidence_the_merge_gate_demands_has_an_installed_producer(tmp_path)
         project they built. Measured by RUNNING them, because a shell script has more ways to write
         a file than a reader has rules about text.
       * the RUN, through the gates a role's shell command actually meets: the merge refused for
-        want of Evidence, then the entry point's own command line put through every
-        `Bash|PowerShell` PreToolUse hook this project registered AND then executed, then the same
+        want of Evidence, then the entry point's own command line — one per delivery-judging kind,
+        because that is the set the merge waits for — put through every `Bash|PowerShell`
+        PreToolUse hook this project registered AND then executed, then the same
         merge again. Both halves are here because either alone proves nothing — an Evidence
         recorded by a command line the gates refuse is no remedy, and a command line the gates
         allow but that records nothing is no producer.
@@ -5437,13 +5551,19 @@ def test_the_evidence_the_merge_gate_demands_has_an_installed_producer(tmp_path)
     assert blocked.returncode == 2, blocked.stdout + blocked.stderr
     assert "no QA Evidence for PR-0001" in blocked.stderr, blocked.stderr
 
-    arguments = ["evidence", "--kind", "test", "--result", "pass", "--related", "PR-0001",
+    # ONE command line per delivery-judging kind, because the merge waits for all of them — the
+    # kinds come from the kernel, so this measures the producer against what the gate demands
+    # rather than against a kind this test happened to pick.
+    per_kind = [["evidence", "--kind", kind, "--result", "pass", "--related", "PR-0001",
                  "--summary", "qa run green", "--artifact-ref", "staging/TSK-0001/run.log"]
-    record = "%s %s" % (cli.INVOCATION, " ".join(arguments))
-    for gate in _shell_gates_of(repo):
-        seen = _run_project_hook(repo, gate, record)
-        assert seen.returncode == 0, (
-            "%s refuses the one command line that records an Evidence:\n%s" % (gate, seen.stderr))
+                for kind in qa_kinds()]
+    for arguments in per_kind:
+        record = "%s %s" % (cli.INVOCATION, " ".join(arguments))
+        for gate in _shell_gates_of(repo):
+            seen = _run_project_hook(repo, gate, record)
+            assert seen.returncode == 0, (
+                "%s refuses the one command line that records an Evidence:\n%s"
+                % (gate, seen.stderr))
     # THE SUITE'S OWN BYTECODE SETTINGS ARE REMOVED, not inherited. `conftest` exports
     # `PYTHONPYCACHEPREFIX` so the tests never litter the tree, and a subprocess that inherits it
     # writes no `.pyc` wherever the shim stands on the question — measured: with
@@ -5452,10 +5572,12 @@ def test_the_evidence_the_merge_gate_demands_has_an_installed_producer(tmp_path)
     # neither variable, so neither may decide anything here.
     env = {k: v for k, v in os.environ.items()
            if k not in ("PYTHONPATH", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")}
-    ran = subprocess.run([sys.executable, os.path.join(*cli.ENTRY_POINT.split("/"))] + arguments,
-                         cwd=str(repo), capture_output=True, text=True, env=env, timeout=120)
-    assert ran.returncode == 0, ran.stdout + ran.stderr
-    assert "test: pass" in ran.stdout, ran.stdout
+    for arguments in per_kind:
+        ran = subprocess.run(
+            [sys.executable, os.path.join(*cli.ENTRY_POINT.split("/"))] + arguments,
+            cwd=str(repo), capture_output=True, text=True, env=env, timeout=120)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+        assert "%s: pass" % arguments[2] in ran.stdout, ran.stdout
 
     opened = _run_project_hook(repo, "gate_git.py", merge)
     assert opened.returncode == 0, (
@@ -6020,6 +6142,76 @@ def test_every_command_a_role_is_handed_is_on_the_entry_points_surface():
     # The floor sits well under that, so a rewritten document cannot trip it, and well over the 49
     # the narrower corpus saw, so losing the merge cannot pass unnoticed.
     assert seen >= 100, "only %d entry-point calls found — the reader stopped matching" % seen
+
+
+def _requested_approval_kinds(text):
+    """Every `<INVOCATION> request-approval <kind>` a text hands a role, as the kind it names.
+
+    ANCHORED ON THE INVOCATION, exactly as `_entry_point_calls` is, and for a measured reason: the
+    corpus contains AST-FOLDED module strings, and folding glues literals that never stood next to
+    each other. Unanchored, `kernel/cli.py` reads as handing out `request-approval builder` and
+    `request-approval help` — two words from the parser's own construction, neither of them a
+    promise to anybody. A kind is judged when it stands inside a runnable command line, which is
+    the same definition the sibling check reads a subcommand by.
+
+    A `<placeholder>` yields nothing: `request-approval <kind> <ITEM-ID>` points at the surface
+    instead of promising one member of it, which is how the constitutions and the README spell it.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    for match in re.finditer(
+            re.escape(cli.INVOCATION) + r"\s+request-approval\s+([a-z][a-z0-9-]*)", text):
+        yield match.group(1)
+
+
+def test_every_approval_kind_a_role_is_handed_is_on_the_request_approval_surface():
+    """A remedy naming `request-approval <kind>` is a promise that this kind can be requested.
+
+    The sibling above judges the SUBCOMMAND; nothing judged its first argument, and that is where
+    the gap sat: `gate_push_token` refuses every push without a token and its remedy says to run
+    `request-approval push`, while the parser offered only the item-derived kinds — so the one
+    command the refusal names did not exist, in all three kits, and no project could ever publish.
+    The subcommand check could not see it, because `request-approval` itself was on the surface.
+
+    Judged against the SHIPPED PARSER's own `choices` for that argument rather than against
+    `APR_KINDS`: what a role can type is what argparse accepts, and the two are deliberately
+    different sets (`routine` and `analysis` are kinds whose manifest no command line can carry —
+    `test_staging_cli.py::test_cli_request_approval_offers_exactly_the_kinds_a_manifest_builder_exists_for`
+    is the check on which split that is).
+
+    WHAT THIS DOES NOT REACH, so nobody reads it as covering the class: a text that CHARACTERISES
+    the surface in prose ("offers only the kinds whose manifest comes from an item") names no kind
+    and is invisible here. That sentence really did ship in the three project-auditor SKILLs and
+    went false the day `push` arrived; correcting it was a reading, not a measurement.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    request = cli.build_parser()._subparsers._group_actions[0].choices["request-approval"]
+    offered = set(next(action.choices for action in request._actions if action.dest == "kind"))
+    assert offered, "the shipped parser offers no approval kind at all"
+
+    blocks = []
+    for where, text in _shipped_texts():
+        blocks += [(where, _reading_view(block)[0]) for block in _markdown_blocks(text)]
+    for path in _shipped_python_modules():
+        where = os.path.relpath(path, ROOT).replace(os.sep, "/")
+        blocks += [(where, text) for text in _refusal_texts(path)]
+
+    seen, offenders = 0, []
+    for where, block in blocks:
+        for kind in _requested_approval_kinds(block):
+            seen += 1
+            if kind not in offered:
+                offenders.append("%s: `%s request-approval %s`" % (where, cli.INVOCATION, kind))
+    assert not offenders, (
+        "these blocks hand a role an approval kind the shipped parser refuses (it offers %s). A "
+        "remedy naming a kind argparse rejects is a wall, not a route:\n%s"
+        % (", ".join(sorted(offered)), "\n".join(sorted(set(offenders)))))
+    # A floor, because the assertion above is vacuously true over a reader that stopped matching.
+    # 8 sites across the three kits the day this shipped (3 push remedies, 5 scope routes); the
+    # floor sits under that so a rewritten remedy cannot trip it, and far enough over 0 that an
+    # invocation rename or a folding change cannot empty the reader unnoticed.
+    assert seen >= 5, "only %d request-approval kinds found — the reader stopped matching" % seen
 
 
 # ---------------- notify_agent_events: SubagentStop route ----------------
@@ -8318,36 +8510,83 @@ def _cygpath(path):
 _BASH_SPELLINGS = (str, lambda path: str(path).replace("\\", "/"), _cygpath)
 
 
-def _bash_spelling(tmp_path):
-    """The path transform this machine's `bash` accepts — or None, and then the branch is skipped.
+def _bash_candidates():
+    """Every `bash` this machine offers — derived, not typed out.
 
-    ASKED, NEVER ASSUMED, and asking the wrong thing is what made this helper useless for a round.
-    `shutil.which("bash")` answered `C:\\Program Files\\Git\\usr\\bin\\bash.EXE` while the process
-    that actually started was WSL's (`ls /tmp` → `snap-private-tmp`), which cannot see a Windows
-    path at all — and `cygpath` on the same PATH is Git Bash's, so it produced `/tmp/…` for a
-    bash whose `/tmp` is somewhere else entirely. Probe and run then used different spellings: the
-    probe said "bash works", the scaffold answered `Refusing non-absolute source path`, and the
-    branch was skipped here and would have been red anywhere else.
-
-    So the probe is the SAME operation the test performs — execute a script in this directory with
-    `$HOME` pointing into it — and whichever spelling survives that is the one the run uses.
+    `shutil.which("bash")` is not "the bash a user scaffolds with". On Windows it answers
+    `C:\\WINDOWS\\system32\\bash.EXE` (WSL), whose filesystem and whose interpreter are not the
+    ones a Git-Bash scaffold runs on; the shell such a user actually types into ships inside the
+    installation of the `git` that is on PATH. So: PATH first, then the POSIX binary directories
+    (`bin`, `usr/bin`) of that installation. Which of them can do the job is measured below, never
+    decided here.
     """
-    if not shutil.which("bash"):
-        return None
-    probe = os.path.join(str(tmp_path), "bash-probe.sh")
-    write(probe, "#!/usr/bin/env bash\ncd \"$HOME\" || exit 3\necho ok\n")
-    for spelling in _BASH_SPELLINGS:
-        script, home = spelling(probe), spelling(tmp_path)
-        if not script or not home:
-            continue
-        try:
-            result = subprocess.run(["bash", script], capture_output=True, text=True, timeout=60,
-                                    env=dict(os.environ, HOME=home))
-        except OSError:
-            continue
-        if result.returncode == 0 and "ok" in result.stdout:
-            return spelling
-    return None
+    roots = []
+    git = shutil.which("git")
+    if git:
+        roots.append(os.path.dirname(os.path.dirname(git)))
+    found, seen = [], set()
+    for candidate in [shutil.which("bash")] + [
+            os.path.join(root, bindir, name)
+            for root in roots for bindir in ("bin", os.path.join("usr", "bin"))
+            for name in ("bash", "bash.exe")]:
+        if candidate and os.path.isfile(candidate) and candidate not in seen:
+            seen.add(candidate)
+            found.append(candidate)
+    return found
+
+
+def _write_posix_script(path, body):
+    """A shell script the way a shell needs it: LF records and the execute bit.
+
+    `write()` uses text mode, which on Windows turns every `\\n` into CRLF — and a `#!` line
+    ending in CR is not a shebang. That is the same class of defect
+    `test_both_scaffold_launchers_leave_no_tier_alias_in_installed_frontmatter` measures, so
+    writing the instrument with it would be a joke.
+    """
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(body)
+    os.chmod(path, os.stat(path).st_mode | 0o111)
+
+
+def _scaffold_shell(tmp_path, extra_path=None):
+    """The (bash, path spelling) pair on this machine that can run a scaffold — or (None, None).
+
+    ASKED, NEVER ASSUMED, and asking the wrong thing is what made the predecessor of this helper
+    useless for a round. It probed `bash` only for "does a script start", which WSL's bash passes
+    while it can neither see a Windows path nor reach the interpreter the scaffold needs; the run
+    that followed answered `Refusing non-absolute source path` while the probe still said yes.
+
+    So the probe IS the scaffold's own precondition, executed the same way the run will be:
+    execute a file under `tmp_path` with `$HOME` there, resolve an interpreter exactly the way
+    `scaffold_team.sh` resolves `$PYBIN` (`python3 || python`), and import PyYAML with it. Both
+    the executable and the spelling are outcomes of that, not assumptions before it. `extra_path`
+    is prepended for callers that put a stand-in interpreter in front of the real one.
+    """
+    probe = os.path.join(str(tmp_path), "shell-probe.sh")
+    _write_posix_script(probe,
+                        "#!/usr/bin/env bash\n"
+                        "cd \"$HOME\" || exit 3\n"
+                        "PYBIN=\"$(command -v python3 || command -v python || true)\"\n"
+                        "[ -n \"$PYBIN\" ] || exit 4\n"
+                        "\"$PYBIN\" -c 'import yaml' || exit 5\n"
+                        "echo ok\n")
+    for exe in _bash_candidates():
+        for spelling in _BASH_SPELLINGS:
+            script, home = spelling(probe), spelling(tmp_path)
+            if not script or not home:
+                continue
+            environment = dict(os.environ, HOME=home, USERPROFILE=home)
+            if extra_path:
+                environment["PATH"] = extra_path + os.pathsep + os.environ.get("PATH", "")
+            try:
+                result = subprocess.run([exe, script], capture_output=True, text=True, timeout=180,
+                                        env=environment)
+            except OSError:
+                continue
+            if result.returncode == 0 and "ok" in result.stdout:
+                return exe, spelling
+    return None, None
 
 
 @pytest.mark.parametrize("kit,expected", [("office-team", ["archive", "inbox", "outbox"]),
@@ -8371,9 +8610,9 @@ def test_the_shipped_scaffold_records_the_trays_of_the_kit_it_installs(tmp_path,
     """
     if launcher == "ps1" and os.name != "nt":
         pytest.skip("no PowerShell here")
-    spelling = _bash_spelling(tmp_path) if launcher == "sh" else None
-    if launcher == "sh" and spelling is None:
-        pytest.skip("no bash that can run a file under this tmp_path")
+    shell, spelling = _scaffold_shell(tmp_path) if launcher == "sh" else (None, None)
+    if launcher == "sh" and shell is None:
+        pytest.skip("no bash on this machine that can run the scaffold under tmp_path")
     pytest.importorskip("yaml")
 
     home = tmp_path / "home"
@@ -8396,7 +8635,7 @@ def test_the_shipped_scaffold_records_the_trays_of_the_kit_it_installs(tmp_path,
             # of `$HOME`, and a `C:/…` spelling made it refuse with "Refusing non-absolute source
             # path" — a red that has nothing to do with what this test asks.
             environment["HOME"] = spelling(home)
-            command = ["bash", spelling(os.path.join(str(staging), "scaffold_team.sh")), team]
+            command = [shell, spelling(os.path.join(str(staging), "scaffold_team.sh")), team]
         else:
             command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                        os.path.join(str(staging), "scaffold_team.ps1"), "-Team", team]
@@ -8411,6 +8650,123 @@ def test_the_shipped_scaffold_records_the_trays_of_the_kit_it_installs(tmp_path,
     # ...and a SECOND kit over the first rewrites it rather than inheriting it
     other = "dev-team" if kit == "office-team" else "office-team"
     assert run(other) == ([] if other == "dev-team" else ["archive", "inbox", "outbox"])
+
+
+def _crlf_python_shim(directory):
+    """A `python`/`python3` whose stdout ends every record with CRLF, and its directory.
+
+    This is not a mock of anything: it is what CPython does on Windows, where `sys.stdout` is a
+    text stream and a text stream writes `os.linesep`. Reproducing it through a shim is what lets
+    the shell's parsing be measured on a Linux runner too, instead of only where the interpreter
+    on PATH happens to be a Windows build. `pipefail` keeps a failing helper a failing helper --
+    the scaffold's `set -Eeuo pipefail` must still see the real exit status.
+    """
+    interpreter = str(sys.executable).replace("\\", "/")
+    for name in ("python", "python3"):
+        _write_posix_script(os.path.join(str(directory), name),
+                            "#!/usr/bin/env bash\nset -o pipefail\n"
+                            "\"%s\" \"$@\" | awk '{ printf \"%%s\\r\\n\", $0 }'\n" % interpreter)
+    return str(directory)
+
+
+def _installed_tiers(repo):
+    """role -> {model, effort} as the INSTALLED frontmatter spells it."""
+    out = {}
+    for path in sorted(glob.glob(os.path.join(str(repo), ".claude", "agents", "*.md"))):
+        text = open(path, encoding="utf-8-sig").read()
+        out[os.path.basename(path)[:-3]] = {
+            field: (re.search(r"(?m)^%s:[ \t]*(\S+)[ \t]*$" % field, text) or [None, None])[1]
+            for field in ("model", "effort")}
+    return out
+
+
+def test_both_scaffold_launchers_leave_no_tier_alias_in_installed_frontmatter(tmp_path):
+    """F1: `model: worker` reaches a project, and then nothing this kit installs can be spawned.
+
+    WHAT WENT WRONG is not "bash", it is a boundary: `scaffold_team.sh` reads its maps from a
+    Python helper, and a Python on Windows terminates a text record with CRLF. `case "$val" in
+    worker)` then misses on `worker<CR>`, the tier alias survives into `.claude/agents/*.md`, and
+    `session_status.model_effort_mismatches` calls that exactly what it is. Measured on a Git-Bash
+    scaffold of office-team at HEAD a7c6250: bookkeeper, project-auditor and records-clerk all
+    installed as `model: worker`; the `.ps1` twin, whose readers hand it a bare value, installed
+    `model: sonnet` from the same `project_config.yaml`.
+
+    So the measurement is the TWIN, and the CRLF is supplied rather than hoped for. The `python`
+    on the shell's PATH is a shim that ends records the way a Windows CPython does, which makes
+    this red on a Linux runner too instead of only on the platform that happened to expose it.
+    The `.ps1` half runs with the ordinary interpreter -- that asymmetry is the subject.
+
+    "Unresolved" is not a list of three words here: it is membership in `aliases` of
+    `team-kits/model_tiers.yaml`, the table both launchers' comments point at. A fourth alias
+    added there is covered the day it is added.
+    """
+    pytest.importorskip("yaml")
+    import yaml as yaml_module
+
+    shim = _crlf_python_shim(tmp_path / "crlf-python")
+    shell, spelling = _scaffold_shell(tmp_path, shim)
+    if shell is None:
+        pytest.skip("no bash on this machine that can run the scaffold under tmp_path")
+
+    home = tmp_path / "home"
+    staging = home / ".claude" / "team-kits"
+    shutil.copytree(os.path.join(ROOT, "team-kits"), str(staging),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    aliases = set((yaml_module.safe_load(
+        open(os.path.join(str(staging), "model_tiers.yaml"), encoding="utf-8")) or {}
+    ).get("aliases") or {})
+    assert aliases, "model_tiers.yaml lists no aliases -- this test would assert nothing"
+
+    def scaffold(name, launcher):
+        repo = tmp_path / name
+        source = os.path.join(str(staging), "office-team", "templates", "project_memory",
+                              "project_config.yaml")
+        os.makedirs(str(repo / "project_memory"), exist_ok=True)
+        with open(source, encoding="utf-8") as handle:
+            write(str(repo / "project_memory" / "project_config.yaml"),
+                  re.sub(r"(?m)^(\s*preset:\s*).*$", r"\g<1>core", handle.read()))
+        environment = dict(os.environ, HOME=str(home), USERPROFILE=str(home))
+        if launcher == "sh":
+            environment["HOME"] = spelling(home)
+            environment["PATH"] = shim + os.pathsep + os.environ.get("PATH", "")
+            command = [shell, spelling(os.path.join(str(staging), "scaffold_team.sh")),
+                       "office-team"]
+        else:
+            command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                       os.path.join(str(staging), "scaffold_team.ps1"), "-Team", "office-team"]
+        result = subprocess.run(command, cwd=str(repo), capture_output=True, text=True,
+                                timeout=900, env=environment)
+        assert result.returncode == 0, result.stdout + result.stderr
+        installed = _installed_tiers(repo)
+        assert installed, "%s installed no agents at all" % launcher
+        return installed
+
+    from_sh = scaffold("repo-sh", "sh")
+    # The alias is one of two values the same boundary decides. The other is the ROSTER: the preset
+    # arrives through a second captured helper, and a CR on the last field makes `in_preset` miss
+    # the last role of the preset -- silent, and invisible in any frontmatter. This shell drops a
+    # trailing CR inside `$(...)` on its own (measured: MSYS text-mode pipes), a POSIX bash does
+    # not, so this half of the assertion is the one that speaks on a Linux runner.
+    resolver = subprocess.run(
+        [sys.executable, os.path.join(str(staging), "preset_config.py"),
+         "--kit", os.path.join(str(staging), "office-team"), "--preset", "core",
+         "--source", "test", "--format", "shell"], capture_output=True, text=True, timeout=120)
+    assert resolver.returncode == 0, resolver.stderr
+    lead, _, selection = resolver.stdout.strip().partition("\t")
+    assert set(from_sh) == {lead} | set(selection.split()), (
+        "scaffold_team.sh installed %s, the preset resolves to %s + lead %s"
+        % (sorted(from_sh), sorted(selection.split()), lead))
+    unresolved = {role: fields["model"] for role, fields in from_sh.items()
+                  if fields["model"] in aliases}
+    assert not unresolved, (
+        "scaffold_team.sh installed unresolved tier alias(es) %s -- session_status calls this "
+        "'UNRESOLVED tier alias -- subagents crash at spawn', and it is right" % unresolved)
+
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("sh half measured; no PowerShell here to compare the twin against")
+    assert from_sh == scaffold("repo-ps1", "ps1"), (
+        "the two launchers resolved the same project_config.yaml differently -- one of them is "
+        "installing frontmatter the other would not")
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -9000,3 +9356,430 @@ def test_the_stage_flag_the_pipeline_runs_is_the_one_the_checkers_answer():
                               capture_output=True, text=True, timeout=300)
         assert proc.returncode in (0, 1), (path, proc.returncode, proc.stderr)
         assert proc.stdout.strip(), "%s answered the stage flag with nothing" % path
+
+
+# ---------------- the state directory's dead ends (package G) ----------------
+#
+# Every test below drives a real hook process against a project outside this repo and measures the
+# EXIT from a state, never the wording of a message.
+
+def _state_template(repo, kit="dev-team"):
+    """A `project_memory/` exactly as the initializer lays it down, INCLUDING its documents.
+
+    `prd_repo` only captures an item, so the shipped `product/masterplan.md` and
+    `project_config.yaml` are absent there -- and those two files are the whole subject here.
+    """
+    destination = os.path.join(str(repo), "project_memory")
+    if not os.path.isdir(destination):
+        shutil.copytree(os.path.join(ROOT, "team-kits", kit, "templates", "project_memory"),
+                        destination)
+    return destination
+
+
+def _write_payload(repo, path, agent_id=None):
+    payload = {"tool_name": "Write", "tool_input": {"file_path": path, "content": "x"},
+               "cwd": str(repo)}
+    if agent_id:
+        payload["agent_id"] = agent_id
+    return payload
+
+
+def test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_does_not_exist(
+        tmp_path):
+    """B1: the refusal was correct and its REMEDY was not, which is the harder half.
+
+    Measured 2026-08-02 in a scaffolded dev project, all three routes to `product/masterplan.md`:
+    Write rc 2, shell heredoc rc 2, and `grep -rn masterplan .claude/kernel/*.py` finds no writer.
+    The refusal nonetheless said "write it through the entry point: `python scripts/harness.py
+    <command>`" -- a surface that has no such command -- while `gate_memory_complete` blocked every
+    merge and push on the file's content. So a role was told to run something that cannot work, in
+    the one state where it most needed to report instead.
+
+    The write is still refused (§0 of every constitution locks the state directory and names these
+    files explicitly), so what this measures is that the refusal now names the DEAD END rather than
+    a route: no command, and the user as the only one who can close it.
+    """
+    state = _state_template(tmp_path)
+    capture_root_item(tmp_path, status=None)
+    for relative in ("product/masterplan.md", "project_config.yaml"):
+        result = run_hook_process(
+            "gate_write_scope.py",
+            _write_payload(tmp_path, os.path.join(state, *relative.split("/"))), tmp_path)
+        assert result.returncode == 2, relative
+        message = result.stdout + result.stderr
+        assert "kit DOCUMENT" in message, message
+        # the false route is gone: the old remedy's instruction was to run the entry point
+        assert "write it through the entry point" not in message, message
+        assert "no route from inside this session" in message.lower(), message
+    # ...and the merge gate that blocks on the same files says the same thing, instead of sending
+    # the role to a validator that answers `0 error(s), 0 warning(s)` in exactly this state
+    blocked = run_hook_process("gate_memory_complete.py", _merge(tmp_path), tmp_path)
+    assert blocked.returncode == 2
+    remedy = blocked.stdout + blocked.stderr
+    assert "NO writer inside this session" in remedy, remedy
+    assert "harness.py validate" not in remedy, remedy
+
+
+def test_a_document_finding_and_a_validator_finding_get_different_remedies(tmp_path):
+    """The remedy is BUILT from the findings that fired, which is why it can stop lying.
+
+    One fixed sentence could not: it named `python scripts/harness.py validate` for a state in
+    which the validator reports nothing at all. With the documents filled, the same gate blocking
+    on a validator error must point at the validator -- and at `archive`, the word neither of the
+    two remedies contained even though it is the only thing that clears such a finding.
+    """
+    state = _state_template(tmp_path)
+    capture_root_item(tmp_path, status=None)
+    capture_root_item(tmp_path, fields=dict(PR_FIELDS, title="second root"), status=None)
+    write(os.path.join(state, "product", "masterplan.md"), "# Demo\n\nthe real north star\n")
+    write(os.path.join(state, "project_config.yaml"), "name: demo\nstacks: [python]\n")
+
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    project = ProjectState(state)
+    project.capture("BUG", {"title": "b", "related_pr": "PR-0002", "observed": "o",
+                            "expected": "e", "repro": "r", "severity": "high",
+                            "acceptance_criteria": [{"id": "FIX-1", "text": "x"}]})
+    # the shape `create-task` now refuses at creation, written the way the kernel used to store it
+    task = dict(project.capture("TSK", {
+        "product_requirement": "PR-0001", "derives_from": "PR-0001", "type": "bugfix",
+        "root_revision": 1, "assigned_role": "backend-developer", "acceptance_refs": ["FIX-1"],
+        "allowed_scope": ["src/"], "forbidden_scope": [], "required_inputs": [],
+        "expected_outputs": [], "dependencies": [],
+    }))
+    task["derives_from"] = "BUG-0001"
+    project._write_yaml_atomic(project.active_path(task["id"]), task)
+
+    blocked = run_hook_process("gate_memory_complete.py", _merge(tmp_path), tmp_path)
+    assert blocked.returncode == 2
+    remedy = blocked.stdout + blocked.stderr
+    assert "harness.py validate" in remedy, remedy
+    assert "archive <ID>" in remedy, remedy
+    assert "NO writer inside this session" not in remedy, remedy
+
+
+def test_the_write_lock_the_office_constitution_states_still_holds_for_its_own_documents(tmp_path):
+    """§0 is a constitutional rule, and this is the measurement that it is still the code's rule.
+
+    The office kit assigns `filing_plan.yaml`, `master_data.yaml` and their siblings to a role and
+    then locks them; the honest refusal above must not have turned into a permission on the quiet.
+    """
+    state = _state_template(tmp_path, kit="office-team")
+    hooks = os.path.join(ROOT, "team-kits", "office-team", "hooks")
+    for relative in ("filing_plan.yaml", "master_data.yaml", "business_profile.yaml"):
+        assert run_hook_process(
+            "gate_write_scope.py",
+            _write_payload(tmp_path, os.path.join(state, relative)), tmp_path,
+            hooks_dir=hooks).returncode == 2, relative
+
+
+@pytest.mark.parametrize("relative", [
+    "product/active/PR-0001.yaml",
+    "approvals/pending/deadbeef.yaml",
+    "approvals/APR-0001.yaml",
+    "tasks/leases/TSK-0001.lease.yaml",
+    "generated/index.yaml",
+    "archive/TSK/2026/TSK-0001.yaml",
+    ".audit/hook_events.jsonl",
+])
+def test_canonical_state_keeps_the_entry_point_remedy(prd_repo, relative):
+    """The other branch of the same refusal: for canonical state the entry point IS the route.
+
+    Splitting the message by `kernel.layout` could have sent every refusal down the document
+    branch, and then the one file class that really does have a kernel writer would be told it has
+    none. `approvals/pending/**` is the sharpest of these -- it holds mint codes in cleartext.
+    """
+    target = os.path.join(str(prd_repo), "project_memory", *relative.split("/"))
+    result = run_hook_process("gate_write_scope.py", _write_payload(prd_repo, target), prd_repo)
+    assert result.returncode == 2
+    message = result.stdout + result.stderr
+    assert "canonical project state" in message, message
+    assert "kit DOCUMENT" not in message, message
+
+
+def test_the_shell_route_into_the_state_directory_is_still_refused(prd_repo):
+    """`handle_shell` judges what a command LINE names and never resolves a path.
+
+    So it cannot tell a document from an item, and it refuses both -- which is what the gate's own
+    docstring says. A test that let this through would let the docstring rot.
+    """
+    command = "cat > project_memory/product/masterplan.md <<'X'\nplan\nX"
+    assert run_hook("gate_write_scope.py", _bash(prd_repo, command), prd_repo) == 2
+
+
+def _push_payload(repo, command="git push origin main"):
+    return {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+            "tool_input": {"command": command}, "cwd": str(repo)}
+
+
+def test_a_push_can_be_approved_through_a_command_that_exists(tmp_path):
+    """B2: `gate_push_token` refused every push and no command could open its question.
+
+    `approvals.push_subject_manifest` and `APR_KINDS` both had `push`; `cli` offered only
+    `item_derived_kinds()`, so `approvals/pending/` could never hold a push request. Measured
+    before this: rc 2 for every push in every project, forever. The test runs the request, mints
+    it through the real PostToolUse hook and pushes.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    from kernel.state import ProjectState
+    from conftest import mint_via_hook
+
+    state_dir = _state_template(tmp_path)
+    capture_root_item(tmp_path, status=None)
+    for command in (["git", "init", "-q", "-b", "main"], ["git", "config", "user.email", "t@e.st"],
+                    ["git", "config", "user.name", "t"], ["git", "add", "-A"],
+                    ["git", "commit", "-qm", "init", "--no-gpg-sign"]):
+        subprocess.run(command, cwd=str(tmp_path), capture_output=True)
+
+    assert run_hook("gate_push_token.py", _push_payload(tmp_path), tmp_path) == 2
+    assert cli.main(["--root", state_dir, "request-approval", "push",
+                     "--remote", "origin", "--branch", "main"]) == 0
+    pending_dir = os.path.join(state_dir, "approvals", "pending")
+    open_requests = [name for name in os.listdir(pending_dir) if name.endswith(".yaml")]
+    assert len(open_requests) == 1, open_requests
+    state = ProjectState(state_dir)
+    request = state._read_yaml(os.path.join(pending_dir, open_requests[0]))
+    head = subprocess.run(["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+    # the kernel resolved HEAD itself: a token bound to a commit the role typed would be a token
+    # for another commit, and this is the property that makes it single-use
+    assert request["subject_manifest"]["head"] == head
+    mint_via_hook(state, request)
+
+    assert run_hook("gate_push_token.py", _push_payload(tmp_path), tmp_path) == 0
+    # ...and only that one push: the token names remote, branch and commit
+    assert run_hook("gate_push_token.py",
+                    _push_payload(tmp_path, "git push upstream main"), tmp_path) == 2
+
+
+def _approved_push_project(tmp_path, remote="origin", branch="main"):
+    """A project with kernel state, a git worktree and a LIVE minted push token for `remote/branch`.
+
+    The live token is the whole point: without it every push answers rc 2 for the ordinary reason
+    ("no live user approval"), and a check for a force-push refusal would be green over a gate that
+    had no force rule at all. Extracted so the approval matrix and its callers share one setup.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    from kernel.state import ProjectState
+    from conftest import mint_via_hook
+
+    state_dir = _state_template(tmp_path)
+    capture_root_item(tmp_path, status=None)
+    for command in (["git", "init", "-q", "-b", branch], ["git", "config", "user.email", "t@e.st"],
+                    ["git", "config", "user.name", "t"], ["git", "add", "-A"],
+                    ["git", "commit", "-qm", "init", "--no-gpg-sign"]):
+        subprocess.run(command, cwd=str(tmp_path), capture_output=True)
+    assert cli.main(["--root", state_dir, "request-approval", "push",
+                     "--remote", remote, "--branch", branch]) == 0
+    pending_dir = os.path.join(state_dir, "approvals", "pending")
+    name = [entry for entry in os.listdir(pending_dir) if entry.endswith(".yaml")][0]
+    state = ProjectState(state_dir)
+    mint_via_hook(state, state._read_yaml(os.path.join(pending_dir, name)))
+    return state_dir
+
+
+# Every shape a force push reaches this gate in, as INPUT rather than as a rule: the rule is
+# `_compat.names_force_push`, and the assertion below is that the gate's answer follows it. Four
+# were measured rc 0 with a live token on 2026-08-02 (`--force`, `-f`, the `=`-valued
+# `--force-with-lease`, the quoted `"--force"`); `--force-with-lease` was rc 2 for the wrong reason
+# (the flag list swallowed the remote, so nothing could be resolved) and `+main` for its own
+# one-spelling reason in `_resolve`. The last three are the two stand-downs and the mixed line:
+# a rehearsed force push, a rehearsed `-f`, and an approved push sharing a line with a force push.
+_FORCE_PUSH_SPELLINGS = (
+    "git push --force origin main",
+    "git push -f origin main",
+    "git push --force-with-lease origin main",
+    "git push --force-with-lease=origin/main origin main",
+    'git push "--force" origin main',
+    "git push origin +main",
+    "git push --dry-run --force origin main",
+    "git push -n -f origin main",
+    "git push origin main && git push --force origin main",
+)
+
+# ...and the other direction, which is what stops "refuse everything" from passing: pushes the
+# approval really does cover, in the shapes `_resolve` has to keep reading. `HEAD:main` is here
+# because the refspec branch sits next to the `+refspec` branch this fix deleted.
+_APPROVED_PUSH_SPELLINGS = (
+    "git push origin main",
+    "git push origin HEAD:main",
+    "git push -u origin main",
+    "git push --set-upstream origin main",
+    "git push --dry-run origin main",
+)
+
+
+def test_a_live_push_token_does_not_cover_a_force_push_in_any_spelling(tmp_path):
+    """An approval for `origin/main @ HEAD` was also an approval to DISCARD origin/main's history.
+
+    The manifest binds remote + branch + commit (`approvals.push_subject_manifest`); it cannot bind
+    "and what the remote already holds survives". So the gate has to answer the force question
+    itself — and it answered it in one spelling (`+refspec`, in `_resolve`) while `--force` and
+    `-f` walked past both nets. Measured through the real hook process with a minted token, not
+    reasoned about: rc 0 for `git push --force origin main` in a project whose only approval was
+    for the ordinary push of the same commit.
+
+    THE ANSWER IS TIED TO THE DEFINITION, not to this list. Each line is put through
+    `_compat.names_force_push` — the predicate `gate_git` decides on too — and the gate's exit code
+    has to follow it in BOTH directions: refusal with a force reason when the predicate says force,
+    and the approved push going through when it does not. So the corpus cannot silently become a
+    second opinion: a line the predicate reads differently fails on the first assertion, before the
+    gate is asked at all.
+
+    WHAT THAT DOES NOT PROVE, said plainly: that the gate ASKS the shared predicate. A private copy
+    inside the gate agreeing with it on these lines would pass. What is measured is that the two
+    answers are the same over every shape the two readers ever disagreed about, which is the part
+    that was false.
+
+    THE STDERR IS ASSERTED and that is not decoration: in this project every push that is not the
+    approved one is rc 2 anyway ("no live user approval"), so `== 2` alone stays green with the
+    whole force rule deleted — measured, that is exactly what the predecessor of this test would
+    have done.
+
+    KNOWN OVER-TRIGGERS, measured rather than implied, both shared with `gate_git` and both
+    fail-closed: a push OPTION whose VALUE contains the word (`--push-option="x --force y"`) and a
+    trailing comment that does, are refused as force pushes. The reader judges the LINE; see
+    `_compat.names_force_push` for why that is one answer and not two.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    _approved_push_project(tmp_path)
+    compat = load_kit_module("compat_force", os.path.join(HOOKS, "_compat.py"))
+
+    for command in _FORCE_PUSH_SPELLINGS + _APPROVED_PUSH_SPELLINGS:
+        expected_force = compat.names_force_push(command)
+        assert expected_force == (command in _FORCE_PUSH_SPELLINGS), (
+            "%r and the shared predicate disagree about what this line is — the corpus below is "
+            "inputs to the rule, never a second copy of it" % command)
+        result = run_hook_process("gate_push_token.py", _push_payload(tmp_path, command), tmp_path)
+        message = result.stdout + result.stderr
+        if expected_force:
+            assert result.returncode == 2, (command, message)
+            assert "force-push" in message, (command, message)
+        else:
+            assert result.returncode == 0, (command, message)
+
+
+def test_the_office_kit_refuses_a_force_push_although_it_ships_no_gate_git(tmp_path):
+    """The reason the definition moved into `_compat` instead of being copied into a second gate.
+
+    `gate_git` is not installed in the office kit — its `settings.json` registers `gate_push_token`
+    and no `gate_git`, which this test READS rather than remembers. So for an office project the
+    push token gate was the only git gate there is, and while it had no force rule, nothing at all
+    refused `git push --force`. The mitigation the dev and research kits have simply did not exist
+    there.
+    """
+    import json as _json
+    for kit in KITS:
+        settings = _json.load(open(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json"),
+                                   encoding="utf-8"))
+        registered = {name for entries in (settings.get("hooks") or {}).values()
+                      for entry in entries for hook in entry.get("hooks", [])
+                      for name in re.findall(r"([a-z_]+)\.py", hook.get("command", ""))}
+        assert "gate_push_token" in registered, kit
+        if kit == "office-team":
+            assert "gate_git" not in registered, (
+                "the office kit now registers gate_git — this test's premise, and the reason "
+                "`names_force_push` lives in `_compat`, has changed")
+
+    hooks = os.path.join(ROOT, "team-kits", "office-team", "hooks")
+    _approved_push_project(tmp_path)
+    allowed = run_hook_process("gate_push_token.py", _push_payload(tmp_path), tmp_path,
+                               hooks_dir=hooks)
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    for command in _FORCE_PUSH_SPELLINGS:
+        refused = run_hook_process("gate_push_token.py", _push_payload(tmp_path, command),
+                                   tmp_path, hooks_dir=hooks)
+        assert refused.returncode == 2, (command, refused.stdout + refused.stderr)
+        assert "force-push" in refused.stdout + refused.stderr, command
+
+
+def test_a_fresh_project_is_not_red_because_of_the_host_interpreter(tmp_path):
+    """B7: `pip-audit --local` audited the machine while the comment above it promised otherwise.
+
+    A fresh dev project ships `requirements-dev.txt` and neither `pyproject.toml` nor
+    `requirements.txt`, so the `--local` branch WAS the normal case: measured on a host with a
+    globally installed torch, `FAIL pip-audit (SCA) - torch (2.7.1+cu118)` and `gate_pipeline`
+    blocking merge and push in a project with no code in it.
+
+    Driven through the module's own function rather than a full pipeline run, and with the real
+    `run` recorded: what is asserted is the command list the check would EXECUTE.
+    """
+    quality = load_kit_module("quality_sca", QUALITY)
+    quality.ROOT = str(tmp_path)
+    executed = []
+    quality.run = lambda cmd, cwd=None: (executed.append(list(cmd)) or (0, ""))
+    quality.FAILS[:], quality.WARNS[:], quality.OKS[:] = [], [], []
+
+    quality._check_declared_dependencies()
+    assert executed == [], "a project that declares nothing was audited anyway: %s" % executed
+    assert quality.FAILS == [] and quality.OKS == []
+    assert any("declares no Python dependencies" in entry for entry in quality.WARNS), quality.WARNS
+
+    write(str(tmp_path / "requirements.txt"), "urllib3==2.6.3\n")
+    quality.WARNS[:] = []
+    quality._check_declared_dependencies()
+    assert len(executed) == 1, executed
+    assert executed[0][-1] == str(tmp_path / "requirements.txt"), executed
+    assert not any("--local" in " ".join(cmd) for cmd in executed), executed
+
+
+def _briefing(kit, staged_version, local_version, tmp_path):
+    """The SessionStart briefing a real `session_status.py` process emits for this project."""
+    home = tmp_path / "home"
+    project = tmp_path / "proj"
+    os.makedirs(str(project / ".claude"), exist_ok=True)
+    write(str(project / "CLAUDE.md"), "<!-- agents-and-skills:team-kit %s -->\n" % kit)
+    write(str(project / ".claude" / "kit_version"), local_version)
+    write(str(home / ".claude" / "team-kits" / kit / "VERSION"), staged_version)
+    result = run_hook_process(
+        "session_status.py", {"hook_event_name": "SessionStart", "cwd": str(project)},
+        str(project), hooks_dir=os.path.join(ROOT, "team-kits", kit, "hooks"),
+        extra_env={"USERPROFILE": str(home), "HOME": str(home)})
+    context = json.loads(result.stdout.strip().splitlines()[-1])
+    return context["hookSpecificOutput"]["additionalContext"]
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_an_older_staged_kit_is_never_offered_as_an_update(kit, tmp_path):
+    """B8: the comparison was `!=` and the sentence was "usually a newer harness".
+
+    Measured against the real staging of a live machine: a 07-18 kit was offered to an 08-02
+    project as an update; accepting it prunes the project's V2 hooks and leaves its V2 kernel in
+    place. All three kits keep their own `session_status.py`, so all three are measured.
+    """
+    newer = "version: 2026.08.02-3\ncontent: aaa\n"
+    older = "version: 2026.07.18-1\ncontent: bbb\n"
+    downgrade = _briefing(kit, staged_version=older, local_version=newer, tmp_path=tmp_path)
+    assert "KIT DOWNGRADE OFFERED" in downgrade
+    assert "KIT UPDATE AVAILABLE" not in downgrade
+
+    update = _briefing(kit, staged_version=newer, local_version=older,
+                       tmp_path=tmp_path / "second")
+    assert "KIT UPDATE AVAILABLE" in update
+    assert "KIT DOWNGRADE OFFERED" not in update
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_a_version_that_cannot_be_ordered_is_reported_without_a_direction(kit, tmp_path):
+    """The fail-safe side: an unreadable stamp must not be guessed at in either direction."""
+    briefing = _briefing(kit, staged_version="version: 2026.08.02-3\ncontent: a\n",
+                         local_version="hand-edited, no version\n", tmp_path=tmp_path)
+    assert "KIT VERSION MISMATCH" in briefing
+    assert "KIT UPDATE AVAILABLE" not in briefing and "KIT DOWNGRADE OFFERED" not in briefing
+
+
+def test_the_version_order_is_read_from_the_numbers_and_not_from_the_string():
+    """The one definition all three briefings read (`_compat.kit_version_order`).
+
+    String order would call `2026.08.02-9` newer than `2026.08.02-11`, which is the release
+    numbering this repo actually uses.
+    """
+    compat = load_kit_module("compat_version", os.path.join(HOOKS, "_compat.py"))
+    assert compat.kit_version_order("version: 2026.08.02-11\ncontent: x\n") > \
+        compat.kit_version_order("version: 2026.08.02-9\ncontent: x\n")
+    assert compat.kit_version_order("version: 2026.07.18-1\n") < \
+        compat.kit_version_order("version: 2026.08.02-1\n")
+    assert compat.kit_version_order("") is None
+    assert compat.kit_version_order("hand-edited\n") is None

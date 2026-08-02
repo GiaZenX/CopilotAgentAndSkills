@@ -453,18 +453,24 @@ all project-local `.codex/` layers until the repository and hooks are trusted.
 - **Real pipeline at merge** (`gate_pipeline`) — runs `scripts/quality.py` (lint/types/tests+coverage,
   secret/dep scan) and blocks on a red or missing pipeline; a self-reported "pass" does not suffice.
 - **Commit / merge gate** (`gate_git`) — always blocks force-push. It also blocks a merge or push whose QA
-  **Evidence** is missing or failing: the newest `test`/`review`/`acceptance` Evidence covering an item is
-  that kind's current verdict, so a re-run supersedes an older one and a `fail` recorded afterwards closes
-  the gate again (`kind: audit` judges the project and never opens a merge). Judged for every root id the
-  command names, and for the branch's item when the command names none; a merge that names nothing is
-  refused while any item is currently failing. It also refuses a merge for an item still in `DRAFT` or
+  **Evidence** is missing, INCOMPLETE or failing: the newest `test`/`review`/`acceptance` Evidence covering
+  an item is that kind's current verdict, so a re-run supersedes an older one and a `fail` recorded
+  afterwards closes the gate again (`kind: audit` judges the project and never opens a merge). A merge that
+  NAMES a root item needs a current non-fail verdict of EVERY one of those kinds — each answers a question
+  the others do not, and the refusal says which one is unanswered. Judged for every root id the
+  command names, and for the branch's item when the command names none; a merge that names nothing gets
+  the weaker question only — it is refused while any item is currently failing, and completeness is not
+  asked there, because with no item to bind to it would refuse every push while any item is mid-flight.
+  It also refuses a merge for an item still in `DRAFT` or
   already `REJECTED`/`SUPERSEDED`, and it does not apply at all before the project's first PR/RQ exists.
   That evidence has exactly one producer, `python scripts/harness.py evidence`, and it is installed —
   run from the project root, never with `--root`. Measured end to end in a scaffolded project outside
-  this repo: `git merge feat/PR-0001-x` refused with "no QA Evidence for PR-0001"; one
-  `python scripts/harness.py evidence --kind test --result pass --related PR-0001 --summary "qa run
-  green" --artifact-ref staging/TSK-0001/run.log` passed all eight `PreToolUse` gates as real hook
-  processes and then ran; the same merge was allowed. `gate_write_scope`
+  this repo: `git merge feat/PR-0001-x` refused with "no QA Evidence for PR-0001"; with one `test` pass
+  recorded it refused with "QA has judged PR-0001 only in part … no acceptance/review Evidence covers it
+  at all"; with `review` added, the same refusal naming `acceptance` alone; each
+  `python scripts/harness.py evidence --kind <test|review|acceptance> --result pass --related PR-0001
+  --summary "…" --artifact-ref staging/TSK-0001/run.log` passed all eight `PreToolUse` gates as real hook
+  processes and then ran; with all three recorded the same merge was allowed. `gate_write_scope`
   still decides by READING the command line, and a text check is enforcement rather than arithmetic, so
   a spelling it does not recognise is a hole in that gate to report — never the way in.
   Plus `gate_push_token`: a `git push` needs a user approval bound to

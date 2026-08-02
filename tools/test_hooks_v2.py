@@ -6465,12 +6465,17 @@ def test_the_token_is_single_use_because_it_is_bound_to_head(tmp_path):
 @pytest.mark.parametrize("command", [
     "git push",                       # no arguments, no upstream configured
     "git push origin main dev",       # two refspecs in one call
-    "git push origin +main",          # a force-push in refspec form
     "git push origin HEAD~1:main",    # a refspec that is not this worktree's HEAD
 ])
 def test_a_push_that_cannot_be_pinned_down_is_refused(tmp_path, command):
     """Fail-closed on ambiguity: a guess here authorises publishing something the user did not
-    see. Each of these is refused with an instruction to name remote and branch explicitly."""
+    see. Each of these is refused with an instruction to name remote and branch explicitly.
+
+    `git push origin +main` used to stand here as "a force-push in refspec form", and that was the
+    gate's whole force rule: one spelling, answered as an ambiguity. It is now judged as a force
+    push before the refspec is read at all, so it belongs to the force corpus in `test_hooks.py`
+    (`test_a_live_push_token_does_not_cover_a_force_push_in_any_spelling`) and not to this one.
+    """
     work = git_repo(tmp_path)
     approve_push(work, "origin", "main", git_head(work))
     result = run_push_gate(work, command)

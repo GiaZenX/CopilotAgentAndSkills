@@ -22,13 +22,39 @@ fi
 
 REPO="$(pwd)"
 
+# Run a text producer and hand back its records WITHOUT the record terminator. The terminator is
+# not part of the record, but only PowerShell's readers act on that: `Get-Content` and
+# `ConvertFrom-Json` give the .ps1 twin a bare value, while POSIX word splitting gives this script
+# whatever byte precedes the newline. On Windows that byte is CR -- the helpers invoked below are
+# CPython, whose TEXT stdout writes os.linesep, and the shell running this file is then Git Bash.
+# Measured on a Git-Bash scaffold of office-team before this filter existed: `case "$val" in
+# worker)` missed on `worker<CR>`, three of four installed agents kept `model: worker`, and
+# session_status.model_effort_mismatches reports exactly that as an unresolved tier alias no
+# Claude subagent can spawn on. Filtering where the value is BORN, rather than at each `case`/`read`
+# that consumes it, is what stops the next helper added here from re-opening this.
+#
+# EXACTLY WHAT GOES THROUGH IT, so this comment promises no more than the file does: every PYTHON
+# helper whose output becomes a value, and every first line taken from a FILE with `head -n 1`.
+# Those are the two producers that can disagree with this shell about where a record ends -- the
+# first because it is a Windows-native program, the second because a file can have been written by
+# one. `pwd`, `date`, `basename`, `dirname` and `find` are NOT routed through it and do not need to
+# be: they are the same POSIX toolchain this script is running in, so their idea of a line
+# terminator is this shell's by construction. Two further reads take a line by REDIRECTION rather
+# than by substitution and handle CR at the record instead: the roles-manifest loop
+# (`role_header`/`role`, `${...%$'\r'}`) and the legacy constitution marker, whose capture class
+# cannot include CR.
+# A literal CR in the pattern, not a `\r` escape: BSD sed (macOS, which this script supports) does
+# not understand `\r`. Only the terminator is dropped, so a CR inside a value stays visible.
+CR=$'\r'
+no_cr() { "$@" | sed "s/${CR}\$//"; }
+
 # Same-version detection (audit): a redundant re-run stays ALLOWED (it legitimately re-syncs
 # roles to the recorded preset and repairs drifted managed files) but must be LOUD about not
 # resolving merge tasks, and must NOT reset the merge-backlog escalation counter (a PM who
 # "updated again just to be safe" used to silently restart the nag from session 1).
 SAME_VERSION=0
 if [ -f "$REPO/.claude/kit_version" ] && [ -f "$KIT/VERSION" ] \
-    && [ "$(head -n 1 "$REPO/.claude/kit_version")" = "$(head -n 1 "$KIT/VERSION")" ]; then
+    && [ "$(no_cr head -n 1 "$REPO/.claude/kit_version")" = "$(no_cr head -n 1 "$KIT/VERSION")" ]; then
   SAME_VERSION=1
   echo "NOTE: kit '$TEAM' is already at the staged version -- re-applying managed files/roles only. This does NOT resolve .claude/kit_update_pending.* merge tasks (work through them and DELETE the file)."
 fi
@@ -131,7 +157,7 @@ fi
 # preference — blocking on those made every actively used project unable to take kit updates.
 LOCAL_SETTINGS="$REPO/.claude/settings.local.json"
 if [ -f "$LOCAL_SETTINGS" ]; then
-  if ! local_keys="$("$PYBIN" -c 'import json,sys
+  if ! local_keys="$(no_cr "$PYBIN" -c 'import json,sys
 d=json.load(open(sys.argv[1], encoding="utf-8-sig"))
 assert isinstance(d, dict)
 hard = sorted(set(d) & {"agent", "hooks", "disableAllHooks"})
@@ -160,11 +186,11 @@ fi
 # guarantee evaporates (the exact inert-preset failure mode this design kills).
 PRESET_SOURCE="argument"
 if [ -z "$PRESET" ]; then
-  rec="$("$PYBIN" -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1], encoding="utf-8-sig")) or {}; print((d.get("project") or {}).get("preset") or "")' "$CFG")"
+  rec="$(no_cr "$PYBIN" -c 'import sys,yaml; d=yaml.safe_load(open(sys.argv[1], encoding="utf-8-sig")) or {}; print((d.get("project") or {}).get("preset") or "")' "$CFG")"
   if [ -n "$rec" ]; then PRESET="$rec"; PRESET_SOURCE="project_config.yaml"; fi
 fi
 [ -n "$PRESET" ] || { echo "Validated project_config.yaml contains no preset; no scaffold files were changed." >&2; exit 1; }
-preset_result="$("$PYBIN" "$(cd "$(dirname "$0")" && pwd)/preset_config.py" \
+preset_result="$(no_cr "$PYBIN" "$(cd "$(dirname "$0")" && pwd)/preset_config.py" \
   --kit "$KIT" --preset "$PRESET" --source "$PRESET_SOURCE" --format shell)"
 IFS=$'\t' read -r LEAD preset_selection <<< "$preset_result"
 [ -n "$LEAD" ] && [ -n "$preset_selection" ] || {
@@ -422,7 +448,7 @@ if [ -f "$CFG" ]; then
         mv "$tmp" "$ap"
         synced=$((synced + 1))
       fi
-    done < <("$PYBIN" -c 'import sys,yaml
+    done < <(no_cr "$PYBIN" -c 'import sys,yaml
 d=yaml.safe_load(open(sys.argv[1], encoding="utf-8-sig")) or {}
 for role,value in (d.get(sys.argv[2]) or {}).items():
     print(f"{role}\t{value}")' "$CFG" "$mapname")
@@ -436,7 +462,7 @@ fi
 # the imported content; the kit marker stays on line 1 for the entry gate + session_status).
 if [ -f "$KIT/constitution/AGENTS.md" ]; then
   cp -f "$KIT/constitution/AGENTS.md" "$REPO/AGENTS.md"
-  marker="$(head -n 1 "$KIT/constitution/AGENTS.md")"
+  marker="$(no_cr head -n 1 "$KIT/constitution/AGENTS.md")"
   printf '%s\n@AGENTS.md\n' "$marker" > "$REPO/CLAUDE.md"
   echo "  [ok] AGENTS.md (constitution) + CLAUDE.md (import shim)"
 fi
@@ -547,8 +573,8 @@ if [ -f "$KIT/VERSION" ]; then
   # x->y" announcement is consumed by the NEXT SessionStart — a mid-session update used to
   # lose it entirely when no clean restart followed (audit: a live repo sat two days silent).
   if [ -f "$REPO/.claude/kit_version" ]; then
-    OLD_V="$(head -n 1 "$REPO/.claude/kit_version")"
-    NEW_V="$(head -n 1 "$KIT/VERSION")"
+    OLD_V="$(no_cr head -n 1 "$REPO/.claude/kit_version")"
+    NEW_V="$(no_cr head -n 1 "$KIT/VERSION")"
     # never overwrite an unconsumed marker: two scaffolds without a SessionStart in between
     # must announce the EARLIEST from-version, not lose the first transition (audit)
     if [ -n "$OLD_V" ] && [ "$OLD_V" != "$NEW_V" ] && [ ! -f "$REPO/.claude/kit_updated_from" ]; then
@@ -556,7 +582,7 @@ if [ -f "$KIT/VERSION" ]; then
     fi
   fi
   cp -f "$KIT/VERSION" "$REPO/.claude/kit_version"
-  echo "  [ok] .claude/kit_version ($(head -n 1 "$KIT/VERSION"))"
+  echo "  [ok] .claude/kit_version ($(no_cr head -n 1 "$KIT/VERSION"))"
 fi
 
 # Record WHICH hook bundle this project now carries -- the value `python scripts/harness.py doctor` measures
@@ -571,7 +597,7 @@ fi
 # leaves `hook_trust` unverified: the fail-closed direction.
 if [ -f "$KITS_ROOT/write_kit_state.py" ]; then
   "$PYBIN" "$KITS_ROOT/write_kit_state.py" \
-    --repo "$REPO" --kit "$TEAM" --kit-version "$(head -n 1 "$KIT/VERSION" 2>/dev/null || echo '')"
+    --repo "$REPO" --kit "$TEAM" --kit-version "$(no_cr head -n 1 "$KIT/VERSION" 2>/dev/null || echo '')"
 else
   echo "  [warn] $KITS_ROOT/write_kit_state.py is missing -- no hook-bundle trust recorded (\`python scripts/harness.py doctor\` will report hook_trust: unverified)"
 fi
@@ -622,7 +648,7 @@ STATE="$REPO/.claude/kit_update_pending.state"
 if [ ${#kept_list[@]} -gt 0 ]; then
   mkdir -p "$REPO/.claude"
   {
-    echo "# Repo templates that DIFFER from kit $TEAM $(head -n 1 "$KIT/VERSION" 2>/dev/null) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone."
+    echo "# Repo templates that DIFFER from kit $TEAM $(no_cr head -n 1 "$KIT/VERSION" 2>/dev/null) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone."
     printf -- "- %s\n" "${kept_list[@]}"
   } > "$PEND"
   # fresh REAL update -> fresh nag counter; a same-version re-run must NOT reset the

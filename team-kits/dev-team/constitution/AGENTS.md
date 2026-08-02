@@ -114,7 +114,7 @@ never writes requirements.
 | `WFR` (design/wireframes) + `DSN` (design/revisions) — staged, then frozen by the kernel | **Product-Designer** |
 | Evidence carrying its cited findings | **Research-Engineer** |
 | backend `src/**`+`tests/**`, `frontend/**` — inside the task's `allowed_scope` | **Backend / Frontend** |
-| Evidence `kind: test` / `kind: acceptance`; `INV` items for standing test rules | **QA** |
+| Evidence of every delivery kind — `review`/`test`/`acceptance`, all three needed for the merge; `INV` items for standing test rules | **QA** |
 | Evidence `kind: audit` + the BUG/CR/TSK each finding turns into | **Project-Auditor** |
 | CI/CD, infra, `git push` | **DevOps / PM** |
 

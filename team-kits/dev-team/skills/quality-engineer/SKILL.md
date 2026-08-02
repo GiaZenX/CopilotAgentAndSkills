@@ -31,6 +31,9 @@ Two things the gates depend on:
   re-read. Write the raw output to that path FIRST, then record the Evidence naming it.
 The NEWEST Evidence of a kind covering an item is that kind's current verdict, so a re-run supersedes your
 earlier one and a `fail` you record after a pass closes the merge gate again.
+- **The merge waits for ALL of them.** `gate_git` opens a merge of the PR only when every delivery kind —
+  `review`/`test`/`acceptance` — has a current verdict covering it and none of them is a `fail`. A kind you
+  left unanswered closes the merge exactly as a `fail` does, and the refusal names which one is missing.
 
 ## Do
 1. **Review** — check the changed code against the coding guidelines and the `INV` items. **For a UI-bearing
@@ -121,9 +124,11 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    upgrade. Never leave an escalation flag for the PM to silently ignore. Per-task retry COUNTS exist
    nowhere in V2, so name the repetition in your summary rather than assuming a counter remembers it.
 8. A PASS verdict tells the PM to transition the PR to `DELIVERED` and merge. `gate_git` then reads exactly
-   the Evidence you recorded — so a merge you did not clear is a merge that does not happen. Measured in a
-   scaffolded project: the merge refused with "no QA Evidence", one `python scripts/harness.py evidence`
-   run through all eight PreToolUse gates, the same merge allowed.
+   the Evidence you recorded — so a merge you did not clear is a merge that does not happen, and a kind you
+   did not record is one it waits for. Measured in a scaffolded project: the merge refused with "no QA
+   Evidence"; with only the `test` verdict recorded it still refused, naming the two kinds nobody had
+   answered; three `python scripts/harness.py evidence` runs later — each through all eight PreToolUse
+   gates — the same merge was allowed.
 
 ## What you produce
 Evidence items (`kind: review`, `kind: test`, `kind: acceptance`), `INV` items for the rules that must keep

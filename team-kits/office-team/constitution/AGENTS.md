@@ -52,6 +52,28 @@ terminal `RETIRED`.
   contract, so the old `processes:` mapping — whose shape a stray list could silently break — has no
   successor and no shape rule of its own.
 
+## 1a. FR / CR / BUG — one question decides which
+
+Three item types live beside the PROC (`capture` per §0). Which fields each demands is defined once
+in `.claude/kernel/backlog_types.py` (`REQUIRED_FIELDS`, `AUTOMATA`) and a capture missing one is
+refused there, naming them — what YOU decide is which of the three it is, and one question settles
+that: **is the approved PROC still what the business wants?**
+
+- **Not decided yet** → **`FR`** (`inbox/active`): the wish and nothing more, because nothing has
+  been decided. Triage records `triage_result` and ends it terminal — an untriaged FR is a wish
+  neither promised nor lost.
+- **The approved steps are no longer what we want** → **`CR`** (`changes/active`): the approval is
+  REOPENED, so the item names WHICH (the `PROC-nnnn` plus the revision it covers — the field names
+  are kit-neutral, the value is this kit's root item) and WHAT replaces it, with acceptance
+  criteria. Editing hashed content instead raises the revision and voids the approval (§1).
+- **The steps are right and the run did not deliver them** → **`BUG`** (`bugs/active`): the approval
+  stands and reality deviates from it, so the item must make that deviation checkable by somebody
+  who was not there — observed, expected, reproduction, urgency, and what proves it fixed.
+
+A wrong result is therefore not automatically a BUG: steps followed and the output still wrong means
+the STEPS are wrong, which is a CR. A one-off the PROC's exception policy covers comes back as a
+question inside the run (§1) and becomes no item. Auditor findings split the same three ways (§6).
+
 ## 2. Hard rules (deterministic where possible)
 
 1. **Single source of truth.** Only the typed items under `project_memory/` (§6), its master-data files, the

@@ -1303,6 +1303,107 @@ def test_no_section_of_a_pinned_instruction_file_disappears_unnoticed():
         for what, kit, name, key, hooks in changes)
 
 
+def _hand_built_evolution_types():
+    """The item types a lead must hand-build, derived from the kernel and the shipped kits.
+
+    Four properties, each read from something that RUNS, and their intersection is the subject:
+
+      * the kernel can CAPTURE it (`backlog_types.REQUIRED_FIELDS` — the types `capture` creates),
+      * EVERY shipped kit's `project_memory` template ships its active tray, so every kit's
+        projects can hold one (`ACTIVE_DIRS` against the template tree),
+      * it BINDS to a root item (`PARENT_FIELDS`), i.e. it exists in reaction to something already
+        captured rather than starting a tree of its own,
+      * and the kernel has NO producer of its own for it. `cli.evidence` and `dispatch.create_task`
+        call `capture` with the type spelled out and assemble the body themselves; every other type
+        reaches `capture` as `args.item_type` with a JSON body the CALLER composed in full, against
+        a contract the kernel refuses it for missing.
+
+    That last property is what makes this the set the instruction text owes an explanation for: a
+    lead who is told to create one and does not know what fills it meets the refusal, not the rule.
+    Listed instead of derived it would be `("FR", "CR", "BUG")` today; a fifth such type would join
+    the subject on the day it ships a tray, and nobody has to remember to add it here.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.backlog_types import ACTIVE_DIRS, PARENT_FIELDS, REQUIRED_FIELDS
+    has_own_producer = set()
+    for path in sorted(glob.glob(os.path.join(TEAM_KITS, "kernel", "*.py"))):
+        with open(path, encoding="utf-8") as handle:
+            for node in ast.walk(ast.parse(handle.read())):
+                if (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "capture" and node.args
+                        and isinstance(node.args[0], ast.Constant)):
+                    has_own_producer.add(node.args[0].value)
+    return {item_type for item_type in REQUIRED_FIELDS
+            if item_type in PARENT_FIELDS and item_type not in has_own_producer
+            and all(os.path.isdir(os.path.join(kit, "templates", "project_memory",
+                                               *ACTIVE_DIRS[item_type].split("/")))
+                    for kit in _kit_dirs())}
+
+
+def _sections_naming(paths, item_type):
+    """Sections of `paths` that name `item_type` OUTSIDE a table row.
+
+    The table row is excluded because it is the thing being distinguished FROM: an ownership table
+    assigns a type to a role, which is not a statement about when one arises or what fills it. The
+    match is the bare type id as a word, so `BUG-0007` and `bugs/active` do not stand in for it.
+    """
+    pattern = re.compile(r"(?<![A-Za-z0-9_-])%s(?![A-Za-z0-9_-])" % re.escape(item_type))
+    hits = []
+    for path in paths:
+        for key, lines in _sections(path):
+            if any(pattern.search(line) for line in lines
+                   if not line.lstrip().startswith("|")):
+                hits.append("%s §%s" % (os.path.basename(path), key))
+    return hits
+
+
+def test_every_hand_built_item_type_is_ruled_on_and_not_merely_assigned():
+    """A type the kernel enforces and no text explains costs its lead a refusal it cannot read.
+
+    Measured before this test existed, at HEAD a7c6250: `office-team` named `FR`, `CR` and `BUG`
+    in exactly two places each — the constitution's ownership table (a table row, so not counted
+    here) and one restatement of that row in the lead SKILL's "what you own" — while the kernel
+    refuses a `CR` without `target_pr`/`target_revision`/`change_description`/`acceptance_criteria`
+    and a `BUG` without `related_pr`/`observed`/`expected`/`repro`/`severity`/`acceptance_criteria`.
+    `research-team` was in the same state for `BUG` and `FR`. `dev-team` was not, which is why it
+    is the shape the other two were brought to rather than a fourth thing invented here.
+
+    WHAT THE THRESHOLD IS AND IS NOT. Two non-table sections is what an INVENTORY produces: the
+    type is assigned once and the assignment is repeated once. Three is the first count an
+    inventory cannot reach, so it is the floor on "something beyond the listing exists". It is a
+    floor on TREATMENT and nothing more — it cannot read whether the treatment is correct, and
+    saying otherwise would be the reassuring lie this file exists to prevent. What judges the
+    content is the section pin above (every one of these sections is digested there, so a gutting
+    is reported) and the human reading the journal line it forces.
+    """
+    thin = []
+    for kit in _kit_dirs():
+        package = _lead_package(kit)
+        for item_type in sorted(_hand_built_evolution_types()):
+            where = _sections_naming(package, item_type)
+            if len(where) < 3:
+                thin.append("%s/%s: %s" % (os.path.basename(kit), item_type,
+                                           ", ".join(where) or "nowhere outside a table"))
+    assert not thin, (
+        "the kernel refuses these types without their own fields, and the lead package assigns "
+        "them without ever saying when one arises or what fills it:\n  " + "\n  ".join(thin))
+
+
+def test_the_hand_built_type_subject_is_the_intersection_it_claims():
+    """The floor under the test above: a subject that quietly emptied would assert nothing.
+
+    Both halves, because either one alone is satisfiable by an accident. The set must be
+    non-empty AND must exclude the two types the kernel captures for the caller — a derivation
+    that let `EVD` or `TSK` in would be measuring text about items no lead composes, and one that
+    let everything in would demand a rule for types that belong to the architect or the reviewer.
+    """
+    subject = _hand_built_evolution_types()
+    assert subject, "the hand-built-type derivation selected nothing at all"
+    assert not subject & {"EVD", "TSK"}, (
+        "`cli.evidence` and `dispatch.create_task` capture these types themselves, so they are "
+        "not the ones a lead composes as a JSON object: %s" % sorted(subject & {"EVD", "TSK"}))
+
+
 def test_the_section_reader_sees_a_deletion_a_rename_and_a_gutting(tmp_path):
     """The floor under the pin: the reader must notice all three mutations.
 

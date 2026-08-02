@@ -333,3 +333,348 @@ def test_staging_dir_without_an_active_item_is_still_reported(tmp_path):
     os.makedirs(os.path.join(root, "staging", "TSK-9999"))
     findings = validate_state(ProjectState(root))
     assert [(f["severity"], f["item"]) for f in findings] == [("warning", "staging/TSK-9999")]
+
+
+# ---------------- kernel.layout: who writes what under the state dir ----------------
+#
+# The whole carve-out `gate_write_scope` now makes rests on `kernel.layout` telling canonical state
+# apart from a kit document. These tests measure that claim against the WRITERS rather than against
+# the module's own list.
+
+def _pr_fields():
+    return {
+        "title": "checkout", "class": "feature", "problem": "p", "goal": "g",
+        "acceptance_criteria": [{"id": "AC-1", "text": "it works"}],
+        "invariants": [], "out_of_scope": [], "priority": "high",
+        "user_story": "As a buyer I can pay",
+    }
+
+
+def _files_under(root):
+    found = set()
+    for directory, _subdirs, names in os.walk(root):
+        for name in names:
+            found.add(os.path.relpath(os.path.join(directory, name), root)
+                      .replace("\\", "/").lower())
+    return found
+
+
+def test_every_kernel_writer_lands_inside_the_declared_area(tmp_path):
+    """`layout.kernel_written_subtrees` claims to cover every kernel writer -- so drive them.
+
+    This is the measurement the module's definition rests on: a writer that starts landing outside
+    the declared area turns this red, which is the only thing that keeps "the state directory has
+    exactly one writer" from becoming a sentence nothing checks. It is deliberately a WALK of the
+    files that appeared, not a check of the paths the writers returned: a writer that also drops a
+    companion file somewhere else is exactly the case a return value would hide.
+
+    Kit documents and `staging/` are subtracted because they are the two areas the definition
+    excludes by name; everything else a kernel operation created must answer `is_kernel_written`.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from conftest import approve, mint_via_hook
+    from kernel import approvals, dispatch, layout
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    before = _files_under(root)
+    state = ProjectState(root)
+    state.capture("PR", _pr_fields())
+    approve(state, "PR-0001", "scope")
+    task = dispatch.create_task(state, {
+        "product_requirement": "PR-0001", "derives_from": "PR-0001", "type": "implementation",
+        "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"],
+        "allowed_scope": ["src/"], "forbidden_scope": [], "required_inputs": [],
+        "expected_outputs": [], "dependencies": [],
+    })
+    state.transition(task["id"], "READY")
+    lease = dispatch.create_lease(state, task["id"])
+    dispatch.bind_agent(state, task["id"], "agent-1")
+    dispatch.spawn_outcome(state, task["id"], ok=True)
+    dispatch.submit_result(state, {
+        "task_id": task["id"], "role": "backend-developer", "status_proposal": "SUBMITTED",
+        "summary": "done", "outputs": [], "evidence": [], "scope_touched": [], "followups": [],
+    })
+    state.capture("EVD", {"kind": "test", "related": ["PR-0001"], "result": "pass",
+                          "summary": "qa", "artifact_refs": ["staging/%s/run.log" % task["id"]]})
+    state.generate_index()
+    # an approval that is minted and then revoked, so consumed/ and revoked/ both get written
+    request = approvals.create_pending_request(state, "delivery", "PR-0001")
+    mint_via_hook(state, request)
+    approvals.revoke(state, state.read_item("PR-0001")["approval_ref"])
+    state.archive(state.capture("DEC", {"title": "d", "context": "c", "decision": "d",
+                                        "consequences": "c", "source": "PR-0001"})["id"])
+    assert lease["task_id"] == task["id"]
+
+    created = _files_under(root) - before
+    assert created, "the drive-through created nothing -- this test would pass vacuously"
+    # THE LOAD-BEARING CLAIM: nothing this drive-through produced may come out as a DOCUMENT,
+    # because a document is what `gate_write_scope` hands to the write tools.
+    documents = sorted(rel for rel in created if layout.is_project_document(root, rel))
+    assert documents == [], (
+        "these writes came out as kit documents, so a tool write could overwrite them: %s"
+        % documents)
+    # ...and the declared area really has to COVER them, or `is_project_document` is only right by
+    # accident of the dotted/staging exclusions. `.audit/**` is subtracted here and only here: it
+    # is written by the audit helper in the hook process, not by a kernel writer, and the module
+    # docstring names it as machinery rather than as canonical state.
+    outside = sorted(rel for rel in created
+                     if not layout.is_kernel_written(root, rel)
+                     and not rel.startswith(".")
+                     and not rel.startswith(layout.STAGING_DIRNAME + "/"))
+    assert outside == [], (
+        "these kernel writes landed outside `kernel_written_subtrees`: %s" % outside)
+
+
+def test_the_two_files_a_merge_gate_blocks_on_are_documents_no_writer_produces(tmp_path):
+    """The root of B1, stated as the property rather than as two names.
+
+    `gate_memory_complete` blocks merge and push on the content of `product/masterplan.md` and
+    `project_config.yaml`. If either were canonical state, the block would have no key -- which is
+    exactly the state this package found. The test that matters is therefore the pair: the two
+    files the gate reads are documents, AND the drive-through above never produces them.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import layout
+
+    root = _template_state(tmp_path)
+    for shipped in ("product/masterplan.md", "project_config.yaml"):
+        assert os.path.isfile(os.path.join(root, *shipped.split("/"))), shipped
+        assert layout.is_project_document(root, shipped), shipped
+        assert not layout.is_kernel_written(root, shipped), shipped
+
+
+@pytest.mark.parametrize("relative", [
+    "product/active/PR-0001.yaml",          # a typed item
+    "approvals/pending/deadbeef.yaml",      # a mint code in cleartext
+    "approvals/APR-0001.yaml",
+    "tasks/leases/TSK-0001.lease.yaml",
+    "tasks/results/TSK-0001.envelope.yaml",
+    "generated/index.yaml",
+    "archive/TSK/2026/TSK-0001.yaml",       # a real year, not the probe's
+    "architecture/revisions/ARC-0001.r01.drawio.svg",
+    ".audit/hook_events.jsonl",             # machinery, not content
+    ".kernel.lock",
+    "staging/TSK-0001/proposal.md",         # has its own per-key rule
+])
+def test_canonical_state_and_machinery_are_not_documents(tmp_path, relative):
+    """The complement, spelled out where a widening would show up as a green test turning red."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import layout
+
+    root = _template_state(tmp_path)
+    assert not layout.is_project_document(root, relative)
+
+
+# ---------------- the lease is bound to the status it serves ----------------
+
+def _leasable_task(state):
+    """A READY task under an approved root -- the fixture the three lease tests share."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from conftest import approve
+    from kernel import dispatch
+
+    state.capture("PR", _pr_fields())
+    approve(state, "PR-0001", "scope")
+    task = dispatch.create_task(state, {
+        "product_requirement": "PR-0001", "derives_from": "PR-0001", "type": "implementation",
+        "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"],
+        "allowed_scope": ["src/"], "forbidden_scope": [], "required_inputs": [],
+        "expected_outputs": [], "dependencies": [],
+    })
+    state.transition(task["id"], "READY")
+    return task["id"]
+
+
+def test_the_lease_bearing_statuses_are_the_ones_the_lifecycle_produces(tmp_path):
+    """`dispatch.LEASE_BEARING_STATUSES` is a claim about the lifecycle -- so run the lifecycle.
+
+    Without this the tuple is a constant nothing compares against, and a lifecycle that started
+    keeping a lease into a third status (or stopped keeping it into IN_PROGRESS) would leave
+    `release_lease_for_status_locked` dropping a lease a running child still needs.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    lease_file = os.path.join(root, "tasks", "leases", task_id + ".lease.yaml")
+
+    dispatch.create_lease(state, task_id)
+    assert state.read_item(task_id)["status"] in dispatch.LEASE_BEARING_STATUSES
+    assert os.path.isfile(lease_file), "create_lease produced no lease"
+    dispatch.bind_agent(state, task_id, "agent-1")
+    dispatch.spawn_outcome(state, task_id, ok=True)
+    assert state.read_item(task_id)["status"] in dispatch.LEASE_BEARING_STATUSES
+    assert os.path.isfile(lease_file), "the running child's lease was dropped"
+    dispatch.submit_result(state, {
+        "task_id": task_id, "role": "backend-developer", "status_proposal": "SUBMITTED",
+        "summary": "done", "outputs": [], "evidence": [], "scope_touched": [], "followups": [],
+    })
+    assert state.read_item(task_id)["status"] not in dispatch.LEASE_BEARING_STATUSES
+    assert not os.path.exists(lease_file)
+
+
+def test_a_transition_off_a_leased_task_frees_the_lease_and_the_task_is_claimable(tmp_path):
+    """The dead end: LEASED -> READY is an explicit back-edge and used to leave a live lease.
+
+    Measured before this: `transition READY` moved the status, the lease file stayed, and
+    `create_lease` then refused the READY task with "a lease already exists" for the full TTL while
+    `validate` reported nothing. The test drives the EXIT -- it re-leases the task -- rather than
+    inspecting a message.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    first = dispatch.create_lease(state, task_id)
+    state.transition(task_id, "READY")
+    assert not os.path.exists(os.path.join(root, "tasks", "leases", task_id + ".lease.yaml"))
+    second = dispatch.create_lease(state, task_id)
+    assert second["nonce"] != first["nonce"]
+
+
+def test_a_cancelled_task_does_not_keep_a_lease_alive(tmp_path):
+    """The same rule from the other end: CANCELLED is terminal, so no child is coming."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    dispatch.create_lease(state, task_id)
+    state.transition(task_id, "CANCELLED")
+    assert dispatch.live_leases(state) == []
+
+
+def test_a_running_lease_is_reported_with_the_time_it_has_left(tmp_path):
+    """`sweep-leases` said only what it released; the wait it left behind had no length."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    dispatch.create_lease(state, task_id, ttl=120.0)
+    assert dispatch.sweep_expired_leases(state) == []
+    reported = dispatch.live_leases(state)
+    assert [entry[0] for entry in reported] == [task_id]
+    assert 0 < reported[0][1] <= 120.0
+
+
+# ---------------- a task cannot be created against another root's criteria ----------------
+
+def test_a_cross_root_origin_is_refused_at_creation(tmp_path):
+    """B4 at its root: the item the validator would flag can no longer come into existence.
+
+    The pair of assertions is the point -- the creation is refused AND the state stays clean, so
+    the merge gate never blocks on something whose only exit was `archive`, a word neither remedy
+    contained.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.report import validate_state
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    state.capture("PR", _pr_fields())
+    state.capture("PR", dict(_pr_fields(), title="another root"))
+    state.capture("BUG", {"title": "b", "related_pr": "PR-0002", "observed": "o", "expected": "e",
+                          "repro": "r", "severity": "high",
+                          "acceptance_criteria": [{"id": "FIX-1", "text": "no crash"}]})
+    with pytest.raises(dispatch.DispatchError) as exc:
+        dispatch.create_task(state, {
+            "product_requirement": "PR-0001", "derives_from": "BUG-0001", "type": "bugfix",
+            "assigned_role": "backend-developer", "acceptance_refs": ["FIX-1"],
+            "allowed_scope": ["src/"], "forbidden_scope": [], "required_inputs": [],
+            "expected_outputs": [], "dependencies": [],
+        })
+    assert "PR-0002" in str(exc.value) and "PR-0001" in str(exc.value)
+    assert [f for f in validate_state(state) if f["severity"] == "error"] == []
+
+
+def test_a_task_under_its_own_root_is_still_creatable(tmp_path):
+    """The other side of the same rule -- a bugfix task under the BUG's OWN root must still work.
+
+    Without this the refusal above could be satisfied by refusing every `derives_from` that is not
+    the root itself, which would make every bugfix, CR and EXP task uncreatable.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    state.capture("PR", _pr_fields())
+    state.capture("BUG", {"title": "b", "related_pr": "PR-0001", "observed": "o", "expected": "e",
+                          "repro": "r", "severity": "high",
+                          "acceptance_criteria": [{"id": "FIX-1", "text": "no crash"}]})
+    task = dispatch.create_task(state, {
+        "product_requirement": "PR-0001", "derives_from": "BUG-0001", "type": "bugfix",
+        "assigned_role": "backend-developer", "acceptance_refs": ["FIX-1"],
+        "allowed_scope": ["src/"], "forbidden_scope": [], "required_inputs": [],
+        "expected_outputs": [], "dependencies": [],
+    })
+    assert task["status"] == "DRAFT"
+
+
+# ---------------- the approval surface a role can actually reach ----------------
+
+def test_the_transition_refusal_names_a_command_that_walks_the_edge(tmp_path):
+    """A remedy is only a remedy if running it works -- so this RUNS it.
+
+    The refusal used to say "run the kernel approval flow" and name neither the command nor the
+    KIND, and the kind is not guessable: `EXP DESIGNED -> APPROVED` is committed by a `delivery`
+    approval, so the obvious `scope` request opens, mints, and still leaves the edge unwalked.
+    Here the command is read OUT OF the refusal and executed.
+    """
+    import re as _re
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from conftest import mint_via_hook
+    from kernel import approvals
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    state.capture("RQ", {"title": "q", "class": "exploratory", "question": "why",
+                         "motivation": "m", "acceptance_criteria": [{"id": "AC-1", "text": "x"}],
+                         "out_of_scope": [], "priority": "high"})
+    state.capture("EXP", {"derives_from": "RQ-0001", "design": "d", "variables": ["v"],
+                          "success_criteria": [{"id": "SC-1", "text": "s"}], "evidence_refs": []})
+    assert state.read_item("EXP-0001")["status"] == "DESIGNED"
+    with pytest.raises(approvals.ApprovalError) as exc:
+        state.transition("EXP-0001", "APPROVED")
+    named = _re.search(r"request-approval (\w+) (EXP-0001)", str(exc.value))
+    assert named, "the refusal names no runnable command:\n%s" % exc.value
+    mint_via_hook(state, approvals.create_pending_request(state, named.group(1), named.group(2)))
+    assert state.read_item("EXP-0001")["status"] == "APPROVED"

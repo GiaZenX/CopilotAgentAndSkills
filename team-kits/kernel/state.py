@@ -172,10 +172,31 @@ class ProjectState:
         item_type, _ = parse_id(item_id)
         return os.path.join(self.active_dir(item_type), item_id + ".yaml")
 
+    def archive_root(self) -> str:
+        """The whole archive subtree.
+
+        A builder of its own, and not merely the head of `archive_path`: everything the kernel
+        retires lands somewhere under here, but at a path keyed by TYPE and YEAR
+        (`archive_path`) or by staging key (`staging.clear_staging`). `kernel.layout` needs the
+        SUBTREE -- asking `archive_path` for a probe would have declared `archive/pr/1970`
+        canonical and left `archive/pr/2026` outside it, which is the whole archive of a live
+        project.
+        """
+        return os.path.join(self.root, "archive")
+
     def archive_path(self, item_id: str, year: int) -> str:
         item_type, _ = parse_id(item_id)
         # deterministic archive paths (spec II.2): archive/<type>/<year>/<ID>.yaml
-        return os.path.join(self.root, "archive", item_type, str(year), item_id + ".yaml")
+        return os.path.join(self.archive_root(), item_type, str(year), item_id + ".yaml")
+
+    def generated_path(self, name: str) -> str:
+        """Where a REGENERABLE rollup lives (`generated/<name>`).
+
+        A builder rather than a `os.path.join` at each call site, because `kernel.layout` asks
+        the writers themselves where they write and a path composed inline answers nothing. The
+        index below is one such writer; the session brief is the other.
+        """
+        return os.path.join(self.root, "generated", name)
 
     # -- io (always under the lock) --------------------------------------------
 
@@ -604,6 +625,13 @@ class ProjectState:
         self._assert_confirmed(item_id, item_type, from_status, to_status)
         item["status"] = to_status
         self._write_yaml_atomic(self.active_path(item_id), item)
+        # A DISPATCH LEASE IS BOUND TO THE STATUS IT SERVES. Deferred import for the same reason
+        # `approvals` is deferred: `dispatch` imports this module. Without this, `transition
+        # TSK-0001 READY` off LEASED left a live lease behind that `create_lease` then refused the
+        # task on for its whole TTL, and `validate` called that state green -- see
+        # `dispatch.release_lease_for_status_locked` for the measurement.
+        from . import dispatch
+        dispatch.release_lease_for_status_locked(self, item_id, to_status)
         self._regenerate_index_locked()
         return item
 
@@ -690,7 +718,7 @@ class ProjectState:
                 if item.get("blocked_by"):
                     row["blocked_by"] = item["blocked_by"]
                 rows.append(row)
-        index_path = os.path.join(self.root, "generated", "index.yaml")
+        index_path = self.generated_path("index.yaml")
         self._write_yaml_atomic(index_path, {"generated_at": _now_iso(), "items": rows})
         return index_path
 

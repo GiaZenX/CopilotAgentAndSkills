@@ -552,25 +552,64 @@ def test_cli_request_approval_opens_the_question_the_gate_will_pin(state, capsys
     assert stored["mint_code"] not in printed["question"] + printed["header"]
 
 
-def test_cli_request_approval_only_offers_the_item_derived_kinds(state, capsys):
-    """The time-boxed kinds (routine/analysis/push) take a manifest a command line cannot carry.
+def test_cli_request_approval_offers_exactly_the_kinds_a_manifest_builder_exists_for(state, capsys):
+    """The surface is the kinds SOMETHING can build a subject manifest for -- and only those.
 
-    Derived from `APR_KINDS - EXPIRING_KINDS` rather than listed: spec II.2 splits approvals into
-    the time-boxed ones and the content-invalidated ones, and only the second group has an
-    item-derived manifest. A kind that moved between those groups changes this surface with it.
+    The predecessor said `APR_KINDS - EXPIRING_KINDS` and called that "the item-derived kinds".
+    Two properties in one sentence, agreeing by accident: `push` is time-boxed AND has a manifest
+    builder, so the moment the CLI grew `request-approval push` -- the gap that made every project
+    unable to publish -- the sentence was wrong about both halves. The property that actually
+    decides the surface is whether a manifest for that kind can be BUILT without a caller who
+    types an analysis question, a read-only scope and a cadence; the two families that can are
+    `item_derived_kinds` (from an item id) and `line_manifest_kinds` (from flags).
+
+    Not a set comparison alone, which would only prove somebody wrote the same expression twice.
+    Every offered kind is put through the builder its family names and has to return a manifest,
+    and every kind of the vocabulary that NO family claims has to be refused by the real parser.
+    So a kind added to the surface without a builder fails on the equality, a kind whose builder
+    stopped producing a manifest fails on the call, and a builder family that grew a name outside
+    `APR_KINDS` fails on the vocabulary assertion.
+
+    WHAT THIS CANNOT SAY, measured rather than guessed: adding a kind to `APR_KINDS` with no
+    builder anywhere leaves this green, because the parser then refuses it and the loop below
+    asserts exactly that. Whether such a kind SHOULD have become requestable is a reading -- it is
+    the state `routine` and `analysis` are deliberately in. The `push` shape, a kind that HAS a
+    builder while the surface ignores it, is the one this test is red for.
     """
     parser = cli.build_parser()
     offered = parser._subparsers._group_actions[0].choices["request-approval"]._actions
     kinds = [action.choices for action in offered if action.dest == "kind"][0]
-    assert set(kinds) == set(approvals.APR_KINDS) - approvals.EXPIRING_KINDS
-    for kind in kinds:
-        assert approvals.item_subject_manifest(
-            {"id": "PR-0001", "revision": 1}, kind) is not None
+    item_built = set(approvals.item_derived_kinds())
+    line_built = set(approvals.line_manifest_kinds())
+    buildable = item_built | line_built
+
+    assert set(kinds) == buildable
+    assert buildable <= set(approvals.APR_KINDS), (
+        "a manifest builder names a kind the approval vocabulary does not have: %s"
+        % sorted(buildable - set(approvals.APR_KINDS)))
+
+    for kind in sorted(kinds):
+        if kind in item_built:
+            manifest = approvals.item_subject_manifest({"id": "PR-0001", "revision": 1}, kind)
+        else:
+            builder = approvals.LINE_MANIFEST_BUILDERS[kind]
+            # the flags the parser really carries for this kind, read off the same signature the
+            # parser read -- a builder whose keys moved takes its command line with it
+            manifest = builder(**{name: "x" for name in cli.manifest_parameters(builder)})
+        assert isinstance(manifest, dict) and manifest, (
+            "`request-approval %s` is offered, but its manifest builder returns nothing to hash"
+            % kind)
+
+    # ...and every kind no family can build stays OFF the command line, judged by the parser
+    # rather than named here (`routine`/`analysis` today, whatever the split says tomorrow).
     state.capture("PR", dict(PR_FIELDS))
-    with pytest.raises(SystemExit) as exited:
-        run_cli(state, "request-approval", "routine", "PR-0001")
-    assert exited.value.code == 2
-    assert "invalid choice" in capsys.readouterr().err
+    unbuildable = sorted(set(approvals.APR_KINDS) - buildable)
+    assert unbuildable, "every kind is buildable, so this half of the split measures nothing"
+    for kind in unbuildable:
+        with pytest.raises(SystemExit) as exited:
+            run_cli(state, "request-approval", kind, "PR-0001")
+        assert exited.value.code == 2
+        assert "invalid choice" in capsys.readouterr().err
 
 
 def test_the_installer_position_prints_utf8_whatever_the_console_codepage_is(state, tmp_path):

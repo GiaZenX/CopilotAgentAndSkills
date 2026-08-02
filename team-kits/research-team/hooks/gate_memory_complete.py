@@ -12,6 +12,15 @@ field contracts in `kernel/backlog_types` (REQUIRED_FIELDS + the status automata
 that answer instead of re-deriving it: a second implementation of "what counts as complete" is
 exactly how the two drift, and the validator is the one CI and `python scripts/harness.py doctor` also read.
 
+NEITHER OF ITS OWN TEETH HAS A KEY INSIDE THE SESSION, and since 2026-08-02 the message says so.
+The two files below are kit DOCUMENTS (`kernel.layout.is_project_document`): §0 locks the state
+directory against every tool write and makes no exception for them, and the kernel has no path
+builder that can name them either. Measured: Write rc 2, shell heredoc rc 2, no writer in
+`.claude/kernel`. So this gate can block merge and push on a condition nothing inside the session
+can satisfy — that is a REPORTED gap, not a hidden one, and `remedy_for` names who can close it
+instead of sending a role to `python scripts/harness.py validate`, which answers
+`0 error(s), 0 warning(s)` in exactly this state.
+
 The gate keeps its own teeth for the two things the validator structurally cannot see:
   * `product/masterplan.md` -- prose, not a typed item, and therefore outside every schema. An
     unfilled north star means the plan lives only in the chat that produced it (the observed gap).
@@ -143,6 +152,55 @@ def state_errors(root):
             for f in findings if f.get("severity") == "error"]
 
 
+def remedy_for(documents, validator_errors):
+    """The way out, built from the findings that actually FIRED.
+
+    WHY IT IS BUILT AND NOT WRITTEN. The single fixed remedy this replaces said "run
+    `python scripts/harness.py validate` for the full list" — and in the state a fresh project is
+    in, the two document findings below fire while `validate` answers `0 error(s), 0 warning(s)`
+    (measured 2026-08-02). A remedy that sends a role to a command reporting nothing is a remedy
+    that teaches the gate is broken.
+
+    THE DOCUMENT HALF STATES THE DEAD END INSTEAD OF PAPERING OVER IT. `product/masterplan.md` and
+    `project_config.yaml` are kit DOCUMENTS (`kernel.layout.is_project_document`): no
+    `harness.py` command writes them, and §0 of every constitution locks the state directory
+    against every tool write with no exception for exactly these files. Measured 2026-08-02, all
+    three routes: Write rc 2, shell heredoc rc 2, no kernel writer. So this block genuinely has no
+    key inside the session, and the only useful thing a message can do is say so and name who can
+    close it — a remedy that pretends otherwise sends a role into a retry loop, which is what the
+    repeat-block escalation above exists to count.
+
+    THE VALIDATOR HALF names `archive`, and that is the correction the previous wording needed:
+    "closed through its status automaton" is what a role does with `transition <ID> CANCELLED`,
+    and measured against a cross-root `derives_from` the error SURVIVES that transition (a
+    cancelled item is still an active item) and gains an "awaiting archive" warning on top. Only
+    `archive` clears it.
+    """
+    parts = []
+    if documents:
+        many = len(documents) > 1
+        parts.append(
+            "%s %s kit DOCUMENT%s, not %s -- and %s has NO writer inside this session: no "
+            "`python scripts/harness.py` command writes %s, and §0 locks the state directory "
+            "against every tool and shell write with no exception for %s. Do not retry: tell the "
+            "user this file is unfilled and that only they can fill it (an editor outside the "
+            "session; `init_project_memory` is copy-if-absent and will not overwrite it)."
+            % (", ".join(documents), "are" if many else "is", "s" if many else "",
+               "typed items" if many else "a typed item", "that" if many else "it",
+               "them" if many else "it", "them" if many else "it"))
+    if validator_errors:
+        parts.append(
+            "The remaining findings come from the state validator: `python scripts/harness.py "
+            "validate` lists them all with their own remedies. An item that genuinely does not "
+            "apply leaves the ACTIVE store to stop counting — `python scripts/harness.py "
+            "transition <ID> CANCELLED` and then `python scripts/harness.py archive <ID>`; the "
+            "cancellation alone does not clear the finding, because a cancelled item is still an "
+            "active one. An item whose FIELDS are wrong cannot be corrected in place (a work "
+            "order is frozen outside DRAFT): re-plan it in DRAFT, or archive it and create the "
+            "right one.")
+    return " ".join(parts)
+
+
 def main():
     # No `hook_event_name` guard: this gate is registered on PreToolUse and nowhere else, so
     # the event is settled by settings.json. Re-checking a field a provider may simply omit
@@ -166,17 +224,20 @@ def main():
     if not _root.has_root_item(root):
         sys.exit(0)
 
-    problems = []
+    documents, unfilled = [], []
     masterplan = os.path.join(_kernel.state_dir(root), MASTERPLAN)
     if os.path.isfile(masterplan) and TEMPLATE_MARKER in read(masterplan):
-        problems.append("%s: still the unfilled template — write the real masterplan"
+        unfilled.append("%s: still the unfilled template — write the real masterplan"
                         % MASTERPLAN.replace(os.sep, "/"))
+        documents.append(MASTERPLAN.replace(os.sep, "/"))
     config = os.path.join(_kernel.state_dir(root), "project_config.yaml")
     if os.path.isfile(config) and config_unfilled(read(config)):
-        problems.append("project_config.yaml: no project name, or `stacks:` still TODO — the "
+        unfilled.append("project_config.yaml: no project name, or `stacks:` still TODO — the "
                         "pipeline checks are selected by that list, so an undeclared stack is an "
                         "unchecked stack")
-    problems += state_errors(root)
+        documents.append("project_config.yaml")
+    validator = state_errors(root)
+    problems = unfilled + validator
     if not problems:
         sys.exit(0)
 
@@ -189,11 +250,7 @@ def main():
             "\nREPEAT BLOCK #%d for the SAME findings — STOP retrying the push and fix the cause "
             "in THIS cycle: task the owning role to complete the item(s) before anything else."
             % (repeats + 1))
-    _kernel.block(
-        HOOK, message,
-        remedy="run `python scripts/harness.py validate` for the full list and fix each finding at its source — an "
-               "item that genuinely does not apply is closed through its status automaton, not "
-               "left half-written.")
+    _kernel.block(HOOK, message, remedy=remedy_for(documents, validator))
 
 
 if __name__ == "__main__":

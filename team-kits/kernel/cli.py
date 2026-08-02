@@ -45,7 +45,9 @@ import builtins
 import inspect
 import json
 import os
+import subprocess
 import sys
+import time
 
 from . import approvals, dispatch, report, staging
 from .backlog_types import (
@@ -163,6 +165,62 @@ def _freeze_body(command, operation):
     return body
 
 
+def manifest_parameters(builder) -> list:
+    """The subject keys a line-manifest builder takes, read off its own signature.
+
+    Same derivation as `freeze_parameters`, and for the same reason: the flag surface of
+    `request-approval push` IS `approvals.push_subject_manifest`'s parameter list, so a renamed
+    or added subject key cannot leave a stale flag behind. Nothing is dropped here -- unlike a
+    freeze operation, a manifest builder holds no `state`.
+    """
+    return list(inspect.signature(builder).parameters)
+
+
+def _worktree_head(state: ProjectState) -> str:
+    """The commit a push would publish, read from the worktree the state directory sits in.
+
+    `gate_push_token` resolves the SAME value with the same git call and binds its check to it, so
+    a head a role typed from memory would mint a token for a different commit -- which is exactly
+    the single-use property `push_subject_manifest` rests on. Empty string when git cannot answer;
+    the caller turns that into a usage error naming the flag.
+    """
+    repo = os.path.dirname(os.path.abspath(state.root))
+    try:
+        result = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
+                                capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return (result.stdout or "").strip() if result.returncode == 0 else ""
+
+
+# Manifest keys the CLI can determine itself; every other key of a builder must be typed. A key
+# WITH a resolver is optional on the command line, one without is required -- that is the whole
+# rule, and it is why `remote` and `branch` stay mandatory: they are what the user is asked to
+# authorise, so they come from the role's intent, never from whatever the machine happens to be
+# checked out at.
+LINE_MANIFEST_RESOLVERS = {"head": _worktree_head}
+
+
+def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
+    """The subject manifest for a line kind, from the flags plus the resolvers."""
+    values = {}
+    for name in manifest_parameters(builder):
+        value = getattr(args, name, None)
+        if not value:
+            resolver = LINE_MANIFEST_RESOLVERS.get(name)
+            value = resolver(state) if resolver else None
+        if not value:
+            raise UsageError(
+                "a %s approval question must say what it releases, and %s is missing. Remedy: "
+                "`%s request-approval %s %s` -- the keys are the manifest the approval hashes, "
+                "so the gate can compare what was approved with what is being done."
+                % (kind, name, INVOCATION, kind,
+                   " ".join("--%s <%s>" % (key.replace("_", "-"), key)
+                            for key in manifest_parameters(builder))))
+        values[name] = value
+    return builder(**values)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=INVOCATION, description="V2 state-kernel commands (HARNESS_V2_SPEC.md II.4)"
@@ -239,10 +297,19 @@ def build_parser() -> argparse.ArgumentParser:
                       help="the installed role the dispatch gate matches the spawn against")
     task.add_argument("--acceptance-ref", required=True, action="append", dest="acceptance_refs",
                       metavar="AC_ID", help="criterion this task is measured against (repeatable)")
+    # QUOTE THE GLOB, and the help says so because the failure is silent in the one case that
+    # matters. `**` and `*` are what `gate_write_scope._matches` reads, but the SHELL sees them
+    # first: once `src/` exists, `--allowed-scope src/**` is expanded before this parser is
+    # reached. With several matches argparse rejects the extra words; with exactly ONE the scope
+    # is quietly narrowed to that single file and the task runs under a grant nobody wrote.
     task.add_argument("--allowed-scope", required=True, action="append", dest="allowed_scope",
                       metavar="PATH", help="what the specialist may write (repeatable); this IS "
-                                           "gate layer 3's input")
-    task.add_argument("--forbidden-scope", action="append", dest="forbidden_scope", metavar="PATH")
+                                           "gate layer 3's input. QUOTE any glob -- "
+                                           "`--allowed-scope 'src/**'` -- or the shell expands it "
+                                           "against the working tree before the kernel sees it")
+    task.add_argument("--forbidden-scope", action="append", dest="forbidden_scope", metavar="PATH",
+                      help="what the specialist may NOT write (repeatable); quote globs, for the "
+                           "reason --allowed-scope gives")
     task.add_argument("--required-input", action="append", dest="required_inputs",
                       metavar="PATH_OR_ID")
     task.add_argument("--expected-output", action="append", dest="expected_outputs", metavar="PATH")
@@ -290,11 +357,35 @@ def build_parser() -> argparse.ArgumentParser:
     # item-derived keeps needing a caller that builds one. This used to read
     # `APR_KINDS - EXPIRING_KINDS`, which is a different property (time-boxed vs
     # content-invalidated) that agrees today -- a third statement of one split is how they drift.
+    #
+    # THE SECOND HALF OF THE SPLIT, added 2026-08-02 because its absence was a wall: this parser
+    # offered `item_derived_kinds()` only, so `push` -- a kind in `APR_KINDS`, with its own
+    # manifest builder and a gate refusing every push without one -- had no way to be requested at
+    # all. Measured before this: no project could publish anything, ever, and `gate_push_token`'s
+    # remedy named a command the parser did not have. The flags come from the BUILDER'S SIGNATURE,
+    # exactly as a freeze body's keys do, so a second line kind arrives correctly flagged.
     request = sub.add_parser(
         "request-approval",
-        help="open the approval question for an item (phase 1); the USER mints by answering it")
-    request.add_argument("kind", choices=sorted(approvals.item_derived_kinds()))
-    request.add_argument("item_id", metavar="ITEM_ID")
+        help="open the approval question (phase 1); the USER mints by answering it")
+    request.add_argument("kind", choices=sorted(set(approvals.item_derived_kinds())
+                                                | set(approvals.line_manifest_kinds())))
+    request.add_argument("item_id", metavar="ITEM_ID", nargs="?",
+                         help="the item to approve -- required for %s, and refused for %s, whose "
+                              "subject is the flags below rather than an item"
+                              % ("/".join(sorted(approvals.item_derived_kinds())),
+                                 "/".join(approvals.line_manifest_kinds())))
+    for line_kind, builder in sorted(approvals.LINE_MANIFEST_BUILDERS.items()):
+        for name in manifest_parameters(builder):
+            flag = "--" + name.replace("_", "-")
+            if flag in {action.option_strings[0] for action in request._actions
+                        if action.option_strings}:
+                continue          # two line kinds sharing a manifest key share the flag
+            resolver = LINE_MANIFEST_RESOLVERS.get(name)
+            request.add_argument(
+                flag, metavar=name.upper(),
+                help="%s subject: %s%s" % (line_kind, name,
+                                           " (default: read from the worktree)" if resolver
+                                           else ""))
     # The lease + header, in one command, because they are one moment: spec II.4 orders
     # "READY -> kurzlebige Dispatch-Lease mit Nonce und TTL -> Header", and the gate that reads the
     # header runs at PreToolUse of the spawn -- AFTER the model has composed the prompt. A lease
@@ -322,14 +413,23 @@ def build_parser() -> argparse.ArgumentParser:
     # state-relative by construction, exactly as `evidence --artifact-ref` is.
     for command, operation in sorted(FREEZE_COMMANDS.items()):
         contract = freeze_parameters(operation)
-        sub.add_parser(command, help=(
+        summary = (
             "promote the staged %s to canonical state (spec II.6/II.6a); JSON body on stdin, "
             "required: %s%s" % (
                 command.split("-", 1)[1],
                 ", ".join(sorted(name for name, (required, _t) in contract.items() if required)),
                 "; optional: %s" % ", ".join(
                     sorted(name for name, (required, _t) in contract.items() if not required))
-                if any(not required for required, _t in contract.values()) else "")))
+                if any(not required for required, _t in contract.values()) else ""))
+        # THE CONTRACT GOES INTO `description` AS WELL AS `help`, because the two are printed in
+        # different places and a role reads the wrong one: `help` appears only in the PARENT's
+        # `--help`, so `freeze-architecture --help` -- the command a role actually types when it
+        # wants to know what to send -- printed `usage: ... freeze-architecture [-h]` and nothing
+        # else (measured 2026-08-02). A body-taking command whose own help does not name its body
+        # is a command with no discoverable contract.
+        sub.add_parser(command, help=summary, description="%s. The keys are exactly the "
+                       "operation's own parameters; send them as ONE JSON object on stdin, e.g. "
+                       "`%s %s <<'EOF'` … `EOF`." % (summary, INVOCATION, command))
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
@@ -525,15 +625,30 @@ def main(argv=None) -> int:
             print("%s -> %s" % (task["id"], task["status"]))
             return 0
         if args.command == "request-approval":
+            builder = approvals.LINE_MANIFEST_BUILDERS.get(args.kind)
+            if builder is None:
+                if not args.item_id:
+                    raise UsageError(
+                        "a %s approval is bound to an ITEM and none was named. Remedy: `%s "
+                        "request-approval %s <ITEM_ID>`."
+                        % (args.kind, INVOCATION, args.kind))
+                pending = approvals.create_pending_request(state, args.kind, args.item_id)
+            else:
+                if args.item_id:
+                    raise UsageError(
+                        "a %s approval has no item -- its subject is %s. Remedy: drop %r from the "
+                        "command line." % (args.kind,
+                                           ", ".join(manifest_parameters(builder)), args.item_id))
+                pending = approvals.create_pending_request(
+                    state, args.kind,
+                    manifest=_line_manifest(state, args.kind, builder, args),
+                    approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY)
             # ONLY the question object on stdout, and as JSON, because it has to be relayed
             # VERBATIM: `gate_approval` compares the asked question against `build_question`
             # field by field, so anything printed beside it is something a role might paste in.
             # The request id travels inside the text as `[APR-REQ:<id>]`; that marker is what the
             # gate resolves back to this request.
-            print(json.dumps(
-                approvals.build_question(
-                    approvals.create_pending_request(state, args.kind, args.item_id)),
-                indent=2, ensure_ascii=False))
+            print(json.dumps(approvals.build_question(pending), indent=2, ensure_ascii=False))
             return 0
         if args.command == "dispatch":
             # ONLY the header on stdout: it has to be copied into the spawn prompt character for
@@ -551,6 +666,13 @@ def main(argv=None) -> int:
         if args.command == "sweep-leases":
             released = dispatch.sweep_expired_leases(state)
             print("released to READY: %s" % (", ".join(released) or "-"))
+            # THE SECOND LINE IS THE ANSWER A CALLER CAME FOR. A role runs this because a lease
+            # blocked its dispatch; "released to READY: -" alone tells it the sweep found nothing
+            # and leaves the length of the wait unknown, which is what turns a bounded wait into a
+            # stall. `live_leases` says which leases are still running and for how long.
+            print("still leased: %s" % (", ".join(
+                "%s (%d s left)" % (task_id, int(left))
+                for task_id, left in dispatch.live_leases(state)) or "-"))
             return 0
     except UsageError as exc:
         # BEFORE the generic handler, because UsageError IS a ValueError -- the broad clause below

@@ -31,16 +31,21 @@ Two things the gates depend on:
   re-read. Write the raw output to that path FIRST, then record the Evidence naming it.
 The NEWEST Evidence of a kind covering an item is that kind's current verdict, so a re-run supersedes your
 earlier one and a `fail` you record after a pass closes the merge gate again.
+- **The merge waits for ALL of them.** `gate_git` opens a merge of the RQ only when every delivery kind —
+  `review`/`test`/`acceptance` — has a current verdict covering it and none of them is a `fail`. A kind you
+  left unanswered closes the merge exactly as a `fail` does, and the refusal names which one is missing.
 
 ## Do
 1. **Review** — check analysis code + procedure against `research_guidelines.yaml` and the design. Your
    findings become an Evidence item (`kind: review`) whose `related` names the task/EXP and whose
    `artifact_refs` point at the logs.
-2. **Reproduce** — re-run from recorded seeds/versions; confirm the reported numbers reproduce. State
-   explicitly in that Evidence whether they did — "could not check" and "reproduced" are not the same result.
-3. **Pipeline + Validity** — verify the **reproducibility pipeline is green** (format, lint, types,
-   analysis-code tests, clean re-run reproduces, deps audited + licenses, secret/PII scan, provenance) and
-   every `INV` item in force (correct statistics, assumptions met, conclusions supported).
+2. **Reproduce + run the pipeline** — re-run from recorded seeds/versions and confirm the reported numbers
+   reproduce; verify the **reproducibility pipeline is green** (format, lint, types, analysis-code tests,
+   clean re-run reproduces, deps audited + licenses, secret/PII scan, provenance). State explicitly whether
+   the numbers reproduced — "could not check" and "reproduced" are not the same result. Record THIS run as
+   its own Evidence item (`kind: test`): it is the executed half of your verdict, and the merge gate waits
+   for it separately from your reading of the work.
+3. **Validity** — check every `INV` item in force (correct statistics, assumptions met, conclusions supported).
    **An `INV` whose referenced test does not
    exist is unverified and a FAIL — and checking that is YOUR job:** open each `check.ref` and confirm the test
    is really there; the state validator does not yet resolve those references, so a missing one is invisible to
@@ -58,7 +63,7 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    an upgrade (§11). Per-task retry COUNTS exist nowhere in V2 — name the repetition, do not assume a counter.
 
 ## What you produce
-Evidence items (`kind: review`, `kind: acceptance`), `INV` items for the validity criteria that must keep
+Evidence items (`kind: review`, `kind: test`, `kind: acceptance`), `INV` items for the validity criteria that must keep
 holding, plus reproducibility scripts inside your task's `allowed_scope`. Never change analysis code, designs,
 or requirements — and never write an item file yourself: you record Evidence through the kernel (see
 "How you record an Evidence item"), which is what performs the write. Raw proof (run logs, re-run

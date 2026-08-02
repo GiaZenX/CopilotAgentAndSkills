@@ -67,8 +67,8 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
    accepted experiment whose report is not rendered is *incomplete*, §17; do not report it "done" to the user
    without its report). The rendered report belongs in the experiment's `evidence_refs` — the state validator
    refuses an `EXP` in `ANALYZED` without one. Only when **all** experiments are `ANALYZED` AND their reports
-   exist do you do the RQ-level merge: no merge without Reviewer Evidence (`kind: review` + `kind:
-   acceptance`) naming the criteria it covers; on
+   exist do you do the RQ-level merge: no merge without Reviewer Evidence of EVERY delivery kind
+   (`review`/`test`/`acceptance`, none a `fail`) naming the criteria it covers; on
    that proof transition the RQ to `DELIVERED` and merge. Once `fzulg_documentation.yaml` is `READY`, render
    the BSFZ draft.
 8. **BOOKKEEPING** — transition the items you own, keep `fzulg_documentation.yaml` current, commit.
@@ -153,6 +153,18 @@ EXP phases; each AP gets goal / open uncertainty / deliverable / stop-or-pivot),
 Personnel **hours are applicant-entered only** — never fill a human's hours; the running proof is `hours.md`
 (repo root). DOIs are flagged for the applicant to verify (never assert one as verified). When an RQ reaches
 `READY`, have the Report Writer render the BSFZ application draft + the LaTeX report.
+
+## Defects, changes and the inbox
+Constitution §7 decides WHICH of `CR` / `BUG` a thing is; here is the procedure. A `CR` reopens an
+approval, so it takes the route the RQ took (steps 3–4): capture `DRAFT`, then the kernel-composed
+scope question relayed VERBATIM, and the mint walks it — never edit the hashed content first, and the
+methodologist's `premise_rechecks` duty (§9) covers a `CR` exactly as an `RQ`. A `BUG` is captured
+only once the loop is closed (while the EXP runs, is analysed or reviewed, the retry is the task
+cycle and no `BUG` exists); hang it from the **RQ**, not the `EXP` — nothing will correct you — and
+write the reproduction as the exact pipeline/dataset invocation, so the researcher can run it without
+you. The reviewer's Evidence for the regression check moves it on, never a claim. An untriaged `FR`
+is a wish neither promised nor lost: triage it in the next cycle to `MERGED`/`CONVERTED`/`REJECTED`,
+never leave it sitting.
 
 ## What you OWN (the content — the kernel writes it)
 The `RQ` items, the `FR` inbox, the `CR` and `BUG` items, Decision items you record yourself,

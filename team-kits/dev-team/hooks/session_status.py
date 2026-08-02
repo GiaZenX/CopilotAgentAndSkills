@@ -239,12 +239,38 @@ def main():
             local_p = os.path.join(cwd, ".claude", "kit_version")
             staged = open(staged_p, encoding="utf-8").read().lstrip("\ufeff").strip() if os.path.isfile(staged_p) else ""
             local = open(local_p, encoding="utf-8").read().lstrip("\ufeff").strip() if os.path.isfile(local_p) else ""
-            if staged and staged != local:
-                lv = local.splitlines()[0].replace("version: ", "") if local else "no version stamp"
-                sv = staged.splitlines()[0].replace("version: ", "")
+            staged_order = _compat.kit_version_order(staged)
+            local_order = _compat.kit_version_order(local)
+            lv = local.splitlines()[0].replace("version: ", "") if local else "no version stamp"
+            sv = staged.splitlines()[0].replace("version: ", "") if staged else ""
+            # A DOWNGRADE IS NOT AN UPDATE, and neither is a difference whose direction nobody can
+            # read. This used to be one `staged != local` branch calling every difference "usually
+            # a newer harness. Propose the update to the user" — measured against a real staging, a
+            # 07-18 kit was offered to an 08-02 project, and accepting it prunes the project's
+            # newer hooks while leaving its newer kernel in place. Ordering comes from
+            # `_compat.kit_version_order`; each branch below claims only what that answered.
+            if staged and staged != local and not (staged_order and local_order):
                 parts.append(
-                    "KIT UPDATE AVAILABLE: the staged '%s' kit (%s) differs from this repo's installed kit "
-                    "(%s) — usually a newer harness. Propose the update to the user; on their OK, FIRST "
+                    "KIT VERSION MISMATCH: the staged '%s' kit (%s) differs from this repo's "
+                    "installed kit (%s), and at least one of the two stamps carries no readable "
+                    "version, so which is newer cannot be determined here. Report it to the user "
+                    "and let them decide; do not scaffold on a guess." % (kit, sv or "unreadable", lv))
+            elif staged and staged_order and local_order and staged_order < local_order:
+                parts.append(
+                    "KIT DOWNGRADE OFFERED, do NOT run the scaffold: the staged '%s' kit (%s) is "
+                    "OLDER than this repo's installed kit (%s). Scaffolding it would prune files "
+                    "this project needs and leave others in place. Tell the user their staging is "
+                    "behind and let them update the staging (the installer) first." % (kit, sv, lv))
+            elif staged and staged_order == local_order and staged != local:
+                parts.append(
+                    "KIT CONTENT MISMATCH: the staged '%s' kit and this repo's installed kit carry "
+                    "the SAME version stamp (%s) but different content hashes — one of the two was "
+                    "changed without a version bump. That is a finding to report, not an update to "
+                    "run." % (kit, sv))
+            elif staged and staged_order and local_order and staged_order > local_order:
+                parts.append(
+                    "KIT UPDATE AVAILABLE: the staged '%s' kit (%s) is NEWER than this repo's installed kit "
+                    "(%s). Propose the update to the user; on their OK, FIRST "
                     "re-read .claude/kit_version (a PARALLEL session may have already updated — this "
                     "briefing is a snapshot from session start; a real manager nearly double-updated), "
                     "then run the scaffold_team script and then init_project_memory (both safe: backup first, "

@@ -118,7 +118,7 @@
         "hooks": []
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "05b2b698dd8055fa",
+        "digest": "6466384a22343f65",
         "hooks": [
           "gate_test_coverage"
         ]
@@ -145,7 +145,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "6074660585cbcd81",
+        "digest": "91f80b45f503ce4a",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -275,6 +275,10 @@
           "gate_proc_approved"
         ]
       },
+      "1a. FR / CR / BUG — one question decides which": {
+        "digest": "cddfdd70a1e1f3a2",
+        "hooks": []
+      },
       "2. Hard rules (deterministic where possible)": {
         "digest": "343dde7499713efa",
         "hooks": [
@@ -348,7 +352,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "4d0bfcfbf70add81",
+        "digest": "0e223949dec3db1f",
         "hooks": [
           "gate_approval",
           "gate_dispatch",
@@ -387,6 +391,10 @@
       },
       "What you OWN (the content — the kernel writes it)": {
         "digest": "6c0d8dc514c74ba1",
+        "hooks": []
+      },
+      "Wishes that arrive, runs that go wrong": {
+        "digest": "fd8ee47c3a9fbe88",
         "hooks": []
       },
       "Work loop (every cycle)": {
@@ -523,7 +531,11 @@
         "hooks": []
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "af0f00684f2349cd",
+        "digest": "d789f7c0a51d7023",
+        "hooks": []
+      },
+      "7. Evolution: CR / BUG — explicit, never silent": {
+        "digest": "35c8ae714ad43818",
         "hooks": []
       },
       "8. Git": {
@@ -544,7 +556,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "3fd4f7973b2803d7",
+        "digest": "b3fbe2caf0b8c627",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -574,6 +586,10 @@
     "skills/project-manager/SKILL.md": {
       "(preamble)": {
         "digest": "467b0245bfba0d63",
+        "hooks": []
+      },
+      "Defects, changes and the inbox": {
+        "digest": "862a78b9935c2023",
         "hooks": []
       },
       "FZulG / BSFZ application (you own the application; the Methodologist assesses the science)": {
@@ -618,7 +634,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "fc1c84094c11a053",
+        "digest": "a6483917a6ddd519",
         "hooks": [
           "guard_yaml_valid"
         ]

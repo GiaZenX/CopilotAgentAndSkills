@@ -76,11 +76,65 @@ def create_task(state: ProjectState, fields: dict) -> dict:
         )
     with state.lock:
         root = state.read_item(root_id)
+        _assert_origins_belong_to_root_locked(state, root, fields)
         task_fields = dict(fields)
         task_fields["root_revision"] = root.get("revision")
     # TOCTOU note: capture below takes a SECOND lock hold -- a root-revision
     # change in between is caught fail-closed by create_lease's revision check
     return state.capture("TSK", task_fields)
+
+
+def _assert_origins_belong_to_root_locked(state: ProjectState, root: dict, fields: dict) -> None:
+    """A TSK's `derives_from` must hang from the SAME root -- refused at CREATION.
+
+    THE DEAD END THIS ENDS, measured 2026-08-02 in a scaffolded project: `create-task
+    --product-requirement PR-0001 --derives-from BUG-0001` where BUG-0001 hangs from PR-0002 was
+    accepted with rc 0; `validate` then reported it as an ERROR, `gate_memory_complete` blocked
+    the merge on that error, and neither remedy named a way out. `transition TSK-0001 CANCELLED`
+    does NOT clear the finding (a cancelled item is still an active item -- measured: the error
+    survives and gains an "awaiting archive" warning); only `archive` removes it. And the
+    alternative both remedies offer -- "fix product_requirement or derives_from" -- is not
+    executable at all: an item's fields are frozen outside DRAFT and no command rewrites them.
+    An item that cannot be created wrong needs no remedy for having been.
+
+    ONE definition of "which item does this one hang from", and it is the VALIDATOR'S:
+    `report._root_of` over `backlog_types.PARENT_FIELDS`. Imported here rather than re-walked --
+    a second implementation of that walk is precisely the drift `_parents_of` was rebuilt to end,
+    and the two answers have to agree or this refuses what `validate` accepts.
+
+    SEVERITY IS KEPT IN STEP with the validator on purpose: `_check_task_origins` calls the
+    cross-root case an ERROR and the archived/terminal origin a WARNING, so only the first is
+    refused. Refusing a warning here would make a task the validator tolerates uncreatable.
+    """
+    # deferred: `report` imports `state` and `approvals`, never `dispatch`, so this is a leaf
+    # import rather than a cycle -- and by the time a task is created, both halves are loaded
+    from .report import _root_of
+
+    origins = fields.get("derives_from")
+    origins = origins if isinstance(origins, (list, tuple)) else [origins]
+    for origin in origins:
+        origin = str(origin or "")
+        if not origin or origin == root["id"]:
+            continue
+        try:
+            origin_type, _number = parse_id(origin)
+        except ValueError:
+            continue          # free-text provenance note, not an item reference
+        origin_item, _archived = _read_item_any(state, origin)
+        if not isinstance(origin_item, dict):
+            continue          # a phantom origin is refused by `state._assert_origins_resolve`
+        origin_root = _root_of(origin_type, origin_item)
+        if origin_root and origin_root != root["id"]:
+            raise DispatchError(
+                "derives_from %s belongs to %s, not to this task's root %s -- refused at "
+                "creation (spec II.8). The dispatch gate resolves acceptance_refs against the "
+                "ORIGIN, so this task would be judged against another root's criteria, and "
+                "`python scripts/harness.py validate` reports it as an error that blocks every "
+                "merge. Remedy: create the task under %s, or name an origin that hangs from %s "
+                "-- the fields of an existing task are frozen outside DRAFT, which is why this "
+                "is refused now rather than reported later."
+                % (origin, origin_root, root["id"], origin_root, root["id"])
+            )
 
 
 def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_TTL) -> dict:
@@ -111,10 +165,22 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
         _assert_dependencies_met_locked(state, task)
         lease_path = _lease_path(state, task_id)
         if os.path.exists(lease_path):
+            # THE WAIT IS NAMED, and so is the command that ends it. This said "wait for the lease
+            # to resolve or time out" and nothing else -- no duration, no command -- so a role that
+            # hit it after a denied spawn had a fifteen-minute stall it could not measure and no
+            # instruction it could act on. The remaining seconds are read off the lease that is
+            # actually there.
+            held = _read_lease(state, task_id)
+            left = float(held["created_epoch"]) + float(held["ttl"]) - time.time()
             raise DispatchError(
-                "a lease for %s already exists -- parallel second claim "
-                "blocked (spec II.4). Remedy: wait for the lease to resolve "
-                "or time out." % task_id
+                "a lease for %s already exists -- parallel second claim blocked (spec II.4). It "
+                "expires in %d s%s. Remedy: wait, then `python scripts/harness.py sweep-leases`, "
+                "which returns every EXPIRED lease's task to READY and reports what is still "
+                "running; a lease this task no longer needs is also dropped by any transition off "
+                "%s."
+                % (task_id, max(0, int(left)),
+                   " (already expired -- the sweep releases it now)" if left <= 0 else "",
+                   "/".join(LEASE_BEARING_STATUSES))
             )
         lease = {
             "task_id": task_id,
@@ -539,6 +605,57 @@ def sweep_expired_leases(state: ProjectState) -> list:
         if released:
             state._regenerate_index_locked()
     return released
+
+
+def live_leases(state: ProjectState) -> list:
+    """[(task_id, seconds_left)] for every lease a sweep did NOT release, sorted.
+
+    WHY THE SWEEP HAS TO SAY THIS. `sweep-leases` printed the released ids and nothing else, so a
+    role holding a task blocked by "a lease for TSK-0007 already exists -- parallel second claim
+    blocked" ran it, read `released to READY: -`, and had no way to learn whether the wait was
+    five seconds or fifteen minutes. Silence there is what turns a bounded wait into a stall.
+    """
+    remaining = []
+    with state.lock:
+        for lease in _iter_leases(state):
+            left = float(lease["created_epoch"]) + float(lease["ttl"]) - time.time()
+            if left > 0:
+                remaining.append((str(lease["task_id"]), left))
+    return sorted(remaining)
+
+
+# The statuses a lease SERVES, and therefore the only ones it may outlive its creation into.
+# `create_lease` puts a task in the first and `spawn_outcome` moves it to the second while keeping
+# the lease, because `task_for_agent` resolves a running child's writes through it; `submit_result`
+# removes it. Any OTHER status means no child is coming and none is running, so a lease left behind
+# there blocks the next claim for its whole TTL with nothing on the other end.
+# `test_the_lease_bearing_statuses_are_the_ones_the_lifecycle_produces` drives create_lease,
+# spawn_outcome and submit_result and reads the statuses off the running code, so this tuple cannot
+# quietly stop describing the lifecycle.
+LEASE_BEARING_STATUSES = ("LEASED", "IN_PROGRESS")
+
+
+def release_lease_for_status_locked(state: ProjectState, task_id: str, status: str) -> bool:
+    """Drop a lease the task's new status no longer serves; True when one was dropped.
+
+    THE DEAD END THIS ENDS, measured 2026-08-02: `transition TSK-0001 READY` off LEASED (an
+    explicit back-edge in the TSK automaton, spec II.2 Querregeln) moved the status and left the
+    lease file in place. The task then read READY while `create_lease` refused it with "a lease for
+    TSK-0001 already exists", `validate` reported nothing at all, and the only exit was to wait out
+    the TTL. `transition ... CANCELLED` from LEASED or IN_PROGRESS left the same wreckage on a task
+    nobody would ever sweep.
+
+    Called from `state._transition_locked`, i.e. from EVERY transition, so the rule is a property
+    of the status rather than of the four callers that happen to move a task today.
+    """
+    # No item-type test: a lease is keyed by task id, so a non-task simply has no lease file and
+    # the existence check below answers for it. One condition instead of two spellings of one.
+    if status in LEASE_BEARING_STATUSES:
+        return False
+    if not os.path.exists(_lease_path(state, task_id)):
+        return False
+    _remove_lease(state, task_id)
+    return True
 
 
 def submit_result(state: ProjectState, envelope: dict) -> dict:
