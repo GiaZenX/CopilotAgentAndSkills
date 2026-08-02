@@ -6837,8 +6837,13 @@ def test_reading_and_scoped_docker_work_is_never_blocked(tmp_path, command):
     "git checkout feat/x", "git switch main", "git cherry-pick abc123",
 ])
 def test_risky_git_work_on_a_dirty_tree_is_refused(tmp_path, command):
-    """R11 (constitution §8: "never work on a dirty tree — offer Commit/Stash/Discard first").
-    Scoped to the operations that can LOSE the uncommitted work."""
+    """Parity risk R11, scoped to the operations that can LOSE the uncommitted work.
+
+    THE QUOTATION THAT STOOD HERE IS GONE. It quoted `constitution §8` — and this docstring is one
+    file while §8 is three different sections: Git in the dev and research kits, Behavior in
+    office, whose constitution carries no dirty-tree rule at all. A quotation nothing checks is a
+    claim that rots, so the rule is named by the risk id and the behaviour is measured below.
+    """
     work = hygiene_repo(tmp_path, dirty=True)
     result = run_hygiene(work, command)
     assert result.returncode == 2, command

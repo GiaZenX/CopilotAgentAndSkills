@@ -42,7 +42,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "ce633ac9052cf372",
+        "digest": "bca6d170e5da6230",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -59,7 +59,7 @@
         ]
       },
       "13. Refactoring & findings": {
-        "digest": "e72c32ced4364a0b",
+        "digest": "f8471bb0d64282ca",
         "hooks": [
           "gate_write_scope"
         ]
@@ -73,11 +73,11 @@
         "hooks": []
       },
       "15. Upkeep": {
-        "digest": "e9ee6529f42e42c2",
+        "digest": "7190e821393528c6",
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "a2908d9515693856",
+        "digest": "d6bfed9fb10716ac",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -110,7 +110,7 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "eb3d1a806a808f0b",
+        "digest": "eab41eb630cc2663",
         "hooks": []
       },
       "5. Phase model": {
@@ -118,18 +118,17 @@
         "hooks": []
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "8ef3aea366008a43",
+        "digest": "05b2b698dd8055fa",
         "hooks": [
-          "gate_memory_complete",
           "gate_test_coverage"
         ]
       },
       "7. Evolution: CR / BUG — explicit, never silent": {
-        "digest": "4e8e05dc94643c52",
+        "digest": "b255b32aefdb6461",
         "hooks": []
       },
       "8. Git": {
-        "digest": "d401b91c4b4109f3",
+        "digest": "1b62c13322d38271",
         "hooks": []
       },
       "9. IDs & status automata (ONE definition, in code)": {
@@ -226,7 +225,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "28fef2827d14426d",
+        "digest": "8422207a62fa6b18",
         "hooks": [
           "gate_dispatch",
           "gate_git"
@@ -255,7 +254,7 @@
         "hooks": []
       },
       "Work loop": {
-        "digest": "10d756058ab9a1e2",
+        "digest": "3d6af7d7b81af082",
         "hooks": []
       }
     },
@@ -265,19 +264,19 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "47009f8bce36a722",
+        "digest": "b98c178fb03849e7",
         "hooks": [
           "gate_write_scope"
         ]
       },
       "1. The PROC model (processes are the product)": {
-        "digest": "3f777f9e29b46b42",
+        "digest": "aeee14c4174ebd05",
         "hooks": [
           "gate_proc_approved"
         ]
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "f66625130d7612db",
+        "digest": "343dde7499713efa",
         "hooks": [
           "gate_approval",
           "gate_dispatch",
@@ -391,7 +390,7 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "fcafa5d4cf152dea",
+        "digest": "07ed42828f840e8f",
         "hooks": [
           "gate_proc_approved",
           "session_status"
@@ -442,7 +441,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "200bbf932a86f0a1",
+        "digest": "3341efcc203fc798",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -473,7 +472,7 @@
         "hooks": []
       },
       "15. Upkeep": {
-        "digest": "f9282c3deb45f31a",
+        "digest": "7b5ff89da7ce4185",
         "hooks": []
       },
       "16. FZulG / BSFZ application layer": {
@@ -485,7 +484,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "fd9cb67a3e5e4ada",
+        "digest": "da7ab6b1bd0d719b",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -516,7 +515,7 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "b0fe1e12ff994a0d",
+        "digest": "becd81a7b51ae1ab",
         "hooks": []
       },
       "5. Phase model": {
@@ -524,10 +523,8 @@
         "hooks": []
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "3566fe6eb658bda5",
-        "hooks": [
-          "gate_memory_complete"
-        ]
+        "digest": "af0f00684f2349cd",
+        "hooks": []
       },
       "8. Git": {
         "digest": "a9f32a162c020205",
@@ -621,9 +618,8 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "c541b0e93349a5c5",
+        "digest": "fc1c84094c11a053",
         "hooks": [
-          "gate_dispatch",
           "guard_yaml_valid"
         ]
       }

@@ -344,15 +344,20 @@ def _check_dirty(root, command):
     # output, so the leading space of an unstaged ` M a.txt` is already gone and a fixed offset
     # eats the first character of the filename ("a.txt" was reported as ".txt").
     changed = [line.split(None, 1)[-1] for line in status.splitlines()[:5] if line.split()]
+    # THE CITATION THAT WAS HERE IS GONE, and it was wrong in one of the three kits it ships to.
+    # This file is byte-identical in all three (the mirror rule), so `constitution §8` named the
+    # Git section in dev and research and the BEHAVIOR section in office -- and the office
+    # constitution carries no dirty-tree rule at all, so the gloss quoted a sentence that is not
+    # there. What stayed is the SITUATION the refusal describes ("a dirty tree"), because that is
+    # this gate's own reading of the worktree and not a claim about anybody's text. The one
+    # document a refusal may point at is appended by `_compat.stop` from `_compat.REFERENCE_NAME`.
     _kernel.block(
         HOOK,
-        "the worktree has uncommitted changes and `%s` can lose them (constitution §8: never work "
-        "on a dirty tree).\n%s%s"
+        "`%s` on a dirty tree can lose the uncommitted changes below.\n%s%s"
         % (verb, "\n".join("  - " + name for name in changed),
            "\n  … and more" if len(status.splitlines()) > 5 else ""),
-        remedy="offer the user Commit, Stash or Discard first — that is the sequence the "
-               "constitution names — then run this again. `git add`, `git stash` and "
-               "`git checkout -b` stay open so you can get there.")
+        remedy="offer the user Commit, Stash or Discard first, then run this again. `git add`, "
+               "`git stash` and `git checkout -b` stay open so you can get there.")
 
 
 def main():

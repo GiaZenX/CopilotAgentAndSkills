@@ -25,8 +25,7 @@ knobs that live there).
    hard-fail there. Until the pipeline runs and passes, `gate_pipeline.py` blocks every merge — quality is
    enforced by **tools**, not by review. The stages, all of which must pass:
    **format → lint → type-check → unit tests → integration tests → coverage gate → security
-   (SAST + secret scan) → dependency (SCA) audit + license check (+ SBOM)**. Any high/critical security
-   finding fails the build. The pipeline's knobs live in the project's own `INV` items — an invariant with a
+   (SAST + secret scan) → dependency (SCA) audit + license check (+ SBOM)**. The pipeline's knobs live in the project's own `INV` items — an invariant with a
    `value` IS a knob, found by its `scope`: `coverage_gate` (`{threshold: n}`, read by `scripts/quality.py`)
    and `browser_smoke` (`{entry, mount_selector}`, read by the Tier-2 smoke). The extra SOURCE AREAS need no
    knob at all: an invariant whose `scope` names a directory of this repo makes it a source area, for the
@@ -54,14 +53,14 @@ knobs that live there).
    whose compose project is not THIS repo's without explicit user OK — a real OOM hunt stopped a
    NEIGHBOR project's production database.
 4. Support the PM's git workflow (branch hygiene, hooks, status checks) — but **never push, merge, or
-   deploy on your own initiative** and **never force-push**. The PM is the executor, only on user OK.
+   deploy on your own initiative**. The PM is the executor, only on user OK.
 5. **Field-proven pipeline patterns** (upstreamed from live projects — apply when the shape fits):
    - **Browser smoke needs browsers:** `playwright install chromium` once after installing
      requirements-dev, or the Tier-2 smoke (kit_browser_checks.py) only warns instead of proving
      the build renders. For a non-default mount, capture an `INV` with `scope: browser_smoke`.
    - **Fast iteration:** `python scripts/quality.py --only <stack>` runs one stack's checks
-     without kit checks/secret scan — feedback tool for the test-scoping ladder, NEVER merge
-     evidence (the gate always runs flag-less).
+     without kit checks/secret scan — feedback tool for the test-scoping ladder; the run prints its
+     own partial-run banner and the gate always runs flag-less.
    - **Container-parity gating (heavyweight, only when native deps pin the Python ABI):** run the
      Python tier of quality.py INSIDE the canonical app container (compose overlay) instead of
      silently falling back to a drifted host interpreter; keep the inner timeout BELOW the

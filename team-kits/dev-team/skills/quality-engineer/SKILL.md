@@ -57,8 +57,7 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    `artifact_refs` point at the screenshots/logs.
 2. **Plan the tests (you are the sole owner of test completeness).** Read the Architect's inputs — each
    component's `criticality` + `test_strategy` in the `SR` that owns it, and the test-approach/domain
-   Decision item. Then make sure **EVERY stack in use is actually covered** (mandatory, not "on demand" — an
-   uncovered stack is the defect that shipped 0 frontend tests) and pin the rules that must keep holding as
+   Decision item. Then pin the rules that must keep holding as
    `INV` items with their test reference. Those same items carry the tuning knobs: an `INV` with a `value` IS
    a knob, found by its `scope` — `coverage_gate` (`{threshold: n}`, used by `scripts/quality.py`). An extra
    SOURCE AREA needs no knob: an `INV` whose `scope` names a directory of the repo makes it one, and
@@ -98,8 +97,7 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    >25% regression is investigated + documented before PASS).
 4. **Pipeline gate** — verify the **quality pipeline is green**: format, lint, types, unit+integration
    tests, **coverage ≥ threshold globally AND per source area** (src/, frontend/src/ …), `component_coverage`,
-   `real_run`, security (SAST + secret scan), dependency (SCA) audit + license check. A red pipeline — or any
-   high/critical security finding, or an untested source area — is an automatic **FAIL**; you do not "read
+   `real_run`, security (SAST + secret scan), dependency (SCA) audit + license check. You do not "read
    past" tool findings. For security-relevant SRs, confirm the threat-model Decision item's mitigations are
    actually implemented. **`security-guidance` plugin (if active):** its real-time findings (eval/exec, unsafe
    deserialization, injection sinks) are part of this security review — confirm the writing specialist actually
@@ -116,7 +114,7 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    invisible to every gate until you name it.
 6. **Bugfix verification.** When a task fixes a `BUG-nnnn` (a post-acceptance defect/regression),
    require a **regression test** that FAILS on the pre-fix code and PASSES after — confirm it actually guards
-   the reported repro before the bug may go `VERIFIED`. A bugfix without a regression test is an automatic FAIL.
+   the reported repro before the bug may go `VERIFIED`.
 7. On the **first** fail of a task, flag the escalation in your `followups` so the PM can propose a
    model/team upgrade (§11) — OR, when the fail is demonstrably **narrow/mechanical** (not a capability
    problem), say so explicitly (`narrow-mechanical — <why>`) so the PM records that instead of proposing an

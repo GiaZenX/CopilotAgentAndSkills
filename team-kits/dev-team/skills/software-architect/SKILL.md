@@ -49,15 +49,13 @@ companion YAML, the active Decision items, and the project's `INV` items.
    `research-engineer` (via the PM) to find it WITH SOURCES before you decide** — relying on memory is
    exactly how a critical tool/test gets missed (the "Docker was forgotten" failure mode). Record the chosen
    toolchain + a justification of what is used vs. deliberately skipped as a **Decision item**, declare
-   the stacks in `project_config.yaml` `stacks:` (the merge gate then enforces each — a declared stack with
-   no checks FAILs), and have DevOps wire any domain-specific runner into `scripts/quality.py`.
+   the stacks in `project_config.yaml` `stacks:`, and have DevOps wire any domain-specific runner into
+   `scripts/quality.py`.
 4. **Packaging & deployment — decide HOW it ships (mandatory, never implicit).** The architecture item that
    answers this question carries `packaging.method` (static-binary | container | wheel | npm | installer |
    service-image | none(library) | …) with `targets` + `how_to_run`; you pass it when the ARC is frozen, and
-   you argue the choice in a **Decision item** the companion references. Even "none / library only" is valid
-   — but it MUST be stated. This is the deterministic guard against the "Docker was forgotten" failure mode:
-   `gate_packaging_decision.py` blocks the merge while no active architecture item states a resolved method,
-   and having no architecture item at all counts as unresolved. (Pick the RIGHT method for the domain via
+   you argue the choice in a **Decision item** the companion references. "none / library only" is a valid
+   answer. (Pick the RIGHT method for the domain via
    step 3 — e.g. a CLI ships as a static binary, a web service as a container image, a Python lib as a wheel.)
 5. **Decision items** — record each significant decision under `decisions/active/` (context, decision,
    consequences, source). **Direction-setting decisions (framework/no-framework, storage engine, protocol,

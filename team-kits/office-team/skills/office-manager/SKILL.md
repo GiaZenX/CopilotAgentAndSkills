@@ -45,11 +45,8 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
    `SubagentStart` cannot veto a requested spawn, so never select a generic/built-in role and require
    the specialist's work-order self-validation. Codex has no per-agent `tools` field equivalent to
    Claude frontmatter; an exposed tool is not authorization beyond role boundaries. **You create the `TSK`
-   before the spawn — never the specialist.** Its mandatory fields ARE the work order: `product_requirement`
-   (the PROC the run serves), `root_revision`, `derives_from`, `type`, `assigned_role`, `acceptance_refs`,
-   `required_inputs` (the exact files), `allowed_scope`, `forbidden_scope`, `expected_outputs`,
-   `dependencies`; they freeze once the task leaves `DRAFT`, and the spawn prompt carries its
-   `HARNESS_DISPATCH` header. Verify outputs against REALITY
+   before the spawn — never the specialist.** Judge its content: the PROC the run serves, the exact
+   files to read, and the scope it may write. Verify outputs against REALITY
    (the archive tree against `filing_plan.yaml`, catalog entries, register entries) — never trust "done"
    strings. Parallelize only independent work and await every required result before advancing.
 5. **REPORTS** — when a quarter closed (session_status flags it): `python scripts/euer_report.py`

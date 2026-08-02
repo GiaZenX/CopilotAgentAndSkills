@@ -40,8 +40,8 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    explicitly in that Evidence whether they did — "could not check" and "reproduced" are not the same result.
 3. **Pipeline + Validity** — verify the **reproducibility pipeline is green** (format, lint, types,
    analysis-code tests, clean re-run reproduces, deps audited + licenses, secret/PII scan, provenance) and
-   every `INV` item in force (correct statistics, assumptions met, conclusions supported). A red
-   pipeline — or any leaked secret/PII — is an automatic **FAIL**. **An `INV` whose referenced test does not
+   every `INV` item in force (correct statistics, assumptions met, conclusions supported).
+   **An `INV` whose referenced test does not
    exist is unverified and a FAIL — and checking that is YOUR job:** open each `check.ref` and confirm the test
    is really there; the state validator does not yet resolve those references, so a missing one is invisible to
    every gate until you name it. **Method completeness:** confirm the

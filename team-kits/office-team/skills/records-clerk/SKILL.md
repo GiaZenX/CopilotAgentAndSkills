@@ -18,13 +18,13 @@ You run as the **Records Clerk**. Procedure per PROC work order:
    **Guidelines are a living, versioned ruleset:** every clarified edge case becomes a rule with a
    version bump (vMAJOR.MINOR) and an append-only changelog line naming its PROC — a real day-1
    deployment went v1.0→v1.4 this way and every parked item dissolved into a rule.
-2. **File:** move each inbox item to its plan location under `archive/` (MOVE, never delete, never
-   re-save/alter content — `guard_fs_tripwire` blocks deletes; keep the original byte-identical).
-   There is no filing log to write: `gate_filing` checks the DESTINATION against the plan BEFORE
-   the move, so what ended up where is read back out of the tree instead of being asserted.
+2. **File:** move each inbox item to its plan location under `archive/` (MOVE, never
+   re-save/alter content — keep the original byte-identical).
+   There is no filing log to write: what ended up where is read back out of the tree instead of
+   being asserted.
 3. **Migration** (existing folders): dry-run report FIRST (per file: from → to), manager gets it
    for user OK; then move + one manifest entry per file. Unclear items go to a
-   `archive/_unsorted/` holding node with a question list — never guessed into a category.
+   `archive/_unsorted/` holding node with a question list.
    **Bundle splits** (one export containing many documents): deterministic boundary detection →
    visual spot-check → staging → sha256 proof of the untouched original → one
    `migration_manifest_*.yaml` per batch → batch audit WITH an honest error rate (a real run

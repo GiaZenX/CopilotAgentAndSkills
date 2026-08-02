@@ -24,9 +24,8 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    invoice|credit_note|refund|fee --doc-date … --payment-date …|--open --counterparty … --invoice-no …
    --net … --vat-rate … --gross … --vat-treatment standard|reverse_charge|kleinunternehmer|oss
    --category … --source <archive path>` — the script validates (arithmetic, duplicates, schema)
-   and refuses bad rows. A direct `ledger/*.csv` edit is ALLOWED (user decision V2 I.3/1) and is
-   re-validated in full; while it does not validate, commit/push/merge/reports/dispatch are
-   refused. Prefer a reversal entry (`--doc-type reversal --reverses <entry id>`) for a wrong
+   and refuses bad rows. A direct `ledger/*.csv` edit is ALLOWED (user decision V2 I.3/1).
+   Prefer a reversal entry (`--doc-type reversal --reverses <entry id>`) for a wrong
    BOOKING — it keeps the history readable; edit for a typo and say so in the Evidence.
    `--import <csv> --year <y>` books a whole batch, validated as a merged whole before saving.
 4. **Master data (own it):** append categories/counterparties as approved; never rewrite history.

@@ -90,12 +90,10 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
 6. **DELEGATE** — use the exact installed `backend-developer`/`frontend-developer` role. Claude uses exact
    `subagent_type` + explicit `run_in_background`; Codex the exact role from `.codex/agents/*.toml`, whose
    upstream built-in roles remain available but are forbidden substitutes under this team policy.
-   **You create the `TSK` before the spawn — never the executor.** Its mandatory fields ARE the work order (the
-   contract is `.claude/kernel/backlog_types.py` `REQUIRED_FIELDS`/`TASK_TYPES`; the kernel names what is
-   missing). The judgement is yours in four: `acceptance_refs` (the criteria this task is measured against),
+   **You create the `TSK` before the spawn — never the executor.** The judgement is yours in four:
+   `acceptance_refs` (the criteria this task is measured against),
    `required_inputs` (exact files/IDs — never "read the tasks", name them), `allowed_scope`/`forbidden_scope`,
-   and `design_ref` for a UI task with a confirmed design. They FREEZE when the task leaves `DRAFT`, and
-   `gate_dispatch` refuses a spawn whose header does not match a `READY` task with a live lease.
+   and `design_ref` for a UI task with a confirmed design.
    On Claude set **`run_in_background: false`** unless deliberately parallelizing; on Codex delegate parallel
    work only when independent. On BOTH, NEVER advance before every required agent has reached a terminal
    result; verify claims via artifacts/git. **Serialize agents that edit the same files:** parallel fixers plus
@@ -110,14 +108,10 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    suite runs ONCE per slice END (normally as QA's single verdict run), and the merge/push gate stays the
    untouchable guarantee. Escalate to full immediately only for cross-cutting changes (shared components,
    config, dependency bumps) — a real session ran the full 792-test suite after every micro-step.
-7. **GATE** — trigger `quality-engineer`. No merge without QA **Evidence** (`kind: review`, `kind: test` and
-   `kind: acceptance`) whose `related` names the task/PR and whose summary names the acceptance criteria and
-   invariants it covers (+ the coverage/completeness gates green). That evidence is also what lets a task go
-   `DONE` → `VALIDATED`. If QA reports missing guidelines, task the `software-architect` to add the missing
-   rule(s) before accepting. On PASS, transition the PR to `DELIVERED` and merge — in that order, because
-   `gate_git` also refuses a merge for a PR still in `DRAFT` or already `REJECTED`/`SUPERSEDED`. It reads that
-   same Evidence — the NEWEST `test`/`review`/`acceptance` item covering the PR — so a re-run supersedes an
-   older verdict and a fresh `fail` closes the gate again. Name the PR in the branch (`feat/PR-0001-…`):
+7. **GATE** — trigger `quality-engineer`. If QA reports missing guidelines, task the `software-architect`
+   to add the missing rule(s) before accepting. On PASS, transition the PR to `DELIVERED` and merge — in
+   that order, because `gate_git` also refuses a merge for a PR still in `DRAFT` or already
+   `REJECTED`/`SUPERSEDED`. Name the PR in the branch (`feat/PR-0001-…`):
    a merge that names no item binds to nothing and is then refused while ANY item is currently failing.
    **Handover honesty:** NEVER tell the user a PR is "ready to test" while any `real_run` / documented
    first-run evidence is missing or was SKIPPED (e.g. docker daemon off). If the environment needs the user

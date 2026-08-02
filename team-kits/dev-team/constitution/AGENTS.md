@@ -17,8 +17,7 @@
   The install session only scaffolds; from session 2 on you are live. Never spawn a second PM.
 - **Memory boundary:** `project_memory/` is the authoritative project state — ONE FILE PER TYPED ITEM
   (§6), and the state kernel is its only writer. Claude's role memory is craft knowledge only;
-  generated Codex config disables task-/host-wide memories so they cannot leak across team roles. For
-  Claude only, MEMORY.md stays an INDEX ≤ 40 lines (only its first 200 lines/25 KB load per spawn).
+  generated Codex config disables task-/host-wide memories so they cannot leak across team roles.
 - **The state directory is WRITE-LOCKED against every tool write, and has exactly ONE writer:** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the plain config/reference files §6 assigns to a role. The kernel that IS allowed to write is reached through the installed entry point, and it has ONE spelling: **`python scripts/harness.py <command>`**, run from the project root. The scaffold installs it kit-owned in every project, the same three tokens work in bash and in PowerShell, and it resolves the state directory itself — so never add `--root`, which that same gate refuses as naming the state directory and which the entry point also refuses off its own parser.
   **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`, `sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`. Of spec II.4's twelve it still lacks `approve` and `migrate --dry-run`. `approve` is split rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. There is no migration tool. What no command creates either way: `project_config.yaml` and `product/masterplan.md` are not typed items — so nothing writes those after the install. Naming the missing command in your report is the step; writing state by hand is not (§2.10).
   The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — which includes the `init_project_memory` and `scaffold_team` runs the PM's startup gate and §11 ask for. Those are the USER's to run, in a shell outside this session; ask, and never reach for a spelling the gate does not recognise. The gate decides by READING a command line, which is enforcement and not arithmetic, so a spelling that gets past it is a defect to report, never a route to take.
@@ -49,7 +48,7 @@
 3. **End-of-phase checklist:** capture/transition your items → `python scripts/generate_dashboard.py`
    → commit. Non-skippable; `generated/index.yaml` + `session_brief.yaml` need no step (the kernel
    writes them with every state write), the dashboard is the one artifact with its own producer.
-4. **QA merge gate:** no PR REACHES `DELIVERED` (which happens at the merge, §5 phase 9) without QA **Evidence** (`kind: review` + `kind: test` + `kind: acceptance`) naming the criteria and invariants it covers; a task reaches `VALIDATED` on the same proof, never on a claim. The ONE producer of an Evidence item is `python scripts/harness.py evidence`, and it is installed — run it from the project root, never with `--root`, with `--related` naming the item and `--artifact-ref` pointing at the raw proof under `staging/<task-id>/`. `gate_git` opens on the record it writes (measured in a scaffolded project: the merge refused with "no QA Evidence", one `evidence` run through all eight PreToolUse gates, the same merge allowed). If a gate still blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
+4. **QA merge gate:** `gate_git` opens the merge on QA **Evidence** and nothing else, and the same record is what carries a task to `VALIDATED`. The ONE producer is `python scripts/harness.py evidence`, and it is installed — run it from the project root, never with `--root`, with `--related` naming the item and `--artifact-ref` pointing at the raw proof under `staging/<task-id>/`. If a gate blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
 5. **Product-only questions to the user** — technical questions go to the architect (§14 boundary).
 6. **Read before you propose:** read the active `PR` items — reuse or continue one, never duplicate.
 7. **Guidelines before code:** the rules for a language exist BEFORE implementation in it starts. They live as `INV` items, and `guard_guidelines` refuses a code write that no invariant GOVERNS (one whose `scope` names the language, or an area containing the file). A project that keeps no invariants at all has no regime yet and the guard passes there, so the rule binds as policy until the first one exists (details: architect skill).
@@ -86,9 +85,8 @@ Every user-question tool call is preceded by prose: Claude uses `AskUserQuestion
 already APPROVED PR revision.
 A new, self-standing wish becomes a **Draft PR directly** — no FR→PR detour; FR is the inbox for a wish
 belonging to an EXISTING PR or to none yet, and its triage merges or converts it. PR = approved, scoped
-delivery unit with Given/When/Then criteria, approved per REVISION: touching a hashed field raises the
-revision, drops the approval and returns the item to DRAFT — which is why a change to approved content
-is a **CR**, never an edit. SR = technical, internal. The user never writes requirements.
+delivery unit with Given/When/Then criteria, approved per REVISION. SR = technical, internal. The user
+never writes requirements.
 
 ## 5. Phase model
 
@@ -126,26 +124,22 @@ a typed item have no writer at all once the kit is installed (§0) — a gap you
 executor could rewrite is not one; executors move a task's status by submitting their result envelope.
 The Architect contributes test STRATEGY (per component `criticality` + `test_strategy`, plus the strategy
 Decision item); QA owns test COMPLETENESS — every component tested, per-area coverage, standing rules as
-`INV` items (details: QA/architect skills; `gate_test_coverage` enforces). **Completeness:** by PR
-acceptance/merge every item says what its TYPE's field contract requires — the state validator decides
-that and `gate_memory_complete` relays it; what turns out not to apply is closed through its status
-automaton (§9), never left empty and never by writing a status the automaton does not define.
+`INV` items (details: QA/architect skills; `gate_test_coverage` enforces).
 
 ## 7. Evolution: CR / BUG — explicit, never silent
 
 (FR triage: §4.)
-- **CR** (change to an APPROVED revision): never edit silently — CR + impact analysis + user
-  approval. **Removing/replacing/renaming a VISIBLE UI element is ALWAYS a CR** (a real run deleted
-  the Account button unasked; the UI inventory snapshot test fails without one).
+- **CR** (change to an APPROVED revision): **Removing/replacing/renaming a VISIBLE UI element is
+  ALWAYS a CR** (a real run deleted the Account button unasked; the UI inventory snapshot test
+  fails without one).
 - **BUG** (approved behaviour broken): during dev/QA → stays in the QA loop; after acceptance → a
-  `BUG` item + `bug/BUG-nnnn-<slug>` branch + **mandatory regression test** (fails pre-fix, passes
-  post — the Evidence for it is what moves the bug from `FIXED` to `VERIFIED`, and the kernel refuses that transition until a passing `test` Evidence covers it).
+  `BUG` item + `bug/BUG-nnnn-<slug>` branch.
 
 ## 8. Git
 
 Branch per work item — `<typ>/<ITEM-ID>-<slug>`, prefixes `pr/ cr/ bug/` (e.g. `pr/PR-0012-checkout`);
 Conventional Commits after every completed task; merge only after the QA gate; **push only on explicit
-user confirmation**; NEVER force-push; never work on a dirty tree (offer Commit/Stash/Discard first).
+user confirmation**; never work on a dirty tree (offer Commit/Stash/Discard first).
 
 ## 9. IDs & status automata (ONE definition, in code)
 
@@ -180,8 +174,7 @@ every type it does not the state is LOCATION plus `approval_ref`; and direction-
 Any role may flag tech-debt (concrete cause); the Architect owns the proposal; QA verifies; user
 confirms. **Structural flags AND `project-auditor` findings MUST NOT verpuffen:** each becomes a TSK/BUG/CR
 or a Decision item recording the conscious skip, in the same cycle — a flag that only lives in a report is
-a defect (a real file grew +666 lines the day its split-flag was logged). The file budget
-(`scripts/kit_checks.py`) enforces the hard line; the auditor runs weekly or event-triggered. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (item 10), not a reason to skip the audit.
+a defect (a real file grew +666 lines the day its split-flag was logged). The auditor runs weekly or event-triggered. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (item 10), not a reason to skip the audit.
 
 ## 14. Behavior (all roles)
 
@@ -205,6 +198,5 @@ then stop and escalate — never fabricate its output. Never infinite-loop, neve
 
 ## 15. Upkeep
 
-Artifacts update immediately (stale docs block internal acceptance). Before changing an SR/task,
-check `derives_from` links for impact. Kit updates follow the pending-file contract
+Kit updates follow the pending-file contract
 (`.claude/kit_update_pending.*` — work through, then DELETE; the nag escalates per session).

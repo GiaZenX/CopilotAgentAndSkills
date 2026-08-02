@@ -107,7 +107,7 @@ def _advisory_checks(texts):
     joined = "\n".join(texts)
     tech = sorted({m.group(0).lower() for m in _TECH_VOCAB_RX.finditer(joined)})
     if len(tech) >= _TECH_VOCAB_MIN:
-        _warn("R2", "this question asks the USER about technical choices (%s). The constitution's "
+        _warn("R2", "this question asks the USER about technical choices (%s). The team's "
                     "boundary is product questions to the user, technical ones to the team — a "
                     "user picking a database acquires a decision nobody on the team owns. If it "
                     "really is a product question (cost, hosting, data location), ignore this."

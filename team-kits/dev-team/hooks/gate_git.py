@@ -301,7 +301,15 @@ def main():
     text = _compat.git_argument_text(command)
     if (any(invocation.runs("push") for invocation in _compat.git_invocations(command))
             and (FORCE_RX.search(text) or FORCE_RX.search(command.lower()))):
-        _kernel.block(HOOK, "force-push is forbidden by the team constitution.",
+        # NAMES NO SOURCE DOCUMENT, and that is structural rather than a wording taste. This file
+        # is byte-identical in the dev and research kits (the mirror rule), so a refusal that cites
+        # "the team constitution" cites a DIFFERENT text in each of them and can be wrong in one
+        # while right in the other -- measured after II.11/3 redeemed parity licence 30 for dev:
+        # the dev constitution stopped naming force-push and this message still sent its reader
+        # there. The one document a refusal may point at is appended by `_compat.stop` from
+        # `_compat.REFERENCE_NAME`, ships inside the hashed bundle beside this hook, and does name
+        # force-push. So the message states the FACT and lets that pointer carry the authority.
+        _kernel.block(HOOK, "force-push is refused: it rewrites history other clones already have.",
                       remedy="push without --force; if history really has to be rewritten, that "
                              "is a user decision, not a task decision.")
 

@@ -150,8 +150,8 @@ def block(rel, why):
         "(II.6a) and nothing on that surface freezes one, so for that one name the item AND the "
         "missing command in your report. Work still in flight goes into your task's "
         "project_memory/staging/<task-id>/, product code into src/ and tests/. A recurring REPORT "
-        "is a third case and neither of the two above: where your constitution says a shipped "
-        "script renders one (it names the command), run that script — a hand-written copy of a "
+        "is a third case and neither of the two above: where a shipped "
+        "script renders one, run that script — a hand-written copy of a "
         "generated report is a second, drifting truth beside the data it was rendered from. "
         "Inventing a file for any of it is what this guard refuses.\n" % (rel, why),
         "PreToolUse")

@@ -159,7 +159,7 @@ def _resolve(root, invocation):
         return None, ("more than one refspec in a single push — approve and run them one at a "
                       "time, so each approval names exactly what it releases")
     if refspec.startswith("+"):
-        return None, "a `+refspec` is a force-push, which the constitution forbids outright"
+        return None, "a `+refspec` is a force-push, which this gate refuses outright"
     if ":" in refspec:
         source, target = refspec.split(":", 1)
         resolved = _git(root, "rev-parse", source) if source else None

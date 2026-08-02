@@ -21,7 +21,7 @@ WHAT THIS MODULE CHECKS, and — as loudly — what it does not:
     establish is that the named mechanism enforces the named rule: that pairing stays a reading
     decision. Two failures become impossible — licensing a deletion in favour of a replacement
     that is not there, and one that is red the moment the licence is used. THE THIRD IS PARTIAL:
-    a matcher can only be judged against a hook that declares which tools it acts on, and ten of
+    a matcher can only be judged against a hook that declares which tools it acts on, and six of
     the registered dev hooks (among them `gate_write_scope`, the most-cited mechanism in the table)
     declare none. For those the matcher is not judged at all — measured, both `gate_write_scope`
     registrations replaced by one on `matcher: "WebFetch"` and the module stayed green. The
@@ -328,6 +328,32 @@ def _is_open(field):
 
 
 # --------------------------------------------------------------- what a registration looks like
+def _string_constants(tree):
+    """{name: frozenset of strings} for module-level constants that ARE a set of tool names.
+
+    A hook writes `FILE_TOOLS = ("Edit", "Write", …)` beside its docstring and then compares
+    `data.get("tool_name")` against the NAME. Reading only literal comparators therefore answered
+    "this hook declares no tools" for eight of them — `gate_approval` (`TOOL`), `gate_dispatch` and
+    `gate_proc_approved` (`SPAWN_TOOLS`), `gate_push_token` and `gate_shell_hygiene`
+    (`SHELL_TOOLS`), `guard_memory_budget` (`FILE_TOOLS`) — and every licence resting on one of
+    them was counted as unjudgeable. A single string is a set of one, because `TOOL = "…"` is the
+    same declaration with one member.
+    """
+    values = {}
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            continue
+        value = node.value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            values[node.targets[0].id] = frozenset([value.value])
+        elif isinstance(value, (ast.Tuple, ast.List, ast.Set)) and value.elts and all(
+                isinstance(element, ast.Constant) and isinstance(element.value, str)
+                for element in value.elts):
+            values[node.targets[0].id] = frozenset(element.value for element in value.elts)
+    return values
+
+
 @_cached
 def _declared_tools(path):
     """The tool names a hook judges itself, read from its own `data.get("tool_name")` test.
@@ -338,15 +364,25 @@ def _declared_tools(path):
     and a reader that only asked "is it wired" still certified it as the mechanism behind a
     deletion licence.
 
+    THE COMPARATOR MAY BE A NAME, and reading only literals is how this reader under-reported for
+    a whole round: `guard_memory_budget` writes `data.get("tool_name") not in FILE_TOOLS` with the
+    tuple declared beside its docstring, and the literal-only reader answered `set()` for it.
+    Eight hooks have that shape (`TOOL`, `SPAWN_TOOLS`, `SHELL_TOOLS`, `FILE_TOOLS`), and the
+    pinned count of unjudgeable licences fell from 14 to 8 when `_string_constants` resolved them.
+
     An empty answer means the hook does not filter on the tool name — every SessionStart hook keys
-    off the EVENT instead — and then no matcher can be judged this way. THAT IS A REAL HOLE, not a
-    footnote: the licences resting on such a hook are counted and pinned by
+    off the EVENT instead, `gate_write_scope` decides from the payload shape — and then no matcher
+    can be judged this way. THAT IS A REAL HOLE, not a footnote: the licences resting on such a
+    hook are counted and pinned by
     `test_the_licences_resting_on_an_unjudgeable_matcher_are_counted`, because a caveat nobody
-    counts is how a hole grows. (An earlier version of this line claimed "13 of 29" — measured over
-    hook FILES including `_compat.py`, asserted by nothing, and wrong.)
+    counts is how a hole grows. What that count does NOT say is which routes a rule can be broken
+    through — the docstring of that test carries the two counter-examples. (An earlier version of
+    this line claimed "13 of 29" — measured over hook FILES including `_compat.py`, asserted by
+    nothing, and wrong.)
     """
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
+    constants = _string_constants(tree)
     tools = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Compare):
@@ -363,6 +399,8 @@ def _declared_tools(path):
                           if isinstance(e, ast.Constant) and isinstance(e.value, str)}
             elif isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
                 tools.add(comparator.value)
+            elif isinstance(comparator, ast.Name):
+                tools |= constants.get(comparator.id, frozenset())
     return tools
 
 
@@ -874,14 +912,71 @@ def test_the_pin_detector_reads_the_spellings_it_claims(tmp_path):
                     "by_helper": False, "by_hook": False}, seen
 
 
+def test_the_tool_reader_follows_a_module_constant(tmp_path):
+    """The floor under `_declared_tools`, and the defect it was written for.
+
+    A hook declares its tool set as a module constant and compares the payload against the NAME —
+    the shape `guard_memory_budget` ships (`data.get("tool_name") not in FILE_TOOLS`). A reader
+    over literal comparators alone answered `set()` for it, which `_matcher_reaches` reads as "this
+    hook cannot be judged, assume the matcher reaches", so the hook was filed as matcher-blind and
+    every licence resting on it was counted into the pinned figure. Eight shipped hooks have that
+    shape; the count fell from 14 to 8.
+
+    All four declaration forms are on the probe, so dropping one from `_string_constants` goes red
+    instead of quietly shrinking what this docstring claims. And the counter-direction is asserted:
+    a name the module does not declare, and a constant that is not a set of strings, must still
+    answer "no tools" — a reader that guessed there would certify a matcher against a tool set it
+    invented.
+    """
+    probe = tmp_path / "probe_tools.py"
+    probe.write_text(
+        "TOOL = 'AskUserQuestion'\n"
+        "SPAWN_TOOLS = ('Agent', 'Task')\n"
+        "FILE_TOOLS = ['Edit', 'Write']\n"
+        "SHELL_TOOLS = {'Bash', 'PowerShell'}\n"
+        "TIMEOUT = 60\n"
+        "def a(data):\n"
+        "    return data.get('tool_name') == TOOL\n"
+        "def b(data):\n"
+        "    return data.get('tool_name') in SPAWN_TOOLS\n"
+        "def c(data):\n"
+        "    return data.get('tool_name') not in FILE_TOOLS\n"
+        "def d(data):\n"
+        "    return data.get('tool_name') in SHELL_TOOLS\n", encoding="utf-8")
+    assert _declared_tools(str(probe)) == {
+        "AskUserQuestion", "Agent", "Task", "Edit", "Write", "Bash", "PowerShell"}
+
+    blind = tmp_path / "probe_blind.py"
+    blind.write_text(
+        "TIMEOUT = 60\n"
+        "def a(data):\n"
+        "    return data.get('tool_name') in UNDECLARED\n"
+        "def b(data):\n"
+        "    return data.get('tool_name') == TIMEOUT\n"
+        "def c(data):\n"
+        "    return data.get('hook_event_name') == 'SessionStart'\n", encoding="utf-8")
+    assert _declared_tools(str(blind)) == set()
+
+    # the shipped case this was written for, so the probe cannot drift away from the tree
+    budget = os.path.join(_kit_dirs()[0], "hooks", "guard_memory_budget.py")
+    assert _declared_tools(budget) == {"Edit", "Write", "MultiEdit", "NotebookEdit"}, \
+        _declared_tools(budget)
+
+
 def test_the_licences_resting_on_an_unjudgeable_matcher_are_counted():
     """How many live licences rest on a hook whose matcher this module CANNOT judge.
 
-    `_matcher_reaches` needs the hook to say which tools it acts on; ten registered dev hooks say
-    nothing (they key off the event, or read the payload and decide later). For those, a matcher
+    `_matcher_reaches` needs the hook to say which tools it acts on; six registered dev hooks do
+    not say it (they key off the event, or read the payload and decide later). For those, a matcher
     naming a tool the hook never sees reads as a working registration — measured with both
     `gate_write_scope` registrations replaced by one on `matcher: "WebFetch"`: still counted as
-    registered, module green, and the five licences resting on it dead.
+    registered, module green, and the licences resting on it dead.
+
+    WHAT THIS NUMBER IS NOT, and it read as the other thing for a whole round: it is a statement
+    about MATCHER JUDGEABILITY, not about which routes a rule can be broken through. The two
+    counter-examples are in the tree — `gate_write_scope` declares no tool set and is registered on
+    the shell AND the file tools, so both routes are covered; `guard_pm_scope` declares one and is
+    registered on the file tools only, so its shell route is open and it is NOT in this set.
 
     WHY THE HOLE IS COUNTED RATHER THAN CLOSED, decided after measuring the alternative. The
     proposal was to derive the tool class from the payload field a hook reads. That derivation
@@ -907,8 +1002,8 @@ def test_the_licences_resting_on_an_unjudgeable_matcher_are_counted():
                        for kit in (kits or _kits_shipping(relative))):
                     resting.append(number)
     resting = sorted(set(resting), key=int)
-    assert re.search(r"\*\*%d der %d wirksamen Lizenzen ruhen auf einem Hook ohne "
-                     r"Tool-Wächter\*\* \(%s\)"
+    assert re.search(r"\*\*%d der %d wirksamen Lizenzen ruhen auf einem Hook, dessen Matcher "
+                     r"dieses Modul nicht beurteilen kann\*\* \(%s\)"
                      % (len(resting),
                         len([row for row in _matrix_rows() if _licenses_a_deletion(row[3])
                              and not _is_open(_mechanism_field(row[3]))]),
@@ -1133,8 +1228,15 @@ def measure_sections():
 
     `_pinned_files`, not `_lead_package`: the subject is "text that carries rules", and since the
     §2 hook table moved to `hooks/ENFORCEMENT.md` that is one file wider than the byte budget's
-    subject. A file with no `## ` heading yields no section and would be pinned by nothing, which
-    is why the reference carries one.
+    subject.
+
+    THE FLOOR UNDER EVERY FIGURE BELOW: a pinned file that yields NO section is in the subject set
+    and watched by nothing. `_sections` keys on `## ` headings and answers `[]` for a file that
+    carries none — not even a preamble entry — so the file's whole text could then be emptied with
+    `section_differences` reporting nothing at all. That is not hypothetical here: measured, a
+    deliberate re-stamp put `hooks/ENFORCEMENT.md` into the pin with 0 sections and no test in the
+    suite objected. The property demanded is therefore the one the pin needs, stated per file
+    rather than per filename: every subject contributes at least one watched section.
     """
     out = {}
     for kit in _kit_dirs():
@@ -1149,6 +1251,10 @@ def measure_sections():
                     "hooks": sorted(name for name in registered
                                     if re.search(r"\b%s\b" % re.escape(name), body)),
                 }
+            assert sections, (
+                "%s is a pinned instruction file and carries no `## ` heading, so it contributes "
+                "no section — the pin would watch the file by name and nothing of its content"
+                % os.path.relpath(path, ROOT).replace(os.sep, "/"))
             files[os.path.relpath(path, kit).replace(os.sep, "/")] = sections
         out[os.path.basename(kit)] = files
     return out
@@ -1232,6 +1338,58 @@ def test_the_section_reader_sees_a_deletion_a_rename_and_a_gutting(tmp_path):
     assert victim in after, "the gutted section lost its heading — wrong mutation"
     assert after[victim] != intact[victim], (
         "the reader gives a gutted section the same digest as a full one")
+
+
+def _synthetic_kit(root, reference_body):
+    """A kit with every surface `measure_sections` reads, so only the KIT DISCOVERY is faked.
+
+    Written rather than copied: the lead package derives from `settings/settings.json`'s `agent`
+    key and the reference from `hooks/_compat.py:REFERENCE_NAME`, so a kit that satisfies those two
+    derivations is a kit as far as the pin is concerned — and building it here means the mutation
+    below happens outside the shipped tree.
+    """
+    _write(root / "constitution" / "AGENTS.md", "# C\n\n## 1. A rule\n\nbody\n")
+    _write(root / "settings" / "settings.json", json.dumps({"agent": "lead"}))
+    _write(root / "agents" / "lead.md", "# L\n\n## 1. A rule\n\nbody\n")
+    _write(root / "skills" / "lead" / "SKILL.md", "# S\n\n## 1. A rule\n\nbody\n")
+    _write(root / "hooks" / "_compat.py", 'REFERENCE_NAME = "ENFORCEMENT.md"\n')
+    _write(root / "hooks" / "ENFORCEMENT.md", reference_body)
+    return str(root)
+
+
+def test_a_pinned_file_that_carries_no_section_is_refused(tmp_path, monkeypatch):
+    """The floor under the pin's own subject: a pinned file must contribute a watched section.
+
+    THE HOLE, measured before the floor existed: `_sections` returns `[]` for a file with no `## `
+    heading — not even the preamble entry, because that entry is derived from the first heading —
+    so such a file entered the pin as an empty mapping. `section_differences` compares mappings per
+    file, and an empty one against an empty one is no difference: the whole text could then be
+    rewritten or emptied with `test_no_section_of_a_pinned_instruction_file_disappears_unnoticed`
+    green. `hooks/ENFORCEMENT.md` carries exactly one `## ` heading today, which is one edit away
+    from none.
+
+    Only `_kit_dirs` is replaced. The lead package, the reference pointer, the section reader and
+    the hook reader all run over a real directory, so what is measured is `measure_sections` and
+    not a stand-in for it.
+    """
+    monkeypatch.setattr(
+        sys.modules[__name__], "_kit_dirs",
+        lambda: (_synthetic_kit(tmp_path / "kit-team", "# Reference\n\nprose, no heading\n"),))
+    for reader in _CACHED_READERS:
+        reader.cache_clear()
+    with pytest.raises(AssertionError) as refusal:
+        measure_sections()
+    assert "ENFORCEMENT.md" in str(refusal.value), refusal.value
+
+    # the counter-direction, so "refuse everything" is not a way out: one heading is enough, and
+    # the file then really is watched by a digest
+    monkeypatch.setattr(
+        sys.modules[__name__], "_kit_dirs",
+        lambda: (_synthetic_kit(tmp_path / "kit-team", "# Reference\n\n## 1. What is refused\n\nx\n"),))
+    for reader in _CACHED_READERS:
+        reader.cache_clear()
+    measured = measure_sections()["kit-team"]["hooks/ENFORCEMENT.md"]
+    assert "1. What is refused" in measured, sorted(measured)
 
 
 @_cached
@@ -1318,6 +1476,227 @@ def test_no_enforcement_text_claims_a_hook_that_no_registration_starts():
                     lying.append("%s %s: %s" % (os.path.basename(kit), where, name[:-3]))
     assert not lying, (
         "these texts name a hook no registration can start: %s" % ", ".join(lying))
+
+
+# ============================ TASK 2b — what a REFUSAL claims about the text it sends you to
+def _self_named_docs(kit_dir):
+    """{word: kit-relative path} for every pinned text that names ITSELF twice.
+
+    THE VOCABULARY IS NOT TYPED HERE, and the derivation is the reason this is a definition rather
+    than the list of spellings that produces the next defect: a document names itself in its TITLE
+    and in its LOCATION, and the words those two share are what a reader calls it. `constitution/
+    AGENTS.md` is titled "Working Method — Constitution (Dev Team)" and lives under `constitution/`,
+    so it answers `constitution`; `hooks/ENFORCEMENT.md` is titled "Enforcement reference …" and
+    answers `enforcement`. Measured against the wider candidates: taking the whole title yields
+    `working` and `method` too, and those fire on "report it instead of working around it" and on
+    `packaging.method` — a reader that flags a correct refusal is worse here than none.
+    """
+    out = {}
+    for path in _pinned_files(kit_dir):
+        relative = os.path.relpath(path, kit_dir).replace(os.sep, "/")
+        title = ""
+        with open(path, encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("# "):
+                    title = line[2:].strip()
+                    break
+        shared = ({word.lower() for word in re.findall(r"[A-Za-z]{4,}", title)}
+                  & {word.lower() for word in re.findall(r"[A-Za-z]{4,}", relative)})
+        for word in shared:
+            out[word] = relative
+    return out
+
+
+def _docstrings(tree):
+    """Every string this module addresses to a MAINTAINER rather than to an agent."""
+    return {ast.get_docstring(node, clean=False)
+            for node in ast.walk(tree)
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and ast.get_docstring(node, clean=False) is not None}
+
+
+def _agent_facing_strings(path):
+    """[(line, text)] — every string literal a hook can put in front of an agent.
+
+    Docstrings are excluded and everything else is in, which is a split rather than a guess: a
+    docstring is the file explaining itself to whoever opens it, any other literal can end up in a
+    block message, a remedy, a returned reason or a warning. Data-flow was the alternative and it
+    misses the real shape — `gate_push_token` builds its reason as a RETURN value that a `block`
+    call consumes three frames later, and a reader over `block(...)` arguments alone did not see it
+    (measured: that string named the constitution and the argument reader reported zero hits).
+    """
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    docs = _docstrings(tree)
+    return [(node.lineno, node.value) for node in ast.walk(tree)
+            if isinstance(node, ast.Constant) and isinstance(node.value, str)
+            and node.value not in docs]
+
+
+def _cited_location(word, text):
+    """The `§anchor` this string offers for `word`, or None — ONE definition, two callers.
+
+    The anchor path deliberately stops at `:` as well as at whitespace and sentence punctuation:
+    the colon is what introduces a GLOSS (`§8: never work on a dirty tree`), so swallowing it into
+    the anchor is what made the gloss clause silently unreachable (measured on the probe below —
+    the reader called the glossed citation "fine").
+    """
+    return re.search(r"\b%s\b[^.\n]{0,24}?%s([^\s,.):]+)"
+                     % (re.escape(word), parity_sources.ANCHOR_MARK), text, re.I)
+
+
+def test_no_refusal_claims_something_about_a_text_nothing_can_check():
+    """House rule 3 in the direction this repo had not measured: the MECHANISM claiming about the TEXT.
+
+    A hook ships byte-identically to several kits (the mirror rule), while the constitution it
+    refers to is a DIFFERENT document in each of them. So a refusal that attributes its rule to
+    "the constitution" is a claim that can be true in one kit and false in the next, and no reader
+    can tell which — measured twice on 2026-08-02: after II.11/3 redeemed parity licence 30, the
+    dev constitution stopped naming force-push while `gate_git` and `gate_push_token` still sent
+    their reader there, and `gate_shell_hygiene` glossed `constitution §8` as "never work on a
+    dirty tree" although office §8 is the BEHAVIOR section and the office constitution carries no
+    dirty-tree rule at all.
+
+    TWO CLAUSES, and both are the house rule rather than a taste:
+
+      * A refusal may name a per-kit text only through a LOCATION — a `§` anchor. A bare
+        attribution is a claim nothing can resolve, which is precisely what rotted here.
+      * It may not QUOTE what stands at that location. "Prefer naming a location over quoting text
+        from another file: a quotation nothing checks is a claim that rots."
+
+    THE REFERENCE IS EXEMPT, derived and not excepted: `_compat.stop` appends its pointer to EVERY
+    refusal, and it ships inside the same hashed bundle as the hook, so it is the one document a
+    refusal is entitled to point at.
+
+    HOW WIDE THIS REALLY IS, because the sentences above read wider than the instrument. The sweep
+    runs over `_self_named_docs`, so it sees an attribution only when it uses a word the target text
+    forms as TITLE ∩ LOCATION. Two of the four pinned texts per kit have a `# ` title and therefore
+    a word: the constitution (`constitution`) and the reference (`enforcement`, exempt). The lead
+    AGENT file and the lead SKILL carry YAML frontmatter and no title, so they contribute nothing —
+    and those are exactly the two a refusal is most likely to misattribute to. Measured by putting
+    four spellings into `gate_git.py` one at a time: "your AGENTS.md forbids this outright", "the
+    team rules forbid this outright" and "forbidden by the project-manager SKILL" all PASS; only
+    "forbidden by the constitution" is caught. So this closes ONE spelling of the class, and the
+    sentence above is about that spelling.
+
+    WHY THE OBVIOUS WIDENING IS REFUSED, measured the same way `working`/`method` were. Taking the
+    frontmatter `name:` as the missing title yields `manager` + `project` for the dev and research
+    lead files and `manager` + `office` for the office ones, and `description:` adds `skills`. Over
+    every agent-facing string in every kit that is 111 hits for `project`, 22 for `manager`, 21 for
+    `skills` and 5 for `office` — and they are CORRECT refusals: "no canonical project state",
+    "the installed enforcement bundle is not the one this project trusts", `guard_pm_scope`'s own
+    "You are the Project Manager — you do NOT …", `guard_harness_selfmod`'s `skills/` path list.
+    The reason is structural rather than bad luck: a TITLE names the document, while frontmatter
+    `name:` names the ROLE, and a refusal may address its reader by role as often as it likes. A
+    checker that flags a correct refusal is worse than none, so the widening stays unbuilt and the
+    hole stays counted here.
+
+    WHAT THIS DOES NOT COVER EITHER, named rather than implied: whether an anchored citation points
+    at the section that carries the rule. `constitution §8` resolves in all three kits and means Git
+    in two of them and Behavior in the third; deciding that needs the rule↔section pairing, which is
+    a reading. The gloss ban is what made that particular one visible, and it is a weaker instrument.
+    """
+    offenders = []
+    for kit in _kit_dirs():
+        documents = _self_named_docs(kit)
+        reference = os.path.basename(_reference_doc(kit))
+        exempt = {word for word, relative in documents.items()
+                  if os.path.basename(relative) == reference}
+        for path in sorted(glob.glob(os.path.join(kit, "hooks", "*.py"))):
+            for lineno, text in _agent_facing_strings(path):
+                for word in sorted(set(documents) - exempt):
+                    if not re.search(r"\b%s\b" % re.escape(word), text, re.I):
+                        continue
+                    where = "%s/hooks/%s:%d" % (os.path.basename(kit),
+                                                os.path.basename(path), lineno)
+                    anchor = _cited_location(word, text)
+                    if not anchor:
+                        offenders.append(
+                            "%s names %r and no %s location — an attribution nothing can resolve"
+                            % (where, word, parity_sources.ANCHOR_MARK))
+                        continue
+                    if text[anchor.end():anchor.end() + 1] == ":":
+                        offenders.append(
+                            "%s quotes what stands at %s%s instead of only naming it"
+                            % (where, parity_sources.ANCHOR_MARK, anchor.group(1)))
+    assert not offenders, (
+        "these refusals claim something about a shipped text that nothing checks:\n  "
+        + "\n  ".join(sorted(set(offenders))))
+
+
+def test_the_refusal_sweep_covers_the_texts_its_docstring_claims_and_no_others():
+    """The reach of the sweep, MEASURED, so the paragraph describing it cannot quietly rot.
+
+    `test_no_refusal_claims_something_about_a_text_nothing_can_check` says it covers the pinned
+    texts that carry a `# ` title and not the two that carry YAML frontmatter instead. That is a
+    statement about the tree, and the tree moves: give the lead SKILL a title and the sweep silently
+    widens, drop the constitution's and it silently empties. Both are things a later reader must be
+    told, and the honest way to tell them is to fail here.
+
+    The subject is derived twice over and named nowhere: the pinned texts are `_pinned_files`, the
+    reference is `_compat.REFERENCE_NAME`, and "the lead agent file and the lead SKILL" is simply
+    the lead package minus whatever the sweep can see. Giving either of those a `# ` title that
+    shares a word with its path widens the sweep and fails HERE, which is the sentence in the
+    docstring above going stale rather than a behaviour breaking.
+    """
+    for kit in _kit_dirs():
+        visible = {os.path.normcase(os.path.join(kit, name.replace("/", os.sep)))
+                   for name in _self_named_docs(kit).values()}
+        package = [os.path.normcase(path) for path in _lead_package(kit)]
+        reference = os.path.normcase(_reference_doc(kit))
+        blind = [path for path in package if path not in visible]
+
+        assert reference in visible, (
+            "%s: the reference carries no title, so the exemption the sweep grants it is dead code"
+            % os.path.basename(kit))
+        assert len(visible) == 2, (
+            "%s: the sweep now sees %d pinned texts, not 2 — its docstring says which two and why"
+            % (os.path.basename(kit), len(visible)))
+        assert len(package) - len(blind) == 1, (
+            "%s: the sweep sees %d of the %d lead-package texts; the docstring claims exactly the "
+            "constitution" % (os.path.basename(kit), len(package) - len(blind), len(package)))
+        assert len(blind) == 2, (
+            "%s: %d lead-package texts are invisible to the sweep, not 2 — the docstring names the "
+            "agent file and the SKILL: %s"
+            % (os.path.basename(kit), len(blind),
+               ", ".join(sorted(os.path.relpath(path, kit) for path in blind))))
+
+
+def test_the_refusal_reader_finds_both_shapes_and_leaves_a_correct_citation_alone(tmp_path):
+    """The floor under the sweep: a reader that answers "fine" to everything closes nothing.
+
+    Both refused shapes and both permitted ones are put through the real reader, on a probe outside
+    the shipped tree, so "return no offenders" is not a way out. The permitted cases are the two the
+    kits really ship (`constitution §6`, `constitution §2.7`) — a check that flagged those would be
+    the false direction this predicate was narrowed to avoid.
+    """
+    probe = tmp_path / "probe_hook.py"
+    probe.write_text(
+        '"""A docstring naming the constitution is not agent-facing and must not count."""\n'
+        "BARE = 'force-push is forbidden by the team constitution.'\n"
+        "GLOSS = 'lose them (constitution \\u00a78: never work on a dirty tree).'\n"
+        "LOCATED = 'the per-area coverage rule, constitution \\u00a76). Have QA add tests.'\n"
+        "NESTED = 'state the rules BEFORE code (constitution \\u00a72.7), as INV items.'\n"
+        "UNRELATED = 'report it instead of working around it.'\n", encoding="utf-8")
+    found = {}
+    for _lineno, text in _agent_facing_strings(str(probe)):
+        anchor = _cited_location("constitution", text)
+        if not re.search(r"\bconstitution\b", text, re.I):
+            verdict = "not judged"
+        elif not anchor:
+            verdict = "bare attribution"
+        elif text[anchor.end():anchor.end() + 1] == ":":
+            verdict = "gloss"
+        else:
+            verdict = "fine"
+        found[text.split("=")[0][:12]] = verdict
+    verdicts = sorted(found.values())
+    assert verdicts.count("bare attribution") == 1, found
+    assert verdicts.count("gloss") == 1, found
+    assert verdicts.count("fine") == 2, found
+    assert verdicts.count("not judged") == 1, found
+    # the module docstring names it too and is deliberately invisible to the reader
+    assert all("docstring" not in text for _line, text in _agent_facing_strings(str(probe)))
 
 
 # =================================== TASK 3 — what session_status really injects, by running it

@@ -18,8 +18,7 @@
   ITEM (§6), written only by the state kernel; the master-data files named in §5/§6 are configuration and
   reference data rather than items, but they live in the same tree and share its write rule.
   Claude's role-specific `.claude/agent-memory/<role>/` holds craft knowledge only. Generated
-  Codex config disables task-/host-wide memories so they cannot leak across roles. For Claude only,
-  MEMORY.md stays an INDEX ≤ 40 lines (only the first 200 lines/25 KB load per spawn).
+  Codex config disables task-/host-wide memories so they cannot leak across roles.
 - **The state directory is WRITE-LOCKED against every tool write, and has exactly ONE writer:** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the master-data/config files §5/§6 assign to a role. The kernel that IS allowed to write is reached through the installed entry point, and it has ONE spelling: **`python scripts/harness.py <command>`**, run from the project root. The scaffold installs it kit-owned in every project, the same three tokens work in bash and in PowerShell, and it resolves the state directory itself — so never add `--root`, which that same gate refuses as naming the state directory and which the entry point also refuses off its own parser.
   **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`, `sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`. Of spec II.4's twelve it still lacks `approve` and `migrate --dry-run`. `approve` is split rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. There is no migration tool. A `PROC` is a typed item, so `capture` creates one; `business_profile.yaml` and `filing_plan.yaml` are NOT items, so nothing writes them after the install — §4 phases 1–2 stay unexecutable, and phase 3 needs the `migrate --dry-run` that is also absent. Naming the missing command in your report is the step; writing state by hand is not (§8).
   The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — which includes the `init_project_memory` and `scaffold_team` runs §7 asks for. Those are the USER's to run, in a shell outside this session; ask, and never reach for a spelling the gate does not recognise. The gate decides by READING a command line, which is enforcement and not arithmetic, so a spelling that gets past it is a defect to report, never a route to take.
@@ -36,8 +35,7 @@ terminal `RETIRED`.
 
 - A PROC is approved ONCE by the user (like a product requirement); routine runs then execute
   autonomously WITHIN that approval. Anything outside the approved steps comes back as a question.
-- **Editing an APPROVED PROC's steps voids approval** — the kernel hashes a PROC's `steps` AND `roles`, so
-  touching either raises the revision and drops the approval. An edit PAST the kernel is caught by the
+- The kernel hashes a PROC's `steps` AND `roles`. An edit PAST the kernel is caught by the
   `approved_hash` the MINT stamps on the item: `gate_proc_approved` recomputes it on every spawn,
   `python scripts/harness.py validate` reports a stale one, and NO command re-stamps it — the way back is
   the user's approval of the new content. The stamp is UNKEYED: it catches an edit that did not recompute
@@ -64,22 +62,19 @@ terminal `RETIRED`.
    the USER sends. Claude settings can deny `mcp__*`; Codex has no exact project-local wildcard
    mapping in permission profiles. Refuse outbound calls, avoid every configured known mutation
    tool, and rely on external per-server/tool restrictions or admin policy for stronger enforcement.
-3. **Ledger edits are allowed and ALWAYS validation-required** (user decision, V2 I.3/1 — append-only is
-   abolished; git history + Evidence is the audit trail). `python scripts/ledger_add.py` remains the normal
-   write path and validates each row; a direct edit triggers full-file validation (`gate_ledger_valid`), and a
-   failure marks the ledger INVALID — push, merge, reports and dispatch stay blocked until it is corrected. No
+3. **Ledger edits are allowed** (user decision, V2 I.3/1 — append-only is abolished; git history +
+   Evidence is the audit trail). `python scripts/ledger_add.py` remains the normal write path. No
    rollback is claimed; the edit stands as written. Reversal entries remain the right way to correct BOOKED facts. This is NOT certified revision-safe archiving.
 4. **Reports are generated, never written by hand:** `python scripts/euer_report.py` renders the
    quarterly income/expense statement deterministically FROM the ledger (sums cannot drift from
    the data); the bookkeeper adds prose only in the separate `_notes.md`. The Verfahrensdoku draft
    (`python scripts/process_doc.py`) renders from the active PROC items and the filing plan; never hand-write it.
 5. **Filing is verified, not trusted.** `filing_plan.yaml` is the single machine-readable truth for
-   where a document belongs; `gate_filing` blocks anything landing under `archive/` that no rule
-   covers (and blocks filing at all while the plan has no rules) — a document matching no rule is
-   left untouched and the user is asked with a concrete rule proposal. Nobody writes a filing log: the archive
+   where a document belongs; a document matching no rule is left untouched and the user is asked with a
+   concrete rule proposal. Nobody writes a filing log: the archive
    tree IS the record of what ended up where (spec II.9 turns `filing_log.yaml` into a REGENERATED scan index
    over that tree, but nothing builds it yet and no gate reads it, so a V2 project simply has no such file).
-   `guard_fs_tripwire` blocks shell delete/move commands aimed at `inbox/` or `archive/` — migration MOVES via the approved plan, never deletes; originals are never re-saved/altered.
+   Migration MOVES via the approved plan, never deletes; originals are never re-saved/altered.
 6. **No tax advice, no legal advice.** Bookkeeping output is PREPARATION for the user/Steuerberater
    (EÜR-style draft per Zufluss/Abfluss where payment dates exist; open items listed separately);
    compliance output is a RESEARCH REGISTER with sources + review dates. Decisions stay human;

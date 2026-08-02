@@ -19,7 +19,7 @@
 - **Memory boundary:** `project_memory/` is the authoritative effort state — ONE FILE PER TYPED ITEM (§6),
   written only by the state kernel; the reference files named in §6 are material rather than items, but they
   live in the same tree and share its write rule. Claude's role memory is craft-only; generated Codex config
-  disables task-/host-wide memories so they cannot leak across roles. Claude MEMORY.md stays an INDEX ≤ 40 lines.
+  disables task-/host-wide memories so they cannot leak across roles.
 - **The state directory is WRITE-LOCKED against every tool write, and has exactly ONE writer:** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the reference files or the rendered `reports/` §6 assigns to a role. The kernel that IS allowed to write is reached through the installed entry point, and it has ONE spelling: **`python scripts/harness.py <command>`**, run from the project root. The scaffold installs it kit-owned in every project, the same three tokens work in bash and in PowerShell, and it resolves the state directory itself — so never add `--root`, which that same gate refuses as naming the state directory and which the entry point also refuses off its own parser.
   **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`, `sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`. Of spec II.4's twelve it still lacks `approve` and `migrate --dry-run`. `approve` is split rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. There is no migration tool. What no command creates either way: `project_config.yaml` and `product/masterplan.md` are not typed items — so nothing writes those after the install. Naming the missing command in your report is the step; writing state by hand is not (§2.10).
   The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — which includes the `init_project_memory` and `scaffold_team` runs the PM's startup gate and §11 ask for. Those are the USER's to run, in a shell outside this session; ask, and never reach for a spelling the gate does not recognise. The gate decides by READING a command line, which is enforcement and not arithmetic, so a spelling that gets past it is a defect to report, never a route to take.
@@ -47,7 +47,7 @@
 2. **The kernel is the only writer of `project_memory/`.** You decide WHAT is captured; the kernel performs the write (`python scripts/harness.py <command>` — §0 names the commands that surface HAS and the ones spec II.4 asks for that it lacks). No role writes a state file with an editor, yours included: `gate_write_scope` refuses every tool write there, and every shell pipeline whose COMMAND LINE names the path — but not a SCRIPT's write, which it cannot see (that is how `scripts/retro.py` works), so from a shell the rule binds as policy. No writer role exists.
 3. **End-of-phase checklist:** transition your items → commit. Non-skippable. `project_memory/generated/` is kernel
    output (written with every state write), so it needs no step of its own; this kit ships no dashboard generator, so there is nothing to render here.
-4. **Validation merge gate:** no RQ REACHES `DELIVERED` (which happens at the merge, §5 phase 9) without Reviewer **Evidence** (`kind: review` + `kind: acceptance`) naming the criteria and validity invariants it covers; an `EXP` may not reach `ANALYZED` without its report in `evidence_refs`. The ONE producer of an Evidence item is `python scripts/harness.py evidence`, and it is installed — run it from the project root, never with `--root`, with `--related` naming the item and `--artifact-ref` pointing at the raw proof under `staging/<task-id>/`. `gate_git` opens on the record it writes (measured in a scaffolded project: the merge refused with "no QA Evidence", one `evidence` run through all eight PreToolUse gates, the same merge allowed). If a gate still blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
+4. **Validation merge gate:** `gate_git` opens the merge on Reviewer **Evidence** and nothing else; an `EXP` may not reach `ANALYZED` without its report in `evidence_refs`. The ONE producer is `python scripts/harness.py evidence`, and it is installed — run it from the project root, never with `--root`, with `--related` naming the item and `--artifact-ref` pointing at the raw proof under `staging/<task-id>/`. If a gate blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
 5. **Research-goal questions only to the user** — methodology/statistics/instrumentation go to the
    methodologist (§14 boundary).
 6. **Read before you propose:** read the active `RQ` items — reuse or continue one, never duplicate.
@@ -83,8 +83,7 @@ Every user-question tool call is preceded by prose: Claude uses `AskUserQuestion
 User wish → `RQ` → `HYP` → `EXP` → `TSK` · `CR` = a change to an APPROVED RQ revision.
 RQ = the customer-visible research goal; HYP/EXP = technical, internal. `HYP` rides on the RQ's scope approval
 and carries no approval of its own; `EXP` carries the delivery approval at class `large`. The user never writes
-requirements; a change to approved content is NEVER silent — the **CR** replaces the old Protocol Amendment
-(same rule, one item type across all kits): touching a hashed field raises the revision, drops the approval and returns the item to its DRAFT-equivalent.
+requirements. The **CR** replaces the old Protocol Amendment — same rule, one item type across all kits.
 
 ## 5. Phase model
 
@@ -122,8 +121,6 @@ a typed item have no writer at all once the kit is installed (§0), so a wanted 
 infrastructure gap you report, not an edit you make.
 `TSK` items are created by the kernel BEFORE dispatch and belong to no specialist — a work order the executor
 could rewrite is not one; executors move a task's status by submitting their result envelope.
-**Completeness:** by RQ acceptance/merge every item says what its TYPE's field contract requires — the state
-validator decides that and `gate_memory_complete` relays it; what turns out not to apply is CLOSED via its automaton, never left empty. `project_memory/generated/` is kernel output, never hand-edited.
 
 ## 8. Git
 
@@ -184,7 +181,7 @@ order, then escalate — never fabricate output. Never infinite-loop, never aban
 
 ## 15. Upkeep
 
-Artifacts update immediately (stale docs block acceptance). Kit updates follow the pending-file
+Kit updates follow the pending-file
 contract (`.claude/kit_update_pending.*` — work through, then DELETE; the nag escalates).
 
 ## 16. FZulG / BSFZ application layer

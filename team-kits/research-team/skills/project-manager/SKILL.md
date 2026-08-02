@@ -43,12 +43,9 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
 6. **DELEGATE** — use the exact installed `researcher`/`data-analyst` role. Claude uses exact
    `subagent_type` + explicit `run_in_background`; Codex uses the exact `.codex/agents/*.toml` role,
    while its upstream built-in roles remain available but are forbidden substitutes under this team
-   policy. **You create the `TSK` before the spawn — never the executor.** Its mandatory fields ARE the work
-   order: `product_requirement` (the root RQ), `root_revision`, `derives_from` (the EXP/HYP/RQ it serves),
-   `type` (from the closed vocabulary — `research`, `analysis`, `test`, `ops`, …), `assigned_role`,
-   `acceptance_refs`, `required_inputs` (exact files/IDs), `allowed_scope`, `forbidden_scope`,
-   `expected_outputs`, `dependencies`. They freeze once the task leaves `DRAFT`, and `gate_dispatch` refuses
-   a spawn whose header does not match a `READY` task with a live lease.
+   policy. **You create the `TSK` before the spawn — never the executor.** The judgement is yours in the
+   content: the EXP/HYP/RQ it serves, the acceptance criteria it is measured against, the exact
+   files/IDs it may read, and the scope it may write.
    On Claude set **`run_in_background: false`** unless deliberately parallelizing. On Codex parallelize
    only independent work. On BOTH, NEVER advance until every required agent reaches a terminal result;
    verify claims against artifacts/git. Claude's spawn hook hard-blocks malformed spawns. Codex

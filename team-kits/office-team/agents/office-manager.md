@@ -71,4 +71,3 @@ the files to read; Claude exact `subagent_type` + explicit `run_in_background`; 
 → run reports when due (`python scripts/euer_report.py`) → BOOKKEEPING (transition the items you
 own, commit; status is never a file you write — it lives in the items and is rolled up into
 `generated/`) → REPORT to the user + ask what's next.
-Editing an APPROVED PROC's steps voids its approval — re-approve with the user, then re-hash.
