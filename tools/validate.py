@@ -22,7 +22,9 @@ sys.dont_write_bytecode = True
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+sys.path.insert(0, os.path.join(ROOT, "tools"))
 from preset_config import UniqueKeyLoader, load_preset_catalog  # noqa: E402
+import lead_package  # noqa: E402  — the budget and its subject, defined once
 
 fails = []
 # Budgets that are MEASURED now and become failures in a later phase, so the number is visible
@@ -213,39 +215,24 @@ for kit in discover_kits(ROOT):
         if not lines or "agents-and-skills:team-kit" not in lines[0]:
             fails.append("%s: constitution marker not on LINE 1 — session_status kit-update detection "
                          "reads only the first line" % kit)
-        # context diet (official guidance: bloated CLAUDE.md files get ignored; the constitution
-        # loads into the PM AND every subagent spawn — verified empirically 2026-07-14)
-        if len(lines) > 220:
-            fails.append("%s: constitution has %d lines (> 220) — keep the core slim; move role "
-                         "mechanics into the role SKILLs (they load only for the affected role)"
-                         % (kit, len(lines)))
-        # LEAD INSTRUCTION PACKAGE (spec II.5, <=25 KB). "Das Paket zaehlt ALLES sessionfix
-        # Geladene (agent.md + Lead-SKILL + Verfassung — die Verfassung laedt via Import immer
-        # mit)." This is a CI-side budget, not a hook: nothing writes these files at runtime, and
-        # it belongs beside the line ceiling above. Without it the one budget II.5 names FIRST was
-        # enforced nowhere, and the II.5 shrink sequence had no measuring stick.
-        lead = (json.load(open(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json"),
-                               encoding="utf-8")).get("agent")
-                if os.path.exists(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json")) else None)
-        if lead:
-            package = [cpath,
-                       os.path.join(ROOT, "team-kits", kit, "agents", lead + ".md"),
-                       os.path.join(ROOT, "team-kits", kit, "skills", lead, "SKILL.md")]
-            total = sum(os.path.getsize(p) for p in package if os.path.exists(p))
-            if total > 25 * 1024:
-                # WARNING until phase 3 (II.11/3) does the shrinking; promote to `fails` there.
-                warns.append("%s: lead instruction package is %d bytes (> 25 KB, spec II.5) — "
-                             "agent.md + Lead-SKILL + constitution all load at every session "
-                             "start. Phase 3 (II.11/3) shrinks these; this becomes a hard failure "
-                             "then." % (kit, total))
-            skill = os.path.join(ROOT, "team-kits", kit, "skills", lead, "SKILL.md")
-            if os.path.exists(skill):
-                skill_lines = len(open(skill, encoding="utf-8", errors="ignore")
-                                  .read().splitlines())
-                if skill_lines > 220:
-                    warns.append("%s: lead SKILL has %d lines (> 220) — same interim ceiling as "
-                                 "the constitution; spec II.5 tightens both to 150 once the "
-                                 "replacing gates are in place." % (kit, skill_lines))
+        # THE ONE SIZE STATEMENT ABOUT A CONSTITUTION — through the package it is part of, and in
+        # BYTES. What stood here was a 220-LINE ceiling on the constitution and a second one on the
+        # lead SKILL, and measured they said nothing about size: all three constitutions held the
+        # limit only because 31 to 46 of their lines ran 110-1899 characters (reflowed to 100
+        # columns: 383/368/394 lines), while a compaction pilot cut 24.9 % of the bytes and RAISED
+        # its line count from 20 to 36. A line ceiling beside a byte budget is a ceiling that pushes
+        # against it. Removed rather than replaced by a per-file byte number: nothing derives one,
+        # and a second invented constant next to the first is what this repo keeps paying for
+        # (`tools/lead_package.py` carries the reasoning and the number).
+        #
+        # The package is a CI-side budget, not a hook: nothing writes these files at runtime.
+        # WARNING until phase 3 (II.11/3) does the shrinking; promote to `fails` there.
+        total = lead_package.size(kit_dir)
+        if total > lead_package.MAX_BYTES:
+            warns.append("%s: lead instruction package is %d bytes (> %d, spec II.5) — "
+                         "agent.md + Lead-SKILL + constitution all load at every session "
+                         "start. Phase 3 (II.11/3) shrinks these; this becomes a hard failure "
+                         "then." % (kit, total, lead_package.MAX_BYTES))
 
 # 10) intended-identical hooks/scripts must stay byte-identical across kits (audit finding: a fix
 #    applied in one kit silently diverges the others — exactly the drift class this repo hunts).

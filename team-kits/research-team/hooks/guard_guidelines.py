@@ -81,14 +81,13 @@ INVARIANT_SCAN_MAX_BYTES = 8_000_000
 
 def block(lang, rel):
     _audit.record("guard_guidelines", rel)
-    sys.stderr.write(
+    _compat.stop(
         "[team-kit guard] Blocked writing '%s': no INV item of this project governs it — no "
         "invariant names the language (%s) and none names an area containing it.\n"
         "The architect MUST state the rules for %s BEFORE code in it is written "
         "(constitution §2.7), as `INV` items with a `check` reference. Ask the PM to task the "
-        "architect, then retry.\n" % (rel, lang, lang)
-    )
-    sys.exit(2)
+        "architect, then retry.\n" % (rel, lang, lang),
+        "PreToolUse")
 
 
 def _scopes(root):

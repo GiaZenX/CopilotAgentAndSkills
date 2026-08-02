@@ -115,15 +115,14 @@ BLOCKED_REPO_PATHS = ("scripts/ledger_add.py", "scripts/harness.py")
 
 def block(rel):
     _audit.record("guard_harness_selfmod", rel)
-    sys.stderr.write(
+    _compat.stop(
         "[team-kit guard] '%s' is part of the ENFORCEMENT LAYER — no agent edits it in a "
         "project, ever (a real PM silently rewrote kit settings to unblock itself). A guard "
         "that seems wrong is an infrastructure defect: report it to the user; the generic fix "
         "belongs in the KIT and arrives via a kit update. Generated .codex/** and "
         ".agents/skills/** are updated only by the scaffold. Allowed here: "
-        ".claude/agents/*.md (model:/effort: resync) and .claude/agent-memory/**.\n" % rel
-    )
-    sys.exit(2)
+        ".claude/agents/*.md (model:/effort: resync) and .claude/agent-memory/**.\n" % rel,
+        "PreToolUse")
 
 
 def check(path, root):

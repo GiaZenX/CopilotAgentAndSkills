@@ -27,12 +27,11 @@ import _audit
 
 def block(why):
     _audit.record("guard_agent_spawn", why)
-    sys.stderr.write(
+    _compat.stop(
         "[team-kit guard] Agent spawn blocked: %s\n"
         "Spawn a specialist by its EXACT role as subagent_type (one of the installed "
-        "./.claude/agents/). Never spawn a generic/unnamed agent.\n" % why
-    )
-    sys.exit(2)
+        "./.claude/agents/). Never spawn a generic/unnamed agent.\n" % why,
+        "PreToolUse")
 
 
 def main():

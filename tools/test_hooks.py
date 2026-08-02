@@ -1748,6 +1748,10 @@ KIT_SPECIFIC_HOOKS = {
     # three, dev and research none, and a mirrored copy would put the office exemption back into
     # the kits F1 removed it from.
     "document_trays.txt": "each kit's own trays, derived from its templates/repo",
+    # Kit-specific BY CONSTRUCTION as well: it describes THIS kit's registered mechanisms, and the
+    # three kits register 24 / 21 / 22 different ones. A mirrored copy would promise the office kit
+    # a `gate_test_coverage` it does not ship.
+    "ENFORCEMENT.md": "each kit's own registered mechanisms, described",
 }
 # The SAME rule for the project scripts a kit ships. Empty on purpose: the office kit's scripts
 # share no filename with dev/research, and every name dev and research both ship is meant to be one
@@ -4079,8 +4083,12 @@ def test_the_auditor_names_an_approval_kind_that_can_actually_dispatch_it():
 # tells the initializer to fill EVERY section of them, so a dead monolith name in a template comment
 # is copied into every new project. That is how `feature_requests.yaml` survived in the masterplan
 # template while this sweep, reading three patterns, saw nothing (found by hand, 2026-07-26).
-INSTRUCTION_PATTERNS = ("constitution/AGENTS.md", "agents/*.md", "skills/*/SKILL.md",
-                        "templates/project_memory/**/*")
+# `hooks/ENFORCEMENT.md` is here because the §2 hook table moved into it: the text a role reads
+# after a refusal is instruction text wherever it is stored, and leaving it outside this corpus
+# would have made "relocating" a way to escape every honesty sweep below — a dead monolith name, a
+# mis-spelled entry point or an unconditional claim would simply have moved out of range.
+INSTRUCTION_PATTERNS = ("constitution/AGENTS.md", "hooks/ENFORCEMENT.md", "agents/*.md",
+                        "skills/*/SKILL.md", "templates/project_memory/**/*")
 
 
 def _instruction_files(kit):
@@ -4134,7 +4142,7 @@ def _self_disabling_state_files(source):
             and re.fullmatch(r"[A-Za-z0-9_.-]+\.yaml", n.value.strip())}
 
 
-def test_constitution_names_the_file_that_switches_a_gate_off():
+def test_the_enforcement_reference_names_the_file_that_switches_a_gate_off():
     """A gate that fails OPEN on a missing input must say WHICH input, where its rule is documented.
 
     Two shipped rows claimed an unconditional hard block over a hook that exits 0 while its registry
@@ -4143,10 +4151,19 @@ def test_constitution_names_the_file_that_switches_a_gate_off():
     read as protection nobody had. Naming the file is the smallest claim that cannot be true while
     the precondition is hidden: derived from the hook's AST, so a hook that GAINS such a path is
     covered the day it ships, and no list of hook names exists here to go stale.
+
+    THE SUBJECT FOLLOWED THE ROW. This read the constitution while the hook table lived there; the
+    table now lives in `hooks/ENFORCEMENT.md` and the refusal messages point at it, so that is "the
+    cell a role reads at the gate" — the phrase this check was written around. Both files are read,
+    because a rule may still be stated in the constitution's prose, and the ROW is looked for first
+    exactly as before.
     """
     for kit in ("dev-team", "research-team", "office-team"):
-        cpath = os.path.join(ROOT, "team-kits", kit, "constitution", "AGENTS.md")
-        lines = open(cpath, encoding="utf-8", errors="ignore").read().splitlines()
+        lines = []
+        for relative in (os.path.join("constitution", "AGENTS.md"),
+                         os.path.join("hooks", "ENFORCEMENT.md")):
+            path = os.path.join(ROOT, "team-kits", kit, relative)
+            lines += open(path, encoding="utf-8", errors="ignore").read().splitlines()
         hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
         for fn in sorted(os.listdir(hooks_dir)):
             if not fn.endswith(".py") or fn.startswith("_"):
@@ -4163,11 +4180,12 @@ def test_constitution_names_the_file_that_switches_a_gate_off():
                 ln for ln in lines
                 if ln.lstrip().startswith("|") and name in ln.split("|")[1])
             documented = documented or " ".join(ln for ln in lines if name in ln)
-            assert documented, "%s: %s has no constitution row at all" % (kit, name)
+            assert documented, ("%s: %s has no row in the constitution or the enforcement "
+                                "reference at all" % (kit, name))
             assert any(c in documented for c in sorted(candidates)), (
-                "%s: %s stops without deciding when %s is missing, but its constitution row never "
-                "names that file — the row reads as unconditional protection. Say which file the "
-                "rule depends on." % (kit, name, "/".join(sorted(candidates))))
+                "%s: %s stops without deciding when %s is missing, but its row never names that "
+                "file — the row reads as unconditional protection. Say which file the rule "
+                "depends on." % (kit, name, "/".join(sorted(candidates))))
 
 
 # Where an exemption below is allowed to be used. ANY = the file genuinely has no template in V2, so
@@ -8713,7 +8731,7 @@ def _kits_with_an_invariant_regime():
       * derived from the string ``INV`` appearing in the constitution — rewriting the six
         occurrences in the research constitution to `**INV**` and THEN deleting the hook, again
         2 passed. A prose anchor is defeated by the same edit that hides the change, and the only
-        backstop (`test_no_section_of_a_lead_package_disappears_unnoticed`) is a re-pinnable
+        backstop (`test_no_section_of_a_pinned_instruction_file_disappears_unnoticed`) is a re-pinnable
         tripwire on the text, not a guard on this subject.
 
     So the anchor is CODE, read as code: a kit whose shipped `templates/repo/scripts/**` composes
@@ -8863,7 +8881,7 @@ def test_the_guidelines_guard_reaches_exactly_the_areas_its_kit_calls_code(tmp_p
     # pin off, measured, 2 passed. The answer is not a fourth pin but the deletion the pin was
     # protecting: both rows now state the definition and point at `CODE_TOP`, so the only place
     # the area set is written down is the code above, and a sixteenth area ages nothing.
-    row = _constitution_row(kit, "guard_guidelines")
+    row = _enforcement_row(kit, "guard_guidelines")
     # READ THE BACKTICK SPANS, do not split on whitespace. `row.split()` compared tokens, so
     # `` `src` `` was caught and `` `src`, `` — the same name with a comma — was not; measured,
     # the whole fifteen-name list came back green in two of three spellings, including the
@@ -8875,12 +8893,21 @@ def test_the_guidelines_guard_reaches_exactly_the_areas_its_kit_calls_code(tmp_p
         % (os.path.basename(kit), ", ".join(sorted(named))))
 
 
-def _constitution_row(kit, hook):
-    """The kit constitution's own table row for one hook — the cell a role reads at the gate."""
-    with open(os.path.join(kit, "constitution", "AGENTS.md"), encoding="utf-8") as handle:
-        rows = [line for line in handle.read().splitlines()
-                if line.lstrip().startswith("|") and hook in line.split("|")[1]]
-    assert len(rows) == 1, "%s: %d constitution rows for %s" % (kit, len(rows), hook)
+def _enforcement_row(kit, hook):
+    """The kit's own table row for one hook — the cell a role reads at the gate.
+
+    THE ROW MOVED, so this reader did. It lived in the constitution's §2 until that table went to
+    `hooks/ENFORCEMENT.md`, which is where every refusal message now sends a blocked role; both
+    files are read so that a row stated in either is found, and exactly one row must match, which
+    is what makes "the cell" a singular thing.
+    """
+    rows = []
+    for relative in (os.path.join("constitution", "AGENTS.md"),
+                     os.path.join("hooks", "ENFORCEMENT.md")):
+        with open(os.path.join(kit, relative), encoding="utf-8") as handle:
+            rows += [line for line in handle.read().splitlines()
+                     if line.lstrip().startswith("|") and hook in line.split("|")[1]]
+    assert len(rows) == 1, "%s: %d enforcement rows for %s" % (kit, len(rows), hook)
     return rows[0]
 
 

@@ -63,7 +63,7 @@ CODE_EXT = {".py", ".ts", ".tsx", ".js", ".jsx", ".go", ".rs", ".java", ".c",
 
 def block(rel):
     _audit.record("guard_pm_scope", rel)
-    sys.stderr.write(
+    _compat.stop(
         "[team-kit guard] PM blocked from writing '%s'.\n"
         "You are the Project Manager — you do NOT write production code, and that is any file in "
         "a programming language outside your own areas, at any depth (so `services/pay.py` and "
@@ -77,9 +77,8 @@ def block(rel):
         "-- relay it verbatim -- and the USER mints it by answering. No command mints. This "
         "message used to "
         "advertise `project_memory/*.yaml` as an open door, which sent the lead straight into "
-        "another gate's refusal.\n" % rel
-    )
-    sys.exit(2)
+        "another gate's refusal.\n" % rel,
+        "PreToolUse")
 
 
 def check(path, root):

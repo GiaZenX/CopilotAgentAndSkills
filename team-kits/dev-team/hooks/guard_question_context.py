@@ -138,15 +138,14 @@ def main():
         _advisory_checks(texts)      # warnings only, and only when nothing is being blocked
         sys.exit(0)
     _audit.record("guard_question_context", "; ".join(hits)[:200])
-    sys.stderr.write(
+    _compat.stop(
         "[team-kit guard] Blocked AskUserQuestion: it references context the user CANNOT see "
         "(%s). Your thinking and earlier tool calls are invisible — a real PM once asked for "
         "sign-off on a summary that was never printed. Fix: put the full decision context as "
         "visible TEXT in this same message BEFORE the question, or make the question "
         "self-contained (details into the question text and option descriptions), then ask "
-        "again without the reference.\n" % ", ".join("'%s'" % h for h in hits[:4])
-    )
-    sys.exit(2)
+        "again without the reference.\n" % ", ".join("'%s'" % h for h in hits[:4]),
+        "PreToolUse")
 
 
 if __name__ == "__main__":

@@ -138,7 +138,7 @@ import _compat
 
 def block(rel, why):
     _audit.record("guard_no_adhoc", rel)
-    sys.stderr.write(
+    _compat.stop(
         "[team-kit guard] Blocked creating '%s': %s.\n"
         "The single source of truth is the typed state, and the kernel is its only writer, "
         "reached through `python scripts/harness.py <command>` from the project root: a review, "
@@ -153,9 +153,8 @@ def block(rel, why):
         "is a third case and neither of the two above: where your constitution says a shipped "
         "script renders one (it names the command), run that script — a hand-written copy of a "
         "generated report is a second, drifting truth beside the data it was rendered from. "
-        "Inventing a file for any of it is what this guard refuses.\n" % (rel, why)
-    )
-    sys.exit(2)
+        "Inventing a file for any of it is what this guard refuses.\n" % (rel, why),
+        "PreToolUse")
 
 
 def check(path, cwd, trays=frozenset()):

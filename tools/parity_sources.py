@@ -27,7 +27,8 @@ WHAT THIS DOES NOT DECIDE, stated here rather than left for a reader to discover
 paragraph IS the rule the row describes. That is a reading, and no parser performs it. Two things
 narrow the gap and neither closes it: the anchor cannot silently follow a text change the way a
 line number does, and for the LEAD PACKAGE every anchored section carries a digest pin
-(`test_shortening_net.py:test_no_section_of_a_lead_package_disappears_unnoticed`), so a content swap
+(`test_shortening_net.py:test_no_section_of_a_pinned_instruction_file_disappears_unnoticed`), so a
+content swap
 under a stable anchor forces a second look. For a specialist SKILL there is no such pin — that
 remainder is counted, not claimed away, by
 `test_parity_sources.py:test_the_pointers_no_section_pin_watches_are_counted`.

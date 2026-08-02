@@ -24,7 +24,8 @@ WHAT IT DOES NOT DECIDE — measured here rather than promised away, by
 heading SWAP their numbers, `§2.7` still resolves and now names another rule. That is the same
 class as "resolves but means something else", and it is not decidable by parsing. Half of it is
 caught elsewhere and only for half the files: every section of a LEAD PACKAGE carries a digest pin
-(`test_shortening_net.py:test_no_section_of_a_lead_package_disappears_unnoticed`), so a content swap
+(`test_shortening_net.py:test_no_section_of_a_pinned_instruction_file_disappears_unnoticed`), so a
+content swap
 there forces a second look. A specialist SKILL has no pin, and the pointers that land in one are
 COUNTED by `test_the_pointers_no_section_pin_watches_are_counted` — a caveat nobody counts is how a
 hole grows quietly, which is the lesson this file inherited from the matcher hole two rounds back.
@@ -43,7 +44,7 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import parity_sources                                                   # noqa: E402
 from parity_sources import ANCHOR_MARK, declared_blocks, resolve        # noqa: E402
-from test_shortening_net import _lead_package, _matrix_rows, _reading_view   # noqa: E402
+from test_shortening_net import _matrix_rows, _pinned_files, _reading_view   # noqa: E402
 
 KIT_DIRS = parity_sources.kit_dirs()
 
@@ -346,10 +347,11 @@ def test_the_pointers_no_section_pin_watches_are_counted():
     """The named remainder, as a number the document carries.
 
     An anchor proves a location exists and is unique; it cannot prove the paragraph under it is
-    still the rule. For a LEAD PACKAGE file the section digest pin turns any content change into a
-    mandatory second look, so the two together are close to a guarantee. For every other source
-    file — the specialist SKILLs — there is no pin, and a content swap under a stable anchor is
-    invisible. That set is counted here rather than described, because the honest instrument for a
+    still the rule. For a PINNED file — the lead package plus `hooks/ENFORCEMENT.md` — the section
+    digest pin turns any content change into a mandatory second look, so the two together are close
+    to a guarantee. For every other source file — the specialist SKILLs — there is no pin, and a
+    content swap under a stable anchor is invisible. Read from `_pinned_files` rather than from the
+    byte budget's subject, so that the two answers to "what does the pin watch" stay one. That set is counted here rather than described, because the honest instrument for a
     hole this module cannot close is a figure that goes red when it grows.
     """
     watched, unwatched = 0, 0
@@ -358,7 +360,7 @@ def test_the_pointers_no_section_pin_watches_are_counted():
             if not shipped:
                 continue
             for _anchor in pointer.anchor_paths():
-                if path in _lead_package(kit):
+                if path in _pinned_files(kit):
                     watched += 1
                 else:
                     unwatched += 1

@@ -33,8 +33,12 @@ WHAT THIS MODULE CHECKS, and — as loudly — what it does not:
     replacement for parity rows 25/97 it turned the licence upside down: using the licence makes
     the mechanism red. Detected by AST (`_reads_shipped_instructions`) and refused in the licence
     class; the document carries `durch Test GEPINNT → behalten` for that case.
-  * THE LEAD PACKAGE IS PINNED — constitution, lead agent file and lead SKILL, which is what spec
-    II.5 weighs and what II.11/3 shortens. Every section carries a digest of its heading AND its
+  * THE PINNED INSTRUCTION FILES — constitution, lead agent file and lead SKILL (what spec II.5
+    weighs and II.11/3 shortens) PLUS `hooks/ENFORCEMENT.md`, the §2 hook table after it left the
+    constitutions. That file is deliberately outside the byte budget — it does not load with a
+    session — and just as deliberately inside the pin, because it carries rules. Keeping the two
+    subjects apart is `_pinned_files` vs `_lead_package`; collapsing them either way reopens a
+    hole. Every section carries a digest of its heading AND its
     body: a deleted section fails on the missing key, a RENAMED one on the changed key, a gutted
     one on the digest. This is deliberately NOT a semantic check — it cannot tell a typo from a
     deleted rule. It converts a silent deletion into a mandatory second look and prints which
@@ -71,6 +75,7 @@ import tempfile
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import lead_package                                            # noqa: E402
 import parity_sources                                          # noqa: E402
 from test_disposition import _cells, _resolve_file, _symbols   # noqa: E402
 
@@ -256,14 +261,17 @@ def _names_a_specialist_file(sources):
     """Does this rule also live in a role file outside the lead package?
 
     DERIVED, not listed. "Specialist file" used to be read off a `Spezialisten:` group in the
-    legend; it is now exactly "a source file that is not part of this kit's lead package", and
-    `_lead_package` is the same derivation `validate.py` uses for its byte budget. The question the
-    count answers — "does the parity licence permit deleting prose no section pin watches" — is a
-    question about the PIN's subject, so it is answered from the pin's own definition.
+    legend; it is now exactly "a source file no section pin watches". The question the count
+    answers — "does the parity licence permit deleting prose no section pin watches" — is a
+    question about the PIN's subject, so it is answered from the pin's own definition
+    (`_pinned_files`) and NOT from the byte budget's subject (`_lead_package`). The two were the
+    same set until the §2 hook table moved to `hooks/ENFORCEMENT.md`: that file is pinned (it
+    carries rules) and is not in the budget (it does not load with the session), and answering
+    this question from the budget would have filed every pointer into it as unwatched prose.
     """
     for pointer in parity_sources.pointers(sources):
         for kit, path, shipped in pointer.targets() or []:
-            if shipped and path not in _lead_package(kit):
+            if shipped and path not in _pinned_files(kit):
                 return True
     return False
 
@@ -1057,21 +1065,29 @@ def test_the_path_reader_reads_the_tree_and_not_the_filesystems_case_folding():
 def _lead_package(kit_dir):
     """The three files spec II.5 weighs together and II.11/3 shortens — derived, never listed.
 
-    `validate.py` computes the same package for its byte budget: the constitution plus the LEAD's
-    agent file and SKILL, where the lead is `settings.json`'s `agent`. Pinning only the
-    constitution left the lead SKILL unwatched, and it is half the shortening: measured by deleting
-    the "Serialize agents that edit the same files" rule from the dev PM SKILL, the whole suite
-    stayed green.
+    THE SAME derivation `validate.py` weighs, and now literally so: both call
+    `lead_package.files`. The sentence "validate.py computes the same package" stood here while
+    the two were separate copies of one idea — true by coincidence, which is the state one edit
+    away from being false. Pinning only the constitution left the lead SKILL unwatched, and it is
+    half the shortening: measured by deleting the "Serialize agents that edit the same files" rule
+    from the dev PM SKILL, the whole suite stayed green.
     """
-    settings = os.path.join(kit_dir, "settings", "settings.json")
-    files = [os.path.join(kit_dir, "constitution", "AGENTS.md")]
-    if os.path.isfile(settings):
-        with open(settings, encoding="utf-8") as handle:
-            lead = json.load(handle).get("agent")
-        if lead:
-            files += [os.path.join(kit_dir, "agents", lead + ".md"),
-                      os.path.join(kit_dir, "skills", lead, "SKILL.md")]
-    return tuple(path for path in files if os.path.isfile(path))
+    return lead_package.files(kit_dir)
+
+
+@_cached
+def _pinned_files(kit_dir):
+    """Every shipped instruction file a section pin watches — the lead package PLUS the reference.
+
+    THE PIN'S SUBJECT AND THE BUDGET'S SUBJECT ARE NOT THE SAME QUESTION, and conflating them is
+    how this round nearly recreated the hole the pin exists for. The budget weighs what LOADS with
+    every session; the pin watches what carries RULES. `hooks/ENFORCEMENT.md` — the §2 hook table
+    after it moved out of the constitutions — is the first file where the two answers differ: it is
+    8 KB of enforcement description that no session loads. Left out of here, its rows would have
+    become exactly what the pin was written for after an independent run deleted thirteen
+    constitution sections whole with the suite green.
+    """
+    return _lead_package(kit_dir) + (_reference_doc(kit_dir),)
 
 
 def _sections(path):
@@ -1113,12 +1129,18 @@ def _digest(lines):
 
 
 def measure_sections():
-    """{kit: {relative path: {section key: {digest, hooks}}}} over every lead package."""
+    """{kit: {relative path: {section key: {digest, hooks}}}} over every PINNED instruction file.
+
+    `_pinned_files`, not `_lead_package`: the subject is "text that carries rules", and since the
+    §2 hook table moved to `hooks/ENFORCEMENT.md` that is one file wider than the byte budget's
+    subject. A file with no `## ` heading yields no section and would be pinned by nothing, which
+    is why the reference carries one.
+    """
     out = {}
     for kit in _kit_dirs():
         registered = {name[:-3] for name in _registered_hooks(kit)}
         files = {}
-        for path in _lead_package(kit):
+        for path in _pinned_files(kit):
             sections = {}
             for key, lines in _sections(path):
                 body = "\n".join(lines)
@@ -1154,11 +1176,11 @@ def section_differences(pinned, measured):
     return changes
 
 
-def test_no_section_of_a_lead_package_disappears_unnoticed():
+def test_no_section_of_a_pinned_instruction_file_disappears_unnoticed():
     """The measured hole, closed as far as a text check honestly can close it.
 
     Thirteen of the sixteen dev constitution sections could be deleted whole with the suite green,
-    and the lead SKILL had no pin at all. Here every section of every lead package carries a digest
+    and the lead SKILL had no pin at all. Here every section of every pinned file carries a digest
     of its heading and body: a deletion fails on the missing key, a rename on the changed key and a
     gutting on the digest. What it CANNOT do is tell a rule from a typo; it forces a look, and the
     message names the registered hooks the section anchors so the look starts at the mechanism.
@@ -1212,12 +1234,43 @@ def test_the_section_reader_sees_a_deletion_a_rename_and_a_gutting(tmp_path):
         "the reader gives a gutted section the same digest as a full one")
 
 
+@_cached
+def _reference_doc(kit_dir):
+    """The file this kit's refusals point at — read out of `hooks/_compat.py`, never spelled here.
+
+    `_compat.REFERENCE_NAME` is what `reference_note()` interpolates into every block message, so
+    the document a role is SENT to is a fact about the running code. Reading it by AST means a
+    rename follows into the checks below instead of leaving them pointed at a file nobody is told
+    about any more; the module is not imported, because importing a hook reconfigures the process's
+    streams for a question that is answered by one assignment.
+    """
+    path = os.path.join(kit_dir, "hooks", "_compat.py")
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 \
+                and isinstance(node.targets[0], ast.Name) \
+                and node.targets[0].id == "REFERENCE_NAME" \
+                and isinstance(node.value, ast.Constant):
+            return os.path.join(kit_dir, "hooks", node.value.value)
+    raise AssertionError("%s defines no REFERENCE_NAME — nothing tells a blocked role where the "
+                         "enforcement table is" % path)
+
+
 def test_every_registered_hook_is_anchored_in_its_kits_constitution():
     """The other direction: a mechanism that runs must be findable in the text roles actually read.
 
     This is what notices a NEW gate wired without a word in the constitution — the case the digest
-    pin cannot see, because nothing changed in a section that has to change. It also fails when the
-    hook table is deleted, and it names every mechanism that lost its anchor.
+    pin cannot see, because nothing changed in a section that has to change. It names every
+    mechanism that lost its anchor.
+
+    THE SUBJECT STAYS THE CONSTITUTION ALONE, decided when the §2 hook table moved to
+    `hooks/ENFORCEMENT.md`, and the widening was the tempting mistake. What this test is for is the
+    text that is ALWAYS THERE: the constitution loads at every session start and every subagent
+    spawn, the reference loads when somebody opens it. Asking the union would let a gate be wired
+    with its only mention in a document no session reads — the anchor would be satisfied by a file
+    that is, by construction, absent from the context the rule has to hold in. The descriptions
+    moved; the NAMES did not, and this is the check that keeps them where they are.
     """
     orphaned = []
     for kit in _kit_dirs():
@@ -1233,27 +1286,38 @@ def test_every_registered_hook_is_anchored_in_its_kits_constitution():
         "these hooks enforce something the constitution never names: %s" % ", ".join(orphaned))
 
 
-def test_no_constitution_claims_a_hook_that_no_registration_starts():
+def test_no_enforcement_text_claims_a_hook_that_no_registration_starts():
     """And the counter-direction, house rule 3 in executable form: a text may not promise
     protection the wiring does not build.
 
-    The subject is derived — every hook FILE the kit ships — so it covers a hook that is named,
+    THE SUBJECT IS THE UNION, and it is the opposite decision from the test above for a reason that
+    is not symmetry. "Must be named" is about a text that is always loaded, so widening it would
+    weaken it. "Must not lie" is about a text somebody READS — and the reference is read at the one
+    moment the reader has been refused and needs to know what refused them. A dead hook name is at
+    least as harmful there as in the constitution. The reference file is not spelled here either:
+    it is whatever `_compat.REFERENCE_NAME` sends a blocked role to (`_reference_doc`), so the
+    subject follows the pointer rather than a copy of its filename.
+
+    The hook set is derived — every hook FILE the kit ships — so it covers a hook that is named,
     exists, and can be started by nothing. It does not cover a name that is no file at all: that is
     prose about something else, and `validate.py` owns whether it resolves.
     """
     lying = []
     for kit in _kit_dirs():
-        with open(os.path.join(kit, "constitution", "AGENTS.md"), encoding="utf-8") as handle:
-            body = handle.read()
+        texts = {}
+        for path in (os.path.join(kit, "constitution", "AGENTS.md"), _reference_doc(kit)):
+            assert os.path.isfile(path), path
+            with open(path, encoding="utf-8") as handle:
+                texts[os.path.basename(path)] = handle.read()
         registered = _registered_hooks(kit)
         for name in sorted(os.listdir(os.path.join(kit, "hooks"))):
             if not name.endswith(".py") or name.startswith("_") or name in registered:
                 continue
-            if re.search(r"\b%s\b" % re.escape(name[:-3]), body):
-                lying.append("%s: %s" % (os.path.basename(kit), name[:-3]))
+            for where, body in sorted(texts.items()):
+                if re.search(r"\b%s\b" % re.escape(name[:-3]), body):
+                    lying.append("%s %s: %s" % (os.path.basename(kit), where, name[:-3]))
     assert not lying, (
-        "the constitution names these hooks and no registration can start them: %s"
-        % ", ".join(lying))
+        "these texts name a hook no registration can start: %s" % ", ".join(lying))
 
 
 # =================================== TASK 3 — what session_status really injects, by running it

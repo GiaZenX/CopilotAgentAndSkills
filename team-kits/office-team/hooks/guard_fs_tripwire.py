@@ -41,20 +41,18 @@ def main():
     cmd = str((data.get("tool_input") or {}).get("command") or "")
     if LEDGER_REDIRECT_RX.search(cmd) and not LEDGER_ADD_RX.search(cmd):
         _audit.record("guard_fs_tripwire", "shell redirect into ledger: %s" % cmd[:120])
-        sys.stderr.write(
+        _compat.stop(
             "[team-kit guard] A blind shell redirect into ledger/*.csv is BLOCKED — `>>` writes "
             "whatever it is handed, with no schema, no arithmetic check and no way to tell a row "
             "from a fragment. Editing the ledger IS allowed (user decision V2 I.3/1): use Edit, or "
             "`python scripts/ledger_add.py ...` for a new entry. Either way the whole file is "
-            "re-validated afterwards and a failure marks the ledger invalid.\n")
-        sys.exit(2)
+            "re-validated afterwards and a failure marks the ledger invalid.\n", "PreToolUse")
     if DELETE_RX.search(cmd):
         _audit.record("guard_fs_tripwire", "delete on inbox/archive: %s" % cmd[:120])
-        sys.stderr.write(
+        _compat.stop(
             "[team-kit guard] Deleting under inbox/ or archive/ is BLOCKED — business documents "
             "are moved (with a filing/migration manifest), never deleted. Duplicates get a _dupNN "
-            "suffix and a flag.\n")
-        sys.exit(2)
+            "suffix and a flag.\n", "PreToolUse")
     m = MOVE_RX.search(cmd)
     if m:
         # moving INTO the archive is normal filing (from inbox/, outbox/, reports/ …); only an
@@ -66,11 +64,10 @@ def main():
         source = next((t for t in tokens if not t.startswith("-")), "")
         if re.search(r"\barchive[/\\]", source, re.I):
             _audit.record("guard_fs_tripwire", "move out of archive: %s" % cmd[:120])
-            sys.stderr.write(
+            _compat.stop(
                 "[team-kit guard] Moving files OUT of archive/ is BLOCKED — the archive is the "
                 "system of record. Reorganisation runs as a user-approved migration PROC (dry-run "
-                "-> OK -> move + manifest); ask the manager/user instead of working around this.\n")
-            sys.exit(2)
+                "-> OK -> move + manifest); ask the manager/user instead of working around this.\n", "PreToolUse")
     sys.exit(0)
 
 

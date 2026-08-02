@@ -512,13 +512,32 @@ schreibt in den Projektzustand.
 
 ## II.5 Memory- und Kontext-Rückbau (einheitliche Budgets)
 
-- Lead-Instruktionspaket ≤25 KB; Verfassung und Lead-SKILL je ≤150 Zeilen; generierter
-  Session-Bootstrap ≤25 KB. **Zählweise:** Das Paket zählt ALLES sessionfix Geladene
-  (agent.md + Lead-SKILL + Verfassung — die Verfassung lädt via Import immer mit). Ist heute
-  je nach Zählweise 174–220 Zeilen pro Verfassung; Phase 0 misst deterministisch nach.
-- **Kürzungs-Sequenz (verbindlich):** Die ≤150-Zeilen-Kürzung ist erst zulässig, NACHDEM die
-  ersetzenden Gates/Tests stehen (Reihenfolge II.11: Gates vor Kürzung); jede entfernte Regel
-  wird in der Paritätsmatrix als „durch Gate/Test ersetzt" belegt.
+- Lead-Instruktionspaket **≤ 25 600 B** (= 25 KB zu 1024 B); generierter Session-Bootstrap
+  ≤25 KB (`kernel/schemas/session_brief.yaml: max_serialized_bytes`). **Zählweise:** Das Paket
+  zählt ALLES sessionfix Geladene (agent.md + Lead-SKILL + Verfassung — die Verfassung lädt via
+  Import immer mit). **Eine Definitionsstelle:** die Zahl UND die Ableitung, welche Dateien das
+  Paket sind, stehen in `tools/lead_package.py` (`MAX_BYTES`, `files()`); `tools/validate.py`
+  liest von dort, und ein Test misst diesen Satz gegen die Konstante. Die Zahl stand vorher
+  dreifach im Baum (Spec „≤25 KB", Code `25 * 1024`, ein Auftrag „25 000") — 25 600 gewinnt, weil
+  es die laufende Implementierung und die natürliche Lesart von „25 KB" ist.
+- **Keine Zeilengrenze mehr für Verfassung und Lead-SKILL.** Die frühere Vorgabe „je ≤150 Zeilen"
+  (interim 220, erzwungen in `tools/validate.py`) ist ersatzlos gestrichen, weil sie gemessen
+  nichts über Grösse aussagte: die drei Verfassungen hielten 220 nur, weil 31–46 ihrer Zeilen
+  110–1 899 Zeichen lang sind (auf 100 Spalten umbrochen: 383/368/394 Zeilen), und ein
+  Verdichtungspilot brachte −24,9 % Bytes bei einem Anstieg von 20 auf 36 Zeilen — die
+  Zeilengrenze arbeitete also gegen das Byte-Budget daneben. Eine per-Datei-Byte-Grenze tritt
+  NICHT an ihre Stelle: keine Aufteilung der 25 600 B auf die drei Paketdateien folgt aus etwas,
+  und eine zweite gegriffene Zahl neben der ersten ist der Fehler, nicht die Reparatur. Damit
+  gibt es genau **eine** Grössenaussage über eine Verfassung — die über das Paket, dessen Teil
+  sie ist.
+- **Kürzungs-Sequenz (verbindlich):** Die Kürzung auf das Paketbudget ist erst zulässig, NACHDEM
+  die ersetzenden Gates/Tests stehen (Reihenfolge II.11: Gates vor Kürzung); jede entfernte Regel
+  wird in der Paritätsmatrix als „durch Gate/Test ersetzt" belegt. **Verlagern ist keine
+  Kürzung:** Text, der vollständig erhalten bleibt und nur aus dem sessionfix geladenen Paket in
+  eine Datei umzieht, die beim Sitzungsstart nicht lädt, braucht keine Löschlizenz — er verliert
+  seine Startkosten, nicht seinen Inhalt. Erster Fall: die §2-Hooktabelle der drei Verfassungen
+  liegt jetzt in `team-kits/<kit>/hooks/ENFORCEMENT.md` (installiert `.claude/hooks/ENFORCEMENT.md`),
+  und jede Hook-Verweigerung nennt deren Pfad.
 - Aktives Item ≤200 Zeilen/12 KB. Result-Envelope ≤4 KB (Rohlogs nur referenziert).
 - MEMORY.md: generierter Index ≤40 Zeilen. Craft-Topic ≤100 Zeilen/8 KB, ≤20 aktive Topics
   pro Rolle. Projektstatus/Tasks/Entscheidungen/Sessionfortschritt sind in Agent-Memory
@@ -802,9 +821,10 @@ Eine Aufbewahrungs-/Löschregel ist ein separater, userbestätigter Auftrag (→
    Löschung: guard_ledger_direct.
 3. **session_status.py** → Update-Zustandsautomat + session_brief-Verweis (ALLE ~6
    injizierten Blöcke disponiert); **Templates** → typisierte Struktur, ITEM-Templates,
-   Verfassungen/SKILLs auf ≤150 Zeilen — **Kürzung erst NACH den ersetzenden Gates aus
-   Schritt 2 (Release-Checklistenpunkt, D/9), jede entfernte Regel per Paritätsmatrix
-   belegt**.
+   Lead-Paket auf das Byte-Budget aus II.5 (`tools/lead_package.py: MAX_BYTES`; die frühere
+   Zeilenvorgabe „≤150" ist dort ersatzlos gestrichen und begründet) — **Kürzung erst NACH den
+   ersetzenden Gates aus Schritt 2 (Release-Checklistenpunkt, D/9), jede entfernte Regel per
+   Paritätsmatrix belegt**; Verlagerung ohne Textverlust braucht keine Lizenz (II.5).
 4. **harness doctor**, Scaffold-/Init-Anpassung (kit_state.json-Konsolidierung, Migration der
    alten Marker), `gen_provider_artifacts.py`-Regen, VERSION-Bump + registry.yaml; **globale
    `~/.claude/CLAUDE.md` (`user/claude/CLAUDE.md`) + `user/codex/AGENTS.md` + team-kits-

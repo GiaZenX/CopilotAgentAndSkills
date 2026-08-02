@@ -118,8 +118,10 @@ def load(stream=None, limit=None, tolerate_overflow=False):
         return {}
     if len(raw) > limit:
         if not tolerate_overflow:
-            sys.stderr.write(_OVERFLOW_MESSAGE % limit)
-            sys.exit(2)
+            # through `stop()` like every other refusal, so the reference pointer is not something
+            # this one path is exempt from: an oversized payload is the refusal a role is LEAST
+            # equipped to read, because the gate never got to say what it was judging
+            stop(_OVERFLOW_MESSAGE % limit, "PreToolUse")
         return {"_stdin_overflow": True, "tool_input": {}}
     try:
         data = json.loads(raw.decode("utf-8", "replace"))
@@ -1404,20 +1406,47 @@ def run_captured(cmd, cwd=None, timeout=60, **kw):
                           encoding="utf-8", errors="replace", timeout=timeout, **kw)
 
 
+# The reference the constitution stopped carrying. The §2 hook table moved out of the three
+# constitutions because they load at every session start and at every subagent spawn, while a table
+# of what each gate refuses is needed at exactly one moment: after a refusal. That trade only works
+# if the refusal HANDS OVER the location, so the pointer is part of every block rather than a thing
+# a role is expected to remember.
+REFERENCE_NAME = "ENFORCEMENT.md"
+
+
+def reference_note():
+    """The line every refusal ends with: where the table explaining this mechanism lives.
+
+    DERIVED FROM THIS FILE'S OWN LOCATION, never spelled as a path. The reference ships in the kit's
+    `hooks/` directory and the scaffold copies that directory wholesale, so the directory a hook is
+    running out of IS the directory the table sits in — `<repo>/.claude/hooks/` in a project,
+    `team-kits/<kit>/hooks/` in this repo, and a relocated or copied bundle without either of those
+    spellings being written down anywhere.
+
+    Named unconditionally, without asking whether the file is there. A conditional pointer would be
+    silent in exactly the case that needs a word — a bundle installed without its reference — and
+    the path is where the file BELONGS either way.
+    """
+    return ("\nWhat this mechanism refuses, on which event, and the condition under which it does "
+            "not refuse at all: %s\n"
+            % os.path.join(os.path.dirname(os.path.abspath(__file__)), REFERENCE_NAME))
+
+
 def stop(message, event):
     """Block a post/stop event using the current provider's event-specific contract.
 
     Codex PostToolUse/SubagentStop consume `decision: block` + `reason`. Claude uses exit 2 with
-    stderr for these events. PreToolUse guards should keep using exit 2 directly; current Codex
-    builds support that contract and include `agent_id` for subagent tool calls.
+    stderr for these events. Claude reads exit 2 + stderr as blocking on PreToolUse as well, so
+    every guard routes through here too; current Codex builds support that contract and include
+    `agent_id` for subagent tool calls.
 
-    THE ONE FUNNEL every refusal goes through, which is why `UNRESOLVED_VERB_NOTE` is appended
-    HERE and not by each gate: the note is about the READING this file did, the command it is read
-    off is the one `load()` just parsed, and eight gates each remembering to append it is eight
-    chances to forget. A gate whose payload carries no command (a Write, an Agent spawn) gets
-    nothing appended, because there is no git call to be unsure about.
+    THE ONE FUNNEL every refusal goes through, which is why `UNRESOLVED_VERB_NOTE` and
+    `reference_note()` are appended HERE and not by each gate: the verb note is about the READING
+    this file did, the command it is read off is the one `load()` just parsed, and eight gates each
+    remembering to append it is eight chances to forget. A gate whose payload carries no command (a
+    Write, an Agent spawn) gets nothing appended, because there is no git call to be unsure about.
     """
-    message += unresolved_verb_note(last_command())
+    message += unresolved_verb_note(last_command()) + reference_note()
     if (os.environ.get("TEAM_KIT_PROVIDER", "").lower() == "codex"
             and event in ("PostToolUse", "SubagentStop")):
         sys.stdout.write(json.dumps({"decision": "block", "reason": message}) + "\n")
