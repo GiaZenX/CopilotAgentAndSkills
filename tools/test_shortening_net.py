@@ -71,6 +71,7 @@ import tempfile
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import parity_sources                                          # noqa: E402
 from test_disposition import _cells, _resolve_file, _symbols   # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -251,79 +252,44 @@ def _kit_of_shorthand(shorthand):
     return None
 
 
-@_cached
-def _role_shorthands():
-    """{role shorthand: [kit dirs]} — parsed from the source legend the matrix carries itself.
-
-    The legend spells `Spezialisten: <names> (dev) · <names> (off) · <names> (res)`, so which kit
-    a bare `clerk:26` source belongs to is a fact the document states. Reading it here keeps the
-    answer in one place; a table in this file would be a second one, and `audit`/`re` — which two
-    kits both use — is exactly where two answers diverge.
-    """
-    legend = re.search(r"Quellen-Kürzel:(.*?)\n\n", "\n".join(_lines()), re.S)
-    assert legend, "the §3 source legend is gone"
-    out = {}
-    for names, shorthand in re.findall(r"`([^`]+)`\s*\((dev|off|res)\)", legend.group(1)):
-        kit = _kit_of_shorthand(shorthand)
-        for name in re.split(r"[,\s]+", names.strip()):
-            if name:
-                out.setdefault(name, []).append(kit)
-    assert out, "the legend parsed to no specialist shorthands"
-    return out
-
-
-@_cached
-def _specialist_shorthands():
-    """The role shorthands the legend files under `Spezialisten:` — leads deliberately excluded.
-
-    The lead's SKILL and agent file ARE pinned (they are the lead package); a specialist's are not.
-    So the question "does this rule also live in a file no pin watches" is exactly "do its sources
-    name a specialist", and the two groups are separated where the document separates them.
-    """
-    legend = re.search(r"Spezialisten:(.*?)\n\n", "\n".join(_lines()), re.S)
-    assert legend, "the §3 legend no longer names the specialist shorthands"
-    names = set()
-    for group, _kit in re.findall(r"`([^`]+)`\s*\((dev|off|res)\)", legend.group(1)):
-        names |= {name for name in re.split(r"[,\s]+", group.strip()) if name}
-    assert names, "the specialist legend parsed to nothing"
-    return frozenset(names)
-
-
 def _names_a_specialist_file(sources):
     """Does this rule also live in a role file outside the lead package?
 
-    Matched as `<name>:` anywhere in the column, so a kit-prefixed source counts too — `res/re`
-    and `dev/audit` are specialist files exactly like a bare `qa:35-44`, and a reader that only
-    looked at unprefixed tokens undercounted them.
+    DERIVED, not listed. "Specialist file" used to be read off a `Spezialisten:` group in the
+    legend; it is now exactly "a source file that is not part of this kit's lead package", and
+    `_lead_package` is the same derivation `validate.py` uses for its byte budget. The question the
+    count answers — "does the parity licence permit deleting prose no section pin watches" — is a
+    question about the PIN's subject, so it is answered from the pin's own definition.
     """
-    return any(re.search(r"\b%s:" % re.escape(name), sources)
-               for name in _specialist_shorthands())
+    for pointer in parity_sources.pointers(sources):
+        for kit, path, shipped in pointer.targets() or []:
+            if shipped and path not in _lead_package(kit):
+                return True
+    return False
 
 
 def _source_kits(sources):
     """Every kit whose text the rule lives in — the licence has to hold in each of them.
 
     THE OMISSION THIS CLOSES, measured: row 14 names `dev/AGENTS` AND `res/AGENTS` as its sources,
-    its mechanism `guard_guidelines.py` ships in the dev kit only, and a licence checked against
+    its mechanism `guard_guidelines.py` shipped in the dev kit only, and a licence checked against
     "the kits that ship the file" was green while it permitted deleting the RESEARCH prose of a
-    rule the research kit does not enforce. Row 80 cites the same research lines and is marked
-    open — two contradictory licences over one paragraph.
+    rule the research kit does not enforce.
+
+    A SHORTHAND THAT RESOLVES TO NOTHING IS A TYPO IN THE COLUMN THE SHORTENING WILL EDIT.
+    Measured: row 97's sources set to `zz:30-34; yy:38-41` resolved to NO kits at all, the per-kit
+    obligation quietly became empty, and six tests stayed green.
     """
-    kits, roles, unknown = set(), _role_shorthands(), []
-    for shorthand in re.findall(r"(?:^|[;,] ?)([a-z]{2,6}(?:-sk)?)[/:]", sources):
-        direct = _kit_of_shorthand(shorthand) if len(shorthand) == 3 else None
-        if direct:
-            kits.add(direct)
-        elif roles.get(shorthand):
-            kits.update(roles[shorthand])
-        else:
-            unknown.append(shorthand)
-    # A SHORTHAND THAT RESOLVES TO NOTHING IS A TYPO IN THE COLUMN THE SHORTENING WILL EDIT.
-    # Measured: row 97's sources set to `zz:30-34; yy:38-41` resolved to NO kits at all, the
-    # per-kit obligation quietly became empty, and six tests stayed green.
+    kits, unknown = set(), []
+    for pointer in parity_sources.pointers(sources):
+        targets = pointer.targets()
+        if targets is None:
+            unknown.append(pointer.raw)
+            continue
+        kits |= {kit for kit, _path, shipped in targets if shipped}
     assert not unknown, (
-        "these source shorthands are in no legend of §3, so the rule's kits cannot be resolved: "
-        "%s (in %r)" % (", ".join(sorted(set(unknown))), sources))
+        "these source pointers name no shorthand the §3 legend maps to a file, so the rule's kits "
+        "cannot be resolved: %s (in %r)" % (", ".join(sorted(set(unknown))), sources))
     return kits
 
 
@@ -630,7 +596,10 @@ def test_every_cached_reader_can_be_dropped():
     wired autouse is not something this can prove — a test asserting an empty cache at its own
     start passes trivially when it runs first, which under `-n 8` is a coin toss.
     """
-    assert len(_CACHED_READERS) >= 8, len(_CACHED_READERS)
+    # Six today. The figure is a floor against "the decorator was dropped from all of them", not a
+    # census: it fell from eight when the two legend readers were replaced by
+    # `parity_sources.source_files`, which reads the document's shorthand->file map instead.
+    assert len(_CACHED_READERS) >= 6, len(_CACHED_READERS)
     for reader in _CACHED_READERS:
         assert hasattr(reader, "cache_clear"), reader
     _kit_dirs()
@@ -806,11 +775,14 @@ def test_the_open_mechanism_count_is_the_rows_that_are_there():
     test. Reclassifying these rows is a user decision, so what is pinned is the COUNT.
     """
     open_rows = [row[0] for row in _matrix_rows() if _is_open(_mechanism_field(row[3]))]
-    assert re.search(r"\*\*%d Zeilen tragen mindestens ein `%s %s`\*\* \(%s\)"
-                     % (len(open_rows), MECH, OPEN_TOKEN, ", ".join(open_rows)),
-                     _reading_view()), (
+    # An empty set gets no parenthesis: `(…)` with nothing in it reads like a list somebody forgot
+    # to fill, and after the 2026-08-02 round the honest sentence is that NO row still claims a
+    # mechanism it does not have. The count is what is pinned either way.
+    tail = (r" \(%s\)" % ", ".join(open_rows)) if open_rows else ""
+    assert re.search(r"\*\*%d Zeilen tragen mindestens ein `%s %s`\*\*%s"
+                     % (len(open_rows), MECH, OPEN_TOKEN, tail), _reading_view()), (
         "the prose does not say that %d rows are open, or names other rows than %s"
-        % (len(open_rows), ", ".join(open_rows)))
+        % (len(open_rows), ", ".join(open_rows) or "none"))
 
 
 def test_the_number_of_live_deletion_licences_is_stated():
@@ -1010,6 +982,25 @@ def test_every_shipped_kit_hook_has_a_registration():
     assert not dead, "these hooks ship and no registration can start them: %s" % ", ".join(dead)
 
 
+def _repo_spells(relative):
+    """Does this repo carry that path, spelled EXACTLY like that?
+
+    Segment by segment against `os.listdir` of the parent, because the question is what the tree
+    calls its files — not whether the filesystem is willing to find them under another spelling.
+    `os.path.exists` answers the second question, and on NTFS/APFS the two answers differ.
+    """
+    current = ROOT
+    for segment in relative.split("/"):
+        try:
+            names = os.listdir(current)
+        except OSError:
+            return False
+        if segment not in names:
+            return False
+        current = os.path.join(current, segment)
+    return True
+
+
 def test_every_repo_path_the_document_names_exists():
     """A path in a steering document is a promise that something is there.
 
@@ -1018,12 +1009,47 @@ def test_every_repo_path_the_document_names_exists():
     and neither `validate.py` nor the citation test saw it, because a bare path carries no symbol.
     Scope is the repo-rooted directories; a PROJECT-relative `scripts/...` is not a path in this
     repo and is deliberately not judged here.
+
+    THE READER IS CASE-EXACT, and that is the correction of 2026-08-02. It used `os.path.exists`,
+    which asks the FILESYSTEM whether it folds case — NTFS and APFS say yes, ext4 says no. So the
+    guard for this whole class was green on the two developer platforms and would have failed on
+    the `ubuntu-latest` leg of `.github/workflows/ci.yml`: measured, a document reference spelled
+    `docs/post_v2_wishlist.md` against a tree carrying `docs/POST_V2_WISHLIST.md` passed here and
+    is a dead link on every case-sensitive checkout. `_repo_spells` asks the TREE for its names
+    instead.
     """
     roots = ("tools/", "docs/", "team-kits/", "radar/", ".github/")
     missing = sorted({path for path in re.findall(r"`([A-Za-z0-9_./-]+)`", "\n".join(_lines()))
                       if path.startswith(roots) and not path.endswith("/") and "*" not in path
-                      and not os.path.exists(os.path.join(ROOT, path.replace("/", os.sep)))})
+                      and not _repo_spells(path)})
     assert not missing, "the document names paths this repo does not have: %s" % ", ".join(missing)
+
+
+def test_the_path_reader_reads_the_tree_and_not_the_filesystems_case_folding():
+    """The floor under `_repo_spells`, and it is RED on Windows without the fix.
+
+    A reader built on `os.path.exists` answers this test's first two assertions with True and True
+    on any case-folding filesystem, so the miscased spelling passes — which is exactly how a
+    lowercase `docs/post_v2_wishlist.md` reference shipped past a green local suite. Asserting the
+    behaviour of `os.path.exists` itself would be asserting the platform; what is asserted is that
+    THIS reader does not depend on it.
+
+    The subject is a file that really is in the tree, taken from the tree rather than typed, so
+    the case that is "wrong" is wrong by construction and not by a guess about the repo.
+    """
+    real = sorted(name for name in os.listdir(os.path.join(ROOT, "docs"))
+                  if name.endswith(".md") and name != name.lower())
+    assert real, "no mixed-case file under docs/ to measure with"
+    correct = "docs/" + real[0]
+    assert _repo_spells(correct), correct
+    assert not _repo_spells(correct.lower()), (
+        "%r resolved — the reader is asking the filesystem about case folding, not the tree about "
+        "its names" % correct.lower())
+    assert not _repo_spells("docs/" + real[0].upper() + "x")
+    assert not _repo_spells("tools/no_such_module.py")
+    # a directory is a name the tree carries too, and the walk must not stop at the last segment
+    assert _repo_spells("team-kits/dev-team/hooks/gate_git.py")
+    assert not _repo_spells("team-kits/DEV-TEAM/hooks/gate_git.py")
 
 
 # ================================================== TASK 2 — the sections carry what is claimed
