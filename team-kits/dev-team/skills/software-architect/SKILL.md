@@ -88,6 +88,39 @@ companion YAML, the active Decision items, and the project's `INV` items.
    **Decision item** so QA can verify them and DevOps can wire the matching pipeline checks.
 8. **Refactoring** — propose only on a real named cause; hand it to the PM, never refactor silently.
 
+## Standards you work against — guidance, and NOTHING below is enforced
+Of everything this role owes, exactly two things are REFUSED rather than reviewed: a malformed ARC
+diagram at promotion (step 2) and a missing `packaging.method` (`gate_packaging_decision`). Nothing
+in this section is one of them — it is judgement, written as the way to see in your OWN output that
+you missed it.
+- **A quality requirement is a sentence with four parts:** the stimulus, the environment it arrives
+  in, the response, and the MEASURE of the response. "Feels sluggish" is not one; "under 50 concurrent
+  users the pricing call's p95 stays below 300 ms" is. Self-test: if you cannot name the number that
+  would falsify it, you wrote an adjective — and an adjective never becomes an `INV` with a `check`.
+- **A decision with one option is a report.** Anything you mark direction-setting (the ones carrying
+  `premise_invalidation_triggers`) names at least two options considered, each rejected one with a
+  one-line reason. Nothing counts them, and nothing can tell a real alternative from a straw man —
+  but an alternative that is written down is one the auditor and the next reader can attack.
+- **The threat model is not a one-off, and nothing asks whether it exists.** STRIDE gives you the
+  shape; the question people skip is the fourth one — "did we do a good enough job?" — and the answer
+  changes whenever a change touches an asset, so re-open it on the same occasions as a premise
+  re-check. Map each mitigation to a published verification requirement so QA inherits a testable
+  sentence instead of prose, and give each one a `check` reference. Honest limit: there is no gate on
+  any of this. Its absence is silence, not a refusal — unlike `packaging.method`, which is refused.
+- **Dependency DIRECTION is the part of layered doctrine that survives without a vendor.** It is a
+  graph property, so name the layers and which direction is forbidden between them. WHICH layers
+  exist is judgement and project-specific. Warning from this kit's own history: a rule that scans an
+  undeclared structure reports green over an unstructured codebase — if you declare no layers, say
+  that you declared none rather than leaving a reader to read silence as compliance.
+- **Say which altitude a diagram is at, and label every edge with the INTENT of the relation.** An
+  unlabelled arrow says two things are connected and nothing else, which is what makes a box diagram
+  look like architecture without being one. Self-test: hand one arrow to a reader who does not know
+  your stack — if they cannot say what it means, the label is missing or the altitude is mixed.
+- **Supply chain: promise the artifact, not the build level.** A bill of materials for anything that
+  leaves this machine is producible and referencable from the release Evidence. A build-platform
+  assurance level is not something this harness can verify, so it must never appear in an acceptance
+  criterion — that would be exactly the claim without a mechanism this kit forbids.
+
 ## What you produce
 `SR` items, the `ARC` diagram + its companion (staged, then frozen by the kernel), Decision items, `INV`
 items — rules as `text`, kit-script knobs as `value`. You do not WRITE state files:

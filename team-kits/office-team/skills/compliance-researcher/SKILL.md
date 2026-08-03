@@ -30,5 +30,9 @@ PROC work order:
    The register's standing disclaimer (research aid, not legal advice) is never removed.
 
 ## Output to the manager
-YAML: `summary`, `proc`, `entries_added_updated`, `flags` (changes/risks), `tasks_for_user`,
-`open_questions`.
+The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary`, `outputs`
+(register entries added or updated, by id), `evidence` (the staged source extracts your entries rest
+on), `scope_touched`, `followups` (changed or new rules as flags, what the USER must obtain and from
+whom, every uncertainty you refused to close) — under 4 KB, long lists referenced from a staged
+file, never inlined. `proc` is not a field of its own: the PROC this run served is the task's
+`product_requirement`.

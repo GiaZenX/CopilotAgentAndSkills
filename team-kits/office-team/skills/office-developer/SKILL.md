@@ -37,5 +37,9 @@ stable API.
    data schema evolves (kit update), adapt your tools in the same PROC run and note it.
 
 ## Output to the manager
-YAML: `summary`, `proc`, `tools` (paths + purpose), `outputs` (dashboard paths), `verified`
-(what you hand-checked against which source), `open_questions`.
+The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary`, `outputs`
+(your tool paths + purpose, and the dashboard paths they render), `evidence` (what you hand-checked
+against which source — that self-verification IS your evidence, because this kit has no QA role),
+`scope_touched`, `followups` (data you did NOT fix, handed to the owning role as a finding; open
+questions) — under 4 KB, long lists referenced from a staged file, never inlined. `proc` is not a
+field of its own: the PROC this run served is the task's `product_requirement`.

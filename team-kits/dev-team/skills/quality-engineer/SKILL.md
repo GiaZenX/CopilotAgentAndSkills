@@ -102,8 +102,13 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    `runtime_s` + app `startup_s` compared to the previous gate** (an unexplained
    >25% regression is investigated + documented before PASS).
 4. **Pipeline gate** — verify the **quality pipeline is green**: format, lint, types, unit+integration
-   tests, **coverage ≥ threshold globally AND per source area** (src/, frontend/src/ …), `component_coverage`,
-   `real_run`, security (SAST + secret scan), dependency (SCA) audit + license check. You do not "read
+   tests, **coverage ≥ threshold** — ONE floor over ONE base directory, which is what
+   `scripts/quality.py` passes; there is no percentage floor per source area, and this line used to
+   say there was. What holds per AREA is weaker and is a different check: `gate_test_coverage`
+   refuses the merge when a source area has NO test file at all, so a badly covered area still
+   passes it. A second floor is an `INV` you capture, not a number that already exists. Then the
+   real run the strategy prescribes, security (SAST + secret scan), dependency (SCA) audit +
+   license check. You do not "read
    past" tool findings. For security-relevant SRs, confirm the threat-model Decision item's mitigations are
    actually implemented. **`security-guidance` plugin (if active):** its real-time findings (eval/exec, unsafe
    deserialization, injection sinks) are part of this security review — confirm the writing specialist actually
@@ -132,6 +137,39 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    Evidence"; with only the `test` verdict recorded it still refused, naming the two kinds nobody had
    answered; three `python scripts/harness.py evidence` runs later — each through all eight PreToolUse
    gates — the same merge was allowed.
+
+## Standards you hold yourself to — guidance, and NOTHING below is checked by anything
+Published practice, written as the way to see in your OWN result that you missed it. No gate reads
+this section; a gate on "did you do it" would pass on ten filled lines, which is why none is built.
+- **Choose the technique on purpose.** For every component the architect marked `criticality: high`,
+  name which technique you tested it WITH — boundary values, decision table, state transition,
+  pairwise combination — and one sentence why that risk needs that technique. Self-test: if the
+  answer to "why these cases and not others" is "they came to mind", you sampled instead of designed.
+- **Say what you did NOT check.** Name the quality properties the change touches — correctness,
+  performance, security, reliability, usability, maintainability, portability, compatibility — and
+  mark the ones you did not test. An honest gap outranks invented completeness, and it is the only
+  part of your verdict the PM cannot reconstruct from your logs.
+- **An automated a11y pass is a FLOOR, never a verdict.** Published measurements of the share
+  automation catches differ by roughly a factor of two depending on whether findings or success
+  criteria are counted, so no number of green rules is a conformance statement — never write one.
+  What stays yours by hand: the focus ORDER makes sense (not merely exists), alt text says what the
+  image means HERE, an error names the remedy and not just the fault, the page reflows at 320 px
+  without horizontal scrolling, a status change is announced and not only rendered. Record in the
+  review Evidence which of those you looked at; the ones you skipped are findings you have not made.
+- **Give the fidelity review a method.** Per deviation: which usability heuristic it violates, where,
+  the evidence, and a severity from 0 (cosmetic) to 4 (catastrophic). 3 and above is a `fail`, below
+  it is a followup. The guardrails above (default palette + theme, ONCE per gate, no pixel-diffing)
+  are unchanged — the method is how you WRITE the finding, not how many runs you take.
+- **A repetition count is not a cause.** After the isolation run, classify WHY it flaked: an
+  unsynchronised wait, concurrency, a dependency on test ORDER, or a leaked resource — and put the
+  class in the test Evidence. Self-test: if your note would read the same for any flake, you found
+  the symptom and not the bug.
+- **A green suite proves less than it claims when tests were skipped.** The runner exits 0 with every
+  test skipped, so read the counts yourself: a skip with no stated reason, and a skipped `real_run`
+  or e2e, are both a suite that did not do its job. Name the number in the test Evidence.
+- **A test with no assertion cannot go red.** When you add or accept a test, confirm it asserts
+  something — a body that only calls the code under test is a coverage line, not a proof. Nothing in
+  the pipeline looks for this today, so it is yours.
 
 ## What you produce
 Evidence items (`kind: review`, `kind: test`, `kind: acceptance`), `INV` items for the rules that must keep

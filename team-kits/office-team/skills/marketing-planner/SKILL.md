@@ -27,5 +27,9 @@ You run as the **Marketing Planner**. Procedure per PROC work order:
    defect). Copy fixes route to the product-editor.
 
 ## Output to the manager
-YAML: `summary`, `proc`, `plan_changes`, `drafts` (outbox paths), `accounts_needed`,
-`open_questions`.
+The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary`, `outputs`
+(plan changes + the `outbox/marketing-planner/` draft paths), `evidence` (the staged sources behind
+the channel choices), `scope_touched`, `followups` (accounts the user must create, claims you could
+not match against catalog or register, open questions) — under 4 KB, long lists referenced from a
+staged file, never inlined. `proc` is not a field of its own: the PROC this run served is the task's
+`product_requirement`.

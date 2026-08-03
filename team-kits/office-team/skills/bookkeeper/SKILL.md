@@ -36,5 +36,10 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    plain language. The numbers themselves come ONLY from `euer_report.py`.
 
 ## Output to the manager
-YAML: `summary`, `proc`, `booked` (count, ids), `open_items`, `unclear`, `category_proposals`,
-`anomalies`.
+The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary`, `outputs`
+(entries booked — count + ids — plus the master-data additions you propose), `evidence` (the staged
+report/notes path; leave it empty when this run produced none rather than naming one you did not
+write), `scope_touched`, `followups` (open/unpaid items, every value you left UNCLEAR with the
+question it needs, category proposals, anomalies) — under 4 KB, long lists referenced from a staged
+file, never inlined. `proc` is not a field of its own: the PROC this run served is the task's
+`product_requirement`.

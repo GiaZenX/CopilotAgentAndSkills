@@ -35,6 +35,55 @@ OrcaSlicer; or the best mobile apps. Those feel premium through **craft, not dec
   avoid; a direction the user could mistake for a Bootstrap template is a FAIL.
 Everything is concrete and exemplified (real hex, real fonts, real ms timings) so the user can *see* it.
 
+## The standards behind the bar — guidance, and NOTHING below is enforced by anything
+Published practice, written as the way to see in your OWN draft that you missed it. Where a number
+appears it is the number the standard states, not a threshold something measures.
+- **Contrast is three numbers, not a label.** 4.5:1 body text, 3:1 large text, 3:1 UI components and
+  meaningful graphics — in BOTH themes. Self-test: a token pair you never computed a ratio for is a
+  claim, not a value, and "WCAG AA" written without the numbers is the vague sentence you refuse
+  everywhere else.
+- **The accessibility decisions that cannot be retrofitted belong in Phase 0/1** — the ones that move
+  boxes instead of changing CSS: a pointer target under 24×24 CSS px without the spacing that excuses
+  it, focus that sticky chrome can cover, a drag with no single-pointer alternative, help sitting
+  somewhere different on each view, a flow that makes the user re-enter what they already gave or
+  solve a puzzle to sign in. Self-test: if fixing a finding would move something in the WIREFRAME,
+  you found it a phase too late. **The tension is real, resolve it out loud:** the density this bar
+  asks for fights the 24 px minimum — resolve it through SPACING around the target rather than by
+  shrinking it, and say in the spec which you chose.
+- **A role is a promise about the keyboard.** If a component you draw has a published authoring
+  pattern (dialog, tabs, combobox, disclosure, tree), its keyboard behaviour is already specified —
+  adopt it instead of inventing arrow-key semantics. Self-test: if you name a role and cannot say
+  what Esc, Home/End and the arrows do, no ARIA at all would beat that ARIA.
+- **A view is not designed until its non-ideal states are.** LOADING, EMPTY and ERROR per view, as
+  CSS variants of ONE markup base and never as copied blocks. Content, not just presence: an empty
+  state says what the system's state IS and offers the one path to the core task; an error names the
+  cause and the remedy in the user's words, next to where it happened; a form error repeats the
+  identical wording at the field and moves focus to a summary at the top. Self-test: any state the
+  frontend has to invent is a hole in the contract, and the invented one is what the user later calls
+  lieblos.
+- **The words are part of the contract.** A UI-TEXT TABLE inside the design revision: every label,
+  button, empty state, error, confirmation. The plain-language principle is that the reader finds,
+  understands and uses what they need — write for the reader's task, not for the layout. Self-test
+  for placeholder prose: a visible string that would fit unchanged into a DIFFERENT product names
+  nothing in this one, and that is the most recognisable mark of a generated interface.
+- **Criticise your own mockup before it freezes.** Walk the core views against the ten usability
+  heuristics and rate each finding 0 (cosmetic) to 4 (catastrophic); everything at 3 or above is
+  fixed before the freeze or recorded as a Decision item with the reason it stays. Phase 3 compares
+  the BUILD against the mockup — nobody ever examines the mockup itself unless you do it here.
+- **Two response numbers, and they are not one number.** Under ~100 ms is the perception limit and a
+  DESIGN target you hold yourself to. The field metric for interaction latency is taken at the 75th
+  percentile of real user interactions and is not observable on your machine at all — if it must
+  hold, propose it as an `INV` with a `check`, never as a sentence in the spec.
+- **Skeletons are a condition, not a rule.** The evidence is contested — one controlled study found
+  skeleton screens the WORST option for perceived wait, another found the opposite but slower content
+  discovery on a first visit. Use one only when the layout is known in advance, the placeholders are
+  content-shaped and the motion is slow and even; otherwise a determinate progress indicator.
+- **Say what it must NOT look like.** Before the directions, write the anti-references (which
+  products and which defaults this must not resemble) and the tone in one sentence. Without them
+  every new scope restarts at the model's default — which the published analyses of interface
+  homogenisation name as its strongest single cause. Self-test: a direction you could hand to a
+  different product unchanged has no anchor.
+
 ## Read first
 The `PR` item (its acceptance criteria and `invariants`), the `SR` items it spawned, the active `ARC`
 diagram, the frozen wireframe and design revision its `design_refs` name, the `INV` items that bind design

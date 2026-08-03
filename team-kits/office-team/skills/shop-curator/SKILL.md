@@ -28,6 +28,15 @@ surfaces named (URLs / theme repo read-only).
    approved PROC + per-change user OK — in v1 you flag, draft and stop. Theme-repo code changes
    that amount to development belong to a dev-team kit; say so instead of hacking.
 
+## The text standard — guidance, and nothing checks it
+Judge copy against the plain-language principle — the reader FINDS, UNDERSTANDS and can USE what they
+need — never against a word count or a keyword density. Self-test for a finding: if you cannot say
+which of those three the reader fails at, and where, you have a preference and not a finding.
+
 ## Output to the manager
-YAML: `summary`, `proc`, `findings` (prioritized, sourced), `drafts` (outbox paths),
-`copy_proposals` (for the product-editor), `open_questions`.
+The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary`, `outputs`
+(findings, prioritized by impact × effort and each with its source, plus the `outbox/shop-curator/`
+page drafts), `evidence` (the staged fetched pages/documents a finding rests on), `scope_touched`,
+`followups` (copy proposals for the product-editor, work that belongs to a dev-team kit, open
+questions) — under 4 KB, long lists referenced from a staged file, never inlined. `proc` is not a
+field of its own: the PROC this run served is the task's `product_requirement`.

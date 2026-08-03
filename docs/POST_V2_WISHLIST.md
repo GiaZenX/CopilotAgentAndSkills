@@ -83,6 +83,111 @@ Inhaltlich bleibt es beim Apache-2.0-Skill `anthropics/skills` → `frontend-des
 Klischee-Kalibrierung mit Hex-Werten, Selbsttest-Verfahren, UI-Text-Abschnitt). Das Produkt liefert
 keinen lizenzfrei verwendbaren Text.
 
+### 1c. Was als ANLEITUNG eingebaut wurde — und welche Gates dabei bewusst nicht entstanden (2026-08-03)
+
+Die Trennlinie oben ist in dieser Runde **einseitig** aufgelöst worden: die Standards sind als
+Verfahren in die betroffenen Spezialisten-SKILLs gewandert, **kein einziges neues Gate**. Der Grund
+ist Erfahrung und keine Aufwandsschätzung — ein Gate, das im selben Paket entsteht wie der Text, den
+es prüfen soll, wird gegen den Text gebaut statt gegen die Regel.
+
+**Wo die Anleitung gelandet ist** (alle ausserhalb des Lead-Pakets, die Ratsche in
+`tools/lead_package_sizes.json` blieb also unberührt): unter
+`team-kits/dev-team/skills/` die Rollen `product-designer`, `frontend-developer`,
+`backend-developer`, `software-architect` und `quality-engineer`, je ein Abschnitt
+„Standards … — guidance, and NOTHING below is enforced"; dazu die zwei
+Textrollen des Office-Kits (`product-editor`, `shop-curator`), die die Recherche selbst als
+einschlägig für den Klartext-Grundsatz vermerkt hatte. Jede Zeile ist als **Selbsttest am eigenen
+Ergebnis** formuliert, nicht als Standardname.
+
+**Eine Ehrlichkeitsschuld ist dabei mitbezahlt worden** (X1 der Synthese, gemessen):
+`quality-engineer/SKILL.md` behauptete „coverage ≥ threshold globally AND per source area".
+`templates/repo/scripts/quality.py` baut in `check_python` genau **einen** `--cov=`-Sockel und
+**ein** `--cov-fail-under=`; `gate_test_coverage` prüft je Bereich nur, ob es dort überhaupt eine
+Testdatei gibt. Der Satz ist korrigiert und durch
+`tools/test_role_contracts.py::test_the_qa_coverage_claim_matches_what_quality_py_measures` gepinnt.
+Im selben Satz stand `component_coverage` — ein Name, den im ganzen Baum nichts erzeugt; er ist raus.
+
+**Die mechanisch prüfbaren Hälften, eine Zeile je Kandidat, NICHT gebaut.** Die Nummern sind die der
+Synthese (`docs/research/2026-07-27-SYNTHESE.md`, §1), wo Fehlerbild und Aufwand ausformuliert
+stehen; hier steht nur, was die neue SKILL-Zeile offen lässt:
+
+- **C1/C2/C3** — axe-Lauf, Tastaturpfad und `prefers-reduced-motion`/`:focus-visible`-Präsenz im
+  bereits gebooteten `browser_smoke()`. Die QA-Zeile sagt heute „ein grüner Automatenlauf ist ein
+  Boden"; den Boden selbst gibt es nicht. Bedingung für den Bau: der Gate-Text darf nie
+  „barrierefrei" melden, sondern nur „automatisch prüfbarer Anteil bestanden".
+- **B2/B3** — Farbliterale ausserhalb genau einer Token-Datei, auf der gestagten DSN und im Build.
+  Die Frontend-Zeile lässt es beim `grep` auf den eigenen Diff; ein Walker (`_frontend_sources()`)
+  existiert bereits.
+- **B2b** — Theme-Parität: die Tokennamensmengen unter `:root` und `[data-theme="dark"]` müssen
+  gleich sein. Fängt den halbfertigen Dark Mode, den keine SKILL-Zeile fängt.
+- **B4** — Präsenz der Zustandsvarianten je `data-view`. Die Designer-Zeile verlangt sie; dass sie da
+  sind, ist zählbar, ob sie gut sind, nicht.
+- **B5** — Platzhalter in sichtbaren Textknoten. **Warnung an den Erbauer:** die Recherche schlägt
+  eine Wortliste vor, und eine Wortliste ist genau die Aufzählung, an der dieses Repo wiederholt
+  bezahlt hat. Die SKILL-Zeile ist deshalb als Eigenschaft formuliert („ein sichtbarer String, der
+  unverändert in ein ANDERES Produkt passt"). Wer das Gate baut, muss diese Eigenschaft
+  mechanisieren oder die Liste als das benennen, was sie ist.
+- **B6** — die Richtungen müssen sich auf mindestens einer deklarierten Achse unterscheiden.
+- **D1** — `INV.check.ref` im State-Validator auflösen. **Der Multiplikator:** danach sind F4, F10
+  und die INP-/SLO-Zeilen, die jetzt in drei SKILLs stehen, ohne neuen Gate-Code prüfbar. Solange er
+  fehlt, sagen backend- und QA-SKILL ausdrücklich, dass ein fehlender Test bis zur QA unsichtbar
+  bleibt.
+- **D2** — assertionsfreie Tests per AST-Walk (nicht per Textsuche). Die QA-Zeile sagt heute „nichts
+  in der Pipeline sucht danach".
+- **D3** — Skip-/xfail-Buchhaltung aus `--junitxml`. Die QA-Zeile verlangt, die Zahl zu nennen; sie
+  zu erzwingen wäre der Gate.
+- **D4/D5** — der stille Frontend-Coverage-Fallback ohne `--coverage`, und Diff-Coverage gegen die
+  Merge-Base statt eines höheren globalen Prozentsatzes. Nach der Korrektur oben ist D4 die einzige
+  Stelle, an der die Pipeline heute noch grün meldet, was sie nicht gemessen hat.
+- **A1/A2/A3/A4** — OpenAPI-Existenz und -Bindung an `SR.contract`, `application/problem+json` auf
+  den deklarierten Fehlerantworten, Breaking-Change gegen die Merge-Base, `contract.kind` als
+  geschlossenes Vokabular. Die Backend-Zeile prüft heute nur das Urteil („eine Route, die du
+  aufrufen und im Dokument nicht finden kannst, ist Drift").
+- **F9** — der Cross-Tenant-Negativtest je Operation mit Pfadparameter und `security`. Das ist die
+  Fehlerklasse, die SAST strukturell nicht findet, und sie ist aus einem OpenAPI-Dokument
+  vollständig aufzählbar — also erst nach A1.
+- **F1/F2/F3/F6/F7** — `options_considered` ≥ 2 an richtungsgebenden Decisions, `arc_companion.scope`
+  als C4-Vokabular plus beschriftete Kanten, `gate_threat_model` als Klon von
+  `gate_packaging_decision`, `ARC.derives_from` nicht auf `SUPERSEDED`, SBOM bei verteiltem Artefakt.
+  Von diesen ist F3 der einzige, dessen Fehlen die Architektur-SKILL heute ausdrücklich benennt.
+- **F12/D8** — Migrationsform (Modelländerung ohne nummerierte Migration; `DROP`/`RENAME` ohne
+  CR/DEC) und mindestens ein Test gegen die echte Engine bei deklariertem DB-Stack. D8 kostet Docker
+  und muss dann **fehlschlagen** statt zu überspringen — sonst widerspricht er der QA-Regel, die er
+  stützen soll.
+
+**Was bewusst NICHT angefasst wurde, mit Grund:**
+
+- **Die Lead-SKILLs und die Verfassungen.** Kein Standard aus der Recherche zwingt dorthin: die
+  PM-Zeilen der Synthese (G3-Deutung, H1/H2, I3) hängen an Board, Meilensteinen und Mindmap — also an
+  Abschnitt 2/3 dieser Liste, nicht an einem Standard. Damit blieb die Grössen-Ratsche unberührt und
+  es war kein Nachziehen der Sektionspins nötig.
+- **`research-team`.** Die Wunschliste nennt oben FAIR-Prinzipien, Datenversionierung und
+  Reproduzierbarkeitspfade — **`docs/research/` deckt sie nicht ab.** Die zwölf Dateien dort sind
+  sechs Rollenberichte (alle dev), vier Themenberichte und zwei Synthesen; keiner behandelt eine
+  Research-Rolle. Etwas für `researcher`/`data-analyst`/`methodologist` zu schreiben hiesse hier
+  erfinden, und die Anweisung war, es von dort zu nehmen. **Offen und benannt: eine
+  Research-Rollenrecherche fehlt.**
+- **Ein Präsenz-Gate auf „heuristische Evaluation durchgeführt".** Ausdrücklich nicht — sein Bestehen
+  sagt nichts, und das verletzt die Hausregel in der zweiten Richtung.
+
+**Zwei Baumbefunde derselben Runde, gemessen:**
+
+- **Fünf der sechs Rollenberichte liegen unter dem falschen Rollennamen.** Gemessen an der ersten
+  Zeile jeder Datei: `…-product-designer.md` analysiert `frontend-developer`,
+  `…-frontend-developer.md` den `software-architect`, `…-software-architect.md` den
+  `quality-engineer`, `…-quality-engineer.md` den `project-manager`, `…-project-manager.md` die
+  `product-designer`. Nur `…-backend-developer.md` passt zu seinem Namen. Nicht umbenannt — die
+  Dateien sind Belege, und ein `git mv` an Belegen ist eine Entscheidung des Users; wer sie liest,
+  liest die Kopfzeile.
+- **Spezialisten-SKILLs stehen unter KEINEM Sektionspin.** `test_shortening_net._pinned_files`
+  bewacht Verfassung, Lead-Agentendatei, Lead-SKILL und `hooks/ENFORCEMENT.md` — die
+  Spezialisten-SKILLs sind ausdrücklich draussen, und derselbe Modul-Docstring hält fest, dass ein
+  gelöschter Satz aus `skills/backend-developer/SKILL.md` bei grüner Suite gemessen wurde. Der neue
+  Anleitungstext ist damit **löschbar, ohne dass etwas rot wird**. `tools/test_role_contracts.py`
+  pinnt nur den Ausgabekontrakt und die Coverage-Aussage, nicht die Standardabschnitte. Kandidat,
+  bewusst hier statt gebaut: den Pin auf die Spezialisten-SKILLs ausdehnen — das ist eine
+  Entscheidung über Kürzungsfreiheit, keine Textarbeit.
+
 ## 2. Board- und Backlog-Ansichten
 
 Der V2-Zustand ist erstmals die richtige Datengrundlage dafür: ein Vorgang = eine Datei, typisiert,
