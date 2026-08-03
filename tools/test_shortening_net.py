@@ -75,6 +75,7 @@ import tempfile
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import conftest                                                # noqa: E402
 import lead_package                                            # noqa: E402
 import parity_sources                                          # noqa: E402
 from test_disposition import _cells, _resolve_file, _symbols   # noqa: E402
@@ -1090,23 +1091,11 @@ def test_every_shipped_kit_hook_has_a_registration():
     assert not dead, "these hooks ship and no registration can start them: %s" % ", ".join(dead)
 
 
-def _repo_spells(relative):
-    """Does this repo carry that path, spelled EXACTLY like that?
-
-    Segment by segment against `os.listdir` of the parent, because the question is what the tree
-    calls its files — not whether the filesystem is willing to find them under another spelling.
-    `os.path.exists` answers the second question, and on NTFS/APFS the two answers differ.
-    """
-    current = ROOT
-    for segment in relative.split("/"):
-        try:
-            names = os.listdir(current)
-        except OSError:
-            return False
-        if segment not in names:
-            return False
-        current = os.path.join(current, segment)
-    return True
+# The case-exact tree reader lives in `conftest.py`: the entry-gate sweep in `test_hooks.py` asks
+# the same question of the two global instruction files, and two copies of "what does this tree call
+# its files" would drift the way every other duplicated reader in this repo has. The floor test
+# below is unchanged and still measures the reader it names.
+_repo_spells = conftest.repo_spells
 
 
 def test_every_repo_path_the_document_names_exists():

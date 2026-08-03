@@ -37,14 +37,20 @@ opening safe.
 FAIL-CLOSED, including on an empty plan: with no readable rule there is no truth to file against,
 and "no plan yet" is precisely when a mis-filing is cheapest to make and dearest to undo.
 
-LOCKSTEP DEPENDENCY, so this is not re-diagnosed as "gate too strict": the shipped
-`filing_plan.yaml` template carries `rules: []`, so a fresh office project blocks on its FIRST
-filing, and the remedy below is not yet walkable — `gate_write_scope` refuses tool writes into
-`project_memory/**`, and no entry-point command writes the plan. The plan is CONFIG (like
-`project_config.yaml` and `product/masterplan.md`), not canonical item state, and the open
-Phase-2 item is which of the two ways it becomes writable again: the write-scope gate exempting
-the non-item files, or the kernel getting a write path for them. The block itself is correct — an
-unverifiable filing in a business archive is what this gate exists for.
+WHERE THE PLAN COMES FROM, since the shipped template carries `rules: []` and this gate fails
+closed on that — a fresh office project blocks on its FIRST filing. The plan is a kit DOCUMENT
+(`kernel.layout.is_project_document`, like `project_config.yaml` and `product/masterplan.md`), not
+canonical item state: no kernel path builder can name it, so no kernel command writes it, and
+`gate_write_scope` refuses every tool write to it and says exactly that. That leaves ONE session in
+a project's life in which it can be written — the global entry gate's, which runs before the kit is
+installed; `user/claude/CLAUDE.md` and `user/codex/AGENTS.md` are told to fill it there from the
+confirmed onboarding answers, and `tools/test_hooks.py` DERIVES that obligation from this gate
+rather than from a list, so a document a gate blocks on can no longer be left out of them.
+
+WHAT THAT DOES NOT FIX, named rather than left to be re-diagnosed as "gate too strict": a project
+that was already installed with an empty plan. Nothing inside a session repairs it — the refusal
+below is honest about that and points at the user, not at a command. The block itself is correct in
+both cases; an unverifiable filing in a business archive is what this gate exists for.
 """
 import os
 import sys
@@ -287,9 +293,13 @@ def check(root, cwd, targets):
             "(spec II.9); without it a filing cannot be verified, and an unverifiable filing in a "
             "business archive is the failure this gate exists for."
             % ("/, ".join(directories) + "/", reason),
-            remedy="have the records-clerk propose %s rules (id, path_template, document_types, "
-                   "filename_template, required_metadata, collision_policy, retention) and get "
-                   "the user's approval before filing anything." % PLAN)
+            remedy="propose the missing %s rules to the USER and stop there. The plan is a kit "
+                   "document inside the write-locked state directory: no tool write reaches it "
+                   "and no kernel command writes it (gate_write_scope refuses it with that "
+                   "reason), so it is filled by the entry gate before the kit is installed, or "
+                   "by the user in an editor outside this session. Name the rules concretely — "
+                   "the fields one carries are stated in the plan's own header — and file "
+                   "nothing until the file the user saves has them." % PLAN)
     unmatched = [d for d in directories
                  if not any(rule_matches(r.get("path_template"), d) for r in found)]
     if unmatched:
@@ -299,8 +309,9 @@ def check(root, cwd, targets):
             "where it is, do not rename it, do not enter it anywhere."
             % (PLAN, ", ".join(sorted(unmatched))),
             remedy="ask the user with a CONCRETE proposal — either the existing rule this "
-                   "document belongs under, or a new rule for it — and file only after the plan "
-                   "has been amended and approved. Inventing a folder is how an Aktenplan stops "
+                   "document belongs under, or a new rule for it — and file only after the user "
+                   "has saved the amended plan themselves; this session cannot write it (see the "
+                   "refusal above for why). Inventing a folder is how an Aktenplan stops "
                    "describing the archive.")
 
 

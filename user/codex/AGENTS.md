@@ -200,8 +200,9 @@ the confirmed bootstrap draft, using the schemas shipped by the selected kit:
    including recommendations and the existing-state assessment where applicable. It is frozen discovery
    prose and carries no status. Finish it here, not later: after the install `gate_write_scope` refuses
    every tool write under `project_memory/` and the kernel captures typed items only, so no writer for this
-   file exists any more, while `gate_memory_complete` blocks every merge as long as it still reads like the
-   template. A half-filled masterplan is a dead end, not a draft.
+   file exists any more. In `dev-team` and `research-team` `gate_memory_complete` blocks every merge on top
+   of that, for as long as the file still reads like the template. A half-filled masterplan is a dead end
+   in every kit, not a draft.
 2. Seed the kit-specific handover artifact:
    - a kit listed in `ROOT_TYPE_BY_KIT`: write **one DRAFT root item** numbered `-0001`, holding the
      confirmed wish/research goal and objective acceptance criteria (for a dev project that is
@@ -214,15 +215,21 @@ the confirmed bootstrap draft, using the schemas shipped by the selected kit:
      kernel and no gate is reachable before the scaffold, so this is the one item a hand writes, and after
      the install the lead's state validator reads it against that same contract.
    - a kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none. `office-team` is that
-     case: fill `project_memory/business_profile.yaml` from the explicitly confirmed onboarding answers
-     instead. Do not create or approve a `PROC` (`procedures/active/PROC-nnnn.yaml`) here; the Office
-     Manager does that with the user after handover.
+     case: fill `project_memory/business_profile.yaml` AND `project_memory/filing_plan.yaml` from the
+     explicitly confirmed onboarding answers instead. The filing plan is the one that is easiest to skip
+     and the only one of them whose absence stops the kit's core workflow: it ships with an empty rule list,
+     `gate_filing` fails closed on that, so the FIRST document the office kit ever files is refused — and
+     it is a kit document like the masterplan, so after the install nothing writes it either. Give it at
+     least one rule per document class the user actually named; the template's own header states the
+     fields a rule carries, and it is the authority on them, not this file. Do not create or approve a
+     `PROC` (`procedures/active/PROC-nnnn.yaml`) here; the Office Manager does that with the user after
+     handover.
 3. In `project_memory/project_config.yaml`, set the confirmed `project.name` and `project.preset`.
    Where the schema contains `project.repo_mode`, set it to `greenfield` or `onboarded` from step 2. Fill
    the rest of the config for the same reason as the masterplan: nothing writes it after the install, and
-   `gate_memory_complete` blocks every merge while it is unfilled. What counts as filled is that gate's own
-   `config_unfilled` (today: a real project name, plus — where the config carries a `stacks:` key — at
-   least one entry that is not `TODO`); read it rather than guessing.
+   in `dev-team` and `research-team` `gate_memory_complete` blocks every merge while it is unfilled. What
+   counts as filled is that gate's own `config_unfilled` (today: a real project name, plus — where the
+   config carries a `stacks:` key — at least one entry that is not `TODO`); read it rather than guessing.
 4. Set `providers: [claude, codex]` (the only supported providers; a legacy `copilot` entry must
    be removed). In this architecture `claude` names the mandatory shared
    source layer from which all provider artifacts are generated; it does **not** require the Claude

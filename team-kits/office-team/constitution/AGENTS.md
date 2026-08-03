@@ -143,8 +143,8 @@ Every user-question tool call is preceded by prose: Claude uses `AskUserQuestion
 | # | Phase | Result |
 |---|---|---|
 | 0 | READ + BOOTSTRAP | session brief read, startup gate, nags handled |
-| 1 | ONBOARDING interview | `business_profile.yaml` + `product/masterplan.md` (goals, jurisdictions, account type, sensitive-data choice) |
-| 2 | FILING PLAN | records-clerk proposes `filing_plan.yaml` (incl. retention per node); user approves. The proposal is all that works today — writing the plan needs a command the entry point's surface does not have (§0), which also means `gate_filing`'s own remedy ("have the records-clerk propose filing_plan.yaml rules") cannot be followed |
+| 1 | ONBOARDING interview | `business_profile.yaml` + `product/masterplan.md` (goals, jurisdictions, account type, sensitive-data choice) — written by the entry gate before the install; here you read them and report what is missing (§0) |
+| 2 | FILING PLAN | `filing_plan.yaml` likewise. The records-clerk PROPOSES amendments and the user saves them outside the session; nothing in a session writes the plan (§0), and `gate_filing` refuses any filing the saved plan does not cover |
 | 3 | MIGRATION (if existing data) | dry-run report first (what moves where) → user OK → move + manifest; NEVER delete |
 | 4 | PROC DEFINITION | you capture `PROC-nnnn` (`DRAFT`) per automation wish; `request-approval scope PROC-nnnn`, and the user's answer mints the approval, walks it to `APPROVED` and stamps `approved_hash` in one step (§1). Until one PROC gets there, `gate_proc_approved` refuses every specialist spawn |
 | 5 | ROUTINE | inbox sweeps + report runs per approved PROCs; exceptions → questions |

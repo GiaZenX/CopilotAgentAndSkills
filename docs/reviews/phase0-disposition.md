@@ -1149,6 +1149,8 @@ nicht gelesen.
 - 2026-08-03 · research-team · `agents/project-manager.md` · §What you are and are not — **CHANGED** · verankert keinen registrierten Hook · Grund: Entdopplungsrunde 2026-08-03: doppelt geladene Klauseln aus den Lead-Agent-Dateien entfernt (Gewinner jeweils die Verfassung, ausser wo die Paritaetsmatrix die Agent-Datei als Quelle nennt); research §5a.8 nannte einen Dashboard-Generator, den das Kit nicht ausliefert
 - 2026-08-03 · research-team · `agents/project-manager.md` · §Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step) — **CHANGED** · verankert keinen registrierten Hook · Grund: Entdopplungsrunde 2026-08-03: doppelt geladene Klauseln aus den Lead-Agent-Dateien entfernt (Gewinner jeweils die Verfassung, ausser wo die Paritaetsmatrix die Agent-Datei als Quelle nennt); research §5a.8 nannte einen Dashboard-Generator, den das Kit nicht ausliefert
 - 2026-08-03 · research-team · `constitution/AGENTS.md` · §5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them — **CHANGED** · verankert guard_question_context · Grund: Entdopplungsrunde 2026-08-03: doppelt geladene Klauseln aus den Lead-Agent-Dateien entfernt (Gewinner jeweils die Verfassung, ausser wo die Paritaetsmatrix die Agent-Datei als Quelle nennt); research §5a.8 nannte einen Dashboard-Generator, den das Kit nicht ausliefert
+
+- 2026-08-03 · office-team · `constitution/AGENTS.md` · §4. Phase model — **CHANGED** · verankert gate_filing, gate_proc_approved · Grund: Phase rows 1-2: the two files are written by the global entry gate before the install, and row 2 stopped quoting gate_filing's remedy, which this round rewrote (the quoted route was one gate_write_scope refuses).
 ## 10. Lead-Paket-Grössenjournal (append-only)
 
 Jede übernommene Änderung der Lead-Paket-Grösse, eine Zeile pro Kit, geschrieben von
@@ -1161,3 +1163,5 @@ gerade entfernten. Wer eine Grenze anhebt, schreibt hier hin, wofür.
 - 2026-08-03 · dev-team · **NEW** 0 B → 30183 B (+30183) · Grund: erste Aufzeichnung: die feste Grenze 25 600 B faellt (Spec II.5), der Rekord ist ab jetzt die Messung nach der Entdopplungsrunde 2026-08-03
 - 2026-08-03 · office-team · **NEW** 0 B → 31303 B (+31303) · Grund: erste Aufzeichnung: die feste Grenze 25 600 B faellt (Spec II.5), der Rekord ist ab jetzt die Messung nach der Entdopplungsrunde 2026-08-03
 - 2026-08-03 · research-team · **NEW** 0 B → 34270 B (+34270) · Grund: erste Aufzeichnung: die feste Grenze 25 600 B faellt (Spec II.5), der Rekord ist ab jetzt die Messung nach der Entdopplungsrunde 2026-08-03
+
+- 2026-08-03 · office-team · **SHRANK** 31303 B → 31301 B (-2) · Grund: office constitution phase rows 1-2: the two onboarding files and the filing plan are written by the entry gate before the install, and row 2 no longer quotes gate_filing's remedy.

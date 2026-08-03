@@ -127,6 +127,31 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM_KITS = os.path.join(ROOT, "team-kits")
 
 
+def repo_spells(relative, root=None):
+    """Does this repo carry that path, spelled EXACTLY like that?
+
+    Segment by segment against `os.listdir` of the parent, because the question is what the tree
+    calls its files — not whether the filesystem is willing to find them under another spelling.
+    `os.path.exists` answers the second question, and on NTFS/APFS the two answers differ, so a
+    dead reference stays green on both developer platforms and breaks the `ubuntu-latest` leg.
+
+    HERE rather than in one test module because a second module needed the same question: the
+    document sweep in `test_shortening_net.py` asks it of the disposition, and the entry-gate sweep
+    in `test_hooks.py` asks it of the two global instruction files. Two copies of "what does the
+    tree call this" is the drift this file exists to prevent.
+    """
+    current = root or ROOT
+    for segment in str(relative).replace("\\", "/").split("/"):
+        try:
+            names = os.listdir(current)
+        except OSError:
+            return False
+        if segment not in names:
+            return False
+        current = os.path.join(current, segment)
+    return True
+
+
 def mint_via_hook(state, request, answer=None, expect_success=True):
     """Mint an approval through the REAL PostToolUse hook — the only caller the kernel accepts.
 

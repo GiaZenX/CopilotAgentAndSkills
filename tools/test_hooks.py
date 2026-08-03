@@ -27,6 +27,9 @@ import conftest
 from conftest import load_kit_module
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Aliased rather than recomputed: `conftest.repo_spells` resolves against `conftest.ROOT`, and two
+# module constants for one directory is the drift `conftest` exists to prevent.
+TEAM_KITS = conftest.TEAM_KITS
 HOOKS = os.path.join(ROOT, "team-kits", "dev-team", "hooks")
 RESEARCH_HOOKS = os.path.join(ROOT, "team-kits", "research-team", "hooks")
 OFFICE_HOOKS = os.path.join(ROOT, "team-kits", "office-team", "hooks")
@@ -4793,6 +4796,413 @@ def test_entry_gates_name_only_state_files_some_kit_ships():
         assert os.path.isfile(path), "%s is the installed entry gate and must exist" % rel
         with open(path, encoding="utf-8", errors="ignore") as fh:
             _assert_state_claims(rel, fh.read(), *union, exempt_names=_exempt_names((ANY,)))
+
+
+# ---- ...and the entry gate against the KITS it installs ------------------------------------------
+# Three questions about the same two files, none of which anything asked before this round. The
+# defect that prompted them was measured outside this repo: the `~/.claude/CLAUDE.md` INSTALLED on a
+# developer machine predated the state move and still sent the initializer to the masterplan's V1
+# home, the state ROOT — a place V2 has nothing at and no writer for. (Written out rather than
+# spelled, because this file is itself swept by `test_nothing_shipped_still_spells_a_v1_monolith
+# _path` below, and the spelling is the offence it reports.) The shipped source was already
+# correct — but nothing here could have said so, because the two checks that read these
+# files judge STATE paths (above) and the harness entry point (`test_every_command_a_role_is_handed
+# _is_on_the_entry_points_surface`), and the entry gate reaches past both: it runs BEFORE a kit
+# exists, out of the shared staging tree, and it is the only text in this repo that speaks about
+# every kit at once while naming things only some of them have.
+
+
+def _entry_gate_texts():
+    """(where, text) for the two global instruction files, read whole."""
+    for rel in ENTRY_GATE_FILES:
+        path = os.path.join(ROOT, rel)
+        assert os.path.isfile(path), "%s is an installed entry gate and must exist" % rel
+        with open(path, encoding="utf-8") as fh:
+            yield rel.replace(os.sep, "/"), fh.read()
+
+
+# A path token, over text whose separators have been NORMALISED first. Both spellings of every
+# bootstrap command ship in these files — `$HOME/.claude/team-kits/...` beside
+# `$env:USERPROFILE\.claude\team-kits\...` — so a reader that knows only one of them judges half the
+# document and reports the other half as absent. Folding the separator before tokenising is one rule
+# for both platforms; putting a backslash inside the character class instead is what the first cut
+# did, and the class silently swallowed its own `]` (measured: the reader then matched every word in
+# the file and found neither `.ps1` line).
+_STAGED_TOKEN_RX = re.compile(r"[A-Za-z0-9_.$:~{}<>*/-]*/[A-Za-z0-9_.$:~{}<>*/-]*")
+
+
+def _staged_path_claims(text):
+    """(token, repo-relative path) for every place inside the STAGED KIT TREE that `text` names.
+
+    THE ANCHOR IS THE TREE'S OWN DIRECTORY NAME, taken from `TEAM_KITS` rather than typed: the
+    staging directory an entry gate reads from carries the same name as the directory this repo
+    ships, so the segment is what identifies a path as one of ours, and everything after it is the
+    part this repo can be asked about. Two forms are anchored, and they are one rule seen from two
+    ends — a token that CONTAINS the segment (`~/.claude/team-kits/registry.yaml`,
+    `$env:USERPROFILE\\.claude\\team-kits\\scaffold_team.ps1`) and a token that STARTS with a name
+    the staged tree has at its top (`kernel/state.py`), which is how these files write a path they
+    have already anchored a sentence earlier.
+
+    WHAT IS DELIBERATELY NOT JUDGED, so nobody reads more into the green:
+      * the PREFIX in front of the segment. Whether the installer puts the tree at `~/.claude/` is
+        the installers' business and is measured where they are actually run
+        (`_project_the_installers_produce` in this module); here it is not even parsed.
+      * everything under the state directory — that is the subject of
+        `test_entry_gates_name_only_state_files_some_kit_ships`, which judges it against the kit
+        templates instead of against this repo's own layout.
+      * the project-local layer a scaffold produces (`./.claude/`, `./.codex/`, `./AGENTS.md`) and
+        the kernel's `generated/` rollups: none of them exists in a tree, so a tree is the wrong
+        authority to ask.
+      * a token carrying a `<placeholder>` or a `*`: everything below it is unknowable.
+    """
+    staged = os.path.basename(TEAM_KITS)
+    # Machinery, not a place a document sends anyone — the same exclusion `kernel.layout` makes for
+    # a dotted segment, plus `__pycache__`, whose mere presence would otherwise make this reader
+    # behave differently on a tree somebody has run tests in.
+    tops = {name for name in os.listdir(TEAM_KITS) if not name.startswith((".", "_"))}
+    folded = {name.lower(): name for name in tops}
+    for match in _STAGED_TOKEN_RX.finditer(text.replace("\\", "/")):
+        token = match.group(0).strip("/")
+        if not token or "<" in token or "*" in token:
+            continue
+        segments = [s for s in token.split("/") if s and s not in (".", "..")]
+        if staged in segments:
+            rest = segments[segments.index(staged) + 1:]
+        elif segments and len(segments) > 1 and segments[0].lower() in folded:
+            # ANCHORED CASE-INSENSITIVELY AND JUDGED CASE-EXACTLY, which is not the same thing said
+            # twice. This form is recognised BY its first segment, so matching that segment exactly
+            # would let a miscased one un-anchor itself and leave the whole token unjudged —
+            # measured with `Kernel/state.py` planted in a copy of the Claude gate: no finding at
+            # all, while the same typo behind the full `~/.claude/team-kits/` prefix was caught.
+            rest = segments
+        else:
+            continue
+        yield token, "/".join([staged] + rest)
+
+
+def test_every_staged_path_an_entry_gate_names_is_in_the_tree():
+    """A path in the entry gate is a promise that the initializer will find something there.
+
+    It is a promise with no second chance: these lines run before any kit is installed, so a
+    mis-spelled kernel module or a renamed bootstrap script is not a failing command a role can
+    retry — it is the step that creates `project_memory/` not happening, in the one session that
+    could still have written the files nothing writes afterwards.
+
+    CASE-EXACT, through `conftest.repo_spells`, and that is not decoration on Windows: this repo's
+    CI runs an `ubuntu-latest` leg, and `os.path.exists` asks the FILESYSTEM whether it folds case
+    rather than the tree what it calls its files. The same substitution let a lowercase reference
+    ship green once already (see the reader's own floor test in `tools/test_shortening_net.py`).
+    """
+    missing, seen = [], 0
+    for where, text in _entry_gate_texts():
+        for token, path in _staged_path_claims(text):
+            seen += 1
+            if not conftest.repo_spells(path):
+                missing.append("%s: `%s` -> %s" % (where, token, path))
+    # A floor. Each gate spells the two bootstrap scripts twice (one per platform), the registry
+    # and two kernel modules; a reader that stopped anchoring would make the loop above vacuous.
+    assert seen >= 12, (
+        "only %d staged-tree paths found across the entry gates — the reader stopped anchoring, "
+        "and an empty subject is how this check passes over a dead reference" % seen)
+    assert not missing, (
+        "these entry-gate paths name nothing this repo ships at that spelling — the initializer "
+        "would be sent to a file that is not there, in the one session that can still write the "
+        "project's un-writable files:\n  " + "\n  ".join(sorted(set(missing))))
+
+
+def test_the_staged_path_reader_reads_both_platform_spellings_and_nothing_else(tmp_path):
+    """The floor under `_staged_path_claims`, over a probe carrying every form and every control.
+
+    Without it the reader's claims rest on the shipped text agreeing with them by accident. Both
+    directions are asserted, because the cheap ways to be green here are opposite: a reader that
+    anchors nothing finds no defect ever, and one that anchors everything would demand a tree entry
+    for `./.codex/hooks.json`, which no tree has and no scaffold has produced yet.
+
+    The subject is taken from the tree (the first top-level name in the staged directory), so the
+    probe cannot drift away from what it is a probe of.
+    """
+    staged = os.path.basename(TEAM_KITS)
+    # The SAME filtered set the reader anchors on, not a raw listing: a tree somebody has run tests
+    # in carries `__pycache__`, which sorts first and which the reader deliberately ignores — a
+    # probe built on it would fail for a reason that has nothing to do with the reader.
+    top = sorted(name for name in os.listdir(TEAM_KITS) if not name.startswith((".", "_")))[0]
+    probe = "\n".join([
+        "read `~/.claude/%s/registry.yaml` first" % staged,
+        'run `bash "$HOME/.claude/%s/scaffold_team.sh" <key>`' % staged,
+        'or `powershell -File "$env:USERPROFILE\\.claude\\%s\\scaffold_team.ps1"`' % staged,
+        "the fields live in `%s/nothing_here.py`" % top,
+        # ...and the same form MISCASED, which must still be anchored so it can be judged
+        "or in `%s/nothing_here.py`" % top.upper(),
+        # controls: none of these names a place in the staged tree
+        "the state file is `project_memory/product/masterplan.md`",
+        "the scaffold writes `./.codex/hooks.json` and `./AGENTS.md`",
+        "the rollup is `generated/index.yaml`",
+        "a placeholder path `~/.claude/%s/<kit>/presets.yaml`" % staged,
+        "a glob `~/.claude/%s/*/hooks/gate_git.py`" % staged,
+    ])
+    claimed = {path for _token, path in _staged_path_claims(probe)}
+    assert claimed == {"%s/registry.yaml" % staged,
+                       "%s/scaffold_team.sh" % staged,
+                       "%s/scaffold_team.ps1" % staged,
+                       "%s/%s/nothing_here.py" % (staged, top),
+                       "%s/%s/nothing_here.py" % (staged, top.upper())}, sorted(claimed)
+    # ...and the check built on it must fail on the two members that are not in the tree, including
+    # the one whose only fault is its case — the reason `conftest.repo_spells` asks the tree
+    assert not conftest.repo_spells("%s/%s/nothing_here.py" % (staged, top))
+    assert not conftest.repo_spells("%s/%s" % (staged, top.upper()))
+    assert conftest.repo_spells("%s/registry.yaml" % staged)
+
+
+# The ONE command an entry gate runs, spelled as a module invocation because there is nothing else
+# it could be: the kit is not installed yet, so `scripts/harness.py` does not exist in the project
+# and the kernel comes from the shared staging tree on `PYTHONPATH`. That is exactly why the entry
+# point's own surface check (`test_every_command_a_role_is_handed_is_on_the_entry_points_surface`)
+# never reaches this line — it reads `kernel.cli.INVOCATION`, and this call deliberately is not it.
+# The module path is taken from the package rather than typed, so a rename moves the reader with it.
+def _kernel_cli_calls(text):
+    """(argument tail, long options) for every `-m kernel.cli ...` call an entry gate spells.
+
+    The tail ends at the closing backtick or the line break, because these calls live in inline
+    code spans and everything after the span is prose.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import cli
+    for match in re.finditer(r"-m\s+" + re.escape(cli.__name__) + r"([^`\n]*)", text):
+        tail = match.group(1)
+        yield tail, set(re.findall(r"--[a-z][a-z-]*", tail))
+
+
+def test_every_kernel_command_an_entry_gate_spells_is_on_the_shipped_parser():
+    """The initializer's last command, judged against the parser argparse will evaluate.
+
+    It is the only command in these two files that touches the state, it runs in the one session
+    that can still write the project's un-writable files, and if it fails the project keeps items
+    with no index — a state every rollup afterwards refuses to run against. A wrong subcommand or a
+    flag the parser does not have is therefore not a typo a role retries; nothing installed yet can
+    tell them what the surface is.
+
+    Both halves are read off `kernel.cli.build_parser()`: the subcommand out of the subparser
+    choices, and every long option out of the top-level parser plus that subcommand's own. `--root`
+    is the interesting one — the harness entry point REFUSES it and the kernel CLI requires it here,
+    which is a distinction a text can get backwards and only this parser can settle.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import cli
+    parser = cli.build_parser()
+    subcommands = parser._subparsers._group_actions[0].choices
+    top_options = {option for action in parser._actions for option in action.option_strings}
+    offences, seen = [], 0
+    for where, text in _entry_gate_texts():
+        for tail, options in _kernel_cli_calls(text):
+            seen += 1
+            named = [word for word in re.findall(r"(?<![-\w])[a-z][a-z0-9-]*", tail)
+                     if word in subcommands]
+            if not named:
+                offences.append("%s: `-m ...%s` names no subcommand the parser has" % (where, tail))
+                continue
+            allowed = top_options | {option for action in subcommands[named[0]]._actions
+                                     for option in action.option_strings}
+            unknown = sorted(options - allowed)
+            if unknown:
+                offences.append("%s: `%s` passes %s, which `%s` does not accept"
+                                % (where, tail.strip(), ", ".join(unknown), named[0]))
+    # Both platform spellings in both files: four calls today, and a reader that stopped matching
+    # would make the loop vacuous.
+    assert seen >= 4, "only %d `kernel.cli` calls found in the entry gates" % seen
+    assert not offences, (
+        "the entry gates spell a kernel command the shipped parser does not have. Nothing is "
+        "installed at that point in a project's life, so there is no `--help` a role can fall "
+        "back on:\n  " + "\n  ".join(offences))
+
+
+def _routable_kits():
+    """The kit keys an entry gate may install — `registry.yaml`'s own routing condition.
+
+    Read off the registry rather than off the directory listing: the registry is what these two
+    files are instructed to classify against, and it is also where a kit that is present but not
+    yet installable says so (`status`). A kit the gate cannot route to is not a kit its claims have
+    to hold for.
+    """
+    yaml = pytest.importorskip("yaml")
+    with open(os.path.join(TEAM_KITS, "registry.yaml"), encoding="utf-8") as fh:
+        registry = yaml.safe_load(fh) or {}
+    keys = {team["key"] for team in (registry.get("teams") or [])
+            if team.get("status") == "available"
+            and os.path.isdir(os.path.join(TEAM_KITS, team["key"]))}
+    assert len(keys) > 1, keys      # a single-kit registry makes every claim below vacuous
+    return keys
+
+
+def _shipped_hooks_by_kit():
+    """{kit: {hook name without suffix}} for every routable kit."""
+    return {kit: {name[:-3] for name in os.listdir(os.path.join(TEAM_KITS, kit, "hooks"))
+                  if name.endswith(".py") and not name.startswith("_")}
+            for kit in _routable_kits()}
+
+
+def test_every_hook_an_entry_gate_names_is_shipped_by_every_kit_in_that_blocks_scope():
+    """An entry gate does not know which kit it is about to install, so a hook name in it is a
+    claim about whatever comes out the other end.
+
+    THE SCOPE OF THE CLAIM IS THE BLOCK'S OWN, and deriving it is what makes this checkable at all:
+    a block that names no kit speaks about every kit the registry can route to, and a block that
+    names kits speaks about those. Both readings are needed and neither alone works — the office
+    branch legitimately names `gate_filing`, which two kits do not ship, while the masterplan bullet
+    speaks to all three and may not. The block reader is `_markdown_blocks`, further down this
+    module and shared with the caveat checks: the unit a reader takes in at once is one question,
+    and a second implementation of it here would be the drift those checks were written for. A
+    coarser unit is measurably wrong for this subject — the whole of the Claude gate's step 3 is one
+    blank-line paragraph, so a paragraph reader puts the office-only branch and the all-kits
+    masterplan bullet in one scope and can no longer tell which claim is about which kit.
+
+    Measured, and this is why the test exists: both entry gates told every project that
+    `gate_memory_complete` blocks its merges while the masterplan or the config still reads like the
+    template, in a block that names no kit — and `office-team` ships no such hook. For an office
+    project that is a consequence which does not exist, which is the "over-alarming claim" half of
+    the house rule, and it had stood through the whole V2 rewrite because nothing compared these two
+    files against the kit inventories at all.
+
+    TWO LIMITS, named because a scope read off a substring is not a scope read off a sentence.
+    Whether the claim MADE about the hook is true is not judged — only that every kit in the
+    block's scope has the hook the claim rests on. And a block that names a kit for an unrelated
+    reason narrows its own scope by doing so: a paragraph mentioning `office-team` in passing while
+    asserting something about all three would pass here. Both are the price of a unit a reader can
+    compute; the alternative is a list of hedge words, which is the shape this repo keeps paying
+    for.
+    """
+    shipped = _shipped_hooks_by_kit()
+    every = sorted(set().union(*shipped.values()))
+    offences = []
+    seen = 0
+    for where, text in _entry_gate_texts():
+        for block in _markdown_blocks(text):
+            named_kits = {kit for kit in shipped if kit in block}
+            scope = named_kits or set(shipped)
+            for hook in every:
+                if hook not in block:
+                    continue
+                seen += 1
+                absent = sorted(kit for kit in scope if hook not in shipped[kit])
+                if absent:
+                    offences.append(
+                        "%s: `%s` is named in a block that speaks for %s, and %s ship%s no such "
+                        "hook — the block reads %r"
+                        % (where, hook, ", ".join(sorted(scope)), ", ".join(absent),
+                           "" if len(absent) > 1 else "s", block.strip()[:160]))
+    # A floor: these two files name hooks several times over, and a reader that stopped matching
+    # would make every assertion above vacuously true.
+    assert seen >= 6, "only %d hook mentions found in the entry gates" % seen
+    assert not offences, (
+        "the global entry gates promise a hook to a kit that does not have it. A block naming no "
+        "kit speaks for every kit `registry.yaml` can route to; name the kits the hook is real "
+        "for, or state the consequence without it:\n  " + "\n  ".join(sorted(set(offences))))
+
+
+def _blocking_hooks(kit):
+    """{hook name: its string constants} for the hooks of `kit` that can REFUSE an operation.
+
+    Two conditions, and dropping either would widen this to something else. It has to be able to
+    block — `_kernel.block` is that capability, read from the AST rather than from a name prefix,
+    because `guard_`/`gate_` is a convention and `session_status` is a briefing that names two of
+    these documents without ever refusing anything. And it has to be REGISTERED, read with the
+    kernel's own `report._wired_hooks`, which knows the ways a registration cannot fire; a hook that
+    ships and is wired nowhere refuses nothing.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import report
+    hooks_dir = os.path.join(TEAM_KITS, kit, "hooks")
+    staged = tempfile.mkdtemp(prefix="entry-gate-wiring-")
+    try:
+        claude = os.path.join(staged, ".claude")
+        shutil.copytree(hooks_dir, os.path.join(claude, "hooks"))
+        shutil.copy(os.path.join(TEAM_KITS, kit, "settings", "settings.json"),
+                    os.path.join(claude, "settings.json"))
+        wired = set(report._wired_hooks(staged))
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
+    blocking = {}
+    for name in sorted(wired):
+        with open(os.path.join(hooks_dir, name), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=name)
+        if not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                   and node.func.attr == "block" for node in ast.walk(tree)):
+            continue
+        blocking[name] = {node.value for node in ast.walk(tree)
+                          if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+    return blocking
+
+
+def _documents_a_gate_blocks_on(kit):
+    """{state-relative path: hook} — every KIT DOCUMENT whose content a registered gate refuses on.
+
+    "Kit document" is `kernel.layout.is_project_document`, the definition the write-scope gate
+    itself asks: a file under the state directory that no kernel path builder can name, hence one
+    the kernel has no writer for. "A gate reads it" is the hook spelling every segment of the
+    document's path among its own string constants — `MASTERPLAN = os.path.join("product",
+    "masterplan.md")` and `PLAN = "filing_plan.yaml"` are the two shapes the shipped hooks use, and
+    asking for every segment is what keeps a hook that merely mentions `product` out of the answer.
+
+    The two halves are the whole point: a document a gate blocks on AND nothing can write is a wall,
+    and the only session that can still write it is the one that runs before the kit is installed.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import layout
+    base = os.path.join(TEAM_KITS, kit, "templates", "project_memory")
+    blocking = _blocking_hooks(kit)
+    found = {}
+    for dirpath, _dirs, files in os.walk(base):
+        for name in files:
+            rel = os.path.relpath(os.path.join(dirpath, name), base).replace(os.sep, "/")
+            if not layout.is_project_document(base, rel):
+                continue
+            for hook, constants in blocking.items():
+                if all(segment in constants for segment in rel.split("/")):
+                    found[rel] = hook
+    return found
+
+
+def test_every_document_a_gate_blocks_on_is_named_by_both_entry_gates():
+    """The file class this whole round is about, derived instead of listed.
+
+    A KIT DOCUMENT under the state directory has no kernel writer, and `gate_write_scope` refuses
+    every tool write to it; when a gate ALSO refuses work while its content is still the shipped
+    template, the only session in the project's life that can satisfy that gate is the one before
+    the scaffold. So the entry gate is not one of several places such a file could be filled — it is
+    the last one, and a document it does not name is a project that installs into a wall.
+
+    Derived, per kit, from `kernel.layout` and the kits' own registered blocking hooks: today that
+    is `product/masterplan.md` and `project_config.yaml` (`gate_memory_complete`, dev + research)
+    and `filing_plan.yaml` (`gate_filing`, office) — the same three files `kernel/layout.py` was
+    written for. Measured before this round: both entry gates named the first two and neither named
+    the third, so every office project shipped with `rules: []`, blocked on the first document it
+    ever tried to file, and had no route left to fix it.
+
+    A LOWER BOUND IS ASSERTED TOO, because the derivation is the test: if the AST reader or the
+    registration reader stops resolving, the loop below runs over nothing and passes loudest.
+
+    WHAT NAMING IS AND IS NOT. This asks whether the file appears in the text, not whether the text
+    tells the initializer to FILL it — no check can read an instruction's intent, and a check that
+    demanded a fixed phrase would be pinning prose by quotation, which rots. So the guarantee is the
+    weaker, honest one: a gated document can no longer be absent from the two files, and what it
+    says about it stays a reading decision.
+    """
+    gated = {}
+    for kit in sorted(_routable_kits()):
+        for rel, hook in _documents_a_gate_blocks_on(kit).items():
+            gated.setdefault(rel, set()).add("%s/%s" % (kit, hook))
+    assert len(gated) >= 3, (
+        "only %d gated kit documents resolved (%s) — the derivation stopped seeing the tree, and "
+        "an empty subject is how this check passes over a regression" % (len(gated), sorted(gated)))
+    unnamed = []
+    for where, text in _entry_gate_texts():
+        for rel, hooks in sorted(gated.items()):
+            if rel not in text and rel.rsplit("/", 1)[-1] not in text:
+                unnamed.append("%s never names `%s`, which %s refuses work over"
+                               % (where, rel, "/".join(sorted(hooks))))
+    assert not unnamed, (
+        "a gate blocks on the content of these files, the kernel has no writer for them and "
+        "`gate_write_scope` refuses every tool write to them — so the entry gate is the last "
+        "session that can fill them, and it does not mention them:\n  " + "\n  ".join(unnamed))
 
 
 def test_the_eval_scenarios_name_only_state_files_a_v2_project_has():

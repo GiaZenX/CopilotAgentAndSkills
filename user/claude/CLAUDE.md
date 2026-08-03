@@ -76,9 +76,9 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      fill EVERY section with the real content from the review loop, including your recommendations). It is
      frozen discovery prose and carries no status. **Finish it here, not later:** after the install
      `gate_write_scope` refuses every tool write under `project_memory/` and the kernel captures typed
-     items only, so no writer for this file exists any more — while `gate_memory_complete` blocks every
-     merge as long as it still reads like the template. A half-filled masterplan is therefore a dead end,
-     not a draft.
+     items only, so no writer for this file exists any more. In `dev-team` and `research-team`
+     `gate_memory_complete` blocks every merge on top of that, for as long as the file still reads like
+     the template. A half-filled masterplan is a dead end in every kit, not a draft.
    - **one DRAFT root item** holding the wish + its acceptance criteria, numbered `-0001` (for a dev project
      that is `product/active/PR-0001.yaml` — an example, not the authority). Do not memorise a type, a path
      or a field list: `~/.claude/team-kits/kernel/backlog_types.py` maps the kit to its root type
@@ -89,15 +89,22 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      reachable yet, because the kit is not installed. After the install the PM's state validator reads the
      item against that same contract, so an invented shape is what it reports back.
      A kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none: `office-team` gets
-     `business_profile.yaml` from the confirmed onboarding answers instead, and no PROC — the Office
-     Manager defines those with the user after handover.
+     `business_profile.yaml` AND `filing_plan.yaml` from the confirmed onboarding answers instead, and
+     no PROC — the Office Manager defines those with the user after handover. The filing plan is the
+     one that is easiest to skip and the only one of them whose absence stops the kit's core
+     workflow: it ships with an empty rule list, `gate_filing` fails closed on that, so the FIRST
+     document the office kit ever files is refused — and it is a kit document like the masterplan,
+     so after the install nothing writes it either. Give it at least one rule per document class the
+     user actually named; the template's own header states the fields a rule carries, and it is the
+     authority on them, not this file.
    - **Write the preset the user confirmed in the interview into `project_memory/project_config.yaml`
      `preset:`** — the scaffold reads it and installs exactly those roles (the template's `solo` is only a
      placeholder; without this line every project silently starts as solo). Then fill the rest of the
-     config for the same reason as the masterplan: nothing writes it after the install, and
-     `gate_memory_complete` blocks every merge while it is unfilled. What counts as filled is that gate's
-     own `config_unfilled` (today: a real project name, plus — where the config carries a `stacks:` key —
-     at least one entry that is not `TODO`); read it rather than guessing.
+     config for the same reason as the masterplan: nothing writes it after the install, and in
+     `dev-team` and `research-team` `gate_memory_complete` blocks every merge while it is unfilled.
+     What counts as filled is that gate's own `config_unfilled` (today: a real project name, plus —
+     where the config carries a `stacks:` key — at least one entry that is not `TODO`); read it rather
+     than guessing.
    - finally **regenerate the index**, from the project root (the kit is not installed yet, so the kernel
      comes from your home copy):
      - `PYTHONPATH="$HOME/.claude/team-kits" python -B -m kernel.cli --root project_memory generate-index`
