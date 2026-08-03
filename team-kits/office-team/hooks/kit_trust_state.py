@@ -20,6 +20,12 @@ The last line matters most. Inventing a state here would let a project that neve
 report the same trust as one that did, and this file is the only thing standing between "the
 bundle was reviewed" and "some hooks exist".
 
+AND NOTE WHICH ARROW IS MISSING: nothing here leads OUT of `hooks_trust_required`. `transition()`
+reads `hook_bundle_hash` and never writes it, so no number of new sessions can clear that state —
+`write_kit_state.py`, which the scaffold runs, is the only writer of the record. That is why the
+message this hook prints has to name the scaffold and not merely a restart; `gate_dispatch`'s
+spawn refusal, which is what the state actually costs, names the same step.
+
 COMFORT HOOK, fail-open (spec II.4). It informs and records; it must never refuse a session. It
 imports `_kernel` for the ONE definition of the bundle hash and immediately calls `disarm()`:
 importing that bridge arms an excepthook that turns any escaping error into exit 2, which is
@@ -98,9 +104,20 @@ def transition(data, actual):
             return None, None  # already said; saying it again every session is noise
         return "hooks_trust_required", (
             "HOOK BUNDLE CHANGED since this project trusted it (recorded %s, installed %s). "
-            "Enforcement is reported as `audited` until it is reviewed: open /hooks, check what "
-            "changed, and start one new session. If you did not change a hook, treat this as a "
-            "finding — the enforcement layer is the thing an agent would want to edit."
+            "Enforcement is reported as `audited` and NO specialist can be spawned until somebody "
+            "vouches for the bundle again. FIRST open /hooks and review what changed in "
+            "`.claude/hooks` and `.claude/kernel`; if the change is not yours, treat it as a "
+            "finding — the enforcement layer is the thing an agent would want to edit. THEN the "
+            "scaffold_team script has to run once from the project root, followed by ONE new "
+            "session: re-installing the kit files is what records the reviewed bundle. Further "
+            "sessions on their own change nothing — this hook only MEASURES the bundle, it never "
+            "rewrites the record. ASK THE USER TO RUN THE SCAFFOLD; `gate_write_scope` refuses a "
+            "WRITE-CAPABLE command line that names the enforcement layer, and starting a script "
+            "is write-capable, so this session cannot run the scaffold itself (reading the layer "
+            "is unaffected). The commonest cause is not an edit at all: a python process that imports "
+            "`.claude/kernel` without `-B` leaves a `__pycache__` inside the hashed bundle. The "
+            "scaffold prunes it, and deleting that one directory clears it too — the user's step "
+            "either way, for the same reason."
             % (str(recorded)[:12], str(actual)[:12]))
     if current == "active":
         return None, None

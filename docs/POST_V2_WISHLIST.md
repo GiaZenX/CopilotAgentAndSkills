@@ -340,3 +340,222 @@ ihn niemand.
 3. Die Planungsstufe bauen, samt Bild (Punkt 3/3a).
 4. UI-Review und e2e-Beweis (Punkt 1, Punkt 7).
 5. Erst dann ein Durchlauf, dessen Ergebnis etwas über das Produkt aussagt statt über das Harness.
+
+## 9. Der Masterplan braucht einen Zustand (2026-08-03, User)
+
+**Das Modell des Users, in seinen Worten:** der Masterplan (MD **und** Diagramm, Punkt 3/3a) wird
+zwischen ihm und dem Lead so lange durchgesprochen, bis alles Offene geklärt ist — „welche API wird
+nötig sein", „wie soll das Design aussehen", „woher bekomme ich die Finanzberichte", „woher die
+Kurse", „wie soll das Komitee aufgebaut sein". Erst dann die Freigabe, dann die Umsetzung, dann
+autonom.
+
+Seine Begründung ist die wichtigste Zeile dieses Abschnitts: **„Vieles fällt normalerweise erst
+während der Umsetzung auf, deshalb muss man das penibel reviewen."**
+
+**Heutiger Stand, gemessen:** der Masterplan trägt **keine Freigabe und keinen Zustand**. Die
+scope-Freigabe hängt am `PR`, gehasht sind `problem`, `goal`, `acceptance_criteria`, `out_of_scope`,
+`invariants`, `design_refs`. `product/masterplan.md` liegt daneben als lesbares Gesamtbild — ohne
+Statusautomat, ohne Freigabe, und (Punkt 11/L1) ohne Schreiber. Er ist genau das Artefakt, das der
+User als zentral beschreibt, und mechanisch ist er Prosa, die nichts bewacht.
+
+**Das Harness behandelt späte Erkenntnis heute bestrafend statt vorbeugend:** wer nach der Freigabe
+ein gehashtes Feld ändert, verliert sie, das Item fällt auf DRAFT zurück und braucht eine `CR`. Das
+ist richtig und teuer. Was fehlt, ist die andere Hälfte.
+
+**Der baubare Teil — eine Bedingung, kein Urteil:**
+
+> Eine scope-Freigabe wird nicht angeboten, solange der Plan offene Fragen führt, die weder
+> beantwortet noch ausdrücklich vertagt sind.
+
+Der Masterplan hat die Sektion „Risiken & offene Fragen" bereits. Das Gate liest einen **Zustand**
+(„steht dort noch etwas Unbeantwortetes?"), es urteilt nicht über Planqualität — dieselbe Trennlinie
+wie überall im Kit. Es erzwingt genau die Runde, die der User beschreibt, **vor** der Freigabe statt
+in der Umsetzung.
+
+**Der Schnitt zwischen Mensch und Autonomie, der sich daraus ergibt:**
+
+| Freigabe | Übergang | wer |
+|---|---|---|
+| `scope` | DRAFT → APPROVED | **Mensch** — die unumkehrbare Entscheidung, und der Ort des Reviews |
+| `delivery` | APPROVED → IN_DELIVERY | **autonom** — durch den freigegebenen Scope begrenzt, jedes Gate prüft dagegen |
+| `acceptance` | DELIVERED → ACCEPTED | **Mensch** — Urteil über das Ergebnis, blockiert aber nichts |
+| `push` | (Token, an Remote+Branch+HEAD gebunden) | **Mensch** — Userentscheid 2026-08-03, ausnahmslos |
+
+Ausdrücklich festgehalten, damit es nicht neu verhandelt wird: **ein Commit braucht keine Freigabe,
+ein Push immer** (Userentscheid 2026-08-03).
+
+## 10. Die Freigabe programmatisch erteilen — und was das verschiebt (2026-08-03)
+
+**Gemessen:** `AskUserQuestion` existiert im `-p`-Modus nicht. 30 Werkzeuge in der Init-Zeile, keines
+davon; `--tools "Read,AskUserQuestion"` liefert `['Read']` — das Werkzeug wird still fallengelassen.
+Auch `--input-format stream-json` ändert daran nichts. Da `gate_approval` **nur** aus einer echten
+Antwort auf eine echte `AskUserQuestion` prägt, ist die Freigabekette headless unerreichbar: kein PR
+verlässt DRAFT, kein Merge, kein Push.
+
+**Recherchiert (2026-08-03), drei Wege:**
+
+- **PTY-Emulation** (ConPTY/winpty/`script`/`expect`) startet eine interaktive Sitzung, aber ein
+  Programm müsste dann eine Terminal-Oberfläche per Bildschirmabgriff bedienen. Kein Vertrag,
+  jederzeit brüchig. **Nicht gangbar.**
+- **`--remote-control`** registriert sich bei der Anthropic-API und pollt nach Arbeit; braucht einen
+  vollen claude.ai-Login (API-Keys ausdrücklich nicht unterstützt), und die Gegenseite ist
+  claude.ai im Browser oder die Mobile-App — **ein Mensch auf einem anderen Gerät.** Verschiebt das
+  Problem, löst es nicht.
+- **Das Claude Agent SDK ist der dokumentierte Weg.** `AskUserQuestion` löst dort denselben
+  `canUseTool`-Rückruf aus wie eine Werkzeugfreigabe; das Programm antwortet mit
+  `{behavior: "allow", updatedInput: {questions, answers}}`. Kein TTY nötig. Dokumentierte Grenze:
+  **in Subagenten, die über das Agent-Werkzeug gespawnt werden, ist `AskUserQuestion` nicht
+  verfügbar** — nur in der Hauptsitzung.
+
+**Was das für die Sicherheit heisst, und das ist der Kern:** heute gilt *ein Token existiert ⟹ ein
+Mensch hat geantwortet*, weil `AskUserQuestion` nur einem Menschen etwas zeigen kann. Über das SDK
+wird daraus *ein Token existiert ⟹ das einbettende Programm hat entschieden*. **Das SDK löst die
+Vertrauensfrage nicht, es verlagert sie** — vom Provider in unseren Code.
+
+Damit hat Punkt 8 zum ersten Mal einen konkreten Bauplatz (`canUseTool`) und die Sicherheitsfrage
+eine scharfe Fassung: nicht „soll das Harness autonom laufen", sondern **wer darf der Richter sein,
+und woran erkennt man hinterher, dass er es war.** Ein Token, den ein Programm geprägt hat, muss
+sich von einem unterscheiden lassen, den ein Mensch geprägt hat — sonst ist die Provenienz, auf der
+`doctor` seine `hook_trust`-Aussage aufbaut, nur noch eine Behauptung.
+
+**Ungeklärt und eine Messung wert:** ob der `PermissionRequest`-Hook mit `updatedInput.answers` für
+`AskUserQuestion` dasselbe kann, ohne die CLI zu verlassen. Das wäre der billigere Weg. Die Doku
+zeigt das Feld generisch („any field from the tool's input schema"), nennt aber `AskUserQuestion`
+nicht als Beispiel.
+
+## 11. Löcherliste — gemessen, benannt, nicht geschlossen (Stand 2026-08-03)
+
+Jede Zeile ist eine **Messung**, kein Verdacht. Sie stehen hier, weil sie den Umbau nicht
+blockieren, aber jede von ihnen kostet jemanden später Zeit — und weil eine Aufgabenliste mit der
+Sitzung stirbt, in der sie entstand.
+
+### L1 — Drei Planungsdateien haben keinen Schreiber (härteste Autonomie-Blockade)
+
+`product/masterplan.md`, `project_config.yaml`, `filing_plan.yaml`. `gate_write_scope` verweigert
+jeden Werkzeug-Write unter `project_memory/`, die Shell-Route ebenso, und der Kernel hat für diese
+Dateien keinen Schreiber. Die Verweigerung sagt das seit `876d237` **ehrlich** („no route from
+inside this session — report the gap"), statt auf `validate` zu verweisen, das im selben Zustand
+0 Fehler meldet.
+
+Nicht geschlossen, weil die Sperre **Verfassungsrecht in allen drei Kits** ist und durch einen
+bestehenden Test gepinnt. Die Reparatur gehört nach Stufe II.11/4, wo der Einstieg ohnehin auf V2
+umgestellt wird. Für office ist es existenziell: `filing_plan.yaml` wird mit `rules: []`
+ausgeliefert, also ist die Kernfunktion des Kits ab Installation tot — im Kit dokumentiert, aber
+lebendig.
+
+### L2 — Items sind unveränderlich, also ist jede „korrigiere Feld X"-Abhilfe unausführbar
+
+Es gibt kein Kommando, das ein Feld eines angelegten Items ändert. `archive` ist der einzige Ausweg
+und stand bis `876d237` in keiner Meldung. Betroffen sind heute noch: `premise_rechecks` (die
+Validator-Warnung nennt ein Feld, das an einem existierenden PR nicht mehr schreibbar ist), und
+`acceptance_criteria` an einem bereits freigegebenen `PROC`.
+
+### L3 — Ein direkt gestartetes Gate verseucht sein eigenes Bündel
+
+`python .claude/hooks/gate_dispatch.py` ohne `-B` legt `__pycache__` an, **bevor** derselbe Prozess
+den Bundle-Hash bildet — es verweigert seinen eigenen Spawn, schon im ersten Lauf (gemessen).
+`_gate.py` trägt `sys.dont_write_bytecode`, aber ein direkt gestartetes Gate führt `_gate.py` nie
+aus. Der saubere Fix ist eine Zeile in `GATE_PREAMBLE` und damit ~15 Hookdateien × 3 Kits plus die
+Preamble-Pins. Die Klasse dahinter ist grösser: **jeder** Python-Prozess auf dem Host, der
+`.claude/kernel` ohne `-B` importiert, entwaffnet die Delegation eines Projekts.
+
+### L4 — Schreibverben innerhalb einer Programmsprache
+
+`sed -n 'w datei'` schreibt aus dem Programmtext heraus und ist kein Shell-Operator; `gate_write_scope`
+fängt Umleitungs*operatoren*, nicht die Schreibverben fremder Sprachen. Dasselbe gilt für `awk`,
+`jq`, `perl -e`, `python -c`. **Bewusst nicht geschlossen:** eine Liste dieser Verben wäre genau die
+Aufzählung im Gewand einer Regel, gegen die dieses Repo gebaut ist — sie stimmt bis zum sechsten
+Werkzeug. Ein benanntes Loch ist ehrlicher.
+
+### L5 — Der Workspace-Trust verwirft auch die `deny`-Hälfte
+
+Gemessen in jeder headless Sitzung: `Ignoring 5 permissions.allow entries … this workspace has not
+been trusted`. Verworfen wird der **ganze** `permissions`-Block, also auch `deny: Agent(project-manager)`
+(kein zweiter PM), `Read(./.env*)`, `Read(**/*.key)`. Ein frisch gescaffoldetes Projekt läuft bis zum
+ersten interaktiven Start ohne diese Sperren. Die Meldung nennt beide Wege hinaus, aber **nicht**,
+was währenddessen fehlt. Die Neustart-Anweisung des Scaffolds erwähnt den Trust-Dialog gar nicht.
+
+### L6 — Rollenmemory ist vorgeschrieben und gesperrt
+
+Die Verfassung verlangt „durable craft learnings"; `gate_write_scope` verweigert
+`.claude/agent-memory/<rolle>/…`, sobald `submit-result` gelaufen ist — und der Spezialist schreibt
+sein Memory typischerweise danach. Die zweite Verweigerung nennt ausserdem den falschen Grund
+(„Hooks and settings are maintained by the scaffold"), obwohl `agent-memory` weder Zustand noch
+Enforcement-Schicht ist.
+
+### L7 — Eine Lease aus einer abgestürzten Sitzung kostet die volle TTL
+
+`reconcile_unstarted_dispatches` greift nur, wenn der Spawn **nie startete**. Ein gestartetes,
+dann abgebrochenes Kind hält seine Lease 900 s; `sweep-leases` sagt ehrlich, wie lange
+(`still leased: TSK-0001 (527 s left)`), aber es gibt kein Kommando, das sie zurückgibt. Gemessen:
+924 s Stillstand. Kandidat: `sweep-leases --force <TSK>` mit Journalzeile, oder eine Bindung an die
+Session-ID.
+
+### L8 — Die Push-Freigabe invalidiert sich durch ihren eigenen Datensatz
+
+Gemessen: Mint für HEAD `6c2d5d1e` → der Lead committet den Freigabe-Datensatz → HEAD ist
+`34ae1673` → `no live user approval for pushing 34ae1673`. Kostet **jedes Mal** eine zusätzliche
+menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt holen"), oder
+`project_memory/approvals/**` in `.gitignore`.
+
+### L9 — Kleinere, je einzeilig
+
+- **`capture` kann seinen Body nicht aus `staging/` lesen** — die dokumentierte Heredoc-Form
+  kollidiert mit dem Gate; der Ausweg führt Harness-Eingaben ins OS-Temp-Verzeichnis.
+- **Ein BOM in `agents/<lead>.md` hebt die `agent:`-Bindung lautlos auf** (`agent_type` wird `null`),
+  und kein ausgelieferter Check sieht es. PowerShell 5.1 erzeugt das BOM beim Zurückschreiben.
+- **`scaffold_team.sh` schreibt das Label mit** — `kit_version` in `kit_state.json` lautet
+  `"version: 2026.08.03-1"`. Wird nirgends ausgewertet, ist aber ein falsch geparster Wert im
+  Vertrauensdatensatz.
+- **Ein Skill, den zwei Agenten nennen, kollabiert auf ein Paar** — nur einer der beiden wird auf den
+  Abrufweg geprüft. Heute nennt jedes Skill genau ein Agent, der Fall ist eine Änderung entfernt.
+- **`CR.target_pr` / `BUG.related_pr` prüfen Existenz, nicht Wurzelzugehörigkeit** — ein `BUG` darf
+  ein `HYP` nennen, und `_root_of` gibt dieses `HYP` als Wurzel zurück. Zwei Codestellen halten
+  „related_pr == root" als Absicht fest; der Kernel erzwingt es nicht, und `validate` schweigt.
+- **`withdraw-approval` fehlt** — eine geöffnete Freigabefrage lässt sich nicht zurückziehen. Gebaut,
+  gemessen und wieder entfernt, weil **jedes** neue Unterkommando Ergänzungen in sechs ausgelieferten
+  Texten verlangt.
+- **Ein Gate, das stdin selbst leert, nimmt dem nächsten der Kette die Nutzlast** — fail-closed
+  (`{}` → Verweigerung), gehalten von einem AST-Test über jeden ausgelieferten Hook.
+- **Unter der Grössen-Ratsche prüft nichts, ob verschobener Text laden musste** — der Rekord schützt
+  Bytes, nicht Semantik. Eine ableitbare Regel dafür ist nicht in Sicht.
+
+### L10 — Was ohne einen Provider unprüfbar bleibt
+
+- Ob ein **Subagent** sein SKILL geladen bekommt. Für den Sitzungs-Agenten ist gemessen, dass er es
+  **nicht** bekommt; der Spawn-Weg ist zweimal an einem Kind gescheitert, das den Auftrag ablehnte,
+  bevor es antwortete. In `tools/provider_observations.json` als offen geführt.
+- Ob **Codex** einen `@`-Import in `AGENTS.md` expandiert.
+- Ob `AskUserQuestion` im **interaktiven** Modus genau den Payload liefert, den `gate_approval`
+  erwartet. Die Gates prägen korrekt, wenn der Payload kommt (viermal gemessen mit rekonstruiertem
+  Payload) — die Form des echten Werkzeugaufrufs ist ungemessen.
+
+### L11 — Laufzeit: nicht der Zustand, sondern die Prozessanzahl
+
+`gate_memory_complete` wächst **nicht** mit der Projektgrösse (323 ms bei 8 Items, 331 ms bei 32).
+Was der Nutzer spürt, kommt woanders her: ein Bash-Werkzeugaufruf startet **acht** Python-Prozesse
+für die Shell-Gates. In einem gemessenen Durchlauf waren das 149 Aufrufe × 8 = 1 192 Interpreterstarts
+allein dafür; der Median stieg von 4,72 s auf 6,30 s. Der Hebel ist nicht der Zustands-Walk, sondern
+die Startkosten — dieselbe Kettenform wie beim Spawn-Pfad wäre der naheliegende Kandidat.
+
+### L12 — Eine kit-spezifische Datei kann den Inhalt eines fremden Kits bekommen, und nichts merkt es
+
+Vorgeführt am 2026-08-03: ein Umsetzer hat `session_status.py` blind von dev über office und
+research gespiegelt und dabei **119 bzw. 19 Zeilen kit-eigenen Inhalt gelöscht**. Aufgefallen ist es
+an `git diff --stat`, **nicht an einem Test**.
+
+Der Grund ist strukturell: `session_status.py` steht in `KIT_SPECIFIC_HOOKS`, also greift
+`test_shared_kit_files_identical` per Konstruktion nicht — und das ist richtig, denn die Datei SOLL
+sich unterscheiden. Was fehlt, ist die Gegenrichtung: **nichts behauptet, dass eine als
+kit-spezifisch erklärte Datei ihren kit-spezifischen Inhalt behält.** Die Ausnahme von der
+Spiegelregel ist heute eine Erlaubnis ohne Gegenstück.
+
+Der Kandidat ist ableitbar statt getippt: eine Datei in `KIT_SPECIFIC_HOOKS` muss zwischen je zwei
+Kits **verschieden** sein — sonst ist ihr Eintrag entweder falsch oder jemand hat sie gerade
+plattgespiegelt. Das ist dieselbe Form wie die zweite Schleife in `_assert_mirrored`, die eine
+Ausnahme verwirft, die niemand braucht — nur andersherum.
+
+Nebenbefund derselben Runde: Pythons `write_text` dreht Zeilenenden auf CRLF, während
+`.gitattributes` `*.py text eol=lf` sagt. Fünf Dateien waren betroffen und sind normalisiert;
+**vorbestehend** trägt `guard_yaml_valid.py` in allen drei Kits CRLF, obwohl git sie unverändert
+meldet.

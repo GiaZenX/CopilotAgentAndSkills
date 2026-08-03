@@ -44,7 +44,21 @@ can always reach the kernel. This gate refuses what a command LINE reveals — a
 an execution position, a copy of the enforcement layer, `python -c` importing the kernel, a
 write-capable command naming the state dir. It does NOT refuse a script the agent wrote (or copied)
 to an ordinary path and then ran, nor an interpreter reached indirectly (`$(which python)`, `xargs`,
-a heredoc). So condition (i) is bounded by the project's PERMISSION posture (settings.json `deny`),
+a heredoc).
+
+AND IT DOES NOT REFUSE A WRITE VERB OF THE TOOL'S OWN LANGUAGE. Measured 2026-08-03:
+`sed -n 'w kk/g.py' .claude/hooks/gate_approval.py` copies a shipped gate and exits 0 here. The
+`_PROGRAM_ARG_VERBS` branch catches a shell REDIRECT OPERATOR hidden inside a quoted program
+(`awk 'BEGIN{print > "f"}'`), which is the same `>` this gate already reasons about; `sed`'s `w`,
+`awk`'s `print > f` variants, `jq`'s output builtins, `perl -e open`, `python -c` — those are
+write verbs of five different LANGUAGES, and the only way to refuse them from a command line is a
+list of each language's writing words, which is the shape of check this repo keeps proving wrong
+one release later. It stays open on purpose, on the same footing as the rest of this paragraph:
+the containment is the permission posture, not a bigger vocabulary. `tools/test_hooks_v2.py`
+asserts it as a `known_hole` on `state_write_protection.shell`, so `python scripts/harness.py
+doctor` cannot report that capability green while it stands.
+
+So condition (i) is bounded by the project's PERMISSION posture (settings.json `deny`),
 not by hook logic, and `python scripts/harness.py doctor` must weigh that rather than treat this gate's presence as
 sufficient. The `known_hole`-marked tests in tools/test_hooks_v2.py enumerate what is still open,
 for BOTH capabilities.
@@ -402,6 +416,9 @@ _READ_ONLY_VERBS = frozenset((
     # PowerShell
     "get-content", "get-childitem", "select-string", "test-path", "get-item", "resolve-path",
     "get-filehash", "compare-object", "measure-object", "select-object", "set-location",
+    # `Out-Null` is the null device in cmdlet form — the same definition `_null_sinks` states for
+    # the redirect form, reached through a pipe instead of a `>`, and retaining just as little.
+    "out-null",
     # analysers
     "ruff", "mypy", "pylint", "flake8", "yamllint",
 ))
@@ -418,6 +435,26 @@ _WRITE_FLAGS = {
 # verbs whose PROGRAM is an argument, so a redirect can hide inside a quoted token where no `>`
 # token ever appears (`awk 'BEGIN{print "x" > "state.yaml"}'`)
 _PROGRAM_ARG_VERBS = frozenset(("awk", "gawk", "mawk", "sed", "perl", "ruby", "jq"))
+
+
+# An OUTPUT REDIRECT, as a shape rather than as the spellings that happened to be listed: an
+# optional file descriptor or `&` (both streams), then `>` or `>>`, then bash's optional
+# force-clobber `|`. The tuple that stood here knew `>`, `>>` and `2>` and knew neither `&>` nor
+# `>|`, so `cat .claude/hooks/gate_approval.py &> copy.py` and `... >| copy.py` produced no target
+# at all — a read-only verb, no redirect, allowed — while the very same relocation spelled `>` was
+# refused. `>&` deliberately does not match: `2>&1` duplicates a DESCRIPTOR, and its right-hand
+# side is a stream number, not a file anything lands in.
+#
+# THIS ONE FAILS OPEN, and that is the opposite of `_null_sinks` below — read the two together.
+# There, a spelling the code does not know stays a WRITE, so the set can only be too small and the
+# cost is a false refusal. Here, a form the shape does not match is not a redirect at all, the
+# pipeline looks read-only, and the bytes land wherever they were sent. So this shape must stay
+# WIDER than any spelling in use, over-matching is the safe direction (`>>|` is meaningless to
+# bash and matches anyway), and every future shell operator that lands bytes in a file is a hole
+# until it is added here. Two forms are known to be outside it and are outside it deliberately:
+# `>&`, above, and the write verbs a TOOL's own language carries — see the module docstring, which
+# says why that second one is not this regex's problem to solve.
+_REDIRECT_RX = re.compile(r"^(?:[0-9]*|&)>>?\|?$")
 
 
 def _has_write_flag(verb, tokens):
@@ -508,8 +545,16 @@ def _stage_is_read_only(stage):
     verb = _stage_verb(stage)
     if _has_write_flag(verb, stage[1:]):
         return False
-    if verb in _PROGRAM_ARG_VERBS and any(">" in t for t in stage[1:]):
-        return False  # a redirect inside the quoted program
+    # a REDIRECT OPERATOR hiding INSIDE the quoted program, where no `>` token ever appears. The
+    # shell's OWN redirect operators are excluded from the search, or this branch would answer for
+    # them too and answer wrongly: `awk '{print $1}' .claude/settings.json 2>/dev/null` has a `>`
+    # token and no embedded redirect at all, and calling the stage write-capable for it put these
+    # six verbs outside the null-sink rule that every other read-only verb now follows.
+    # An operator is ALL this looks for: `sed -n 'w kk/g.py'` writes a file with no `>` anywhere
+    # and passes — see the module docstring, which states why that stays open.
+    if verb in _PROGRAM_ARG_VERBS and any(">" in t for t in stage[1:]
+                                          if not _REDIRECT_RX.match(t)):
+        return False
     if verb.startswith("python") or verb in ("py", "pythonw"):
         for index, token in enumerate(stage[:-1]):
             if token == "-m":
@@ -525,12 +570,51 @@ def _stage_is_read_only(stage):
     return verb in _READ_ONLY_VERBS
 
 
-def _redirect_targets(tokens):
-    """Targets of `>`/`>>`, so a read-only command capturing state to /tmp stays possible."""
+def _null_sinks(tool):
+    """The redirect targets that RETAIN NOTHING for this shell on this host.
+
+    The question a redirect raises is not which operator was used but whether the bytes end up
+    somewhere a reader can pick them up. Exactly one target is DEFINED to keep nothing — the
+    operating system's discard device — so redirecting into it is the shell suppressing output,
+    which is a read-side concern; every other target keeps the bytes and is a write, including an
+    unprotected one (`cat <hook> > copy.py` is the relocation this gate exists to refuse).
+
+    PER SHELL AND PER HOST, because the same word is a device in one and an ordinary FILE in
+    another, and getting that backwards would open the hole this closes. Measured 2026-08-03 on
+    this Windows host: PowerShell has no `/dev/null` — it resolves a leading-slash path against the
+    CURRENT DRIVE, and a redirect into one landed its bytes in a real file there, so `> /dev/null`
+    on any host carrying `C:\\dev` is the relocation this gate refuses, spelled to look harmless.
+    Git Bash meanwhile discarded both `> /dev/null` and `> NUL`, the latter because `nul` is a
+    Win32 reserved device name no file can be created under. On POSIX the reverse holds: `> NUL`
+    there is an ordinary file in the working directory.
+
+    A SPELLING THIS DOES NOT KNOW STAYS A WRITE (`nul:`, `\\\\.\\NUL`, a shell alias), so the set can
+    only be too small — the cost of that is a false refusal a user can report, not a route out of
+    the tree.
+    """
+    # `os.devnull` is Python's name for the device of the host this gate runs on — `/dev/null` on
+    # POSIX, `nul` on Windows — so the base of the set is a definition rather than a spelling.
+    names = {_norm(os.devnull)}
+    if tool == "PowerShell":
+        names.add("$null")
+    elif os.name == "nt":
+        names.add("/dev/null")  # the Bash tool on Windows is a POSIX shell over a Win32 filesystem
+    return names
+
+
+def _redirect_targets(tokens, sinks):
+    """Targets of an output redirect that RETAIN what is written — see `_null_sinks`.
+
+    PER TARGET, not per pipeline: `cat <hook> > /dev/null > copy.py` still has one retaining
+    target and is still refused. The `sinks` argument has no default on purpose — a caller that
+    forgot it would silently get the old, over-refusing behaviour back.
+    """
     targets = []
     for index, token in enumerate(tokens[:-1]):
-        if token in (">", ">>") or (token.endswith(">") and token[:-1].isdigit()):
-            targets.append(tokens[index + 1].strip("\"'"))
+        if _REDIRECT_RX.match(token):
+            target = tokens[index + 1].strip("\"'")
+            if _norm(target) not in sinks:
+                targets.append(target)
     return targets
 
 
@@ -595,6 +679,8 @@ def handle_shell(data):
     # very flag that should have blocked it.
     # the working directory, relative to the repo root, as the pipelines walk it
     cwd = _repo_relative(data.get("cwd") or ".", _kernel.find_repo_root(data.get("cwd")))[0] or ""
+    # WHICH SHELL decides which redirect targets keep the bytes — see `_null_sinks`.
+    sinks = _null_sinks(data.get("tool_name"))
     for pipeline in _pipelines(_tokenise(code_view)):
         stages, current = [], []
         for token in pipeline:
@@ -605,20 +691,30 @@ def handle_shell(data):
                 current.append(token)
         stages.append(current)
         verbs_read_only = all(_stage_is_read_only(stage) for stage in stages if stage)
-        redirects = _redirect_targets(pipeline)
-        # a redirect makes a pipeline write-capable whatever its verbs: `echo x > f` writes
+        redirects = _redirect_targets(pipeline, sinks)
+        # a redirect that RETAINS makes a pipeline write-capable whatever its verbs: `echo x > f`
+        # writes. A redirect into the null device retains nothing and is therefore not one — see
+        # `_null_sinks` for why that is a property of the target and not a list of harmless forms.
         writes = not verbs_read_only or bool(redirects)
         names_enforcement = _names(_ENFORCEMENT_RX, pipeline) or _inside(_ENFORCEMENT_RX, cwd)
         names_state = _names(_STATE_RX, pipeline) or _inside(_STATE_RX, cwd)
         if names_enforcement and writes:
-            # a redirect counts even to an unprotected target: `cat <hook> > copy.py` IS the
-            # relocation this refuses
+            # a RETAINING redirect counts even to an unprotected target: `cat <hook> > copy.py` IS
+            # the relocation this refuses. Suppressing output is not that, and this branch used to
+            # make no distinction — measured three times in one lifecycle run, each on a pure read
+            # (`ls .claude/agents/ 2>/dev/null`), each costing the role a detour. What separates
+            # the two is `_null_sinks`, and NOT the state branch's `captures_out` carve-out: that
+            # one allows a read-only pipeline to redirect into any unprotected file, which is
+            # precisely `cat <hook> > copy.py`.
             _refuse(pipeline, "the enforcement layer",
                     "Hooks and settings are maintained by the scaffold, never by hand — and a copy "
                     "of the layer runs outside every path check, which is the shortest measured "
                     "route to a forged approval.",
-                    "reading it (cat/grep/diff/ruff/mypy) stays allowed; if a gate blocks something "
-                    "legitimate, that is an infrastructure defect worth reporting.")
+                    "reading it (cat/grep/diff/ruff/mypy) stays allowed, including with the output "
+                    "suppressed (`2>/dev/null`, `> NUL`, `> $null`); what is refused is the bytes "
+                    "LANDING somewhere — a copy, a redirect into a real file, an in-place edit. If "
+                    "a gate blocks something legitimate, that is an infrastructure defect worth "
+                    "reporting.")
         if names_state and writes:
             # ONE carve-out: a read-only command capturing state to a scratch file outside both
             # protected trees. `git diff project_memory > /tmp/state.diff` is how an agent reports

@@ -73,10 +73,18 @@ import types
 # otherwise be cached as `.pyc` INSIDE it: the bundle would change by being run, which is precisely
 # the argument that once kept bytecode out of the hash and thereby out of the measurement (see
 # `kernel.hashing.BYTECODE_SUFFIXES`). The kits register every hook as `python -B`, so in
-# production this line is redundant; it is here because a gate is also run directly — by the test
-# suite, by a person diagnosing one — and the measurement must not depend on how it was started.
-# It must precede the gate's own preamble, which imports `_kernel`. Cost, measured: ~5 ms on a full
-# kernel import.
+# production this line is redundant; it is here for a run THROUGH THIS LAUNCHER that was started
+# without `-B`. It must precede the gate's own preamble, which imports `_kernel`. Cost, measured:
+# ~5 ms on a full kernel import.
+#
+# WHAT IT DOES NOT COVER, and this sentence used to claim the opposite: a gate started DIRECTLY
+# (`python .claude/hooks/gate_dispatch.py`, which is how the test suite and a person diagnosing
+# one reach it) never executes this file at all. Its own preamble imports `_kernel` with the flag
+# still unset, CPython caches the compiled helper before the module body runs, and the gate then
+# hashes a bundle its own start-up just changed. Measured 2026-08-03 in a freshly scaffolded
+# project with an empty cache: the FIRST such run refuses its own spawn with the bundle reason.
+# Closing that means the flag has to move into `GATE_PREAMBLE` (`_kernel.py`), i.e. into every
+# shipped gate of every kit; until that release the residual is this paragraph, not a guarantee.
 sys.dont_write_bytecode = True
 
 

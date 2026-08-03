@@ -1499,8 +1499,10 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
             "the installed enforcement bundle hashes to %s but this project recorded %s — it "
             "changed after trust was recorded, and every gate now runs code the project never "
             "confirmed." % (actual_bundle[:12], recorded_bundle[:12]),
-            "review the difference in /hooks and re-run the team scaffold, which reinstalls the "
-            "kit's own files and records the bundle it installed."))
+            "review the difference in /hooks, then ask the user to re-run the team scaffold, "
+            "which reinstalls the kit's own files and records the bundle it installed. A session "
+            "cannot run it itself: `gate_write_scope` refuses a write-capable command line that "
+            "names the enforcement layer, and starting a script is one."))
     report["trust_status"] = matrix.get("hook_trust", "unknown")
     report["specialists"] = _installed_specialists(repo_root)
     report["hooks_disabled"] = _hooks_disabled(repo_root)

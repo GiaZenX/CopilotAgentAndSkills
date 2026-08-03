@@ -4345,6 +4345,163 @@ def test_the_working_directory_is_tracked_as_a_path(tmp_path, command, blocked):
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == (2 if blocked else 0)
 
 
+# -- gate_write_scope: a redirect writes when the bytes are RETAINED ----------
+
+@pytest.mark.parametrize("command", [
+    # the three a reviewer measured in a ten-session lifecycle run, each a pure read, each refused
+    # by a branch whose own remedy line says "reading it (cat/grep/diff/ruff/mypy) stays allowed"
+    'cat .claude/settings.json 2>/dev/null | head -50',
+    'ls .claude/agents/ 2>/dev/null',
+    'find .claude/hooks -iname "*push*" 2>/dev/null',
+    # the same shape without a stream number, and the bash spelling that redirects BOTH streams
+    'cat .claude/settings.json > /dev/null',
+    'grep -n mint .claude/hooks/gate_approval.py &> /dev/null',
+    # the Windows device name, which Git Bash discards just as completely
+    'ls .claude/hooks 2> NUL',
+    # the verbs whose PROGRAM is an argument: their branch looked for any `>` among the tokens and
+    # so answered for the SHELL's redirect too, keeping all six outside the rule
+    "awk '{print $1}' .claude/settings.json 2>/dev/null",
+    "sed -n '1,20p' .claude/hooks/gate_approval.py 2>/dev/null",
+    "jq . .claude/settings.json 2>/dev/null",
+])
+def test_suppressing_output_is_not_a_write_to_the_enforcement_layer(tmp_path, command):
+    """A redirect into the null device retains nothing, so it cannot be the relocation this branch
+    refuses — and the branch refused it anyway, three times in one measured lifecycle, while its
+    own remedy promised the read was allowed. The state branch had a carve-out for capture and the
+    enforcement branch had none.
+
+    THE FIX IS NOT THAT CARVE-OUT, and that matters: `captures_out` lets a read-only pipeline
+    redirect into any unprotected file, which is exactly `cat <hook> > copy.py`. What separates
+    "suppressed" from "relocated" is whether the TARGET keeps the bytes, which is what
+    `_null_sinks` decides and what the companion test below holds to."""
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 0, "%s\n%s" % (command, result.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # the relocation itself, in every operator spelling -- `&>` produced NO redirect target at all
+    # before the operator became a shape instead of a two-item tuple, so this was allowed
+    'cat .claude/hooks/gate_approval.py &> copy.py',
+    'cat .claude/hooks/gate_approval.py &>> copy.py',
+    # bash's force-clobber, which is `>` with `noclobber` overridden -- same bytes, same file
+    'cat .claude/hooks/gate_approval.py >| copy.py',
+    'cat .claude/hooks/gate_approval.py >|copy.py',
+    'cat .claude/hooks/gate_approval.py 2>| copy.py',
+    'cat .claude/hooks/gate_approval.py > copy.py',
+    'cat .claude/hooks/gate_approval.py 1> copy.py',
+    # per TARGET, not per pipeline: one retaining target among sinks is still a write
+    'cat .claude/hooks/gate_approval.py > /dev/null > copy.py',
+    # a path that merely BEGINS with the device name is an ordinary file
+    'cat .claude/hooks/gate_approval.py > /dev/null/../evil.py',
+    # a null sink in pipeline 1 must not disarm pipeline 2
+    'cat .claude/settings.json > /dev/null && echo pwned > .claude/hooks/evil.py',
+    # ...nor a later stage of the same pipeline, where `|` is a data channel
+    'cat .claude/settings.json 2>/dev/null | tee .claude/hooks/evil.py',
+    # a write-capable VERB is unaffected by where its diagnostics go
+    'cp -r .claude/hooks /tmp/kk 2>/dev/null',
+    'sed --in-place s/a/b/ .claude/hooks/gate_approval.py 2>/dev/null',
+    'cd .claude && cp -r hooks /tmp/kk 2>/dev/null',
+    # ...and the embedded redirect the program-arg branch exists for stays caught, which is what
+    # makes narrowing that branch to non-operator tokens a narrowing and not a hole
+    'awk \'BEGIN{while((getline l < ".claude/hooks/gate_approval.py")>0) print l > "kk/g.py"}\'',
+    "awk '{print $1}' .claude/settings.json > copy.txt",
+])
+def test_a_redirect_whose_target_keeps_the_bytes_is_still_a_write(tmp_path, command):
+    """The other half, and the reason the fix is about the target rather than about the operator
+    being harmless. `> /dev/null` may not become a prefix that launders the rest of a command."""
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 2, "%s\n%s" % (command, result.stdout)
+
+
+@pytest.mark.parametrize("command", [
+    "cat .claude/hooks/gate_approval.py >| /dev/null",
+    "ls .claude/agents >|/dev/null",
+])
+def test_force_clobber_still_answers_to_the_target(tmp_path, command):
+    """The pair that keeps the operator fix from just meaning "block more": `>|` is `>` with
+    `noclobber` overridden, so it is a redirect — and a redirect into the null device is still not
+    a write. Without this the previous parametrisation could have been satisfied by matching `>`
+    followed by anything at all."""
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 0, "%s\n%s" % (command, result.stderr)
+
+
+def test_a_pipe_after_a_redirect_target_is_still_a_pipe(tmp_path):
+    """`>|` and `> x | y` differ by one space and mean entirely different things. Widening the
+    operator shape to end in `|` must not swallow the pipe that starts the next STAGE, or
+    `cat <hook> > out | tee copy.py` would lose its second stage and with it the refusal."""
+    dispatched_repo(tmp_path)
+    module = load_hook_module("gate_write_scope")
+    assert module._tokenise("cat x > out|tee y") == ["cat", "x", ">", "out", "|", "tee", "y"]
+    blocked = "cat .claude/hooks/gate_approval.py > /dev/null|tee copy.py"
+    assert run_scope(tmp_path, shell_payload(tmp_path, blocked)).returncode == 2
+
+
+@pytest.mark.known_hole("state_write_protection.shell")
+def test_a_write_verb_of_the_tools_own_language_is_invisible(tmp_path):
+    """KNOWN OPEN PATH, asserted rather than promised away, and a DIFFERENT class from the
+    operators above.
+
+    `sed -n 'w kk/g.py' <hook>` copies a shipped gate with no `>` anywhere on the command line.
+    The `_PROGRAM_ARG_VERBS` branch looks for a shell redirect OPERATOR quoted into a program
+    argument; `sed`'s `w`, `jq`'s output builtins and `perl -e open` are write verbs of three
+    different languages, and refusing them from a command line needs a list of each language's
+    writing words — the shape of check this repo has watched fail one release later, repeatedly.
+    The containment for this is the project's permission posture, which is what
+    `state_write_protection.shell` already declares unverified.
+
+    INVERT THIS TEST the day shell writes are actually contained."""
+    dispatched_repo(tmp_path)
+    command = "sed -n 'w kk/g.py' .claude/hooks/gate_approval.py"
+    assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0
+
+
+def test_a_descriptor_duplication_is_not_a_redirect_into_a_file():
+    """`2>&1` sends stderr to stdout; its right-hand side is a stream number and no file receives
+    anything. The operator shape must not swallow it, or `2>&1` would name `1` as a target and
+    every diagnostic-merging read would be refused as a write to a file called `1`."""
+    module = load_hook_module("gate_write_scope")
+    sinks = module._null_sinks("Bash")
+    assert module._redirect_targets(module._tokenise("cat x 2>&1 | head"), sinks) == []
+    assert module._redirect_targets(module._tokenise("cat x >&2"), sinks) == []
+    assert module._redirect_targets(module._tokenise("cat x &> out"), sinks) == ["out"]
+
+
+def test_the_null_sink_is_the_hosts_own_device_not_a_word_someone_typed():
+    """The set is anchored outside the hook: whatever `os.devnull` names on the machine this gate
+    runs on must be in it, for both shells. A hand-typed list that drifts from the platform — or a
+    platform this harness is ported to later — fails here rather than by over-refusing in a
+    session."""
+    module = load_hook_module("gate_write_scope")
+    for tool in ("Bash", "PowerShell"):
+        assert module._norm(os.devnull) in module._null_sinks(tool), tool
+
+
+@pytest.mark.parametrize("tool,command,blocked", [
+    # PowerShell has no `/dev/null`: it resolves the string against the current DRIVE, so on a host
+    # with `C:\dev` this writes the hook into a real file. Measured 2026-08-03 -- Windows
+    # PowerShell answered `Out-File: DirectoryNotFoundException C:\dev\null`, i.e. it tried.
+    ("PowerShell", 'Get-Content .claude\\hooks\\gate_approval.py > /dev/null', True),
+    ("Bash", 'cat .claude/hooks/gate_approval.py > /dev/null', False),
+    # ...and the mirror image: `$null` is PowerShell's sink and an unset variable to bash, where
+    # the conservative direction is to keep refusing.
+    ("PowerShell", 'Get-ChildItem .claude\\agents 2>$null', False),
+    ("Bash", 'ls .claude/agents 2>$null', True),
+    # `Out-Null` is the same device reached through a pipe
+    ("PowerShell", 'Get-Content .claude\\settings.json | Out-Null', False),
+    ("PowerShell", 'Copy-Item .claude\\hooks\\gate_approval.py copy.py > $null', True),
+])
+def test_which_names_discard_is_a_question_about_the_shell(tmp_path, tool, command, blocked):
+    """One global set of "harmless spellings" would have been wrong in both directions at once."""
+    dispatched_repo(tmp_path)
+    payload = dict(shell_payload(tmp_path, command), tool_name=tool)
+    result = run_scope(tmp_path, payload)
+    assert result.returncode == (2 if blocked else 0), "%s\n%s" % (command, result.stderr)
+
+
 # -- guard_memory_budget: the budgets the kernel cannot see (spec II.5) -------
 
 def run_budget(tmp_path, payload, kit="dev-team", timeout=120):
@@ -8786,6 +8943,139 @@ def test_the_state_a_fresh_scaffold_leaves_behind_still_permits_delegation(tmp_p
     assert _kit_state(repo)["state"] == "active"
     _state2, _task2, header2 = dispatched_repo(repo)   # a second PR + a fresh lease
     assert run_dispatch(repo, spawn_payload(repo, header2)).returncode == 0
+
+
+# -- the trust message must name a remedy that LEAVES the state ---------------
+
+def _run_real_scaffold(home, repo, team="dev-team"):
+    """The installer, run the way a user runs it: from the project root, out of `~/.claude`."""
+    env = dict(os.environ, USERPROFILE=str(home), HOME=str(home))
+    return subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         str(pathlib.Path(str(home)) / ".claude" / "team-kits" / "scaffold_team.ps1"),
+         "-Team", team],
+        cwd=str(repo), capture_output=True, text=True, env=env, timeout=900)
+
+
+def _perform(message, home, repo):
+    """Do what `message` asks for, in the order it asks, and report which steps were performed.
+
+    THE PROSE IS EXECUTED, not searched. There are exactly two things anyone can DO to a stuck
+    project — start a session (the provider's act) and run the installer (the only writer of the
+    trust record) — so those are the two the harness can carry out on a message's behalf. A step
+    a message names and this cannot perform (`/hooks` is a human review) is simply not performed,
+    which is the whole point: a remedy that reaches `active` only through an unexecutable step
+    reaches it here not at all.
+    """
+    doable = {"session": (re.compile(r"new session", re.IGNORECASE),
+                          lambda: _run_trust_hook(repo)),
+              "scaffold": (re.compile(r"scaffold", re.IGNORECASE),
+                           lambda: _run_real_scaffold(home, repo))}
+    found = sorted((match.start(), name, action)
+                   for name, (pattern, action) in doable.items()
+                   for match in [pattern.search(message)] if match)
+    for _at, _name, action in found:
+        action()
+    return [name for _at, name, _action in found]
+
+
+def test_the_trust_message_names_a_remedy_that_actually_leaves_the_state(tmp_path):
+    """B1: the SessionStart message promised an exit the code does not build.
+
+    It said "open /hooks, check what changed, and start one new session". `/hooks` writes no
+    `kit_state.json` and `transition()` never rewrites `hook_bundle_hash` — only the recorder the
+    scaffold runs does — so a project that followed the sentence literally stayed
+    `hooks_trust_required` for ever, and with it every specialist spawn stayed refused.
+
+    MEASURED, not reasoned: the trigger is the one a reviewer hit in a real lifecycle run — a
+    python process that imported `.claude/kernel` without `-B` and left a `__pycache__` inside the
+    hashed bundle. Then the message this hook actually PRINTS is handed to `_perform`, which
+    carries out the steps it names. The assertion is on the state afterwards, so nothing here is
+    satisfied by a word appearing in a string: with the old sentence the only executable step is a
+    restart, and a restart leaves the project exactly where it was.
+
+    The spawn is measured on both sides of it, because the state's cost is the thing worth
+    reporting — a stuck project cannot delegate at all.
+    """
+    pytest.importorskip("yaml")
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    staging = _restamped_staging(tmp_path)
+    os.makedirs(str(home / ".claude"), exist_ok=True)
+    shutil.copytree(str(staging), str(home / ".claude" / "team-kits"), dirs_exist_ok=True)
+    os.makedirs(str(repo / "project_memory"), exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(repo)], capture_output=True)
+    write(str(repo / "project_memory" / "project_config.yaml"),
+          "project:\n  name: trust-remedy\n  preset: solo\nproviders: [claude]\n")
+    scaffolded = _run_real_scaffold(home, repo)
+    assert scaffolded.returncode == 0, scaffolded.stdout[-3000:] + scaffolded.stderr[-2000:]
+    _run_trust_hook(repo)
+    assert _kit_state(repo)["state"] == "active"
+
+    # THE SUITE'S OWN BYTECODE SETTINGS ARE REMOVED, not inherited: `conftest` exports
+    # `PYTHONPYCACHEPREFIX` so the tests never litter a tree, and a subprocess that inherits it
+    # caches nothing wherever it runs — the trigger would then be measuring pytest's environment
+    # instead of the reported case. A role's shell has neither variable, so neither may decide
+    # anything here. (`tools/test_hooks.py` strips the same three for the same reason.)
+    plain = {k: v for k, v in os.environ.items()
+             if k not in ("PYTHONPATH", "PYTHONPYCACHEPREFIX", "PYTHONDONTWRITEBYTECODE")}
+    cached = subprocess.run(
+        [sys.executable, "-c", "import sys; sys.path.insert(0, %r); from kernel import hashing; "
+                               "assert hashing" % str(repo / ".claude")],
+        capture_output=True, text=True, cwd=str(repo), env=plain, timeout=120)
+    assert cached.returncode == 0, cached.stderr
+    assert (repo / ".claude" / "kernel" / "__pycache__").is_dir(), (
+        "the trigger did not cache anything, so this test is not measuring the reported case")
+
+    reported = _run_trust_hook(repo)
+    assert _kit_state(repo)["state"] == "hooks_trust_required"
+    message = json.loads(reported.stdout)["hookSpecificOutput"]["additionalContext"]
+    _state, _task, header = dispatched_repo(repo)
+    stopped = run_dispatch(repo, spawn_payload(repo, header))
+    assert stopped.returncode == 2 and "is not the one this project trusts" in stopped.stderr
+
+    performed = _perform(message, home, repo)
+    assert performed, "the message asks for nothing this harness can carry out"
+    assert _kit_state(repo)["state"] != "hooks_trust_required", (
+        "doing what the message asks for (%s) left the project in hooks_trust_required — the "
+        "message promises a way out that the code does not build.\n%s" % (performed, message))
+    freed = run_dispatch(repo, spawn_payload(repo, header))
+    assert "is not the one this project trusts" not in freed.stderr, freed.stderr
+
+
+def test_the_scaffold_a_trust_refusal_names_is_a_step_the_session_cannot_take(tmp_path):
+    """The claim both refusals now carry, pinned so it cannot rot in either direction.
+
+    They say "ask the user to run it", and that sentence is only allowed to stand while the
+    session really cannot: `gate_write_scope` refuses a write-capable command line that NAMES the
+    enforcement layer, and the installers' documented invocations name `team-kits`. Measured
+    2026-08-03 in all three kits.
+
+    BOTH INSTALLERS, because four texts now carry the claim and they name two scripts between
+    them: `kit_trust_state` and `gate_dispatch` send the reader to the scaffold, `kernel.report`'s
+    installation error does the same, and `session_status`'s KIT UPDATE banner — the text with the
+    largest readership in the kit — names `init_project_memory` beside it. A pin covering only the
+    scaffold would leave half of the sentence a claim nothing checks.
+
+    THE FAIL DIRECTION MATTERS BOTH WAYS. If a later change makes the installer runnable from a
+    session, this test goes red and the sentence has to come out — a remedy that understates the
+    session's reach sends the role to the user for nothing, which is the same defect as one that
+    overstates it. And the `cd`-first spelling that slips past the gate is no counter-example: the
+    scaffold installs into `pwd`, so a shell that changed directory first would scaffold the
+    staging instead of the project.
+    """
+    dispatched_repo(tmp_path)
+    invocations = [
+        "bash ~/.claude/team-kits/scaffold_team.sh dev-team",
+        'powershell -NoProfile -ExecutionPolicy Bypass -File '
+        '"$env:USERPROFILE\\.claude\\team-kits\\scaffold_team.ps1" -Team dev-team',
+        "bash ~/.claude/team-kits/init_project_memory.sh dev-team",
+        'powershell -NoProfile -ExecutionPolicy Bypass -File '
+        '"$env:USERPROFILE\\.claude\\team-kits\\init_project_memory.ps1" -Team dev-team',
+    ]
+    for kit in KITS:
+        for command in invocations:
+            result = run_scope(tmp_path, shell_payload(tmp_path, command), kit=kit)
+            assert result.returncode == 2, (kit, command, result.stdout)
 
 
 def test_a_project_with_no_trust_record_is_not_stopped_and_the_hole_is_named(tmp_path):

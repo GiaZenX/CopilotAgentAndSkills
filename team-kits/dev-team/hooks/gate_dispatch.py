@@ -140,8 +140,11 @@ def _refuse_untrusted_bundle(data):
         remedy="open /hooks and review what changed in `.claude/hooks` and `.claude/kernel`; if "
                "the change is not yours, treat it as a finding. Re-running the scaffold "
                "reinstalls the kit files and records the reviewed bundle; then start ONE new "
-               "session. `python scripts/harness.py doctor` reports the same state as "
-               "`hook_trust`.")
+               "session. ASK THE USER TO RUN IT — `gate_write_scope` refuses a WRITE-CAPABLE "
+               "command line that names the enforcement layer, and starting a script is one, so "
+               "this session cannot run the scaffold itself; and no number of new sessions "
+               "clears the state without it. "
+               "`python scripts/harness.py doctor` reports the same state as `hook_trust`.")
 
 
 def handle_pre_tool_use(data):
