@@ -5539,49 +5539,50 @@ def test_a_hook_header_names_the_matcher_it_is_actually_registered_under():
 
 # -- the lead instruction package (spec II.5) ---------------------------------
 
-def test_the_lead_package_budget_is_measured_and_currently_exceeded():
-    """spec II.5 names this budget FIRST ("Das Paket zaehlt ALLES sessionfix Geladene") and it was
-    enforced NOWHERE — so the shrink II.11/3 has to perform had no measuring stick and no baseline.
-    A WARNING for now, deliberately: phase 2 must not fail its own build on work phase 3 owns.
-    The test pins both halves — that it measures the package, and that it is honest about all
-    three kits being over today.
+def test_the_shipped_lead_packages_are_within_their_own_record():
+    """spec II.5 names this budget FIRST and for three releases it was the one check that could
+    only WARN — on the argument that phase 2 must not fail its own build on work phase 3 owns.
+    Measured across those releases: all three kits stayed over it, the warning was read and
+    stepped over every time, and II.11/3 kept promising to make it hard "later". Since 2026-08-03
+    the ceiling is the recorded measurement per kit, so the rule starts satisfied and is a hard
+    failure on the next byte.
 
-    THE WARNING MUST NAME WHAT IT WEIGHED, and it did not: the sentence said "agent.md +
-    Lead-SKILL + constitution all load at every session start" while the SKILL does not load at
-    all (measured — `lead_package.files`). Checked against the derivation rather than against a
-    remembered wording, so the message and the measurement cannot drift into two answers."""
+    WHAT THIS TEST MEASURES, and it is deliberately the smaller half: the SHIPPED tree, through the
+    real `validate.py` process. Every package is inside its own record, so the run reports none of
+    them, and the record is the size of the two files that were measured to load.
+
+    WHAT IT DOES NOT MEASURE, said here because the obvious wording would claim it: that the size
+    rule FAILS rather than warns. Over a tree that is within its record, a `fails.append` and a
+    `print("[warn] …")` produce the same silence — measured, this test stays green with the rule
+    reverted. The channel is measured where the rule can fire, on a copy one byte over its record
+    (`test_context_budget.py::test_a_lead_package_over_its_record_fails_with_the_two_figures_it_compared`,
+    which asserts the complaint appears on the FAILURE channel). Asserting "no `[warn]` at all"
+    here is worth one thing only: some OTHER check reintroducing the channel is visible."""
     import subprocess as sp
     result = sp.run([sys.executable, os.path.join(ROOT, "tools", "validate.py")],
                     capture_output=True, text=True, cwd=ROOT)
     output = result.stdout + result.stderr
-    over = [line for line in output.splitlines() if "lead instruction package" in line]
-    assert len(over) == 3, "expected one warning per kit, got: %r" % over
-    for kit in KITS:
-        assert any(kit in line for line in over), kit
-    # a WARNING, not a failure: phase 3 promotes it. Asserted on the CHANNEL, because an earlier
-    # cut checked neither the exit code nor the prefix. The comment that used to stand here also
-    # said validate.py exits 1 anyway "for an unrelated reason (the VERSION bump this phase
-    # deliberately defers)", which stopped being true and then stood for a release as a written
-    # reason not to look at the exit code. Whether the build is green is asked by
-    # `test_validate_py_is_green`; this test asks only which channel the budget uses.
-    for line in over:
-        assert line.strip().startswith("[warn]"), line
-    assert "becomes a hard failure" in "\n".join(over)
+    assert "[warn]" not in output, (
+        "validate.py warns again — every check it runs is either a failure or not a check:\n%s"
+        % output)
+    reported = [line for line in output.splitlines() if "lead instruction package" in line]
+    assert not reported, (
+        "a shipped kit is outside its own recorded size. Shorten it, or raise the record with a "
+        "reason (python tools/record_lead_package_sizes.py --write --note \"...\"):\n%s"
+        % "\n".join(reported))
+    # ...and the record really covers what the derivation weighs, so "nothing reported" cannot mean
+    # "nothing was weighed": every kit has a ceiling and it is the size of the files that LOAD.
     sys.path.insert(0, os.path.join(ROOT, "tools"))
     import lead_package
     for kit in KITS:
-        line = next(entry for entry in over if kit in entry)
         kit_dir = os.path.join(TEAM_KITS, kit)
         weighed = [os.path.relpath(path, kit_dir).replace(os.sep, "/")
                    for path in lead_package.files(kit_dir)]
-        for name in weighed:
-            assert name in line, "%s: the warning does not name %s, which it weighed:\n%s" % (
-                kit, name, line)
-        for name in lead_package.on_demand_files(kit_dir):
-            rel = os.path.relpath(name, kit_dir).replace(os.sep, "/")
-            assert rel not in line, (
-                "%s: the warning names %s, which it did NOT weigh — the SKILL is registered on "
-                "demand, not loaded:\n%s" % (kit, rel, line))
+        assert weighed == ["constitution/AGENTS.md",
+                           "agents/%s.md" % lead_package.lead_role(kit_dir)], (kit, weighed)
+        assert lead_package.ceiling(kit_dir) == lead_package.size(kit_dir), kit
+        assert not set(lead_package.on_demand_files(kit_dir)) & set(lead_package.files(kit_dir)), (
+            "%s: the lead SKILL is registered on demand and must not be in the weighed set" % kit)
 
 
 def test_validate_py_is_green():
@@ -5601,13 +5602,12 @@ def test_validate_py_is_green():
     assert result.returncode == 0, (
         "tools/validate.py fails — the tree does not install as it stands:\n"
         + result.stdout + result.stderr)
-    # The "is it a warning and not a failure" claim is carried by the two assertions ABOVE, and
-    # only by them: a first cut filtered on a "[fail]" prefix that validate.py never emits
-    # (failures print as "  - <text>" under a "VALIDATION FAILED" header), and the replacement,
-    # while no longer vacuous, is unreachable — promoting the warning to a failure trips the
-    # `[warn]` prefix check first, and adding a failure line alongside the warnings trips the
-    # count check first. Left OUT rather than kept as decoration: an assertion that cannot be the
-    # one that fires reads like coverage it does not provide.
+    # THE EXIT CODE IS THE WHOLE ASSERTION, and since 2026-08-03 that is all there is to assert:
+    # validate.py has no warning channel left, so "which channel did this finding come out of" is
+    # no longer a question about this program — every finding is a failure or it is not a finding.
+    # The one check that used to have a channel is followed in
+    # `test_the_shipped_lead_packages_are_within_their_own_record` and, for the case where it can
+    # actually fire, in `test_context_budget.py`.
 
 
 # -- the validation core: one implementation, two callers ---------------------

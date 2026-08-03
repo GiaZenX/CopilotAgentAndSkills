@@ -3,15 +3,21 @@
 
 TWO DECISIONS ARE MEASURED HERE.
 
-  1. THE SIZE STATEMENT IS BYTES, AND THERE IS ONLY ONE OF IT. `tools/validate.py` used to fail a
-     constitution over 220 LINES. Measured, that limit said nothing about size: all three
-     constitutions held it only because 31 to 46 of their lines ran between 110 and 1 899
-     characters — reflowed to 100 columns the same texts are 383 / 368 / 394 lines — and a
-     compaction pilot cut 24.9 % of the bytes while its line count rose from 20 to 36. So the line
-     ceiling pushed AGAINST the byte budget standing beside it. It is gone, and nothing per-file
-     replaced it, because no split of the package budget across three files follows from anything.
-     What remains is `tools/lead_package.py`: one number, one derivation of which files it applies
-     to, read by `validate.py` and asserted against the sentence in the spec.
+  1. THE SIZE STATEMENT IS BYTES, IT IS PER KIT, AND IT IS A MEASUREMENT RATHER THAN A CHOICE.
+     `tools/validate.py` used to fail a constitution over 220 LINES. Measured, that limit said
+     nothing about size: all three constitutions held it only because 31 to 46 of their lines ran
+     between 110 and 1 899 characters — reflowed to 100 columns the same texts are 383 / 368 / 394
+     lines — and a compaction pilot cut 24.9 % of the bytes while its line count rose from 20 to
+     36. So the line ceiling pushed AGAINST the byte budget standing beside it. It is gone, and
+     nothing per-file replaced it, because no split across three files follows from anything.
+     THE FIXED BYTE CEILING IS GONE TOO (2026-08-03): 25 600 was "25 KB" read at 1024 B, was never
+     computed against what a kit carries, was missed by all three kits by 6 to 10 KB even after
+     de-duplication, and only ever warned — three releases of being read and stepped over. What
+     remains is a RATCHET: `tools/lead_package_sizes.json` records what each package weighs,
+     `validate.py` fails a package that exceeds its own record, and
+     `tools/record_lead_package_sizes.py --write --note "…"` is the only way the record moves. The
+     tests below measure the DERIVATION (the record IS `lead_package.size`) and the running rule
+     (the real validator over a real copy), never the digit.
 
   2. THE §2 HOOK TABLE LEFT THE SESSION-FIXED LOAD WITHOUT LEAVING THE PROJECT. It is
      `hooks/ENFORCEMENT.md` now, and a relocation is only worth anything if BOTH halves hold: the
@@ -76,40 +82,122 @@ def _reference_path(kit):
 
 
 # ============================================================ 1. the one size statement
-def test_the_spec_states_the_byte_budget_the_validator_enforces():
-    """II.5 must spell the number `validate.py` compares against — the third spelling is how this
-    budget came to exist as "25 KB", `25 * 1024` and "25 000" at the same time.
+def _spec_bullet(opening):
+    """The II.5 bullet that OPENS with this text, up to the next bullet — one statement, whole.
 
-    The AUTHORITY is the constant, not the prose: the document is searched for the value
-    `lead_package.MAX_BYTES` renders to, so moving the constant moves what the spec has to say.
-    Both spellings are accepted (`25600` and the thin-space grouped `25 600` the German prose uses)
-    because which one a sentence carries is typography, and a check that dictated it would be
-    asserting a style rather than a fact.
-
-    IN THE SENTENCE THAT STATES THE BUDGET, not merely somewhere in II.5. Measured on a copy: a
-    version whose budget line read "≤25 KB" again still passed a section-wide search, because the
-    paragraph explaining why no PER-FILE number replaces the line ceiling mentions 25 600 in
-    passing. A number that is present but not where the rule is stated is exactly the drift this
-    check exists against.
+    A fixed character window was what the previous cut of this check used, and it is the wrong
+    subject twice over: too short and the statement's second half is unwatched, too long and it
+    reads the neighbouring rule. A markdown bullet declares its own end (the next line starting
+    `- ` at the same indent), so the statement is taken as the document writes it.
     """
     with io.open(SPEC, encoding="utf-8") as handle:
-        prose = re.sub(r"\s+", " ", handle.read())
-    section = prose.split("## II.5 ", 1)
-    assert len(section) == 2, "the spec has no II.5 section to read"
-    body = section[1].split("## II.6", 1)[0]
-    plain = str(lead_package.MAX_BYTES)
-    grouped = "%s %s" % (plain[:-3], plain[-3:])
-    statement = body.split("Lead-Instruktionspaket", 1)
-    assert len(statement) == 2, "II.5 no longer states a Lead-Instruktionspaket budget at all"
-    statement = statement[1][:200]
-    assert plain in statement or grouped in statement, (
-        "the sentence stating the lead-package budget does not carry the number the validator "
-        "enforces (%s): %r" % (plain, statement))
-    # ...and the number is not merely mentioned somewhere: the old prose said "≤150 Zeilen" for the
-    # constitution and the lead SKILL, and leaving that in beside the byte budget would restore the
-    # contradiction this round removed.
+        lines = handle.read().splitlines()
+    start = next((index for index, line in enumerate(lines)
+                  if line.startswith("- " + opening)), None)
+    assert start is not None, "II.5 carries no bullet opening with %r" % opening
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("- ") or lines[index].startswith("## ")), len(lines))
+    return "\n".join(lines[start:end])
+
+
+# A CEILING IS A RELATION TO A NUMBER, and that is the definition this predicate encodes rather
+# than the three spellings the tree happened to carry ("≤25 KB", `25 * 1024`, "25 000"). Any
+# comparison operator followed by a figure is one, whichever unit or grouping follows it.
+_STATED_CEILING = re.compile(r"(?:≤|<=|<|max\.?|höchstens|maximal)\s*[\d   ]*\d")
+
+
+def _states_a_ceiling(text):
+    """Does this statement name a fixed upper bound? — the running predicate, one definition."""
+    return bool(_STATED_CEILING.search(text))
+
+
+def test_the_spec_states_the_size_rule_the_validator_enforces():
+    """II.5 must describe the rule `validate.py` runs, and the rule stopped being a number.
+
+    WHAT CHANGED AND WHY THIS TEST CHANGED WITH IT. The previous version demanded that II.5 spell
+    `lead_package.MAX_BYTES`, which was right while a constant existed and was the wrong question
+    the moment the constant turned out to derive from nothing but reading "25 KB" at 1024 bytes.
+    The ceiling is now per kit and IS the recorded measurement, so what the spec owes the reader is
+    a LOCATION, not a figure — house rule: naming a place beats quoting a number that rots.
+
+    THREE ASSERTIONS, and the middle one is the one that would go red if somebody put a fresh
+    invented number back:
+
+      * the statement names the record file, derived from `lead_package.RECORD` rather than typed
+        here, so moving the record moves what the spec has to say;
+      * the statement states NO fixed ceiling — `_states_a_ceiling` is the running predicate and
+        `test_the_ceiling_detector_reads_a_bound_however_it_is_spelled` drives it with the
+        spellings this tree really used;
+      * it names the command that moves the record, because a ratchet nobody can raise on purpose
+        is a ratchet somebody raises by editing the JSON.
+    """
+    statement = _spec_bullet("Lead-Instruktionspaket")
+    record = os.path.basename(lead_package.RECORD)
+    assert record in statement, (
+        "II.5's lead-package statement does not name %s, so the number it governs lives nowhere a "
+        "reader is sent: %r" % (record, statement))
+    assert not _states_a_ceiling(statement), (
+        "II.5 states a fixed upper bound for the lead package again. The ceiling is the recorded "
+        "measurement per kit; a second invented number beside it is the defect this round "
+        "removed:\n%s" % statement)
+    assert "record_lead_package_sizes.py" in statement, (
+        "II.5 does not say how the record moves — without the command the record reads as a fact "
+        "rather than as a decision somebody has to make:\n%s" % statement)
+    # ...and the per-FILE line budget stays gone: the old prose said "≤150 Zeilen" for the
+    # constitution and the lead SKILL, and leaving that in beside the size rule would restore the
+    # contradiction an earlier round removed.
+    with io.open(SPEC, encoding="utf-8") as handle:
+        body = re.sub(r"\s+", " ", handle.read()).split("## II.5 ", 1)[1].split("## II.6", 1)[0]
     assert "≤150 Zeilen" not in body.replace(" ", "") or "gestrichen" in body, (
         "II.5 still carries the per-file line budget as a live requirement")
+
+
+@pytest.mark.parametrize("text,bounded", [
+    ("Lead-Instruktionspaket ≤ 25 600 B (= 25 KB zu 1024 B)", True),
+    ("Lead-Instruktionspaket <= 25600 B", True),
+    ("Das Paket ist maximal 25 KB gross", True),
+    ("höchstens 30 KB", True),
+    ("Die Grenze ist pro Kit die aufgezeichnete Messung in lead_package_sizes.json", False),
+    ("Sie wurde von allen drei Kits um mehrere KB verfehlt", False),
+    ("Ein Aufschlag auf die Messung wäre eine zweite gegriffene Zahl", False),
+])
+def test_the_ceiling_detector_reads_a_bound_however_it_is_spelled(text, bounded):
+    """The floor under the assertion above: a detector that answers "no bound" to everything would
+    let 25 600 walk straight back into the spec with the suite green.
+
+    The positive cases are the three spellings this repo really carried plus the German wording a
+    rewrite would reach for; the negative cases are sentences from the statement as it now stands,
+    including two that mention numbers and units WITHOUT bounding anything — because a detector
+    that flagged those would force the spec to stop explaining itself.
+    """
+    assert _states_a_ceiling(text) is bounded, text
+
+
+def test_the_recorded_ceiling_is_the_measurement_and_not_a_typed_number():
+    """The derivation itself: for every shipped kit the record equals what the package weighs.
+
+    THIS IS THE TEST THAT MAKES THE NUMBER DERIVABLE rather than chosen. A ratchet whose record can
+    hold any figure is a ceiling somebody picked again, one file over — so the record is asserted
+    to BE `lead_package.size`, which is the same function `validate.py` compares against. It goes
+    red on the two ways that breaks: an edit to a kit's constitution or agent file without
+    `python tools/record_lead_package_sizes.py --write --note "..."`, and a hand-edited JSON.
+
+    The subject is derived from the tree (every directory that ships a constitution), so a fourth
+    kit is covered on the day it exists and a record naming a kit that is gone is a finding rather
+    than a leftover.
+    """
+    shipped = {os.path.basename(os.path.dirname(os.path.dirname(path)))
+               for path in glob.glob(os.path.join(TEAM_KITS, "*", "constitution", "AGENTS.md"))}
+    recorded = lead_package.records()
+    assert set(recorded) == shipped, (
+        "the record covers %s and the tree ships %s — an unrecorded package is the one place a "
+        "lead package could grow unwatched" % (sorted(recorded), sorted(shipped)))
+    drifted = {kit: (recorded[kit], lead_package.size(_kit_dir(kit))) for kit in sorted(shipped)
+               if recorded[kit] != lead_package.size(_kit_dir(kit))}
+    assert not drifted, (
+        "the recorded ceiling is no longer the measurement it claims to be (kit: recorded, "
+        "measured) — run python tools/record_lead_package_sizes.py --write --note \"...\": %s"
+        % drifted)
 
 
 OBSERVATIONS = json.load(io.open(os.path.join(ROOT, "tools", "provider_observations.json"),
@@ -361,13 +449,13 @@ def test_the_reachable_subject_survives_the_shapes_a_kit_can_have(tmp_path):
     assert os.path.basename(skill) == "SKILL.md"
 
 
-def test_the_budget_is_a_byte_comparison_over_the_files_the_kit_names(tmp_path):
-    """The floor under the number: `size()` counts bytes of the files `files()` derives, and the
-    comparison is strict.
+def test_the_size_rule_is_a_byte_comparison_over_the_files_the_kit_names(tmp_path):
+    """The floor under the rule: `size()` counts bytes of the files `files()` derives, `ceiling()`
+    reads the record keyed by the kit's DIRECTORY NAME, and the comparison is strict.
 
     Built over a synthetic kit so the boundary can be hit exactly. The lead is taken from
     `settings.json` here as it is in production, so a derivation that ignored the setting and
-    hard-coded a role name would report 0 for this kit and pass every "under budget" assertion.
+    hard-coded a role name would report 0 for this kit and pass every "within record" assertion.
     """
     kit = tmp_path / "probe-team"
     (kit / "constitution").mkdir(parents=True)
@@ -386,18 +474,23 @@ def test_the_budget_is_a_byte_comparison_over_the_files_the_kit_names(tmp_path):
     assert [os.path.basename(p) for p in lead_package.on_demand_files(str(kit))] == ["SKILL.md"]
     assert lead_package.size(str(kit)) == 2000
 
-    # exactly at the ceiling is NOT over it, one byte past it is
-    (kit / "constitution" / "AGENTS.md").write_text(
-        "c" * (lead_package.MAX_BYTES - 1000), encoding="utf-8")
-    assert lead_package.size(str(kit)) == lead_package.MAX_BYTES
-    assert not lead_package.size(str(kit)) > lead_package.MAX_BYTES
-    (kit / "constitution" / "AGENTS.md").write_text(
-        "c" * (lead_package.MAX_BYTES - 999), encoding="utf-8")
-    assert lead_package.size(str(kit)) > lead_package.MAX_BYTES
+    record = tmp_path / "sizes.json"
+    record.write_text(json.dumps({"sizes": {"probe-team": 2000}}), encoding="utf-8")
+    # exactly at the record is NOT over it, one byte past it is
+    assert lead_package.ceiling(str(kit), str(record)) == 2000
+    assert not lead_package.size(str(kit)) > lead_package.ceiling(str(kit), str(record))
+    (kit / "agents" / "chief.md").write_text("a" * 1001, encoding="utf-8")
+    assert lead_package.size(str(kit)) > lead_package.ceiling(str(kit), str(record))
+
+    # A KIT THE RECORD DOES NOT NAME ANSWERS None, never 0 and never "unlimited". Both wrong
+    # answers pass a `>` comparison silently — 0 makes every package a finding, a large default
+    # makes none — so the caller has to see the absence and `validate.py` fails on it.
+    assert lead_package.ceiling(str(tmp_path / "other-team"), str(record)) is None
+    assert lead_package.records(str(tmp_path / "no-such-file.json")) == {}
 
     # a lead the settings do not name contributes nothing — the subject follows the kit
     (kit / "settings" / "settings.json").write_text(json.dumps({}), encoding="utf-8")
-    assert lead_package.size(str(kit)) == lead_package.MAX_BYTES - 999
+    assert lead_package.size(str(kit)) == 1000
     assert lead_package.on_demand_files(str(kit)) == ()
 
 
@@ -409,6 +502,11 @@ def _validate_over_a_copy(tmp_path, mutate):
     program. `validate.py` derives its ROOT from its own location, so the copy needs `team-kits/`
     and `tools/*.py` and nothing else; the git-tracking check degrades to "moot" without a `.git`,
     which it is written to do.
+
+    THE RECORD COMES ALONG, and forgetting it is not a small omission: `tools/*.py` misses
+    `lead_package_sizes.json`, the copy would then have no record for any kit, and every case below
+    would fail with "has no recorded size" — the right exit code for the wrong reason, which is the
+    shape of a test that measures its own fixture.
     """
     root = tmp_path / "tree"
     (root / "tools").mkdir(parents=True)
@@ -416,6 +514,7 @@ def _validate_over_a_copy(tmp_path, mutate):
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
     for path in glob.glob(os.path.join(ROOT, "tools", "*.py")):
         shutil.copy(path, str(root / "tools" / os.path.basename(path)))
+    shutil.copy(lead_package.RECORD, str(root / "tools" / os.path.basename(lead_package.RECORD)))
     mutate(root)
     result = subprocess.run([sys.executable, str(root / "tools" / "validate.py")],
                             capture_output=True, text=True, encoding="utf-8", errors="replace",
@@ -427,8 +526,8 @@ def _four_hundred_short_lines(root, kit="office-team"):
     """Replace one kit's constitution with 400 lines nobody could call long.
 
     The office kit, because its package is the smallest: 400 lines of this width leave the whole
-    package UNDER the budget, so the same fixture answers both directions — the line count must not
-    matter, and the byte total must.
+    package far UNDER its record, so the same fixture answers both directions — the line count must
+    not matter, and the byte total must.
     """
     path = root / "team-kits" / kit / "constitution" / "AGENTS.md"
     head = path.read_text(encoding="utf-8").splitlines()[0]
@@ -437,52 +536,175 @@ def _four_hundred_short_lines(root, kit="office-team"):
     return path
 
 
+def _grow_past_the_record(root, kit, over=1):
+    """Append `over` bytes more than this kit's record allows, and return what it will then weigh."""
+    kit_dir = os.path.join(str(root), "team-kits", kit)
+    target = lead_package.ceiling(_kit_dir(kit)) + over
+    path = os.path.join(kit_dir, "constitution", "AGENTS.md")
+    with io.open(path, "a", encoding="utf-8") as handle:
+        handle.write("x" * (target - lead_package.size(kit_dir)))
+    return target
+
+
 _LINE_COMPLAINT = re.compile(r"office-team: constitution has \d+ lines")
-_BUDGET_COMPLAINT = re.compile(r"office-team: lead instruction package is (\d+) bytes \(> (\d+)")
+
+
+def _mentions_size(kit, output, failures_only=False):
+    """The validator's line about this kit's package size, or None.
+
+    `failures_only` IS THE HALF THIS CHECK WAS MISSING, and it was measured: with the size rule
+    reverted to a `print("  [warn] …")` the positive tests below stayed GREEN, because appending
+    bytes to a constitution also trips "VERSION not bumped" and `"VALIDATION FAILED" in output` was
+    therefore true for a reason that has nothing to do with the package. `validate.py` prints each
+    entry of `fails` as a line opening `  - `, so asking for that prefix asks which CHANNEL the
+    complaint came out of — which is the whole subject of this round.
+    """
+    pattern = re.compile(r"%s: lead instruction package is (\d+) bytes (?:\(> (\d+) recorded|and "
+                         r"has no recorded size)" % kit)
+    for line in output.splitlines():
+        if failures_only and not line.startswith("  - "):
+            continue
+        match = pattern.search(line)
+        if match:
+            return match
+    return None
 
 
 def test_a_constitution_of_four_hundred_short_lines_is_not_a_finding(tmp_path):
-    """The half that is RED without this round's change.
+    """A shorter text may not be a finding — neither for its line count nor for its size.
 
     Under the old rule this exact tree failed with "office-team: constitution has 400 lines
     (> 220)" — a text 12 KB smaller than the one it replaced, rejected for being SHORTER per line.
-    The assertion is over the validator's real output, and the second half of it is the control:
-    the run must still have measured this kit's package, or "no line complaint" would only mean the
-    validator never looked.
+    Under the RATCHET it must not be a finding either, and that is the direction worth stating: a
+    record is a ceiling, so shrinking is free and needs no permission.
+
+    THE CONTROL IS BUILT INTO THE SAME RUN, and it had to be rebuilt this round. It used to be "the
+    unshortened kits are still reported", which was only true while every kit was over a ceiling
+    nobody met; now every kit sits exactly ON its record and a validator that had stopped weighing
+    packages altogether would produce the same silence as a correct one. So dev-team is pushed one
+    byte over in the same tree: the run must report THAT kit and stay silent about office.
     """
-    output = _validate_over_a_copy(tmp_path, lambda root: _four_hundred_short_lines(root))
+    def mutate(root):
+        _four_hundred_short_lines(root)
+        _grow_past_the_record(root, "dev-team")
+
+    output = _validate_over_a_copy(tmp_path, mutate)
     assert not _LINE_COMPLAINT.search(output), (
         "the validator still judges a constitution by its line count:\n%s"
         % "\n".join(line for line in output.splitlines() if "lines" in line))
-    assert not _BUDGET_COMPLAINT.search(output), (
-        "the shortened package is under the budget and was reported anyway:\n%s" % output)
-    # the control: the two kits that were NOT shortened are still measured and still over
-    assert re.search(r"dev-team: lead instruction package is \d+ bytes", output), (
-        "the validator did not weigh any package at all — the fixture proves nothing:\n%s" % output)
+    assert not _mentions_size("office-team", output), (
+        "the shortened package is under its record and was reported anyway:\n%s" % output)
+    assert _mentions_size("dev-team", output, failures_only=True), (
+        "the validator did not FAIL any package at all — the fixture proves nothing:\n%s" % output)
 
 
-def test_a_lead_package_over_the_budget_is_reported_with_the_number_from_the_definition(tmp_path):
-    """The other half: the budget must actually bite, and the figure it bites at must be the one
-    `lead_package.MAX_BYTES` holds.
+def test_a_lead_package_over_its_record_fails_with_the_two_figures_it_compared(tmp_path):
+    """The half that is RED without this round's change: the size rule now FAILS instead of warning.
 
-    The same 400-line constitution as above, padded past the ceiling. Two things are read off the
-    message — the threshold (it must be the constant, not a copy of it) and the measured size (it
-    must be what `lead_package.size` computes over that same tree, so the validator and the pin
-    cannot disagree about what the package IS).
+    Under the previous rule this tree exited 0 with a `[warn]` line and shipped. The assertions are
+    over the real process: the exit code has to be non-zero, the message has to name the kit's own
+    recorded ceiling (read from `lead_package.ceiling`, not copied here) and the measured size (what
+    `lead_package.size` computes over that same tree), so the validator and the recorder cannot
+    disagree about what the package IS or about what it may weigh.
     """
+    grown = {}
+
     def mutate(root):
-        path = _four_hundred_short_lines(root)
-        kit = os.path.dirname(os.path.dirname(str(path)))
-        short = lead_package.size(kit)
-        with io.open(str(path), "a", encoding="utf-8") as handle:
-            handle.write("x" * (lead_package.MAX_BYTES - short + 1))
+        grown["office-team"] = _grow_past_the_record(root, "office-team")
 
     output = _validate_over_a_copy(tmp_path, mutate)
-    match = _BUDGET_COMPLAINT.search(output)
-    assert match, "a package one byte over the budget was not reported:\n%s" % output
-    assert int(match.group(2)) == lead_package.MAX_BYTES, match.group(0)
-    assert int(match.group(1)) == lead_package.MAX_BYTES + 1, match.group(0)
+    # ON THE FAILURE CHANNEL, not merely somewhere in the output. Measured with the rule reverted
+    # to `print("  [warn] …")`: growing a constitution also trips "VERSION not bumped", so
+    # `"VALIDATION FAILED" in output` was true and this test stayed GREEN through the exact
+    # regression it exists for.
+    match = _mentions_size("office-team", output, failures_only=True)
+    assert match, (
+        "a package one byte over its record was not FAILED — a size rule that only warns is the "
+        "one this round replaced:\n%s" % output)
+    assert int(match.group(2)) == lead_package.ceiling(_kit_dir("office-team")), match.group(0)
+    assert int(match.group(1)) == grown["office-team"], match.group(0)
     assert not _LINE_COMPLAINT.search(output), output
+
+
+def test_a_lead_package_with_no_record_is_a_failure_and_not_a_free_pass(tmp_path):
+    """The hole a ratchet must not have: the kit nobody has recorded yet.
+
+    "No record" is the only state in which a `size > ceiling` comparison has nothing to compare
+    against, and the tempting implementations both fail open — `None` compared with `>` raises on
+    Python 3 (a crash the validator would report as something else entirely) and a default of
+    `sys.maxsize` would let that one kit grow without limit forever. Measured here on the real
+    program: deleting one kit from the record file makes THAT kit a failure and leaves the other
+    two alone.
+    """
+    def mutate(root):
+        path = str(root / "tools" / os.path.basename(lead_package.RECORD))
+        with io.open(path, encoding="utf-8") as handle:
+            record = json.load(handle)
+        record["sizes"].pop("research-team")
+        with io.open(path, "w", encoding="utf-8") as handle:
+            json.dump(record, handle)
+
+    output = _validate_over_a_copy(tmp_path, mutate)
+    # NOTHING ELSE IN THIS TREE IS BROKEN — no file was touched, so "VERSION not bumped" cannot
+    # stand in for the failure this asks about, and the failure list must be exactly this one.
+    assert _mentions_size("research-team", output, failures_only=True), (
+        "an unrecorded package was not FAILED — that kit could then grow unwatched:\n%s" % output)
+    for other in ("dev-team", "office-team"):
+        assert not _mentions_size(other, output), (
+            "%s is recorded and within it and was reported anyway:\n%s" % (other, output))
+
+
+def test_the_recorder_reports_a_drift_before_it_records_one(tmp_path):
+    """The command that moves the record, run as a PROCESS over a copy — the other half of the
+    instrument, and the half nothing would otherwise measure.
+
+    Three properties, because a recorder that gets any of them wrong turns the ratchet into a
+    formality: without `--write` it reports and exits non-zero (so a forgotten re-record is visible
+    in a script), with `--write` and no `--note` it refuses (the journal line is the point), and
+    with both it writes a record that makes the validator green again AND leaves a journal line
+    naming the direction and the two figures.
+    """
+    root = tmp_path / "tree"
+    (root / "tools").mkdir(parents=True)
+    (root / "docs" / "reviews").mkdir(parents=True)
+    shutil.copytree(TEAM_KITS, str(root / "team-kits"),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    for path in glob.glob(os.path.join(ROOT, "tools", "*.py")):
+        shutil.copy(path, str(root / "tools" / os.path.basename(path)))
+    shutil.copy(lead_package.RECORD, str(root / "tools" / os.path.basename(lead_package.RECORD)))
+    shutil.copy(os.path.join(ROOT, "docs", "reviews", "phase0-disposition.md"),
+                str(root / "docs" / "reviews" / "phase0-disposition.md"))
+    grown = _grow_past_the_record(root, "dev-team", over=64)
+
+    def run(*argv):
+        return subprocess.run([sys.executable,
+                               str(root / "tools" / "record_lead_package_sizes.py")] + list(argv),
+                              capture_output=True, text=True, encoding="utf-8", errors="replace",
+                              timeout=600)
+
+    reported = run()
+    assert reported.returncode == 1, reported.stdout + reported.stderr
+    assert "GREW" in reported.stdout and str(grown) in reported.stdout, reported.stdout
+
+    refused = run("--write")
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert lead_package.records(str(root / "tools" / os.path.basename(lead_package.RECORD))) \
+        ["dev-team"] != grown, "the record moved although the note was missing"
+
+    accepted = run("--write", "--note", "a probe grew the package on purpose")
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    assert lead_package.records(str(root / "tools" / os.path.basename(lead_package.RECORD))) \
+        ["dev-team"] == grown
+    journal = io.open(str(root / "docs" / "reviews" / "phase0-disposition.md"),
+                      encoding="utf-8").read()
+    assert "a probe grew the package on purpose" in journal and "GREW" in journal, (
+        "the recorder wrote a record and no journal line")
+    # and the validator is green again over the very tree the recorder just recorded
+    after = subprocess.run([sys.executable, str(root / "tools" / "validate.py")],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           timeout=600)
+    assert not _mentions_size("dev-team", after.stdout + after.stderr), \
+        after.stdout + after.stderr
 
 
 # ================================================ 2. the relocation: what no longer loads

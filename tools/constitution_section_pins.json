@@ -6,12 +6,15 @@
         "hooks": []
       },
       "Delegation": {
-        "digest": "73202b49a9aefba2",
+        "digest": "e4ddc47499c25c11",
         "hooks": []
       },
       "Git": {
-        "digest": "f2da83578b3ca25d",
-        "hooks": []
+        "digest": "622e60b005dcf077",
+        "hooks": [
+          "gate_git",
+          "gate_push_token"
+        ]
       },
       "Memory (project truth vs optional provider hints)": {
         "digest": "3aefaa4775826489",
@@ -22,17 +25,17 @@
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
-        "digest": "5d98576152131d09",
+        "digest": "ddb758e0275011ad",
         "hooks": [
           "gate_write_scope"
         ]
       },
       "What you are and are not": {
-        "digest": "9478e46991281b3f",
+        "digest": "5376c516483c8e9d",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
-        "digest": "cdbd2e421f7a0fde",
+        "digest": "7192550f045647b6",
         "hooks": []
       }
     },
@@ -250,7 +253,7 @@
         "hooks": []
       },
       "Startup gate (before any delegation)": {
-        "digest": "d9d23a778675f98f",
+        "digest": "2d328638191258c8",
         "hooks": [
           "gate_proc_approved"
         ]
@@ -425,11 +428,11 @@
         "hooks": []
       },
       "Delegation": {
-        "digest": "dccb8064f8ded888",
+        "digest": "a8f3fbbd3be6c8b5",
         "hooks": []
       },
       "Git": {
-        "digest": "6ad6322f114ba5db",
+        "digest": "c6315f5b18606281",
         "hooks": []
       },
       "Memory (project truth vs optional provider hints)": {
@@ -441,17 +444,17 @@
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
-        "digest": "79c5945ca7c7c9a7",
+        "digest": "3313d2759695b0e2",
         "hooks": [
           "gate_write_scope"
         ]
       },
       "What you are and are not": {
-        "digest": "35e55a1f81d3f121",
+        "digest": "597ff29b5e512ef4",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
-        "digest": "36b1d0396f0ecc17",
+        "digest": "f218256a4e39f3a7",
         "hooks": []
       }
     },
@@ -543,7 +546,7 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "8ae2c2591bfe4017",
+        "digest": "71cefd3435786f2c",
         "hooks": [
           "guard_question_context"
         ]

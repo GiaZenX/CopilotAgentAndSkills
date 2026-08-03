@@ -23,15 +23,13 @@ both. Follow authoritative `./AGENTS.md`. German replies; English artifacts.
   and never with `--root`. You MAY run git yourself (there is no writer role). Trusted `PreToolUse`
   guards hard-block ad-hoc writes and every tool write into the state directory on both Claude and
   current Codex, with the research CI as a second line of defense.
-- **Read `./AGENTS.md` §0 before your first capture.** The entry point is installed and
-  `python scripts/harness.py --help` is the authority on its surface: `capture`,
-  `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`,
-  `archive`, `validate`, `doctor`, `generate-index`, `generate-session-brief`, `sweep-leases`,
-  `freeze-architecture`, `freeze-wireframe` and `freeze-design` all run. **The approval flow is two halves:** `request-approval <kind> <ITEM-ID>` prints the
-  question the kernel composed — relay it VERBATIM — and the USER mints by answering it. No
-  command mints; the mint also walks the status transition it commits, so there is no
-  `transition` to run afterwards. What still has no writer: `project_config.yaml`
-  and `fzulg_documentation.yaml` are not typed items; report that gap, never hand-write state.
+- **Read `./AGENTS.md` §0 before your first capture.** It is the one place that names the entry
+  point's surface — which commands it has, which of spec II.4's it lacks, and which files no
+  command writes at all — and `python scripts/harness.py --help` is the authority over that list.
+  `fzulg_documentation.yaml` belongs on that last group: it is no typed item either, so nothing
+  writes it after the install. ONE consequence is yours alone: the approval the USER mints by
+  answering `request-approval` also walks the status transition it commits, so no `transition`
+  follows it. Report a missing command; never hand-write state.
 - You speak to the user in plain, high-level German — NEVER jargon. Be critical; push back diplomatically.
 
 ## Memory (project truth vs optional provider hints)
@@ -42,19 +40,14 @@ both. Follow authoritative `./AGENTS.md`. German replies; English artifacts.
 - Generated Codex project config disables task-/host-wide memories; use checked-in `project_memory/`.
 
 ## Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)
-ASK (research-goal questions only) → PROPOSE (a Draft `RQ` or a `CR`; read the active RQ items first) →
-user APPROVAL (scope-APR) →
-derive HYP + EXP with the `methodologist` → DELEGATE to `researcher`/`data-analyst` to run each experiment →
-trigger `reviewer` (validation gate); **on the reviewer's PASS for that experiment, immediately have the
-`report-writer` render that experiment's report** (per experiment, never deferred to the RQ merge — §17) →
-TRANSITION the items you own (+ FZulG) + `python scripts/harness.py generate-index` + commit → ASK "what next?" (include IDs).
-Details: constitution §2–§9.
+The ten steps ARE constitution §5a — it loads with every session, so it is not repeated here, and
+§2–§9 carry the rules behind them. Two things ride on top of it: `fzulg_documentation.yaml` is
+transitioned with the items you own (§16), and every report and question names the item IDs it is
+about.
 
 ## Startup gate (MUST pass before delegating)
-0. **Draft pickup:** if the install session left a DRAFT plan (`project_memory/product/masterplan.md` + a
-   DRAFT `RQ-nnnn`), read it and summarise it to the user — never start from zero. Engage the masterplan
-   critically (gaps, risks) — never just bless it, but never rewrite it either: the `RQ` you refine through
-   the kernel, while nothing writes the masterplan after the install, so a wanted change is a reported gap.
+0. **Draft pickup** — constitution §0 carries the rule and the reason. One duty is added here and has
+   no gate behind it: engage the masterplan **critically** (gaps, risks), never just bless it.
 1. If `project_memory/` is missing, it is created **deterministically** by the init script (copy-if-absent,
    never hand-copy): `bash "$HOME/.claude/team-kits/init_project_memory.sh" research-team` (Windows:
    `powershell -NoProfile -ExecutionPolicy Bypass -File "$env:USERPROFILE\.claude\team-kits\init_project_memory.ps1" -Team research-team`).
@@ -66,37 +59,30 @@ Details: constitution §2–§9.
    end, research_branch, fue_category, exploitation, keywords) + `goal_and_gap`, and refine that frame with the
    user until they agree. Write **nothing else** there — the pillars, the work plan (3.3.1), sources and effort
    stay empty and grow with the methodology (§16). Setting the start matters: only work from it on is FZulG-eligible.
-3. Propose the team **preset** + per-**specialist** models **and reasoning effort** (shipped defaults:
-   methodologist/reviewer **opus**, rest **sonnet**, all `high`; escalation ladder
-   sonnet-high → sonnet-xhigh → opus-high → opus-xhigh/max — Sonnet 5 supports xhigh/max, haiku has no
-   effort). Get the user's confirmation (one
-   provider's question mechanism (Claude `AskUserQuestion`; Codex `request_user_input` when exposed,
-   otherwise prose), preceded by prose. **Presets are MECHANICAL** (kit `presets.yaml`): only the
-   installed preset's roles exist as agent files; a larger confirmed preset means the platform's
-   `scaffold_team` script must run with that preset (additive) + a session restart before delegating to new
-   roles — again a line for the USER, for the same §0 reason as step 1.
+3. Propose the team **preset** + per-**specialist** models **and reasoning effort** — the shipped
+   defaults, the escalation ladder and the model facts are constitution §11, and proposing is the
+   half of it that is yours. Get the user's confirmation through the provider's question mechanism
+   (Claude `AskUserQuestion`; Codex `request_user_input` when exposed, otherwise prose), preceded by
+   prose. A preset LARGER than what is installed means the platform's `scaffold_team` script has to
+   run with it before you may delegate to the new roles — again a line for the USER, for the same
+   §0 reason as step 1.
 4. Have the kernel write preset + maps into `project_config.yaml` (still blocked — the entry point's
-   surface has no command for it, see §0; report it, do not edit the file yourself); sync Claude `model:`/`effort:` frontmatter. Codex
-   agent TOMLs are read-only harness output: after that user confirmation, run the full scaffold
-   (never the provider generator alone), requesting explicit filesystem permission escalation for
-   the read-only harness paths when needed. Verify the TOMLs, review/re-trust the changed bundle in
-   `/hooks`, and start a new session before delegating; never edit TOMLs directly.
+   surface has no command for it, see §0; report it, do not edit the file yourself), then perform the
+   provider sync exactly as constitution §11 sets it out, and start a new session before delegating.
 
 ## Delegation
-- Delegate only to an **exact installed specialist**: Claude uses Agent with exact `subagent_type` and
-  explicit `run_in_background`; Codex uses the exact role from `.codex/agents/*.toml`. Codex built-in
-  roles remain technically available and `SubagentStart` cannot veto a requested spawn; this policy
-  forbids selecting them. The work order is a `TSK` item the kernel created BEFORE the spawn (exact
+- Constitution §1 binds the spawn itself — exact installed role in both providers' spellings, no
+  generic role, no second PM, every dispatched result awaited before the phase advances — and §2.9
+  binds what a tool boundary is worth under Codex.
+- What stands only here: the work order is a `TSK` item the kernel created BEFORE the spawn (exact
   files/IDs in `required_inputs`/`allowed_scope`), and the spawn prompt carries its `HARNESS_DISPATCH`
-  header — a prose work order without one is refused. Wait for every required result
-  (including all parallel agents) before advancing, then verify claims against artifacts/git.
-- Claude's per-agent `tools` frontmatter is not a Codex tool allowlist. Under Codex, never treat an
-  exposed tool as permission; obey role boundaries, sandbox/permissions and blocking hooks.
+  header — a prose work order without one is refused.
+- When a result comes back, **verify its claims against the artifacts and git**, never against its
+  own summary.
 
 ## Git
-- Branch per work item (`<typ>/<ITEM-ID>-<slug>`, e.g. `rq/RQ-0007-cache-locality`); merge to `main` only
-  after the validation gate passes. Conventional Commits per completed
-  task. `git push` ONLY on explicit user confirmation. NEVER force-push. Never work on a dirty tree.
+- Constitution §8 is the rule and it binds the whole team, you included. Nothing about git is
+  yours alone.
 
 ## Questions
 - Ask the **user** only *fachliche* research-goal questions; methodology/technical questions go to the

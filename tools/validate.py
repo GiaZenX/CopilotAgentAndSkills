@@ -27,11 +27,13 @@ from preset_config import UniqueKeyLoader, load_preset_catalog  # noqa: E402
 import lead_package  # noqa: E402  — the budget and its subject, defined once
 
 fails = []
-# Budgets that are MEASURED now and become failures in a later phase, so the number is visible
-# while the work that fixes it is still ahead (spec II.5 Kuerzungs-Sequenz: cut only AFTER the
-# replacing gates exist). A warning channel keeps the measuring stick honest without adding red
-# that nobody can act on yet.
-warns = []
+# THERE IS NO WARNING CHANNEL ANY MORE, and its removal is the point rather than tidying. It
+# existed for exactly one check — the lead-package budget — on the argument that phase 2 must not
+# fail its own build on work phase 3 owns. Three releases later all three kits were still over it,
+# the warning had been read and stepped over every time, and II.11/3 was still promising to make it
+# hard "later". The budget is now a per-kit RECORD (`tools/lead_package_sizes.json`) that starts
+# satisfied, so the check can be a failure today; anything else this file learns to measure should
+# be a failure too, or it should not be here.
 
 
 def rel(p):
@@ -221,26 +223,39 @@ for kit in discover_kits(ROOT):
         # limit only because 31 to 46 of their lines ran 110-1899 characters (reflowed to 100
         # columns: 383/368/394 lines), while a compaction pilot cut 24.9 % of the bytes and RAISED
         # its line count from 20 to 36. A line ceiling beside a byte budget is a ceiling that pushes
-        # against it. Removed rather than replaced by a per-file byte number: nothing derives one,
-        # and a second invented constant next to the first is what this repo keeps paying for
-        # (`tools/lead_package.py` carries the reasoning and the number).
+        # against it. Removed rather than replaced by a per-file byte number: nothing derives one.
         #
-        # The package is a CI-side budget, not a hook: nothing writes these files at runtime.
-        # WARNING until phase 3 (II.11/3) does the shrinking; promote to `fails` there.
+        # AND THE CEILING IS NO LONGER A CONSTANT EITHER (2026-08-03, spec II.5). 25 600 was "25 KB"
+        # read at 1024 B — typography, not a computation — it was missed by all three kits by 6 to
+        # 10 KB even after de-duplication, and it only WARNED. A limit every subject misses forever
+        # and that warns is a number people step over. What is derivable is the measurement, so the
+        # ceiling per kit IS the recorded measurement in `tools/lead_package_sizes.json`, this is a
+        # FAILURE rather than a warning (II.11/3 asked for hard; it can be hard because the record
+        # starts satisfied), and the record moves only through
+        # `python tools/record_lead_package_sizes.py --write --note "<reason>"`.
         #
         # IT NAMES WHAT IT WEIGHED, from the same derivation it weighed it with. The sentence used
         # to read "agent.md + Lead-SKILL + constitution all load at every session start", and one
         # third of that was false: the lead SKILL is registered on demand, not injected (measured
-        # 2026-08-02 — `lead_package.files` carries the measurement). A warning that misnames its
+        # 2026-08-02 — `lead_package.files` carries the measurement). A message that misnames its
         # own subject sends the shortening at the wrong file.
         total = lead_package.size(kit_dir)
-        if total > lead_package.MAX_BYTES:
-            warns.append("%s: lead instruction package is %d bytes (> %d, spec II.5) — %s load at "
-                         "every session start. Phase 3 (II.11/3) shrinks these; this becomes a "
-                         "hard failure then."
-                         % (kit, total, lead_package.MAX_BYTES,
-                            " + ".join(os.path.relpath(path, kit_dir).replace(os.sep, "/")
-                                       for path in lead_package.files(kit_dir))))
+        recorded = lead_package.ceiling(kit_dir)
+        weighed = " + ".join(os.path.relpath(path, kit_dir).replace(os.sep, "/")
+                             for path in lead_package.files(kit_dir))
+        if recorded is None:
+            # NO RECORD IS NOT PERMISSION. A kit the recorder has never seen would otherwise be the
+            # one place a package could grow without limit, which is the hole a ratchet exists to
+            # not have.
+            fails.append("%s: lead instruction package is %d bytes and has no recorded size "
+                         "(spec II.5) — %s load at every session start. Run "
+                         "python tools/record_lead_package_sizes.py --write --note \"...\"."
+                         % (kit, total, weighed))
+        elif total > recorded:
+            fails.append("%s: lead instruction package is %d bytes (> %d recorded, spec II.5) — %s "
+                         "load at every session start. Shorten it, or raise the record with a "
+                         "reason: python tools/record_lead_package_sizes.py --write --note \"...\"."
+                         % (kit, total, recorded, weighed))
 
 # 10) intended-identical hooks/scripts must stay byte-identical across kits (audit finding: a fix
 #    applied in one kit silently diverges the others — exactly the drift class this repo hunts).
@@ -335,12 +350,9 @@ if _tracked is not None:
                      "(check .gitignore) — CI and fresh clones will disagree "
                      "with the local hash" % relp)
 
-for w in warns:
-    print("  [warn] " + w)
 if fails:
     print("VALIDATION FAILED (%d):" % len(fails))
     for f in fails:
         print("  - " + f)
     sys.exit(1)
-print("validate.py: all structural checks passed%s."
-      % (" (%d budget warning(s))" % len(warns) if warns else ""))
+print("validate.py: all structural checks passed.")

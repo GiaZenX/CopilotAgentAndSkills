@@ -512,32 +512,45 @@ schreibt in den Projektzustand.
 
 ## II.5 Memory- und Kontext-Rückbau (einheitliche Budgets)
 
-- Lead-Instruktionspaket **≤ 25 600 B** (= 25 KB zu 1024 B); generierter Session-Bootstrap
-  ≤25 KB (`kernel/schemas/session_brief.yaml: max_serialized_bytes`). **Zählweise:** Das Paket
-  zählt ALLES sessionfix Geladene — und das ist **agent.md + Verfassung**, nicht mehr. Die
+- Generierter Session-Bootstrap ≤25 KB (`kernel/schemas/session_brief.yaml: max_serialized_bytes`).
+- Lead-Instruktionspaket: **keine gegriffene Obergrenze mehr, sondern eine Ratsche.** Die Grenze ist
+  pro Kit die aufgezeichnete Messung in `tools/lead_package_sizes.json`; `tools/validate.py` lässt
+  kein Paket über seinen eigenen Rekord wachsen und **scheitert dabei hart** — die Zusage aus
+  II.11/3 ist damit eingelöst, und sie ist einlösbar, weil ein Rekord erfüllt startet. Der Rekord
+  bewegt sich nur über `python tools/record_lead_package_sizes.py --write --note "<Grund>"`, das je
+  Kit eine Zeile in das Journal von `docs/reviews/phase0-disposition.md` schreibt. **Warum keine
+  Zahl mehr:** die alte war „25 KB" zu 1024 B gelesen — eine Typografie-Entscheidung, keine
+  Rechnung. Sie wurde nie gegen den Inhalt gerechnet, wog bis 2026-08-02 eine Datei mit, die gar
+  nicht lädt, und wurde von allen drei Kits um mehrere KB verfehlt, auch nach der Entdopplungsrunde
+  vom 2026-08-03, die zwischen den beiden geladenen Dateien misst statt schätzt. Dazwischen liegt
+  keine Füllung, sondern Regeln mit Paritätsklassifikation `behalten` plus die Arbeitsschleife, die
+  die Verfassungen tragen, WEIL das Lead-SKILL nicht lädt. Eine Grenze, die jedes Subjekt dauerhaft
+  verfehlt und dabei nur warnt, ist keine Grenze. Ein Aufschlag auf die Messung wäre eine zweite
+  gegriffene Zahl neben der gerade entfernten und existiert darum nicht; wer weniger will, kürzt und
+  zeichnet neu auf.
+- **Zählweise:** Das Paket zählt ALLES sessionfix Geladene — und das ist **agent.md + Verfassung**,
+  nicht mehr. Die
   Verfassung lädt via `CLAUDE.md`-Shim (Codex liest `AGENTS.md` nativ) immer mit; das **Lead-SKILL
   lädt NICHT** und zählt darum nicht: gemessen 2026-08-02 in drei Sitzungen und zwei Kits, mit
   Kontrollwörtern am Dateiende und `--tools ""`, kamen Verfassung und agent.md wörtlich an, das
   SKILL fehlte, und die `init`-Zeile des Streams führt es unter `skills` **und** `slash_commands` —
   auf Abruf registriert, nicht injiziert. Was der Lead trotzdem ohne Abruf braucht, steht seither
   als Arbeitsschleife IN der Verfassung (dev/research §5a, office §4a), also innerhalb des
-  Budgets. **Eine Definitionsstelle:** die Zahl UND die Ableitung, welche Dateien das Paket sind,
-  stehen in `tools/lead_package.py` (`MAX_BYTES`, `files()`); `tools/validate.py` liest von dort
-  und benennt in seiner Warnung genau die Dateien, die es gewogen hat. `on_demand_files()` daneben
+  Budgets. **Eine Definitionsstelle:** die Ableitung, welche Dateien das Paket sind, steht in
+  `tools/lead_package.py` (`files()`, `size()`, `ceiling()`); `tools/validate.py` liest von dort
+  und benennt in seiner Meldung genau die Dateien, die es gewogen hat. `on_demand_files()` daneben
   ist die andere Hälfte derselben Messung: was Regeln trägt, ohne zu laden (der Sektionspin in
-  `tools/test_shortening_net.py` fragt danach). Die Zahl stand vorher dreifach im Baum (Spec
-  „≤25 KB", Code `25 * 1024`, ein Auftrag „25 000") — 25 600 gewinnt, weil es die laufende
-  Implementierung und die natürliche Lesart von „25 KB" ist.
+  `tools/test_shortening_net.py` fragt danach).
 - **Keine Zeilengrenze mehr für Verfassung und Lead-SKILL.** Die frühere Vorgabe „je ≤150 Zeilen"
   (interim 220, erzwungen in `tools/validate.py`) ist ersatzlos gestrichen, weil sie gemessen
   nichts über Grösse aussagte: die drei Verfassungen hielten 220 nur, weil 31–46 ihrer Zeilen
   110–1 899 Zeichen lang sind (auf 100 Spalten umbrochen: 383/368/394 Zeilen), und ein
   Verdichtungspilot brachte −24,9 % Bytes bei einem Anstieg von 20 auf 36 Zeilen — die
-  Zeilengrenze arbeitete also gegen das Byte-Budget daneben. Eine per-Datei-Byte-Grenze tritt
-  NICHT an ihre Stelle: keine Aufteilung der 25 600 B auf die drei Paketdateien folgt aus etwas,
-  und eine zweite gegriffene Zahl neben der ersten ist der Fehler, nicht die Reparatur. Damit
-  gibt es genau **eine** Grössenaussage über eine Verfassung — die über das Paket, dessen Teil
-  sie ist.
+  Zeilengrenze arbeitete also gegen die Byte-Aussage daneben. Eine per-Datei-Byte-Grenze tritt
+  NICHT an ihre Stelle: keine Aufteilung des Paketrekords auf seine beiden Dateien folgt aus
+  etwas, und eine gegriffene Zahl neben einer gemessenen ist der Fehler, nicht die Reparatur.
+  Damit gibt es genau **eine** Grössenaussage über eine Verfassung — die über das Paket, dessen
+  Teil sie ist.
 - **Kürzungs-Sequenz (verbindlich):** Die Kürzung auf das Paketbudget ist erst zulässig, NACHDEM
   die ersetzenden Gates/Tests stehen (Reihenfolge II.11: Gates vor Kürzung); jede entfernte Regel
   wird in der Paritätsmatrix als „durch Gate/Test ersetzt" belegt. **Verlagern ist keine
@@ -829,8 +842,9 @@ Eine Aufbewahrungs-/Löschregel ist ein separater, userbestätigter Auftrag (→
    Löschung: guard_ledger_direct.
 3. **session_status.py** → Update-Zustandsautomat + session_brief-Verweis (ALLE ~6
    injizierten Blöcke disponiert); **Templates** → typisierte Struktur, ITEM-Templates,
-   Lead-Paket auf das Byte-Budget aus II.5 (`tools/lead_package.py: MAX_BYTES`; die frühere
-   Zeilenvorgabe „≤150" ist dort ersatzlos gestrichen und begründet) — **Kürzung erst NACH den
+   Lead-Paket auf die Grössenregel aus II.5 (der Rekord in `tools/lead_package_sizes.json`, hart
+   erzwungen von `tools/validate.py`; die frühere feste Zahl 25 600 und die frühere
+   Zeilenvorgabe „≤150" sind dort ersatzlos gestrichen und begründet) — **Kürzung erst NACH den
    ersetzenden Gates aus Schritt 2 (Release-Checklistenpunkt, D/9), jede entfernte Regel per
    Paritätsmatrix belegt**; Verlagerung ohne Textverlust braucht keine Lizenz (II.5).
 4. **harness doctor**, Scaffold-/Init-Anpassung (kit_state.json-Konsolidierung, Migration der

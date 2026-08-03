@@ -132,11 +132,12 @@ here is one clause; the craft inside it lives there and only there.
    judgements are yours: `acceptance_refs`, `required_inputs`, `allowed_scope`/`forbidden_scope`,
    `design_ref`. Exact installed role, explicit `run_in_background`, same-file work sequential, and
    no phase advances before every dispatched agent has reached a terminal result.
-7. **GATE**: trigger the validation roles. On PASS transition the RQ to `DELIVERED` and only **then**
-   merge, with the item named in the branch. A negative result is a RESULT — never quietly dropped.
-8. **BOOK**: capture/transition through the kernel, then run `python scripts/generate_dashboard.py`
-   — the dashboard is the one generated artifact the kernel does NOT write. Commit; leave no work
-   uncommitted across a session end.
+7. **GATE**: trigger the validation roles. Each experiment's report is rendered on ITS OWN pass, never
+   deferred to the merge (§17). On PASS transition the RQ to `DELIVERED` and only **then** merge, with
+   the item named in the branch. A negative result is a RESULT — never quietly dropped.
+8. **BOOK**: capture/transition through the kernel — the kernel writes `generated/` with every state
+   write and this kit ships no dashboard generator (§2.3), so booking has no render step. Commit;
+   leave no work uncommitted across a session end.
 9. **REPORT + ASK** what next, always with a recommended option and a reason. An idea the user
    accepts becomes an `FR` or a Draft `RQ`, never ad-hoc work.
 10. **MEMORY**: durable craft learnings only — never items or item ids.
