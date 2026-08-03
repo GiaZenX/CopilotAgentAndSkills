@@ -572,13 +572,31 @@ fängt Umleitungs*operatoren*, nicht die Schreibverben fremder Sprachen. Dasselb
 Aufzählung im Gewand einer Regel, gegen die dieses Repo gebaut ist — sie stimmt bis zum sechsten
 Werkzeug. Ein benanntes Loch ist ehrlicher.
 
-### L5 — Der Workspace-Trust verwirft auch die `deny`-Hälfte
+### L5 — Der Workspace-Trust verwirft die `allow`-Hälfte, und das Fenster ist Reibung, kein Loch
 
-Gemessen in jeder headless Sitzung: `Ignoring 5 permissions.allow entries … this workspace has not
-been trusted`. Verworfen wird der **ganze** `permissions`-Block, also auch `deny: Agent(project-manager)`
-(kein zweiter PM), `Read(./.env*)`, `Read(**/*.key)`. Ein frisch gescaffoldetes Projekt läuft bis zum
-ersten interaktiven Start ohne diese Sperren. Die Meldung nennt beide Wege hinaus, aber **nicht**,
-was währenddessen fehlt. Die Neustart-Anweisung des Scaffolds erwähnt den Trust-Dialog gar nicht.
+**Korrigiert am 2026-08-03; die vorige Fassung dieses Eintrags war falsch.** Sie behauptete, der
+**ganze** `permissions`-Block werde verworfen und ein frisches Projekt laufe ohne die Sperren —
+und schrieb „gemessen" daneben. Gemessen ist das Gegenteil (2026-08-03, claude.exe 2.1.220,
+headless, ein **nie getrautes** Scratch-Projekt mit einer kit-förmigen `settings.json`): die
+Sitzung meldet die `Ignoring`-Zeile und verweigert im selben Lauf `Read` auf `server.key` („File is
+in a directory that is denied by your permission settings.") und den Lead-Spawn („Agent type
+'project-manager' has been denied by permission rule 'Agent(project-manager)' from
+projectSettings.") — die Meldung nennt Regel und Quelle. Die Gegenprobe im selben Lauf: eine
+gewöhnliche `notes.txt` daneben wird gelesen, die Sperre ist also die Regel und keine Pauschale.
+Das Fenster macht eine Sitzung damit **restriktiver**, nicht durchlässiger.
+
+Was bleibt, ist das messbare Restproblem: `Ignoring N permissions.allow entries … this workspace
+has not been trusted` überspringt genau die `allow`-Hälfte — **5 Einträge** in dev und research,
+**2** in office (`team-kits/*/settings/settings.json`). `deny` bleibt vollständig in Kraft. Die
+Folge ist **Reibung**: der Lead muss `git`, `python` und `pytest` einzeln bestätigen lassen, bis
+der Workspace getraut ist. Und die Neustart-Anweisung des Scaffolds (`scaffold_team.sh` /
+`scaffold_team.ps1`, die Schlusszeilen) erwähnt den Trust-Dialog mit keinem Wort — das stimmt
+weiterhin und ist der eigentliche Kandidat: ein Satz mehr in derselben Meldung.
+
+**Ausdrücklich nicht der Ausweg: die Regeln auf User-Ebene nachziehen.** Das funktioniert gemessen,
+löst aber ein Problem, das es nicht gibt — die `deny`-Hälfte gilt ja bereits —, und es bezahlt mit
+einer Regel, die dann in **jedem** fremden Repo des Nutzers gilt und die der Installer bei jedem
+Update wieder einmergt (`user/claude/settings.json`, unioniert von `install.sh`/`install.ps1`).
 
 ### L6 — Rollenmemory ist vorgeschrieben und gesperrt
 

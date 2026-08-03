@@ -171,7 +171,8 @@ is one clause; the craft inside it lives there and only there.
 4. **APPROVE**: `python scripts/harness.py request-approval scope PROC-nnnn` prints the question the
    KERNEL composed — relay it VERBATIM and let the USER answer it. The mint writes `approved_hash`;
    you never stamp it, and no command re-stamps it.
-5. **ROUTE**: **you** create the `TSK` before the spawn — never the executor — with its
+5. **ROUTE**: **you** create the `TSK` before the spawn — never the executor, which
+   `guard_agent_spawn` and `gate_write_scope` refuse — with its
    `acceptance_refs`, `required_inputs` and `allowed_scope`/`forbidden_scope`. Exact installed role,
    explicit `run_in_background`, and no phase advances before every dispatched agent has returned.
    A document a PROC does not cover is an EXCEPTION you raise, never one you file by judgement.

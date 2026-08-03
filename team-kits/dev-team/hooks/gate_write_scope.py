@@ -16,8 +16,9 @@ it, and not a second time here, where the last widening of it left this table a 
                          2. a bound specialist writes only inside its task's `allowed_scope` and
                             never inside `forbidden_scope`; an UNBOUND subagent writes nothing,
                             because there is no scope to check it against.
-  the shell              3. RULE 1 ONLY, for the shell — shell writes bypass Edit/Write hooks
-                            entirely (guard_harness_selfmod has said so since V1), and the
+  the shell              3. RULE 1, plus RULE 4 below, for the shell — shell writes bypass
+                            Edit/Write hooks entirely (guard_harness_selfmod has said so
+                            since V1), and the
                             approval protocol's condition (i) is exactly "an agent cannot invoke
                             the hooks or the kernel directly". `handle_shell` decides on what the
                             COMMAND LINE names; it never resolves the bound task, so RULE 2 —
@@ -31,6 +32,10 @@ it, and not a second time here, where the last widening of it left this table a 
                             `state_write_protection.shell`, which is what keeps
                             `python scripts/harness.py doctor` from reporting that capability
                             green.
+                         4. a SUBAGENT may not run the harness commands that ORDER work. See
+                            `_ORDERING_COMMANDS` for what that is and how narrow it is; the
+                            constitution row it makes true is the DELEGATE/ROUTE step of every
+                            kit's work loop, which reserves creating the `TSK` to the lead.
 
 WHY THE STATE DIR IS ABSOLUTE, no orchestrator exemption: `approvals/pending/**` holds mint codes
 in cleartext, and a writable pending file mints a real approval with a self-consistent consumed
@@ -57,6 +62,14 @@ one release later. It stays open on purpose, on the same footing as the rest of 
 the containment is the permission posture, not a bigger vocabulary. `tools/test_hooks_v2.py`
 asserts it as a `known_hole` on `state_write_protection.shell`, so `python scripts/harness.py
 doctor` cannot report that capability green while it stands.
+
+RULE 4 REACHES EXACTLY AS FAR AS A COMMAND LINE DOES, which is the same boundary as everything
+above it and is worth saying beside the constitution row it backs: a subagent that writes a script
+into its own `allowed_scope` and runs it reaches the same kernel functions, and this gate sees a
+script name. What IS closed is the typed route and the `python -c` one (`_INLINE_KERNEL_RX`), and
+the spawn that a self-made task would exist for is refused outright by `guard_agent_spawn`. So the
+row is enforced against the surface a role actually uses and remains policy against a determined
+one — not "prevented".
 
 So condition (i) is bounded by the project's PERMISSION posture (settings.json `deny`),
 not by hook logic, and `python scripts/harness.py doctor` must weigh that rather than treat this gate's presence as
@@ -570,6 +583,81 @@ def _stage_is_read_only(stage):
     return verb in _READ_ONLY_VERBS
 
 
+# --- rule 4: ordering work is the orchestrator's act -------------------------
+#
+# WHAT MAKES A SUBCOMMAND "ORDERING" rather than "writing", because the wider split does not
+# survive contact: the commands a specialist hands its OWN finished work back with write too, and
+# it has to be able to run them — so "the writing ones, except those" would be two lists holding
+# each other up. The property is narrower and it is the one the work loop states: an ordering
+# command CREATES THE WORK ORDER somebody executes, or LEASES one for a spawn. In kernel terms
+# that is the two producers
+# `dispatch.create_task` and `dispatch.create_lease`, and the CLI routes reaching them are what
+# stands below.
+#
+# THE MAP IS DERIVED, NOT TYPED, and that is what keeps it from being the next stale tuple:
+# `tools/test_hooks_v2.py::test_the_ordering_commands_are_the_cli_routes_to_the_task_producers`
+# parses `kernel/cli.py` and asserts these keys ARE the `args.command` branches that reach those
+# two functions. A fourth route added to the CLI turns that test red on the day it ships.
+# The value narrows a command by its first positional (`capture` reaches the task producer only
+# for `TSK`; `capture EVD` is an ordinary item and stays allowed); an empty value means the
+# subcommand qualifies on its own.
+_ORDERING_COMMANDS = {"create-task": (), "capture": ("tsk",), "dispatch": ()}
+# `os.path.basename(kernel.cli.ENTRY_POINT)` and the module spelling of the same CLI. Both are
+# pinned against the kernel by the same test — the gate keeps its own copy so that a Bash call does
+# not pay for importing argparse and every field schema just to answer "is this the harness".
+_HARNESS_SCRIPT = "harness.py"
+_KERNEL_CLI_MODULE = "kernel.cli"
+
+
+def _harness_argv(stage):
+    """The argument list a stage hands to the kernel CLI, or None when it is not a CLI invocation.
+
+    STRUCTURAL, never a bare word anywhere in the line: `grep -rn create-task docs/` and
+    `cat scripts/harness.py` name the same strings and order nothing, and refusing a role's own
+    reading is how a gate teaches people to route around it. So the entry point has to be in an
+    EXECUTION position — the stage's verb is a python, or the script itself is the verb.
+    """
+    tokens = [t.strip("\"'") for t in stage]
+    verb = _stage_verb(stage)
+    pythonish = verb.startswith("python") or verb in ("py", "pythonw")
+    if not pythonish and verb != _HARNESS_SCRIPT:
+        return None
+    for index, token in enumerate(tokens):
+        if os.path.basename(token.replace("\\", "/")).lower() == _HARNESS_SCRIPT:
+            return tokens[index + 1:]
+    if pythonish:
+        for index, token in enumerate(tokens[:-1]):
+            if token == "-m" and tokens[index + 1].lower() == _KERNEL_CLI_MODULE:
+                return tokens[index + 2:]
+    return None
+
+
+def _ordering_command(stage):
+    """The ordering subcommand this stage would run, or "".
+
+    The subcommand is the FIRST POSITIONAL, which is what argparse reads too. A `--root
+    project_memory` in front of it shifts that position and this returns nothing — deliberately
+    not compensated for here: the installed shim refuses `--root` outright, and a pipeline naming
+    the state directory is already refused by rule 1, so compensating would be a second opinion
+    about a line that never reaches the kernel.
+    """
+    argv = _harness_argv(stage)
+    if not argv:
+        return ""
+    positional = [token for token in argv if not token.startswith("-")]
+    if not positional:
+        return ""
+    command = positional[0].lower()
+    if command not in _ORDERING_COMMANDS:
+        return ""
+    qualifiers = _ORDERING_COMMANDS[command]
+    if not qualifiers:
+        return command
+    if len(positional) > 1 and positional[1].lower() in qualifiers:
+        return "%s %s" % (command, positional[1].lower())
+    return ""
+
+
 def _null_sinks(tool):
     """The redirect targets that RETAIN NOTHING for this shell on this host.
 
@@ -681,6 +769,9 @@ def handle_shell(data):
     cwd = _repo_relative(data.get("cwd") or ".", _kernel.find_repo_root(data.get("cwd")))[0] or ""
     # WHICH SHELL decides which redirect targets keep the bytes — see `_null_sinks`.
     sinks = _null_sinks(data.get("tool_name"))
+    # WHO IS ASKING (rule 4). One definition for the whole kit — `_compat.calling_subagent` carries
+    # the measurement and the reason it tests truthiness rather than key presence.
+    caller = _compat.calling_subagent(data)
     for pipeline in _pipelines(_tokenise(code_view)):
         stages, current = [], []
         for token in pipeline:
@@ -690,6 +781,22 @@ def handle_shell(data):
             else:
                 current.append(token)
         stages.append(current)
+        if caller:
+            for stage in stages:
+                ordered = stage and _ordering_command(stage)
+                if ordered:
+                    _kernel.block(
+                        HOOK,
+                        "`%s` ORDERS work, and this call comes from a subagent (%s). Creating the "
+                        "task or leasing one for a spawn is the orchestrator's act: the work "
+                        "order, its `allowed_scope` and the lease are the lead's judgements "
+                        "to make, and a specialist that makes them for itself is authorising "
+                        "itself." % (ordered, caller),
+                        remedy="hand the need BACK instead: name it in `followups` of your "
+                               "result envelope and let the lead order it. Nothing you run to "
+                               "report, prove or return your OWN work is affected by this rule; "
+                               "`python scripts/harness.py --help` is the authority on what the "
+                               "surface has.")
         verbs_read_only = all(_stage_is_read_only(stage) for stage in stages if stage)
         redirects = _redirect_targets(pipeline, sinks)
         # a redirect that RETAINS makes a pipeline write-capable whatever its verbs: `echo x > f`

@@ -121,8 +121,10 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "36ebb770c64b7394",
+        "digest": "60bb615a14d15022",
         "hooks": [
+          "gate_write_scope",
+          "guard_agent_spawn",
           "guard_question_context"
         ]
       },
@@ -154,7 +156,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "6501922fd764b621",
+        "digest": "3ac8c2a0058ff263",
         "hooks": [
           "format_on_write",
           "gate_approval",
@@ -326,8 +328,10 @@
         ]
       },
       "4a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "4f5f39ad7915b2b2",
+        "digest": "126e38081cecd258",
         "hooks": [
+          "gate_write_scope",
+          "guard_agent_spawn",
           "guard_question_context"
         ]
       },
@@ -367,7 +371,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "03942e2ddcf757ca",
+        "digest": "0a98259cb5a9a622",
         "hooks": [
           "gate_approval",
           "gate_dispatch",
@@ -546,8 +550,10 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "71cefd3435786f2c",
+        "digest": "5ef5a0acf16564ff",
         "hooks": [
+          "gate_write_scope",
+          "guard_agent_spawn",
           "guard_question_context"
         ]
       },
@@ -577,7 +583,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "2174541140d432dd",
+        "digest": "f6e6e854f8cc774e",
         "hooks": [
           "format_on_write",
           "gate_approval",

@@ -131,7 +131,8 @@ here is one clause; the craft inside it lives there and only there.
    For a UI scope the **wireframe comes first** and the **design ambition is the user's own
    question**, asked on its own — both are PROSE duties with no gate behind them, so you are the
    only thing enforcing them, and deciding either silently is the failure this rule is named after.
-6. **DELEGATE**: **you** create the `TSK` before the spawn — never the executor — and its four
+6. **DELEGATE**: **you** create the `TSK` before the spawn — never the executor, which
+   `guard_agent_spawn` and `gate_write_scope` refuse — and its four
    judgements are yours: `acceptance_refs`, `required_inputs`, `allowed_scope`/`forbidden_scope`,
    `design_ref`. Exact installed role, explicit `run_in_background`, same-file work sequential, and
    no phase advances before every dispatched agent has reached a terminal result.

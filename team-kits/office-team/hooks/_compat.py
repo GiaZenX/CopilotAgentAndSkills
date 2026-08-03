@@ -215,6 +215,43 @@ def file_paths(data):
     return [str(p)] if p else []
 
 
+# The fields by which a hook payload names the agent the call came FROM. A PROPERTY of the caller,
+# not a list of the roles that are subordinate: a role list is 24 entries per kit that every new
+# specialist file has to be added to, and it says nothing on a provider whose role names differ.
+_CALLER_FIELDS = ("agent_id", "agent_type")
+
+
+def calling_subagent(data):
+    """The agent this call came from, or "" for the SESSION INSTANCE (the lead, or a bare session).
+
+    MEASURED 2026-08-03, claude.exe 2.1.220, probe hooks in a scratch project outside any repo
+    (recorded with its provenance in `tools/provider_observations.json` -> `agent_identity`): the
+    session instance's `PreToolUse` payload carries neither field, a subagent's carries both, and
+    a subagent spawned a further subagent in the same run. Codex supplies the same two fields, so
+    the DEFINITION is provider-neutral even where a given hook is not registered.
+
+    TRUTHINESS, NOT KEY PRESENCE, and that is the whole safety of this predicate. The parent
+    payload has been seen in BOTH shapes -- keys absent (above) and present as null
+    (`PostToolUse(Agent).agent_id: null`, spike S3, docs/reviews/evidence/2026-07-24-spike-payloads.md).
+    A membership test on the keys would read the second shape as a subagent, and every caller that
+    refuses on a subagent would then refuse the LEAD.
+
+    EITHER field is enough: they are the two fields a payload names its caller by, and a provider
+    that dropped one while keeping the other must not silently hand the subordinate role back its
+    freedom.
+
+    NOT a replacement for `guard_pm_scope`'s own `data.get("agent_id")` test, which asks the
+    MIRRORED question ("is this the lead, whom I gate?") and therefore has to fail in the opposite
+    direction. Widening that one would make it SKIP more calls; widening this one makes its callers
+    REFUSE more. One field, two questions, two failure directions -- merging them would break one.
+    """
+    for field in _CALLER_FIELDS:
+        value = data.get(field)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
 def created_file_paths(data):
     """Paths newly created by apply_patch (`Add File` or a `Move to` destination)."""
     operations = data.get("_file_operations")

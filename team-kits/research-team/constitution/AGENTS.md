@@ -128,7 +128,8 @@ here is one clause; the craft inside it lives there and only there.
    approval. **A pre-registered EXP design is a promise:** changing it after approval is a `CR`, and
    nothing refuses an analysis you re-cut afterwards — you are the only thing standing between a
    hypothesis and the number that was fitted to it.
-6. **DELEGATE**: **you** create the `TSK` before the spawn — never the executor — and its four
+6. **DELEGATE**: **you** create the `TSK` before the spawn — never the executor, which
+   `guard_agent_spawn` and `gate_write_scope` refuse — and its four
    judgements are yours: `acceptance_refs`, `required_inputs`, `allowed_scope`/`forbidden_scope`,
    `design_ref`. Exact installed role, explicit `run_in_background`, same-file work sequential, and
    no phase advances before every dispatched agent has reached a terminal result.

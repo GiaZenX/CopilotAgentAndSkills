@@ -37,6 +37,21 @@
     }
   },
 
+  "agent_identity": {
+    "measurement": {
+      "date": "2026-08-03",
+      "provider": "claude.exe",
+      "provider_version": "2.1.220",
+      "mode": "headless",
+      "method": "tools/probes/probe_hook.py registered on PreToolUse(Agent|Task), SubagentStart and PostToolUse(Agent|Task) in a scratch project outside any repo; one session was asked to spawn a subagent whose own instructions spawn a second one, and probe_log.jsonl was read back",
+      "location": "a scratch project in the session scratchpad, outside this repo"
+    },
+    "session_instance": "the SESSION INSTANCE's PreToolUse(Agent) payload carries NEITHER `agent_id` NOR `agent_type` - the keys are absent from the payload entirely (keys seen: cwd, hook_event_name, permission_mode, prompt_id, session_id, tool_input, tool_name, tool_use_id, transcript_path). Its PostToolUse(Agent) payload is the same. Spike S3 (2026-07-24, docs/reviews/evidence/2026-07-24-spike-payloads.md) recorded the parent side as `agent_id: null` instead, i.e. the key PRESENT and empty - so both shapes have been seen and only a TRUTHINESS test covers both.",
+    "subagent": "a SUBAGENT's PreToolUse payload carries both fields, non-empty, and they are the same values its SubagentStart carried.",
+    "re_delegation": "OBSERVED, and this is the fact that made the spawn rule necessary: the subagent `echo-one` spawned `echo-two` in the same run, its own PreToolUse(Agent) carrying `agent_id`/`agent_type` of echo-one, followed by a SubagentStart for echo-two. Three agent levels under one session. Re-delegation was refused by the platform up to 2.1.219 and is allowed again.",
+    "consequence": "`_compat.calling_subagent` is this measurement in code; `guard_agent_spawn` and `gate_write_scope` rule 4 are its two callers. The failure direction is a missed refusal, never a lead locked out - see that function's docstring."
+  },
+
   "session_context": {
     "measurement": {
       "date": "2026-08-02",

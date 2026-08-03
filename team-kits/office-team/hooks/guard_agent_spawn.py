@@ -12,6 +12,27 @@ defaults to background, and a real run spawned 37/37 specialists that way by omi
 completion accounting and pushing the PM into a settings workaround. false = normal sequential
 delegation; true = a deliberate parallel batch the PM fully awaits (notify_agent_events logs the
 completions). Forcing the field makes the choice conscious instead of a silent default.
+
+AND THE FIRST QUESTION OF ALL: WHO IS ASKING. Delegation belongs to the SESSION INSTANCE — the
+lead bound through settings.json `agent:` — and to nothing else. Until platform 2.1.219 that was
+free, because a subagent could not spawn at all; it can again (measured, see
+`_compat.calling_subagent`, where a subagent spawned a further subagent in the same run). What was
+holding it up HERE was not a rule but an OMISSION: only the three LEAD frontmatters list the
+`Agent` tool, every specialist one leaves it out, adding one makes no test red — and `tools:` is a
+Claude-only field, so on another provider the omission is not even expressible. An omission that
+two dozen files have to keep agreeing on is the shape this repo has paid for repeatedly, so the
+rule is stated once instead, as the property that separates the two callers: **a hook payload
+names the agent it came from only inside a subagent.** `_compat.calling_subagent` is that
+predicate and carries the measurement that backs it.
+
+WHAT THIS DOES NOT BUY, both directions:
+  * Only where it is REGISTERED. `gen_provider_artifacts.CODEX_UNSUPPORTED_TOOLS` declares
+    `Agent`/`Task` as having no Codex equivalent, so on Codex no spawn hook runs at all and the
+    rule binds through the constitution alone. The DEFINITION is provider-neutral (Codex supplies
+    both fields too); the enforcement is not.
+  * It reads what the provider SENDS. A provider release that stopped naming the caller would make
+    a subagent look like the session instance, and this check would let it through — the failure
+    direction is a missed refusal, never a lead locked out of delegating.
 """
 import sys
 import os
@@ -21,17 +42,17 @@ import glob
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _root import find_repo_root
-import _compat  # noqa: F401 — UTF-8 stream pinning (import side effect)
+import _compat
 import _audit
 
 
-def block(why):
+ROLE_REMEDY = ("Spawn a specialist by its EXACT role as subagent_type (one of the installed "
+               "./.claude/agents/). Never spawn a generic/unnamed agent.\n")
+
+
+def block(why, remedy=ROLE_REMEDY):
     _audit.record("guard_agent_spawn", why)
-    _compat.stop(
-        "[team-kit guard] Agent spawn blocked: %s\n"
-        "Spawn a specialist by its EXACT role as subagent_type (one of the installed "
-        "./.claude/agents/). Never spawn a generic/unnamed agent.\n" % why,
-        "PreToolUse")
+    _compat.stop("[team-kit guard] Agent spawn blocked: %s\n%s" % (why, remedy), "PreToolUse")
 
 
 def main():
@@ -44,6 +65,23 @@ def main():
         sys.exit(0)
     inp = data.get("tool_input") or {}
     sub = inp.get("subagent_type")
+
+    # BEFORE EVERY OTHER CHECK, and before the role set is even looked up: the role set decides
+    # WHICH spawn is well-formed, this decides WHETHER this caller may spawn at all. A project
+    # without `.claude/agents/` exits 0 below — that must not become a hole for a subagent, which
+    # is why this question is answered first and from the payload alone.
+    caller = _compat.calling_subagent(data)
+    if caller:
+        block(
+            "this call comes from a subagent (%s), and a subagent does not delegate. Only the "
+            "session instance — the lead bound in settings.json `agent:` — does." % caller,
+            "You are executing ONE task under a lease the lead minted for you. Spawning a second "
+            "specialist would authorise it yourself: you would create the work order, mint the "
+            "lease and choose the scope, which are exactly the judgements the DELEGATE/ROUTE step "
+            "of your work loop reserves for the lead. If your task needs work outside your scope, "
+            "hand it back: name it in `followups` of your `submit-result` envelope and let the "
+            "lead order it. If you believe a subagent legitimately has to spawn, that is a gap to "
+            "REPORT — it is not one to route around.\n")
 
     cwd = find_repo_root(data.get("cwd"))
     agents_dir = os.path.join(cwd, ".claude", "agents")

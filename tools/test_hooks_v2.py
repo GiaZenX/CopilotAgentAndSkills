@@ -2644,6 +2644,68 @@ def test_a_refused_spawn_does_not_spend_the_lease_through_the_registered_chain(t
         assert allowed.returncode == 0, allowed.stdout + allowed.stderr
 
 
+# The two payload shapes the SESSION INSTANCE has been seen in, and the two a SUBAGENT has.
+# Written as data because the anti-lockout half of the test below is not a footnote to it: the
+# null shape is the one a key-presence check gets wrong, and getting it wrong refuses the lead's
+# every delegation. Provenance for both: tools/provider_observations.json -> `agent_identity`.
+_SESSION_INSTANCE_SHAPES = ({}, {"agent_id": None, "agent_type": None})
+_SUBAGENT_SHAPES = ({"agent_id": "child-1", "agent_type": "backend-developer"},
+                    {"agent_id": "child-1"},
+                    {"agent_type": "backend-developer"})
+_NOT_A_DELEGATOR = "does not delegate"
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_only_the_session_instance_may_delegate_through_the_registered_chain(tmp_path, kit):
+    """A SPECIALIST MUST NOT AUTHORISE ITSELF, measured through the chain settings.json registers.
+
+    The red state this closes was measured in real sessions: with a genuinely minted
+    `HARNESS_DISPATCH` header in the prompt, a specialist's spawn of a second specialist passed
+    the whole registered chain with rc 0 — no gate refused it. What had been holding it up was an
+    OMISSION rather than a rule (no specialist frontmatter lists the `Agent` tool), which no test
+    held, which adding one line undoes, and which `tools:` cannot express on Codex at all. The
+    platform allows re-delegation again since 2.1.219, and a probe run on 2.1.220 measured a
+    subagent spawning a further subagent.
+
+    THE ANTI-LOCKOUT HALF IS PART OF THIS TEST, not a companion to it, because the mistake it
+    guards against is worse than the one it closes: the session instance's payload has been seen
+    with the identity fields ABSENT and (spike S3) present as NULL, so a check on key PRESENCE
+    would refuse every delegation the lead makes and the kit would simply stop working. Both
+    parent shapes go through the same chain and must not meet this refusal.
+
+    The lease is asserted on every refusal for the reason the sibling test above gives: a chain
+    that refuses and spends anyway is the defect, not the fix.
+    """
+    claude = _install_enforcement_bundle(tmp_path, kit)
+    state, task, header = dispatched_repo(tmp_path)
+    command = _registered_spawn_command(claude, tmp_path)
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    env.pop("HARNESS_KERNEL_PATH", None)
+
+    def spawn(identity):
+        payload = dict({"hook_event_name": "PreToolUse", "tool_name": "Agent",
+                        "cwd": str(tmp_path),
+                        "tool_input": {"subagent_type": "backend-developer",
+                                       "run_in_background": False,
+                                       "prompt": "objective: do it\n%s\noutput: a result"
+                                                 % header}}, **identity)
+        return subprocess.run(command, input=json.dumps(payload), capture_output=True, text=True,
+                              env=env, timeout=180)
+
+    for identity in _SUBAGENT_SHAPES:
+        result = spawn(identity)
+        assert result.returncode == 2, (identity, result.stdout + result.stderr)
+        assert _NOT_A_DELEGATOR in result.stderr, (identity, result.stderr)
+        assert "dispatched_at" not in _lease_of(state, task["id"]), (
+            "%s: the spawn was refused and the lease was spent anyway" % (identity,))
+
+    for identity in _SESSION_INSTANCE_SHAPES:
+        result = spawn(identity)
+        assert _NOT_A_DELEGATOR not in result.stderr, (
+            "%s is a SESSION-INSTANCE payload and was refused as a subagent — the lead can no "
+            "longer delegate at all: %s" % (identity, result.stderr))
+
+
 def test_the_longest_registered_chain_runs_all_four_gates_on_one_payload(tmp_path):
     """THE FOUR-LINK CHAIN IN FULL OPERATION, which is a different measurement from four links of
     probe code: office registers `guard_agent_spawn`, `gate_proc_approved`, `gate_ledger_valid` and
@@ -3531,6 +3593,150 @@ def test_a_bound_specialists_shell_writes_are_scope_checked_by_nothing(tmp_path)
     for command in ("echo pwned > src/x.py", "rm -rf src", "git commit -am wip"):
         codes = rc_by_gate(command)
         assert set(codes.values()) == {0}, (command, codes)
+
+
+# -- gate_write_scope rule 4: ordering work is the orchestrator's act ---------
+
+_ORDERING_REFUSED = (
+    "python scripts/harness.py create-task --product-requirement PR-0001 --type impl",
+    "python -B scripts/harness.py create-task --assigned-role backend-developer",
+    "python scripts/harness.py capture TSK",
+    "python scripts/harness.py dispatch TSK-0001",
+    "cd scripts && python harness.py dispatch TSK-0001",
+    "./scripts/harness.py create-task --type impl",
+)
+# What a specialist really runs. Every one of these is measured, not guessed: they are the
+# subcommands the shipped role texts name (`evidence`, `submit-result`, `validate`, `--help`) plus
+# the two shapes a bare-word rule would have got wrong — a role READING about a command, and the
+# non-TSK capture that shares the subcommand with the refused one.
+_ORDERING_ALLOWED = (
+    "python scripts/harness.py submit-result --task-id TSK-0001 --role backend-developer",
+    "python scripts/harness.py evidence --kind test --result pass --related TSK-0001",
+    "python scripts/harness.py capture EVD",
+    "python scripts/harness.py validate",
+    "python scripts/harness.py doctor",
+    "python scripts/harness.py --help",
+    "grep -rn create-task docs/",
+    "cat scripts/harness.py",
+)
+
+
+@pytest.mark.parametrize("command", _ORDERING_REFUSED)
+def test_a_subagent_cannot_run_the_harness_commands_that_order_work(tmp_path, command):
+    """The DELEGATE/ROUTE row of every kit's work loop — the lead creates the `TSK` before the
+    spawn, never the executor — made true for the surface a role actually uses.
+
+    Measured red before this: every one of these command lines exited 0 from a subagent's shell —
+    `handle_shell` refuses on what a line NAMES, and none of them names `project_memory` or the
+    enforcement layer. So a specialist could mint the work order and the lease for a second
+    specialist, which is the first half of authorising itself.
+
+    What this does NOT claim is in the module docstring of the gate: a script the agent writes
+    into its own `allowed_scope` and then runs reaches the same kernel functions.
+    """
+    _state, _task = bound_repo(tmp_path)
+    result = run_scope(tmp_path, dict(shell_payload(tmp_path, command), agent_id="child-1"))
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "ORDERS work" in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("identity", _SESSION_INSTANCE_SHAPES,
+                         ids=["fields-absent", "fields-null"])
+@pytest.mark.parametrize("command", _ORDERING_ALLOWED + _ORDERING_REFUSED)
+def test_the_orchestrator_is_not_caught_by_the_ordering_rule(tmp_path, command, identity):
+    """The anti-lockout control, and it covers the REFUSED battery too: the same lines from the
+    session instance must pass, or rule 4 has just taken the ordering commands away from the only
+    role that has them.
+
+    BOTH parent payload shapes, for the reason the spawn test states — the identity fields have
+    been seen absent and present-as-null, and only the null one distinguishes a truthiness test
+    from a key-presence test. Without this dimension the shell path had no case that could tell
+    the two apart, and the whole rule rests on that distinction."""
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, dict(shell_payload(tmp_path, command), **identity))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("command", _ORDERING_ALLOWED)
+def test_a_subagents_own_harness_commands_still_run(tmp_path, command):
+    """The false-alarm half. `submit-result` and `evidence` are what a specialist hands its work
+    back with; refusing either would replace one dead end with another. `capture EVD` and
+    `grep create-task` are the two shapes a rule written on bare words gets wrong."""
+    _state, _task = bound_repo(tmp_path)
+    result = run_scope(tmp_path, dict(shell_payload(tmp_path, command), agent_id="child-1"))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def _gate_constant(kit, name):
+    """A module-level constant of the SHIPPED gate, read from its AST.
+
+    Parsed, not imported: the hook opens with GATE_PREAMBLE and wants an installed bundle around
+    it, and parsed, not grepped: a regex over the file would pass on the same name inside a
+    docstring.
+    """
+    path = os.path.join(TEAM_KITS, kit, "hooks", "gate_write_scope.py")
+    with io.open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), path)
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == name for t in node.targets):
+            return ast.literal_eval(node.value)
+    raise AssertionError("%s defines no %s" % (path, name))
+
+
+def _cli_commands_reaching(producers):
+    """The `args.command` values whose branch in `kernel/cli.py` calls one of `producers`.
+
+    THE DERIVATION, so the gate's map cannot be a tuple that was true once. `create_task` and
+    `create_lease` are the kernel's two producers of "work somebody else executes"; which CLI
+    subcommands reach them is a fact of `cli.py` and is read out of it here.
+    """
+    path = os.path.join(TEAM_KITS, "kernel", "cli.py")
+    with io.open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), path)
+    found = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        test = node.test
+        if not (isinstance(test, ast.Compare) and len(test.ops) == 1
+                and isinstance(test.ops[0], ast.Eq)
+                and isinstance(test.left, ast.Attribute) and test.left.attr == "command"
+                and isinstance(test.left.value, ast.Name) and test.left.value.id == "args"
+                and isinstance(test.comparators[0], ast.Constant)):
+            continue
+        for inner in ast.walk(node):
+            if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
+                    and inner.func.attr in producers):
+                found.add(test.comparators[0].value)
+    return found
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_the_ordering_commands_are_the_cli_routes_to_the_task_producers(kit):
+    """`_ORDERING_COMMANDS` IS the set of CLI subcommands that reach `dispatch.create_task` or
+    `dispatch.create_lease` — asserted against `kernel/cli.py`, not against a memory of it.
+
+    This is what keeps rule 4 from being the next stale tuple: a fourth route to either producer
+    turns this red on the day it ships, and an entry here that reaches neither is red too. The
+    NARROWING inside a route (`capture` orders only for `TSK`) is the map's value and is measured
+    behaviourally by `test_a_subagents_own_harness_commands_still_run` (`capture EVD` passes).
+    """
+    routes = _cli_commands_reaching({"create_task", "create_lease"})
+    assert routes, "the derivation found no route at all — cli.py's shape changed, not the gate's"
+    assert set(_gate_constant(kit, "_ORDERING_COMMANDS")) == routes, (
+        "%s: gate_write_scope orders on %s, kernel/cli.py routes to the task producers through %s"
+        % (kit, sorted(_gate_constant(kit, "_ORDERING_COMMANDS")), sorted(routes)))
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_the_gate_knows_the_entry_point_the_kernel_installs(kit):
+    """The other half a hand-typed constant could get wrong: rule 4 only ever fires on a line that
+    names the harness, so a stale file name would switch the whole rule off silently."""
+    from kernel import cli
+    assert _gate_constant(kit, "_HARNESS_SCRIPT") == os.path.basename(cli.ENTRY_POINT)
+    assert _gate_constant(kit, "_KERNEL_CLI_MODULE") == "%s.%s" % (
+        cli.__name__.split(".")[0], cli.__name__.split(".")[-1])
 
 
 def test_a_specialist_may_not_write_another_tasks_staging(tmp_path):
