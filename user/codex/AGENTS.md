@@ -112,6 +112,10 @@ Read `~/.claude/team-kits/registry.yaml` and classify the user's intent against 
 - Only a generic software/build wish -> use `dev-team`.
 - Matched kit is not `available` -> say so and offer the closest available kit.
 
+Then read the selected team's `requires_before_install` in the same file and carry every entry into
+the interview below. Those files have no writer once the kit is installed, so whatever you do not
+draft with the user now, nobody can add later.
+
 Read the selected kit's `presets.yaml`, recommend one preset for the stated scope, explain the
 trade-off briefly, and obtain explicit user confirmation. Never leave the template default as an
 unconfirmed placeholder.

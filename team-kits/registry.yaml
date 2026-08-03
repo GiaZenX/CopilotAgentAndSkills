@@ -16,7 +16,25 @@
 # `lead: project-manager` is the kit's SESSION agent: the kit's .claude/settings.json sets
 # `agent: project-manager`, so the repo's main session IS the PM (not a spawnable subagent).
 # `roles` lists the specialist SUBAGENTS the PM spawns (files under the kit's agents/).
+#
+# `requires_before_install` is the part of a kit that must EXIST AND BE FILLED before the scaffold
+# runs, and it is the one thing a reader choosing a kit could previously not learn here. Each entry
+# names a file that is simultaneously (a) read by a gate the kit registers, which refuses work
+# while its content is still the shipped template, and (b) unwritable from inside an installed
+# project: the kernel has no path builder that can name it, so no `harness.py` command writes it,
+# and the state directory is write-scoped against tools. The only sessions that can fill one are
+# the entry gate's — the session BEFORE the scaffold, which is why the fact belongs in the routing
+# table and not only in the kit — and the user's own editor.
+#
+# The set is DERIVED, not curated: `kernel.layout.gated_documents` answers it per kit from the
+# kit's registered, refusal-capable hooks and `kernel.layout.is_project_document`, and
+# `test_registry_names_every_document_that_must_be_filled_before_the_scaffold` in
+# `tools/test_hooks.py` holds these lists against that answer. A kit that grows a wall gets a red
+# test, not a silently incomplete entry.
 
+# The SHAPE of this file, not the harness generation. It is deliberately still 1: the V2 lockstep
+# changed no key here, and bumping a schema version to announce a cut that did not happen is how a
+# version stops meaning anything. The kit CONTENT below is V2 (typed items, not the V1 monoliths).
 version: 1
 
 teams:
@@ -26,7 +44,19 @@ teams:
     lead: project-manager     # kit settings.json sets agent:project-manager -> the session IS the PM
     summary: >
       Software / product engineering: apps, APIs, tooling, libraries, build work.
-      Runs the PRD -> SRD -> Task hierarchy: foreground PM + 7 specialist subagents.
+      Runs the PR -> SR -> TSK item hierarchy (product requirement -> system requirement ->
+      task, one file per item): foreground PM + 7 specialist subagents.
+    requires_before_install:            # see the header — derived, held by tools/test_hooks.py
+      - path: project_memory/product/masterplan.md
+        why: >
+          The project's north star as prose. `gate_memory_complete` refuses every `git merge` and
+          `git push` while it still carries the template's `<project name>` line, and no writer for
+          it exists once the kit is installed.
+      - path: project_memory/project_config.yaml
+        why: >
+          Project name, team preset and the declared `stacks:`. `gate_memory_complete` refuses
+          merge and push while the name is empty or `stacks:` is still `[TODO]` — the merge
+          pipeline selects its checks from that list, so an undeclared stack is an unchecked one.
     intents:
       - software
       - app
@@ -61,6 +91,16 @@ teams:
       Research / experimentation with an FZulG (German R&D tax credit) documentation layer.
       Runs the Research-Question -> Hypothesis/Experiment -> Task hierarchy: foreground PM +
       6 specialist subagents, producing per-experiment LaTeX reports plus fundable documentation.
+    requires_before_install:            # see the header — derived, held by tools/test_hooks.py
+      - path: project_memory/product/masterplan.md
+        why: >
+          The research programme's north star as prose. `gate_memory_complete` refuses every
+          `git merge` and `git push` while it still carries the template's `<project name>` line,
+          and no writer for it exists once the kit is installed.
+      - path: project_memory/project_config.yaml
+        why: >
+          Project name, team preset and the declared `stacks:`. `gate_memory_complete` refuses
+          merge and push while the name is empty or `stacks:` is still `[TODO]`.
     intents:
       - research
       - experiment
@@ -94,6 +134,17 @@ teams:
       tools/dashboards (read-only consumers of the tracked data). Runs the PROC (approved
       process) model: foreground manager + up to 8 specialist subagents. Drafts only — it never
       sends anything; no tax or legal advice.
+    requires_before_install:            # see the header — derived, held by tools/test_hooks.py
+      - path: project_memory/filing_plan.yaml
+        why: >
+          THE Aktenplan, and the only machine-readable filing truth. The shipped template carries
+          `rules: []`, and `gate_filing` fails closed on an empty plan: an office project installed
+          without it refuses the FIRST document it is asked to file and every one after, because a
+          filing that cannot be verified against a rule is the failure that gate exists for. It is
+          drafted WITH THE USER before the scaffold — the classes of document the business handles,
+          where each lives, how it is named, what metadata it carries and how long it is kept (the
+          plan's own header states the fields of one rule). This kit is functionless from
+          installation without it.
     intents:
       - office
       - back-office

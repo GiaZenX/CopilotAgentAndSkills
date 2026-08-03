@@ -97,6 +97,12 @@ DEST_IS_LAST = ("mv", "move", "move-item", "mi", "ren", "rename", "rename-item",
 GNU_TARGET_DIR = ("mv", "cp", "install")
 TARGET_DIR_OPTION = "target-directory"
 PLACEHOLDER_SEGMENT_RX = re.compile(r"^<[^<>/]+>$")
+# ONE of the four reasons `rules` can find nothing, named because one caller has to tell it apart
+# from the other three. `unfilled_documents` reports the SHIPPED-TEMPLATE state, and a plan that is
+# missing, unparseable, or unreadable because PyYAML is absent is not that: those have remedies a
+# session can act on, and reporting them as "only the user can fill this" would send a reader away
+# from the fix. The gate itself blocks on all four identically — fail-closed does not care why.
+NO_RULES_YET = "%s lists no rules yet" % PLAN
 
 
 def rules(root):
@@ -115,8 +121,31 @@ def rules(root):
         return None, "%s could not be parsed (%s)" % (PLAN, exc)
     found = [r for r in (plan.get("rules") or []) if isinstance(r, dict) and r.get("path_template")]
     if not found:
-        return None, "%s lists no rules yet" % PLAN
+        return None, NO_RULES_YET
     return found, None
+
+
+def unfilled_documents(root):
+    """{state-relative path: why} for the kit DOCUMENT this gate refuses ALL filing over.
+
+    The empty-plan branch of `check` below, asked as a question instead of as a refusal -- both go
+    through `rules`, so there is one condition and no copy of it. TWO narrowings, and each excludes
+    something this gate does block on:
+
+      * a plan WITH rules that simply does not cover today's destination is a filing DECISION, not
+        a wall — the plan is written, it just has no rule for this document yet;
+      * `NO_RULES_YET` and not "`rules` found nothing". The other three ways it can find nothing (no
+        file, unparseable YAML, PyYAML absent) all have a remedy someone can act on, and reporting
+        them through a message whose whole point is "only the user can fill this" would point the
+        reader away from the fix.
+
+    It is a QUERY and never blocks: `_kernel.block` is called from `check`, on the event that has a
+    blocking contract. `_kernel.unfilled_gated_documents` calls this at SessionStart, so an office
+    project is told its Aktenplan is empty before the first filing rather than by the refusal of
+    it.
+    """
+    found, reason = rules(root)
+    return {} if found or reason != NO_RULES_YET else {PLAN: reason}
 
 
 def rule_matches(path_template, directory):

@@ -7,6 +7,7 @@ Each hook is run as a real subprocess with synthetic stdin JSON and CLAUDE_PROJE
 on its exit code (0 = allow, 2 = block for guards/gates, 1 = red for quality.py). Run: pytest tools/
 """
 import ast
+import contextlib
 import fnmatch
 import glob
 import hashlib
@@ -5098,67 +5099,334 @@ def test_every_hook_an_entry_gate_names_is_shipped_by_every_kit_in_that_blocks_s
         "for, or state the consequence without it:\n  " + "\n  ".join(sorted(set(offences))))
 
 
-def _blocking_hooks(kit):
-    """{hook name: its string constants} for the hooks of `kit` that can REFUSE an operation.
+@contextlib.contextmanager
+def _staged_kit(kit):
+    """A throwaway project root carrying `kit`'s real hooks and settings under `.claude/`.
 
-    Two conditions, and dropping either would widen this to something else. It has to be able to
-    block — `_kernel.block` is that capability, read from the AST rather than from a name prefix,
-    because `guard_`/`gate_` is a convention and `session_status` is a briefing that names two of
-    these documents without ever refusing anything. And it has to be REGISTERED, read with the
-    kernel's own `report._wired_hooks`, which knows the ways a registration cannot fire; a hook that
-    ships and is wired nowhere refuses nothing.
+    The shape `kernel.layout.gated_documents` and `report._wired_hooks` both expect of an
+    INSTALLED project, built out of the shipped kit so the derivation is measured against the
+    files that ship rather than against a fixture written to please it.
     """
-    sys.path.insert(0, TEAM_KITS)
-    from kernel import report
-    hooks_dir = os.path.join(TEAM_KITS, kit, "hooks")
-    staged = tempfile.mkdtemp(prefix="entry-gate-wiring-")
+    staged = tempfile.mkdtemp(prefix="staged-kit-")
     try:
         claude = os.path.join(staged, ".claude")
-        shutil.copytree(hooks_dir, os.path.join(claude, "hooks"))
+        shutil.copytree(os.path.join(TEAM_KITS, kit, "hooks"), os.path.join(claude, "hooks"))
         shutil.copy(os.path.join(TEAM_KITS, kit, "settings", "settings.json"),
                     os.path.join(claude, "settings.json"))
-        wired = set(report._wired_hooks(staged))
+        yield staged
     finally:
         shutil.rmtree(staged, ignore_errors=True)
-    blocking = {}
-    for name in sorted(wired):
-        with open(os.path.join(hooks_dir, name), encoding="utf-8") as fh:
-            tree = ast.parse(fh.read(), filename=name)
-        if not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
-                   and node.func.attr == "block" for node in ast.walk(tree)):
-            continue
-        blocking[name] = {node.value for node in ast.walk(tree)
-                          if isinstance(node, ast.Constant) and isinstance(node.value, str)}
-    return blocking
 
 
 def _documents_a_gate_blocks_on(kit):
-    """{state-relative path: hook} — every KIT DOCUMENT whose content a registered gate refuses on.
+    """{state-relative path: hook file} — every KIT DOCUMENT a registered gate refuses work over.
 
-    "Kit document" is `kernel.layout.is_project_document`, the definition the write-scope gate
-    itself asks: a file under the state directory that no kernel path builder can name, hence one
-    the kernel has no writer for. "A gate reads it" is the hook spelling every segment of the
-    document's path among its own string constants — `MASTERPLAN = os.path.join("product",
-    "masterplan.md")` and `PLAN = "filing_plan.yaml"` are the two shapes the shipped hooks use, and
-    asking for every segment is what keeps a hook that merely mentions `product` out of the answer.
+    THE DERIVATION IS NOT HERE ANY MORE, and that move is the point. It used to be computed in this
+    module, which ships to no project — so `doctor`, the tool whose job is to report the state a
+    project is in, could say nothing about the files that can lock a project shut (measured
+    2026-08-03: `grep -c "masterplan\\|filing_plan\\|project_config" kernel/report.py` = 0). It now
+    lives in `kernel.layout.gated_documents` and has three readers: `report.doctor`, the hooks'
+    bridge `_kernel.unfilled_gated_documents`, and this test. One answer, not three.
 
-    The two halves are the whole point: a document a gate blocks on AND nothing can write is a wall,
-    and the only session that can still write it is the one that runs before the kit is installed.
+    What is asked of the kit here is the INSTALLED shape — its own hooks and settings under
+    `.claude/`, its own `templates/project_memory/` as the state root — because that is what the
+    derivation reads in a real project.
     """
     sys.path.insert(0, TEAM_KITS)
     from kernel import layout
     base = os.path.join(TEAM_KITS, kit, "templates", "project_memory")
-    blocking = _blocking_hooks(kit)
-    found = {}
+    with _staged_kit(kit) as staged:
+        return {rel: who["hook"] for rel, who in layout.gated_documents(staged, base).items()}
+
+
+def _kit_hook_trees(kit):
+    """{hook file: parsed AST} for the REGISTERED, refusal-capable hooks of `kit`."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import layout, report
+    hooks_dir = os.path.join(TEAM_KITS, kit, "hooks")
+    trees = {}
+    with _staged_kit(kit) as staged:
+        wired = sorted(report._wired_hooks(staged))
+    for name in wired:
+        with open(os.path.join(hooks_dir, name), encoding="utf-8") as fh:
+            tree = ast.parse(fh.read(), filename=name)
+        if layout._can_refuse(tree):
+            trees[name] = tree
+    return trees
+
+
+def test_the_composed_path_rule_still_sees_every_document_a_gate_names():
+    """The tripwire for the ONE direction `path_segments_composed` can fail in: silence.
+
+    The rule that decides "this gate reads this document" was sharpened this round. It used to
+    accept a string constant occurring ANYWHERE in the hook — so a document named only inside a
+    remedy sentence counted, which over-reports; harmless while the reader was the entry-gate
+    check (a false wall costs a superfluous paragraph), not harmless now that `doctor` prints the
+    answer to a user. It now accepts a constant only where it reaches the argument of a path
+    composition, directly or through a module-level binding.
+
+    That sharpening errs the other way: a hook addressing a file by concatenation, by `pathlib`, or
+    through a name bound inside a function drops OUT of the answer, and a wall nobody derives is a
+    wall no report and no entry gate mentions. Nothing about that failure is visible — the suite
+    just gets quieter. So the two rules are compared against the shipped kits: the loose one is the
+    upper bound, and the day a document falls out of the sharp answer while the loose one still
+    sees it, this goes red and someone reads why.
+
+    Measured 2026-08-03 across all three kits: identical, `{product/masterplan.md,
+    project_config.yaml, filing_plan.yaml}`.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import layout
+    seen = 0
+    for kit in sorted(_routable_kits()):
+        base = os.path.join(TEAM_KITS, kit, "templates", "project_memory")
+        documents = [rel for rel in _state_relative_files(base)
+                     if layout.is_project_document(base, rel)]
+        assert documents, "%s: no kit documents resolved at all" % kit
+        sharp = _documents_a_gate_blocks_on(kit)
+        for name, tree in _kit_hook_trees(kit).items():
+            loose = {node.value for node in ast.walk(tree)
+                     if isinstance(node, ast.Constant) and isinstance(node.value, str)}
+            for rel in documents:
+                if not all(segment in loose for segment in rel.split("/")):
+                    continue
+                seen += 1
+                assert rel in sharp, (
+                    "%s/%s names every segment of `%s` among its string constants, but composes no "
+                    "path out of them — so `kernel.layout.gated_documents` no longer derives this "
+                    "wall, and neither `doctor` nor the entry gates will mention it. Either the "
+                    "hook stopped addressing the file through `os.path.join` (teach "
+                    "`path_segments_composed` that shape), or the name now appears only in prose "
+                    "(then say so here)." % (kit, name, rel))
+    assert seen >= 3, (
+        "only %d document/hook pairs were compared — the loose reader stopped resolving, and this "
+        "tripwire passes loudest when it sees nothing" % seen)
+
+
+def _state_relative_files(base):
+    """Every file under `base`, as a slash-separated path relative to it."""
+    out = []
     for dirpath, _dirs, files in os.walk(base):
-        for name in files:
-            rel = os.path.relpath(os.path.join(dirpath, name), base).replace(os.sep, "/")
-            if not layout.is_project_document(base, rel):
-                continue
-            for hook, constants in blocking.items():
-                if all(segment in constants for segment in rel.split("/")):
-                    found[rel] = hook
-    return found
+        for name in sorted(files):
+            out.append(os.path.relpath(os.path.join(dirpath, name), base).replace(os.sep, "/"))
+    return out
+
+
+def test_registry_names_every_document_that_must_be_filled_before_the_scaffold():
+    """`registry.yaml` is where a kit is CHOSEN, and it did not say what a kit needs to work.
+
+    Measured 2026-08-03: two occurrences of "filing" in the file, one a summary phrase and one an
+    intent keyword, and not one sentence saying the Aktenplan has to exist before installation —
+    although `gate_filing` fails closed on the shipped `rules: []` and an office project without it
+    refuses the first document it is ever asked to file. Whoever reads the registry to pick a kit
+    learned the least important thing about it.
+
+    DERIVED PER KIT, from the same `kernel.layout.gated_documents` the entry-gate check and
+    `doctor` read: a wall is a document with no kernel writer that a registered, refusal-capable
+    hook of THAT kit addresses. So this is not "office needs a filing plan" written down a second
+    time — a kit that grows a wall gets a red test here, and a kit that loses one gets a red test
+    for the stale entry.
+
+    The paths are compared as `project_memory/<state-relative path>`, which is how every other
+    instruction file in this repo spells a state path.
+    """
+    yaml = pytest.importorskip("yaml")
+    with open(os.path.join(TEAM_KITS, "registry.yaml"), encoding="utf-8") as fh:
+        registry = yaml.safe_load(fh)
+    entries = {team["key"]: team for team in registry.get("teams", [])}
+    offences = []
+    for kit in sorted(_routable_kits()):
+        derived = {"project_memory/" + rel for rel in _documents_a_gate_blocks_on(kit)}
+        listed = entries.get(kit, {}).get("requires_before_install") or []
+        claimed = {str((row or {}).get("path") or "") for row in listed
+                   if isinstance(row, dict)}
+        if claimed != derived:
+            offences.append(
+                "%s lists %s but its registered gates wall off %s"
+                % (kit, sorted(claimed) or "nothing", sorted(derived)))
+        for row in listed:
+            if not isinstance(row, dict) or not str(row.get("why") or "").strip():
+                offences.append("%s: every requires_before_install entry needs a `why`" % kit)
+    assert not offences, (
+        "`registry.yaml` is read to CHOOSE a kit, and a kit whose gated documents it does not name "
+        "is one a reader installs into a wall — the file has no writer inside the project, so the "
+        "session before the scaffold is the last one that can fill it:\n  "
+        + "\n  ".join(offences))
+
+
+def _installed_kit(tmp_path, kit):
+    """A project with `kit` REALLY installed: its hooks, its settings, its shipped state templates.
+
+    Not a fixture written to please the assertion: every file comes from the kit as it ships, so
+    what is measured below is the installation a user gets — including the templates' unfilled
+    state, which is the whole subject.
+    """
+    project = os.path.join(str(tmp_path), "proj")
+    claude = os.path.join(project, ".claude")
+    shutil.copytree(os.path.join(TEAM_KITS, kit, "hooks"), os.path.join(claude, "hooks"))
+    shutil.copy(os.path.join(TEAM_KITS, kit, "settings", "settings.json"),
+                os.path.join(claude, "settings.json"))
+    shutil.copytree(os.path.join(TEAM_KITS, kit, "templates", "project_memory"),
+                    os.path.join(project, "project_memory"))
+    return project
+
+
+def test_doctor_names_the_documents_that_wall_a_project_off(tmp_path):
+    """Doctor said NOTHING about the one state a session cannot work its way out of.
+
+    Measured 2026-08-03, before this round: `grep -c "masterplan\\|filing_plan\\|project_config"
+    team-kits/kernel/report.py` = 0. A project could stand with `gate_memory_complete` refusing
+    every push over a masterplan nothing can write, and the tool whose job is to report the state
+    reported the lock, the leases, the capability matrix and the validator — and not that.
+
+    THE NUMBER IS MEASURED, NOT MODELLED, and that is what makes this more than a shape assertion:
+    the real gate is run as a real process first, it refuses the push, and the refusal it records
+    in the project's own audit log is what doctor counts. Deleting the counter, or pointing it at
+    the wrong log, turns the 1 below into a 0.
+    """
+    pytest.importorskip("yaml")
+    project = _installed_kit(tmp_path, "dev-team")
+    capture_root_item(project)          # the gate stays quiet until there is real work
+    refusal = run_hook_process("gate_memory_complete.py",
+                               _bash(project, "git push origin main"), project)
+    assert refusal.returncode == 2, refusal.stderr
+    assert "product/masterplan.md" in refusal.stderr
+
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import report
+    from kernel.state import ProjectState
+    result = report.doctor(ProjectState(os.path.join(project, "project_memory")))
+    walls = {row["path"]: row for row in result["gated_documents"]}
+    assert set(walls) == {"product/masterplan.md", "project_config.yaml"}, sorted(walls)
+    for path, row in sorted(walls.items()):
+        assert row["gate"] == "gate_memory_complete.py"
+        assert row["kernel_writer"] is None
+        assert row["gate_refusals_recorded"] == 1, (
+            "%s: the gate recorded a block in this project's audit log and doctor counted %r"
+            % (path, row["gate_refusals_recorded"]))
+
+
+def test_doctor_does_not_invent_a_wall_where_no_gate_stands(tmp_path):
+    """The other half, and without it the field above could be a constant.
+
+    `office-team` ships `product/masterplan.md` and `project_config.yaml` too, and ships no
+    `gate_memory_complete` — so for an office project those two are ordinary documents and only
+    the Aktenplan is a wall. A version of this that listed file names instead of deriving them
+    would say "three walls" here and send an office manager after a masterplan nothing reads.
+    """
+    pytest.importorskip("yaml")
+    project = _installed_kit(tmp_path, "office-team")
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import report
+    from kernel.state import ProjectState
+    result = report.doctor(ProjectState(os.path.join(project, "project_memory")))
+    walls = {row["path"]: row["gate"] for row in result["gated_documents"]}
+    assert walls == {"filing_plan.yaml": "gate_filing.py"}, walls
+
+
+@pytest.mark.parametrize("kit,document,verdict,fill", [
+    # `verdict` is a fragment of the GATE's own reason, so the briefing is pinned to the gate that
+    # produced it rather than to a sentence this test could satisfy on its own.
+    ("dev-team", "product/masterplan.md", "still the unfilled template",
+     lambda project: _fill_dev_documents(project)),
+    ("office-team", "filing_plan.yaml", "lists no rules yet",
+     lambda project: write(os.path.join(project, "project_memory", "filing_plan.yaml"),
+                           "rules:\n  - id: FP-001\n    path_template: \"archive/x/\"\n")),
+])
+def test_session_start_says_a_wall_document_is_still_the_template(
+        tmp_path, kit, document, verdict, fill):
+    """The check at the place it still helps: BEFORE the work, not as the refusal that ends it.
+
+    `init_project_memory` is copy-if-absent, so the entry gate's instruction to fill these files is
+    an instruction nothing verified — the scaffold ran, the session ended, and the project learnt
+    of the empty template at its first merge (dev/research) or its first filing (office), from a
+    gate that can only say "no". Measured before this round: nothing between the two.
+
+    WHY SESSIONSTART AND NOT THE END OF THE SCAFFOLD. Three reasons, and the third is the one that
+    decides it. The scaffold's output is read by the session that is about to be told to restart,
+    so a line there is printed to the party that is leaving. A SessionStart briefing reaches the
+    session that will do the work, and repeats every session until the file is filled. And the
+    scaffold cannot see the case that actually hurts — a project installed weeks ago with an empty
+    plan; only something that runs every session can.
+
+    RUN AS A REAL HOOK PROCESS, from the project's OWN installed `.claude/hooks`, with a
+    SessionStart payload on stdin. The briefing is read out of the JSON the hook writes to stdout,
+    which is the channel the provider reads — a check against the source text would have passed
+    for a hook that never emitted it.
+
+    The second half is what kills the "always print it" mutant: once the document is filled the
+    paragraph is gone, and it is the GATE's own condition that decides that, not this test's.
+    """
+    pytest.importorskip("yaml")
+    project = _installed_kit(tmp_path, kit)
+    hooks_dir = os.path.join(project, ".claude", "hooks")
+    payload = {"hook_event_name": "SessionStart", "cwd": project}
+
+    result = run_hook_process("session_status.py", payload, project, hooks_dir=hooks_dir)
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert document in context, context
+    assert verdict in context, (
+        "the briefing names the file but not what the GATE says is wrong with it — the sentence "
+        "is being written here instead of quoted from the gate:\n%s" % context)
+
+    fill(project)
+    after = run_hook_process("session_status.py", payload, project, hooks_dir=hooks_dir)
+    assert after.returncode == 0, after.stderr
+    filled_context = json.loads(after.stdout)["hookSpecificOutput"]["additionalContext"]
+    # the GATE's reason is the discriminator here, not the file name: the dev briefing legitimately
+    # points the PM at `product/masterplan.md` in an unrelated paragraph, so a check on the name
+    # alone would fail for a correct hook — and, run the other way round, would pass for a briefing
+    # that had stopped asking the gate.
+    assert verdict not in filled_context, (
+        "the document was filled and the SessionStart briefing still quotes the gate's "
+        "unfilled-verdict — the briefing is not asking the gate, it is asserting:\n%s"
+        % filled_context)
+
+
+def test_session_start_reports_the_template_state_and_not_every_reason_a_gate_refuses(tmp_path):
+    """The briefing's own sentence is what makes this a rule rather than a nicety.
+
+    `gate_filing.rules` finds nothing for four reasons — the shipped `rules: []`, a plan that is
+    not there, YAML that does not parse, and PyYAML absent — and the gate blocks on all four,
+    correctly, because fail-closed does not care why. The briefing is about ONE of them: the
+    shipped template, the state that means the session before the scaffold did not do its job.
+    A corrupt plan is a different defect with a different first step, and announcing it under a
+    heading that says "unfilled" tells the reader to write rules into a file whose problem is that
+    it cannot be read.
+
+    Two of the four are already excluded upstream and this test would pass without the narrowing
+    it exists for, so they are not the case measured here: a MISSING plan is not a document at all,
+    so `kernel.layout.gated_documents` never derives a wall for it, and without PyYAML the kernel
+    itself does not import, so the derivation never runs. The unparseable plan is the one case that
+    reaches the gate's verdict function, and it is the one below.
+    """
+    pytest.importorskip("yaml")
+    project = _installed_kit(tmp_path, "office-team")
+    write(os.path.join(project, "project_memory", "filing_plan.yaml"), "rules: [{{{\n")
+    result = run_hook_process("session_status.py",
+                              {"hook_event_name": "SessionStart", "cwd": project}, project,
+                              hooks_dir=os.path.join(project, ".claude", "hooks"))
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "WALL" not in context, (
+        "the plan does not PARSE, which is neither the shipped template nor something a reader "
+        "fixes by writing rules — and the briefing announced it as an unfilled document:\n%s"
+        % context)
+
+
+def _fill_dev_documents(project):
+    """Fill BOTH dev-team walls, because the briefing names every unfilled one."""
+    memory = os.path.join(project, "project_memory")
+    masterplan = os.path.join(memory, "product", "masterplan.md")
+    with open(masterplan, encoding="utf-8") as fh:
+        text = fh.read()
+    write(masterplan, text.replace("<project name>", "Ledger"))
+    config = os.path.join(memory, "project_config.yaml")
+    with open(config, encoding="utf-8") as fh:
+        text = fh.read()
+    write(config, text.replace('name: ""', 'name: "Ledger"')
+                      .replace("stacks: [TODO]", "stacks: [python]"))
 
 
 def test_every_document_a_gate_blocks_on_is_named_by_both_entry_gates():

@@ -226,6 +226,24 @@ def main():
             "then proceed. Do not delegate before project_config.yaml exists."
         )
 
+    # THE WALLS. A kit document a registered gate refuses work over, still carrying its shipped
+    # template, is the one project state no session can work its way out of — and until now it was
+    # first noticed as a refusal at the end of a work cycle. The derivation and the sentence both
+    # live in `_kernel` (one text, three kits); only this adapter is per-kit.
+    #
+    # `disarm()` IMMEDIATELY AFTER THE IMPORT, and it is not tidiness: importing `_kernel` arms the
+    # gates' excepthook, which turns any later escape into `os._exit(2)` — that skips the stdout
+    # flush at the end of this function, so a briefing hook would lose the ENTIRE briefing over an
+    # unrelated error. This hook informs and must never refuse.
+    try:
+        import _kernel
+        _kernel.disarm()
+        wall_briefing = _kernel.gated_document_briefing(cwd)
+        if wall_briefing:
+            parts.append(wall_briefing)
+    except BaseException:
+        pass
+
     # kit-update detection: compare the repo's installed kit stamp with the staged kit version.
     try:
         kit = ""

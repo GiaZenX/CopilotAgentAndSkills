@@ -37,9 +37,18 @@ WHAT IS DELIBERATELY NOT A DOCUMENT, and why the two exclusions are properties r
   * `staging/` -- spec II.4's explicitly non-canonical proposal area. It is not a document either:
     it has its OWN per-task-key rule in the write-scope gate, and answering "document" here would
     replace that rule with a weaker one.
+
+THE SECOND HALF, added 2026-08-03: `gated_documents` -- WHICH of those documents is a WALL. A
+document with no kernel writer is merely unusual; a document with no kernel writer that a
+REGISTERED gate refuses work over is a state a project can install itself into and never leave from
+inside a session. That derivation lived only in `tools/test_hooks.py`, which ships to no project, so
+`doctor` -- the one tool whose job is to report the state -- said nothing about it (measured
+2026-08-03: `grep -c "masterplan\\|filing_plan\\|project_config" kernel/report.py` = 0). It is here
+because `report`, `_kernel` (the hooks' bridge) and that test are three readers of ONE answer.
 """
 from __future__ import annotations
 
+import ast
 import os
 
 from .backlog_types import ACTIVE_DIRS, format_id
@@ -121,3 +130,147 @@ def is_project_document(root: str, relative_path: str) -> bool:
     if parts[0] == STAGING_DIRNAME:
         return False
     return not is_kernel_written(root, rel)
+
+
+# -- the walls: documents a REGISTERED gate refuses work over ------------------------------------
+
+# How deep a name is followed back to the constants it was bound from. `MASTERPLAN =
+# os.path.join("product", "masterplan.md")` is two levels; the bound is a cycle guard, not a
+# judgement about how deep a hook may nest.
+_BINDING_DEPTH = 4
+
+
+def _module_bindings(tree: ast.Module) -> dict:
+    """{name: value node} for every module-level `NAME = <expr>` with a single plain target.
+
+    Module level only, and single-target only, because those are the bindings whose value is
+    unambiguous without executing the file. A hook that composed its path out of a name assigned
+    inside a function would not be followed -- see `path_segments_composed`.
+    """
+    bindings = {}
+    for node in tree.body:
+        if (isinstance(node, ast.Assign) and len(node.targets) == 1
+                and isinstance(node.targets[0], ast.Name)):
+            bindings[node.targets[0].id] = node.value
+    return bindings
+
+
+def _is_path_join(node) -> bool:
+    """Is this a `<something>.join(...)` whose receiver is not a string literal?
+
+    `os.path.join(a, b)` composes a path; `", ".join(items)` composes a MESSAGE, and the
+    difference between the two is the receiver. Excluding the literal-string receiver is what
+    keeps the remedy prose of a gate -- which is full of `", ".join(sorted(...))` -- out of the
+    answer below.
+    """
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "join" and not isinstance(node.func.value, ast.Constant))
+
+
+def path_segments_composed(tree: ast.Module) -> set:
+    """Every string constant this module COMPOSES A FILESYSTEM PATH out of.
+
+    THE SHARPENING, and it closes a residual that was named rather than fixed when this derivation
+    still lived in the test suite. "A gate reads this file" used to mean "every segment of the
+    file's path appears among the module's string constants ANYWHERE" -- so a name occurring only
+    in a remedy sentence counted. Harmless in the direction it erred (a false wall costs a
+    superfluous paragraph in the entry gates), but the reader added here is `doctor`, and a false
+    wall in a state report is a sentence a user acts on.
+
+    So a constant counts when it reaches the ARGUMENT of a path composition, directly or through a
+    module-level name bound to a constant or to another composition. `PLAN = "filing_plan.yaml"`
+    used as `os.path.join(state_dir(root), PLAN)` and `MASTERPLAN = os.path.join("product",
+    "masterplan.md")` used as `os.path.join(state_dir(root), MASTERPLAN)` are the two shapes the
+    shipped gates use, and both are covered by the rule rather than by naming them.
+
+    THE LIMIT, and it errs the OTHER way, which is why it is stated instead of hidden: a hook that
+    addresses a file by string concatenation, by `pathlib`, or through a name it binds inside a
+    function is invisible here, and an invisible wall is a wall no report mentions. That direction
+    is silence, not a false alarm, so it needs a tripwire rather than a caveat --
+    `test_the_composed_path_rule_still_sees_every_document_a_gate_names` in `tools/test_hooks.py`
+    compares this rule against the loose "constant anywhere" one over the shipped kits and goes red
+    the day a hook starts addressing a document in a shape this cannot follow.
+    """
+    bindings = _module_bindings(tree)
+    found = set()
+
+    def harvest(node, depth=0):
+        if depth > _BINDING_DEPTH:
+            return
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            found.add(node.value)
+        elif isinstance(node, ast.Name):
+            bound = bindings.get(node.id)
+            if bound is not None:
+                harvest(bound, depth + 1)
+        elif _is_path_join(node):
+            for argument in node.args:
+                harvest(argument, depth + 1)
+
+    for node in ast.walk(tree):
+        if _is_path_join(node):
+            for argument in node.args:
+                harvest(argument)
+    return found
+
+
+def _can_refuse(tree: ast.Module) -> bool:
+    """Does this module call `<something>.block(...)`, i.e. can it REFUSE an operation?
+
+    Read from the AST rather than from a `gate_`/`guard_` name prefix, because that prefix is a
+    convention: `session_status` names two of these documents and refuses nothing, and
+    `guard_fs_tripwire` refuses plenty.
+    """
+    return any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+               and node.func.attr == "block" for node in ast.walk(tree))
+
+
+def gated_documents(repo_root: str, state_root: str) -> dict:
+    """{document path relative to `state_root`: {"hook", "audit_name"}} -- the WALLS.
+
+    A wall is a KIT DOCUMENT (`is_project_document`: no kernel writer can name it) whose content a
+    REGISTERED, refusal-capable hook of this installation reads. Both halves are load-bearing:
+    without the first, the answer includes files a `harness.py` command fills; without the second,
+    it includes documents nobody blocks on, and `master_data.yaml` and `business_profile.yaml` --
+    writer-less office documents no gate reads -- correctly fall out for exactly that reason.
+
+    Registration is `report._wired_hooks`, which already knows the ways a registration cannot fire
+    (wrong matcher, non-command type, missing file, an exit code the wrapper swallows); a hook that
+    ships and is wired nowhere refuses nothing. `audit_name` is the hook's own `HOOK` constant --
+    the name it records blocks under, so a reader can count what this gate actually refused.
+
+    NOTHING IS EXECUTED HERE. The hooks are parsed, not imported: this runs inside `doctor`, which
+    is the tool of last resort, and importing a kit hook installs `_kernel`'s exit-2 excepthook into
+    the reporting process. Asking a gate for its own verdict is a separate step and belongs on the
+    hook side, where that import is already the normal state -- see `_kernel.unfilled_gated_documents`.
+    """
+    from . import report                # lazy: keeps the package's import graph a tree
+
+    hooks_dir = os.path.join(repo_root, ".claude", "hooks")
+    if not os.path.isdir(hooks_dir):
+        return {}
+    documents = []
+    for dirpath, _dirs, files in os.walk(state_root):
+        for name in sorted(files):
+            rel = os.path.relpath(os.path.join(dirpath, name), state_root).replace(os.sep, "/")
+            if is_project_document(state_root, rel):
+                documents.append(rel)
+    found = {}
+    for name in sorted(report._wired_hooks(repo_root)):
+        try:
+            with open(os.path.join(hooks_dir, name), encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=name)
+        except (OSError, SyntaxError, ValueError):
+            # a hook that does not parse enforces nothing this function can describe; the
+            # installation defect itself is `doctor`'s bundle/trust business, not this one's
+            continue
+        if not _can_refuse(tree):
+            continue
+        composed = path_segments_composed(tree)
+        audit = _module_bindings(tree).get("HOOK")
+        audit_name = (audit.value if isinstance(audit, ast.Constant)
+                      and isinstance(audit.value, str) else name)
+        for rel in documents:
+            if all(segment in composed for segment in rel.split("/")):
+                found[rel] = {"hook": name, "audit_name": audit_name}
+    return found

@@ -73,6 +73,32 @@ def read(path):
         return ""
 
 
+def unfilled_documents(root):
+    """{state-relative path: why} for the kit DOCUMENTS this gate still refuses work over.
+
+    THE GATE'S OWN CONDITION, in one place, with two readers. `main` below is the first, so this
+    is the code that actually runs on every push and merge -- a predicate nobody executed would
+    be a docstring, and this repo has paid for two of those. The second is
+    `_kernel.unfilled_gated_documents`, which the SessionStart briefing calls so a project is told
+    at the start of a session what would otherwise surface as a refusal at the end of one.
+
+    It is a QUERY and never blocks: `_kernel.block` is called by `main`, from the event that has a
+    blocking contract. A reader on SessionStart must be able to ask without the answer exiting 2.
+    """
+    state = _kernel.state_dir(root)
+    unfilled = {}
+    masterplan = os.path.join(state, MASTERPLAN)
+    if os.path.isfile(masterplan) and TEMPLATE_MARKER in read(masterplan):
+        unfilled[MASTERPLAN.replace(os.sep, "/")] = (
+            "still the unfilled template — write the real masterplan")
+    config = os.path.join(state, "project_config.yaml")
+    if os.path.isfile(config) and config_unfilled(read(config)):
+        unfilled["project_config.yaml"] = (
+            "no project name, or `stacks:` still TODO — the pipeline checks are selected by that "
+            "list, so an undeclared stack is an unchecked stack")
+    return unfilled
+
+
 def config_unfilled(text):
     """project_config.yaml needs a real project name and, if it lists stacks, >=1 non-TODO stack."""
     m = CONFIG_NAME_RE.search(text)
@@ -224,18 +250,9 @@ def main():
     if not _root.has_root_item(root):
         sys.exit(0)
 
-    documents, unfilled = [], []
-    masterplan = os.path.join(_kernel.state_dir(root), MASTERPLAN)
-    if os.path.isfile(masterplan) and TEMPLATE_MARKER in read(masterplan):
-        unfilled.append("%s: still the unfilled template — write the real masterplan"
-                        % MASTERPLAN.replace(os.sep, "/"))
-        documents.append(MASTERPLAN.replace(os.sep, "/"))
-    config = os.path.join(_kernel.state_dir(root), "project_config.yaml")
-    if os.path.isfile(config) and config_unfilled(read(config)):
-        unfilled.append("project_config.yaml: no project name, or `stacks:` still TODO — the "
-                        "pipeline checks are selected by that list, so an undeclared stack is an "
-                        "unchecked stack")
-        documents.append("project_config.yaml")
+    verdicts = unfilled_documents(root)
+    documents = sorted(verdicts)
+    unfilled = ["%s: %s" % (rel, verdicts[rel]) for rel in documents]
     validator = state_errors(root)
     problems = unfilled + validator
     if not problems:

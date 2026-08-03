@@ -49,7 +49,9 @@ You **first interview the user and draft a plan, then install** the kit, then ha
 1. **Classify intent → team kit** using `~/.claude/team-kits/registry.yaml` (intents → `key`). One match
    → use it; ambiguous → ask one short routing question; only generic "build software" → default
    `dev-team`. If the matched team's `status` is not `available`, say it is planned and offer an
-   available one.
+   available one. Then read that team's **`requires_before_install`** and treat every entry as part of
+   the interview below: those files have no writer once the kit is installed, so what you do not draft
+   with the user now, nobody can add later.
 2. **Discovery + plan REVIEW LOOP — BEFORE installing** (you still have all tools, incl. `AskUserQuestion`).
    This is read-only planning, so **engage Plan Mode now**: if you are not already in it, ask the user to turn
    it on (Shift+Tab → "Plan") so they can review and fine-tune the plan before anything is written. Then:

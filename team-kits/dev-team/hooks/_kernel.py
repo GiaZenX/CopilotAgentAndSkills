@@ -402,6 +402,82 @@ def open_state(repo_root=None):
     return kernel.state.ProjectState(root)
 
 
+# The protocol a WALL GATE offers: a module-level `unfilled_documents(root)` returning
+# {state-relative path: why}, derived from the same condition the gate refuses on. It is a
+# protocol and not a list of gate names on purpose -- `kernel.layout.gated_documents` says WHICH
+# hook stands in front of WHICH document, and this asks whichever hook that turns out to be. A
+# gate that grows a new wall is answered here the day it ships; one that offers no such function
+# is simply not asked, and its document is reported without a verdict.
+WALL_VERDICT_ATTR = "unfilled_documents"
+
+
+def unfilled_gated_documents(repo_root=None):
+    """[(document, hook, why)] for every wall whose OWN gate says it is still the template.
+
+    WHY THIS LIVES ON THE HOOK SIDE. The condition belongs to the gate -- it is the same code that
+    refuses the push or the filing -- and only a process that is already a hook may import a gate
+    module: importing one installs `_kernel`'s exit-2 excepthook and runs the gate's module-level
+    `sys.path` surgery. `kernel.report.gated_documents` therefore reports the wall and its
+    registration (parsed, never imported) and leaves the verdict to this function, which the
+    SessionStart briefing calls.
+
+    NEVER RAISES AND NEVER BLOCKS. Its caller is a comfort hook whose whole contract is that it
+    cannot refuse a call: a wall the session was not told about costs a paragraph, a briefing hook
+    that exits 2 costs the briefing. A gate that offers no verdict function, or raises while
+    answering, is skipped rather than guessed at.
+    """
+    repo_root = repo_root or find_repo_root()
+    try:
+        layout = kernel_module("layout", repo_root)
+        walls = layout.gated_documents(repo_root, state_dir(repo_root))
+    except BaseException:  # noqa: BLE001 -- see the contract above
+        return []
+    out = []
+    for document in sorted(walls):
+        module_name = os.path.splitext(walls[document]["hook"])[0]
+        try:
+            # the hooks directory is on sys.path from this module's own import (top of file), so
+            # the gate resolves as the sibling it is
+            gate = importlib.import_module(module_name)
+            ask = getattr(gate, WALL_VERDICT_ATTR, None)
+            verdicts = ask(repo_root) if callable(ask) else None
+        except BaseException:  # noqa: BLE001
+            continue
+        if isinstance(verdicts, dict) and document in verdicts:
+            out.append((document, walls[document]["audit_name"], str(verdicts[document])))
+    return out
+
+
+def gated_document_briefing(repo_root=None):
+    """The SessionStart sentence about unfilled walls, or None -- ONE text, three kits.
+
+    Written here rather than in `session_status`, which is kit-specific and exists three times: a
+    sentence copied three times is a sentence that will differ three ways, and this one has to stay
+    exact.
+
+    EVERY CLAUSE IS DERIVED OR QUOTED, and the sentence claims nothing beyond them. That a
+    registered gate reads the file and can refuse comes from `kernel.layout.gated_documents`; that
+    it is still unfilled is the gate's own verdict, quoted verbatim rather than paraphrased; that
+    the kernel cannot write it is `is_project_document`. What the message does NOT say is that the
+    write is PREVENTED -- `gate_write_scope` refuses the tool routes and the constitution binds the
+    shell one as policy, and neither fact is measured here. The one command it names is
+    `doctor`, which is read-only and which every role can run; a message that named a route the
+    session cannot take is the failure this round's messages were rewritten for.
+    """
+    walls = unfilled_gated_documents(repo_root)
+    if not walls:
+        return None
+    listed = "; ".join("%s (%s: %s)" % (document, hook, why) for document, hook, why in walls)
+    return (
+        "UNFILLED PROJECT DOCUMENT%s — a WALL, not a to-do: %s. A registered gate reads each of "
+        "those files and refuses work over its content, and the kernel has no path builder that "
+        "can name it, so no `python scripts/harness.py` command writes it. Filling it is the "
+        "USER's to do, in an editor outside this session. Say so in your FIRST paragraph, name the "
+        "file and what it needs, do not retry the refused operation, and do not start work that "
+        "depends on the file. `python scripts/harness.py doctor` lists these under "
+        "`gated_documents`." % ("S" if len(walls) > 1 else "", listed))
+
+
 _PAYLOAD_CACHE = []
 
 

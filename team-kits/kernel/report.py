@@ -1504,6 +1504,10 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
             "cannot run it itself: `gate_write_scope` refuses a write-capable command line that "
             "names the enforcement layer, and starting a script is one."))
     report["trust_status"] = matrix.get("hook_trust", "unknown")
+    # THE WALLS. A typed field rather than prose, because "which files can block this project and
+    # who is allowed to write them" is something a dashboard and a session brief both branch on;
+    # see `gated_documents` for what it does and does not claim.
+    report["gated_documents"] = gated_documents(state, repo_root)
     report["specialists"] = _installed_specialists(repo_root)
     report["hooks_disabled"] = _hooks_disabled(repo_root)
     report["capabilities"] = matrix
@@ -1638,6 +1642,81 @@ def _environment_notes(repo_root: str) -> list:
     except (OSError, ValueError):
         pass
     return notes
+
+
+# The log `_kernel.block` appends one JSON object per refusal to, relative to the STATE root --
+# the same file `gate_memory_complete.repeat_count` reads for its escalation counter. Reading the
+# recorder's own output is the only way this report can say anything about what a gate DID.
+_AUDIT_LOG = os.path.join(".audit", "hook_events.jsonl")
+
+
+def _recorded_refusals(state: ProjectState) -> dict:
+    """{hook name: how often it recorded a block} -- read from the state's own audit log."""
+    counts = {}
+    try:
+        with open(ext_path(os.path.join(state.root, _AUDIT_LOG)),
+                  encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                try:
+                    entry = json.loads(line)
+                except ValueError:      # a truncated last line is not a data point
+                    continue
+                if isinstance(entry, dict) and entry.get("event") == "block":
+                    hook = str(entry.get("hook") or "")
+                    counts[hook] = counts.get(hook, 0) + 1
+    except OSError:
+        pass
+    return counts
+
+
+def gated_documents(state: ProjectState, repo_root: str) -> list:
+    """The WALLS this installation stands on -- one entry per gated, writer-less kit document.
+
+    WHY DOCTOR SAYS THIS AT ALL. A project can stand in a state where a registered gate refuses
+    every merge (or every filing) over the content of a file that no `harness.py` command can
+    write and no tool write reaches. Measured 2026-08-03, before this function existed: `grep -c
+    "masterplan\\|filing_plan\\|project_config" kernel/report.py` was 0, so the tool whose job is
+    to report the state was silent about the one state a session cannot work its way out of.
+
+    WHAT IS CLAIMED, and it is exactly what `layout.gated_documents` derived: this file has no
+    kernel writer, and a registered refusal-capable hook of THIS installation addresses it. Plus
+    one measurement of what that hook DID -- the blocks it recorded in the project's own audit log.
+
+    WHAT IS DELIBERATELY NOT CLAIMED: whether the document is still unfilled. That is the gate's
+    own condition (`gate_filing.rules`, `gate_memory_complete.config_unfilled` + its template
+    marker), and re-deriving it here would be a second implementation of a rule that already runs
+    -- the shape that keeps producing the next defect in this repo. The gate is asked for its own
+    verdict where asking it is safe, which is the hook side: `_kernel.unfilled_gated_documents`,
+    read at SessionStart by `session_status`. Doctor cannot import a kit hook without installing
+    `_kernel`'s exit-2 excepthook into its own process, and doctor is the tool of last resort.
+    """
+    from . import layout                # lazy: keeps the package's import graph a tree
+
+    try:
+        walls = layout.gated_documents(repo_root, state.root)
+    except Exception:  # noqa: BLE001 -- a report that cannot derive this still owes the rest
+        return []
+    refusals = _recorded_refusals(state)
+    entries = []
+    for rel, who in sorted(walls.items()):
+        entries.append({
+            "path": rel,
+            "gate": who["hook"],
+            "kernel_writer": None,
+            # per GATE, not per document: one refusal can name several of them, and the audit log
+            # records the hook, not the finding. Named that way so no consumer reads it as "this
+            # file was refused N times".
+            "gate_refusals_recorded": refusals.get(who["audit_name"], 0),
+            "note": (
+                "%s is registered, can refuse an operation, and addresses this file. The kernel "
+                "has no path builder that can name it, so no `python scripts/harness.py` command "
+                "writes it: the sessions that can fill it are the one that runs BEFORE the kit is "
+                "installed, and the user, in an editor outside the session. Whether it is "
+                "currently unfilled is that gate's own verdict and is not re-derived here -- the "
+                "SessionStart briefing asks the gate for it."
+                % who["audit_name"]),
+        })
+    return entries
 
 
 def _installed_specialists(repo_root: str) -> list:
