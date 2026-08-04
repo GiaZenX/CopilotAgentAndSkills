@@ -215,40 +215,94 @@ def file_paths(data):
     return [str(p)] if p else []
 
 
-# The fields by which a hook payload names the agent the call came FROM. A PROPERTY of the caller,
-# not a list of the roles that are subordinate: a role list is 24 entries per kit that every new
-# specialist file has to be added to, and it says nothing on a provider whose role names differ.
-_CALLER_FIELDS = ("agent_id", "agent_type")
+# The fields by which a hook payload names the agent the call came FROM, and — the half that was
+# missing — whether the LEAD can legitimately appear in one. A PROPERTY of the caller, not a list
+# of the roles that are subordinate: a role list is 24 entries per kit that every new specialist
+# file has to be added to, and it says nothing on a provider whose role names differ.
+#
+# The two fields answer DIFFERENT questions, which is why one carries an exemption and the other
+# must not:
+#   * `agent_id` identifies the SPAWN INSTANCE. The session instance is not a spawn, so it has no
+#     id to carry — any value here is a subagent whatever it spells, and a forged name buys
+#     nothing.
+#   * `agent_type` is the caller's ROLE, and the lead HAS a role: the one `settings.json` binds as
+#     `agent:`. A role equal to that binding is the lead naming itself, not a subordinate.
+_CALLER_FIELDS = (("agent_id", False), ("agent_type", True))
+
+def session_lead(start=None):
+    """The role this project binds as its SESSION agent, or "" when that cannot be read.
+
+    ASKED OF THE PROJECT, never of a default: the three kits bind three different roles
+    (`project-manager`, `office-manager`), and a hook that carried its own answer would be right
+    for the kit it was written in and wrong for the next one. `settings.json` `agent:` is the one
+    place the binding exists — it is what makes the provider start the session AS that role.
+
+    "" means UNKNOWN, and every caller must treat it as "no role is the lead here" rather than as a
+    guess. That is the direction the callers already fail in, and it is close to unreachable in a
+    scaffolded project: `.claude/settings.json`, read below, is the same file that registers the
+    hook doing the reading. The two segments are spelled INTO the call rather than held in a
+    module constant, because a tuple of literals splatted into a `join` is what
+    `test_the_hooks_that_name_a_typed_directory_spell_it_as_the_kernel_does` reads as a path into
+    the KERNEL's typed tree — and this one is not that.
+    """
+    try:
+        root = find_repo_root(start or None)
+        with open(os.path.join(root, ".claude", "settings.json"), encoding="utf-8") as handle:
+            return str(json.load(handle).get("agent") or "").strip()
+    except Exception:  # noqa: BLE001 — unreadable settings means UNKNOWN, not a guess
+        return ""
 
 
 def calling_subagent(data):
     """The agent this call came from, or "" for the SESSION INSTANCE (the lead, or a bare session).
 
-    MEASURED 2026-08-03, claude.exe 2.1.220, probe hooks in a scratch project outside any repo
-    (recorded with its provenance in `tools/provider_observations.json` -> `agent_identity`): the
-    session instance's `PreToolUse` payload carries neither field, a subagent's carries both, and
-    a subagent spawned a further subagent in the same run. Codex supplies the same two fields, so
-    the DEFINITION is provider-neutral even where a given hook is not registered.
+    THE DEFINITION IS "NAMES SOMEONE ELSE", NOT "NAMES SOMEONE". Until 2026-08-04 this returned any
+    agent name the payload carried, on a measurement taken in a scratch project that bound no
+    session agent at all — so "the session instance's payload carries neither field" was a property
+    of that FIXTURE. Every scaffolded project binds one (`settings.json` `agent:`), and there the
+    session instance's own `PreToolUse` payload carries `agent_type` = that role. Measured in a
+    probe project with a bound `agent:`, dumping the raw payload: the lead's Bash call arrived with
+    `agent_id` absent and `agent_type` equal to the bound role, so the lead was read as its own
+    subagent and `create-task`, `dispatch` and every spawn were refused in every scaffolded
+    project. Recorded with its provenance in `tools/provider_observations.json` -> `agent_identity`.
 
-    TRUTHINESS, NOT KEY PRESENCE, and that is the whole safety of this predicate. The parent
-    payload has been seen in BOTH shapes -- keys absent (above) and present as null
+    So the question is whether the payload names an agent OTHER than the bound lead. `_CALLER_FIELDS`
+    carries which field can name the lead at all and why; `session_lead` carries where the binding
+    is read from.
+
+    TRUTHINESS, NOT KEY PRESENCE, and that is still half the safety of this predicate. The parent
+    payload has been seen in BOTH empty shapes -- keys absent and present as null
     (`PostToolUse(Agent).agent_id: null`, spike S3, docs/reviews/evidence/2026-07-24-spike-payloads.md).
     A membership test on the keys would read the second shape as a subagent, and every caller that
     refuses on a subagent would then refuse the LEAD.
 
-    EITHER field is enough: they are the two fields a payload names its caller by, and a provider
-    that dropped one while keeping the other must not silently hand the subordinate role back its
-    freedom.
+    EITHER field is enough to name a subagent: a provider that dropped one while keeping the other
+    must not silently hand the subordinate role back its freedom. Codex supplies both, so the
+    definition is provider-neutral even where a given hook is not registered.
+
+    WHAT THE EXEMPTION COSTS, named rather than implied: a subagent whose `agent_type` equals the
+    bound lead role AND whose payload carries no `agent_id` reads as the lead here. Nothing in this
+    file prevents that shape — what stands against it is that a real subagent carries `agent_id`
+    (measured, same record), that `guard_agent_spawn` refuses `subagent_type == the bound lead` and
+    that the shipped `settings.json` denies `Agent(<lead>)`. If a provider stopped sending
+    `agent_id`, spawning the lead role would become the way past this predicate.
 
     NOT a replacement for `guard_pm_scope`'s own `data.get("agent_id")` test, which asks the
     MIRRORED question ("is this the lead, whom I gate?") and therefore has to fail in the opposite
     direction. Widening that one would make it SKIP more calls; widening this one makes its callers
     REFUSE more. One field, two questions, two failure directions -- merging them would break one.
     """
-    for field in _CALLER_FIELDS:
+    lead = session_lead(str(data.get("cwd") or ""))
+    for field, may_name_the_lead in _CALLER_FIELDS:
         value = data.get(field)
-        if value is not None and str(value).strip():
-            return str(value).strip()
+        if value is None:
+            continue
+        name = str(value).strip()
+        if not name:
+            continue
+        if may_name_the_lead and lead and name.lower() == lead.lower():
+            continue  # the lead naming its own role -- see `_CALLER_FIELDS`
+        return name
     return ""
 
 
@@ -302,8 +356,11 @@ def created_file_paths(data):
 #   * a stage that TRANSFORMS or TRANSPORTS the text between its quotes and the shell:
 #     `echo "git push --force" | tr a-z A-Z | sh`, a file written and then sourced, and a HEREDOC
 #     (`sh <<EOF … EOF`), whose payload is not a quoted span at all but the lines that follow —
-#     `sh <<'EOF'` reaching a gate is incidental, the newline splits the segment and the payload
-#     is then read as its own line. The here-STRING above is the opposite case and is closed.
+#     the newline splits the segment and the payload is then read as its own line, which is why a
+#     shell-fed body reaches the gates at all. `literal_heredoc_free` keeps that incidental reach
+#     (measured: `sh <<'EOF' … git push --force … EOF` is refused by gate_git and gate_push_token,
+#     before and after it shipped) and removes only the bodies nothing parses.
+#     The here-STRING above is the opposite case and is closed.
 #   * an ENCODED payload: `powershell -EncodedCommand <base64>` carries the same code with no
 #     quoted span to lift. ANSI-C encoding (`$'\x67…'`) is the same shape one level down and it
 #     survives the lift, because nothing in this file decodes it (`_argument_scan`). It reaches
@@ -634,11 +691,187 @@ def join_line_continuations(text):
     return _CONTINUATION_RX.sub("", text or "")
 
 
+# A HERE-DOCUMENT opener: the operator, an optional `-` (tab-stripping form), and the DELIMITER,
+# which may be quoted three ways — `<<'EOF'`, `<<"EOF"`, `<<\EOF`. Whether it is quoted is the
+# whole question this reader asks of it; see `literal_heredoc_free`.
+_HEREDOC_OPEN_RX = re.compile(
+    r"<<-?[ \t]*(?P<esc>\\?)(?P<quote>['\"]?)(?P<delim>[A-Za-z_][\w.+-]*)(?P=quote)")
+# The programs that hand their STANDARD INPUT to a command parser — the same property `_SHELL_NAMES`
+# and `_EVAL_NAMES` already state for a quoted argument, asked here of a here-document instead.
+_STDIN_PARSER_RX = re.compile(r"(?<![\w.-])(?:%s|%s)(?![\w.-])" % (_SHELL_NAMES, _EVAL_NAMES),
+                              re.IGNORECASE)
+
+
+@functools.lru_cache(maxsize=32)
+def _heredoc_end_rx(delimiter):
+    """The line that ENDS a here-document: the delimiter alone on it (leading tabs for `<<-`)."""
+    return re.compile(r"^[ \t]*%s[ \t]*$" % re.escape(delimiter), re.MULTILINE)
+
+
+def _fed_to_a_command_parser(text, position):
+    """Does the stage that opens a here-document at `position` PARSE what it reads?
+
+    Read off the stage the operator belongs to — from the last command separator in front of it —
+    because that is where the program name stands. Unknown answers NO... which is the direction
+    that KEEPS a body, and therefore the fail-closed one for `literal_heredoc_free`.
+    """
+    segment = re.split(r"[&|;\n]", join_line_continuations(text[:position]))[-1]
+    return _STDIN_PARSER_RX.search(segment) is not None
+
+
+def literal_heredoc_free(command):
+    """`command` with the body of every LITERALLY-QUOTED here-document removed.
+
+    WHY THE QUOTING OF THE DELIMITER DECIDES, and it is a property of the shell rather than a
+    convention: `<<'EOF'`, `<<"EOF"` and `<<\\EOF` quote it, and POSIX then performs NO expansion on
+    the body — no parameter, no arithmetic, and no COMMAND SUBSTITUTION. A backtick or a `$(` in
+    such a body is a character in a document, not a command this line runs. An UNQUOTED delimiter
+    is the opposite case and its body STAYS in the view, because there the shell really does run
+    what those characters open.
+
+    MEASURED, and the bisection went down to the character: in a scaffolded project,
+    `python scripts/harness.py capture SR <<'EOF'` with the body `from git clone to a 200 on
+    /health` passed every registered Bash gate, and the same line with backticks around `git clone`
+    was refused — the gates lifted the substitution out of prose the shell would never expand. The
+    documented route out of `staging/` ran through exactly that line.
+
+    THE BODY A SHELL WOULD PARSE IS KEPT WHATEVER ITS DELIMITER SAYS. `sh <<'EOF' … EOF` hands the
+    body to a command parser, so the body IS the command; the quoting only decides whether the
+    SHELL expands it first. `_fed_to_a_command_parser` is that test, and it is the same membership
+    property `_SHELL_NAMES`/`_EVAL_NAMES` state above rather than a second list.
+
+    WHAT IT DOES NOT COVER, named rather than implied: an INTERPRETER that reads its program from
+    standard input and is not a shell (`python <<'EOF'`). Its body is code in another language, and
+    what removing it costs is an incidental match on a shell word inside that source — measured
+    before this shipped, `python <<'EOF'` with a `git push --force` in a python string already
+    passed every registered Bash gate, so nothing that stood is given up here.
+    """
+    text = command or ""
+    out, index = [], 0
+    while True:
+        match = _HEREDOC_OPEN_RX.search(text, index)
+        if match is None:
+            break
+        newline = text.find("\n", match.end())
+        if newline < 0:
+            break                      # an opener with no body in this payload
+        end = _heredoc_end_rx(match.group("delim")).search(text, newline + 1)
+        stop = len(text) if end is None else end.end()
+        literal = bool(match.group("esc") or match.group("quote"))
+        if not literal or _fed_to_a_command_parser(text, match.start()):
+            # the body STAYS — and the scan resumes AFTER its terminator, never inside it. Resuming
+            # inside made a body its own hiding place: `sh <<EOF` whose first line merely PRINTS
+            # `<<'X'` opened a here-document to this reader, and everything down to a line spelling
+            # `X` was then removed from the view — including whatever command stood between them.
+            out.append(text[index:stop])
+        else:
+            out.append(text[index:newline + 1])
+        index = stop
+    out.append(text[index:])
+    return "".join(out)
+
+
+# --- shell WORDS, with the quoting resolved ----------------------------------
+#
+# THE COMPARISON HAS TO READ THE RESOLVED STRING, NOT THE TYPED ONE. Every path rule in this kit
+# is a comparison against a word of a command line, and shell QUOTING is invisible to the program
+# that receives the word: `project'_'memory/…` and `'.cl'aude/hooks/…` reach the filesystem as the
+# plain paths, while a reader that keeps the marks compares against a string no program ever sees.
+# Measured 2026-08-04 as real hook processes AND as a real bash write — the file was overwritten
+# and every registered gate allowed it — for BOTH readers that own a path rule:
+#     echo x > '.cl'aude/hooks/gate_write_scope.py       (gate_write_scope: enforcement layer)
+#     mv inbox/a.pdf arch'i've/invented/a.pdf            (gate_filing: the office archive)
+# A splice in the FILE NAME was caught in both, which is how this stood for so long: the DIRECTORY
+# prefix still spelled itself out there.
+#
+# ONE HOME, TWO SPLITTERS. What differs between the readers is how a line becomes tokens — a lexer
+# that also splits punctuation for the shell gate, a regex for the filing reader — and that is the
+# argument they pass in. What must NOT differ is the resolution, which is why it lives here.
+#
+# HOW: the balanced spans are masked out before the caller splits, and put back after. So the
+# splitting still happens with the quoting IN PLACE (a quoted `|` is not a pipeline, a quoted space
+# does not break a word) while the word handed back is the string the program receives — and two
+# fragments the shell joins into one word stay one word, which a lexer given the raw text does not
+# manage (`'.cl'aude/x` lexes as two tokens).
+_SPAN_RX = re.compile(r"'[^']*'|\"(?:\\.|[^\"\\])*\"")
+_MASK = "\x01%d\x02"
+_MASK_RX = re.compile("\x01([0-9]+)\x02")
+# The POSIX reading of a backslash: it protects the next character and is itself removed. Applied
+# to the MASKED token, so a backslash inside a quoted span — where the shell keeps it — is untouched.
+_POSIX_ESCAPE_RX = re.compile(r"\\(.)")
+
+
+class ShellWord(str):
+    """One word of a command line, with its quoting resolved — see `shell_words`.
+
+    A `str`, so a reader that only wants the text keeps working unchanged. Two extra facts:
+      * `spliced` — quoting produced part of it, so the shell can never have read it as an
+        OPERATOR: `echo '>' file` and `echo > file` spell the same three characters and only the
+        second one redirects;
+      * `readings` — every value an ordinary shell could hand the program. The two shells this kit
+        gates disagree about the backslash, and `shell_readings` is how a caller asks for both.
+    """
+    spliced = False
+    readings = ()
+
+
+def shell_readings(word):
+    """Every value an ordinary shell could hand the program for this word — see `ShellWord`.
+
+    A plain `str` (a caller that never went through `shell_words`, a fallback path) reads as its
+    own single reading rather than raising, which keeps this usable as a total function.
+    """
+    return getattr(word, "readings", None) or (str(word),)
+
+
+def shell_words(text, split):
+    """[ShellWord] — `text` split by `split`, with the shell's quoting resolved.
+
+    `split` takes the masked text and returns raw tokens; see the block comment above for why the
+    two are separated and for the measurements that made this necessary.
+
+    THE BACKSLASH GETS BOTH READINGS RATHER THAN ONE, the same answer `_ESCAPE_CHARS` gives the git
+    reader and for the same reason: the command text does not say which shell will run it, and the
+    two disagree. In PowerShell a backslash is a path SEPARATOR (`.claude\\hooks\\x.py` is one
+    ordinary path); in a POSIX shell it protects the next character and vanishes, so
+    `echo x > .cl\\aude/hooks/gate_git.py` is a real write into the enforcement layer — measured in
+    Git Bash, rc 0 and the file overwritten. A caller that DECIDES on a path must ask
+    `shell_readings` and answer over all of them; a path that means nothing under one reading
+    simply matches nothing, so consulting both can only refuse more.
+    """
+    spans = []
+
+    def mask(match):
+        spans.append(match.group(0)[1:-1])
+        return _MASK % (len(spans) - 1)
+
+    def unmask(match):
+        # a mask sequence the masking did not put there (both control characters can be typed) is
+        # left standing rather than indexed with — a gate must not crash on its own input
+        index = int(match.group(1))
+        return spans[index] if index < len(spans) else match.group(0)
+
+    out = []
+    for token in split(_SPAN_RX.sub(mask, text or "")):
+        kept = _MASK_RX.sub(unmask, token)
+        escaped = _MASK_RX.sub(unmask, _POSIX_ESCAPE_RX.sub(r"\1", token))
+        word = ShellWord(kept)
+        word.spliced = _MASK_RX.search(token) is not None
+        word.readings = (kept,) if escaped == kept else (kept, escaped)
+        out.append(word)
+    return out
+
+
 def _shell_normalised(command):
-    """Line continuations removed, then wrapper payloads lifted out — the shell-syntax preface the
-    git reader below shares. Continuations go first: a continuation may sit between the wrapper and
-    its payload (`bash \\<newline> -lc "git push"`), and `_WRAPPER_RX` cannot cross a raw newline."""
-    return unwrap_shell_payload(join_line_continuations(command))
+    """Literal here-document bodies removed, line continuations removed, then wrapper payloads
+    lifted out — the shell-syntax preface the git reader below shares.
+
+    The here-documents go FIRST, and before the continuations rather than after: inside a quoted
+    body a backslash is an ordinary character, so joining continuations there would splice two
+    lines of a document the shell keeps apart. Continuations then go before the lift, because one
+    may sit between the wrapper and its payload (`bash \\<newline> -lc "git push"`) and
+    `_WRAPPER_RX` cannot cross a raw newline."""
+    return unwrap_shell_payload(join_line_continuations(literal_heredoc_free(command)))
 
 
 # The character that takes the special meaning away from the next one is a property of the SHELL,

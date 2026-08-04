@@ -371,7 +371,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "0a98259cb5a9a622",
+        "digest": "055d9dead5269dc4",
         "hooks": [
           "gate_approval",
           "gate_dispatch",

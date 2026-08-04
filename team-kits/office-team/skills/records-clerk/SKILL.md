@@ -14,9 +14,11 @@ You run as the **Records Clerk**. Procedure per PROC work order:
 `filing_plan.yaml`, `business_profile.yaml`, the PROC entry, the inbox items named.
 
 ## Do
-1. **Filing plan (own it):** tree + naming rule (`YYYY-MM-DD_<counterparty>_<doctype>`) + a
-   `retention:` per node (DE defaults: Belege 8 years, Bücher/records 10 — the user's Steuerberater
-   confirms; note the source). Changes to the plan go through the manager (user approval).
+1. **Filing plan (own it):** a list of RULES, one per class of document — where it lives
+   (`path_template`), how it is named (`filename_template`, e.g. `YYYY-MM-DD_<counterparty>_<doctype>`),
+   `retention:` (DE defaults: Belege 8 years, Bücher/records 10 — the user's Steuerberater
+   confirms; note the source). The plan's own header states the rule fields and is the authority on
+   them. Changes to the plan go through the manager (user approval).
    **Guidelines are a living, versioned ruleset:** every clarified edge case becomes a rule with a
    version bump (vMAJOR.MINOR) and an append-only changelog line naming its PROC — a real day-1
    deployment went v1.0→v1.4 this way and every parked item dissolved into a rule.

@@ -22,8 +22,10 @@ holding it up HERE was not a rule but an OMISSION: only the three LEAD frontmatt
 Claude-only field, so on another provider the omission is not even expressible. An omission that
 two dozen files have to keep agreeing on is the shape this repo has paid for repeatedly, so the
 rule is stated once instead, as the property that separates the two callers: **a hook payload
-names the agent it came from only inside a subagent.** `_compat.calling_subagent` is that
-predicate and carries the measurement that backs it.
+names an agent OTHER than the role `settings.json` binds as `agent:` only inside a subagent.**
+`_compat.calling_subagent` is that predicate and carries the measurement that backs it — including
+why the shorter wording ("names an agent at all") was measurably wrong and locked the lead out of
+its own project.
 
 WHAT THIS DOES NOT BUY, both directions:
   * Only where it is REGISTERED. `gen_provider_artifacts.CODEX_UNSUPPORTED_TOOLS` declares
@@ -36,7 +38,6 @@ WHAT THIS DOES NOT BUY, both directions:
 """
 import sys
 import os
-import json
 import glob
 
 
@@ -89,13 +90,16 @@ def main():
         sys.exit(0)  # can't determine the role set -> don't block
     roles = {os.path.splitext(os.path.basename(p))[0]
              for p in glob.glob(os.path.join(agents_dir, "*.md"))}
-    # the session agent (the PM/lead) is NEVER spawnable as a subagent (constitution §1 — no second PM)
-    lead = "project-manager"
-    try:
-        with open(os.path.join(cwd, ".claude", "settings.json"), encoding="utf-8") as fh:
-            lead = (json.load(fh).get("agent") or lead)
-    except Exception:
-        pass
+    # the session agent (the PM/lead) is NEVER spawnable as a subagent (constitution §1 — no second
+    # PM). Read through `_compat.session_lead` so the binding has ONE parser in the kit: this hook
+    # kept a second copy of it, and `calling_subagent` now decides on the same field — two readers
+    # of one setting is the drift `_compat` exists to prevent.
+    #
+    # The fallback stays HERE and deliberately does not move into that helper: an unreadable
+    # binding must make this question ("may this role be spawned?") answer "the PM still may not",
+    # and the other one ("is this caller the lead?") answer "unknown". Same setting, opposite fail
+    # directions.
+    lead = _compat.session_lead(data.get("cwd")) or "project-manager"
     roles.discard(lead)
     if not roles:
         sys.exit(0)

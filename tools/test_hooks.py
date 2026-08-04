@@ -3342,15 +3342,19 @@ def test_process_doc_renders_the_verfahrensdokumentation_from_the_proc_items(tmp
     pytest.importorskip("yaml")
     repo = _office_project(tmp_path)
     proc = capture_proc(repo, steps=("open the post", "scan and file it"))
+    # the plan in the shape its WRITERS produce and its GATE reads — this fixture used to carry a
+    # `naming_rule:`/`tree:` shape that nothing writes and nothing else reads, and it was green
+    # while the renderer printed an em dash for every plan a real project has
     write(str(repo / "project_memory" / "filing_plan.yaml"),
-          "naming_rule: '{date}_{type}'\ntree:\n  - path: archive/belege\n    doc_types: [beleg]\n"
-          "    retention: 10y\n")
+          "rules:\n  - id: FP-001\n    path_template: \"archive/belege/<year>/\"\n"
+          "    document_types: [beleg]\n    retention: 10y\n")
     result = _run_office_script(repo, "process_doc.py")
     assert result.returncode == 0, result.stdout + result.stderr
     rendered = open(str(repo / "docs" / "verfahrensdokumentation.md"), encoding="utf-8").read()
     assert proc["id"] in rendered
     assert "scan and file it" in rendered
-    assert "archive/belege" in rendered
+    assert "archive/belege/<year>/" in rendered
+    assert "retention: 10y" in rendered
 
 
 def test_gate_pipeline_green_tree_cache(tmp_path):
@@ -7170,6 +7174,34 @@ def test_gate_filing_sees_a_quoted_destination_with_spaces(tmp_path):
     assert _run_filing(payload, tmp_path).returncode == 2
 
 
+@pytest.mark.parametrize("command", [
+    "mv inbox/a.pdf arch'i've/invented/a.pdf",
+    "mv inbox/a.pdf 'arch'ive/invented/a.pdf",
+    'mv inbox/a.pdf "arch"ive/invented/a.pdf',
+    # the VERB carries the same gap: a spliced `mv` hid the move from the reader outright
+    "m'v' inbox/a.pdf archive/invented/a.pdf",
+    # ...and so does a redirection target, which creates the file just as much
+    "cat inbox/a.pdf > arch'i've/invented/a.pdf",
+])
+def test_gate_filing_reads_a_destination_the_way_the_shell_hands_it_over(tmp_path, command):
+    """A QUOTE SPLICE IN THE DESTINATION defeated the whole Aktenplan check.
+
+    `arch'i've/invented/a.pdf` reaches the filesystem as `archive/invented/a.pdf`; the reader
+    compared the typed string, did not see a path under `archive/`, and the gate stood down —
+    measured 2026-08-04 against this hook, rc 0 for each line here while the plain spelling of the
+    same destination was refused with "no rule covers archive/invented".
+
+    WHAT IS STILL OPEN and is not claimed closed: the POSIX backslash spelling
+    (`arch\\ive/invented/…`). `_filing.resolve` reads a backslash as the path separator it is in
+    PowerShell, and the readers here compare ONE resolved position rather than every reading a
+    shell could give — `_filing._tokens` names that and says where the second reading lives.
+    """
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    result = _run_filing(_filing_move(tmp_path, command), tmp_path)
+    assert result.returncode == 2, (command, result.stdout + result.stderr)
+    assert "archive/invented" in result.stderr, result.stderr
+
+
 def test_gate_filing_ignores_a_move_that_is_not_a_filing(tmp_path):
     write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
     payload = _filing_move(tmp_path, "mv draft.md outbox/draft.md")
@@ -7317,6 +7349,219 @@ def test_fs_tripwire_blocks_move_out_of_archive(tmp_path):
     payload = {"tool_name": "Bash",
                "tool_input": {"command": "mv archive/fin/a.pdf /tmp/gone.pdf"}, "cwd": str(tmp_path)}
     assert run_hook("guard_fs_tripwire.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS) == 2
+
+
+# ---------------- the Aktenplan: ONE schema, and both of its readers ----------------
+OFFICE_TEMPLATE_MEMORY = os.path.join(ROOT, "team-kits", "office-team", "templates",
+                                      "project_memory")
+
+
+def _shipped_filing_plan(live):
+    """The SHIPPED `filing_plan.yaml` template, optionally with its OWN examples made live.
+
+    Not a fixture written here, and that is the whole point. The template ships `rules: []` plus a
+    fully commented example block, and both entry gates point their initializer at exactly that
+    block ("the template's own header states the fields a rule carries, and it is the authority on
+    them, not this file"). So the block IS the shape a writer produces, and un-commenting it is a
+    derivation from the shipped file. A test carrying its own plan stays green while the shipped
+    one teaches a shape a reader does not understand — which is what happened: `gate_filing` read
+    `rules[].path_template` and `scripts/process_doc.py` read `naming_rule` + `tree[].path`, so the
+    26-node Aktenplan of a real project rendered in full and was refused by the gate, while the
+    shipped template rendered as an em dash and was refused by the gate as well.
+    """
+    with open(os.path.join(OFFICE_TEMPLATE_MEMORY, "filing_plan.yaml"), encoding="utf-8") as fh:
+        text = fh.read()
+    head, marker, tail = text.partition("rules: []\n")
+    assert marker, "the shipped template no longer carries the empty rule list this derives from"
+    if not live:
+        return text
+    body = []
+    for line in tail.splitlines():
+        assert not line.strip() or line.startswith("#"), (
+            "the block below `rules: []` is no longer fully commented, so un-commenting it is no "
+            "longer the derivation this helper claims: %r" % line)
+        body.append(line[1:] if line.startswith("#") else line)
+    return head + "rules:\n" + "\n".join(body) + "\n"
+
+
+def test_the_shipped_filing_plan_is_understood_by_both_of_its_readers(tmp_path):
+    """The template goes through the GATE and the RENDERER, and neither may find nothing.
+
+    Two programs read `filing_plan.yaml`: `gate_filing`, which refuses a filing the plan does not
+    cover, and `scripts/process_doc.py`, which renders the Ablage section of the
+    Verfahrensdokumentation. They disagreed about the schema, in opposite directions, and nothing
+    could go red over it: the gate says "no rules yet" out loud, while the renderer answered a plan
+    it did not understand with `Namensregel: —` and an empty list and exited 0.
+
+    So the renderer's silence is what this test removes. Both readers are run as REAL PROCESSES
+    against ONE file — the shipped template with its own example rules made live — and each must
+    find the rules that are in it. Run against the state before this round the renderer half fails:
+    no `path_template` reaches the rendered document at all.
+
+    The gate half is not vacuous: the template's own `examples:` must be accepted (they are the
+    file's own statement of what its rules cover) and a destination outside every rule must be
+    refused, so a gate that had stopped reading the file would fail one of the two.
+    """
+    yaml = pytest.importorskip("yaml")
+    repo = _office_project(tmp_path)
+    capture_proc(repo)
+    plan = _shipped_filing_plan(live=True)
+    rules = yaml.safe_load(plan)["rules"]
+    assert len(rules) >= 2, rules
+    write(str(repo / "project_memory" / "filing_plan.yaml"), plan)
+
+    examples = [example for rule in rules for example in (rule.get("examples") or [])]
+    assert examples, "the shipped template no longer shows an example filing to measure against"
+    for example in examples:
+        result = _run_filing(_filing_move(repo, "mv inbox/a.pdf %s" % example), repo)
+        assert result.returncode == 0, (example, result.stderr)
+    refused = _run_filing(_filing_move(repo, "mv inbox/a.pdf archive/invented/a.pdf"), repo)
+    assert refused.returncode == 2, refused.stdout
+
+    rendered_at = repo / "docs" / "verfahrensdokumentation.md"
+    result = _run_office_script(repo, "process_doc.py")
+    assert result.returncode == 0, result.stdout + result.stderr
+    rendered = open(str(rendered_at), encoding="utf-8").read()
+    for rule in rules:
+        assert rule["path_template"] in rendered, rendered
+        assert rule["retention"] in rendered, (
+            "a field the renderer names nowhere in code is missing — the rule is rendered by a "
+            "list of fields somebody typed, not by what the rule carries:\n%s" % rendered)
+
+
+def test_the_renderer_writes_the_gates_verdict_instead_of_an_em_dash(tmp_path):
+    """The shipped template through the renderer: it must SAY the Ablage is missing, and exit != 0.
+
+    This is the half that made the schema split invisible for a round. `Namensregel: —` plus an
+    empty list plus exit 0 is a Verfahrensdokumentation — the document a Steuerberater is handed to
+    read how filing works — that omits the Ablage without a word, and no test could distinguish
+    "the plan is empty" from "the renderer does not understand the plan". Measured before the fix:
+    exit 0 and an em dash for a plan the gate refuses every filing over.
+
+    The verdict is checked against the GATE'S OWN stderr in the same project, so the sentence in
+    the document is the gate's and not one this test could satisfy by itself.
+    """
+    pytest.importorskip("yaml")
+    repo = _office_project(tmp_path)
+    capture_proc(repo)
+    write(str(repo / "project_memory" / "filing_plan.yaml"), _shipped_filing_plan(live=False))
+
+    refusal = _run_filing(_filing_move(repo, "mv inbox/a.pdf archive/x/a.pdf"), repo)
+    assert refusal.returncode == 2, refusal.stdout
+    verdict = "filing_plan.yaml lists no rules yet"
+    assert verdict in refusal.stderr, refusal.stderr
+
+    result = _run_office_script(repo, "process_doc.py")
+    assert result.returncode == 1, result.stdout + result.stderr
+    rendered = open(str(repo / "docs" / "verfahrensdokumentation.md"), encoding="utf-8").read()
+    # in the ABLAGE SECTION, which is the part of the document that is missing — a reason printed
+    # anywhere else would still leave a reader of that heading with nothing
+    ablage = rendered.split("## Ablage (Aktenplan)")[1].split("## Prozesse")[0]
+    assert verdict in ablage, ablage
+
+
+def test_every_artifact_the_filing_plan_header_names_as_generated_is_one_the_kit_produces():
+    """A generator named in the plan's header must exist and must produce what it is said to.
+
+    The header used to say the human-readable Ablage guideline "is GENERATED from this file" and
+    the derivation "never runs the other way round". Measured 2026-08-03: no command, no script and
+    no hook in this repo produced such a guideline, while the audited project's own plan recorded
+    the opposite direction ("Derived 1:1 from ORDNERSTRUKTUR_GUIDELINES.md"). The claim is now the
+    narrow true one — `scripts/process_doc.py` renders the Ablage section of
+    `docs/verfahrensdokumentation.md` — and this derives the check from the text instead of
+    pinning the text: every `scripts/*.py` the header names must ship, and every `docs/*.md` it
+    names must be what running that script produces.
+
+    The floor is deliberate. A header that names no generator passes this vacuously, and the
+    failure message says what to do about it: if the sentence is removed on purpose, this check
+    goes with it.
+    """
+    pytest.importorskip("yaml")
+    with open(os.path.join(OFFICE_TEMPLATE_MEMORY, "filing_plan.yaml"), encoding="utf-8") as fh:
+        header = "".join(line for line in fh if line.startswith("#"))
+    scripts = sorted(set(re.findall(r"scripts/([a-z_]+\.py)", header)))
+    documents = sorted(set(re.findall(r"docs/([a-z_]+\.md)", header)))
+    assert scripts and documents, (
+        "the filing plan header names no generated artifact any more. If the generator sentence "
+        "was dropped on purpose, drop this check with it; if it was reworded, spell the paths.")
+    for name in scripts:
+        assert os.path.isfile(os.path.join(OFFICE_SCRIPTS, name)), (
+            "the plan header names scripts/%s as its generator and the kit does not ship it" % name)
+
+
+def test_gate_filing_reads_a_placeholder_that_is_only_part_of_a_segment(tmp_path):
+    """`<name>` is a run of characters inside a segment, not a whole segment.
+
+    The rule was anchored (`^<...>$`), which is one case dressed up as a definition. A node out of
+    the audited project's real Aktenplan —
+    `archive/2-Lieferanten_Einkauf/<Lieferant>/1-Produkte/<Kategorie>/<Modell>_<Prozessor>/` — has
+    a segment built from two placeholders and a literal `_`; the whole-segment reading treats
+    `<Modell>_<Prozessor>` as a folder called exactly that, so every filing under a node that
+    stands in the project's own gate events was refused. Measured before the fix: exit 2.
+
+    The second half is what keeps the widening from becoming a prefix rule: a placeholder still may
+    not swallow a `/`, so a level deeper than the plan describes is still not covered by it.
+    """
+    plan = ("rules:\n"
+            "  - id: FP-010\n"
+            '    path_template: "archive/2-Lieferanten_Einkauf/<Lieferant>/1-Produkte/'
+            '<Kategorie>/<Modell>_<Prozessor>/"\n')
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), plan)
+    covered = ("mv inbox/a.pdf archive/2-Lieferanten_Einkauf/ACME/1-Produkte/Laptops/"
+               "X250_i5/2026-01-09_ACME_datasheet.pdf")
+    assert _run_filing(_filing_move(tmp_path, covered), tmp_path).returncode == 0
+    deeper = ("mv inbox/a.pdf archive/2-Lieferanten_Einkauf/ACME/1-Produkte/Laptops/"
+              "X250_i5/2026/a.pdf")
+    assert _run_filing(_filing_move(tmp_path, deeper), tmp_path).returncode == 2
+
+
+def _tripwire(tmp_path, command):
+    payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(tmp_path)}
+    return run_hook("guard_fs_tripwire.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS)
+
+
+def test_fs_tripwire_allows_a_move_that_stays_inside_the_archive(tmp_path):
+    """The false positive that made a project write the workaround into an APPROVED procedure.
+
+    Source AND destination under `archive/` is reorganisation, not removal — and the guard refused
+    it, because it asked whether the SOURCE TOKEN contained the string `archive/` and never what
+    the two tokens resolve to. Two of the refusals in the audited project's log are exactly this
+    shape. Measured before the fix: exit 2.
+    """
+    assert _tripwire(tmp_path, "mv archive/1-Finanzen/2026/x.pdf archive/1-Finanzen/2026/ok/") == 0
+
+
+@pytest.mark.parametrize("command", [
+    "cd archive/1-Finanzen/2026 && mv x.pdf ../../../outbox/",
+    'bash -lc "cd archive/1-Finanzen/2026 && mv x.pdf ../../../outbox/"',
+])
+def test_fs_tripwire_blocks_a_move_out_of_the_archive_spelled_from_inside_it(tmp_path, command):
+    """...and the other direction of the same defect, which is the one that costs documents.
+
+    The audited project's `process_definitions.yaml` carries PROC-0015, `status: APPROVED`,
+    2026-07-19: a "guard-compliant WITHIN-archive relative move (cd into the source folder, then a
+    relative `mv` with NO 'archive/' token in the mv command)". It is not a trick — it is what the
+    token reading made the compliant spelling. Measured before the fix: exit 0, for a command that
+    empties the archive into `outbox/`.
+
+    The mechanism is the token, not `cd`, so nothing here special-cases a verb: the guard resolves
+    both operands against the working directory the command line actually left behind. The wrapper
+    spelling is the same command one level down and is lifted by the same `_compat` unwrapping
+    every git gate uses — before this round the guard did not unwrap at all.
+    """
+    assert _tripwire(tmp_path, command) == 2
+
+
+def test_fs_tripwire_blocks_a_delete_spelled_from_inside_the_archive(tmp_path):
+    """The delete rule had the same blind spot and keeps its old reading ON TOP of the new one.
+
+    `cd archive/1-Finanzen && rm x.pdf` names no protected tray in the `rm` invocation, so the
+    token rule saw nothing. Measured before the fix: exit 0. The two readings are a union here and
+    not a replacement: there is no legitimate delete under these trays, so unlike the move rule
+    there is no false positive to remove — nothing that was refused before becomes allowed.
+    """
+    assert _tripwire(tmp_path, "cd archive/1-Finanzen && rm x.pdf") == 2
+    assert _tripwire(tmp_path, "mv archive/1-Finanzen/x.pdf outbox/x.pdf") == 2
 
 
 # ---------------- audit regressions: reversal maths, re-book flow, year guard, CII id, budget edge ----------------

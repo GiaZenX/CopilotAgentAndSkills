@@ -12,8 +12,22 @@ Usage: python scripts/process_doc.py
 THE SOURCE IS `procedures/active/PROC-nnnn.yaml`, one file per procedure. V1 read a single
 `process_definitions.yaml` at the state root; V2 deleted that store, so this script raised
 FileNotFoundError in every project that installed it -- a renderer that cannot run is a
-Verfahrensdokumentation that does not exist. `filing_plan.yaml` is unchanged: it is reference
-material, not an item store, and still lives at the state root.
+Verfahrensdokumentation that does not exist.
+
+THE ABLAGE SECTION IS READ THROUGH THE GATE, `.claude/hooks/gate_filing.rules`, and that import is
+the point of it. This script had its own reader for a `naming_rule:` + `tree:` shape, and the gate
+reads `rules:` + `path_template:` -- which is the shape the shipped template carries and the shape
+the entry gate is told to write. Measured 2026-08-03 against a real 26-node Aktenplan: the gate
+refused every filing ("lists no rules yet") while this renderer printed all 26 nodes, and against
+the SHIPPED template it printed an em dash and an empty list while the gate refused. Two readers of
+one document, each silently wrong in the other's direction. The gate wins because it is the one
+with a blocking contract; there is now one reader and this script is a caller of it.
+
+AND IT NO LONGER DEGRADES QUIETLY. An empty or unreadable plan used to render as `Namensregel: —`,
+which is a Verfahrensdokumentation that omits the Ablage without saying so -- the exact document a
+Steuerberater is handed to describe how filing works. It now writes the gate's OWN reason into the
+section and exits 1: the file is still produced (a draft with one honest gap beats no draft), and
+the exit code says it is not complete.
 """
 import datetime
 import os
@@ -30,6 +44,15 @@ BRIDGE = os.path.join(REPO_ROOT, ".claude", "hooks")
 def _fail(message, remedy):
     sys.stderr.write("[process_doc] %s\nRemedy: %s\n" % (message, remedy))
     return 2
+
+
+def _plain(value):
+    """One rule field as one line of prose, whatever YAML shape it arrived in."""
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_plain(item) for item in value)
+    if isinstance(value, dict):
+        return "; ".join("%s=%s" % (key, _plain(item)) for key, item in value.items())
+    return str(value)
 
 
 def _procedures(state):
@@ -58,6 +81,9 @@ def main(argv=None):
     sys.path.insert(0, BRIDGE)
     try:
         import _kernel  # type: ignore[import-not-found]
+        # the filing plan's ONE reader (see the module docstring). Imported after `_kernel`, whose
+        # import arms the exit-2 excepthook that `disarm()` below takes back off again.
+        import gate_filing  # type: ignore[import-not-found]
     except BaseException as exc:  # noqa: BLE001 — a broken bridge names itself, never tracebacks
         return _fail("the hook helpers next to the kernel could not be loaded (%r)." % (exc,),
                      "a partial checkout or a half-finished kit update is the usual cause; "
@@ -70,27 +96,29 @@ def main(argv=None):
                      "run `python scripts/harness.py doctor`; it names what is missing.")
 
     procs = _procedures(state)
-    plan = {}
-    plan_path = os.path.join(state.root, "filing_plan.yaml")
-    if os.path.isfile(plan_path):
-        try:
-            plan = state._read_yaml(plan_path) or {}
-        except Exception:
-            plan = {}
-    if not isinstance(plan, dict):
-        plan = {}
+    rules, reason = gate_filing.rules(REPO_ROOT)
 
     lines = ["# Verfahrensdokumentation (ENTWURF — generiert aus den Prozessdefinitionen)", "",
              "> Entwurf zur Prüfung durch die Steuerberatung — keine Steuer- oder Rechtsberatung.",
              "> Generiert: %s · Quelle: die aktiven PROC-Items des Projekts"
              % datetime.date.today().isoformat(),
-             "", "## Ablage (Aktenplan)", "",
-             "Namensregel: `%s`" % (plan.get("naming_rule") or "—"), ""]
-    for node in (plan.get("tree") or []):
-        if isinstance(node, dict):
-            lines.append("- `%s` — Belegarten: %s — Aufbewahrung: %s"
-                         % (node.get("path"), ", ".join(node.get("doc_types") or []),
-                            node.get("retention") or "—"))
+             "", "## Ablage (Aktenplan)", ""]
+    if rules is None:
+        lines += ["> **UNVOLLSTÄNDIG:** %s. Dieser Entwurf beschreibt die Ablage NICHT — "
+                  "`gate_filing` verweigert aus demselben Grund jede Ablage." % reason, ""]
+    else:
+        lines.append("Quelle: `project_memory/%s` — eine Zeile je Regel, alle Felder der Regel."
+                     % gate_filing.PLAN)
+        lines.append("")
+        # Every field EXCEPT the path is rendered without being named: which fields a rule carries
+        # is the plan's business (its header states them), and a list of them here would be a
+        # second schema that goes stale the day a project adds `owner:` to its rules.
+        for rule in rules:
+            fields = " · ".join(
+                "%s: %s" % (key, _plain(value)) for key, value in rule.items()
+                if key != gate_filing.PATH_TEMPLATE and value not in (None, "", [], {}))
+            lines.append("- `%s`%s" % (rule.get(gate_filing.PATH_TEMPLATE),
+                                       " — " + fields if fields else ""))
     lines += ["", "## Prozesse", ""]
     for pid in sorted(procs):
         body = procs.get(pid) or {}
@@ -112,6 +140,11 @@ def main(argv=None):
     with open(out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("\n".join(lines))
     print("[process_doc] %s written (%d processes)" % (out, len(procs)))
+    if rules is None:
+        sys.stderr.write(
+            "[process_doc] the Ablage section is EMPTY: %s. The draft was written and says so; "
+            "it is not complete until the filing plan carries rules.\n" % reason)
+        return 1
     return 0
 
 

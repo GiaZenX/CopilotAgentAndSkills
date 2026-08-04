@@ -510,19 +510,53 @@ _HEREDOC_RX = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n.*?^\2\s*$",
                          re.MULTILINE | re.DOTALL)
 
 
-def _tokenise(command):
-    """Tokens, with quotes preserved and shell punctuation split out.
+# Every value an ordinary shell could hand the program for a word — `_compat.shell_readings`, which
+# is where the two readings and the reason for them are stated. Aliased rather than wrapped: a
+# second name for one rule is how the two copies of the last one drifted.
+_readings = _compat.shell_readings
+
+
+def _operator(token):
+    """`token` when the shell would read it as PUNCTUATION, "" when quoting produced it.
+
+    The mirror of `_tokenise`: once the quote marks are gone, `echo '>' file` and `echo > file`
+    spell the same three characters, and only the second one redirects. Every punctuation test in
+    this gate goes through here, so the two questions ("what does this word SAY" and "is this word
+    SYNTAX") cannot drift apart.
+    """
+    return "" if getattr(token, "spliced", False) else str(token)
+
+
+def _lex(masked):
+    """The masked line split into tokens, with shell punctuation as tokens of its own.
 
     `punctuation_chars=True` makes `&&`, `||`, `;`, `|`, `>`, `>>` their own tokens even without
-    surrounding spaces, and quoting keeps `'PR|SR'` and `'%h -> %s'` as ONE token each — so a
+    surrounding spaces, and the masked spans keep `'PR|SR'` and `'%h -> %s'` one token each — a
     quoted pipe is not a pipeline and a quoted arrow is not a redirect.
     """
     try:
-        lexer = shlex.shlex(command, posix=False, punctuation_chars=True)
+        lexer = shlex.shlex(masked, posix=False, punctuation_chars=True)
         lexer.whitespace_split = True
         return list(lexer)
     except ValueError:
-        return command.split()  # unbalanced quotes: fall back rather than crash
+        return masked.split()  # unbalanced quotes: fall back rather than crash
+
+
+def _tokenise(command):
+    """Tokens as the SHELL resolves them — `_compat.shell_words` with this gate's lexer.
+
+    THE COMPARISON READS THE RESOLVED STRING, NOT THE TYPED ONE, and `_compat` carries why, with
+    the measurement: a splice anywhere in the DIRECTORY part of a path defeated every prefix check
+    in this gate at once (`echo x > '.cl'aude/hooks/gate_write_scope.py` — allowed by all
+    registered gates, file overwritten in a real bash), while the same path spelled plainly was
+    refused. `$C/hooks/...` looked covered only because the assignment `C=.claude` names the tree
+    in the same line.
+
+    What the resolution costs this gate is one distinction it has to keep making for itself: a word
+    that RESOLVES to `>` is not a redirect. `_operator` is that, and every punctuation test here
+    goes through it.
+    """
+    return _compat.shell_words(command, _lex)
 
 
 def _pipelines(tokens):
@@ -530,7 +564,7 @@ def _pipelines(tokens):
     stage 1 may name a protected path while stage 2 does the writing."""
     current, out = [], []
     for token in tokens:
-        if token in _PIPELINE_SEPARATORS:
+        if _operator(token) in _PIPELINE_SEPARATORS:
             if current:
                 out.append(current)
             current = []
@@ -543,12 +577,12 @@ def _pipelines(tokens):
 
 def _stage_verb(stage):
     for token in stage:
-        low = token.strip("\"'").lower()
+        low = str(token).lower()
         if "=" in low and not low.startswith("-"):
             continue  # VAR=value prefix
         if low in ("sudo", "env", "command", "exec", "time", "nice", "!"):
             continue
-        if low in ("(", ")", "{", "}", "&", "&&", "||", ";", "|"):
+        if _operator(token).lower() in ("(", ")", "{", "}", "&", "&&", "||", ";", "|"):
             continue  # grouping punctuation is not a verb
         return os.path.basename(low.replace("\\", "/"))
     return ""
@@ -566,7 +600,7 @@ def _stage_is_read_only(stage):
     # An operator is ALL this looks for: `sed -n 'w kk/g.py'` writes a file with no `>` anywhere
     # and passes — see the module docstring, which states why that stays open.
     if verb in _PROGRAM_ARG_VERBS and any(">" in t for t in stage[1:]
-                                          if not _REDIRECT_RX.match(t)):
+                                          if not _REDIRECT_RX.match(_operator(t))):
         return False
     if verb.startswith("python") or verb in ("py", "pythonw"):
         for index, token in enumerate(stage[:-1]):
@@ -617,13 +651,16 @@ def _harness_argv(stage):
     reading is how a gate teaches people to route around it. So the entry point has to be in an
     EXECUTION position — the stage's verb is a python, or the script itself is the verb.
     """
-    tokens = [t.strip("\"'") for t in stage]
+    tokens = [str(t) for t in stage]
     verb = _stage_verb(stage)
     pythonish = verb.startswith("python") or verb in ("py", "pythonw")
     if not pythonish and verb != _HARNESS_SCRIPT:
         return None
-    for index, token in enumerate(tokens):
-        if os.path.basename(token.replace("\\", "/")).lower() == _HARNESS_SCRIPT:
+    for index, token in enumerate(stage):
+        # EVERY reading, for the reason `_tokenise` gives: `scripts/'har'ness.py` and
+        # `scripts/har\\ness.py` both start the entry point, and rule 4 read neither as it.
+        if any(os.path.basename(reading.replace("\\", "/")).lower() == _HARNESS_SCRIPT
+               for reading in _readings(token)):
             return tokens[index + 1:]
     if pythonish:
         for index, token in enumerate(tokens[:-1]):
@@ -644,7 +681,7 @@ def _ordering_command(stage):
     argv = _harness_argv(stage)
     if not argv:
         return ""
-    positional = [token for token in argv if not token.startswith("-")]
+    positional = [str(token) for token in argv if not token.startswith("-")]
     if not positional:
         return ""
     command = positional[0].lower()
@@ -699,15 +736,85 @@ def _redirect_targets(tokens, sinks):
     """
     targets = []
     for index, token in enumerate(tokens[:-1]):
-        if _REDIRECT_RX.match(token):
-            target = tokens[index + 1].strip("\"'")
+        if _REDIRECT_RX.match(_operator(token)):
+            target = tokens[index + 1]
             if _norm(target) not in sinks:
                 targets.append(target)
     return targets
 
 
 def _names(rx, tokens):
-    return any(rx.search(token) for token in tokens)
+    """Does any word of `tokens` name this tree, under ANY reading a shell could give it?"""
+    return any(rx.search(reading) for token in tokens for reading in _readings(token))
+
+
+# An INPUT redirect, and only the file form of it: `<`, `0<`. `<<` opens a here-document and `<<<`
+# a here-string — neither names a file to read — and `<&` duplicates a descriptor.
+_INPUT_REDIRECT_RX = re.compile(r"^[0-9]*<$")
+# The one subtree of the state directory a proposal legitimately comes OUT of. Spec II.4 defines
+# `staging/**` as explicitly non-canonical: what is written there is a draft, and the only thing
+# anyone can do with a draft is hand it to the kernel.
+_STAGING_SOURCE_RX = re.compile(r"project_memory[\\/]+staging[\\/]", re.IGNORECASE)
+
+
+def _read_sources(pipeline, stages):
+    """The tokens of this pipeline that name a file it READS rather than one it writes.
+
+    Two shapes, and they are the two the shell has: the operand of an INPUT redirect, and an
+    argument of a stage whose verbs cannot modify anything (`_stage_is_read_only`, which already
+    answers for a write FLAG on an otherwise read-only verb). A read-only stage's own redirect
+    TARGETS are excluded — `cat a > b` reads `a` and writes `b`, and counting `b` here would hand
+    the carve-out below exactly the relocation it must refuse.
+    """
+    sources = set()
+    for index, token in enumerate(pipeline[:-1]):
+        if _INPUT_REDIRECT_RX.match(_operator(token)):
+            sources.add(str(pipeline[index + 1]))
+    for stage in stages:
+        if not stage or not _stage_is_read_only(stage):
+            continue
+        written = {index + 1 for index, token in enumerate(stage[:-1])
+                   if _REDIRECT_RX.match(_operator(token))}
+        sources.update(str(token) for index, token in enumerate(stage)
+                       if index and index not in written)
+    return sources
+
+
+def _only_reads_staging(pipeline, stages):
+    """Is EVERY mention of the state directory in this pipeline a read of `staging/**`?
+
+    THE ROUTE OUT OF `staging/` IS THIS ONE, and without it there is none. The architect role has
+    no shell to run the kernel with by design: it leaves a proposal in `staging/<task-id>/` and the
+    lead books it in. Both spellings the kits document for that hand the file to the entry point as
+    STANDARD INPUT — `python scripts/harness.py capture SR < project_memory/staging/…` and
+    `cat project_memory/staging/… | python scripts/harness.py capture SR` — and both were refused,
+    measured against the real hook: the pipeline can write (the entry point is not a read-only
+    verb) and it names the state directory, which is all rule 1 asked. So the proposal directory
+    the spec puts inside the state tree had no exit at all.
+
+    A READ IS NOT A WRITE, and that is the whole of the widening — the direction every part of it
+    keeps narrow:
+      * only `staging/**`, never a canonical path. `capture < project_memory/product/active/…`
+        stays refused: reading canonical state INTO a writing pipeline is how a forged item would
+        be smuggled back in through the entry point's own door.
+      * only when the state directory is named NOWHERE ELSE. One redirect TARGET, one `cp`
+        destination, one argument of a writing verb, and this answers no.
+      * a word that is a read source AND a redirect target is not a read: `capture < staging/a.json
+        > staging/a.json` names one string twice, and membership alone would have read the second
+        mention off the first and opened a shell write INTO the state tree.
+      * never once a `cd` has put the pipeline inside the state tree, because a relative target
+        there names nothing this reader can compare (see the caller).
+    """
+    named = [token for token in pipeline if _names(_STATE_RX, [token])]
+    if not named:
+        return False
+    sources = _read_sources(pipeline, stages)
+    written = {str(pipeline[index + 1]) for index, token in enumerate(pipeline[:-1])
+               if _REDIRECT_RX.match(_operator(token))}
+    return all(str(token) in sources and str(token) not in written
+               and all(_STAGING_SOURCE_RX.search(reading) for reading in _readings(token)
+                       if _STATE_RX.search(reading))
+               for token in named)
 
 
 def _walk(pipeline, cwd):
@@ -727,10 +834,17 @@ def _walk(pipeline, cwd):
     verb = _stage_verb(pipeline)
     if verb == "popd":
         return None
-    args = [t.strip("\"'") for t in pipeline[1:] if not t.startswith("-")]
+    args = [t for t in pipeline[1:] if not t.startswith("-")]
     if not args or args[0] == "-":
         return None  # bare `cd` (home) or `cd -` (previous)
-    target = args[0].replace("\\", "/")
+    # OF THE READINGS THIS WORD HAS, THE ONE THAT LANDS IN A PROTECTED TREE. Same doctrine as
+    # `_names`: the text does not say which shell runs it, and a gate that is unsure must see the
+    # reading that matters — `cd .cl\\aude` really enters the enforcement layer in a POSIX shell,
+    # and reading it as an ordinary directory name armed nothing for the write that followed.
+    readings = _readings(args[0])
+    target = next((r for r in readings
+                   if _ENFORCEMENT_RX.search(r) or _STATE_RX.search(r)), readings[0])
+    target = target.replace("\\", "/")
     if (target.startswith("/") or target.startswith("~")
             or (len(target) > 1 and target[1] == ":")):
         return None  # absolute: outside anything we can reason about relatively
@@ -775,7 +889,7 @@ def handle_shell(data):
     for pipeline in _pipelines(_tokenise(code_view)):
         stages, current = [], []
         for token in pipeline:
-            if token == "|":
+            if _operator(token) == "|":
                 stages.append(current)
                 current = []
             else:
@@ -829,9 +943,15 @@ def handle_shell(data):
             # ...but NOT once a `cd` has put us inside the state dir: there a relative redirect
             # target names nothing and still lands in canonical state
             captures_out = (verbs_read_only and redirects and not _inside(_STATE_RX, cwd)
-                            and not _inside(_ENFORCEMENT_RX, cwd)) and not any(
-                _ENFORCEMENT_RX.search(t) or _STATE_RX.search(t) for t in redirects)
-            if not captures_out:
+                            and not _inside(_ENFORCEMENT_RX, cwd)
+                            and not _names(_ENFORCEMENT_RX, redirects)
+                            and not _names(_STATE_RX, redirects))
+            # ...and the mirror of it on the way IN: a proposal being handed to the entry point.
+            # Both carve-outs stand down inside the state tree for the same reason — there a
+            # relative path names the tree without spelling it, so nothing here can compare it.
+            reads_staging = (not _inside(_STATE_RX, cwd) and not _inside(_ENFORCEMENT_RX, cwd)
+                             and _only_reads_staging(pipeline, stages))
+            if not captures_out and not reads_staging:
                 _refuse(pipeline, "the canonical state directory",
                         "project_memory has exactly one writer, the kernel — and a shell write is "
                         "the path that bypasses every Edit/Write guard.",

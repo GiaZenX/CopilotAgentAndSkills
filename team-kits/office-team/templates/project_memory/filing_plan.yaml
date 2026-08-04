@@ -4,12 +4,21 @@
 # `gate_filing` matches every file landing under archive/ against these rules; a document that
 # matches NO rule is not moved, not renamed and not entered anywhere — the clerk leaves it where it
 # is and asks the user with a concrete rule proposal (spec II.9: the plan is amended deliberately,
-# never bent silently). The human-readable Ablage guideline is GENERATED from this file, and git is
-# its version history — the derivation never runs the other way round.
+# never bent silently). Git is this file's version history.
+#
+# WHAT IS GENERATED FROM THIS FILE, exactly one thing: `scripts/process_doc.py` renders the Ablage
+# section of `docs/verfahrensdokumentation.md` out of the rules below — every rule becomes a line,
+# with every field it carries. A rule that is not here is not in the Verfahrensdokumentation
+# either. There is NO standalone prose Ablage guideline and nothing in this kit generates one; if a
+# project keeps prose next to this file, which document was written first is a discipline the kit
+# cannot see and does not claim to enforce.
 #
 # Rule fields: id · path_template · document_types · filename_template · required_metadata ·
-# collision_policy · retention · examples. In `path_template`, `<name>` stands for exactly one path
-# segment (a year, a counterparty folder, ...); everything else matches literally.
+# collision_policy · retention · examples. A rule may carry more — everything except
+# `path_template` is rendered without being named. In `path_template`, `<name>` stands for a
+# non-empty run of characters INSIDE ONE path segment: it never spans a `/`, and a segment may mix
+# literals and placeholders (`<Modell>_<Prozessor>`, `2026-<Monat>`). Everything else is literal, so
+# `archive/finance/<year>/` covers `archive/finance/2026` and not `archive/finance/2026/q1`.
 # retention: DE defaults (Belege 8 years, Bücher 10 — the user's Steuerberater confirms; source noted).
 
 rules: []

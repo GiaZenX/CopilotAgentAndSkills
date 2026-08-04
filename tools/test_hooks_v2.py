@@ -4297,6 +4297,157 @@ def test_a_heredoc_body_is_prose(tmp_path):
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0
 
 
+def _shell_verdicts(tmp_path, command, kit="dev-team"):
+    """{gate name: exit code} for every REGISTERED shell gate, each a real process.
+
+    The registration is read by `_registered_shell_gates` above — one reader for the whole file,
+    because "which gates does a shell call pass" is a question for settings.json and a second
+    reader of it is the drift this repo keeps paying for.
+    """
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=TEAM_KITS)
+    payload = json.dumps(shell_payload(tmp_path, command))
+    gates = _registered_shell_gates(kit)
+    assert len(gates) >= 5, gates
+    return {name: subprocess.run(
+        [sys.executable, os.path.join(TEAM_KITS, kit, "hooks", name)], input=payload,
+        capture_output=True, text=True, env=env, timeout=120).returncode for name in gates}
+
+
+def test_a_literally_quoted_heredoc_body_is_not_command_text(tmp_path):
+    """THE BODY OF `<<'EOF'` IS DATA, and the bisection that found this went to the character.
+
+    `capture` takes its payload on stdin, so the route a role is told to use for a proposal is a
+    here-document — and one word of ordinary prose closed it:
+        python scripts/harness.py capture SR <<'EOF' / from git clone to a 200 on /health / EOF
+    passed every registered gate, and the same line with BACKTICKS around `git clone` was refused.
+    In a real shell a quoted delimiter means the body is expanded in no way at all, so those
+    backticks are two characters in a document; the gates lifted them out as a command
+    substitution and judged prose.
+
+    BOTH DIRECTIONS, because the fix must not buy silence:
+      * an UNQUOTED delimiter still expands, so a `$(…)` and a backtick in THAT body really are
+        commands this line runs and stay refused;
+      * a body handed to something that PARSES it (`sh <<'EOF'`) is code whatever its delimiter
+        says, and stays refused.
+    Measured through the gates settings.json registers, not through a helper's own idea of them.
+    """
+    dispatched_repo(tmp_path)
+    prose = "python scripts/harness.py capture SR <<'EOF'\nfrom `git clone` to a 200 /health\nEOF"
+    assert set(_shell_verdicts(tmp_path, prose).values()) == {0}, _shell_verdicts(tmp_path, prose)
+
+    expanding = "python scripts/harness.py capture SR <<EOF\nx `git push --force origin main`\nEOF"
+    assert 2 in _shell_verdicts(tmp_path, expanding).values(), (
+        "an UNQUOTED delimiter expands, so this body really does run a force push")
+    substitution = ("python scripts/harness.py capture SR <<EOF\n"
+                    "x $(git push --force origin main)\nEOF")
+    assert 2 in _shell_verdicts(tmp_path, substitution).values()
+    executed = "sh <<'EOF'\ngit push --force origin main\nEOF"
+    assert 2 in _shell_verdicts(tmp_path, executed).values(), (
+        "a shell PARSES its standard input, so this body is the command and not a document")
+    # a KEPT body must not become its own hiding place: resuming the scan inside one let a line
+    # that merely PRINTS a here-document opener swallow the command underneath it
+    nested = "sh <<EOF\necho \"<<'X'\"\ngit push --force origin main\nX\nEOF"
+    assert 2 in _shell_verdicts(tmp_path, nested).values(), (
+        "an opener QUOTED inside a body that stays is text, not a second here-document")
+
+
+def test_the_documented_route_out_of_staging_is_open(tmp_path):
+    """`staging/**` HAD NO EXIT, measured against the real gate.
+
+    Spec II.4 makes `staging/<task-id>/` the non-canonical proposal area, and the role that fills
+    it has no shell by design — the lead books the proposal in. Both spellings the kits document
+    for that hand the file to the entry point as standard input, and both were refused: the
+    pipeline can write and it names the state directory, which was all rule 1 asked.
+
+    THE NARROWING IS THE OTHER HALF OF THE TEST. A read of `staging/**` is not a write, but only
+    while it really is a read, only while the path really is under `staging/`, and only while the
+    state directory is named nowhere else in the line.
+    """
+    dispatched_repo(tmp_path)
+    source = "project_memory/staging/TSK-0001/SR-0001.json"
+    for opened in ("python scripts/harness.py capture SR < " + source,
+                   "cat %s | python scripts/harness.py capture SR" % source):
+        assert run_scope(tmp_path, shell_payload(tmp_path, opened)).returncode == 0, opened
+    for refused in (
+            # a CANONICAL read into a writing pipeline is not a proposal being booked in
+            "python scripts/harness.py capture SR < project_memory/product/active/PR-0001.yaml",
+            # the same read, but the line also writes canonical state
+            "python scripts/harness.py capture SR < %s > project_memory/product/active/x.yaml"
+            % source,
+            # staging named by a WRITING verb is not a read at all
+            "cp %s project_memory/product/active/x.yaml" % source,
+            "rm -rf project_memory/staging/TSK-0001",
+            "cat %s | tee project_memory/product/active/PR-0001.yaml" % source,
+            # the SAME word as source and as target: a membership test alone reads the second
+            # mention off the first and opens a shell write INTO the state tree
+            "python scripts/harness.py capture SR < %s > %s" % (source, source)):
+        result = run_scope(tmp_path, shell_payload(tmp_path, refused))
+        assert result.returncode == 2, (refused, result.stdout + result.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # the DIRECTORY part, which is where every prefix check in the gate reads
+    "echo x > project'_'memory/product/active/PR-0001.yaml",
+    "echo x > '.cl'aude/hooks/gate_write_scope.py",
+    'echo x > ".cl"aude/hooks/gate_git.py',
+    "echo x > .cl''aude/hooks/gate_git.py",
+    "echo x > team'-'kits/dev-team/hooks/x.py",
+    # a splice that arms a later write by moving into the tree
+    "cd '.cl'aude && echo x > hooks/gate_git.py",
+    # the POSIX escape: the same word, spelled with the other shell's quoting character
+    "echo x > .cl\\aude/hooks/gate_git.py",
+])
+def test_a_quote_splice_in_a_path_does_not_buy_a_write(tmp_path, command):
+    """THE RULE READS THE RESOLVED STRING, NOT THE TYPED ONE.
+
+    Shell quoting is invisible to the program: `'.cl'aude/hooks/x.py` reaches the filesystem as
+    `.claude/hooks/x.py`. Measured 2026-08-04 — every registered gate allowed each line here, and
+    a real Git Bash then overwrote the file — while the same paths spelled plainly were refused by
+    `gate_write_scope`. A splice in the FILE NAME was caught, which is how this stood: the
+    directory prefix still spelled itself out there.
+    """
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 2, (command, result.stdout + result.stderr)
+
+
+@pytest.mark.parametrize("command", [
+    # a quoted PIPE is data, not a pipeline — the resolution must not turn it into one
+    "grep -E 'PR|SR' project_memory/product/active/PR-0001.yaml",
+    "git log --format='%h -> %s'",
+    # a word that RESOLVES to a redirect operator is not a redirect
+    "echo '>' notes.txt",
+    "echo 'a > b is a redirect'",
+    # ordinary reads of the protected trees, with and without output suppressed
+    "cat .claude/hooks/gate_git.py",
+    "ls .claude/agents/ 2>/dev/null",
+    "git diff project_memory > /tmp/state.diff",
+])
+def test_resolving_the_quoting_does_not_refuse_what_the_quoting_protected(tmp_path, command):
+    """The mirror of the splice test: removing the marks must not promote quoted DATA to syntax.
+
+    `'PR|SR'` was the case that forced the tokeniser to keep quotes in the first place — the gate
+    used to split it into nonsense and refuse the exact inspection its own message promises stays
+    allowed. Resolving the word AFTER the split is what keeps both true at once.
+    """
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 0, (command, result.stdout + result.stderr)
+
+
+def test_a_spliced_entry_point_still_orders_work(tmp_path):
+    """Rule 4 reads a path too, and it read the typed one: `scripts/'har'ness.py create-task`
+    resolved to the entry point and ordered work, while `_harness_argv` compared the basename
+    `'har'ness.py` and found no CLI invocation at all."""
+    dispatched_repo(tmp_path)
+    for command in ("python scripts/'har'ness.py create-task",
+                    "python scripts/har\\ness.py create-task"):
+        result = run_scope(tmp_path, dict(shell_payload(tmp_path, command),
+                                          agent_type="backend-developer"))
+        assert result.returncode == 2 and "ORDERS work" in result.stderr, (
+            command, result.stdout + result.stderr)
+
+
 def test_a_cd_into_the_state_dir_carries_over(tmp_path):
     """`cd project_memory && echo x > approvals/x.yaml`: the path is named in the FIRST pipeline
     and the write happens in the second, which names nothing."""
@@ -4387,13 +4538,31 @@ def test_the_unspaced_spellings_are_seen_too(tmp_path, command):
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 2
 
 
-def test_the_tokeniser_keeps_quotes_on_its_tokens():
-    """`posix=False` is load-bearing twice over: `_stage_verb` strips quotes itself and `_names`
-    runs its regexes over quoted tokens, so switching to posix mode changes what both see without
-    failing anything else. Pinned directly rather than through a consequence."""
+def test_the_tokeniser_resolves_a_word_without_promoting_quoted_data_to_syntax():
+    """THE TWO HALVES THE TOKENISER HAS TO GET RIGHT AT ONCE, pinned directly.
+
+    It used to keep the quote MARKS on the word, and that was load-bearing in the wrong place: the
+    quoting decided the word boundaries (right) and then every path rule compared against a string
+    no program ever receives (wrong — `'.cl'aude/hooks/x.py` reaches the filesystem as
+    `.claude/hooks/x.py`). Resolving the word without losing the boundary decision is what
+    `_compat.shell_words` does, and both halves have to hold together:
+      * the WORD is what the program gets — the marks are gone and the fragments are ONE word;
+      * a word that quoting produced is never SYNTAX, so `'PR|SR'` is not a pipeline and a quoted
+        `>` is not a redirect. `_operator` is the reader that has to say so.
+    Switching either half back changes what every path rule in the gate sees while failing nothing
+    else, which is why this is a pin and not a consequence.
+    """
     module = load_hook_module("gate_write_scope")
-    assert "'PR|SR'" in module._tokenise("grep -E 'PR|SR' x")
-    assert "|" in module._tokenise("a | b")
+    words = module._tokenise("grep -E 'PR|SR' '.cl'aude/hooks/x.py")
+    assert "PR|SR" in words and ".claude/hooks/x.py" in words, words
+    assert [module._operator(w) for w in words if module._operator(w) == "|"] == [], (
+        "a quoted pipe was promoted to a pipeline separator")
+    assert "|" in [module._operator(w) for w in module._tokenise("a | b")]
+    assert module._operator(module._tokenise("echo '>' f")[1]) == "", (
+        "a quoted redirect operator must not read as one")
+    # every reading a shell could give the word, which is what the path rules search over
+    assert ".claude/hooks/x.py" in module._readings(
+        module._tokenise("echo x > .cl\\aude/hooks/x.py")[-1])
 
 
 # -- write-capable verbs that hide behind a flag or a quoted program ----------
@@ -9246,6 +9415,99 @@ def test_the_trust_message_names_a_remedy_that_actually_leaves_the_state(tmp_pat
         "message promises a way out that the code does not build.\n%s" % (performed, message))
     freed = run_dispatch(repo, spawn_payload(repo, header))
     assert "is not the one this project trusts" not in freed.stderr, freed.stderr
+
+
+def _really_scaffolded(tmp_path, team="dev-team", name="lead-identity"):
+    """A project the REAL installer produced, plus the home it was installed from.
+
+    The whole point of the test below is that the fixture must not be able to decide the answer:
+    the binding it measures (`settings.json` `agent:`) is something the SCAFFOLD writes.
+    """
+    home, repo = tmp_path / "home", tmp_path / "repo"
+    staging = _restamped_staging(tmp_path)
+    os.makedirs(str(home / ".claude"), exist_ok=True)
+    shutil.copytree(str(staging), str(home / ".claude" / "team-kits"), dirs_exist_ok=True)
+    os.makedirs(str(repo / "project_memory"), exist_ok=True)
+    subprocess.run(["git", "init", "-q", str(repo)], capture_output=True)
+    write(str(repo / "project_memory" / "project_config.yaml"),
+          "project:\n  name: %s\n  preset: solo\nproviders: [claude]\n" % name)
+    scaffolded = _run_real_scaffold(home, repo, team=team)
+    assert scaffolded.returncode == 0, scaffolded.stdout[-3000:] + scaffolded.stderr[-2000:]
+    return home, repo
+
+
+def test_the_lead_of_a_scaffolded_project_is_not_read_as_its_own_subagent(tmp_path):
+    """F1: THE PREDICATE WAS MEASURED IN A PROJECT THAT BOUND NO SESSION AGENT.
+
+    `_compat.calling_subagent` returned any agent name a payload carried, on a probe run in a
+    scratch project outside any repo — where the session instance's payload really does carry
+    neither field. Every SCAFFOLDED project binds one (`settings.json` `agent:`), and there the
+    session instance's own payload carries `agent_type` = that role. So in every scaffolded
+    project the lead was its own subagent: `guard_agent_spawn` refused every delegation and
+    `gate_write_scope` rule 4 refused `create-task` and `dispatch`. Provenance for the payload
+    shape: tools/provider_observations.json -> `agent_identity.correction_2026_08_04`.
+
+    WHY THIS RUNS THE REAL INSTALLER instead of building a payload. The check that missed this
+    measured the truth-value decision in both directions with payloads it wrote itself, and never
+    saw one from a project with a binding — so the fixture agreed with the code about what a lead
+    looks like. Here every name in the payload is READ OUT of the installed project: the lead from
+    the settings the scaffold wrote, the specialist from the agent files it copied. A kit that
+    bound a different role would be measured on that role.
+
+    BOTH DIRECTIONS AND THE FORGERY, since the exemption is what is new:
+      * the bound role in `agent_type` is the LEAD and delegates;
+      * any other installed role in `agent_type` is a subagent and does not;
+      * the bound role in `agent_id` is still a subagent — an id belongs to a spawn, so a payload
+        that carries one is not the session instance whatever it spells.
+    """
+    pytest.importorskip("yaml")
+    _home, repo = _really_scaffolded(tmp_path)
+    claude = str(repo / ".claude")
+    with open(os.path.join(claude, "settings.json"), encoding="utf-8") as fh:
+        lead = json.load(fh)["agent"]
+    installed = {os.path.splitext(os.path.basename(p))[0]
+                 for p in globmodule.glob(os.path.join(claude, "agents", "*.md"))}
+    specialists = sorted(installed - {lead})
+    assert lead and specialists, (
+        "the scaffold bound %r and installed %s — without both there is nothing to contrast"
+        % (lead, sorted(installed)))
+
+    state, task, header = dispatched_repo(repo)
+    command = _registered_spawn_command(claude, repo)
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo))
+    env.pop("HARNESS_KERNEL_PATH", None)          # the scaffolded project carries its own kernel
+
+    def spawn(**identity):
+        payload = dict(spawn_payload(repo, header, run_in_background=False), **identity)
+        payload["tool_input"]["run_in_background"] = False
+        return subprocess.run(command, input=json.dumps(payload), capture_output=True,
+                              text=True, env=env, timeout=180)
+
+    as_the_lead = spawn(agent_type=lead)
+    assert _NOT_A_DELEGATOR not in as_the_lead.stderr, (
+        "the session instance of a scaffolded project was refused as a subagent — with `agent:` "
+        "bound, %r is what the lead's OWN payload carries, so this refuses every delegation the "
+        "project can make:\n%s" % (lead, as_the_lead.stderr))
+    assert _lease_of(state, task["id"]).get("dispatched_at"), (
+        "the chain let the lead through and never spent the lease: %s" % as_the_lead.stderr)
+
+    for role in specialists:
+        refused = spawn(agent_type=role)
+        assert refused.returncode == 2 and _NOT_A_DELEGATOR in refused.stderr, (
+            role, refused.stdout + refused.stderr)
+    forged = spawn(agent_id=lead)
+    assert forged.returncode == 2 and _NOT_A_DELEGATOR in forged.stderr, (
+        "an `agent_id` belongs to a SPAWN; naming the lead in one must buy nothing:\n%s"
+        % forged.stderr)
+
+    # ...and rule 4, the second caller, in the same installed project
+    ordering = shell_payload(repo, "python scripts/harness.py create-task --type implementation")
+    scope = os.path.join(claude, "hooks", "gate_write_scope.py")
+    for identity, ordered in ((lead, False), (specialists[0], True)):
+        result = subprocess.run([sys.executable, scope],
+                                input=json.dumps(dict(ordering, agent_type=identity)),
+                                capture_output=True, text=True, env=env, timeout=180)
+        assert ("ORDERS work" in result.stderr) is ordered, (identity, result.stderr)
 
 
 def test_the_scaffold_a_trust_refusal_names_is_a_step_the_session_cannot_take(tmp_path):

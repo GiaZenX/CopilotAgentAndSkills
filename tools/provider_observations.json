@@ -44,12 +44,21 @@
       "provider_version": "2.1.220",
       "mode": "headless",
       "method": "tools/probes/probe_hook.py registered on PreToolUse(Agent|Task), SubagentStart and PostToolUse(Agent|Task) in a scratch project outside any repo; one session was asked to spawn a subagent whose own instructions spawn a second one, and probe_log.jsonl was read back",
-      "location": "a scratch project in the session scratchpad, outside this repo"
+      "location": "a scratch project in the session scratchpad, outside this repo, WHICH BOUND NO SESSION AGENT - see `correction_2026_08_04`, where that turned out to be the fixture deciding the result"
     },
-    "session_instance": "the SESSION INSTANCE's PreToolUse(Agent) payload carries NEITHER `agent_id` NOR `agent_type` - the keys are absent from the payload entirely (keys seen: cwd, hook_event_name, permission_mode, prompt_id, session_id, tool_input, tool_name, tool_use_id, transcript_path). Its PostToolUse(Agent) payload is the same. Spike S3 (2026-07-24, docs/reviews/evidence/2026-07-24-spike-payloads.md) recorded the parent side as `agent_id: null` instead, i.e. the key PRESENT and empty - so both shapes have been seen and only a TRUTHINESS test covers both.",
+    "correction_2026_08_04": {
+      "date": "2026-08-04",
+      "provider": "claude.exe",
+      "provider_version": "2.1.220",
+      "method": "a dump hook on PreToolUse in a probe project whose settings.json binds `agent:`, reading the raw payload back; plus a real lifecycle run's .audit/hook_events.jsonl",
+      "measured_by": "the harness review of 2026-08-04. NOT re-derived inside this repo and it cannot be: nothing here can make a provider emit a hook event, which is what the file comment at the top means by re-measuring.",
+      "finding": "with a session agent BOUND, the SESSION INSTANCE's own PreToolUse payload carries `agent_type` = the bound role, `agent_id` absent (keys seen: agent_type, cwd, hook_event_name, permission_mode, prompt_id, session_id, tool_input, tool_name, tool_use_id, transcript_path). The 2026-08-03 entry read `neither field`, which was true of a scratch project that bound no agent and false of every SCAFFOLDED project, all of which bind one.",
+      "cost": "`_compat.calling_subagent` returned any name the payload carried, so in every scaffolded project the lead was read as its own subagent: `guard_agent_spawn` refused every spawn and `gate_write_scope` rule 4 refused `create-task` and `dispatch`. Recorded in a real run as `gate_write_scope block: create-task ORDERS work, and this call comes from a subagent (project-manager)`. The project only continued because a human patched the kit by hand."
+    },
+    "session_instance": "TWO SHAPES, and which one arrives depends on whether the project BINDS a session agent. With no binding, the payload carries NEITHER `agent_id` NOR `agent_type` (2026-08-03, keys listed in `correction_2026_08_04`); with `settings.json` `agent:` set - which every scaffolded project does - it carries `agent_type` = that role and no `agent_id` (2026-08-04). Spike S3 (2026-07-24, docs/reviews/evidence/2026-07-24-spike-payloads.md) recorded the parent side as `agent_id: null` instead, i.e. the key PRESENT and empty. So three shapes have been seen for one party, and only a test that reads the VALUE against the bound role covers all three.",
     "subagent": "a SUBAGENT's PreToolUse payload carries both fields, non-empty, and they are the same values its SubagentStart carried.",
     "re_delegation": "OBSERVED, and this is the fact that made the spawn rule necessary: the subagent `echo-one` spawned `echo-two` in the same run, its own PreToolUse(Agent) carrying `agent_id`/`agent_type` of echo-one, followed by a SubagentStart for echo-two. Three agent levels under one session. Re-delegation was refused by the platform up to 2.1.219 and is allowed again.",
-    "consequence": "`_compat.calling_subagent` is this measurement in code; `guard_agent_spawn` and `gate_write_scope` rule 4 are its two callers. The failure direction is a missed refusal, never a lead locked out - see that function's docstring."
+    "consequence": "`_compat.calling_subagent` is this measurement in code; `guard_agent_spawn` and `gate_write_scope` rule 4 are its two callers. It asks whether the payload names an agent OTHER than the role `settings.json` binds. THE FAILURE DIRECTION IS NOT ONE-SIDED, and the sentence that stood here said it was (`a missed refusal, never a lead locked out`): that was measurably false in the reassuring direction, and a test could not catch it because it repeated the same sentence. Both directions are live - a provider that stopped naming the caller would let a subagent through, and a provider whose session payload named something other than the bound role would refuse the lead. The function's docstring names what the lead exemption specifically gives up."
   },
 
   "session_context": {

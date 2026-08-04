@@ -5,9 +5,10 @@ plan does not have a rule for.
 
 WHAT CHANGED AND WHY. V1 checked filing_log.yaml: after the clerk wrote a `filed:` entry, the gate
 asked whether the target existed. Two things ended that. `filing_log.yaml` is now a REGENERATED
-scan index (spec II.9) — nobody maintains it, so there is no claim in it left to verify — and the
-derivation direction was turned around: `filing_plan.yaml` is the single machine-readable truth,
-the prose Ablage guideline is generated from it, not the other way round.
+scan index (spec II.9) — nobody maintains it, so there is no claim in it left to verify — and
+`filing_plan.yaml` became the single machine-readable truth. Which way a project DERIVED its plan
+(from prose, or the prose from it) is a decision no gate can see; what the kit derives from the
+plan is one artifact, `scripts/process_doc.py` renders it, and the plan's own header names it.
 
 So the gate verifies the same thing one step earlier and against the real truth: the DESTINATION.
 A document whose target matches no rule in the plan is not filed at all — spec II.9 is explicit
@@ -18,21 +19,22 @@ afterwards, because a wrong filing never happens rather than being reported.
 WHAT THE GATE SEES, EXACTLY. One predicate ("does this destination match a rule?") behind two
 readers. The tool-write reader is complete: every path an Edit/Write/MultiEdit or a Codex patch
 creates goes through `_compat.file_paths`. The shell reader is not, and saying otherwise would be
-the comment this repo bans. It reads the three syntactic forms in which a shell command NAMES the
-file it creates — a redirection target, a flag that names the destination, and a positional
-destination at the place that command's calling convention puts it (see `move_destinations`).
-Wrapper payloads (`bash -lc "mv …"`) are unwrapped first through `_compat.unwrap_shell_payload`,
-the same single home the git gates use: a wrapped `mv` is not a different risk, it is the same
-`mv` one level down, and an audit already recorded `-lc` walking past every gate that tokenised
-the outer line. It does NOT see a write performed INSIDE another program: `python -c
-"shutil.copy(...)"`, `tar -x -C archive/…`, a script that files by itself. Those are the named
-residual risk; they are covered by `gate_write_scope` (a shell command may not smuggle
-enforcement-relevant writes) and by the fact that filing is a clerk workflow, not a scripted one.
-If a project starts filing from a script, the script — not this regex — is where the rule belongs.
+the comment this repo bans. It is `_filing.created`, shared with the guard that watches the other
+direction: it reads the syntactic forms in which a shell command NAMES the file it creates — a
+redirection target, a flag that names the destination, and a positional destination at the place
+that command's calling convention puts it — after lifting wrapper payloads and after following any
+working-directory change the same command line performed. It does NOT see a write performed INSIDE
+another program: `python -c "shutil.copy(...)"`, `tar -x -C archive/…`, a script that files by
+itself. Those are the named residual risk; they are covered by `gate_write_scope` (a shell command
+may not smuggle enforcement-relevant writes) and by the fact that filing is a clerk workflow, not a
+scripted one. If a project starts filing from a script, the script — not this reader — is where the
+rule belongs.
 
 `guard_fs_tripwire` owns the other direction — deletes under inbox/ or archive/, and moves OUT of
 archive/ — and deliberately leaves filing INTO the archive open; this gate is what makes that
-opening safe.
+opening safe. Both ask `_filing` where a token lands, so "inside the archive" means the same thing
+on both sides of the wall; it did not before 2026-08-03, and that module's docstring records what
+the difference cost.
 
 FAIL-CLOSED, including on an empty plan: with no readable rule there is no truth to file against,
 and "no plan yet" is precisely when a mis-filing is cheapest to make and dearest to undo.
@@ -67,36 +69,29 @@ except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must no
 import re  # noqa: E402
 
 import _compat  # noqa: E402
+import _filing  # noqa: E402
 
 HOOK = "gate_filing"
-ARCHIVE = "archive"
+# Spelled as a literal here, and this is the one duplication in the schema that is deliberate: the
+# WALL derivation (`kernel/layout.py`, `path_segments_composed`) follows module-level constants
+# into a path composition and cannot follow an imported name, so a gate that got this name from
+# `_filing` would stop being a wall for `doctor` and for the SessionStart briefing without any of
+# them saying so. It is pinned by measurement rather than by agreement:
+# `test_doctor_does_not_invent_a_wall_where_no_gate_stands` walks a real installed office project
+# and requires exactly this file to come back as the office wall.
 PLAN = "filing_plan.yaml"
-# One invocation: everything up to the next command separator. Splitting first is what lets the
-# destination be read per command instead of per line.
-INVOCATION_RX = re.compile(r"[^\n;|&]+")
-# Tokens, with quoted spans kept whole. Plain `.split()` was the first version and it fails on the
-# ONE filename shape a business archive is full of: `mv inbox/a.pdf "archive/2026/Müller GmbH.pdf"`
-# would have ended in the token `GmbH.pdf"`, which is not under archive/ — a silent pass.
-TOKEN_RX = re.compile(r'"[^"]*"|\'[^\']*\'|\S+')
-# A redirection target IS the file the shell creates, whatever produced the bytes — so this is a
-# rule about syntax, not about a command's meaning, and it catches the forms no verb list can
-# (`cat inbox/a.pdf > archive/…`). `guard_fs_tripwire` guards the ledger with the same rule.
-REDIRECT_RX = re.compile(r'(?:>>?\s*|\btee\b(?:\s+-\S+)*\s+)("[^"]*"|\'[^\']*\'|[^\s;|&<>]+)')
-# Copy/move commands, grouped by WHERE their calling convention puts the destination. `robocopy`
-# and `xcopy` take two directories and the destination is the SECOND token; the POSIX/PowerShell
-# family takes N sources and one destination, so it is the LAST. `install` is a copy that does not
-# read like one, and `rsync` is a sync tool rather than a copy verb — both obey the trailing-
-# destination convention, and an archive filled by `rsync -a inbox/ archive/2026/` is filed just
-# as much as one filled by `mv`.
-DEST_IS_SECOND = ("robocopy", "xcopy")
-DEST_IS_LAST = ("mv", "move", "move-item", "mi", "ren", "rename", "rename-item",
-                "cp", "copy", "copy-item", "install", "rsync")
-# The commands for which `-t` means "target directory". Scoped, NOT global: it is coreutils'
-# spelling, and the same letter means something else next door — `rsync -t` preserves timestamps,
-# so reading it as a destination would aim the gate at a source and let the real target through.
-GNU_TARGET_DIR = ("mv", "cp", "install")
-TARGET_DIR_OPTION = "target-directory"
-PLACEHOLDER_SEGMENT_RX = re.compile(r"^<[^<>/]+>$")
+# THE SCHEMA, in the two names every reader of the plan needs: the list, and the field that says
+# WHERE a rule's documents live. Everything else a rule carries is display material and is rendered
+# without being named (see `scripts/process_doc.py`) — which is what keeps a project that adds a
+# field to its rules from having to touch code.
+RULES = "rules"
+PATH_TEMPLATE = "path_template"
+# `<name>` inside a path_template. It stands for a non-empty run of characters WITHIN ONE SEGMENT:
+# it never spans a `/`, and a segment may mix literals and placeholders. The first version anchored
+# the whole segment (`^<...>$`), which is a list of one case wearing a definition's clothes — a real
+# Aktenplan node `.../<Modell>_<Prozessor>/` was then read as a literal folder name and every filing
+# under it refused, with the node itself sitting in that project's gate events.
+PLACEHOLDER_RX = re.compile(r"<[^<>/]+>")
 # ONE of the four reasons `rules` can find nothing, named because one caller has to tell it apart
 # from the other three. `unfilled_documents` reports the SHIPPED-TEMPLATE state, and a plan that is
 # missing, unparseable, or unreadable because PyYAML is absent is not that: those have remedies a
@@ -106,7 +101,17 @@ NO_RULES_YET = "%s lists no rules yet" % PLAN
 
 
 def rules(root):
-    """The filing plan's rules, or a reason string why there are none to file against."""
+    """The filing plan's rules, or a reason string why there are none to file against.
+
+    THE ONE READER OF THE FILE, and that is the point of it being here rather than in each caller.
+    `scripts/process_doc.py` renders the Ablage section of the Verfahrensdokumentation out of this
+    same call: measured 2026-08-03, it had its own reader for a `naming_rule:`/`tree:` shape no
+    writer produces, so the shipped template rendered as an em dash and an empty list while this
+    gate refused every filing against the same file. Two readers of one document, disagreeing
+    silently in opposite directions — the renderer follows the gate because the gate is the one
+    with a blocking contract, and because what the entry gate and the user are told to WRITE is the
+    shape the template's header documents, which is this one.
+    """
     path = os.path.join(_kernel.state_dir(root), PLAN)
     if not os.path.isfile(path):
         return None, "%s does not exist" % PLAN
@@ -119,7 +124,9 @@ def rules(root):
             plan = yaml.safe_load(fh) or {}
     except Exception as exc:  # noqa: BLE001
         return None, "%s could not be parsed (%s)" % (PLAN, exc)
-    found = [r for r in (plan.get("rules") or []) if isinstance(r, dict) and r.get("path_template")]
+    if not isinstance(plan, dict):
+        return None, "%s is not a mapping" % PLAN
+    found = [r for r in (plan.get(RULES) or []) if isinstance(r, dict) and r.get(PATH_TEMPLATE)]
     if not found:
         return None, NO_RULES_YET
     return found, None
@@ -148,166 +155,43 @@ def unfilled_documents(root):
     return {} if found or reason != NO_RULES_YET else {PLAN: reason}
 
 
-def rule_matches(path_template, directory):
-    """Does `directory` (repo-relative, slash-separated, no trailing slash) match this rule?
+def segment_pattern(segment):
+    """One path segment of a path_template as a regular expression.
 
-    `<name>` in a path_template stands for exactly one segment — a year, a counterparty folder.
-    Everything else is literal, so `archive/finance/2026` never matches `archive/finance`.
+    A `<name>` is translated ANYWHERE in the segment and everything around it stays literal, so
+    `<Modell>_<Prozessor>` matches `X250_i5` and `2026-<Monat>` matches `2026-03`. It never crosses
+    a `/`: the placeholder is a run of characters inside this segment, which is what makes
+    `archive/finance/2026` still fail to match `archive/finance` and `<year>` still refuse to
+    swallow `2026/q1`.
     """
+    out, last = [], 0
+    for match in PLACEHOLDER_RX.finditer(segment):
+        out.append(re.escape(segment[last:match.start()]))
+        out.append("[^/]+")
+        last = match.end()
+    out.append(re.escape(segment[last:]))
+    return "".join(out)
+
+
+def rule_matches(path_template, directory):
+    """Does `directory` (repo-relative, slash-separated, no trailing slash) match this rule?"""
     parts = [p for p in str(path_template).replace("\\", "/").strip().strip("/").split("/") if p]
     if not parts:
         return False
-    pattern = "/".join("[^/]+" if PLACEHOLDER_SEGMENT_RX.match(p) else re.escape(p) for p in parts)
-    return re.match("^" + pattern + "$", directory) is not None
+    return re.match("^" + "/".join(segment_pattern(p) for p in parts) + "$", directory) is not None
 
 
-def archive_directory(root, base, target):
-    """The repo-relative archive directory a filing target lands in, or None if it is not one.
+def check(root, targets):
+    """`targets` is [(path token, bases it may be relative to)] — see `_filing.created`.
 
-    `base` is what a RELATIVE target is resolved against. It matters: an agent whose cwd is
-    `inbox/` writes `../archive/…`, which against the repo root looks like an escape and against
-    the real cwd is a filing. `_compat` learned this the hard way for Codex patch paths ("cwd in a
-    subdir made a repo-root-looking patch path miss every prefix check") and resolves against both;
-    `check` does the same here. Both readings blocking is the fail-closed direction — an over-block
-    asks the clerk to name the rule, a missed reading files the document nowhere anyone can find.
-
-    A trailing separator, or an existing directory, means the token IS the directory (`mv x.pdf
-    archive/finance/2026/`); otherwise it names the file and the directory is its parent.
+    Every base is read and any of them landing in the archive counts. That is the fail-closed
+    direction: an over-block asks the clerk to name the rule, a missed reading files the document
+    nowhere anyone can find.
     """
-    if not target:
-        return None
-    raw = target.replace("\\", "/")
-    is_dir = raw.endswith("/") or os.path.isdir(os.path.join(base, raw))
-    try:
-        rel = os.path.relpath(os.path.join(base, raw), root).replace("\\", "/")
-    except ValueError:  # different drive on Windows: not a path inside this repo
-        return None
-    if rel.startswith("../") or rel == "..":
-        return None
-    directory = rel.rstrip("/") if is_dir else os.path.dirname(rel)
-    if directory != ARCHIVE and not directory.startswith(ARCHIVE + "/"):
-        return None
-    return directory
-
-
-def is_destination_flag(token):
-    """Is this token PowerShell's `-Destination` parameter?
-
-    PowerShell resolves any UNAMBIGUOUS PREFIX of a parameter name, so `-Destination`, `-Dest` and
-    `-Des` are one and the same parameter — encoding the rule beats spelling three of them out.
-    Three characters is where the prefix stops colliding with the common `-Debug`.
-    """
-    name = token.lstrip("-").split(":", 1)[0].split("=", 1)[0].lower()
-    return len(name) >= 3 and "destination".startswith(name)
-
-
-def target_directory_value(token, following):
-    """The directory a GNU `-t` / `--target-directory` token names, or None.
-
-    Long form: getopt_long resolves any unambiguous PREFIX of an option name, and the value is
-    either glued on with `=` or the next token. Short form: an option that TAKES an argument can
-    only be the last letter of a cluster (`mv -fvt archive/2026`), and its value is either glued
-    to it (`-tarchive/2026`) or, again, the next token. Both are the calling convention, not a
-    list of spellings — which is why `--target-dir=` and `-vt` are covered without being named.
-    """
-    if token.startswith("--"):
-        name, _, attached = token[2:].partition("=")
-        if len(name) < 3 or not TARGET_DIR_OPTION.startswith(name.lower()):
-            return None
-        return (attached or following or "").strip("\"'") or None
-    cluster = token[1:]
-    position = cluster.find("t")  # case-sensitive: `-T` is --no-target-directory, the opposite
-    if position < 0:
-        return None
-    return (cluster[position + 1:] or following or "").strip("\"'") or None
-
-
-def named_destination(tokens, gnu_target_dir=False):
-    """(value, is_directory) for a destination NAMED by a flag in `tokens`, else (None, False).
-
-    Reading the destination positionally is a Windows-first harness betting on POSIX habits:
-    `Move-Item -Destination archive\\x.pdf -Path inbox\\a.pdf` is ordinary PowerShell, and under
-    the last-token rule the destination was simply not the last token — measured as a clean
-    bypass of this gate. GNU's copy/move family has the same construct in its own spelling, with
-    one added fact: `-t`/`--target-directory` names a DIRECTORY, so the token IS the folder and
-    not a file inside it. Either way a named parameter says which token it is, so it wins over
-    position — the same precedence rule, now written once for both conventions.
-
-    `gnu_target_dir` comes from the command family (see `GNU_TARGET_DIR`) instead of being
-    assumed, because `-t` only means "target" in coreutils.
-    """
-    for index, token in enumerate(tokens):
-        if not token.startswith("-"):
-            continue
-        following = tokens[index + 1] if index + 1 < len(tokens) else None
-        if is_destination_flag(token):
-            attached = re.split(r"[:=]", token, maxsplit=1)
-            if len(attached) == 2 and attached[1]:
-                return attached[1].strip("\"'"), False
-            if following is not None:
-                return following.strip("\"'"), False
-        elif gnu_target_dir:
-            value = target_directory_value(token, following)
-            if value:
-                return value, True
-    return None, False
-
-
-def move_destinations(command):
-    """Every path a shell command names as a file it CREATES.
-
-    Three syntactic forms, each read on its own terms — see the module docstring for what this
-    deliberately does NOT reach:
-      * a redirection target (`> archive/x.pdf`, `tee archive/x.pdf`) — the shell creates it;
-      * a flag that NAMES the destination (`-Destination`, `-t`) — position-independent by design;
-      * a positional destination, at the place that command's calling convention puts it.
-
-    A wrapper payload is unwrapped first, so `bash -lc "mv … archive/…"` is read as the `mv` it
-    is; the unwrapping is `_compat`'s, the same one the git gates use.
-    """
-    command = _compat.unwrap_shell_payload(command)
-    out = []
-    for invocation in INVOCATION_RX.findall(command):
-        # A redirect ends the argument list; leaving it in would make `>` or the log file the
-        # "last token" and hide the real destination.
-        tokens = [t.strip("\"'") for t in TOKEN_RX.findall(re.split(r"[<>]", invocation)[0])]
-        family, rest = None, []
-        for index, token in enumerate(tokens):
-            name = os.path.basename(token.replace("\\", "/")).lower()
-            if name in DEST_IS_SECOND or name in DEST_IS_LAST:
-                family, rest = name, tokens[index + 1:]
-                break  # a prefix like `sudo`/`env FOO=1` may precede the command
-        if family is None:
-            continue
-        named, names_a_directory = named_destination(rest, family in GNU_TARGET_DIR)
-        if named is not None:
-            # the explicit slash tells archive_directory the token IS the folder — without it a
-            # not-yet-existing `archive/finance/2026` would be read as a FILE and the rule check
-            # would run against its parent, i.e. against a directory nobody is filing into
-            out.append(named.replace("\\", "/").rstrip("/") + "/" if names_a_directory else named)
-            continue
-        positional = [t for t in rest if not t.startswith("-")]
-        if len(positional) < 2:
-            continue  # a single token is a source with no destination: not a filing
-        if family in DEST_IS_SECOND:
-            # these copy DIRECTORY to DIRECTORY and the trailing tokens are filename filters; the
-            # explicit slash tells archive_directory the token is the folder, not a file in it
-            out.append(positional[1].replace("\\", "/").rstrip("/") + "/")
-        else:
-            out.append(positional[-1])
-    for match in REDIRECT_RX.finditer(command):
-        out.append(match.group(1).strip("\"'"))
-    return out
-
-
-def check(root, cwd, targets):
-    bases = [root]
-    if cwd and os.path.abspath(cwd) != os.path.abspath(root):
-        bases.append(cwd)
     directories = []
-    for target in targets:
+    for target, bases in targets:
         for base in bases:
-            directory = archive_directory(root, base, target)
+            directory = _filing.archive_directory(root, base, target)
             if directory and directory not in directories:
                 directories.append(directory)
     if not directories:
@@ -330,7 +214,7 @@ def check(root, cwd, targets):
                    "the fields one carries are stated in the plan's own header — and file "
                    "nothing until the file the user saves has them." % PLAN)
     unmatched = [d for d in directories
-                 if not any(rule_matches(r.get("path_template"), d) for r in found)]
+                 if not any(rule_matches(r.get(PATH_TEMPLATE), d) for r in found)]
     if unmatched:
         _kernel.block(
             HOOK,
@@ -353,11 +237,12 @@ def main():
         sys.exit(0)
     cwd = str(data.get("cwd") or "")
     root = _kernel.find_repo_root(cwd)
+    bases = _filing.reading_bases(root, cwd)
     if data.get("tool_name") in ("Bash", "PowerShell"):
-        check(root, cwd,
-              move_destinations(str((data.get("tool_input") or {}).get("command") or "")))
+        command = str((data.get("tool_input") or {}).get("command") or "")
+        check(root, _filing.created(command, bases))
     else:
-        check(root, cwd, _compat.file_paths(data))
+        check(root, [(path, bases) for path in _compat.file_paths(data)])
     sys.exit(0)
 
 
