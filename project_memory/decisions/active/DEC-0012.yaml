@@ -1,0 +1,49 @@
+id: DEC-0012
+title: Rote Mutationen decken die gebaute Loesung, nicht die verlangte Eigenschaft
+  -- und 'behauptet' meint zweierlei
+context: 'Zwei weitere Formen, in denen meine Auftragszeilen daneben lagen, beide
+  aus der Pruefung von TSK-0011.
+
+
+  (1) Die Zeile ''jeder Zweig, den diese Reparatur baut, ist einzeln durch eine Mutation
+  rot zu bekommen'' hat genau das erreicht, was sie sagt: jeder gebaute Zweig ist
+  rot zu bekommen. Sie sagt nichts darueber, dass die Testmenge die KLASSE decken
+  muss, die die erste Zeile als Eigenschaft nennt. Gemessen sitzen beide Bloecker
+  der Runde exakt in dieser Luecke: jeder gebaute Zweig kippt unter Mutation, die
+  Suite ist gruen -- und sieben Zeilen gehen trotzdem durch, weil die Eigenschaft
+  breiter ist als die gebaute Loesung. Mutationsdeckung misst, ob das Gebaute noetig
+  ist; sie misst nicht, ob es reicht.
+
+
+  (2) Die Zeile ''jeder Docstring behauptet nur, was ein Test faehrt'' quantifiziert
+  ueber alle SAETZE statt ueber alle ZUSICHERUNGEN. ''Behauptet'' steckt zwei Sprechakte
+  in ein Wort: eine Zusicherung (''X kann nicht passieren'') und eine Einschraenkung
+  (''Y ist offen''). Nur die erste braucht einen Test; die zweite braucht einen ORT.
+  Woertlich gelesen verbietet die Zeile jeden Satz ueber eine Grenze -- und genau
+  solche Saetze verlangt eine andere Zeile desselben Auftrags.'
+decision: 'Zu (1): eine Zeile, die Mutationsdeckung verlangt, bekommt ihre Gegenhaelfte
+  -- die Menge der roten Tests deckt die EIGENSCHAFT, nicht die Liste der gemessenen
+  Zeilen. Ohne diese Haelfte prueft der Auftrag die Loesung gegen sich selbst.
+
+
+  Zu (2): so ist die Zeile zu schreiben -- ''Jeder Docstring, den diese Reparatur
+  beruehrt, sichert SCHUTZ nur dort zu, wo eine Mutation den zugehoerigen Test rot
+  macht. Eine GRENZE darf er ohne Test benennen -- dann aber als Grenze, mit dem Eintrag
+  der Loecherliste, der ihre gemessene Kette traegt.'''
+consequences: 'Zusammen mit DEC-0010 und DEC-0011 sind das fuenf Formen, in denen
+  eine Auftragszeile danebengehen kann: Aufzaehlung statt Eigenschaft; Loesung statt
+  Anforderung; Klammer mit Beispielen; Mutationsdeckung ohne Klassendeckung; falsch
+  quantifiziert. Alle fuenf in drei Naechten, alle von Pruefern gefunden, keine von
+  mir.
+
+
+  Das ist die eigentliche Erkenntnis dieser Sitzung: der Auftrag ist ein Artefakt
+  mit derselben Fehleranfaelligkeit wie Code, und er hat bis heute keine Pruefung
+  gehabt ausser meiner eigenen Sorgfalt. FR-0005 (der Zuschnitt-Kritiker) sollte deshalb
+  nicht nur fragen, ob ein Plan zu gross ist, sondern ob seine Zeilen diese fuenf
+  Formen tragen.'
+source: Pruefbericht zu TSK-0011, 2026-08-05, Antworten (a) und (b)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T11:31:34'

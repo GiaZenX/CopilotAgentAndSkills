@@ -216,6 +216,39 @@ def is_terminal(item_type: str, status: str) -> bool:
     return status in AUTOMATA[item_type].terminals
 
 
+# THE STATUS VOCABULARY OF THE TYPES THAT CARRY ONE WITHOUT AN AUTOMATON (spec II.2). Written out
+# because there is nothing to derive it from -- these types have no edge set -- and written HERE
+# rather than in `state` so that the kernel's initial-status map and the V1 mapping table's target
+# check read ONE answer; it lived only in a comment before, which is why a mapping row could name
+# a `DEC` status nothing could check. The FIRST value is the initial one.
+#
+# `INV.verified` is what spec II.2 names as the other side of `unverified` and NOTHING in this
+# kernel writes it yet: an invariant becomes verified once its referenced check test exists and is
+# collectable, and no code here establishes that. It is in the vocabulary, not in the behaviour.
+NON_AUTOMATON_STATUSES = {"DEC": ("VALID", "SUPERSEDED"), "INV": ("unverified", "verified")}
+
+
+def status_values(item_type: str) -> tuple:
+    """Every status this type can carry -- from its automaton, or from the map above."""
+    automaton = AUTOMATA.get(item_type)
+    if automaton is not None:
+        return tuple(sorted(automaton.states))
+    return NON_AUTOMATON_STATUSES.get(item_type, ())
+
+
+def widest_status() -> str:
+    """The longest status string any shipped automaton carries.
+
+    A FUNCTION over `AUTOMATA` rather than a literal in the caller, and the caller is `migrate`'s
+    per-item budget check: it measures the body the kernel WILL write, so it needs a placeholder
+    that can never be shorter than the real value. Its previous placeholder was the literal
+    `"VALID"`, one byte short of `DRAFT`... and of `RETIRED`, and the check then passed items
+    `validate` flags. Derived here so a renamed status moves the measure with it, and so the AST
+    reader in `test_approvals_dispatch` can bound the write it feeds from the same map.
+    """
+    return max((status for automaton in AUTOMATA.values() for status in automaton.states), key=len)
+
+
 def confirming_edge(item_type: str):
     """The (from, to) edge on which a type is closed as CONFIRMED, or None.
 
@@ -584,6 +617,36 @@ TSK_PLAN_FIELDS = frozenset((
 
 # -- V1 -> V2 status mapping (spec II.10; machine-readable, never guess) -------
 
+# WHERE AN IMPORTED ITEM KEEPS ITS PAST, named here rather than in `migrate` because TWO modules
+# have to agree on it: `migrate` composes the block, and `state.capture_migrated_archive` refuses a
+# body that carries none and stamps its own two facts into it (which required fields were absent,
+# and which kit version the record came from -- SR-0002). A constant in `migrate` would have made
+# the kernel import the caller it is called by.
+LEGACY_FIELD = "legacy_fields"
+MIGRATION_FLAG = "migration_confirmation_required"
+
+# WHAT THE THIRD COLUMN MEANS, stated ONCE for every row rather than argued per row -- and it is
+# stated here because without it the column is a list of individual calls, which is what it had
+# become: `("TSK", "DONE")` carried fifteen lines of argument and `("EXP", "DONE")` -- the last box
+# of the other shipped chain -- carried none, so no reader could tell which of the two was the rule.
+#
+#     `archive_candidate` is True exactly when the V1 value is where THE V1 RECORD'S LIFE ENDED,
+#     as the V1 kit itself recorded it: the shipped template's own status chain does not leave it.
+#
+# It is a fact about the V1 VOCABULARY and about nothing else. In particular it is NOT "the mapped
+# V2 status is a terminal of the V2 automaton" -- that is a property of a live V2 item and says
+# nothing about a 2025 record, and reading it that way is the defect SR-0004 was written against
+# (a V1 `TSK DONE` landing in `tasks/active/` as a fresh work order). And it is not a routing
+# decision either: WHERE a record goes is `state.migration_archive_status`, which asks this column
+# AND the approval bolt, so a row may say "this life is over" and the record still land in active/
+# because the import may not write that status. `legacy_fields.archive_candidate` and
+# `legacy_fields.written_to` are the two answers, kept apart in the item on purpose.
+#
+# WHERE A ROW DEPARTS FROM THAT READING it is recorded in `ARCHIVE_CANDIDATE_DEVIATIONS` below with
+# its reason, and `test_migrate.test_every_archive_candidate_row_follows_the_v1_chain_or_is_recorded`
+# derives the departures from the kits' own shipped chains in git history -- so a flag flipped here
+# without a reason turns that test red, and a reason left behind for a row that no longer departs
+# turns it red from the other side.
 V1_STATUS_MAPPING = {
     # (v1_type, v1_status) -> (v2_type, v2_status, archive_candidate)
     # The spec's II.10 table lists only the NON-identity rows; the identity
@@ -593,13 +656,25 @@ V1_STATUS_MAPPING = {
     # without them every plain DONE import would block.
     ("TSK", "TODO"): ("TSK", "READY", False),
     ("TSK", "IN_PROGRESS"): ("TSK", "IN_PROGRESS", False),
-    ("TSK", "DONE"): ("TSK", "DONE", False),
+    # ARCHIVE-BOUND AT `DONE` (user decision 2026-08-04), and this is a recorded DEPARTURE from the
+    # chain rule above -- `DONE` is mid-chain in the shipped `tasks.yaml`; see
+    # `ARCHIVE_CANDIDATE_DEVIATIONS` for the reason and for what the field data says.
+    # WHAT IT MAY NOT SAY, which is the other half of the same decision: `VALIDATED` would be the V2
+    # terminal, and it is the one value this row may not carry. In V2 `DONE` means the work is
+    # finished and `VALIDATED` means QA confirmed it; V1 collected no such confirmation, so mapping
+    # on to it would be the import inventing a statement about quality that nobody ever made.
+    ("TSK", "DONE"): ("TSK", "DONE", True),
     ("TSK", "VALIDATED"): ("TSK", "VALIDATED", True),
+    # V1 REJECTED is a task QA turned down -- a work order that ended without being delivered.
+    # V2's `FAILED` is NOT that: it is a live retry state a task comes back out of. `CANCELLED` is
+    # the terminal that means "this work order was not delivered", so that is the row.
+    ("TSK", "REJECTED"): ("TSK", "CANCELLED", True),
     ("PRD", "PROPOSED"): ("PR", "DRAFT", False),
     ("PRD", "APPROVED"): ("PR", "APPROVED", False),
     ("PRD", "TESTED"): ("PR", "DELIVERED", False),
     ("PRD", "ACCEPTED"): ("PR", "ACCEPTED", True),
     ("PRD", "DONE"): ("PR", "ACCEPTED", True),
+    ("PRD", "REJECTED"): ("PR", "REJECTED", True),
     ("SR", "DRAFT"): ("SR", "PROPOSED", False),
     ("SR", "ACTIVE"): ("SR", "ACCEPTED", False),
     ("SR", "DONE"): ("SR", "ACCEPTED", True),
@@ -607,12 +682,248 @@ V1_STATUS_MAPPING = {
     ("PROC", "APPROVED"): ("PROC", "APPROVED", False),
     ("PROC", "ACTIVE"): ("PROC", "ACTIVE", False),
     ("PROC", "RETIRED"): ("PROC", "RETIRED", True),
+    # -- THE BACKLOG TYPES THE TABLE DID NOT COVER, added 2026-08-04 ---------------------------
+    # Every value below is READ OFF THE V1 TEMPLATE that shipped it -- the `Status: ...` chain in
+    # the header comment of each kit's own `templates/project_memory/*.yaml`, at the last commit
+    # that carried them -- and never invented. `test_migrate` derives the same pairs from that
+    # same history and fails on any this table is missing, so the coverage claim is measured
+    # rather than asserted. Without these rows the migration reported a V1 `bugs.yaml`,
+    # `change_requests.yaml`, `feature_requests.yaml`, `research_questions.yaml`,
+    # `hypotheses.yaml` and `experiment_designs.yaml` as "not a backlog type" and exited 0, which
+    # is a false all-clear over most of the dev and research stores.
+    #
+    # WHERE A V1 VALUE HAS NO V2 COUNTERPART the row records the closest state on the V2
+    # automaton and says so here; nothing is lost, because an imported item arrives at its
+    # INITIAL status and the V1 original is kept in `legacy_fields` (spec II.10). The mapped
+    # value is a NOTE about what V1 meant, not a position the kernel walks to.
+    # bugs.yaml: OPEN -> IN_PROGRESS -> FIXED -> VERIFIED / WONTFIX / DUPLICATE
+    ("BUG", "OPEN"): ("BUG", "OPEN", False),
+    ("BUG", "IN_PROGRESS"): ("BUG", "APPROVED", False),   # V2 has no IN_PROGRESS: work sanctioned
+    ("BUG", "FIXED"): ("BUG", "FIXED", False),
+    ("BUG", "VERIFIED"): ("BUG", "VERIFIED", True),
+    ("BUG", "WONTFIX"): ("BUG", "REJECTED", True),
+    ("BUG", "DUPLICATE"): ("BUG", "DUPLICATE", True),
+    # change_requests.yaml: PROPOSED -> WAITING_APPROVAL -> APPROVED -> APPLIED / REJECTED
+    ("CR", "PROPOSED"): ("CR", "DRAFT", False),
+    ("CR", "WAITING_APPROVAL"): ("CR", "DRAFT", False),   # V2 has no waiting state: still a draft
+    ("CR", "APPROVED"): ("CR", "APPROVED", False),
+    ("CR", "APPLIED"): ("CR", "APPLIED", True),
+    ("CR", "REJECTED"): ("CR", "REJECTED", True),
+    # research protocol_amendments.yaml ships the SAME chain under its own `PA-` prefix
+    ("PA", "PROPOSED"): ("CR", "DRAFT", False),
+    ("PA", "WAITING_APPROVAL"): ("CR", "DRAFT", False),
+    ("PA", "APPROVED"): ("CR", "APPROVED", False),
+    ("PA", "APPLIED"): ("CR", "APPLIED", True),
+    ("PA", "REJECTED"): ("CR", "REJECTED", True),
+    # feature_requests.yaml: PROPOSED -> TRIAGED -> ACCEPTED (-> becomes a PRD) / REJECTED /
+    # DEFERRED. "becomes a PRD" is exactly what V2 calls CONVERTED.
+    ("FR", "PROPOSED"): ("FR", "OPEN", False),
+    ("FR", "TRIAGED"): ("FR", "TRIAGED", False),
+    ("FR", "ACCEPTED"): ("FR", "CONVERTED", True),
+    ("FR", "REJECTED"): ("FR", "REJECTED", True),
+    ("FR", "DEFERRED"): ("FR", "TRIAGED", False),         # triaged and parked; V2 has no DEFERRED
+    # research_questions.yaml: PROPOSED -> APPROVED -> INVESTIGATED -> VALIDATED -> ACCEPTED /
+    # REJECTED. RQ runs the PR-like automaton, so the middle two land on its delivery states.
+    ("RQ", "PROPOSED"): ("RQ", "DRAFT", False),
+    ("RQ", "APPROVED"): ("RQ", "APPROVED", False),
+    ("RQ", "INVESTIGATED"): ("RQ", "IN_DELIVERY", False),
+    ("RQ", "VALIDATED"): ("RQ", "DELIVERED", False),
+    ("RQ", "ACCEPTED"): ("RQ", "ACCEPTED", True),
+    ("RQ", "REJECTED"): ("RQ", "REJECTED", True),
+    # ...and the research kit ships a SECOND store under the `RQ-` prefix: `fzulg_documentation.yaml`
+    # keys the BSFZ application layer by the research question it documents, with its own two-state
+    # chain (DRAFT -> READY, "ready for the application"). Those values describe the FORM, not the
+    # question's own life, so neither of them moves the RQ anywhere: an imported item arrives at its
+    # initial status regardless, and the V1 value is kept in `legacy_fields`. Without these rows a
+    # research project that filled that file could not be migrated at all -- `RQ` has rows, so an
+    # unknown `RQ` status blocks the whole run.
+    ("RQ", "DRAFT"): ("RQ", "DRAFT", False),
+    ("RQ", "READY"): ("RQ", "DRAFT", False),
+    # hypotheses.yaml: DRAFT -> ACTIVE -> SUPPORTED / REFUTED
+    ("HYP", "DRAFT"): ("HYP", "PROPOSED", False),
+    ("HYP", "ACTIVE"): ("HYP", "TESTING", False),
+    ("HYP", "SUPPORTED"): ("HYP", "SUPPORTED", True),
+    ("HYP", "REFUTED"): ("HYP", "REFUTED", True),
+    # experiment_designs.yaml: DRAFT -> ACTIVE -> DONE
+    ("EXP", "DRAFT"): ("EXP", "DESIGNED", False),
+    ("EXP", "ACTIVE"): ("EXP", "RUNNING", False),
+    # ARCHIVE-BOUND BY THE RULE, not by a second decision: `DONE` is the last box of the shipped
+    # `experiment_designs.yaml` chain, exactly as `RETIRED` is for a procedure. It stood at False
+    # while `TSK DONE` -- the last box of the OTHER shipped chain -- stood at True, and nothing said
+    # why; that asymmetry is what made this column read as a list of calls.
+    # THE RECORD STILL LANDS IN active/, and by the OTHER bolt rather than by this flag: `COMPLETED`
+    # sits behind `EXP` DESIGNED->APPROVED, which `approvals.APPROVAL_TRANSITIONS` marks as an edge
+    # a user approval commits, so `state.migration_archive_status` refuses to write it. The item
+    # then carries `archive_candidate: true` beside `written_to: active`, which is the two answers
+    # staying apart rather than one of them being bent to produce the other.
+    ("EXP", "DONE"): ("EXP", "COMPLETED", True),
+    # decisions.yaml: PROPOSED -> ACCEPTED -> SUPERSEDED, shipped by dev under the `ADR-` prefix
+    # and by research under `MDR-` with the identical status chain and the identical four content
+    # fields. They are ONE row set under two prefixes because the two templates are the same
+    # schema, not because somebody listed two spellings.
+    #
+    # WHY THEY ARE ITEMS AND NOT CARRIED DOCUMENTS (DEC-0002, user decision 2026-08-04): the
+    # alternative was to leave 106 measured records in V1 form beside V2 `DEC` items -- two forms
+    # for one thing, permanently. `decisions.yaml` is a backlog store with ids, a status and a
+    # lifecycle, exactly like `tasks.yaml`, and `title`/`context`/`decision`/`consequences` are
+    # spelled the same in `REQUIRED_FIELDS["DEC"]`, so nothing has to be guessed to carry them.
+    #
+    # `SUPERSEDED` CARRIES THE FLAG BY THE RULE -- it is the last box of the shipped
+    # `decisions.yaml` chain -- AND THE RECORD STILL ARRIVES IN active/, for a reason that is about
+    # the writer and not about the V1 value: `DEC` has no automaton, so
+    # `state.migration_writable_statuses("DEC")` is empty and the archive path refuses every status
+    # for it. The flag said False for that routing reason for one round, which is the two questions
+    # collapsing into one word again. A superseded V1 decision therefore arrives as an active `DEC`
+    # carrying `archive_candidate: true`, `written_to: active` and `SUPERSEDED` under
+    # `legacy_fields.legacy_status`. What DEC has no field for at all is WHICH decision superseded
+    # it (named in DEC-0002); that relation stays prose in `context`.
+    ("ADR", "PROPOSED"): ("DEC", "VALID", False),
+    ("ADR", "ACCEPTED"): ("DEC", "VALID", False),
+    ("ADR", "SUPERSEDED"): ("DEC", "SUPERSEDED", True),
+    ("MDR", "PROPOSED"): ("DEC", "VALID", False),
+    ("MDR", "ACCEPTED"): ("DEC", "VALID", False),
+    ("MDR", "SUPERSEDED"): ("DEC", "SUPERSEDED", True),
+}
+
+# THE ROWS WHOSE `archive_candidate` DEPARTS FROM THE V1 CHAIN, each with the reason it departs.
+#
+# Not a second statement of the flag -- the flag is above and this says WHY it disagrees with the
+# shipped chain. `test_migrate.test_every_archive_candidate_row_follows_the_v1_chain_or_is_recorded`
+# derives the set of departures from the kit templates in this repository's own history and
+# compares it against these keys, so neither side can move alone: a flag flipped without a reason
+# fails on the left, a reason kept for a row that no longer departs fails on the right.
+ARCHIVE_CANDIDATE_DEVIATIONS = {
+    ("TSK", "DONE"):
+        "mid-chain (`DONE -> VALIDATED`), flagged as finished anyway. V2 keeps `VALIDATED` for "
+        "'QA confirmed', a confirmation V1 never collected, so no V1 record ever reached the "
+        "chain's last box on the strength of a real check. Measured across the two dev field "
+        "projects on 2026-08-05: 422 task records stand at DONE and 1 at VALIDATED -- reading DONE "
+        "as unfinished would bury the ten live tasks under them, which is what SR-0004 exists to "
+        "prevent (user decision 2026-08-04).",
+    ("PRD", "DONE"):
+        "mid-chain (`DONE -> TESTED -> ACCEPTED`), flagged as finished anyway, and this row is the "
+        "weakest of the four: it comes from spec II.10's original table and this repository has "
+        "never re-derived it. Measured 2026-08-05: 10 field records stand at PRD DONE. It costs "
+        "nothing today "
+        "-- `PR ACCEPTED` sits behind the acceptance approval, so `migration_archive_status` "
+        "refuses it and the record lands in active/ either way -- and it is recorded as a departure "
+        "rather than quietly corrected, because changing what a V1 requirement status MEANS is a "
+        "spec decision and not an implementer's.",
+    ("FR", "DEFERRED"):
+        "the chain's own last box, deliberately NOT flagged: a deferred feature request is parked, "
+        "not finished -- the V1 template writes it as an outcome of triage beside ACCEPTED and "
+        "REJECTED, and the project can still pick it up. It maps to `TRIAGED` for the same reason.",
+    ("RQ", "READY"):
+        "the last box of the SECOND chain the `RQ` prefix carries: "
+        "`fzulg_documentation.yaml` keys the BSFZ application layer by the research question it "
+        "documents and runs its own DRAFT -> READY pair. Those two values describe the FORM of the "
+        "documentation, not the question's life, so neither of them ends anything.",
 }
 
 
+# -- V1 -> V2 FIELD suggestions (SR-0007) --------------------------------------
+#
+# WHAT A ROW IS. A V2 required field a V1 store never spelled the same way, together with the V1
+# field of that store which carries the same thing, and WHY. It is a SUGGESTION and nothing else:
+# `migrate` prints it as the `--map` flag it would be, the run stays unexecutable until a human
+# types that flag back, and a `--map` naming a different field wins. SR-0007 is where the boundary
+# is argued ("ein Vorschlag ist keine Antwort").
+#
+# WHY THIS IS A TABLE AND NOT A RULE, stated rather than left as an apparent oversight: the step
+# from "the V1 template documents this field as X" to "X is what the V2 contract calls Y" is a
+# reading of two prose contracts, and no property of the two field NAMES produces it -- `actual`
+# and `observed` share no substring, while `description` means three different things in three
+# stores. What IS mechanical is everything AROUND the row, and all of it is checked rather than
+# claimed: `test_migrate.test_every_field_suggestion_rests_on_a_field_the_kit_really_shipped`
+# derives, from the V1 templates in this repository's own history, that each row's V1 store really
+# documents that V1 field, that the V2 field really is required for the type the store maps to,
+# and that the row is NEEDED (the two contracts do not already spell it the same). A row invented
+# here for a field no kit ever shipped turns that test red.
+#
+# WHERE NO ROW STANDS THERE IS NO SUGGESTION, and that is the other half of SR-0007. `BUG` carries
+# `violates`, which its own V1 template documents as `[PRD-XXXX | SR-XXXX]` -- two different
+# parents -- so nothing here proposes it for `related_pr`; `PR`'s six uncollected fields
+# (`class`, `problem`, `goal`, `invariants`, `out_of_scope`, `priority`) appear in no V1 product
+# requirement template at all. Those stay open questions, because a suggestion with no ground under
+# it is worse than a question.
+V1_FIELD_SUGGESTIONS = {
+    # (v1_type, v2_field): (v1_field, why)
+    ("SR", "contract"): (
+        "title",
+        "the V1 system-requirements store carried the requirement ITSELF in `title` -- it has no "
+        "second prose field -- and `contract` is where V2 asks for that requirement. A project "
+        "whose architect added a longer field of its own should override this"),
+    ("TSK", "assigned_role"): (
+        "owner",
+        "`owner` is the V1 task store's role vocabulary; `assigned_role` is the same choice in V2"),
+    ("PROC", "roles"): (
+        "owner",
+        "the V1 process store documents `owner` as the executing specialist role; `roles` is that "
+        "role in V2"),
+    ("FR", "request_text"): (
+        "user_story",
+        "the V1 feature-request store writes the request as a user story; `request_text` is the "
+        "request in the requester's words"),
+    ("CR", "change_description"): (
+        "description",
+        "the V1 change-request store documents `description` as what should change, which is what "
+        "`change_description` names"),
+    ("CR", "target_pr"): (
+        "affects",
+        "the V1 change-request store documents `affects` as the requirement id the change is "
+        "against, which is the binding `target_pr` carries"),
+    ("PA", "change_description"): (
+        "description",
+        "the research protocol-amendment store ships the change-request schema under its own "
+        "prefix, and documents `description` as what should change"),
+    ("PA", "target_pr"): (
+        "affects",
+        "the research protocol-amendment store documents `affects` as the research question the "
+        "amendment is against, which is the binding `target_pr` carries"),
+    ("BUG", "observed"): (
+        "actual",
+        "the V1 bug store documents `actual` as what happens instead, which is what `observed` "
+        "records beside `expected`"),
+    ("BUG", "repro"): (
+        "steps_to_reproduce",
+        "`steps_to_reproduce` is the V1 spelling of the reproduction `repro` asks for"),
+    ("HYP", "testable_prediction"): (
+        "success_criteria",
+        "the V1 hypothesis store documents `success_criteria` as what would support the "
+        "hypothesis, which is the prediction `testable_prediction` asks to be able to test"),
+    ("EXP", "design"): (
+        "title",
+        "the V1 experiment store named the design itself in `title` -- its prose lives in "
+        "`procedure` and `analysis_plan`, neither of which is the design as a whole"),
+}
+
+
+def suggested_v1_field(v1_type: str, v2_field: str):
+    """(v1_field, why) for a V2 required field this V1 store spells differently, or None."""
+    return V1_FIELD_SUGGESTIONS.get((v1_type, v2_field))
+
+
+def v1_types() -> frozenset:
+    """Every V1 type this harness has a mapping row for -- the table's own answer.
+
+    The migration needs it to tell two different findings apart, and the difference decides whether
+    a project can be migrated at all: a type with rows here and an unrecognised STATUS is a backlog
+    record the harness does not understand yet (block, spec II.10), while a type with no row at all
+    is not a backlog record -- a dev project's `acceptance_reports.yaml` keys its criteria `AC-<n>`
+    and gives them a `status`, and treating those as unmappable backlog items blocked the whole
+    migration of a project whose QA reports were simply QA reports. The field reading behind that
+    example is recorded at `migrate._is_backlog_type`, which is the function that asks this one.
+    """
+    return frozenset(v1_type for v1_type, _status in V1_STATUS_MAPPING)
+
+
 class UnknownV1Status(ValueError):
-    """No mapping for a V1 status -- the migration tool must BLOCK and raise a
-    Decision item, never guess (spec II.10)."""
+    """No mapping for a V1 status -- the migration BLOCKS and the human records a
+    Decision item; nothing guesses (spec II.10).
+
+    Raised into `kernel/migrate.py`, which turns it into a `blocked` finding on the
+    dry run and refuses the executing run wholesale while any one of them stands --
+    a plan with a blocker is not partially applied."""
 
 
 def map_v1_status(v1_type: str, v1_status: str):
@@ -622,7 +933,12 @@ def map_v1_status(v1_type: str, v1_status: str):
         return V1_STATUS_MAPPING[(v1_type, v1_status)]
     except KeyError:
         raise UnknownV1Status(
-            "no V1->V2 mapping for %s status %r. Remedy: the migration blocks "
-            "here -- record a Decision item and extend the mapping table "
-            "deliberately (spec II.10: never guess)." % (v1_type, v1_status)
+            "no V1->V2 mapping for %s status %r; `%s` has rows in spec II.10's table but this "
+            "value is not one of them, so the migration blocks rather than guessing. Remedy: this "
+            "is a HARNESS gap, not a project one -- the table lives in the enforcement layer, "
+            "which a session may not edit (`guard_harness_selfmod` refuses it). Record it with "
+            "`python scripts/harness.py capture DEC` and report it; the walkable alternative "
+            "inside the project is to correct the status in the V1 file itself, in an editor "
+            "outside the session, if the value is simply wrong."
+            % (v1_type, v1_status, v1_type)
         ) from None

@@ -1,0 +1,61 @@
+id: DEC-0020
+title: Jede Funktion, deren Rueckgabe der Leser fuer die Antwort des Geprueften haelt,
+  wird gegen das Geprueft gemessen
+context: 'DEC-0018 verlangt: jede Verzweigung der entscheidenden Funktion ist eine
+  Achse. Das ist angewandt worden -- die Tabelle wuchs von 638 auf 1440 Zellen, die
+  Vorsatz-Achse kommt aus den Verzweigungen selbst, jeder Kandidat gegen den laufenden
+  Code bewiesen.
+
+
+  Und der blockierende Befund sitzt an GAR KEINER Verzweigung. Die Verzweigung ''darf
+  dieses Wort erweitert werden'' hat eine Achse und ist gemessen. Der WERT, den sie
+  einspeist, ist der Aufruf einer fremden Funktion -- und die beantwortet eine andere
+  Frage als die Shell. Die Shell kennt sieben Formen des Tilde-Praefix, die fremde
+  Funktion zwei; die uebrigen fuenf beantwortet sie FALSCH statt gar nicht und macht
+  daraus einen absoluten Pfad, den nichts schuetzt.
+
+
+  Gemessen am Gate des laufenden Repos, ein Werkzeugaufruf ohne Vorbereitung: die
+  Registrierungsdatei aller vier Gates, der Apparat selbst und der kanonische Zustand
+  sind erreichbar. Zwei weitere Formen kommen nur deshalb verweigert heraus, weil
+  ein Zeichen in einer Zeichenklasse fehlt -- ein Zufall, kein Schutz.
+
+
+  Dieselbe Naht ein zweites Mal in derselben Runde: eine Zusicherung sagt, die neue
+  Flaeche sei durch die Frist des Gates begrenzt. Die Frist wird einmal je Aufruf
+  geprueft, die Arbeit waechst mit dem Produkt aus Vorkommen und Laenge. Gemessen:
+  2052 Zeichen kosten 113,9 s bei 120 s Frist, unter Last keine Antwort nach 240 s
+  -- und ein getoeteter Hook ist ein Durchlass, mit dem Schreibzugriff in derselben
+  Zeile.'
+decision: 'Jede Funktion, deren Rueckgabe dieser Leser fuer die Antwort des Geprueften
+  haelt, wird gegen das Geprueft gemessen -- nicht gegen ihre eigene Zusage. Wo sie
+  eine andere Frage beantwortet als die gestellte, gilt ihre Antwort nicht; wo sie
+  falsch antwortet statt zu schweigen, ist das der gefaehrlichere Fall und muss die
+  Fehlerrichtung umdrehen.
+
+
+  DEC-0018 bleibt in Kraft und wird nicht abgeloest. Eine Verzweigung und eine delegierte
+  Antwort sind verschiedene Strukturen: die eine erzeugt eine Achse, die andere eine
+  Messung gegen die Wirklichkeit. Beide werden gebraucht.
+
+
+  Und ueber das Ende der Rekursion steht wieder kein Satz. Gemessen ist stattdessen,
+  was heute offen ist: acht Verzweigungen der entscheidenden Haelfte, die keine Zelle
+  erreicht.'
+consequences: 'Zwoelfte Form, und dieselbe Familie wie DEC-0019: die Eigenschaft wurde
+  genau an der Stelle gebaut, an der der Befund stand, und die Aufzaehlung blieb eine
+  Ebene darunter stehen. Diesmal nicht in einem Zweig darunter, sondern in einem AUFRUF
+  darunter.
+
+
+  Der Pruefer hat sich in derselben Meldung selbst korrigiert: er hatte die Erweiterbarkeit
+  als Naht gefunden und den Erweiterer darunter nicht angesehen -- der Befund stand
+  in derselben Datei, als er ''geschlossen'' bestaetigte. Das ist die ehrlichste Form,
+  in der diese Regel bisher belegt wurde: sie trifft auch den, der sie aufgestellt
+  hat.'
+source: Pruefbericht zu TSK-0019, 2026-08-07, Befunde F1 und F3 und die Antwort auf
+  die Messfrage zu DEC-0018
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-07T12:26:49'

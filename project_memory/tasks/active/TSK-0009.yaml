@@ -1,0 +1,40 @@
+id: TSK-0009
+product_requirement: PR-0003
+derives_from: SR-0008
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- .claude/agents/**
+- .claude/hooks/**
+- CLAUDE.md
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- SR-0008 (der Vertrag), DEC-0008 (die Begruendung und die Messung dahinter)
+- BUG-0012 (Gate 1 verweigert die dokumentierte Kernel-Vorsilbe in einer Funktionsdefinition)
+  -- gehoert in denselben Zug
+expected_outputs:
+- 'harness-implementer.md und harness-verifier.md tragen SR-0008 als Vorgabe: was
+  ein Kommentar tragen darf, in welcher Reihenfolge geprueft wird, und dass eine Zahl
+  an genau einem Ort steht'
+- 'CLAUDE.md: die Hausregel ''kein Kommentar darf Schutz behaupten'' wird um die praeventive
+  Haelfte ergaenzt und verweist auf SR-0008 statt sie nachzuerzaehlen'
+- '.claude/hooks/**: die eigenen Docstrings auf SR-0008 zugeschnitten -- ein Beleg
+  am eigenen Bestand, nicht nur eine Vorgabe fuer andere. Jede Eigenschaftsbehauptung
+  ist entweder ein Test oder faellt weg'
+- 'BUG-0012 geschlossen: eine Zuweisung ohne Verb ist fuer BEIDE Leser keine Schreibstufe;
+  Test mit Funktionsdefinition rc 0, Gegenrichtung (Rumpf schreibt wirklich) weiter
+  rc 2'
+- 'Gemessen und berichtet: wie viele Zeilen Kommentar unter .claude/hooks/ vorher
+  und nachher, und welche Behauptung zu welchem Test wurde'
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-05T07:00:29'

@@ -1,0 +1,26 @@
+id: DEC-0004
+title: Der Feldvertrag gilt nicht fuer Items, die migrate ins Archiv schreibt
+context: 'V2 verlangt Informationen, die V1 nie erhoben hat -- nicht umbenannt, nicht
+  vorhanden. Gemessen: einem V1-TSK fehlen ZEHN von elf Pflichtfeldern (allowed_scope,
+  forbidden_scope, required_inputs, expected_outputs, assigned_role, acceptance_refs,
+  dependencies, product_requirement, root_revision, type). Ein V1-Task ist eine Zeile
+  auf einer Liste, ein V2-Task ein Arbeitsauftrag; aus dem einen laesst sich das andere
+  nicht ableiten. Und die Pflichtfelder werden beim ANLEGEN geprueft, nicht statusabhaengig
+  -- ''erst importieren, spaeter fuellen'' geht nicht. Betroffen: 515 erledigte Datensaetze
+  in zwei Projekten.'
+decision: Nein -- der Feldvertrag gilt nicht fuer Items, die migrate direkt ins Archiv
+  schreibt. Ein archiviertes Item ist ein Protokoll darueber, was passiert ist, kein
+  auszufuehrender Auftrag; der Vertrag existiert, damit ein Arbeitsauftrag ausfuehrbar
+  ist, und eine 2025 abgeschlossene Aufgabe wird nicht noch einmal ausgefuehrt.
+consequences: '515 erledigte Datensaetze werden auffindbare Historie statt toter YAML-Zeilen,
+  und das Abschlusskriterium haelt trotzdem. Die Alternativen waren beide schlechter:
+  Platzhalter in die Felder schreiben legt einem Gate einen Satz vor (allowed_scope
+  speist gate_write_scope) statt eine Luecke zu lassen; den Vertrag generell aufweichen
+  hiesse, dass V2s Zusagen fuer 700+ Items dauerhaft nicht gelten und man es von aussen
+  nicht sehen kann. Die Handarbeit bleibt klein: von 429 Aufgaben sind zehn lebendig.'
+source: Nutzerentscheidung 2026-08-04 auf die vorgelegte Frage; Messung der Feldluecken
+  gegen backlog_types.REQUIRED_FIELDS
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:28:43'

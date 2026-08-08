@@ -1,0 +1,56 @@
+id: DEC-0011
+title: Hausregel 1 gilt auch fuer die Klammer -- und ein Beispiel im Auftrag wird
+  zur Pruefliste
+context: 'Dritter Fall in drei Runden, in dem meine Auftragsformulierung den Defekt
+  erzeugt hat. DEC-0010 hielt zwei Formen fest (Aufzaehlung statt Eigenschaft; Loesung
+  statt Anforderung). Der dritte ist subtiler und teurer.
+
+
+  TSK-0010 verlangte: ''eine Erkennungsregel, die die geprueften Regel ECHT enthaelt
+  (Gross/Klein, _ als Trenner, 1-2 Ziffern, laengere Praefixe)''. Der Satz VOR der
+  Klammer ist eine Eigenschaft und richtig. Die Klammer nennt vier Beispiele. Der
+  Umsetzer hat genau diese vier gebaut -- und weil ''eine andere POSITION im Dokument''
+  nicht in der Klammer stand, kommt sie im breiten Leser auch nicht vor.
+
+
+  Folge, gemessen in den Echtdaten: ein id-foermiger Datensatz mit status (''OQ-1''
+  in synaipses review_reports.yaml) taucht unter keiner Ueberschrift des Trockenlaufs
+  auf, validate meldet ihn nicht, und der Vollstaendigkeitsnachweis findet ihn nicht
+  -- waehrend dessen Kommentar behauptet, ein solcher Datensatz sei ''impossible by
+  construction''. Drei Leser, eine blinde Stelle, und die Zusicherung darueber ist
+  messbar falsch.
+
+
+  Zweiter Fall aus derselben Nacht: TSK-0011 sagte ''jeder Docstring behauptet nur,
+  was ein Test faehrt''. Woertlich genommen verbietet das einem Docstring, ein Loch
+  zu BENENNEN -- was eine andere Zeile desselben Auftrags verlangt. Der Umsetzer hat
+  die Doppeldeutigkeit gemeldet statt sich eine Auslegung auszusuchen.'
+decision: 'Eine Klammer, die Beispiele der Eigenschaft nachschiebt, ist eine Aufzaehlung
+  mit besserer Tarnung. Sie wird zur PRUEFLISTE, und was nicht drinsteht, prueft niemand
+  -- weder der Umsetzer noch der Pruefer, weil beide denselben Massstab lesen.
+
+
+  Also: keine Beispiele in einem expected_output. Wenn die Eigenschaft ohne Beispiel
+  nicht verstaendlich ist, ist sie nicht scharf genug formuliert. Beispiele gehoeren
+  in den Fliesstext des Auftrags, ausdruecklich als ''unter anderem'', oder in den
+  Befundbericht, auf den das Item verweist.
+
+
+  Und: eine Zeile, die woertlich gelesen einer anderen Zeile desselben Auftrags widerspricht,
+  ist falsch -- nicht auslegungsbeduerftig. Vor dem Absenden jede Zeile gegen jede
+  andere lesen.'
+consequences: 'Die drei Pruefungen an einer Auftragszeile sind damit: (1) Kann ich
+  sie ohne Verb, Werkzeug oder Schreibweise hinschreiben? (2) Nennt sie eine Datenstruktur
+  oder eine Fallzahl? (3) Traegt sie eine Klammer mit Beispielen? Dreimal nein, sonst
+  umformulieren.
+
+
+  Kosten: Auftragszeilen werden abstrakter und schwerer zu lesen. Das ist der richtige
+  Tausch -- ein Umsetzer, der eine Eigenschaft nicht versteht, fragt nach; einer,
+  der eine Pruefliste bekommt, hakt sie ab.'
+source: Pruefberichte zu TSK-0010 (Abschnitt 'Hat TSK-0010 als Massstab getragen',
+  Punkt 1) und TSK-0011, beide 2026-08-05
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T11:09:57'

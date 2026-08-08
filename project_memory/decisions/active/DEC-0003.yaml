@@ -1,0 +1,26 @@
+id: DEC-0003
+title: In diesem Repo wird kein Kit installiert -- Buchfuehrung ohne Durchsetzung
+context: 'Der Nutzer hat benannt, dass wir hier genau den Fehler machen, den das Harness
+  verhindern soll: Entscheidungen leben im Gespraech und im Kontextfenster. Belege
+  aus einer einzigen Sitzung: die BuyPlugGo-Analyse existierte als sechs Woerter in
+  einer Aufgabenliste und musste neu aus der Quelle abgeleitet werden; der Kontext
+  wurde einmal zusammengefasst; drei Befunde kamen aus Nutzerfragen statt aus einer
+  Pruefrunde.'
+decision: 'Kein Kit, kein Marker -- gate_write_scope verweigert jede schreibende Befehlszeile,
+  die team-kits nennt, und hier ist JEDE Aenderung eine an team-kits/. Stattdessen:
+  der Kernel direkt aufgerufen, project_memory/ im Wurzelverzeichnis, und drei eigene
+  Hooks als Ersatz fuer die Durchsetzung -- (1) der Hauptagent darf keinen versionierten
+  Code schreiben, (2) ein Spawn im Aenderungskreis braucht ein Item, (3) kein Commit
+  ohne Pruefer-Beweismittel, das den Diff-Hash deckt.'
+consequences: 'Die Regel, die die Gates ersetzt, bis sie stehen: der Auftrag an den
+  Umsetzer wird AUS dem Item erzeugt, nicht frei geschrieben, und der Pruefer bekommt
+  dasselbe Item. Damit ist ein Item Eingabe statt Beiwerk -- ein veraltetes Item erzeugt
+  einen falschen Auftrag, und der Fehler wird sichtbar. Befund ueber das Produkt:
+  das Harness hat keinen leichten Modus. Es ist alles oder nichts, und das erklaert,
+  warum die Leute, die es gebaut haben, es nicht benutzen.'
+source: 'Gespraech 2026-08-04; gemessen: validate.py liest nur team-kits/**/templates/project_memory,
+  kein Test greift auf ein Wurzel-project_memory zu'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:28:06'

@@ -329,11 +329,11 @@ entry point asks the shipped parser rather than matching text).
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`,
-`sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`. Of the twelve spec
-II.4 asks for, two are absent under those names: `approve` is SPLIT —
+`sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `migrate`. Of the twelve
+spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also
-walks the status transition it commits. `migrate --dry-run` has no module yet. What has no writer at
+walks the status transition it commits. What has no writer at
 all either way: `project_config.yaml` and `product/masterplan.md` are not typed items. Those are
 infrastructure defects to report, not a licence to write state by hand, and the three constitutions
 say the same in their §0. The promotion path (II.6a) DOES have one now: an `ARC`/`WFR`/`DSN` is
@@ -341,6 +341,101 @@ frozen by `freeze-architecture`/`freeze-wireframe`/`freeze-design`, each taking 
 parameters as a JSON object on stdin. Until 2026-07-31 it did not, and `gate_packaging_decision`
 — which refuses every push and merge until some active `ARC` states a `packaging.method` — was
 therefore a block with no exit in every scaffolded project.
+
+**`migrate` is the V1 import (II.10), and the lead runs it itself** — the alternative was a tool
+beside the harness, which would have been the one write route into canonical state that no gate
+sees. It has two halves. `--dry-run` reads and writes nothing, and reports three things per
+finding: what it found, what it would become, and what it CANNOT do. `--plan <digest>` executes,
+and refuses unless it re-derives the digest the dry run printed from the state AND the flags —
+so the run that executes is the run somebody read. What it translates is a property, not a list of
+file names: a mapping that identifies itself with a `<TYP>-nnnn` id — as its key in an enclosing
+mapping **or** in its own `id` field, wherever in the document it lies — and carries a `status`.
+
+**What follows from that id is four answers, and only two of them stop the run.** A type spec
+II.10's own table (`backlog_types.map_v1_status`) knows, with a status it knows, is imported. A
+type it HAS rows for carrying a status it does not know is a harness gap and BLOCKS — never
+guessed. A type no contract in this kernel knows at all is not a backlog record: it is reported
+as `not_an_item`, imported by nothing and a blocker for nothing, which is what keeps a project's
+own QA reports or catalogues from refusing its whole migration. And a record whose V2 required
+fields have no source anywhere is archived with that gap as its written reason instead of
+refusing the run (DEC-0009). A field carries over only when both contracts spell it the same;
+for the rest there are two different answers. Where the kit's own V1 template documents a field
+that carries the same thing, the dry run prints the `--map` flag as a SUGGESTION with its reason
+and the run stays unexecutable until a human types it back (SR-0007) — a suggestion is not an
+answer. Where nothing can propose one, that is the DEC-0009 archive above. There is exactly one
+exception and it is not a guess about the record: a required field whose subject is where the
+record CAME FROM (`migrate.PROVENANCE_FIELDS`, today only `source`) is filled by the importer,
+which is the only writer that knows the answer — V1 recorded it in no field, so leaving it to
+`--map` would have meant naming a V1 field that does not exist.
+
+**A record that is FINISHED in V1 goes straight to `archive/<TYPE>/<year>/`** (SR-0004) at its
+mapped status, and the per-item field contract does not apply to it (DEC-0004) — a V1 task is
+missing ten of eleven required fields, and a 2025 task will not be executed again. Whether a record
+is finished is a fact about the V1 vocabulary and is read off spec II.10's own mapping table
+(`archive_candidate`), not off the V2 automaton: V1 `TSK DONE` maps to `DONE`, which is no terminal
+of the V2 task automaton — V2 keeps `VALIDATED` for "QA confirmed", a confirmation V1 never
+collected and which the import does not invent. Three bolts, and they are not all of one kind: the
+first two are refusals `state.capture_migrated_archive` raises — the exemption is reachable through
+that method only, `capture` is unchanged; and the status has to be one the type can REACH without a
+user approval, which is a walk over its automaton rather than the approval edges read as a set (a
+status three steps past an approval stands behind it just as much). A V1 `PRD ACCEPTED` is
+therefore NOT archived, and neither is any other V1 value whose V2 status lies behind such an edge:
+each is imported at its initial status, because minting one of those without an APR is what II.10
+forbids. What that costs today is measured, not asserted here — `tools/test_state.py` walks the
+shipped automata and `tools/test_migrate.py` imports such a record. The third bolt is STRUCTURAL
+rather than a check: such an item is never written under `active/`, and this kernel has no
+operation that moves an item out of the archive, so there is nothing to refuse. The archive YEAR
+comes from the record's own newest date; a record that carries no date gets no year guessed for it
+— the run blocks and asks for `--archive-year`.
+
+**There is a SECOND archive door and it answers a different question** (DEC-0009): a record that is
+still whatever V1 said it was, but whose V2 required fields no `--map` and no suggestion can fill,
+is written into the same `archive/<TYPE>/<year>/` at its type's INITIAL status, carrying the
+sentence that says which fields had no source (`legacy_fields.unresolved`). It is an outcome and
+not an obstacle — the run proceeds — and the dry run lists every record it would take, by name,
+before anything is written. What that costs is named there too: nothing brings an item back out of
+the archive, and on the two dev field copies the records that meet this most often are the ROOT
+requirements, so a migrated project can end up holding no active `PR` at all. Both halves of the
+command say so, and they say what it costs: the setup-phase predicate the kits' gates ask
+(`hooks/_root.py`) reads whether an active root item FILE exists, so the gate in front of `git
+merge` and `git push` stops applying until the project holds one again.
+
+**A V1 parent chain migrates**, which is the normal shape of every V1 store: the plan asks the
+writer's verdict against the state the run WILL have reached, orders the writes so a parent exists
+before its child, refuses a cycle, and rewrites each binding to the id the parent actually got
+(V2 allocates ids, so the V1 number is not the V2 one). A binding whose target is in neither the
+plan nor the state is still refused, by the same check as before.
+
+Measured in the suite (`tools/test_migrate.py`) against the office kit's own V1 `project_memory`
+templates restored out of this repository's history — the same schemas, no hand-written fixture
+anywhere. A separate reading was taken by hand on a real office project outside this repository
+and is NOT reproducible from it: the kit version that run was on cannot be re-derived here, so the
+numbers it produced are not quoted. **What it does not do,** and this is the half worth reading
+twice: it mints no approval. Every imported item carries `migration_confirmation_required: true`
+and `approval_ref: null`, so the import opens no gate that needs an approval — `gate_proc_approved`
+still refuses a spawn afterwards, measured, until the user approves each procedure. That is the
+property, and the STATUS is not part of it: where a record lands and at which status is per record
+— a record V1 had already finished arrives at its MAPPED status, which is what the first archive
+door above is for — and the dry run states it for every record before anything is written. It
+rewrites no
+document a gate reads (a V1 `filing_plan.yaml` in the old `tree:` schema stays a wall).
+
+**It does MOVE one class of file, and exactly one** (SR-0005): a V1 store whose every backlog
+record became an item is moved to `project_memory/legacy/`, with its pre-move content hash in the
+run's `DEC` receipt — leaving it beside the items that came out of it would be the same thing
+twice in one project, and `validate` reports exactly that as an error until it is cleared. A store
+that still holds one untranslated backlog record stays where it is, and so does a WALL — a
+document a registered, refusal-capable hook reads — because moving one would leave its gate reading
+an absent file. `legacy/` is a kernel-written area, so a later run does not read it as a V1 source
+and no tool write reaches it. Everything else with no V2 counterpart — a filing log of hundreds of
+entries, an audit history — stays exactly where it is and is inventoried with its content hash in
+the same receipt. Nothing in this harness blocks a later write to those retained files; spec II.10
+asks for such a guard and there is none — as it asks for a separate user consent and a manifest for
+the move to `legacy/`, and gets neither (recorded in the spec's own II.10 addendum (e)). **No approval kind covers a migration** and none is bent into covering it: the
+item-bound kinds (`approvals.item_derived_kinds()`) hash an item's own fields and a migration has
+no item yet, `analysis` wants an analysis question and a cadence, `routine` is a licence for
+something recurring, and the line kind is about publishing a commit. The digest proves the state did not move between
+the reading and the writing — not that a user consented.
 
 `capture` takes the item's fields as a JSON object on **stdin**, and both halves of that are forced
 rather than chosen. Stdin, because an item carries lists of mappings no flag surface expresses and the
@@ -359,7 +454,7 @@ regression test). Below a `PR` sit `SR` contracts and `TSK` work orders; approva
 invariants (`INV`) and evidence are items in exactly the same sense. Architecture diagrams (`ARC`) and
 wireframes (`WFR`) are **draw.io `.drawio.svg`** files with a companion YAML, frozen on approval.
 
-What is closed **leaves**: a terminal item is archived to `archive/<type>/<year>/`, so the active
+What is closed **leaves**: a terminal item is archived to `archive/<TYPE>/<year>/`, so the active
 directories ARE the current context. History lives in git, not as a changelog inside an active file.
 There is no `progress.yaml`, no narrative status log, no committed dashboard history and no ad-hoc
 status/summary/report file (`guard_no_adhoc` blocks the last one).

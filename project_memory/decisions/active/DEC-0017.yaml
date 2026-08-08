@@ -1,0 +1,49 @@
+id: DEC-0017
+title: Die Naht zwischen einer Zusicherung und ihrem Verhalten wird von nichts gemessen
+context: 'Sechs Runden an der Migration, sechs am Apparat. Der Pruefer hat gemessen,
+  was konvergiert und was nicht.
+
+
+  Konvergiert: die Ableitungen halten (drei nachgerechnete Zahlen stimmen auf den
+  Datensatz genau, wo frueher eine Liste stand), die Stolperdraehte werden rot (sechs
+  Mutationen, sechs rot -- das war die haeufigste Luecke frueherer Runden), die Fehlerrichtung
+  stimmt fast ueberall.
+
+
+  Konvergiert NICHT: alle drei ernsten Befunde dieser Runde sind dieselbe Familie.
+  Ein Satz behauptet eine EIGENSCHAFT, der Code baut eine AUFZAEHLUNG. Die Paarung
+  behauptet, drei Wortlisten gebaut. Die Teile, aus denen der Plan besteht, behauptet
+  -- drei Quellen aufgezaehlt, der Kernel selbst ist die vierte. Was uebersprungen
+  wird, wird gemeldet, behauptet -- eine Art des Ueberspringens gemeldet, die zweite
+  eine Zeile darunter stumm, und ueber diese Stille laeuft git merge mit rc 0 durch.
+
+
+  Das ist nicht dieselbe Luecke wie in der letzten Runde, aber derselbe ERZEUGUNGSMECHANISMUS,
+  und der hat sechs Runden ueberlebt.'
+decision: 'Die Kopplung zwischen einer Zusicherung und dem Verhalten, das sie behauptet,
+  wird selbst gemessen. Heute prueft ein Test die Kopplung Eintrag-zu-Test in der
+  Loecherliste; nichts prueft die Kopplung Zusicherung-zu-Verhalten.
+
+
+  Und solange diese Pruefung fehlt, gilt die schwaechere Haelfte derselben Regel:
+  wer eine Eigenschaft behauptet und eine Aufzaehlung baut, schreibt die Aufzaehlung
+  hin. Ein Satz, der mehr verspricht als der Code haelt, wird auf das reduziert, was
+  gebaut ist -- das ist Hausregel 3, und sie ist bisher nur auf Kommentare angewandt
+  worden, nicht auf Docstrings von Pruefungen.'
+consequences: 'Neunte Form, und die erste, die nicht eine Fehlform BENENNT, sondern
+  sagt, warum die acht vorherigen einander aehneln: die Prosa ist der Ort, an dem
+  die Absicht formuliert wird, und eine Absicht ist immer eine Definition; der Code
+  ist der Ort, an dem sie ausgefuehrt wird, und eine Ausfuehrung ist immer endlich.
+  Die Naht dazwischen ist strukturell, nicht nachlaessig -- mehr Sorgfalt schliesst
+  sie nicht.
+
+
+  Der Pruefer sagt dazu: solange die Pruefung dieser Naht fehlt, findet jede Runde
+  ein bis drei neue Exemplare, und die Zahl sinkt nicht. Das ist die erste Aussage
+  dieses Projekts darueber, WANN die Runden enden.'
+source: Pruefbericht zu TSK-0016, 2026-08-07, Befunde F1/F3/F4 und der Abschnitt 'Konvergiert
+  das'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-07T06:48:06'

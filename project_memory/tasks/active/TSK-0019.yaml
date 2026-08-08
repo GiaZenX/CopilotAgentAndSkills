@@ -1,0 +1,38 @@
+id: TSK-0019
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0017: F1 bis F3 blockierend, F4 bis F6 als Reste'
+- DEC-0018 -- warum die Achsen der Pruefmenge aus den Verzweigungen kommen
+expected_outputs:
+- Eine Erweiterung, die die Shell wegen der Quotierung unterlaesst, unterlaesst dieser
+  Leser auch
+- Wo dieser Leser die Wirkung einer Bewegung nicht ausrechnen kann, ist die Position
+  unbekannt -- unabhaengig davon, wohin die Bewegung zeigt
+- Ein Befehl, den eine Ersetzung einfuehrt, wird von derselben Zerlegung platziert
+  wie jeder andere -- oder seine Unsichtbarkeit steht als gemessene Grenze da
+- Jede Verzweigung der entscheidenden Funktionen ist eine Achse der Pruefmenge, und
+  ihre Werte kommen aus der Bedingung dieser Verzweigung
+- Kein Urteil der Loecherliste widerspricht dem gemessenen Verhalten
+- Die Verfassung nennt die Grenzen eines Gates, nicht eine davon
+- Keine Zusicherung eines Tests bindet an eine Konstante, was sie als gemessen ausgibt
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen, auch unter Nebenlast
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-07T08:38:07'

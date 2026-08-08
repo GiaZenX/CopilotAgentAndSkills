@@ -1,0 +1,52 @@
+id: TSK-0007
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0003: F1-F5 blockierend, R1-R10 als Restloecher'
+- SR-0006 -- der Vertrag, dessen Ausloeser eine Werkzeugliste statt einer Eigenschaft
+  ist
+expected_outputs:
+- 'F1: der Import von _harness steht INNERHALB des Schutzes -- mit geloeschter _harness.py
+  liefern alle vier Gates rc=2, gemessen'
+- 'F2: Gate 1 ist zusaetzlich auf Bash|PowerShell registriert und prueft ueber _compat''s
+  Shell-Leser; die acht gemessenen Schreibzeilen des Pruefers werden verweigert. Die
+  Vertragsabweichung von SR-0006 (Ausloeser als Werkzeugliste statt als Eigenschaft)
+  ist GEMELDET'
+- 'F3: tools/ ist Teil des Durchsetzungsapparats -- wer bump_kit_version.py schreiben
+  darf, schaltet den Schutz ab. CLAUDE.md und harness-lead.md nennen tools/ nicht
+  mehr als frei'
+- 'F4: entweder .claude/agents/** ist geschuetzt, oder die beiden Saetze ueber die
+  ''Gegenkraft Sitzungsstart'' sind geloescht -- sie sind messbar falsch, das Gate
+  liest die Datei bei jedem Aufruf neu'
+- 'F5: eine Tabelle {Skript -> erwarteter Matcher} aus SR-0006 abgeleitet und gegen
+  die Registrierung geprueft; je Gate ein Test, der die Werkzeugnamen seines Matchers
+  als tool_name durchspielt. Zeigt Gate 1 auf das falsche Skript, wird ein Test rot'
+- Das Messprotokoll je Gate liegt als ARTEFAKT im Repo (docs/reviews/ oder EVD), nicht
+  nur im Gespraech -- expected_output von TSK-0003, nicht geliefert
+- Gemessen, ob die echte Nutzlast des Sitzungsagenten IN DIESEM REPO agent_type=harness-lead
+  ohne agent_id traegt. Faellt sie anders aus, ist Gate 1 in einer Richtung tot
+- R1-R10 mit ihrem MECHANISMUS in docs/POST_V2_WISHLIST.md -- nicht die Schreibweisen,
+  die der Pruefer zufaellig probiert hat
+- Fuer jede benannte Luecke eine gemessene Angriffskette und eine Entscheidung blockierend/Rest.
+  Eine Luecke, deren Kette INNERHALB einer Sitzung durchlaeuft, ist blockierend
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen; die Suite unter tools/
+  ist NICHT dein Mass (ein anderer Umsetzer arbeitet dort)
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-05T02:06:16'

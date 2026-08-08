@@ -1,0 +1,38 @@
+id: TSK-0021
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0019: F1 bis F3 blockierend, F4 bis F6 als Reste'
+- DEC-0020 -- warum eine delegierte Antwort gegen das Geprueft gemessen wird
+expected_outputs:
+- Wo dieser Leser eine Antwort delegiert, gilt sie nur, soweit sie mit der des Gepruef
+  ten uebereinstimmt -- und wo sie das nicht tut, verweigert er
+- Eine Flaeche, die dieser Leser als durch seine Frist begrenzt ausgibt, antwortet
+  innerhalb der Frist, die seine Registrierung ihm gibt
+- Eine Ausnahme, die der Nutzer abnehmen soll, nennt den Mechanismus, der offen ist,
+  und nicht die Schreibweise, an der er vorgefuehrt wurde
+- Was eine Aussage ueber die Pruefmenge behauptet, wird aus der Pruefmenge erzeugt
+- Eine Pruefmenge, aus der Werte verschwinden, die ein geschlossenes Loch traegt,
+  macht einen Test rot
+- Jede Zusicherung dieses Pakets ist gegen das Verhalten unter ihr gemessen, und diese
+  Messung ist selbst ein Test
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen, auch unter Nebenlast
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-07T12:26:50'

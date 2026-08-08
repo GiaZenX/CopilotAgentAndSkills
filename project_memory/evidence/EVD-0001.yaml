@@ -1,0 +1,27 @@
+id: EVD-0001
+kind: acceptance
+related:
+- TSK-0022
+result: pass
+summary: 'Abnahmelauf 2026-08-08 auf dem echten Arbeitsbaum. Gate-Suite: python -B
+  -m pytest .claude/hooks/test_gates.py -q -> 143 bestanden in EINEM Lauf nach allen
+  Aenderungen; ruff und tools/validate.py gruen; geschuetzte Menge 448 vor und 448
+  nach dem Lauf unbewegt. Produkt-Suite: python -B -m pytest tools/ -q -> 1 gefallen,
+  2304 bestanden, 12 uebersprungen in 9573 s. DER EINE AUSFALL WIRD HIER BENANNT,
+  NICHT VERSCHWIEGEN: tools/test_hooks_v2.py::test_the_id_scan_is_linear_on_the_worst_legal_input,
+  Zeile 6998. Gefallen ist NICHT die Linearitaetszusicherung, sondern der Rausch-Riegel
+  davor -- der Test weigert sich zu messen, statt auf Rauschen zu behaupten, und sein
+  eigener Docstring beschreibt genau diesen Ausgang. Isoliert unmittelbar danach auf
+  demselben Baum: 1 bestanden in 7,64 s. Der Gesamtlauf war rund achtfach langsamer
+  als derselbe Lauf am Vormittag, und der Ausfall lag in diesem Lastfenster. Vom Pruefer
+  ungemessen und hier offengelegt: ob der Test unter derselben Gesamtlast reproduzierbar
+  rot wird. Vom Nutzer am 2026-08-08 ausdruecklich so abgenommen (Auswahl: committen,
+  Ausfall benennen). Inhaltlich traegt TSK-0022: Pruefverdikt der Abschlussrunde meldete
+  genau einen Blocker (F1, eine Aussage ueber den Schutz, die der Code nicht baut),
+  dessen Abhilfe Streichen war; behoben, dazu F2 und die Reste N1/N2 als offene Gattung
+  in H37 Rest 3.'
+artifact_refs:
+- staging/TSK-0022/verdict-round3-2026-08-08.md
+revision: 1
+approval_ref: null
+created: '2026-08-08T19:51:11'

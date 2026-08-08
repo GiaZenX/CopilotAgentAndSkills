@@ -1,0 +1,54 @@
+id: DEC-0023
+title: Die volle Suite ist ein Abnahmelauf, kein Iterationslauf
+context: 'Gemessen 2026-08-08 an der Gate-Suite dieses Repos: voll 17 bis 27 Minuten
+  fuer 143 Tests; die Auswahl -k tilde (DREI Tests) rund 9 Minuten; die Auswahl -k
+  ''not tilde'' (134 Tests) rund 5,5 Minuten. Drei Tests kosten also mehr als die
+  uebrigen 134 zusammen. Die Produkt-Suite tools/ laeuft 22 bis 29 Minuten.
+
+
+  Weder CLAUDE.md noch eine Kit-Verfassung schreibt vor, die volle Suite bei jedem
+  Zwischenschritt zu fahren. CLAUDE.md sagt nur, dass die Gate-Suite nicht in pytest
+  tools/ mitlaeuft und ausdruecklich gestartet werden muss; ''volle Suite gruen in
+  einem Lauf'' steht als ABNAHMEKRITERIUM in den Items. Trotzdem sind in TSK-0021
+  und TSK-0022 mehrere volle Laeufe je Runde gefahren worden -- weil der Sitzungsagent
+  es in den Auftraegen nicht anders verlangt hat. Das ist ein Fehler der Auftragsformulierung,
+  nicht der Subagenten.
+
+
+  Die Regel ''gruen in EINEM Lauf'' hat dagegen einen gemessenen Grund und bleibt:
+  am 2026-08-04 liefen zwei Umsetzer auf disjunkten Baeumen, pytest tools/ spannt
+  ueber beide, neun Tests fielen, sieben davon nur wegen der Nachbaraenderung. Ein
+  Ergebnis aus zwei Teillaeufen kann eine Kreuzkontamination verstecken.'
+decision: 'Waehrend der Iteration wird die kleinste Auswahl gefahren, die die geaenderte
+  Eigenschaft deckt (-k, Pfadauswahl, einzelne Testdatei). Die volle Suite wird EINMAL
+  gefahren, als Abnahmelauf, und dann in einem Lauf.
+
+
+  Der Abnahmelauf umfasst, was der bevorstehende Commit traegt -- nicht nur, was das
+  Paket angefasst hat. Solange ein Commit die uncommittete Migration mitnimmt, gehoert
+  die Produkt-Suite dazu, auch wenn das Paket ausschliesslich .claude/ beruehrt hat.
+  Das ist Commit-Vorbereitung und wird im Auftrag als solche benannt, damit ein Pruefer
+  sie nicht als Paketpruefung fehldeutet.
+
+
+  Jeder Auftrag an Umsetzer und Pruefer nennt beides ausdruecklich: welche Auswahl
+  fuer die Iteration reicht, und welcher Abnahmelauf am Ende steht. Wo eine Rotmessung
+  noetig ist, wird sie ebenfalls auf der kleinsten Auswahl gefahren, die den Defekt
+  zeigt -- ein roter Test in einer Auswahl von drei ist derselbe Beleg wie in einer
+  Auswahl von 143.'
+consequences: 'Kuerzere Runden ohne Verlust an Beweiskraft. Die Gefahr, die dabei
+  entsteht, ist benannt und nicht wegdefiniert: eine zu enge Auswahl kann eine Mutation
+  gedeckt aussehen lassen, die es nicht ist -- der Pruefer misst darum weiter die
+  Auswahlbreite mit, wie es seine Rollendefinition bereits verlangt.
+
+
+  Diese Entscheidung ist die Betriebsseite von DEC-0022: dort wurde entschieden, WAS
+  geprueft wird, hier WIE oft. Sie loest FR-0011 (Parallelisierung der Suite) nicht
+  ab -- sie senkt nur den Druck darauf.'
+source: Nutzerfrage 2026-08-08, warum die volle Suite jedes Mal laeuft; gemessene
+  Laufzeiten aus den Pruefberichten TSK-0022 Runden 1 bis 3; CLAUDE.md und die drei
+  Kit-Verfassungen als Gegenprobe, welche Vorschrift wirklich existiert
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-08T14:29:23'

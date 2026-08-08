@@ -1,0 +1,20 @@
+id: FR-0006
+title: harness.py update-kit -- der PM spielt Kit-Updates selbst ein
+related_pr: PR-0003
+request_text: 'Die Entscheidung samt Begruendung steht in DEC-0001; dieses Item traegt
+  die Arbeit, weil eine Entscheidung keinen Lebenszyklus hat und deshalb nichts fuehren
+  kann (gemessen: gate_todo_items.py hat genau das verweigert).
+
+
+  Kurz: V1 sagte dem PM ''on their OK run the scaffold_team script'', V2 machte daraus
+  ''ASK THE USER TO RUN ... You cannot run either yourself''. Das war ein Nebeneffekt
+  der gate_write_scope-Haertung, keine Entscheidung ueber den Update-Fluss. Zu bauen
+  ist ein Kernel-Kommando, das genau diese eine Befehlszeile freigibt, vorher Downgrade/Stempel/Zustand
+  prueft und danach eine Markierung setzt, die jedes Gate mit ''das Kit hat sich unter
+  dir geaendert -- starte neu'' verweigern laesst. Der erzwungene Neustart ist der
+  Teil, den V1 nicht hatte: dort konnte der PM nach dem Scaffold unter alten Regeln
+  weiterarbeiten.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-04T23:32:13'

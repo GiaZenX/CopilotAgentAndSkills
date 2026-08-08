@@ -1,0 +1,41 @@
+id: TSK-0017
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0015: F1 bis F4 blockierend, F5 bis F8 als Reste'
+- DEC-0016 -- warum das Kreuz trotz 213 Zeilen beschnitten war
+expected_outputs:
+- Die Basis bewegt sich nur, wenn die Shell das Wort als das Verb ausfuehrt, fuer
+  das dieser Leser es haelt
+- Wo dieser Leser die Wirkung eines Verzeichniswechsels nicht ausrechnen kann, bleibt
+  die Position unbekannt, und unbekannt verweigert
+- Was eine Zeile vor ihrem Commit an den Baum schreibt, sieht das Gate -- auch wenn
+  es in derselben Stufe steht wie der Commit
+- Jede Aufzaehlung, aus der dieser Apparat entscheidet, erzeugt die Werte der zugehoerigen
+  Achse, und die Gleichheit beider Mengen macht einen Test rot
+- Keine Bedingung, die ein Kommentar fuer sich behauptet, steht ohne Achse und ohne
+  Eintrag da
+- Eine Zusicherung in der Verfassung oder der Loecherliste, die der Code nicht baut,
+  macht einen Test rot
+- Ein Test, dessen Eigenschaft auf dieser Maschine nicht zeigbar ist, sagt das als
+  Fehlschlag und nennt, was ihn daran hindert
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-05T20:23:06'

@@ -52,10 +52,14 @@ import ast
 import os
 
 from .backlog_types import ACTIVE_DIRS, format_id
-from .state import ProjectState
+from .state import STAGING_DIRNAME, ProjectState
 
-# spec II.4's Vorschlagsbereich -- named once, read by `is_project_document` and by the gate
-STAGING_DIRNAME = "staging"
+# spec II.4's Vorschlagsbereich -- re-exported from `state`, which is where the directory's own
+# builder composes it. This module compares a path SEGMENT (`is_project_document`) and so needs the
+# name; the writers need the path, and one of the two spelling the other's answer is how a
+# predicate and a writer come to disagree about a directory.
+__all__ = ["STAGING_DIRNAME", "gated_documents", "is_kernel_written", "is_project_document",
+           "kernel_written_subtrees", "path_segments_composed"]
 
 # Probe values handed to the path builders. They name nothing that has to exist: a path builder
 # composes a name, it does not open a file, so `TSK-0001` and a zero request id are enough to make
@@ -90,7 +94,8 @@ def kernel_written_subtrees(root: str) -> tuple:
     # dirname is taken below. `archive_root` is in the first group deliberately: `archive_path`
     # keys by type AND year, so a probe of it would declare `archive/pr/1970` canonical and leave
     # every real year outside.
-    directories = {state.archive_root(), staging.architecture_revisions_dir(state)}
+    directories = {state.archive_root(), state.legacy_root(),
+                   staging.architecture_revisions_dir(state)}
     paths = set()
     for item_type in ACTIVE_DIRS:
         probe = format_id(item_type, 1)

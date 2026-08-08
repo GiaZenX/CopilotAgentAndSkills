@@ -1,0 +1,32 @@
+id: BUG-0010
+title: Ohne Lease ist eine Aufgabe nicht ehrlich abschliessbar -- und LEASED ist genau
+  das, was sweep-leases zuruecksetzt
+related_pr: PR-0002
+severity: medium
+repro: 1. `create-task` erzeugt eine Aufgabe auf DRAFT. 2. Die einzigen Kanten aus
+  DRAFT sind CANCELLED und READY; jeder Weg zu einem Endzustand fuehrt ueber LEASED.
+  3. `transition TSK-nnnn LEASED` laeuft durch -- gemessen, ohne dass irgendein Lease-Datensatz
+  entsteht.
+expected: Entweder ein Status, den nur eine Lease herstellt, ist ohne Lease nicht
+  erreichbar -- oder es gibt einen ehrlichen Weg, eine ohne Dispatch bearbeitete Aufgabe
+  abzuschliessen.
+observed: Beides ist nicht der Fall. `transition` prueft nur den Automaten, nicht
+  ob der Zustand gedeckt ist; ein Item steht danach auf LEASED, waehrend der Lease-Speicher
+  leer ist. Und `sweep-leases` ist genau dafuer gebaut, abgelaufene Leases nach READY
+  zurueckzugeben -- ein LEASED-Item ohne Lease ist der Fall, den es aufraeumt. Damit
+  ist unsere Buchfuehrung entweder unwahr (LEASED ohne Lease) oder unvollstaendig
+  (Aufgabe bleibt ewig DRAFT). Gemessen am 2026-08-04 an TSK-0002, dessen Arbeit fertig
+  und geprueft war, waehrend das Item auf DRAFT stand. Folge von DEC-0003 (keine Leases
+  ohne Hooks) -- die Entscheidung war richtig, ihre Konsequenz war nicht vorhergesehen.
+acceptance_criteria:
+- Entweder verweigert `transition` einen Status, den eine Lease herstellt, wenn keine
+  Lease existiert -- dann ist der Zustand ehrlich und die Luecke sichtbar.
+- Oder es gibt einen dokumentierten Weg, eine ohne Dispatch bearbeitete Aufgabe zu
+  einem Endzustand zu fuehren.
+- Ein Test misst, dass `sweep-leases` ein LEASED-Item ohne Lease nicht stillschweigend
+  nach READY zurueckwirft, ohne es zu melden.
+- Was gewaehlt wird, steht als DEC mit Begruendung im Zustand.
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-04T23:02:56'

@@ -1,0 +1,65 @@
+# project_config.yaml — owned by: PM
+# Created once at project init. Defines team preset, repo mode and the model map.
+# The preset and any model change MUST be user-confirmed (see constitution §11).
+
+project:
+  name: ""                  # set at init
+  preset: solo              # solo | duo | team
+  repo_mode: greenfield     # greenfield | onboarded
+  local_first: false        # true for local-only/offline products: the pipeline then FAILs any frontend
+                            # asset loaded from an external origin (CDN fonts/scripts — a real local-first
+                            # run shipped a Google-CDN font no gate caught)
+  stacks: [TODO]            # REQUIRED — the architect declares the languages/stacks AND domain in use,
+                            # e.g. [python, typescript, go, rust, dotnet, embedded, c, cpp]. The merge gate
+                            # (scripts/quality.py) runs EACH declared stack's checks; a declared stack with
+                            # no checks defined FAILs. Leaving it [TODO]/empty while code exists ALSO FAILs
+                            # (no silent auto-detect) — so a critical tool can never be "forgotten".
+
+# Agent CLIs this repo is generated for: claude | codex. With codex listed, every scaffold run
+# generates the Codex artifacts (.codex/config.toml + hooks.json + agents, .agents/skills) from
+# the installed kit state — single source, never hand-cloned. BOTH by default so a mid-project
+# CLI switch needs no config edit. Claude is the reference platform; Codex support is BETA
+# (one-time project trust + /hooks trust required before its hooks enforce).
+providers: [claude, codex]
+
+# Model ladder: haiku < sonnet < opus. Specialists DEFAULT to sonnet (haiku failed the QA gate on
+# complex code in a real run). Use haiku only for genuinely simple roles; escalate to opus for the hardest.
+# Tier aliases: `lead`/`worker`/`light` are accepted as values (= opus/sonnet/haiku on Claude);
+# provider generators translate tiers to the concrete model via team-kits/model_tiers.yaml.
+# Up-scaling needs user confirmation; down-scaling the PM MAY do itself but MUST report it with a reason
+# (constitution §11). NEVER silent up-scaling, NEVER automatic.
+#
+# The PM is the FOREGROUND agent and runs on opus (kit .claude/settings.json + its own agent frontmatter;
+# override per session via /model); it is NOT listed here. The keys below are the specialist SUBAGENTS — keys match
+# the agent file/`name:` in ./.claude/agents/. The PM rewrites each agent's `model:` frontmatter
+# to match this map (and verifies it) before delegating.
+model_map:
+  software-architect: lead     # DEFAULT opus (research-validated): architecture errors cascade into every
+                               # SR/task/test — the architect must deliver first time. Downgrade to sonnet
+                               # only for genuinely simple projects (user-confirmed).
+  product-designer: lead       # DEFAULT opus: the frontend builds LITERALLY on the designer's mockups
+                               # (mockup-as-base); planning/design quality is half the rent. A real project
+                               # had to escalate mid-run.
+  research-engineer: worker
+  backend-developer: worker    # Sonnet 5 matches Opus on most coding at lower cost (official positioning) —
+  frontend-developer: worker   # the right default for the token-heavy implementation path.
+  quality-engineer: lead       # DEFAULT opus (user decision): review/verdict quality over cost on the
+                               # longest token path — re-check with real numbers after a project week.
+  devops-engineer: worker
+  project-auditor: worker
+
+# Reasoning effort per specialist (low | medium | high | xhigh | max). Like model_map, the scaffold stamps
+# each specialist's `effort:` frontmatter from this map; session_status nags on drift. FACTS (official
+# effort doc, verified 2026-07): haiku has NO effort parameter; Sonnet 5 supports xhigh AND max ("opus-only"
+# was wrong); Opus coding guidance says start at xhigh; bulk subagent work is the documented `low` case.
+# DEFAULT: all specialists `high`. ESCALATION (stuck role, USER-confirmed, §11): the combined ladder
+# `sonnet-high -> sonnet-xhigh -> opus-high -> opus-xhigh/max`. NEVER silent up-scaling.
+effort_map:
+  software-architect: high
+  product-designer: high
+  research-engineer: high
+  backend-developer: high
+  frontend-developer: high
+  quality-engineer: high
+  devops-engineer: high
+  project-auditor: high

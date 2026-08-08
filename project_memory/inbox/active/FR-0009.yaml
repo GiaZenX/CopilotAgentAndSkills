@@ -1,0 +1,16 @@
+id: FR-0009
+title: Fuenf Rollenberichte in docs/research tragen den falschen Rollennamen
+related_pr: PR-0003
+request_text: 'Vom Nutzer gemeldet: in docs/research/ sind fuenf Berichte unter dem
+  Namen der jeweils falschen Rolle abgelegt -- im Ring um eins verschoben. Wer den
+  Bericht einer Rolle sucht, findet den der Nachbarrolle.
+
+
+  Steht seit dem 2026-07-28 in der Aufgabenliste dieser Sitzung und ist genau deshalb
+  hier: eine Zeile in einer Aufgabenliste ist nach der naechsten Zusammenfassung weg
+  (DEC-0003). Zu tun: die Zuordnung messen statt zu raten -- der Inhalt jedes Berichts
+  sagt selbst, welche Rolle ihn geschrieben hat -- und die Dateien umbenennen.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-05T09:26:06'

@@ -1,0 +1,34 @@
+id: DEC-0007
+title: SR-0006 ist an zwei Stellen zu eng -- der gebaute Apparat geht bewusst darueber
+  hinaus
+context: SR-0006 wurde geschrieben, bevor irgendein Gate lief. Die Pruefung von TSK-0003
+  hat zwei Stellen gemessen, an denen der Vertrag den Schutz kleiner beschreibt, als
+  er sein muss. Beide Male hat der Umsetzer die Abweichung GEMELDET statt sie zu biegen,
+  weil project_memory/ fuer ihn verboten ist -- das ist die Arbeitsteilung, die wir
+  wollten, und sie hat funktioniert.
+decision: 'Beide Erweiterungen gelten. (1) AUSLOESER: SR-0006 nennt PreToolUse auf
+  Write|Edit|MultiEdit|NotebookEdit -- eine Aufzaehlung von Werkzeugnamen, also Hausregel
+  1 verletzt IM VERTRAG. Gemessen erreichte EINE Bash-Zeile jeden geschuetzten Pfad,
+  acht von acht rc 0, bis in .claude/hooks/ selbst. Gate 1 ist jetzt zusaetzlich auf
+  Bash|PowerShell registriert; richtig waere ein Ausloeser als Eigenschaft (''jeder
+  Aufruf, der schreiben kann''). (2) BEREICH: der Vertrag nennt Kit-Hash-Pfade plus
+  .claude/hooks/ und .claude/settings.json. Gebaut ist mehr, und jedes Mehr ist gemessen
+  begruendet: .claude/ als Ganzes (dort liest der Provider nach, WAS laeuft, WER laeuft
+  und WAS er darf); die Dateien, aus denen das Gate seine eigene Antwort berechnet
+  hat, inklusive tools/bump_kit_version.py (wer den Stempler ueberschreibt, schaltet
+  den Schutz ab, ohne einen geschuetzten Pfad anzufassen -- zwei Write-Aufrufe, gemessen);
+  und project_memory/ ausser staging/ fuer JEDEN Aufrufer (ein von Hand geschriebenes
+  EVD mit result: pass und dem aktuellen Diff-Hash oeffnete git commit auf der Stelle).'
+consequences: 'SR-0006 wird abgeloest, sobald die Pruefung von TSK-0007 durch ist
+  -- nicht jetzt, weil TSK-0007 selbst von ihm ableitet und ein abgeloestes Elternteil
+  den laufenden Auftrag entwertet. Bis dahin stehen Vertrag und Apparat auseinander,
+  und dieses Item ist der einzige Ort, an dem das steht. Genau die Zwei-Wahrheiten-Lage,
+  die BUG-0001 (kein update-Kommando) erzwingt: waere der Vertrag aenderbar, braeuchte
+  es dieses Item nicht. Und BUG-0009 haengt daran -- eine ablosende SR kann nicht
+  nennen, welche sie abloest.'
+source: Pruefbericht zu TSK-0003 (F2, F3, F4) und Umsetzerbericht zu TSK-0007, beide
+  2026-08-05
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T03:24:27'

@@ -28,6 +28,7 @@ WHAT IS CHECKED AND WHAT IS NOT, so the green light is not read as wider than it
     the path form; the rest stay unchecked until they are converted too.
 """
 import ast
+import io
 import os
 import re
 
@@ -313,3 +314,101 @@ def test_every_row_reference_resolves_to_exactly_one_inventory_row():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
+
+
+# -- a citation is answerable to the line it cites ---------------------------------------------
+
+SPEC = os.path.join(ROOT, "docs", "HARNESS_V2_SPEC.md")
+# The addenda to spec II.10: the paragraphs whose whole job is to name where the BUILT import
+# departs from what II.10 demands. They quote the demand they depart from, and a quotation that
+# is not the wording of the line it quotes is the same defect as a comment claiming a protection
+# -- one level up, in the paragraph whose subject is honesty.
+_ADDENDUM_START = "**Nachtrag 2026-08-04"
+# A CITATION IS „...\", A GLOSS IS *...*. The convention is what makes the check possible at all:
+# nothing can tell a quoted CITATION from a quoted paraphrase by reading it, so the addenda spell
+# the paraphrase in italics. Outside these paragraphs the repo's documents use „...\" for both,
+# which is why the check stops here and says so rather than pretending to cover them.
+_CITATION = re.compile("„([^„\"]{6,})\"")
+_QUOTED_SPAN = re.compile("„[^„\"]{0,400}\"")
+# The stores this repository writes are ASCII-only, and the documents are not: a line that reads
+# `nur bei Endzustaenden` in an item is quoted `nur bei Endzuständen` in prose and is the same
+# line. Folding is what lets the check compare wordings rather than encodings; it folds nothing
+# that changes a WORD.
+_FOLD = {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "Ae", "Ö": "Oe",
+         "Ü": "Ue", "ß": "ss", "—": "--", "–": "-", "→": "->",
+         "’": "'", " ": " "}
+_CITED_SUFFIXES = (".py", ".md", ".yaml", ".yml", ".json", ".sh", ".ps1")
+
+
+def _fold(text):
+    for bad, good in _FOLD.items():
+        text = text.replace(bad, good)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _sources_that_could_be_cited():
+    """Every authored text of this repository, with its own QUOTATIONS removed.
+
+    Removing them is what makes the check non-vacuous: a document is in its own corpus (the
+    addenda cite II.10's later paragraphs, which is the normal case), so a quotation left in the
+    pool would resolve against itself and every wording would pass.
+    """
+    texts = []
+    for base in ("team-kits", "project_memory", "docs"):
+        for current, dirs, files in os.walk(os.path.join(ROOT, base)):
+            dirs[:] = [name for name in dirs if not name.startswith(".")]
+            for name in sorted(files):
+                if not name.endswith(_CITED_SUFFIXES):
+                    continue
+                try:
+                    with io.open(os.path.join(current, name), encoding="utf-8") as handle:
+                        texts.append(_QUOTED_SPAN.sub(" ", _fold(handle.read())))
+                except (OSError, UnicodeDecodeError):
+                    continue
+    with io.open(os.path.join(ROOT, "README.md"), encoding="utf-8") as handle:
+        texts.append(_QUOTED_SPAN.sub(" ", _fold(handle.read())))
+    return texts
+
+
+def test_every_citation_in_the_migration_addenda_carries_the_wording_it_cites():
+    """A quotation names a line, so the line has to say that.
+
+    Measured 2026-08-05: the addendum on the move to `legacy/` quoted the demand as `Restore nur
+    über expliziten userbestätigten Restore-Befehl` where the demanded line says
+    `Wiederherstellung nur über…` -- a different word, in quotation marks, in the paragraph whose
+    subject is naming deviations honestly. Nothing read it, so nothing could say so.
+
+    WHAT IS CHECKED: every citation in the II.10 addenda occurs, word for word, somewhere in this
+    repository's authored text outside a quotation.
+
+    WHAT IS NOT, and the reason is measured rather than assumed. Counted 2026-08-07 over the whole
+    spec with this file's own reader: 35 citation-shaped spans, 7 of them in the addenda (all 7
+    resolve) and 28 outside, of which 17 resolve against no line of this repository. The previous
+    version of this paragraph explained those away as text that "quotes the world outside this
+    repository" -- which holds for most of them (a vendor doc, a product's UI, a research source)
+    and NOT for all: `Prefer Mermaid over draw.io` is quoted in II.6a as this repo's own former
+    kit ruling, `je <=150 Zeilen` as its own former line budget, `Derived 1:1 from ... v1.11` as
+    the header of its own V1 filing plan. Each is an artefact of this repository that no line here
+    carries any more, and that is a THIRD class: a citation of something retired reads exactly
+    like a mis-worded one, and no reader here can tell them apart.
+
+    So the limit is not "everything out there is foreign". It is that outside the addenda the same
+    marks carry citations, paraphrases and quotations of retired text, and a check over them would
+    fail on wordings nothing here can read. That is the reason the addenda spell paraphrases in
+    italics; the limit is the price of that convention holding in one place only. The numbers
+    above are a reading of one day and nothing pins them -- what is pinned is that the addenda
+    still carry citations at all (asserted below) and that every one of them resolves.
+    """
+    with io.open(SPEC, encoding="utf-8") as handle:
+        spec = handle.read()
+    start = spec.index(_ADDENDUM_START)
+    end = spec.index("\n## ", start)
+    citations = _CITATION.findall(re.sub(r"\s+", " ", spec[start:end]))
+    assert len(citations) >= 5, (
+        "the addenda carry almost no citations any more (%d), so this measures nothing"
+        % len(citations))
+    pool = _sources_that_could_be_cited()
+    for citation in citations:
+        needle = _fold(citation).rstrip(".;,")
+        assert any(needle in text for text in pool), (
+            "the addenda quote %r and no line of this repository says that" % citation)

@@ -1,5 +1,6 @@
 """Tests for the approval protocol + dispatch leases (HARNESS_V2_SPEC.md II.2/II.4)."""
 import ast
+import contextlib
 import inspect
 import os
 import sys
@@ -1736,15 +1737,32 @@ def test_no_optional_argument_of_transition_can_skip_the_approval_check(state):
 def _possible_statuses(node):
     """Every status an assignment expression can produce, or None when that cannot be bounded.
 
-    FOUR SHAPES, and each one's values come from the kernel map that produces them rather than
-    from a list here: a string literal; a conditional between two of them (`submit_result`); a
-    call to `initial_status` / `invalidation_target`; a lookup in `_NON_AUTOMATON_INITIAL_STATUS`.
-    Anything else is None, which the caller reports -- fail-closed, because the shape this whole
-    check exists for (`item["status"] = transition[1]` in the old `mint`) is exactly an expression
-    a reader cannot bound.
+    FOUR KINDS OF SHAPE, and each one's values come from the kernel map that produces them rather
+    than from a list here: a string literal; a conditional between two of them (`submit_result`);
+    a call to a kernel function whose whole range is a kernel map (`initial_status`,
+    `invalidation_target`, `migration_archive_status`, `widest_status`); a lookup in
+    `_NON_AUTOMATON_INITIAL_STATUS`. Anything else is None, which the caller reports -- fail-closed,
+    because the shape this whole check exists for (`item["status"] = transition[1]` in the old
+    `mint`) is exactly an expression a reader cannot bound.
+
+    `migration_archive_status` is the V1 import's archive write (SR-0004), and reading it here is
+    what keeps the caller's verdict honest rather than excusing it: the function is bounded by
+    `migration_writable_statuses`, and the caller re-derives what that set may hold from the
+    kernel's own gate (`approvals.required_approval_kinds`) instead of trusting it. Widening it to
+    hand back a status behind an approval edge turns the caller RED.
+
+    A KERNEL FUNCTION TAKING THE ITEM TYPE ANSWERS PER TYPE, so its values come back as
+    `(item type, status)` pairs and the caller judges each against THAT type. Flattening them was
+    measured wrong the day the archive path became a per-type answer: `SR ACCEPTED` is reachable
+    without any approval, `PR ACCEPTED` is not, and one set of bare strings has to call that pair
+    either an offender or safe -- both of which are false about one of the two. WHAT THE PAIRING
+    ASSUMES, since nothing here can check it: that the type handed to such a function is the type
+    of the item being written. Every call site in this kernel writes the item it just asked about;
+    a writer that passed one type's name while stamping another type's item would be read too
+    kindly here, and nothing else in this reader would catch it either.
     """
     from kernel.backlog_types import AUTOMATA, INVALIDATION_TARGET
-    from kernel.state import _NON_AUTOMATON_INITIAL_STATUS
+    from kernel.state import _NON_AUTOMATON_INITIAL_STATUS, migration_writable_statuses
 
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return {node.value}
@@ -1753,13 +1771,248 @@ def _possible_statuses(node):
         return None if left is None or right is None else left | right
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         if node.func.id == "initial_status":
-            return {automaton.chain[0] for automaton in AUTOMATA.values()}
+            return {(item_type, automaton.chain[0]) for item_type, automaton in AUTOMATA.items()}
         if node.func.id == "invalidation_target":
-            return set(INVALIDATION_TARGET.values())
+            return set(INVALIDATION_TARGET.items())
+        if node.func.id == "migration_archive_status":
+            return {(item_type, status) for item_type in AUTOMATA
+                    for status in migration_writable_statuses(item_type)}
+        if node.func.id == "widest_status":
+            return {backlog_types.widest_status()}
     if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
             and node.value.id == "_NON_AUTOMATON_INITIAL_STATUS"):
         return set(_NON_AUTOMATON_INITIAL_STATUS.values())
     return None
+
+
+# The one function that puts a mapping on disk. A NAME rather than the set, because the set is what
+# `_store_calls` derives FROM it -- and the test named in that function is what keeps the name true.
+_THE_WRITER = "_write_yaml_atomic"
+
+# HOW A FUNCTION IS SPELLED. Every reader in this file that asks "what does this function do" has
+# to see both forms, because Python has two and a kernel that grows a coroutine grows it without
+# telling anybody. Named once so the answer cannot differ between readers.
+_DEFINITION_NODES = tuple(getattr(ast, name) for name in ("FunctionDef", "AsyncFunctionDef")
+                          if hasattr(ast, name))
+
+# WHAT MAKES A CALL A PERSISTING PRIMITIVE -- the property `_store_calls` rests on, asked of the
+# call rather than of one library function's name.
+#
+# The premise below has to answer "does anything in `kernel/state.py` put data on disk except
+# `_write_yaml_atomic`". It used to ask for the attribute `safe_dump`, which is one spelling of one
+# library's one function: a `yaml.dump`, a `json.dump`, a `Path(...).write_text` or a
+# `handle.write(...)` would all have been invisible to it, so the premise could be true of the name
+# and false of the module. The property instead is: the call SERIALISES or WRITES, which every one
+# of those spells in its own identifier, or it OPENS A PATH in a mode that is not read-only.
+#
+# Calls to functions the module defines itself are excluded, and that is what keeps the rule from
+# collapsing: `self._write_yaml_atomic(...)` carries "write" in its name too, and counting it would
+# make every caller of the writer a writer. Those routes are exactly what `_store_calls`'s closure
+# already follows, so the premise is about the PRIMITIVES underneath them.
+_WRITE_WORDS = ("write", "dump")
+_READ_MODES = ("r", "rb")
+
+
+def _persisting_primitives(tree):
+    """{function name: {the primitive calls in it that can put data on disk}}.
+
+    THREE ANSWERS FOR `open`, and the middle one is the correction of 2026-08-05: NO mode argument
+    at all is reading, because that is what `open` defaults to; a mode argument this cannot read as
+    a literal COUNTS, because an unknown mode is not a proof of reading; a literal read mode is
+    reading. The middle case used to be folded into the first -- `open(path, mode)` with the mode
+    in a variable was skipped -- while this docstring said the opposite of what the code did.
+    `test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on`'s probe carries all
+    three, so neither half can drift from the other again.
+
+    WHAT THIS STILL DOES NOT SEE, named because the sentence above is only about `open`: a
+    primitive that moves, copies or removes a path rather than writing bytes through a handle --
+    `os.replace`, `os.rename`, `shutil.copyfile`, a `zipfile` member write. None of them carries
+    `write` or `dump` in its own name, so `_WRITE_WORDS` cannot reach them, and no property of a
+    bare AST call distinguishes them from a read on the same module. The probe measures that this
+    is the state of affairs rather than leaving the paragraph to be believed.
+    """
+    defined = {node.name for node in ast.walk(tree) if isinstance(node, _DEFINITION_NODES)}
+    found = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, _DEFINITION_NODES):
+            continue
+        for inner in ast.walk(node):
+            if not isinstance(inner, ast.Call):
+                continue
+            name = getattr(inner.func, "attr", getattr(inner.func, "id", ""))
+            if name in defined:
+                continue
+            if name == "open":
+                given = list(inner.args[1:2]) + [word.value for word in inner.keywords
+                                                 if word.arg == "mode"]
+                if not given:
+                    continue
+                literal = [one.value for one in given if isinstance(one, ast.Constant)]
+                if literal and str(literal[0]).lower() in _READ_MODES:
+                    continue
+                found.setdefault(node.name, set()).add(name)
+            elif any(word in name.lower() for word in _WRITE_WORDS):
+                found.setdefault(node.name, set()).add(name)
+    return found
+
+
+def _store_calls(tree=None):
+    """EVERY ROUTE A MAPPING TAKES INTO THE STORE -- derived from `kernel/state.py`'s call graph.
+
+    THE PROPERTY: `_write_yaml_atomic` is the one function in this kernel that puts a mapping on
+    disk, so a call is a store call exactly when it can REACH that function. Nothing is listed,
+    which is the correction of 2026-08-04: the tuple this replaces promised "every route" in its
+    own comment and did not know `capture_migrated_archive` -- the route the same round added.
+    Latent that day (the new writer is guarded), and latent is not the property the comment claimed.
+
+    THE PREMISE IS ASSERTED WHERE IT IS USED, not assumed:
+    `test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on` fails the moment a
+    second function in `kernel/state.py` dumps YAML of its own, because the closure below would
+    then be silent about it.
+
+    Read as bare NAMES, because that is what the two consumers can see: `_persisted_names` asks
+    which local names a call persists, and `_first_store_call` asks where the earliest such call
+    stands. Both parse other kernel modules too (`dispatch.py` reaches the store through
+    `state.capture`), and a method name is what a call there spells.
+
+    `tree` is the kernel's own by default; a caller passes one so the CLOSURE can be measured on a
+    shape whose answer is known, which is not something the shipped file can be asked for.
+    """
+    if tree is None:
+        with open(os.path.join(TEAM_KITS, "kernel", "state.py"), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+    called_by = {}
+    for node in ast.walk(tree):
+        # BOTH DEFINITION FORMS. `ast.FunctionDef` alone made a route through an `async def`
+        # invisible -- the closure below would have grown no further from it, so a coroutine
+        # reaching the writer would have been read as reaching nothing. Measured on a sample tree,
+        # not argued: `test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on`.
+        if isinstance(node, _DEFINITION_NODES):
+            called_by[node.name] = {getattr(inner.func, "attr", getattr(inner.func, "id", ""))
+                                    for inner in ast.walk(node) if isinstance(inner, ast.Call)}
+    reaching, growing = {_THE_WRITER}, True
+    while growing:
+        growing = False
+        for name, calls in called_by.items():
+            if name not in reaching and calls & reaching:
+                reaching.add(name)
+                growing = True
+    return frozenset(reaching)
+
+
+# Computed once: the two readers below have to give ONE answer to "is this call a store call", and
+# a per-call derivation would be one answer per reader again.
+_STORE_CALLS = _store_calls()
+
+
+def _position(node):
+    """(line, column) -- what "before" means for two nodes of one parsed body."""
+    return (getattr(node, "lineno", 0), getattr(node, "col_offset", 0))
+
+
+def _first_store_call(function_node):
+    """Position of the earliest call in this body that hands a mapping to the store, or None."""
+    positions = [_position(node) for node in ast.walk(function_node)
+                 if isinstance(node, ast.Call)
+                 and getattr(node.func, "attr", getattr(node.func, "id", "")) in _STORE_CALLS]
+    return min(positions) if positions else None
+
+
+def _ast_types(*names):
+    """The `ast` classes with these names that this Python has -- `TryStar` is 3.11+."""
+    return tuple(getattr(ast, name) for name in names if hasattr(ast, name))
+
+
+# WHERE PYTHON CAN DECIDE NOT TO EVALUATE A CHILD. This is an enumeration, so it carries a tripwire
+# at each end -- and BOTH nets are named here, because for one round only the first was, and the
+# claim it made was wider than what it caught:
+#   * `test_every_construct_that_can_skip_a_child_is_classified` sweeps the grammar for nodes with
+#     a SUITE-shaped or comprehension field and fails on one that is in neither list, including one
+#     a future Python adds. That net catches statements and comprehensions and nothing else: it
+#     looks at field NAMES, and `ast.Assert._fields` is `("test", "msg")` -- so `assert x, guard()`
+#     fell straight through it, `_unconditional_children` read the message as fully evaluated, and
+#     a refusal in an assert message counted as a running guard although Python evaluates it only
+#     when the assertion FAILS. `BoolOp` was in the list only because somebody typed it there.
+#   * `test_python_itself_decides_which_of_these_places_refuses_the_write` EXECUTES every shape in
+#     the two tables below and derives each one's label from whether a refusal there really stops
+#     the write, so the tables state a measurement rather than a belief. The reader is then judged
+#     against those labels by `test_a_guard_in_a_part_that_may_be_skipped_is_not_a_guard`, which is
+#     the test that goes red when a shape here is classified wrongly.
+# THE RESIDUAL, since two nets are not all of Python: a construct that can skip a child, carries no
+# suite-shaped field AND is in neither table is still read as fully evaluated.
+_CONDITIONALLY_EVALUATED = _ast_types(
+    "If", "While", "For", "AsyncFor", "Try", "TryStar", "Match", "match_case", "ExceptHandler",
+    "BoolOp", "IfExp", "ListComp", "SetComp", "DictComp", "GeneratorExp", "Assert",
+    "Lambda", "FunctionDef", "AsyncFunctionDef")
+# ...and the other half of that sweep: branch-shaped nodes whose body IS entered on every path
+# through them. A `with` body runs (its context manager may swallow what the body raises, which is
+# an argument about the RAISE and not about the guard running); a class body runs where it stands.
+_UNCONDITIONAL_BODIES = _ast_types("With", "AsyncWith", "ClassDef", "Module", "Interactive",
+                                   "Expression")
+_TRY_TYPES = _ast_types("Try", "TryStar")
+
+
+def _unconditional_children(node):
+    """The children evaluated on EVERY path, given this node is evaluated at all."""
+    if isinstance(node, ast.BoolOp):
+        return node.values[:1]            # `a and b` / `a or b` evaluate `a`, and then maybe `b`
+    if isinstance(node, ast.IfExp):
+        return [node.test]
+    if isinstance(node, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+        return [node.generators[0].iter] if node.generators else []
+    if isinstance(node, (ast.Lambda, ast.FunctionDef, ast.AsyncFunctionDef)):
+        return []                         # a body that runs when something CALLS it, not here
+    if isinstance(node, (ast.If, ast.While)):
+        return [node.test]
+    if isinstance(node, ast.Assert):
+        # The MESSAGE is evaluated only when the assertion fails, so a guard there is a guard on
+        # the failing path alone -- and `python -O` drops the whole statement.
+        return [node.test]
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        return [node.iter]                # an empty iterable enters the body zero times
+    if isinstance(node, ast.Match):
+        return [node.subject]
+    if isinstance(node, _ast_types("ExceptHandler", "match_case")):
+        return []
+    if isinstance(node, _TRY_TYPES):
+        # A HANDLER THAT CAN FALL THROUGH TURNS THE GUARD'S RAISE INTO A NO-OP -- execution
+        # continues after the `try` and reaches the write with nothing refused. So the body counts
+        # only when NO handler can fall through, which is decidable without knowing which
+        # exceptions a handler names: a handler whose last statement is a `raise` or a `return`
+        # ends the path the write is on. `else` rides on the same condition (it is skipped exactly
+        # when the body raised); `finally` runs whatever happened.
+        escaping = all(handler.body and isinstance(handler.body[-1], (ast.Raise, ast.Return))
+                       for handler in node.handlers)
+        return (list(node.body) + list(node.orelse) if escaping else []) + list(node.finalbody)
+    return list(ast.iter_child_nodes(node))
+
+
+def _certainly_evaluated(function_node):
+    """Every node this function evaluates on EVERY path through it.
+
+    WHAT AN UNORDERED `ast.walk` CANNOT SAY, and this is the correction of 2026-08-04. The guard
+    reader below accepted any qualifying call anywhere in the body, with no order and no
+    reachability -- measured against the real `kernel/state.py`: moving `capture_preflight(...)`
+    to AFTER `_write_yaml_atomic` was accepted, and so was putting it inside `if False:`. Both are
+    a writer with no running guard, which is exactly what the check exists to report.
+
+    THE FIRST CUT OF THAT FIX CLASSIFIED STATEMENTS AND HANDED THE REST TO `ast.walk`, which is the
+    same hole one spelling further along: `False and self.capture_preflight(...)`, `True or ...`,
+    `... if False else None`, a `match` whose case never matches and a guard inside a `try` whose
+    handler swallows the refusal were all read as a running guard, and the first of those is
+    literally the `if False:` mutant of the round before. So the property is applied to the whole
+    grammar and in one place (`_unconditional_children`): a node is reached when every step from
+    the function's body down to it is taken without a condition deciding otherwise.
+
+    The `if` STATEMENT itself is therefore reached while its branches are not -- which is what the
+    caller needs, because an inline raise-guard hangs off the test that IS evaluated.
+    """
+    reached, frontier = [], list(function_node.body)
+    while frontier:
+        node = frontier.pop()
+        reached.append(node)
+        frontier.extend(_unconditional_children(node))
+    return reached
 
 
 def _persisted_names(tree, function_name):
@@ -1774,7 +2027,7 @@ def _persisted_names(tree, function_name):
     the first cut report 31 sites, all noise -- a check nobody can keep green protects nothing.
     """
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.FunctionDef) and node.name == function_name):
+        if not (isinstance(node, _DEFINITION_NODES) and node.name == function_name):
             continue
         names = set()
         for inner in ast.walk(node):
@@ -1787,8 +2040,7 @@ def _persisted_names(tree, function_name):
             # `capture`/`update_item`, which is what `dispatch.create_task` does after
             # `task_fields.update(...)`. Any Name INSIDE the argument counts, because that is the
             # mapping whose contents end up on disk.
-            if called not in ("_write_yaml_atomic", "capture", "update_item",
-                              "_update_item_locked"):
+            if called not in _STORE_CALLS:
                 continue
             for argument in inner.args[1:] if called == "_write_yaml_atomic" else inner.args:
                 for part in ast.walk(argument):
@@ -1847,7 +2099,7 @@ def _status_writes(tree):
     """
     holder = {}
     for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef):
+        if isinstance(node, _DEFINITION_NODES):
             for inner in ast.walk(node):
                 holder[inner] = node.name
     persisted = {name: _persisted_names(tree, name) for name in set(holder.values())}
@@ -1912,7 +2164,7 @@ def _collections_with_the_key(tree):
     return names
 
 
-def _refuses_the_key(tree, function_name):
+def _refuses_the_key(tree, function_name, _seen=None):
     """Does this function REFUSE a `status` in its input before it writes anything?
 
     The one sanctioned answer to an unreadable form, and it is a property rather than a name: a
@@ -1922,11 +2174,30 @@ def _refuses_the_key(tree, function_name):
     iterated over (`capture`, over `_KERNEL_SET`) -- and the constant is RESOLVED rather than
     named, so a renamed constant keeps working and an emptied one stops.
 
-    Without this, the check could only be satisfied by editing the kernel into a shape an AST
-    likes, which is the tail wagging the dog; with it, a function that drops its guard becomes an
-    offender the same day.
+    ...AND A GUARD MAY BE DELEGATED, which is the addition of 2026-08-04 and it is a widening of
+    the READER, not of what counts as a guard. `state.capture` used to spell the refusal inline;
+    the migration needed the same checks before it PLANS a write, so they moved into
+    `capture_preflight` and `capture` now calls it as its first statement. Nothing about the
+    running protection changed -- a `status` in a capture body still raises before anything is
+    merged -- but a per-function reader saw `capture` merging an opaque mapping with no guard in
+    its own body and reported it. Following ONE call into a sibling of the same module keeps the
+    question honest: the refusal still has to exist in the running source and still has to be
+    reachable from the writer. `_seen` is the recursion guard; a mutual pair proves nothing and
+    resolves to False rather than to a loop.
+
+    ...AND IT HAS TO RUN BEFORE THE WRITE, which that widening did not require and which is the
+    whole claim being made. A guard is counted only when it is `_certainly_evaluated` -- on every
+    path through the body -- and only when it stands EARLIER than `_first_store_call`, the first
+    expression of the same body that hands a mapping to the store. Both directions were measured
+    against the real `kernel/state.py` and both were accepted before this: the guard moved behind
+    `_write_yaml_atomic`, and the guard parked in an `if False:`. A body with no store call at all
+    persists nothing, so the ordering requirement is vacuous there rather than a refusal.
     """
     holders = _collections_with_the_key(tree)
+    _seen = set() if _seen is None else _seen
+    if function_name in _seen:
+        return False
+    _seen = _seen | {function_name}
 
     def tests_the_key(node):
         """Does this expression test something against a collection containing "status"?"""
@@ -1946,7 +2217,7 @@ def _refuses_the_key(tree, function_name):
         return False
 
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.FunctionDef) and node.name == function_name):
+        if not (isinstance(node, _DEFINITION_NODES) and node.name == function_name):
             continue
         # THE RAISE HAS TO HANG ON THE TEST, which the first version did not require: it asked for
         # a `raise` SOMEWHERE and a membership test SOMEWHERE, so an unrelated
@@ -1957,8 +2228,14 @@ def _refuses_the_key(tree, function_name):
         assigned = {target.id: statement.value
                     for statement in ast.walk(node) if isinstance(statement, ast.Assign)
                     for target in statement.targets if isinstance(target, ast.Name)}
-        for branch in ast.walk(node):
-            if not isinstance(branch, ast.If):
+        limit = _first_store_call(node)
+        certain = _certainly_evaluated(node)
+
+        def in_time(candidate):
+            return limit is None or _position(candidate) < limit
+
+        for branch in certain:
+            if not isinstance(branch, ast.If) or not in_time(branch):
                 continue
             if not any(isinstance(inner, ast.Raise) for inner in ast.walk(branch)):
                 continue
@@ -1968,6 +2245,17 @@ def _refuses_the_key(tree, function_name):
                 if (isinstance(inner, ast.Name) and inner.id in assigned
                         and tests_the_key(assigned[inner.id])):
                     return True
+        # ...or the guard is one call away, in a sibling of this same module. Only a call whose
+        # own definition is HERE counts, so the refusal being read is one this tree really
+        # contains; an imported name resolves to nothing and stays an offender.
+        defined = {inner.name for inner in ast.walk(tree) if isinstance(inner, _DEFINITION_NODES)}
+        for inner in certain:
+            if not isinstance(inner, ast.Call) or not in_time(inner):
+                continue
+            called = (inner.func.attr if isinstance(inner.func, ast.Attribute)
+                      else getattr(inner.func, "id", None))
+            if called in defined and _refuses_the_key(tree, called, _seen):
+                return True
         return False
     return False
 
@@ -2044,6 +2332,330 @@ def test_the_reader_that_finds_direct_status_writes_sees_every_shape_it_claims_t
     assert not _refuses_the_key(ast.parse('def g(c, i):\n    i.update(c)\n'), "g")
 
 
+def _capture_mutant(mutate):
+    """The REAL `kernel/state.py`, with one change made to `capture`, re-parsed.
+
+    Mutated through the AST and round-tripped with `ast.unparse` rather than by editing text: the
+    reader below compares POSITIONS, so a mutant whose nodes kept their original line numbers
+    would answer a question about the file on disk instead of about itself.
+    """
+    with open(os.path.join(TEAM_KITS, "kernel", "state.py"), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    function = next(node for node in ast.walk(tree)
+                    if isinstance(node, _DEFINITION_NODES) and node.name == "capture")
+    # WHICH statement is the guard is asked of the body's shape, not counted: it is the one
+    # top-level statement of `capture` that is a bare call. Taking `body[0]` moved the DOCSTRING
+    # instead, and both mutants then stayed green for a reason that had nothing to do with the
+    # reader -- measured, and it is why this assertion is here rather than a comment.
+    calls = [index for index, statement in enumerate(function.body)
+             if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call)]
+    assert len(calls) == 1, "`capture` no longer delegates through exactly one bare call"
+    mutate(function, calls[0])
+    return ast.parse(ast.unparse(tree))
+
+
+def test_the_guard_reader_requires_the_refusal_to_run_and_to_run_first():
+    """B7: `capture` merges a mapping this reader cannot bound, and only a RUNNING guard excuses it.
+
+    The excuse used to be "some qualifying call exists somewhere in the body", which an unordered
+    `ast.walk` answers and which is not the property. Both counter-examples are built out of the
+    kernel that ships, so this measures the real `capture`/`capture_preflight` pair rather than a
+    sample written to agree with the reader:
+
+      * the guard call moved to AFTER `_write_yaml_atomic` -- the body then writes the item first
+        and refuses afterwards, which refuses nothing;
+      * the guard call parked in an `if False:` -- present in the source, never executed.
+
+    Each mutant must still be SEEN as an unbounded write (otherwise the reader would be silent for
+    a different reason and this test would prove nothing), and must be refused as unguarded. The
+    unmutated kernel is the positive control on both branches of the reader: `capture` through the
+    delegated call, `_update_item_locked` through its own inline `if ... raise`.
+    """
+    with open(os.path.join(TEAM_KITS, "kernel", "state.py"), encoding="utf-8") as handle:
+        original = ast.parse(handle.read())
+    assert ("capture", None) in _status_writes(original), (
+        "`capture` no longer merges an unbounded mapping, so this test measures nothing")
+    assert _refuses_the_key(original, "capture")
+    assert _refuses_the_key(original, "_update_item_locked")
+
+    def delay(function, where):
+        """Move the guard call to just before the `with` block's last statement."""
+        guard = function.body.pop(where)
+        block = next(node for node in function.body if isinstance(node, ast.With))
+        block.body.insert(len(block.body) - 1, guard)
+
+    def never_run(function, where):
+        function.body[where] = ast.If(test=ast.Constant(value=False),
+                                      body=[function.body[where]], orelse=[])
+
+    for name, mutate in (("guard after the write", delay),
+                         ("guard behind `if False:`", never_run)):
+        mutant = _capture_mutant(mutate)
+        assert ("capture", None) in _status_writes(mutant), name
+        assert not _refuses_the_key(mutant, "capture"), (
+            "%s is accepted as a guard, so a writer with no running refusal passes" % name)
+
+
+def test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on():
+    """`_store_calls` is a closure back from ONE function, so that premise is measured, not assumed.
+
+    THREE HALVES, and the first one is the premise that used to be measured too narrowly. It asked
+    for the attribute `safe_dump`, which is one function of one library: a second writer spelled
+    `yaml.dump`, `json.dump`, `Path(...).write_text` or `handle.write(...)` was invisible to it, so
+    the premise was true of a NAME while the module could have grown a route around it.
+    `_persisting_primitives` asks the property instead -- does this function call something that
+    serialises or writes, or open a path in a mode that is not read-only -- and the probe below
+    puts each of those four spellings in front of it, so a reader that narrows again fails here
+    rather than staying silent about a route.
+
+    The closure itself is measured on shapes whose answer is known: it has to be TRANSITIVE (a
+    caller of a caller of the writer is a route), it has to see an `async def` the same as a `def`
+    -- a coroutine reaching the writer was invisible while `called_by` collected `ast.FunctionDef`
+    alone -- and it has to leave everything else out. A `_store_calls` that returned its starting
+    point plus one level would pass the whole suite while `capture` -- which reaches the writer
+    through `_regenerate_index_locked` as well -- looked like a leaf.
+    """
+    with open(os.path.join(TEAM_KITS, "kernel", "state.py"), encoding="utf-8") as handle:
+        source = handle.read()
+    kernel = ast.parse(source)
+    writing = _persisting_primitives(kernel)
+    assert set(writing) == {_THE_WRITER}, (
+        "kernel/state.py puts data on disk from %s; `_store_calls` derives every route into the "
+        "store from %r alone, so any other writer is a route it cannot see"
+        % (sorted(writing), _THE_WRITER))
+
+    # THE READER'S OWN BOTH-ENDED PROBE: spellings of a write, which must all be seen, and shapes
+    # that only READ, which must not be -- a rule that flags reading too would be satisfied by
+    # flagging everything and would say nothing about the premise. `h` is the mode this reader
+    # cannot resolve, and it is here because the docstring claimed it counted while the code
+    # skipped it; `f` is the neighbouring case that must stay out, since `open` with no mode at
+    # all IS reading.
+    probe = ast.parse(
+        "def a(p, d):\n    yaml.dump(d, open(p, 'w'))\n"
+        "def b(p, d):\n    json.dump(d, p)\n"
+        "def c(p, d):\n    Path(p).write_text(d)\n"
+        "async def e(p, d):\n    handle = open(p, mode='a')\n    handle.write(d)\n"
+        "def f(p):\n    return yaml.safe_load(open(p, encoding='utf-8'))\n"
+        "def g(p):\n    return open(p, 'rb').read()\n"
+        "def h(p, m):\n    return open(p, m)\n"
+        "def i(p, m):\n    return open(p, mode=m)\n")
+    assert set(_persisting_primitives(probe)) == {"a", "b", "c", "e", "h", "i"}, (
+        _persisting_primitives(probe))
+
+    # THE RESIDUAL, MEASURED RATHER THAN DESCRIBED. A primitive that moves, copies or removes a
+    # path puts data on disk and this reader does not see it. That is a documented gap in the
+    # premise, not a property of `kernel/state.py` -- which reaches `os.replace` only from inside
+    # `_write_yaml_atomic` -- and it is asserted here so that the paragraph in
+    # `_persisting_primitives` cannot quietly stop matching the code in either direction.
+    residual = ast.parse(
+        "def j(a, b):\n    os.replace(a, b)\n"
+        "def k(a, b):\n    shutil.copyfile(a, b)\n"
+        "def m(a, b):\n    os.rename(a, b)\n")
+    assert not _persisting_primitives(residual), (
+        "the move/copy primitives are visible to this reader now -- the residual named in "
+        "`_persisting_primitives` is closed and its paragraph is the thing that is now false")
+
+    sample = ast.parse(
+        "def _write_yaml_atomic(p, d):\n    pass\n"
+        "def near(self, d):\n    self._write_yaml_atomic('p', d)\n"
+        "async def far(self, d):\n    self.near(d)\n"
+        "def unrelated(self, d):\n    self.parse_id(d)\n")
+    assert _store_calls(sample) == {_THE_WRITER, "near", "far"}, _store_calls(sample)
+    # ...and on the shipped kernel the route THIS round added is in it. Named because it is the
+    # route the tuple this replaces did not know: a writer with its own field contract (DEC-0004)
+    # is exactly the one a reader must not lose sight of.
+    assert "capture_migrated_archive" in _STORE_CALLS, sorted(_STORE_CALLS)
+
+
+def test_every_construct_that_can_skip_a_child_is_classified():
+    """The unlisted-construct end of `_CONDITIONALLY_EVALUATED`'s tripwire.
+
+    `_unconditional_children` reads anything it does not recognise as fully evaluated, so a grammar
+    node that CAN skip a child and is in neither list is a hole that opens silently. The sweep is
+    over `ast` itself -- every node type with a branch-shaped field -- so a construct a future
+    Python adds arrives here unclassified and fails, instead of being read as unconditional by a
+    reader written before it existed.
+    """
+    branching = {name for name in dir(ast)
+                 if isinstance(getattr(ast, name), type)
+                 and issubclass(getattr(ast, name), ast.AST)
+                 and set(getattr(getattr(ast, name), "_fields", ()))
+                 & {"body", "orelse", "handlers", "finalbody", "cases", "generators"}}
+    classified = {node.__name__ for node in _CONDITIONALLY_EVALUATED + _UNCONDITIONAL_BODIES}
+    assert not branching - classified, (
+        "these AST nodes carry a branch and neither list says whether it is entered on every "
+        "path: %s" % sorted(branching - classified))
+    assert not set(_CONDITIONALLY_EVALUATED) & set(_UNCONDITIONAL_BODIES)
+
+
+_SKIPPABLE_GUARD_PLACES = {
+    # `and`/`or` short-circuit, and the first of these is the `if False:` mutant of the round
+    # before in expression form
+    "and": "    False and g(c)\n",
+    "or": "    True or g(c)\n",
+    "conditional expression": "    g(c) if False else None\n",
+    "comprehension element": "    [g(c) for _x in ()]\n",
+    "lambda body": "    (lambda: g(c))\n",
+    "loop body": "    for _x in ():\n        g(c)\n",
+    "while body": "    while False:\n        g(c)\n",
+    "match case": "    match 1:\n        case 2:\n            g(c)\n",
+    "swallowed try body": "    try:\n        g(c)\n    except Exception:\n        pass\n",
+    "except handler": "    try:\n        pass\n    except Exception:\n        g(c)\n",
+    "nested definition": "    def h():\n        g(c)\n",
+    "if branch": "    if False:\n        g(c)\n",
+    # `ast.Assert._fields` carries no suite-shaped name, so the grammar sweep never saw this one
+    "assert message": "    assert True, g(c)\n",
+}
+
+_ALWAYS_GUARD_PLACES = {
+    "plain statement": "    g(c)\n",
+    "with body": "    with open('x'):\n        g(c)\n",
+    "try body with no handler": "    try:\n        g(c)\n    finally:\n        pass\n",
+    "try body under a re-raising handler":
+        "    try:\n        g(c)\n    except Exception:\n        raise\n",
+    "else under a re-raising handler":
+        "    try:\n        pass\n    except Exception:\n        raise\n    else:\n        g(c)\n",
+    "finally": "    try:\n        pass\n    except Exception:\n        pass\n"
+               "    finally:\n        g(c)\n",
+    "first operand of and": "    g(c) and False\n",
+    "test of a conditional expression": "    None if g(c) else None\n",
+    "iterable of a loop": "    for _x in [g(c)]:\n        pass\n",
+    "match subject": "    match g(c):\n        case _:\n            pass\n",
+    "assert test": "    assert g(c) or True\n",
+}
+
+
+def _guard_stops_the_write(where):
+    """Does a REFUSAL at `where` actually stop the write? -- measured by executing the shape.
+
+    THE OBSERVABLE IS THE WRITE, not whether the call was evaluated, and the difference is a whole
+    entry of the table: in `try: g(c) except Exception: pass` the guard IS evaluated and its
+    refusal is then swallowed, so execution walks on to the write with nothing refused. What the
+    reader claims about a place is exactly this -- a guard here refuses -- so this is what gets
+    measured.
+
+    The two tables above are the corpus the reader is judged against, and a corpus whose labels are
+    typed by hand is a second belief rather than a second opinion: `assert True, g(c)` was believed
+    to run by the reader AND would have been believed by whoever wrote the table. Here Python
+    answers: the same source `_guarded_source` builds is compiled and run with a guard that raises,
+    and the answer is whether `_write_yaml_atomic` was reached.
+
+    `open` is stubbed because one shape uses a `with`, and the shape under test is the `with`, not
+    the file system. The raising guard is installed AFTER the exec, so it replaces the `g` the
+    source defines in the same namespace `f` resolves its globals from.
+    """
+    written = []
+
+    def refuse(_c):
+        raise ValueError("refused")
+
+    class _Store:
+        def _write_yaml_atomic(self, path, data):
+            written.append(path)
+
+    namespace = {"open": lambda *args, **kwargs: contextlib.nullcontext()}
+    exec(compile(_guarded_source(where), "<probe>", "exec"), namespace)   # noqa: S102 -- the probe
+    namespace["g"] = refuse
+    try:
+        namespace["f"]({"title": "x"}, {}, _Store(), "p")
+    except ValueError:
+        pass
+    return not written
+
+
+def test_python_itself_decides_which_of_these_places_refuses_the_write():
+    """The corpus's labels are a MEASUREMENT, so the reader is judged against the interpreter.
+
+    WHAT THIS TEST IS AND WHAT IT IS NOT, because the neighbouring claim is easy to make here and
+    would be untrue: this does NOT go red when `_unconditional_children` is wrong -- it never looks
+    at the reader. It goes red when a LABEL in the two tables is wrong, which is the half nothing
+    measured before. The reader is judged one test up
+    (`test_a_guard_in_a_part_that_may_be_skipped_is_not_a_guard`), and that one is what turns red
+    when `ast.Assert` is taken back out of `_unconditional_children` -- measured 2026-08-05:
+    "a refusal in the assert message is accepted, so a writer with no running guard passes".
+    The chain only holds with both links: the label is Python's answer, and the reader must match
+    the label.
+    """
+    for name, where in _SKIPPABLE_GUARD_PLACES.items():
+        assert not _guard_stops_the_write(where), (
+            "%r is in the skippable table, but a refusal there really does stop the write" % name)
+    for name, where in _ALWAYS_GUARD_PLACES.items():
+        assert _guard_stops_the_write(where), (
+            "%r is in the always-evaluated table, but a refusal there does not stop the write"
+            % name)
+    assert not set(_SKIPPABLE_GUARD_PLACES) & set(_ALWAYS_GUARD_PLACES)
+
+
+def _guarded_source(where):
+    """A writer whose refusal sits at `where` -- the real delegated-guard shape, one call deep."""
+    return ('def g(c):\n'
+            '    if [k for k in ("id", "status") if k in c]:\n'
+            '        raise ValueError(c)\n'
+            'def f(c, i, s, p):\n'
+            + where +
+            '    i.update(c)\n'
+            '    s._write_yaml_atomic(p, i)\n')
+
+
+def test_a_guard_in_a_part_that_may_be_skipped_is_not_a_guard():
+    """The other end of the tripwire, and the shape R-1 was about.
+
+    Every entry is the SAME writer -- an opaque merge into a persisted mapping -- with the same
+    real refusal moved into a part of one construct that Python may not evaluate. Measured against
+    the reader that shipped before this: `False and self.capture_preflight(...)`, `True or ...`,
+    `... if False else None`, a `match` with no matching case and a `try` whose handler swallows
+    the refusal were ALL accepted as a running guard, because everything that was not a statement
+    kind the reader knew about went through `ast.walk`.
+
+    The counter-direction is the same table one entry down: a guard in a part that IS evaluated has
+    to keep counting, or this check would be satisfied by refusing everything -- which is how a
+    check nobody can keep green stops protecting anything.
+    """
+    for name, where in _SKIPPABLE_GUARD_PLACES.items():
+        tree = ast.parse(_guarded_source(where))
+        assert _status_writes(tree) == [("f", None)], name
+        assert not _refuses_the_key(tree, "f"), (
+            "a refusal in the %s is accepted, so a writer with no running guard passes" % name)
+    for name, where in _ALWAYS_GUARD_PLACES.items():
+        tree = ast.parse(_guarded_source(where))
+        assert _status_writes(tree) == [("f", None)], name
+        assert _refuses_the_key(tree, "f"), (
+            "a refusal in the %s is refused, so the reader now rejects guards that do run" % name)
+
+
+def _approval_bound_statuses():
+    """{status: {item types that cannot reach it without a USER APPROVAL}}.
+
+    THE OFFENDER RULE for the check below, and it is REACHABILITY rather than the approval edge's
+    own target -- the correction of 2026-08-04, in the reader as well as in the kernel. A status
+    further down the same chain stands behind that approval just as much: with the targets read as
+    a set, a direct writer producing `VERIFIED` for a `BUG` (three chain steps behind a scope
+    approval) was not an offender at all, and that is exactly the value the migration's archive
+    path handed back before the same fix landed there.
+
+    Walked with `approvals.required_approval_kinds`, which is the function `state.transition`
+    itself asks whether an edge needs an APR. So this measures the gate the kernel runs, not the
+    table behind it -- and it is deliberately not the same derivation as
+    `state.migration_writable_statuses`, whose answer is one of the things being judged here.
+    """
+    from kernel.approvals import required_approval_kinds
+    bound = {}
+    for item_type, automaton in backlog_types.AUTOMATA.items():
+        reached, frontier = {automaton.initial}, [automaton.initial]
+        while frontier:
+            current = frontier.pop()
+            for source, target in automaton.allowed:
+                if source != current or target in reached:
+                    continue
+                if required_approval_kinds(item_type, source, target):
+                    continue
+                reached.add(target)
+                frontier.append(target)
+        for status in automaton.states - reached:
+            bound.setdefault(status, set()).add(item_type)
+    return bound
+
+
 def test_no_direct_status_write_can_produce_a_status_an_approval_commits():
     """Every `x["status"] = ...` in the kernel, and what it is allowed to be.
 
@@ -2054,12 +2666,16 @@ def test_no_direct_status_write_can_produce_a_status_an_approval_commits():
     can produce from the kernel's own maps, and an expression nobody can bound is itself a failure
     -- that was exactly the old mint's shape.
 
-    So a new direct writer is not forbidden; a direct writer that could produce APPROVED,
-    IN_DELIVERY or ACCEPTED is, and so is one nobody can bound.
+    So a new direct writer is not forbidden; a direct writer that could produce a status the type
+    only reaches through a user approval is, and so is one nobody can bound. WHICH statuses those
+    are is `_approval_bound_statuses` and it is a walk, not the approval targets read as a set: the
+    set reading made this check blind to every status further down the chain, which is how the
+    archive path's write set handing back `BUG VERIFIED` passed it. (That set is
+    `state.migration_writable_statuses`; the name this sentence used to carry,
+    `migration_writable_terminals`, has not existed since the same round -- a dead name in a
+    docstring is a pointer a reader cannot follow.)
     """
-    destinations = {}
-    for (item_type, _kind), (_source, target) in approvals.APPROVAL_TRANSITIONS.items():
-        destinations.setdefault(target, set()).add(item_type)
+    destinations = _approval_bound_statuses()
     kernel_dir = os.path.join(TEAM_KITS, "kernel")
     offenders, writers = [], []
     for name in sorted(os.listdir(kernel_dir)):
@@ -2081,13 +2697,24 @@ def test_no_direct_status_write_can_produce_a_status_an_approval_commits():
                     "`_possible_statuses`, with the kernel map it reads its values from), refuse "
                     "the key first, or route the write through the automaton" % where)
                 continue
-            for value in sorted(produced):
-                owners = {item_type for item_type, automaton in backlog_types.AUTOMATA.items()
-                          if value in automaton.states}
+            for bounded in sorted(produced, key=str):
+                # A PAIR says which type the value belongs to (a kernel function that takes the
+                # item type); a bare string could be any type's, so every type carrying that
+                # status is asked. See `_possible_statuses` for what the pairing rests on.
+                if isinstance(bounded, tuple):
+                    owners, value = {bounded[0]}, bounded[1]
+                else:
+                    value = bounded
+                    owners = {item_type for item_type, automaton
+                              in backlog_types.AUTOMATA.items() if value in automaton.states}
                 clash = owners & destinations.get(value, set())
                 if clash:
-                    offenders.append("%s can write %r directly, which an approval commits "
-                                     "for %s" % (where, value, sorted(clash)))
+                    offenders.append("%s can write %r directly, which %s reaches only through an "
+                                     "edge a user approval commits" % (where, value, sorted(clash)))
+    # ...and the rule has to have teeth: with an empty `destinations` the loop above is a no-op and
+    # this test would pass over any kernel at all.
+    assert destinations, "no status of any shipped type stands behind an approval -- the check "\
+                         "above then measures nothing"
     # A FLOOR THAT IS NOT A MAGIC NUMBER: the reader must have seen the two modules that really do
     # write statuses. The COUNT is deliberately not asserted -- a docstring said four while the
     # source had seven, and pinning the number here would only re-create that lie one layer down.

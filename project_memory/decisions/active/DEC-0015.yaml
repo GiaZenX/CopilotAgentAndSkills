@@ -1,0 +1,44 @@
+id: DEC-0015
+title: Eine aufgezaehlte Dokumentenmenge im Auftrag ist dieselbe Fehlform wie eine
+  Klammer mit Beispielen
+context: 'Meine Zeile lautete: ''Jeder Satz in README und Spec beschreibt, was der
+  Lauf heute tut.'' Der Satz nennt eine EIGENSCHAFT und zaehlt dann die Dokumente
+  auf, fuer die sie gelten soll -- ohne Klammer, deshalb faellt es nicht auf.
+
+
+  Gemessen ist die Folge: die einzige messbar falsche Aussage der ganzen Runde steht
+  in der VERFASSUNG, dreifach gespiegelt, neu in derselben Runde geschrieben. Sie
+  behauptet ''Imports arrive at their INITIAL status carrying no approval'' -- gemessen
+  kommen 174 von 285 Items auf ihrem GEMAPPTEN Status an, was der ganze Zweck der
+  ersten Archivtuer ist. Die Spec derselben Runde sagt es korrekt und genau umgekehrt.
+  Das gelesene Dokument ist das falsche: eine Rolle liest die Verfassung in jeder
+  Sitzung, die Spec liest sie nie.
+
+
+  Und das Dokument fiel aus dem Massstab heraus, weil meine Zeile es nicht aufzaehlte.'
+decision: 'Eine Menge von Orten wird im Auftrag genauso wenig aufgezaehlt wie eine
+  Menge von Faellen. Die Zeile haette lauten muessen: ''jeder ausgelieferte Text,
+  der den Lauf beschreibt''. Wer die Orte nennt, hat die Menge bereits beschnitten
+  -- und was nicht in der Menge steht, prueft niemand, weil Umsetzer und Pruefer denselben
+  Massstab lesen.
+
+
+  Damit gilt die Regel aus DEC-0011 nicht nur fuer Beispiele einer Eigenschaft, sondern
+  fuer JEDE Menge, die eine Auftragszeile aufspannt: Faelle, Schreibweisen, Orte,
+  Dokumente, Achsen.'
+consequences: 'Siebte Form in der Sammlung. Die Pruefungen an einer Auftragszeile
+  lauten damit: nennt sie ein Verb, ein Werkzeug, eine Schreibweise, eine Datenstruktur,
+  eine Fallzahl, eine Klammer mit Beispielen oder eine Liste von Orten? Siebenmal
+  nein, sonst umformulieren.
+
+
+  Zweiter Befund derselben Runde und dieselbe Familie: eine Dreier-Pruefliste im Fliesstext
+  des Auftrags (''die zweite Archivtuer, das Verlassen des Quellbereichs und die Verdikte,
+  die nicht blockieren'') wurde abgehakt wie eine Pruefliste -- die drei sind da,
+  und der vierte Punkt derselben Familie ist genau der, an dem der Blocker haengt.'
+source: Pruefbericht zu TSK-0012, 2026-08-05, Befund B2 und der Abschnitt 'Hat TSK-0012
+  als Massstab getragen'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T15:53:16'

@@ -1,0 +1,41 @@
+id: TSK-0005
+product_requirement: PR-0001
+derives_from: SR-0007
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/kernel/**
+- team-kits/*/templates/**
+- tools/**
+- README.md
+- team-kits/*/VERSION
+forbidden_scope:
+- project_memory/**
+- .claude/**
+- CLAUDE.md
+required_inputs:
+- SR-0001 (Abschlusskriterium), SR-0005 (legacy/), SR-0007 (Vorschlaege)
+- DEC-0004 (Archiv-Ausnahme, deckt 419 der 429 Aufgaben)
+- die drei Kopien unter c:/Offline Repos/v2-pilot -- NUR LESEN, Geschaeftsdaten
+expected_outputs:
+- 'migrate.py -- validate setzt SR-0001 durch: ausserhalb archive/ und legacy/ traegt
+  keine Datei einen Id-Datensatz; der Trockenlauf meldet dieselbe Bedingung vorab'
+- 'migrate.py -- SR-0005: eine vollstaendig aufgegangene V1-Datei wandert nach legacy/,
+  der Umzug steht mit Pruefsumme im Beleg, legacy/ ist als ''bereits verarbeitet''
+  verzeichnet'
+- 'migrate.py + backlog_types.py -- SR-0007: Feldvorschlaege aus den ausgelieferten
+  V1-Vorlagen abgeleitet, mit Grund gedruckt, unbestaetigt NICHT ausfuehrbar'
+- Je Kit die abgeleiteten Vorschlaege gemessen gegen die eigenen V1-Vorlagen -- kein
+  Vorschlag ohne Ableitung
+- Ein Trockenlauf gegen eine KOPIE von synaipse zeigt die Entscheidungsliste; die
+  Zahl der offenen Punkte steht im Bericht
+- volle Suite gruen, ruff sauber, validate sauber, Kits gestempelt
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-04T22:49:37'
+closed_at: '2026-08-05T07:00:31'

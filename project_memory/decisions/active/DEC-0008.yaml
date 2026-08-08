@@ -1,0 +1,31 @@
+id: DEC-0008
+title: Kommentare tragen nur noch das Warum -- und verweisen dafuer auf Items
+context: 'Gemessen an einer Nacht: von den Blockern aus fuenf Pruefrunden waren DREI
+  reine Kommentardefekte -- eine Zahl, die die falsche Menge benannte (5 statt 10),
+  ein Docstring, der das Gegenteil seines Codes behauptete, und eine gedruckte Zusicherung,
+  die die Ausfuehrung nicht hielt. Dazu vier Feldzahlen (429 Aufgaben, 162 von 165,
+  418 Datensaetze, zehn-melden-den-Elternteil), in VIERZEHN Stellen abgetippt, drei
+  davon veraltet. Der Kommentarbestand dieses Repos erzeugt inzwischen ungefaehr so
+  viele Befunde wie die Funktionalitaet selbst.'
+decision: 'Reihenfolge, vom Nutzer vorgegeben: (1) selbsterklaerender Code -- gute
+  Namen, klare Struktur; (2) automatisierte Tests als ueberpruefbare Spezifikation;
+  (3) Kommentare NUR fuer das Warum, also fuer das, was aus dem Code nicht hervorgeht;
+  (4) keine Kommentare mit unbewiesener Behauptung. Drei Faelle, mechanisch unterscheidbar:
+  ein Kommentar, der sagt WAS der Code tut, faellt weg. Ein Kommentar, der eine EIGENSCHAFT
+  behauptet, wird ein Test -- Prosa ist kein Beweis. Ein Kommentar, der das WARUM
+  festhaelt, bleibt -- aber als VERWEIS auf das Item, nicht als nacherzaehlte Geschichte.
+  Damit wird die Regel ''kein Kommentar darf Schutz behaupten, den der Code nicht
+  baut'' von reaktiv auf praeventiv umgestellt.'
+consequences: 'Eine Zahl kann nicht veralten, wenn sie nur an einem Ort steht -- der
+  Gewinn, den wir vor der Buchfuehrung nicht haben konnten. Die vierzehn abgetippten
+  Stellen waeren vierzehn Verweise gewesen, und die drei veralteten haette es nicht
+  gegeben. Kosten: ein Sprung mehr beim Lesen; der richtige Tausch, weil ein Sprung
+  zu einer wahren Quelle billiger ist als eine bequeme Luege am Ort. Gilt fuer dieses
+  Repo (TSK-0009) UND fuer die Kits (FR-0007) -- dort tragen Rollendefinitionen und
+  Verfassung dieselbe Vorgabe, sonst schreiben die Spezialisten in jedem Projekt weiter
+  Essays.'
+source: Nutzerentscheidung 2026-08-05; Pruefberichte zu TSK-0004, TSK-0006, TSK-0007
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T06:58:36'

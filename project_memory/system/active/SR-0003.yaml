@@ -1,0 +1,17 @@
+id: SR-0003
+title: Die V1->V2-Typtabelle deckt jeden Typ, den die Kits ausliefern
+derives_from: PR-0001
+contract: 'Gemessen 2026-08-04: v1_types() fuehrt vier Zeilen (PRD, PROC, SR, TSK),
+  die Kits liefern zehn Item-Typen aus. BUG, CR, FR, RQ, HYP und EXP sind V2-Item-Typen
+  mit eigenem ACTIVE_DIRS-Eintrag und haben keine Zeile. Ein solcher Datensatz darf
+  nicht als ''record of some other kind'' abgetan werden und der Lauf nicht mit exit
+  0 und ''NOTHING TO DO'' enden. Die Trennung ist im Code vorhanden: legacy_type in
+  REQUIRED_FIELDS scheidet PROD und ADR (wirklich kein Item-Typ) von den sechs Backlog-Typen
+  ohne Zeile.'
+affected_components:
+- kernel/backlog_types.py
+- kernel/migrate.py
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:27:22'

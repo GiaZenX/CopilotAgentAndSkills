@@ -1,0 +1,22 @@
+id: DEC-0006
+title: Runde 4 wird auf unsere Daten zugeschnitten; Randfaelle gehen auf die Loecherliste
+context: 'Acht Stunden Agentenzeit fuer ein Kommando, das dreimal in seinem Leben
+  laeuft. Der Nutzer hat die Unverhaeltnismaessigkeit benannt. Ursache ist nicht zu
+  viel Pruefung, sondern zu viel Allgemeinheit: gebaut wurde ein Migrator fuer hypothetische
+  V1-Formen, waehrend drei bekannte Datensaetze vorliegen, die gemessen sind.'
+decision: 'In Runde 4 bleibt drin, was unsere Daten trifft: die Elternketten (488
+  + 207 Datensaetze) und die fehlenden Tabellenzeilen. Auf die Loecherliste gehen:
+  gepunktete Pfade, das Ein-Byte-Fenster in _too_large, die unerreichbar gewordene
+  Ordinal-Suche, .tmp-Reste nach Schreibfehlern -- Faelle, die in keinem unserer drei
+  Repos vorkommen. Benannt statt gehaertet. Und der Pilot faehrt SYNAIPSE zuerst,
+  nicht BuyPlugGo.'
+consequences: 'Die Pilotreihenfolge ist der wichtigere Teil: BuyPlugGo traegt einen
+  Typ, keine Elternketten und saubere Statuswerte -- gemessen. Drei der vier Blocker
+  aus Pruefrunde 2 haetten es nie beruehrt. Haette der Pilot dort begonnen, waere
+  er durchgelaufen und die Schlussfolgerung ''das Werkzeug funktioniert'' waere falsch
+  gewesen. Der leichte Fall darf nicht der erste sein.'
+source: Gespraech 2026-08-04; Zaehlung aller drei Kopien und Pruefbericht Runde 2
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:28:45'

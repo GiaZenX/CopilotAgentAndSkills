@@ -219,16 +219,21 @@ def relations(body, parse_id):
     scalars and top-level lists of scalars; an id buried in a nested mapping is not found, and no
     shipped schema puts one there.
 
-    `id` and `legacy_ids` are skipped for opposite reasons: the item's own id would make every
+    `id` and `legacy_fields` are skipped for opposite reasons: the item's own id would make every
     item its own relation, and a legacy id is a former NAME of this item rather than a pointer to
-    another one — and a V1 name can share a V2 prefix, so `parse_id` would accept it happily.
+    another one — and a V1 name can share a V2 prefix, so `parse_id` would accept it happily. The
+    second name was `legacy_ids` for a round and no such field ever existed; what `kernel/migrate`
+    writes is `legacy_fields`. The skip is BELT-AND-BRACES rather than the only thing standing
+    between a legacy id and a false relation: `legacy_fields` is a MAPPING, and the rule above
+    reads top-level scalars and lists of scalars only, so its contents are already out of reach.
+    It is named so that flattening that field one day cannot silently create relations.
     """
     found = []
     # `key=str`: a hand-written item with mixed top-level key types (`1: x` next to `a: y`) makes a
     # bare sort raise TypeError, and this generator would die with a traceback instead of showing
     # the item — `corrupt` exists for exactly that item.
     for key, value in sorted(body.items(), key=lambda kv: str(kv[0])):
-        if key in ("id", "legacy_ids"):
+        if key in ("id", "legacy_fields"):
             continue
         for candidate in (value if isinstance(value, (list, tuple)) else [value]):
             if not isinstance(candidate, str):

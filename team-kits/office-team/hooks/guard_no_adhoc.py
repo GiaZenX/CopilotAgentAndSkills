@@ -117,8 +117,9 @@ def document_trays(root):
 # _type` asserts it equals ACTIVE_DIRS, so a new item type cannot silently escape the rule.
 ITEM_TYPES = ("apr", "arc", "bug", "cr", "dec", "dsn", "evd", "exp", "fr", "hyp", "inv",
               "pr", "proc", "rq", "sr", "tsk", "wfr")
-# V1 ids that migrated projects still carry (spec II.10 keeps them in `legacy_ids`), so a
-# `PRD-0002_status.md` written from an old habit is still caught. Also proven, as far as it can
+# V1 ids that migrated projects still carry -- `kernel/migrate.py` preserves the V1 record and
+# its id under `legacy_fields` (spec II.10) -- so a `PRD-0002_status.md` written from an old
+# habit is still caught. Also proven, as far as it can
 # be: the same test asserts every type in the kernel's V1 migration table is a prefix known here.
 LEGACY_ITEM_TYPES = ("adr", "mdr", "pa", "prd")
 # The rule is "named after an ITEM ID", so it matches the id shape the kernel actually mints —

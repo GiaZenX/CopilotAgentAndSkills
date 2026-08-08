@@ -5069,7 +5069,14 @@ def test_an_id_shaped_string_in_prose_is_not_a_project_reference(tmp_path, text)
     "ref: PRD-0001 legacy import",
 ])
 def test_a_real_project_reference_is_still_refused(tmp_path, text):
-    """Including the V1 `PRD-` prefix, which spec II.2 keeps alive through `legacy_ids`."""
+    """Including the V1 `PRD-` prefix -- an id-shaped reference is refused whatever its vintage.
+
+    The earlier wording of this line said spec II.2 "keeps `PRD-` alive through `legacy_ids`". No
+    such field has ever existed in this harness; what an imported item keeps is its former name
+    under `legacy_fields.legacy_id` (`kernel/migrate.py`), and that is a value, not a pointer. The
+    rule being measured here is about the TEXT of an agent memory note and does not depend on
+    whether the id resolves to anything.
+    """
     payload = memory_write(tmp_path, ".claude/agent-memory/frontend-developer/note.md", text)
     result = run_budget(tmp_path, payload)
     assert result.returncode == 2, text
@@ -6921,26 +6928,50 @@ def test_the_id_scan_is_linear_on_the_worst_legal_input(tmp_path):
     (`\\S{0,1000}` -> `\\S*`, the quadratic form its own comment records), that 8 KB input still
     ran in 0.27 s and the old test stayed GREEN — it could not see the defect it was written for.
 
-    ASSERTED AS A RATIO against benign text of the SAME size through the SAME process, which is
-    what makes it independent of the machine and of what else is running. Both runs pay the
-    identical interpreter start, the identical stdin read and the identical file read; only the
-    scanning differs, so the quotient is the shape of the scan.
+    THE MACHINE IS SUBTRACTED, NOT DIVIDED OUT, and the round that wrote the previous line had
+    that backwards. It compared the dense run with a benign run of the same size and called the
+    QUOTIENT machine-independent because "both runs pay the identical interpreter start". The
+    start is an ADDITIVE term in both, so the quotient is (start + scan) / start — a function of
+    how fast the host starts a process and of nothing else: 1.0 on a slow host with any scan at
+    all, 42 on a fast one with the same scan. Measured on this host 2026-08-07: benign 0.0612 s,
+    dense 200 KB 0.7747 s, quotient 12.65 against a bound of 5 — a red test on a codebase whose
+    scan is linear. The band the docstring recorded (0.81–1.04) is not reachable on any host that
+    starts a process faster than it scans 200 KB.
 
-    MEASURED RATES, so the next round does not have to derive them again (Windows 11, CPython
-    3.13, medians of 3 runs per point, 20 evaluations per condition):
-      * shipped, idle: ratio 0.81–1.04, median 1.02.
-      * shipped, under a `pytest tools/ -n 8` load: ratios stayed inside the same band while the
-        ABSOLUTE times swung 0.24–1.78 s — which is the whole reason the old `< 1.0 s` line
-        failed 15 times in 25 under load, a 60 % flake on a green codebase.
-      * quadratic form restored, same input: 74.8 s against 0.25 s benign — a ratio near 300, and
-        past the 60 s at which the host kills a PreToolUse hook, where a killed hook is an ALLOW.
-    A bound of 5 therefore sits five times above every observed honest ratio and sixty times
-    below the defect. There is deliberately no wall-clock line beside it: at this margin an
-    absolute number could only re-introduce the flake it replaces.
+    So the two runs are SUBTRACTED: dense minus benign at the same size, same process, same stdin,
+    same file read, leaves the scanning and cancels the start exactly. What is then compared is
+    the cost PER BYTE at two sizes a factor of four apart, which is dimensionless and says what
+    the name says — a linear scan keeps it constant, a quadratic one multiplies it by that factor.
+
+    MEASURED, Windows 11, CPython 3.13, medians of 3 runs per point, the subtracted scan cost:
+      * shipped: 25 KB 0.0034 s/KB · 50 KB 0.0034 · 100 KB 0.0035 · 200 KB 0.0038 · 400 KB 0.0035.
+        Constant over sixteen times the input, which is the property.
+      * quadratic form restored in a clone outside the repo (`\\S{0,1000}` -> `\\S*`, the shape
+        `_FOREIGN_RX`'s own comment records), same two sizes: the scan cost rises with the input
+        instead of staying flat, and the 200 KB point is past the 60 s at which a host kills a
+        PreToolUse hook, where a killed hook is an ALLOW.
+    A bound of 2 therefore sits well above the noise this host shows on the constant and below the
+    factor of four a quadratic reader has to produce across a fourfold span.
+
+    THE SECONDS OF THE MUTANT ARE A FACT ABOUT ONE RUN, NOT ABOUT THE DEFECT, and saying otherwise
+    is what made this paragraph wrong once already: two runs of the SAME mutant on the SAME host
+    came out 5.96 s / 74.54 s (factor 3.1) and 5.37 s / 76.41 s (factor 3.6). Only the DIRECTION is
+    the defect. Which of this test's readings reports it is host-dependent too -- the linearity
+    assertion below, or the stability reading above it when process start is noisy enough, or
+    `subprocess.TimeoutExpired` from `run_budget` on a host slow enough to need more than its 120 s
+    at 200 KB. All three are the same finding: the scan does not stay inside the budget.
+
+    EACH SERIES IS ITS OWN FASTEST RUN, not its median, and the pair of subtracted minima is what
+    survives a loaded machine: process time is bounded BELOW by the work and has only upward noise,
+    so the minimum of five is the estimator and the gap to the SECOND fastest is how stable that
+    estimator was on this run. A difference of two noisy numbers can be anything, so the small
+    size's scan cost has to stand clear of that gap — where it does not, this FAILS with that
+    reading instead of asserting on noise.
     """
     import time as _time
 
-    def cost(name, body):
+    def cost(name, body, runs=5):
+        """The run times of the shipped hook as a process against this content, ascending."""
         path = tmp_path / ".claude" / "agent-memory" / "backend-developer" / name
         os.makedirs(str(path.parent), exist_ok=True)
         # the file being SHRUNK — larger than the write, so the size check passes it through to
@@ -6948,16 +6979,28 @@ def test_the_id_scan_is_linear_on_the_worst_legal_input(tmp_path):
         write(str(path), "x" * (len(body) + 10))
         payload = memory_write(tmp_path, ".claude/agent-memory/backend-developer/" + name, body)
         taken = []
-        for _run in range(3):
-            started = _time.time()
+        for _run in range(runs):
+            started = _time.perf_counter()
             assert run_budget(tmp_path, payload).returncode == 0
-            taken.append(_time.time() - started)
-        return sorted(taken)[1]
+            taken.append(_time.perf_counter() - started)
+        return sorted(taken)
 
-    size = 200 * 1024
-    dense = ("https://example.com/spec" * (size // 24 + 2))[:size]   # one whitespace-free run
-    benign = "x" * size
-    assert cost("dense.md", dense) < 5 * cost("benign.md", benign)
+    def scan_cost(size):
+        """(what the SCAN cost at this size, how stable the two measurements behind it were)."""
+        dense = ("https://example.com/spec" * (size // 24 + 2))[:size]  # one whitespace-free run
+        hot = cost("dense%d.md" % size, dense)
+        cold = cost("benign%d.md" % size, "x" * size)
+        return hot[0] - cold[0], (hot[1] - hot[0]) + (cold[1] - cold[0])
+
+    small, large = 50 * 1024, 200 * 1024
+    near, jitter = scan_cost(small)
+    far, _jitter = scan_cost(large)
+    assert near > 5 * jitter, (
+        "the scan at %d B costs %.3f s and its two series were only stable to %.3f s, so this "
+        "difference is the host and no ratio over it means anything" % (small, near, jitter))
+    assert far / large < 2 * (near / small), (
+        "the scan costs %.6f s per byte at %d B and %.6f at %d B — it is not linear in the input"
+        % (near / small, small, far / large, large))
 
 
 # -- round 4: what the synchronous design and the cross-file lookup opened ----

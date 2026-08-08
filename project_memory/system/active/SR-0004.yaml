@@ -1,0 +1,16 @@
+id: SR-0004
+title: Ein Datensatz in einem Endzustand landet im Archiv, nicht in active/
+derives_from: PR-0001
+contract: 'Gemessen: 260 von 264 Aufgaben in synaipse und 162 von 165 in portfoliomanaigement
+  stehen auf DONE. Schreibt die Migration alles nach tasks/active/, begraebt sie vier
+  lebende Aufgaben unter 260 erledigten. Ein Datensatz, dessen abgebildeter Status
+  ein Endzustand seines Automaten ist, wird nach archive/<typ>/<jahr>/ geschrieben.
+  Das Jahr kommt aus dem V1-Datum; wo keines dasteht -- SR traegt in beiden Projekten
+  kein Datumsfeld -- ist es eine vorgelegte Entscheidung und keine Vermutung.'
+affected_components:
+- kernel/migrate.py
+- kernel/state.py (archive)
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:27:22'

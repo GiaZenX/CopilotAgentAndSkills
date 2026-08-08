@@ -1,0 +1,53 @@
+id: DEC-0019
+title: Eine Reparatur, deren eigene Zusicherung nicht gemessen ist, ist nicht fertig
+context: 'DEC-0017 sagte: die Naht zwischen einer Zusicherung und ihrem Verhalten
+  wird gemessen; und solange die Messung fehlt, gilt die schwaechere Haelfte -- wer
+  eine Eigenschaft behauptet und eine Aufzaehlung baut, schreibt die Aufzaehlung hin.
+
+
+  Die Runde danach hat die schwaechere Haelfte SAUBER angewandt. Der Pruefer bestaetigt
+  es: die Prosa-Regel behauptet die Paarung nicht mehr, nennt alle vier gemessenen
+  Proben und faellt, wenn sie nichts mehr ansieht.
+
+
+  Und dieselbe Runde hat ZWEI neue Exemplare desselben Mechanismus erzeugt, eines
+  davon IM FIX FUER DIESEN MECHANISMUS:
+
+
+  Die Schleife des Riegels ist als Eigenschaft gebaut -- der einzige Weg zur Suche
+  fuehrt durch ein Dokument, das beide Budgets bestand und geparst wurde. Der Leser
+  DARUNTER faengt eine Aufzaehlung von Ausnahmen. Ein Kit-Dokument, das ein Windows-Werkzeug
+  in ANSI oder UTF-16 zurueckschreibt, faellt durch alle drei Leser: der Merge endet
+  als interner Fehler mit Traceback und OHNE Dateinamen, und das Werkzeug der letzten
+  Instanz sagt danach nur noch eine Codec-Zeile. Der Weg dorthin ist die Abhilfe,
+  die die neue Meldung selbst empfiehlt.
+
+
+  Und der VORLAUF der Schleife zaehlt ebenfalls auf: nur YAML, keine gepunkteten Pfade,
+  kein Vorschlagsbereich. Derselbe V1-Datensatz an sieben Orten abgelegt -- zwei gemeldet,
+  FUENF stumm. Der Trockenlauf meldet diese Klassen ausdruecklich, der Validator nicht:
+  die beiden widersprechen sich wieder ueber dieselbe Datei, also genau das, was der
+  Fix beendet haben sollte.'
+decision: 'Die Messung der Naht ist kein eigenes Paket mehr, sondern Teil jeder Reparatur:
+  eine Reparatur, deren eigene Zusicherung nicht gegen das Verhalten unter ihr gemessen
+  ist, ist nicht fertig. Die schwaechere Haelfte von DEC-0017 bleibt richtig und reicht
+  nicht -- sie verhindert die falsche Behauptung, nicht den Mechanismus.
+
+
+  Und sie erzeugt eine eigene Blindheit: die Eigenschaft wird an der Stelle gebaut,
+  an die jemand hingesehen hat, und die Aufzaehlung bleibt eine Ebene darunter oder
+  davor stehen. Wer eine Eigenschaft baut, misst deshalb den ganzen Weg zu ihr, nicht
+  die Stelle, an der der Befund stand.'
+consequences: 'Elfte Form. Die Kosten des Nichtbauens sind jetzt gemessen statt geschaetzt:
+  drei Runden hintereinander, drei blockierende Befunde, dieselbe Familie -- und die
+  dritte davon entstand im Fix fuer die zweite.
+
+
+  Damit ist auch die Vorhersage des Pruefers bestaetigt, die er auf die Frage nach
+  der Konvergenz gegeben hat: solange nichts diese Kopplung misst, findet jede Runde
+  ein bis drei neue Exemplare, und die Zahl sinkt nicht.'
+source: Pruefbericht zu TSK-0018, 2026-08-07, Befunde F1 und F2
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-07T10:17:23'

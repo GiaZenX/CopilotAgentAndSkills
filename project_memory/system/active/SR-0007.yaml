@@ -1,0 +1,32 @@
+id: SR-0007
+title: Feldzuordnungen kommen als Vorschlag, nicht als leere Frage
+derives_from: PR-0001
+contract: 'Wo ein V1-Feld dieselbe Bedeutung traegt wie ein V2-Pflichtfeld, LEGT der
+  Trockenlauf die Zuordnung als VORSCHLAG vor -- mit dem Grund, warum er sie fuer
+  richtig haelt -- statt nur zu melden, dass er nicht entscheiden kann. Der Nutzer
+  bestaetigt oder ueberschreibt; ohne Antwort laeuft nichts. Der Vorschlag wird aus
+  den AUSGELIEFERTEN V1-Vorlagen des jeweiligen Kits abgeleitet, nicht aus einem Feldprojekt
+  und nicht geraten: die Vorlage dokumentiert, was ein Feld bedeutet, und diese Bedeutung
+  ist mit dem V2-Vertrag vergleichbar. Wo keine Ableitung traegt, bleibt es bei der
+  offenen Entscheidung -- ein Vorschlag ohne Grundlage waere schlimmer als eine Frage.
+
+
+  Gemessener Anlass: ein echter V1-SR aus synaipse traegt description ''A FastAPI
+  application instance MUST BE CREATED WITH a lifespan context manager ...''. Das
+  IST der Vertragssatz, den V2 unter contract verlangt -- er heisst nur anders. Ohne
+  Vorschlag beantwortet jeder Nutzer jedes dev-Projekts dieselbe Frage neu; mit Vorschlag
+  bestaetigt er sie einmal. 224 Systemanforderungen allein in synaipse haengen daran,
+  42 in portfoliomanaigement.
+
+
+  Grenze, die dazugehoert: ein Vorschlag ist keine Antwort. Der Lauf bleibt nicht
+  ausfuehrbar, solange er unbestaetigt ist -- sonst waere die Vorlage eine stille
+  Entscheidung mit einem hoeflichen Namen.'
+affected_components:
+- kernel/migrate.py
+- kernel/backlog_types.py
+- team-kits/*/templates/project_memory/
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T22:49:36'

@@ -1,0 +1,17 @@
+id: FR-0004
+title: 'Stufe 5: Spec II.12 gegen das Gebaute abgleichen, seitliche V2-RC'
+related_pr: PR-0003
+request_text: 'Der letzte Schritt des V2-Plans. Zwei Teile:
+
+
+  (1) II.12 gegen das tatsaechlich Gebaute abgleichen. Dabei ausdruecklich pruefen,
+  WELCHE Phase-0-Aussagen gemessen und welche nur gelesen waren -- eine davon hat
+  sich im Verlauf als falsch erwiesen, also ist die Frage nicht rhetorisch.
+
+
+  (2) Die V2-RC seitlich installieren (neben dem bestehenden Kit, nicht darueber),
+  damit ein Vergleich moeglich ist, ohne ein laufendes Projekt anzufassen.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:59:52'

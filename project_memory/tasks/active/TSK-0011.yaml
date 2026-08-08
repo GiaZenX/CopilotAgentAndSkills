@@ -1,0 +1,52 @@
+id: TSK-0011
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0008: F1 bis F4 blockierend, F5 bis F10 als Reste und Textbefunde'
+- DEC-0010 -- warum zwei Zeilen des Vorgaengerauftrags die Defekte erzeugt haben
+expected_outputs:
+- Das Gate loest ein relatives Wort dort auf, wo die Zeile WIRKLICH laeuft -- ein
+  Verzeichniswechsel, den die Shell nicht vollzieht, bewegt auch die Basis des Gates
+  nicht
+- Ein Kopf wird als Deklarationskopf erkannt, weil er einer IST -- nicht, weil irgendwo
+  ein Zeichen darin vorkommt. Was vor einer Deklaration steht, behaelt seine Schreibkandidaten
+- Jeder Zweig, den diese Reparatur baut, ist einzeln durch eine Mutation rot zu bekommen
+  -- der Pruefer hat drei Zweige gefunden, deren Entfernung die Suite gruen laesst
+- 'Kein Kandidat kann die Entscheidung ueber die Frist bringen, die die Registrierung
+  dem Hook setzt -- ein getoeteter Hook ist ein ALLOW. Die Loesung darf keine Praefixliste
+  sein: eine lokale Freigabe muss aufloesbar bleiben'
+- Die Read-only-Klassifikation nimmt die Woerter ihrer Stufe mit; wo eine Zeile sie
+  ueber diese Grenze traegt, ist das benannt -- geschlossen oder als Ausnahme mit
+  Ersatzbegrenzung
+- Ein Kandidat, der einen VORFAHREN eines geschuetzten Baums benennt, wird heute als
+  Schreibzugriff darauf gelesen; das ist benannt, und der Verweigerungstext behauptet
+  nicht laenger, ein Laufwerksbuchstabe sei kanonischer Zustand
+- Jede Ersatzbegrenzung in der Loecherliste ist gemessen oder als 'sozial, nicht technisch'
+  ausgewiesen -- die Berechtigungshaltung begrenzt heute nichts an der Shell, und
+  die Tabellenzeile darf nicht anderes behaupten
+- Jeder Docstring, den diese Reparatur beruehrt, behauptet nur, was ein Test faehrt
+  -- der Pruefer hat drei gefunden, die es nicht tun (Deklarationskopf, Kit-Autoritaet,
+  Reichweite des Schattenschutzes)
+- Der Verweis auf das Messprotokoll nennt ein Dokument, das die verwiesenen Eintraege
+  wirklich traegt
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen; die Suite unter tools/
+  ist nicht dein Mass
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-05T09:00:06'

@@ -8,6 +8,10 @@ description: >
   report into radar/. Never changes code. Triggered by the weekly schedule (or manually).
 tools: Read, Grep, Glob, Bash, Write, WebSearch, WebFetch
 model: sonnet
+# Runs on the weekly schedule, outside the change circle, and writes only into radar/ — so it holds
+# no item and gate_spawn_needs_item.py does not demand one. Read there for why the exemption is
+# declared here instead of listed in the gate.
+harness_item: none
 ---
 
 You are the **radar-watcher** for this repo — a multi-agent software-development harness for Claude Code.

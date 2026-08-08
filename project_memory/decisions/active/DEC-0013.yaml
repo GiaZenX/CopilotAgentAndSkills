@@ -1,0 +1,41 @@
+id: DEC-0013
+title: Die Wurzelitems werden archiviert, und der PM legt danach ein frisches an
+context: 'GEMESSEN mit echten Hook-Prozessen gegen ein migriertes Projekt: nach dem
+  Lauf haelt kein Dev-Projekt mehr ein aktives Wurzelitem, und fuenf Gates lesen dieses
+  Praedikat -- gate_git, gate_memory_complete, gate_packaging_decision, gate_pipeline,
+  gate_test_coverage. Alle fuenf beenden sich dann mit exit 0, lassen also DURCH.
+  Mit einem aktiven Wurzelitem verweigern dieselben Gates (rc 2, gemessen an derselben
+  Befehlszeile). Das ist stillgelegter Schutz, keine Unbequemlichkeit: Merge-Nachweis,
+  Speicher-Vollstaendigkeit, Verpackungsentscheidung, Qualitaetspipeline und Testabdeckung
+  gelten nach der Migration in beiden Dev-Projekten nicht mehr.
+
+
+  URSACHE, zwingend aus DEC-0009: einer V1-Produktanforderung fehlen sechs von acht
+  Pflichtfeldern ohne jede Quelle im Datensatz. Alle 38 sind damit unaufloesbar und
+  wandern ins Archiv.'
+decision: Archivieren -- und danach legt der Projektmanager EIN frisches Wurzelitem
+  an, das das Projekt beschreibt, wie es heute ist. Nicht die 38 von Hand fuellen
+  (sechs Felder mal 38 ist kein Nachmittag), und nicht die Gates aendern (das aendert
+  das Kit fuer alle Projekte wegen eines Migrationsfalls).
+consequences: 'Ehrlich ist es, weil die alten Produktanforderungen Historie sind und
+  der heutige Stand eine heutige Anforderung verdient -- der PM schreibt sie in der
+  ersten Sitzung mit dem Nutzer, aus dem, was das Projekt tatsaechlich geworden ist.
+
+
+  GEFAEHRLICH ist das Fenster dazwischen: zwischen dem Lauf und dem neuen Wurzelitem
+  sind fuenf Gates inaktiv, und niemand merkt es, weil sie schweigend durchlassen.
+  Der Lauf muss das also nicht nur melden, sondern der PM muss es als ERSTE Aufgabe
+  seiner ersten Sitzung sehen -- sonst faellt der Zustand zwischen zwei Sitzungen.
+  Der Sitzungsbrief ist der Ort dafuer, und genau der verliert heute die letzte Nutzerentscheidung
+  (BUG-0005). Beides gehoert zusammen angefasst.
+
+
+  Zweitens: die Warnung des Trockenlaufs nennt bisher den Zustand, nicht die Folge.
+  Sie muss sagen, dass fuenf Gates danach durchlassen -- ein Nutzer, der ''kein Wurzelitem''
+  liest, denkt an eine leere Liste, nicht an abgeschaltete Pruefungen.'
+source: Nutzerentscheidung 2026-08-05 auf FR-0008; Messung im Pruefbericht zu TSK-0010,
+  Linie 3
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T12:45:46'

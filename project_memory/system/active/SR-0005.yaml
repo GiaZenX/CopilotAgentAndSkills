@@ -1,0 +1,18 @@
+id: SR-0005
+title: Vollstaendig aufgegangene V1-Speicher wandern nach legacy/
+derives_from: PR-0001
+contract: 'Eine V1-Datei, deren Datensaetze alle zu Items geworden sind, ist ein Doppel:
+  dieselbe Sache liegt zweimal im Projekt und niemand kann erkennen, welche Fassung
+  gilt. Sie wandert nach project_memory/legacy/, der Umzug wird im Beleg mit Pruefsumme
+  festgehalten, und legacy/ ist ausdruecklich als ''bereits verarbeitet'' verzeichnet,
+  damit ein spaeterer Lauf dort keine V1-Datensaetze zu finden meint. Eine nur teilweise
+  oder gar nicht uebersetzte Datei bleibt liegen, wo sie ist -- Verschieben braeche
+  jede Referenz auf sie. Nicht nach archive/: das ist vergeben und bedeutet ''Item
+  hat seinen Lebenszyklus beendet''.'
+affected_components:
+- kernel/migrate.py
+- kernel/layout.py
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:27:23'

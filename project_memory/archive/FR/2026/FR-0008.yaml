@@ -1,0 +1,46 @@
+id: FR-0008
+title: Nach der Migration hat kein Dev-Projekt mehr ein aktives Wurzelitem -- fuenf
+  Gates haengen daran
+related_pr: PR-0001
+request_text: 'GEMESSEN am echten schreibenden Lauf auf den Kopien (TSK-0010): portfoliomanaigement
+  haelt danach nur noch 38 aktive DEC, synaipse DEC/FR/SR -- in beiden Faellen NULL
+  aktive PR. `_root.has_root_item(repo)` ist False. Fuenf Gates pruefen genau dieses
+  Praedikat: gate_git, gate_memory_complete, gate_packaging_decision, gate_pipeline,
+  gate_test_coverage.
+
+
+  URSACHE, und sie folgt zwingend aus DEC-0009: einer V1-Produktanforderung fehlen
+  sechs von acht Pflichtfeldern (class, problem, goal, invariants, out_of_scope, priority),
+  und keines davon hat eine Quelle im V1-Datensatz. Damit sind ALLE 38 Produktanforderungen
+  unaufloesbar und wandern ins Archiv. Das ist kein Fehler des Werkzeugs -- es ist
+  die Entscheidung des Nutzers, angewandt auf Daten, deren Form wir vorher nicht durchgerechnet
+  hatten.
+
+
+  DER UMSETZER HAT ES NICHT VERSTECKT: der Trockenlauf druckt vor jedem Schreiben
+  ''AFTER THIS RUN THIS PROJECT HOLDS NO ACTIVE PR ITEM. All 21 of them go into the
+  archive''. Das ist richtig so, loest die Frage aber nicht.
+
+
+  DREI WEGE, und die Wahl gehoert dem Nutzer:
+
+  (a) Archivieren und danach EIN frisches Wurzel-PR anlegen, das das Projekt beschreibt,
+  wie es HEUTE ist. Ehrlich, weil die alten PRDs Historie sind und der aktuelle Stand
+  eine aktuelle Anforderung verdient; der PM kann es in der ersten Sitzung mit dem
+  Nutzer schreiben. Mein Vorschlag.
+
+  (b) Die 38 Produktanforderungen von Hand fuellen. Sechs Felder mal 38 -- das ist
+  kein Nachmittag mehr.
+
+  (c) Die Gates so aendern, dass sie ohne Wurzelitem nicht stillstehen. Aendert das
+  Kit fuer alle Projekte wegen eines Migrationsfalls; halte ich fuer falsch.
+
+
+  ZU KLAEREN, BEVOR ENTSCHIEDEN WIRD: verweigern die fuenf Gates ohne Wurzelitem,
+  oder lassen sie durch? Das ist der Unterschied zwischen einer Unbequemlichkeit und
+  einem stillgelegten Schutz. Der Pruefer misst es gerade.'
+status: CONVERTED
+revision: 1
+approval_ref: null
+created: '2026-08-05T09:26:05'
+closed_at: '2026-08-05T12:46:03'

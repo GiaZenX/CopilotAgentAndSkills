@@ -1,0 +1,24 @@
+id: TSK-0001
+product_requirement: PR-0001
+derives_from: SR-0003
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/kernel/**
+- tools/test_migrate.py
+forbidden_scope:
+- project_memory/**
+- .claude/**
+required_inputs:
+- docs/HARNESS_V2_SPEC.md
+expected_outputs:
+- team-kits/kernel/migrate.py
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:29:11'
+closed_at: '2026-08-04T16:30:12'

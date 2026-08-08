@@ -106,7 +106,9 @@ BUDGETS = (
      "label": "memory INDEX", "max_lines": 40, "max_bytes": 8 * 1024},
 )
 
-# Item ids are project state (spec II.2 `<TYP>-nnnn`, plus the V1 `PRD-` kept by `legacy_ids`).
+# Item ids are project state (spec II.2 `<TYP>-nnnn`, plus the V1 `PRD-` an imported item
+# keeps under `legacy_fields`, which is the field `kernel/migrate.py` actually writes --
+# `legacy_ids` was named here for a round and never existed anywhere).
 _ID = r"(?:PR|PRD|RQ|FR|CR|BUG|SR|TSK|PROC|INV|APR|HYP|EXP|DEC|EVD|ARC|WFR|DSN)-\d{4,}"
 # IGNORECASE: `tsk-0042` is the same reference typed in a hurry, and the prefixes are specific
 # enough that lowercase costs no false positives.

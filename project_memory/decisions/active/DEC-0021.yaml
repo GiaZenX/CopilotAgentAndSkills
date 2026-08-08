@@ -1,0 +1,26 @@
+id: DEC-0021
+title: migration_confirmation_required wird umbenannt, nicht mit einem Leser versehen
+context: Das Feld steht auf allen importierten Items, wird an drei Stellen geschrieben
+  und von keinem Leser ausgewertet -- auch die Spezifikation verspricht keinen. Der
+  wirksame Riegel ist approval_ref, und der WIRD gelesen. Zwei Runden haben das unabhaengig
+  gemessen; der Pruefer nennt es 'eine Markierung, kein Hebel'. Der Feldname behauptet
+  damit mehr, als der Apparat baut -- dieselbe Klasse wie ein Kommentar, der Schutz
+  behauptet, den der Code nicht baut, nur im Datenschema statt in Prosa.
+decision: 'Das Feld wird so umbenannt, dass es nur sagt, was es ist: eine Herkunftsmarkierung
+  des V1-Imports, kein Riegel. Es bekommt KEINEN Leser. Ein Leser wuerde eine zweite
+  Sperre neben approval_ref bauen -- zwei Antworten auf dieselbe Frage sind die Drift-Klasse,
+  die dieses Repo an sich selbst gemessen hat. Die Umbenennung greift an allen drei
+  Schreibstellen und in der Spezifikation; sie ist Teil der TSK-0020-Nachbesserung.
+  Vom Nutzer entschieden am 2026-08-07 (Auswahl: Umbenennen, gegen Leser-bauen und
+  Loecherlisten-Eintrag).'
+consequences: Kein migriertes Projekt traegt mehr einen Feldnamen, der eine Bestaetigungspflicht
+  verspricht, die nichts durchsetzt. Wer kuenftig eine echte Bestaetigungspflicht
+  will, baut sie an approval_ref, nicht an dieser Markierung. Bereits geschriebene
+  Items der Testmigrationen tragen den alten Namen, bis die Migration erneut laeuft
+  -- die Migration ist wiederholbar, das ist ihr abgenommener Entwurf.
+source: Uebergabe HANDOVER-2026-08-07.md Abschnitt 3; Pruefberichte zu TSK-0018 und
+  TSK-0020; Nutzerentscheidung in der Sitzung vom 2026-08-07
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-07T19:19:08'

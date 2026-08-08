@@ -682,3 +682,1673 @@ Nebenbefund derselben Runde: Pythons `write_text` dreht Zeilenenden auf CRLF, w�
 `.gitattributes` `*.py text eol=lf` sagt. Fünf Dateien waren betroffen und sind normalisiert;
 **vorbestehend** trägt `guard_yaml_valid.py` in allen drei Kits CRLF, obwohl git sie unverändert
 meldet.
+
+### Die Einträge des V1-Imports (L13–L18, Stand 2026-08-05)
+
+Sie kamen mit der Migrationsrunde dazu (`TSK-0016`) und tragen deshalb, was Abschnitt 12 von jedem
+Eintrag verlangt: den **Mechanismus**, die **gemessene Kette**, ein **Urteil** und — solange der
+Eintrag offen ist — **was stattdessen begrenzt**. Jeder von ihnen hat einen Stolperdraht in
+`tools/test_migrate.py`, der den heutigen Stand misst und rot wird, sobald sich das Verhalten
+bewegt; `test_every_hole_a_test_measures_is_carried_by_the_hole_list` hält Eintrag und Messung
+zusammen. **Keiner der sechs ist in den drei Feldkopien erreichbar** — das ist je nachgemessen und
+der Grund, warum sie Einträge sind und keine Blocker.
+
+### L13 — Ein Typ, den der Feldvertrag kennt und die Zuordnungstabelle nicht, hat keinen Ausgang
+
+**Mechanismus:** `migrate._is_backlog_type` ist die Vereinigung zweier Karten — `REQUIRED_FIELDS`
+(dieser Kernel legt Items dieses Typs an) und `v1_types()` (die V1-Statustabelle kennt den Typ).
+Ein Datensatz, dessen Typ nur in der ERSTEN steht, ist eine Harness-Lücke, und der Trockenlauf sagt
+das korrekt. Was er nicht kann, ist einen Weg hindurch anbieten: der Lauf verweigert, solange der
+Datensatz steht, und `validate` meldet das Dokument, das ihn hält — beide Abhilfen zeigen
+aufeinander.
+
+**Kette (gemessen 2026-08-05, dev-Scaffold außerhalb des Repos, ein Datensatz eines solchen Typs
+mit `status`):** `migrate --dry-run` exit 1, `BLOCKED (1) … IS a V2 item type, but spec II.10's
+mapping table has no row for it … Remedy: record it with … capture DEC and report it`; im selben
+Zustand `validate` → `error … holds 1 V1 backlog record(s) … Remedy: run … migrate --dry-run`.
+Welche Typen das heute sind, leitet der Stolperdraht aus den beiden Karten ab, statt sie
+abzuschreiben — wächst die Tabelle eine Zeile, schrumpft die Menge mit.
+
+**Urteil: Rest, keine Angriffskette** — aber ein Sackgassenzustand für ein Projekt, dessen V1-Store
+einen solchen Datensatz trägt.
+
+**Was stattdessen begrenzt:** der Lauf verweigert (kein stiller Durchlass) und benennt die Lücke
+ausdrücklich als Harness- und nicht als Projektlücke. Der Ausweg existiert — den Datensatz vor dem
+Lauf aus dem Zustandsverzeichnis nehmen —, steht aber in keiner der beiden Meldungen.
+
+**Stolperdraht:** `test_migrate.test_a_type_the_field_contract_knows_and_the_table_does_not_has_no_way_out`
+
+### L14 — Ein Unter-Mapping kollidiert mit seinem eigenen Elternteil
+
+**Mechanismus:** `scan_document` zählt die Namen, die ein Mapping sich gibt, **pro Objekt**
+(`self_named`, nach Objektidentität); `build_plan` zählt die Ansprüche auf eine Id **pro
+Schlüssel** (`claimants`). Ein Mapping INNERHALB eines Datensatzes, das dessen Id wiederholt, ist
+ein zweites Objekt mit je einem Namen: der Zweig „ein Mapping, zwei Ids" schweigt, und der
+Kollisionszweig verweigert beide Einträge — über EINEN V1-Datensatz, mit einer Abhilfe, die von
+zwei verschiedenen Datensätzen handelt.
+
+**Kette (gemessen 2026-08-05):** ein `PROC-0001` mit einem `detail:`-Mapping, das `id: PROC-0001`
+trägt → zwei Einträge, beide `blocked`, beide mit „appears 2 times in this run, in
+procedures.yaml"; `plan_is_executable` False.
+
+**Urteil: Rest, Über-Verweigerung.** Der Lauf schreibt nichts Falsches; er verweigert mit einer
+Begründung, die den Leser auf die falsche Fährte setzt.
+
+**Was stattdessen begrenzt:** die Verweigerung selbst ist die sichere Richtung, und der Ausweg
+(die Id im Unter-Mapping im V1-File entfernen) ist ausführbar — er steht nur nicht in der Meldung.
+
+**Stolperdraht:** `test_migrate.test_a_sub_mapping_of_a_record_collides_with_its_own_parent`
+
+### L15 — Die Wanderkennung hängt an einem Attributnamen statt an der Eigenschaft, verweigern zu können
+
+**Mechanismus:** `layout._can_refuse` fragt, ob ein Modul `<x>.block(...)` aufruft. Das ist eine
+Schreibweise, keine Eigenschaft. Ein registriertes Hook, das den Werkzeugaufruf anders beendet,
+gilt als nicht verweigerungsfähig — liest es den Pfad eines Kit-Dokuments, ist dieses Dokument
+keine Wand, und ein vollständig aufgegangener Speicher wird nach `legacy/` **verschoben**. Das Gate
+liest danach eine abwesende Datei, und was ein fail-closed Gate damit tut, ist nicht die Sache des
+Imports.
+
+**Kette (gemessen 2026-08-05):** ein registriertes `PreToolUse`-Hook, das über eine eigene Funktion
+mit `sys.exit(2)` verweigert und `project_memory/process_definitions.yaml` zusammensetzt →
+`gated_documents` leer → das Dokument steht in `absorbed_documents` und wird verschoben.
+Gegenrichtung im selben Lauf: dieselbe Datei mit der erkannten Schreibweise → Wand. Wie breit die
+blinde Stelle ist, im selben Lauf über die **registrierten** Hooks der Kits gezählt: dev 10 von 19,
+office 9 von 18, research 9 von 17 verweigern in einer Schreibweise, die diese Erkennung nicht
+sieht.
+
+**Urteil: offen, heute ohne Kette in den Kits.** Kein ausgeliefertes Hook, das anders verweigert,
+liest ein Kit-Dokument: die einzigen Leser von Kit-Dokumenten sind `gate_memory_complete`
+(dev/research) bzw. `gate_filing` (office) — beide mit der erkannten Schreibweise — und
+`session_status`, das nichts verweigert. Die nächste Hookdatei, die ein Dokument liest, entscheidet.
+
+**Was stattdessen begrenzt:** allein diese Menge — zwei Dokumentleser pro Kit, gemessen, beide
+sichtbar. Technisch begrenzt nichts; die Erkennung ist die einzige Instanz zwischen einem Gate und
+seiner verschobenen Datei.
+
+**Stolperdraht:** `test_migrate.test_a_hook_that_refuses_without_the_recognised_spelling_is_no_wall`
+
+### L16 — Eine Wand, die V1-Datensätze hält, wird ein Validator-Fehler, den kein Lauf mehr auflöst
+
+**Mechanismus:** eine Wand wird nie nach `legacy/` verschoben (richtig so — ihr Gate läse danach
+eine abwesende Datei), und ein Import entfernt einen Datensatz nicht aus seinem V1-File. Eine Wand,
+deren Datensätze alle importiert sind, hält sie damit weiter; `validate` meldet sie nach SR-0001 als
+Fehler, und kein weiterer Lauf ändert daran etwas.
+
+**Kette (gemessen 2026-08-05):** Wand über `process_definitions.yaml` registriert → Lauf exit 0, 16
+Items → `validate`: `error … holds 1 V1 backlog record(s)` (bzw. je nach Fixture mehr) → zweiter
+Trockenlauf: `NOTHING TO DO`, exit 0 → dieselbe Fehlermeldung, unverändert.
+
+**Urteil: offen.** Der Fehler ist wahr — dieselbe Sache liegt zweimal im Projekt —, nur hat der Lauf
+keinen Weg, ihn aufzulösen.
+
+**Was stattdessen begrenzt:** die Meldung ist ein `error` und blockiert damit Merge und Push, statt
+still zu bleiben; auflösbar ist sie heute nur außerhalb der Sitzung (die Datensätze im V1-File von
+Hand entfernen, das Dokument bleibt als Wand liegen).
+
+**Stolperdraht:** `test_migrate.test_a_wall_that_holds_v1_records_is_a_finding_no_run_can_clear`
+
+### L17 — Der Abschlusskriterium-Scan liest ein zu großes Dokument nicht mehr (Rest des Fixes)
+
+**Mechanismus:** dieser Eintrag ist der Preis der Obergrenze, die in derselben Runde eingezogen
+wurde. `report._check_no_v1_records_outside_the_archive` läuft im blockierenden Merge-Gate mit;
+ohne Grenze kostete er ~1,5 s je MB (gemessen: 1 MB 1,42 s · 5 MB 7,42 s · 15 MB 26,73 s · 55 MB
+90,79 s), also mehr als die 60 s, nach denen ein `PreToolUse`-Hook getötet wird — und ein getötetes
+Hook ist ein Durchlass. Mit der Grenze wird ein Dokument über der Marke **nicht gelesen**: ob es
+V1-Datensätze hält, ist danach unbekannt.
+
+**Kette (gemessen 2026-08-05):** ein Kit-Dokument über der Marke mit einem `PROC`-Datensatz darin →
+der Parser bekommt es nicht mehr zu sehen, `validate` meldet es als `error … NOT SEARCHED for V1
+backlog records`; ein Dokument unter der Marke im selben Lauf wird weiterhin gelesen und sein
+Datensatz weiterhin gemeldet.
+
+**Urteil: GESCHLOSSEN mit benanntem Rest.** Der unbegrenzte Leser ist weg; unbekannt bleibt
+unbekannt.
+
+**Was stattdessen begrenzt:** „nicht gelesen" wird als Fehler gemeldet und nicht übergangen — der
+Merge bleibt also zu, statt still durchzulassen. Der Preis ist die Gegenrichtung: ein legitimes
+großes Geschäftsdokument im Zustandsverzeichnis (ein gewachsenes `filing_log.yaml`) blockiert dann
+Merge und Push, bis es außerhalb der Sitzung herausgenommen oder geteilt wird. Die Meldung sagt das.
+
+**Stolperdrähte:** `test_migrate.test_a_document_too_large_to_search_is_reported_as_unsearched_and_not_read`
+und `test_migrate.test_the_whole_scan_budget_names_the_documents_it_did_not_reach`
+
+### L18 — Die Wurzelwarnung schweigt für ein Projekt, das schon vorher keines hielt
+
+**Mechanismus:** `migrate.root_item_warnings` spricht, wenn ein Lauf das letzte aktive Wurzelitem
+ins Archiv nimmt. Sie ist damit an die **Änderung** geknüpft, nicht an den Zustand, den der Lauf
+hinterlässt. Ein Projekt, das vorher keines hielt, hört nichts — obwohl danach dasselbe gilt, was
+DEC-0013 als gefährlich benannt hat: das Setup-Phasen-Prädikat antwortet nein, und die fünf Gates,
+die es lesen, gelten nicht.
+
+**Kette (gemessen 2026-08-05):** frisches Zustandsverzeichnis ohne Wurzelitem, ein übersetzbarer
+`PROC` → `root_items_after` = `{PR: [0, 0], RQ: [0, 0]}` → `root_item_warnings` = `[]`; der
+schreibende Lauf druckt dieselbe Stille.
+
+**Urteil: Rest, keine Angriffskette** — die Gates sind in diesem Zustand ohnehin schon inaktiv, der
+Lauf schaltet nichts ab. Was fehlt, ist die Ansage.
+
+**Was stattdessen begrenzt:** `doctor` und der Sitzungsbrief melden den Zustand unabhängig vom Lauf;
+DEC-0013 macht das frische Wurzelitem zur ersten Aufgabe der ersten Sitzung nach der Migration.
+
+**Stolperdraht:** `test_migrate.test_the_root_warning_is_silent_for_a_project_that_held_no_root_item_before`
+
+## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
+
+Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier
+`PreToolUse`-Gates, die *dieses* Repo statt eines Kits durchsetzen (`SR-0006`, `DEC-0003`).
+
+Die Trennlinie, nach der hier entschieden wird, ist **eine Regel und keine Abwägung**:
+
+> Eine Lücke, deren Angriffskette **innerhalb einer Sitzung** durchläuft, ist **blockierend**.
+> Blockierend heißt: **geschlossen** — oder mit einer **benannten, vom Nutzer abzunehmenden
+> Ausnahme**, die sagt, **warum** sie nicht schließbar ist und **was stattdessen begrenzt**.
+
+Die zweite Hälfte ist seit TSK-0008 dabei, weil die erste allein einen dritten Zustand offenließ,
+in dem drei Löcher hier je drei Runden überlebt haben: „blockierend, benannt, unverändert". Den
+gibt es nicht mehr. Ein offener Eintrag unten ist entweder **geschlossen**, oder er trägt eine
+**Ausnahme**, die auf die Abnahme des Nutzers wartet — und dann steht dort, was an die Stelle des
+Schutzes tritt. Dieselbe Regel steht in `CLAUDE.md`.
+
+Jeder Eintrag nennt darum drei Dinge: den **Mechanismus** (nicht die Schreibweise, mit der er
+zufällig vorgeführt wurde), die **gemessene Kette** und ein **Urteil**. Die Kette steht im Eintrag
+selbst; wo ein **Messprotokoll** unter `docs/reviews/` sie ausführlicher trägt, nennt der Eintrag
+es — und dann trägt jenes Dokument den Eintrag auch unter seiner Nummer.
+Bis 2026-08-05 stand hier stattdessen eine Zuordnung nach Nummernbereichen („H16–H23 in
+`…tsk0011…`"); drei der genannten Einträge kamen dort nicht vor. Ein Verweis, den niemand prüft,
+ist eine Behauptung wie jede andere — `test_gates.py::test_every_reference_to_a_measurement_leads_to_one`
+prüft ihn jetzt.
+H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
+mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
+H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37 mit TSK-0022.
+
+Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
+zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
+Achsen. Der Grund ist gemessen (2026-08-07): ohne diese Kopplung ließ sich die Prüfmenge von 1440
+auf 100 Zellen zusammenstreichen, ohne dass ein einziger Test dieser Datei rot wurde. Die
+Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
+`test_gates.py::test_every_cell_a_closed_hole_names_is_one_the_table_carries` prüft beide Enden.
+
+**Die offenen Einträge auf einen Blick, mit dem Zustand nach der zweiten Hälfte der Regel:**
+
+| # | Zustand | Was an die Stelle des Schutzes tritt |
+|---|---|---|
+| H2 | **Ausnahme, Abnahme offen** | nur `commit` ist gesperrt; jede andere historyschreibende Form braucht erst eine Vertragsänderung an `SR-0006` |
+| H7 | **Ausnahme, Abnahme offen** | Gate 4 prüft Form, nicht Deckung; die Reparaturstelle liegt im Kernel (`AUTOMATA` ohne `done_states`) |
+| H11 | **Ausnahme, Abnahme offen** | **nichts Technisches.** Gemessen 2026-08-05: `.claude/settings.json` `permissions` trägt genau `deny: ["Agent(harness-lead)"]` und begrenzt die Shell nicht. Die Begrenzung ist **sozial** — Rollentrennung und Item. Eine wirksame Berechtigungshaltung wäre der Schnitt, ist aber eine Nutzerentscheidung und heute nicht gebaut |
+| H12 | **Ausnahme, Abnahme offen** | nichts liest heute einen `allowed_scope`; wer `.claude/` schreiben darf, schreibt auch die Gates — ebenfalls **sozial** |
+| H16 | **Ausnahme, Abnahme offen** | dieselbe Lage wie H11: **sozial, nicht technisch**. Die Pfad-Hälfte ist offen; von der `cd`-Hälfte ist die Bewegung geschlossen, nicht der Pfad in der Variablen |
+| H21 | **Ausnahme, Abnahme offen** | dieselbe Kette wie H16 und dieselbe Begrenzung: **sozial**. Ohne Variable greift heute ein Nebengrund (die Zeile nennt den Repo-Pfad wörtlich), und ein Nebengrund ist keine Maßnahme |
+| H22 | **Ausnahme, Abnahme offen** | **nichts Technisches**, dieselbe Begrenzung wie H11 — die Reparaturstelle liegt in der Read-only-Klassifikation der Kits |
+| H25 | **Ausnahme, Abnahme offen** | dieselbe Lage wie H12, von der sie abhängt: wer `.claude/` schreiben darf, setzt die Frist hoch, die sich ein Gate zugesteht. **Sozial** — Rollentrennung und Item |
+| H13, H14, H15, H18, H19, H23 | **Rest**, keine Angriffskette | jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht |
+| H36 | **Rest**, keine Angriffskette auf diesem Host | die Grenze ist gemessen und liegt außerhalb des Gates: die Zeilenlänge, ab der die nicht unterbrechbare Stelle die Frist reißt, kann auf diesem Host keine Shell mehr gestartet bekommen. Der Eintrag nennt, was das ändern würde |
+| H32 | **Ausnahme, Abnahme offen** | geschlossen bis auf eine Hälfte, und die ist ein Sonderfall von H34: was die Kits als Prosa entfernen, liest davor niemand. **Sozial** — Rollentrennung und Item; die Reparaturstelle liegt im Kit |
+| H34 | **Ausnahme, Abnahme offen** | **nichts Technisches**, dieselbe Begrenzung wie H11 und H22 — die Prosa-Entfernung ist die der Kits (`gate_write_scope._MESSAGE_ARG_RX`), und eine zweite Antwort auf „was ist Prosa" wäre die Drift, die H15 beschreibt. **Sozial** — Rollentrennung und Item |
+| H3 | **GESCHLOSSEN**, mit benannter Resthälfte | die Hälfte, die bleibt, ist der Fixpunkt der Konstruktion und im Eintrag beschrieben: der Digest schließt `project_memory/` aus, weil ein Urteil sonst den Baum decken müsste, in den es geschrieben wird |
+| H9 | **kein Urteil möglich** | nichts, und das ist der Befund: ohne den Mechanismus aus dem Prüfbericht zu TSK-0003 gibt es keine Kette, die man einordnen könnte. Der Eintrag wartet auf diese Eingabe, nicht auf eine Entscheidung |
+| H10 | **Rest**, offen ist nur die Vollständigkeit | die beiden gefundenen Hälften sind geschlossen und je durch einen roten Test gedeckt; für die dritte gibt es keinen Ersatz, sondern eine ungestellte Frage — ein erschöpfender Mutationslauf über `.claude/hooks/` |
+| H37 | **GESCHLOSSEN**, mit benannten Resten (Rest 1–5 im Eintrag) | für den Mechanismus des Eintrags steht Code (`.claude/hooks/_sandbox.py`, drei Tests). Die Reste liegen sämtlich in der **Messvorrichtung**, nicht im Schutz der Gates, und jeder nennt seine Begrenzung: Rest 1 (nicht importiert = unbewacht), Rest 2 (`_audit.record_event` der Kits schreibt `project_memory/.audit/` dieses Repos — Reparaturstelle im Kit, Begrenzung **sozial**), Rest 3 (die Namensliste bleibt eine Aufzählung; `BASH_ENV` gemessen offen), Rest 4 (`watch` sieht keine Neuanlage), Rest 5 (`_inside` kanonisiert die Win32-Namensräume nicht — Gate 1 selbst ist nicht betroffen) |
+| H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
+| H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
+
+### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
+
+**Mechanismus:** ein `PreToolUse`-Hook wird *vor* der Zeile gefragt. Jede Befehlszeile, die vor dem
+`commit` noch irgendetwas am Baum tut, lässt den Commit einen Zustand aufzeichnen, den kein Urteil
+je gesehen hat. Nicht `&&` ist der Mechanismus, sondern **jede** Verkettung, jede Umleitung, jeder
+schreibfähige Befehl davor.
+
+**Kette (gemessen):** Urteil aufgezeichnet → `git commit -m wip` rc 0 → dann
+`echo more >> docs/note.md && git commit -m wip` **rc 0**.
+
+**Zweite Hälfte derselben Kette, gemessen 2026-08-05
+(`docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 4):** eine **Pipe** ist keine
+Ordnung — die Stufen laufen nebeneinander. `sed -i "s/a/b/" docs/note.md | git commit -m wip` und
+`(echo more >> docs/note.md)|git commit -m wip` waren **rc 0**, weil nur die Pipelines *vor* der
+committenden geprüft wurden.
+
+**Dritte Hälfte derselben Kette, gemessen 2026-08-07
+(`docs/reviews/2026-08-07-tsk0017-measurements.md`, Abschnitt 3):** die **Umleitung der committenden
+Stufe** ist keine Stufe, sondern die Shell — und die richtet sie **vor** `git` ein. Mit gültigem
+Urteil im Baum war `git commit -am wip > docs/note.md` **rc 0**; Ende zu Ende gemessen war
+`docs/note.md` danach leer und der Commit zeichnete `docs/note.md | 1 -` auf, weil `-am` die
+gekürzte Datei mitnimmt. Geprüft wurden bis dahin nur die Umleitungen der Stufen, die den Commit
+**nicht** tragen — und die committende Stufe war genau die eine, die aus dieser Liste fiel.
+
+**Urteil: blockierend, geschlossen.** `gate_commit_evidence._moves_the_tree_first` verlangt, dass
+jede Pipeline **vor** der committenden nur lesend ist (Klassifikation der Kits, nicht eine zweite) —
+seit TSK-0015 auch jede **Stufe der committenden Pipeline außer der, die den Commit trägt**, und
+seit TSK-0017 die **Umleitungsziele der ganzen committenden Pipeline**, die tragende Stufe
+eingeschlossen: nur ihr **Verb** ist der Commit. `git add -A && git commit` bleibt offen — der
+Digest ist `diff HEAD` und deckt Staged wie Unstaged; ebenso eine lesende Stufe, die dem Commit
+etwas zuführt (`echo wip | git commit -F -`), und eine Umleitung in das Verwerfungsgerät
+(`git commit -m wip > /dev/null`). Rot ohne den Fix:
+`test_gate3_refuses_a_line_that_moves_the_tree_before_it_commits`.
+
+**Was offen bleibt, und das ist eine Grenze und keine Vollständigkeit:** dieser Eintrag deckt, was
+die Read-only-Einstufung der Kits **sieht**. Ein Schreibzugriff, den sie als lesend führt, geht
+durch — gemessen 2026-08-07 mit gültigem Urteil im Baum:
+`sed -n "w docs/note.md" radar/note.md ; git commit -m wip` ist **rc 0**, und die Zeile
+überschreibt `docs/note.md` wirklich (H22 ist die Stelle, `gate_write_scope` nennt sie im eigenen
+Docstring). `CLAUDE.md` sagte dazu bis TSK-0017 „und **jede** Zeile, die den Baum vor dem Commit
+noch ändert" — eine Zusicherung, die der Code nicht baut; die Zeile nennt jetzt die Stelle, die
+entscheidet. Beide Enden der Grenze misst
+`test_gate3_sees_what_the_kits_classification_calls_a_write_and_no_more`, den Zeiger selbst
+`test_the_constitution_names_only_code_that_exists`.
+Und eine Zeile, deren Commit der Leser nicht *verorten* kann (Wrapper-Payload, unauflösbares Verb),
+wird als „die ganze Zeile muss lesend sein" behandelt, also eher zu streng.
+`python x.py && git commit` wird verweigert, obwohl das Skript vielleicht nichts schreibt — von
+einer Kommandozeile aus ist das nicht entscheidbar (siehe H11).
+
+**Vierte Hälfte derselben Kette, gemessen 2026-08-07 (`docs/reviews/2026-08-07-tsk0019-measurements.md`,
+Abschnitt 3):** ein Befehl, den eine **Kommandoersetzung** in der committenden Stufe einführt. Die
+Stufe wird als Ganzes verworfen, und eine Ersetzung ist weder ihr Verb noch ihre Umleitung. Mit
+gültigem Urteil im Baum war `git commit -am wip $(sed -i s/prose/POISON/ docs/note.md)` **rc 0**,
+`docs/note.md` trug danach `POISON`, HEAD bewegte sich und der Commit trug es. Geschlossen über
+`_harness.command_line`; der Eintrag mit der vollen Kette und der offen bleibenden Hälfte ist **H32**.
+
+**Was die zweite Hälfte kostet, gemessen:** eine Stufe, die die Kits nicht als lesend führen,
+verweigert jetzt auch **neben** einem Commit — `git commit -m wip 2>&1 | tee /dev/null` ist rc 2,
+obwohl dorthin nichts geschrieben wird. Das ist die Klassifikationsgrenze aus H22 in einer neuen
+Stellung, also Reibung und kein Loch.
+
+**Und eine dritte Reibung, bis 2026-08-07 in keinem Eintrag genannt:** eine Umleitung der
+committenden Stufe wird verweigert, **auch wenn ihr Ziel außerhalb des Arbeitsbaums liegt** und der
+Digest es darum gar nicht liest. Gemessen mit gültigem Urteil im Baum:
+`git commit -m wip > <außerhalb>/log.txt` ist **rc 2**. Enger fassen ließe sich das nur, indem Gate 3
+für jedes Umleitungsziel entscheidet, ob es im Baum liegt, den der Digest deckt — machbar, aber
+heute nicht gebaut; die verweigernde Richtung ist die sichere. **Reibung, kein Loch.**
+
+### H2 — Nur das Literal `commit` — OFFEN, und das ist die wichtigste offene Lücke
+
+**Mechanismus:** Gate 3 fragt `Invocation.runs("commit")`. Die Eigenschaft, um die es geht, ist aber
+„**dieses Unterkommando kann einen Commit aufzeichnen**", und die trifft auch `merge`, `revert`,
+`cherry-pick`, `am`, `rebase --continue` und `stash`.
+
+**Kette (gemessen):** `git merge --no-ff other` **rc 0**, `git revert --no-edit HEAD` **rc 0** — mit
+gültigem Urteil im Baum wie ohne. Ein Commit entsteht, ohne dass ein Beweismittel gefragt wurde.
+
+**Urteil: blockierend nach der Regel — in dieser Runde NICHT geschlossen.** Der Grund ist keine
+Bequemlichkeit, sondern dass beide möglichen Formen falsch sind:
+
+- eine **Aufzählung** der historyschreibenden Unterkommandos ist genau die Form, die dieses Repo
+  wiederholt eine Runde später bezahlt hat (Hausregel 1), und weder Kernel noch `_compat` leiten
+  eine ab;
+- die **Umkehrung** („alles verweigern, was nicht beweisbar lesend ist") verweigert `git branch`,
+  `git checkout -b`, `git fetch` — den normalen Weg, auf dem man überhaupt erst zu einem Commit
+  kommt. Ein Gate, das die eigene Arbeit stilllegt, ist kein Fortschritt.
+
+Dazu kommt: `SR-0006` sagt wörtlich „Kein **Commit**". Die Erweiterung ist damit eine
+**Vertragsänderung**, keine Hook-Änderung. **Vorschlag:** `SR-0006` auf „keine Aufzeichnung von
+Historie ohne Beweismittel" umformulieren und die Eigenschaft dort definieren; erst dann bauen.
+
+**Urteil nach der vollen Regel: benannte Ausnahme, Abnahme des Nutzers offen.** Was stattdessen
+begrenzt: `git commit` selbst ist gesperrt, und das ist die Form, in der in diesem Repo Historie
+entsteht — `merge`, `revert`, `cherry-pick` und `rebase` kommen hier praktisch nicht vor, weil auf
+einem Zweig gearbeitet wird. Die Begrenzung ist damit eine **Gewohnheit**, keine Durchsetzung, und
+genau das ist der Satz, über den der Nutzer entscheidet: entweder `SR-0006` wird umformuliert und
+die Eigenschaft gebaut, oder die Ausnahme bleibt bewusst stehen.
+
+### H3 — `project_memory/` war für Werkzeuge offen — GESCHLOSSEN, mit einer benannten Resthälfte
+
+**Mechanismus:** Gate 3 urteilt anhand eines `EVD`-Items, das *im Zustand* liegt. War der Zustand
+mit Werkzeugen schreibbar, schreibt sich der Urteilende sein Urteil selbst.
+
+**Kette (gemessen):** `Write project_memory/evidence/active/EVD-9999.yaml` mit `result: pass` und
+dem aktuellen Digest **rc 0** — als Sitzungsagent *und* als Subagent; `git commit` danach offen.
+
+**Urteil: blockierend, geschlossen.** Gate 1 verweigert den kanonischen Teil von `project_memory/`
+**jedem** Aufrufer; `staging/**` bleibt offen (Spec II.4: ausdrücklich nicht-kanonisch). Das ist die
+Regel, die die Kits ohnehin durchsetzen (`gate_write_scope`).
+
+**Resthälfte, offen:** der Digest **schließt `project_memory/` aus** — er muss das, sonst könnte kein
+Urteil je den Baum decken, in den es geschrieben wird. Folge: ein Commit trägt Zustandsänderungen
+mit, über die kein Urteil etwas sagt, einschließlich eines archivierten Items, auf das das
+Beweismittel zeigt. Das ist der Fixpunkt dieser Konstruktion und kein Defekt; schließen ließe es
+sich nur mit einem Ablageort für Beweismittel **außerhalb** des Zustands.
+
+### H4 — Ein Pfad hat mehr als einen Namen — GESCHLOSSEN, in zwei Stufen
+
+**Mechanismus:** der geschützte Bereich wurde als **Text** verglichen. Jede zweite Schreibweise
+desselben Pfades ist damit ein Weg daran vorbei — und Windows kennt mehrere, keine davon mit
+Sonderrechten: eine Verzeichnisverbindung (`mklink /J`), die Langpfad-Form `\\?\`, die
+Administrativ-Freigabe `\\localhost\C$\`, deren `\\?\UNC\`-Form und der 8.3-Aliasname.
+
+**Kette (gemessen, TSK-0007):** `mklink /J kits team-kits` → `Write kits/dev-team/hooks/gate_git.py`
+**rc 0**, während `team-kits/dev-team/hooks/gate_git.py` rc 2 bekam. `realpath` schloss das.
+
+**Kette (gemessen, TSK-0008):** `realpath` schließt nur die Junction. Von **elf gemessenen
+Aufrufen** über die Präfixformen — `Write` auf Kit-Datei, kanonischen Zustand und Gate-Datei in
+`\\?\` und `\\localhost\C$\`, dazu `\\?\UNC\`, PowerShell `Set-Content` und `sed -i` — kamen
+**neun mit rc 0 durch**, während dieselbe Datei einfach geschrieben rc 2 bekam. Einer der beiden
+Treffer war Zufall: der `$` in `C$` zerlegt die Teilzeichenkettensuche und ließ einen
+laufwerksrelativen Rest übrig, der zufällig auf dieselbe Datei zeigte.
+
+**Urteil: blockierend, geschlossen — und zwar als Eigenschaft statt als Präfixtabelle.** „Dieselbe
+Datei" ist, was das Dateisystem sagt: gemessen liefern alle fünf Schreibweisen derselben Kit-Datei
+**ein** Paar `(st_dev, st_ino)`, während `realpath` Präfix und UNC-Host stehen lässt. `_harness`
+vergleicht darum die **Identität** des tiefsten existierenden Vorfahren plus den textlichen Rest
+darunter (`_anchored`, `_ancestor_identities`, `under`) — das deckt Junction, Symlink, `\\?\`,
+`\\?\UNC\`, Admin-Freigabe, 8.3 und `subst` mit einer einzigen Frage, und es beantwortet weiterhin
+den Pfad, den es **noch nicht gibt** (eine neue Kit-Datei), über seine Position.
+Rot ohne den Fix: `test_gate1_refuses_a_protected_path_however_the_filesystem_spells_it`;
+die Gegenrichtung (kein freier Pfad wird durch eine zweite Schreibweise geschützt) misst
+`test_gate1_reads_a_free_path_as_free_in_every_spelling`.
+
+### H5 — `settings.local.json` war ungeschützt — GESCHLOSSEN
+
+**Mechanismus:** der Vertrag zählt `.claude/hooks/` und `.claude/settings.json` auf. Der Provider
+liest aber **das Verzeichnis** — Berechtigungs-Overlay und Rollendefinitionen eingeschlossen.
+
+**Kette (gemessen):** `Write .claude/settings.local.json` **rc 0**.
+
+**Urteil: blockierend, geschlossen** — indem eine Eigenschaft an die Stelle der Aufzählung tritt:
+geschützt ist `.claude/` als das, *woraus der Provider ableitet, was läuft, wer läuft und was er
+darf*.
+
+### H6 — Eine Nutzlast, die ein Gate nicht lesen kann, war ein Ja — GESCHLOSSEN, Erreichbarkeit ungemessen
+
+**Mechanismus:** drei frühe `return`s lasen „nichts zu prüfen" statt „konnte nicht geprüft werden".
+
+**Kette (gemessen, am Gate):** `{"tool_name":"Write","tool_input":{}}` **rc 0**; ebenso ein
+Shell-Payload ohne `command` und ein `TodoWrite` ohne `todos`.
+
+**Urteil: geschlossen** — alle drei verweigern jetzt; eine **leere** Aufgabenliste bleibt erlaubt,
+das ist ein echter Aufruf. **Ehrlich dazu:** ob ein echter Werkzeugaufruf diese Form überhaupt
+erzeugen kann, ist **nicht** gemessen — die Messung ist am Gate genommen, nicht am Provider.
+
+### H7 — `carries_work` verlangt keinen erreichbaren Endzustand — OFFEN
+
+**Mechanismus:** Gate 4 verlangt, dass ein Eintrag ein Item nennt, das Arbeit tragen **kann** (hat
+einen Automaten) und **nicht terminal** ist. `SR` hat die Kette `PROPOSED → ACCEPTED` und als
+einzigen Endzustand `SUPERSEDED`. Das natürliche Lebensende eines `SR` ist damit `ACCEPTED` — und
+das ist kein Endzustand, also trägt ein angenommenes `SR` für Gate 4 für immer „offene Arbeit".
+
+**Kette (gemessen):** eine Aufgabenliste, in der **jeder** Eintrag mit `SR-0006:` beginnt, ist
+rc 0 — mit `status: PROPOSED` und ebenso mit `status: ACCEPTED`. Die Regel ist mit einem Präfix
+dauerhaft erfüllbar, ohne dass ein Eintrag Arbeit bindet.
+
+**Urteil: benannt, NICHT geschlossen — der Grund ist strukturell.** Was fehlt, liegt im **Kernel**:
+`AUTOMATA` kennt `chain` und `terminals`, aber keinen Begriff „in diesem Zustand ist ein Item dieses
+Typs **fertig**". Ohne den ist jede Reparatur geraten:
+
+- „letzter Kettenzustand = terminal" wäre für `TSK`/`BUG`/`CR` richtig und für `FR` (`TRIAGED`),
+  `PROC` (`ACTIVE`) und `HYP` (`TESTING`) falsch — dort *ist* der letzte Kettenzustand der
+  Arbeitszustand;
+- die Verengung auf `TSK|BUG|FR` wäre die Aufzählung zurück, gegen die `carries_work` geschrieben
+  wurde.
+
+`team-kits/**` ist auch in TSK-0008 verbotener Bereich, die Reparaturstelle also weiterhin nicht
+erreichbar. **Vorschlag:** `AUTOMATA` um `done_states` erweitern und `Reference.terminal` daraus
+lesen. Unabhängig davon bleibt, was Gate 4 selbst sagt: es prüft die **Form**, nie den Inhalt eines
+Eintrags — ein Gate, das „ist dieser Eintrag wirklich von diesem Item gedeckt" beantworten wollte,
+wäre die Sorte Prüfung, deren Bestehen nichts aussagt.
+
+**Urteil nach der vollen Regel: benannte Ausnahme, Abnahme des Nutzers offen.** Nicht schließbar
+ist sie, weil der Begriff fehlt, aus dem die Antwort käme, und er im **Kernel** fehlt, nicht im
+Gate — jede Reparatur im Gate wäre entweder geraten (letzter Kettenzustand = fertig, falsch für
+`FR`, `PROC`, `HYP`) oder die Aufzählung zurück, gegen die `carries_work` geschrieben wurde. Was
+stattdessen begrenzt: Gate 4 hält weiterhin die **Zahl** der ungebundenen Einträge auf eins, und
+`_harness.Reference.terminal` benennt die Lücke an der Stelle, an der sie entsteht. Was sie kostet,
+ist gemessen: eine Aufgabenliste, deren Einträge alle mit `SR-0006:` beginnen, ist rc 0 — die Regel
+ist mit einem Präfix dauerhaft erfüllbar, ohne dass ein Eintrag Arbeit bindet.
+
+### H8 — Acht Tests hingen am Status *eines* Items — GESCHLOSSEN
+
+**Mechanismus:** `TSK-0003` stand als Literal in Gate-2-, Gate-3- und Gate-4-Tests. Damit war der
+Status eines einzelnen Items eine **Vorbedingung der Messung** — und Items werden abgenommen.
+
+**Kette (gemessen):** `status: VALIDATED` in `TSK-0003.yaml` gesetzt → alte Testdatei **2 failed**,
+neue Testdatei **3 passed**.
+
+**Urteil: geschlossen.** Die Fixture `open_item` liest die Eigenschaft aus dem Store (auflösbar,
+hat einen Automaten, nicht terminal) und legt notfalls ein Item über den Kernel an.
+
+### H9 — Inhalt in diesem Auftrag nicht enthalten
+
+Der Prüfbericht führt ein R9; **was es besagt, stand nicht im Auftrag** — die Liste nennt „R9" ohne
+Beschreibung. Es ist hier bewusst als **ungeprüft und ungeschlossen** vermerkt statt geraten zu
+werden: ein erfundener Eintrag wäre schlimmer als eine benannte Lücke. Nachzureichen aus dem
+Prüfbericht zu TSK-0003.
+
+**Urteil nach der vollen Regel: kein Urteil möglich, und das ist der Befund.** Ohne Mechanismus gibt es keine
+Kette, ohne Kette keine Einordnung — der Eintrag steht deshalb in keiner der beiden Spalten der
+Tabelle oben. Er ist die einzige Stelle dieser Liste, an der die Regel nicht angewendet werden
+kann, weil die Eingabe fehlt.
+
+### H10 — Codehälften ohne rote Mutation — ZWEI GESCHLOSSEN, keine erschöpfende Suche
+
+**Mechanismus:** eine Hälfte einer Fallunterscheidung, die kein Test unterscheidet, ist unbelegt —
+sie lässt sich löschen, ohne dass etwas rot wird.
+
+**Gemessen und geschlossen:**
+
+- die **Untracked-Hälfte** des Digests (`working_tree_digest` hasht auch jede unverfolgte, nicht
+  ignorierte Datei). Mutation „Schleife entfernt": vorher grün, jetzt rot über
+  `test_gate3_sees_a_file_git_does_not_track_yet`.
+- die **Feld-Hälfte** von `evidence_naming` („jedes Feld des Items", nicht nur `--summary`).
+  Mutation „nur `summary` lesen": vorher grün, jetzt rot über
+  `test_gate3_reads_the_digest_in_any_field_of_the_record`.
+
+**Nicht geschlossen:** der Prüfbericht spricht von **drei** solchen Hälften; die dritte ist im
+Auftrag nicht benannt, und es wurde **kein erschöpfender Mutationslauf** über die vier Gates
+gefahren — nur die beiden oben identifizierten wurden gemessen. Ein `mutmut`-artiger Lauf über
+`.claude/hooks/` ist der Kandidat, der die Frage überhaupt beantworten könnte.
+
+**Urteil: Rest, offen ist nur die Vollständigkeit.** Die beiden gefundenen Hälften sind geschlossen
+und je durch einen roten Test gedeckt; für die dritte gibt es keinen Ersatz, sondern eine
+ungestellte Frage. Die Runden seither haben die Zahl weiter gesenkt, ohne sie zu beantworten: jede
+gebaute Verzweigung wird seit TSK-0011 einzeln zurückgedreht und der zugehörige Test gefahren
+(zuletzt zehn in `docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 7) — das ist eine
+Stichprobe der eigenen Arbeit, kein erschöpfender Lauf.
+
+### H11 — Ein Interpreter führt Code aus, den kein Gate lesen kann (neu, Preis des Fixes zu F2)
+
+**Mechanismus:** Gate 1s Shell-Hälfte erkennt einen Schreibzugriff an drei Positionen einer
+Befehlszeile. Eine Ausnahme war unvermeidbar, sonst hätte das Gate die dokumentierten Befehle dieses
+Repos verweigert (`PYTHONPATH=team-kits python -B -m kernel.cli …`,
+`python -B -m pytest .claude/hooks/test_gates.py`, `python tools/bump_kit_version.py`): die Operanden
+eines **Interpreters** gelten als Programm, nicht als Ziel. Der Inline-Text (`python -c …`) ist von
+der Ausnahme ausgenommen und wird verweigert.
+
+**Kette (gemessen, drei Schritte):** `Write scratch/w.py` (freier Bereich) **rc 0** →
+`python scratch/w.py` **rc 0** → der Lauf hängt real 8 Bytes an
+`team-kits/dev-team/hooks/gate_git.py` an. Zwei Werkzeugaufrufe, eine Sitzung.
+
+**Und sie hebt Gate 3 mit auf — gemessen, nicht abgeleitet (TSK-0008, R-d).** Im selben Lauf:
+`git commit -m wip` **rc 2** (Gate 3 verweigert, kein Beweismittel) → ein Skript im freien Bereich,
+das `git commit` startet → `python scratch/c.py` **rc 0 bei Gate 1 UND rc 0 bei Gate 3** → `HEAD`
+bewegt sich real von `7818d4b7` auf `dc6f500d`. Gate 3 fragt `Invocation.runs("commit")` an den
+**Text** der Zeile, und in dieser Zeile steht kein `git`. Die Interpreter-Ausnahme ist damit nicht
+nur ein Loch in Gate 1, sondern der Weg an **beiden** Gates vorbei.
+
+**Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht
+schließbar von einer Kommandozeile aus: dieselbe Grenze benennen die Kits für ihr
+`gate_write_scope` („It does NOT refuse a script the agent wrote to an ordinary path and then
+ran"), und die Ausnahme selbst ist unverzichtbar — ohne sie verweigert Gate 1 jede dokumentierte
+Zeile dieses Repos (`python -B -m kernel.cli …`, `python -B -m pytest …`,
+`python tools/bump_kit_version.py`).
+
+**Was stattdessen begrenzt: nichts Technisches.** Bis 2026-08-05 stand hier und in der Tabelle oben
+die **Berechtigungshaltung**. Gemessen trägt `.claude/settings.json` `permissions` genau einen
+Eintrag — `deny: ["Agent(harness-lead)"]`, der einen Selbst-Spawn der Sitzungsrolle verhindert —
+und **keine** Regel, die ein Shell-Werkzeug einschränkt. Die Zeile beschrieb also eine Maßnahme,
+die es nicht gibt. Was heute wirklich begrenzt, sind **Rollentrennung und Item**, also Disziplin.
+Eine Berechtigungshaltung, die dem Sitzungsagenten die Shell entzieht, **wäre** der wirksame
+Schnitt — sie ist eine Nutzerentscheidung und genau das, worüber die Abnahme entscheidet.
+
+### H12 — Ein Subagent kann sich die Ausnahme von Gate 2 selbst ausstellen
+
+**Mechanismus:** Gate 2 liest die Ausnahme (`harness_item: none`) aus der Frontmatter der gespawnten
+Rolle, und liest sie bei **jedem** Aufruf frisch — es ist nicht der Provider, der eine Rolle beim
+Sitzungsstart lädt, sondern der Hook, der eine Datei öffnet. Gate 1 schützt `.claude/` nur gegen den
+**Sitzungsagenten**; ein Subagent muss dort schreiben dürfen, weil der Auftrag des Umsetzers
+regelmäßig `.claude/hooks/**` nennt und dieses Repo keinen Dispatch hat, gegen den sich ein
+Subagent-Scope prüfen ließe.
+
+**Kette (gemessen, eigener Lauf):** Spawn ohne Item **rc 2** → `harness_item: none` in
+`agents/harness-implementer.md` geschrieben → derselbe Spawn **rc 0** → Zeile entfernt → **rc 2**.
+Dieselbe Datei über Gate 1: Sitzungsagent **rc 2**, Subagent **rc 0**.
+
+**Was noch daran hängt, gemessen (TSK-0008):** `.claude/hooks/` ist `sys.path[0]` jedes
+Gate-Prozesses — die Datei wird als Skript gestartet, und die Präambel legt das Verzeichnis
+zusätzlich nach vorn. Eine dort abgelegte `yaml.py` **läuft** darum während der Entscheidung von
+Gate 3 (gemessen an einer Markierungsdatei, die das eingeschleuste Modul beim Import schreibt) —
+und `yaml` ist, was das Beweismittel parst, nach dem Gate 3 urteilt. Das ist **kein zusätzlicher**
+Angriffsweg: wer dort schreiben kann, kann ebenso `_harness.py` selbst ersetzen. Es gehört hierher,
+weil es zeigt, dass die Grenze dieselbe ist.
+
+**Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht
+schließbar, weil das, was fehlt, eine Bindung „welcher Subagent darf wohin schreiben" ist; in den
+Kits leisten das `dispatch` und der `allowed_scope` des Items, und beides existiert hier bewusst
+nicht (`CLAUDE.md`: „keine Leases und kein Dispatch"). Ein Subagent muss `.claude/hooks/**`
+schreiben dürfen — das ist der Auftrag des Umsetzers. Was stattdessen begrenzt: die
+**Rollentrennung** und das Item, aus dem der Auftrag erzeugt wird; beides ist Disziplin, nicht
+Durchsetzung. **Vorschlag:** `.claude/agents/**` auch für Subagenten sperren und den Umsetzer, der
+eine Rolle ändern soll, auf einen ausdrücklich erweiterten `allowed_scope` verweisen — das setzt
+aber voraus, dass irgendetwas den `allowed_scope` liest, und heute liest ihn nichts.
+
+### H13 — Der Produzent ist als DATEI geschützt, nicht als Verzeichnis
+
+**Mechanismus:** `_harness.decision_inputs` schützt genau die Dateien, aus denen die Antwort des
+Gates **berechnet** wurde (gemessen über `sys.modules`, nicht getippt). Ein *neues* File neben
+`tools/bump_kit_version.py` fällt nicht darunter, ebenso wenig ein Modul, das der Stempler nur in
+einem Zweig lazy importiert, den dieses Gate nie betritt.
+
+**Urteil: Rest.** Ein neues File schaltet nichts ab, solange der Stempler es nicht importiert; und
+`tools/` als Ganzes ist aus nichts ableitbar, was dieses Gate liest — es wäre wieder eine
+Aufzählung. Wenn `tools/` als Ganzes geschützt gehört, gehört das in `SR-0006`, nicht in einen Hook.
+
+### H14 — Gate 3 druckt den Befehl, der es aufhebt
+
+**Mechanismus:** die Abhilfe des Gates ist `kernel.cli evidence --result pass --summary <digest>`,
+und genau die *darf* der Sitzungsagent ausführen — er muss es, denn er zeichnet das Urteil des
+Prüfers auf.
+
+**Urteil: Rest, und zwar als Entwurfsentscheidung.** Gate 3 macht einen Commit ohne Urteil zu einer
+**ausdrücklichen, aufgezeichneten Handlung**, nicht zu einer unmöglichen. Ein Gate, dessen Abhilfe
+nicht ausführbar wäre, würde das Repo aus seiner eigenen Historie aussperren — genau dafür existiert
+`test_gate3_remedy_is_executable_and_opens_the_commit`. Wer mehr will, braucht einen zweiten Akteur,
+der das Beweismittel schreibt, und der ist ein Provider-Merkmal, kein Hook.
+
+### H15 — Gate 1 hängt jetzt an privaten Helfern eines Kit-Hooks (neu, Preis desselben Fixes)
+
+**Mechanismus:** die Shell-Hälfte von Gate 1 und die Zeilenform-Prüfung von Gate 3 benutzen
+`team-kits/<kit>/hooks/gate_write_scope` als **Modul** — Tokenizer, Pipeline-Trennung,
+Read-only-Klassifikation, Redirect-Form. Das ist Absicht: eine zweite Antwort auf „ist diese Stufe
+lesend" ist genau die Drift, die dieses Repo wiederholt bezahlt hat, und der Kit-Hook trägt drei
+dokumentierte Umschreibungen derselben Regel. Der Preis ist eine Kopplung an **unterstrichene**
+Namen (`_tokenise`, `_pipelines`, `_stage_is_read_only`, `_redirect_targets`, `_null_sinks`,
+`_walk`, `_operator`, `_has_write_flag`, `_stage_verb`, `_HEREDOC_RX`, `_MESSAGE_ARG_RX`).
+
+**Richtung des Fehlers:** wird einer davon umbenannt, wirft der Zugriff, `guarded()` macht daraus
+eine **Verweigerung** — nie einen stillen Durchlass. Der Preis ist also kein Loch, sondern ein
+Ausfall: jeder `Bash`- und `PowerShell`-Aufruf des Repos wird verweigert, bis jemand den Namen
+nachzieht, und Gate 1 selbst sperrt `.claude/` gegen den Sitzungsagenten — repariert wird das aus
+einer Shell außerhalb des Providers.
+
+**Was dagegen steht:** `test_gates.py` startet die Gates als echte Prozesse, benutzt die Helfer also
+über den laufenden Code. Eine Umbenennung im Kit macht die Suite dieses Repos rot, bevor sie jemand
+im Betrieb trifft — vorausgesetzt, die Suite läuft, wenn `team-kits/` sich ändert.
+
+**Urteil: Rest, aber mit einer Bedingung.** `python -B -m pytest .claude/hooks/test_gates.py -q`
+gehört ab jetzt zu jeder Änderung an `gate_write_scope.py` dazu, nicht nur zu Änderungen an
+`.claude/`. Das ist die einzige Stelle, an der die Kopplung sichtbar wird.
+
+### H16 — Der Pfad steht in einer Variablen, das Gate liest den Text (neu, TSK-0008)
+
+**Mechanismus:** Gate 1 liest eine Befehlszeile als **Text**. Eine Shell setzt Variablen aber erst
+beim Ausführen ein. Steht der geschützte Pfad in einer Variablen, sieht das Gate `$R/team-kits/…`
+und löst das gegen das Arbeitsverzeichnis auf — ein Pfad, den nichts schützt. Das ist dieselbe
+Klasse wie H11: nicht das Vokabular fehlt, sondern der Zustand der Shell zum Ausführungszeitpunkt.
+
+**Kette (gemessen, zwei Werkzeugaufrufe, eine Sitzung):**
+`R="<repo>"; sed -i "s/a/b/" "$R/team-kits/kernel/state.py"` → **rc 0**. Ebenso in der
+`cd`-Position: `cd "$NOWHERE" && sed -i … team-kits/kernel/state.py` → **rc 0**, weil das Literal
+`$NOWHERE` als Verzeichnisname durchgereicht wird.
+
+**Von der `cd`-Hälfte ist die BEWEGUNG geschlossen, nicht die Variable.** Ein Verzeichniswechsel
+bewegt die Basis des Gates nur dorthin, wo eine Shell wirklich landet — und `$NOWHERE` ist kein
+existierendes Verzeichnis. Dieselbe Zeile: **rc 2**, am 2026-08-05 mit dem Stand dieser Runde
+erneut gemessen (`docs/reviews/2026-08-05-tsk0013-measurements.md`, Abschnitt 9). Enthält die
+Variable dagegen ein Verzeichnis, das es GIBT, folgt das Gate ihr nicht und urteilt an der falschen
+Stelle — das ist H20, und die Richtung dort ist Verweigerung. Die **Pfad**-Hälfte bleibt offen:
+dort steht die Variable im Operanden eines Schreibbefehls, und was sie enthält, weiß nur die Shell.
+Dieselbe Kette trägt H21 in ihrer PowerShell-Form.
+
+**Was hier NICHT gilt, obwohl es so aussieht:** die PowerShell-Fassung
+`$r = "<repo>"; Set-Content -Path "$r/team-kits/kernel/state.py" …` bekommt **rc 2** — aber aus
+einem Nebengrund: die Zuweisung nennt den Repo-Wurzelpfad wörtlich, und der **enthält**
+`project_memory`, also greift die Regel für kanonischen Zustand. Ein Pfad, der nur einen Teilbaum
+nennt, käme genauso durch wie in Bash. Das als „PowerShell ist geschützt" zu lesen wäre die Art von
+Zufallstreffer, die eine Runde später als Loch zurückkommt.
+
+**Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht
+schließbar von einer Kommandozeile aus: den Wert einer Variablen kennt nur die Shell, die die Zeile
+ausführt, und ein Gate, das jede Zeile mit einer Variablen verweigerte, verweigerte auch
+`$env:PYTHONPATH="team-kits"; python …` — die dokumentierte PowerShell-Vorsilbe dieses Repos. Was
+stattdessen begrenzt, ist dasselbe wie bei H11: **nichts Technisches**, sondern Rollentrennung und
+Item. Die Berechtigungshaltung stand hier als Ersatzmaßnahme und ist keine — siehe die Messung bei
+H11. Eine engere Variante wäre denkbar (jede *schreibende* Stufe mit einer unaufgelösten Variablen
+im Pfadoperanden verweigern) und ist bewusst **nicht** gebaut worden: sie wäre eine zweite Antwort
+auf „was ist eine Schreibstufe" neben der der Kits, und die Doppelantwort ist die Drift, die H15
+beschreibt.
+
+### H17 — Die andere Schreibweise einer Funktionsdefinition — GESCHLOSSEN (TSK-0011)
+
+**Mechanismus:** `_stage_verb` liest den **deklarierten Namen** als Verb. Ein Verb, das nichts
+kennt, gilt als schreibfähig, also wurde jedes Wort des Rumpfes zum Schreibkandidaten — und
+`PYTHONPATH=team-kits` nennt den Kit-Baum. `_harness.stage_body` schnitt den Kopf einer Deklaration
+ab, prüfte aber nur, ob **irgendwo** im Kopf eine Klammer steht.
+
+**Kette (gemessen, TSK-0008):** `dec () { PYTHONPATH=team-kits python -B -m kernel.cli … ; }` →
+rc 0 (BUG-0012, geschlossen), `function dec { dieselbe Zeile ; }` → **rc 2**.
+
+**Urteil: geschlossen, zusammen mit F3.** `_harness._declares_a_function` fragt jetzt nach den
+**zwei Formen, die die Grammatik der Shell hat** — Name plus leere Parameterliste, und die
+Schlüsselwortform — statt nach einem Zeichen. `function dec { … }` → rc 0 (gemessen 2026-08-05).
+Die Gegenrichtung derselben Änderung ist F3 in `docs/reviews/2026-08-05-tsk0011-measurements.md`:
+zwei Zeilen, die einen Kopf nur *aussehen ließen* wie einen, verloren dabei ihre Schreibkandidaten
+und kamen mit rc 0 durch; beide sind jetzt rc 2.
+
+### H18 — Das Repo als Operand eines Kopier- oder Archivbefehls gilt als Schreibzugriff (TSK-0008, korrigiert TSK-0011)
+
+**Mechanismus:** ob eine Stufe lesend ist, beantwortet die Klassifikation der **Kits**
+(`gate_write_scope._stage_is_read_only`), und `cp`, `robocopy`, `xcopy` und `tar` sind dort nicht
+lesend — zu Recht, denn sie schreiben ihr Ziel. Gate 1 sammelt daraufhin **alle** Wörter der Stufe.
+Der Eintrag hieß bis 2026-08-05 „das Repo als **Quelle**"; das war zu eng. Betroffen ist **jeder**
+Operand, der einen geschützten Baum berührt — auch das **Ziel**: `cp -r docs ..` hat keine
+geschützte Quelle, und der Zielpfad ist ein **Vorfahre** des Repos. Diese zweite Hälfte ist H19.
+
+**Kette (gemessen, und in dieser Sitzung selbst aufgelaufen):**
+`cp -r project_memory <außerhalb>/copy` → **rc 2**, `robocopy team-kits <außerhalb>\bk /E` → **rc 2**,
+`tar -czf <außerhalb>/bk.tgz team-kits` → **rc 2** (alle drei zuletzt am 2026-08-05 gegen den Stand
+dieser Runde gemessen, `docs/reviews/2026-08-05-tsk0013-measurements.md`, Abschnitt 9). Ein
+Backup des eigenen Repos ist damit nicht ausführbar; die Umgehung ist ein Python-Einzeiler, also H11.
+
+**Urteil: Rest, keine Angriffskette — und bewusst nicht hier geschlossen.** Die Fehlerrichtung ist
+Über-Verweigerung. Schließen ließe es sich nur, indem Gate 1 für diese Verben entscheidet, welcher
+Operand Quelle und welcher Ziel ist — und dafür gibt es **keine** Eigenschaft, nur eine Aufzählung
+mit widersprüchlichen Regeln (`cp <quelle…> <ziel>` hat das Ziel hinten, `robocopy <quelle> <ziel>`
+vorn). **Es gibt keine Eigenschaft, also wird es nirgends gebaut** — auch nicht im Kit: dessen
+Prädikat beantwortet „ist diese Stufe lesend" und sagt über Operandenrollen nichts. (Bis 2026-08-05
+stand hier, das Kit beantworte die Frage schon; das war falsch.) Die Fehlerrichtung bleibt
+Über-Verweigerung, und dabei bleibt es, bis jemand eine Eigenschaft findet.
+
+### H19 — Ein Kandidat, der einen VORFAHREN eines geschützten Baums nennt (neu, TSK-0011)
+
+**Mechanismus:** die Zugehörigkeitsprüfung antwortet in **beide** Richtungen, und sie muss das:
+`rm -rf team-kits` nennt jede geschützte Datei darunter, ohne eine davon zu buchstabieren. Die
+Kehrseite ist, dass ein Kandidat, der einen Vorfahren nennt — ein einzelnes `..`, ein bloßer
+Laufwerksbuchstabe, die Repo-Wurzel selbst —, als Schreibzugriff auf **alles darunter** gelesen
+wird. Ein `_PATHISH`-Treffer, der nur aus `/` oder `\` besteht, reicht dafür aus.
+
+**Kette (gemessen):** `cp -r docs ..` → **rc 2**, `cp -r docs C:/` → **rc 2**. Der Prüfer ist damit
+dreimal auf rein lesenden Sonden aufgelaufen.
+
+**Urteil: Rest, keine Angriffskette — Über-Verweigerung.** Was mit TSK-0011 geschlossen ist, ist
+nicht die Verweigerung, sondern die **Behauptung** darin: bis dahin bekam ein Laufwerksbuchstabe
+den Text *„this is canonical project state"*, was er nicht ist. Die Verweigerung nennt jetzt die
+Richtung, die sie gesehen hat (`_harness.reaches`, `CONTAINS_NOTE`), und sagt, dass der weitere
+Pfad für das verweigert wird, was **unter** ihm steht. Schließen ließe sich der Rest nur, indem das
+Gate entschiede, ob ein Vorfahre als Ziel oder als Nachbar gemeint ist — dieselbe fehlende
+Eigenschaft wie in H18.
+
+### H20 — Wo das Gate einer Bewegung nicht folgen kann, bleibt es stehen (neu, TSK-0011)
+
+**Mechanismus:** die Basis des Gates bewegt sich nur dorthin, wo eine Shell wirklich landet, und
+sie tut es nur, wenn die Shell den Wechsel selbst ausführt. Was der Leser nicht auflösen kann (eine
+Variable, ein Wort, das erst zur Laufzeit entsteht), was er nicht als Befehl der Shell selbst
+belegen kann (ein Verzeichnisverb, das die Kits als anderes Verb melden — hinter `if`, hinter `do`,
+hinter einer Array-Zuweisung) und was er nicht als Operandenliste verbuchen kann (H29) bewegt sie
+**nicht**. Ist die Shell in Wahrheit doch gegangen, urteilt das Gate an der falschen Stelle.
+
+**Kette (gemessen):** `cd "$NOWHERE" && sed -i … team-kits/kernel/state.py` → **rc 2**, obwohl die
+Zeile, wenn `$NOWHERE` ein echtes Verzeichnis benennt, außerhalb des Repos schreibt. Die
+Verbstellungen sind in `docs/reviews/2026-08-05-tsk0015-measurements.md` (Abschnitt 6) mit `bash`
+als Schiedsrichter gemessen: die Shell geht dort hinaus, das Gate folgt nicht, rc 2. Sie sind als
+Klasse in H24 beschrieben, weil sie eine gemeinsame Ursache haben. **Nicht mehr Teil dieses
+Eintrags:** ein Verzeichnis mit Durchsuchrecht ohne Leserecht. Seit TSK-0015 fragt der Leser das
+Betreten selbst, und die Shell geht dort hinein wie er (H28).
+
+**Die andere Richtung derselben Konstruktion, und sie war ein Durchlass — gemessen 2026-08-07
+(`docs/reviews/2026-08-07-tsk0019-measurements.md`, Abschnitt 2):** „Stehenbleiben ist fail-closed"
+gilt nur, solange die Basis in dem Baum steht, in den der relative Schreibzugriff zeigt. Sobald die
+Zeile einmal hinausgegangen ist, kann **jede** Bewegung, die der Leser nicht ausrechnen kann, die
+sein, die wieder **hinein** geht — und dann ist Stehenbleiben die durchlassende Antwort. Sieben
+Schreibweisen, eine Ursache, alle **rc 0**, während `bash` die geschützte Datei wirklich änderte,
+jeweils mit `cd "<außerhalb>" ;` davor und einem relativen Schreibzugriff dahinter: `cd "$R"`,
+`command cd`, `time cd`, `! cd`, `x=1 cd`, `cd -L` und `cd "<hier>" 2>&1`. Und die Grenze ist nicht
+die des **Repos**: `cd docs ; command cd .. ; <relativ schreiben>` schrieb die geschützte Datei aus
+einer Basis, die das Repo nie verlassen hat, ebenfalls rc 0.
+
+**Urteil: blockierend, geschlossen — die Richtung war eine Behauptung, keine Eigenschaft.** Eine
+Bewegung, deren Wirkung dieser Leser nicht ausrechnen kann, macht die Position **unbekannt**
+(`_harness.WorkingDirectory.follow` → `_UNKNOWN_POSITION`), unabhängig davon, wohin sie zeigt; von
+dort ist jeder relative Kandidat ein `_harness.Unplaceable` und wird für **jeden** Aufrufer
+verweigert. Stehen bleibt die Basis nur noch, wo der Leser die Nicht-Bewegung **ausgerechnet** hat:
+ein Verzeichnisverb, das die Shell in einem Kind ausführt, ein Wort, das für diese Shell kein Verb
+ist, ein Stapel, den er vollständig gesehen hat und der leer ist. Bis TSK-0017 hatte nur `popd`
+diese Antwort — die Runde hatte die Richtung als Eigenschaft erkannt und sie an ein **Verb**
+gebunden statt an die Basis. Rot ohne den Fix (jeder Zweig einzeln zurückgedreht, Abschnitt 5 des
+Protokolls): `test_gate1_refuses_a_line_exactly_where_the_shell_would_write`.
+
+**Der Preis, gemessen:** 64 der 1440 Zellen der gekreuzten Tabelle sind Über-Verweigerung, und neu
+darin ist, dass eine solche Zeile auch einen Schreibzugriff auf einen **freien** Pfad verweigert:
+die Position ist unbekannt, nicht bloß im geschützten Baum. Das ist Reibung, und sie trifft jeden
+Aufrufer, nicht nur den Sitzungsagenten. Die Bewegungs-Hälfte von H16 ist damit geschlossen, ohne
+dass der Pfad in der Variablen lesbar geworden wäre.
+
+**Die Reibung, die man auf diesem Host zuerst trifft, gemessen an der eigenen Zeile:** ein
+absoluter Pfad in **POSIX-Schreibweise**. Der Bash-Werkzeugaufruf läuft hier in Git Bash, dort ist
+`/c/…` ein gültiges Verzeichnis — für den Leser ist es ein Pfad auf dem aktuellen Laufwerk
+(`C:\c\…`), den kein Prozess betreten kann, also gibt er die Position auf. Gemessen 2026-08-07 gegen
+ein Stellvertreterprojekt: `cd /c/<projekt> && echo hi > docs/note.md` ging von **rc 0 auf rc 2**,
+während dieselbe Zeile mit `cd "C:/<projekt>"` rc 0 bleibt und `cd /c/<projekt> && git rev-parse
+HEAD` ebenfalls (ein lesendes Verb sammelt keine Kandidaten). Die Abhilfe steht in der Verweigerung
+selbst; die dokumentierten Befehle dieses Repos tragen ohnehin kein `cd`.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:** `with the base outside it`,
+`cd to a target this reader cannot name`, `cd with an option the shell accepts`,
+`a move inside the tree the reader cannot compute`,
+`a push this reader cannot make, and a pop the shell can`.
+
+### H21 — `Push-Location`/`Pop-Location` fehlen im Verzeichnis-Vokabular (neu, TSK-0011)
+
+**Mechanismus:** die Verben, die die Basis bewegen, sind `cd`, `pushd`, `popd`, `set-location` —
+in `_harness._DIRECTORY_VERBS` und, unabhängig davon, in `gate_write_scope._walk` und der Zeile
+daneben in `handle_shell`. Beide Aufzählungen kennen die **ausgeschriebenen** PowerShell-Formen
+`Push-Location` und `Pop-Location` nicht.
+
+**Kette (gemessen 2026-08-05, `docs/reviews/2026-08-05-tsk0013-measurements.md`, Abschnitt 9):**
+`Set-Location <außerhalb> ; Push-Location "$env:R" ; Set-Content -Path team-kits/kernel/state.py …`
+→ **rc 0**. Die Shell steht am Ende im Repo, das Gate glaubt sich draußen. Mit dem Repo-Pfad
+**wörtlich** statt in der Variablen ist dieselbe Zeile rc 2 — aber aus einem anderen Grund: die
+Kits führen `Push-Location` nicht als lesendes Verb, also wird jedes Wort der Stufe zum
+Schreibkandidaten, und das Wort nennt den geschützten Baum.
+
+**Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Bis
+2026-08-05 stand hier „Rest, keine Angriffskette", während der Rumpf des Eintrags die Kette
+beschrieb; gemessen läuft sie. Sie läuft aus dem Grund, den H16 trägt (der Pfad steht in einer
+Variablen), also ist sie **dieselbe** Kette und keine zweite. Was bleibt und diesem Eintrag gehört,
+ist das fehlende Vokabular; die Reparaturstelle dafür liegt im **Kit**
+(`gate_write_scope._READ_ONLY_VERBS`, `_walk` und die Verbliste in `handle_shell`), nicht hier: ein
+zweites Vokabular in `_harness` wäre genau die Doppelantwort, die H15 beschreibt. `team-kits/**`
+ist verbotener Bereich von TSK-0011 wie von TSK-0013. **Was stattdessen begrenzt: nichts
+Technisches** — Rollentrennung und Item, dieselbe Lage wie H11 und H16. Der Nebengrund oben ist
+keine Maßnahme: er hängt daran, dass jemand den Pfad ausschreibt. **Vorschlag:** als Kit-Item
+aufnehmen.
+
+### H22 — Die Read-only-Klassifikation gilt pro Stufe, der Pfad reist weiter (neu, TSK-0011)
+
+**Mechanismus:** ob eine Stufe schreibt, beantwortet die Klassifikation der Kits **pro Stufe**, und
+die Wörter einer lesenden Stufe fallen damit als Schreibkandidaten weg. Eine Pipe, eine
+Kommandosubstitution und eine Patch-Datei tragen den Pfad aber über diese Grenze: die lesende Stufe
+**nennt** ihn, die schreibende **benutzt** ihn, und keine der beiden zeigt beides.
+
+**Kette (gemessen 2026-08-05, alle rc 0, alle schreiben wirklich):**
+`echo team-kits/kernel/state.py | xargs sed -i "s/a/b/"`,
+`echo $(sed -i "s/a/b/" team-kits/kernel/state.py)`, dieselbe Zeile in Backtick-Form, und
+`git apply x.patch`, wo der Pfad in der Patch-Datei steht und in der Zeile überhaupt nicht vorkommt.
+
+**Die Ersetzungs-Hälfte ist seit TSK-0019 geschlossen und gehört jetzt H32**, samt der Begründung,
+warum das **keine** zweite Antwort auf „was ist eine Schreibstufe" ist: der Befehl, den die
+Ersetzung einführt, wird von derselben Zerlegung platziert wie jeder andere und dann von derselben
+Klassifikation beurteilt. Was diesem Eintrag bleibt, ist die **Pipe** und die **Patch-Datei**.
+
+**Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht in
+TSK-0011 geschlossen, und der Grund ist derselbe wie bei H15: die Klassifikation gehört den Kits,
+und „alle Wörter aller Stufen einsammeln, sobald irgendeine schreibt" wäre eine zweite Antwort auf
+„was ist eine Schreibstufe" — sie verweigerte außerdem `cat <kitdatei> | python -c …` und ähnliche
+Leseketten. Die Patch-Hälfte ist von einer Kommandozeile aus gar nicht entscheidbar: was eine
+Patch-Datei ändert, steht in der Datei. **Was stattdessen begrenzt: nichts Technisches** — dieselbe
+Lage wie H11, also Rollentrennung und Item. **Vorschlag:** die Stufen-Grenze im Kit angehen
+(`_stage_is_read_only` plus eine Weitergabe von Wörtern über die Pipe), nicht hier.
+
+### H23 — Ein unerreichbarer Pfad kostet die Beurteilung, nicht mehr die Frist (neu, TSK-0011)
+
+**Mechanismus:** eine Dateisystemfrage zu einem nicht erreichbaren Host kostet auf diesem Host
+42,1 s und lässt sich nicht abbrechen. Seit TSK-0011 ist die **Wartezeit** begrenzt: `_harness`
+liest die Frist aus der Registrierung und verweigert, wenn eine Frage nicht rechtzeitig
+zurückkommt. Der Rest, der bleibt: eine Zeile, deren Kandidaten das Budget aufbrauchen, wird
+**verweigert statt beurteilt** — und sie braucht dafür bis zu vier Fünftel der registrierten Zeit.
+
+**Kette (gemessen):** ein Kandidat auf einem unerreichbaren Host → rc 0 nach 43,0 s (beurteilt);
+fünf → **rc 2 nach 96,5 s** bei registrierten 120 s. Vorher: fünf → rc 0 nach 211,3 s, also nach
+der Frist, was der Provider als Durchlass liest.
+
+**Urteil: Rest, keine Angriffskette.** Die Fehlerrichtung ist Über-Verweigerung plus Wartezeit. Was
+nicht geschlossen ist: das Budget ist ein **Anteil** der registrierten Zeit
+(`_harness._SPENDABLE_SHARE`), keine Ableitung — der Prozessstart, gegen den man ihn ableiten
+müsste, liegt vor der ersten Zeile, die der Prozess selbst sieht. Seit TSK-0013 ist der Anteil
+nicht mehr allein: die Reserve ist der GRÖSSERE von Anteil und Untergrenze, weil ein Fünftel einer
+kurzen Frist kleiner ist als der Prozessstart dieses Hosts — gemessen bei registrierter 1 s eine
+Antwort nach 1,55 s, also nach der Frist. Und: der Zweig, der `os.stat`
+unter die Frist stellt, ist **wirksam, aber nicht isoliert messbar** — zu demselben Pfad wird
+zuerst `realpath` gefragt, und das blockiert mindestens so lange (21,8 s mit einer Frage am Netz,
+43,0 s mit beiden). Beides steht in den Messprotokollen
+(`docs/reviews/2026-08-05-tsk0011-measurements.md` für die Wartezeit,
+`docs/reviews/2026-08-05-tsk0013-measurements.md` Abschnitt 5 für die Untergrenze), nicht in einem
+Kommentar, der Deckung behauptet.
+
+**Was die Untergrenze kostet, und es ist kein Loch, sondern eine Stilllegung:** unter einer
+registrierten Frist, die kürzer ist als die Reserve, ist das Budget null und das Gate verweigert
+jeden Aufruf, für den es das Dateisystem fragen muss. Die Registrierung dieses Repos steht auf
+120 s.
+
+### H24 — Ein Verzeichnisverb, das der Leser nicht als Verb der Zeile sieht (neu, TSK-0013)
+
+**Mechanismus:** ob die Basis sich bewegt, entscheidet Gate 1 am **Verb der Pipeline**, und welches
+Wort das ist, beantwortet der Leser der Kits (`gate_write_scope._stage_verb`). Steht das
+Verzeichnisverb hinter einem reservierten Wort oder hinter einer **Array**-Zuweisung, meldet der
+Leser ein anderes Wort als Verb — `do`, das erste Element der Klammer — und ein Wort, das kein
+Verzeichnisverb ist, bewegt nichts.
+
+**Kette (gemessen 2026-08-05, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 6):**
+`while true ; do cd "<außerhalb>" ; break ; done ; <relativ schreiben>` → die Shell steht außerhalb,
+schreibt also **nicht** in den geschützten Baum, und das Gate verweigert trotzdem (**rc 2**).
+Ebenso `if cd "<außerhalb>" ; then true ; fi ; <schreiben>` und
+`arr=(a b) cd "<außerhalb>" ; <schreiben>`. **Die skalare Zuweisung gehörte bis TSK-0017 nicht
+dazu:** bis TSK-0015 stand hier „hinter einer Feldzuweisung", getroffen war dann nur die
+Array-Form — `x=1 cd "<außerhalb>" ; <schreiben>` war rc 0. Seit TSK-0017 ist auch sie Reibung
+(gemessen `docs/reviews/2026-08-07-tsk0017-measurements.md`, Abschnitt 8: **rc 2**), und zwar als
+Folge von H30: vor dem Befehlsnamen darf nur noch **Syntax** stehen, weil ein Wort dort sonst ein
+Befehl sein kann, der das Verb an ein Kind gibt. Ein Leser, der die Zuweisung ausnimmt, hätte dafür
+wieder eine Aufzählung dessen zu führen, was harmlos davorsteht.
+
+**Urteil: blockierend, geschlossen — die skalare Hälfte trug eine Kette, die dieser Eintrag als
+Reibung führte.** Bis 2026-08-07 stand hier „Rest, keine Angriffskette", und gemessen war
+`cd "<außerhalb>" ; x=1 cd "<hier>" ; <relativ schreiben>` **rc 0**, während `bash` zurück in den
+Baum ging und die geschützte Datei änderte (Abschnitt 2 des Protokolls zu TSK-0019). Geschlossen ist
+sie dort, wo H20 geschlossen ist: eine Bewegung, die dieser Leser nicht ausrechnen kann, macht die
+Position unbekannt. **Was als Reibung bleibt**, ist die Array-Zuweisung und das reservierte Wort
+(`while … do cd …`, `if cd … then`): dort geht die Shell wirklich hinaus, das Gate verweigert
+trotzdem. Enger fassen ließe sich das nur, indem `_harness` selbst entscheidet, welches Wort einer
+Stufe das Verb ist — die zweite Antwort, die H15 beschreibt. **Vorschlag:** als Kit-Item aufnehmen,
+zusammen mit H21. Rot ohne den Fix: `test_gate1_refuses_a_line_exactly_where_the_shell_would_write`;
+die skalare Zuweisung ist seit TSK-0019 eine erzeugte Zelle der Tabelle, weil die Achse jetzt aus
+den **Verzweigungen** von `_stage_verb` kommt und nicht mehr nur aus seiner Wortliste (`DEC-0018`).
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:**
+`cd behind 'a=b', which the kits' reader steps over -- run by the shell itself -- with the base outside it`,
+`with the base outside it`.
+
+### H25 — Die Frist, die ein Gate sich zugesteht, und die, nach der es getötet wird (neu, TSK-0013)
+
+**Mechanismus:** `_harness.registered_timeout` liest die Frist bei **jedem Aufruf** aus
+`.claude/settings.json`. Der Provider hat seine eigene beim **Sitzungsstart** gebunden. Solange
+eine Sitzung läuft, sind die beiden Zahlen entkoppelt: wer die Datei schreiben darf, setzt die
+Zahl hoch, die sich das Gate zugesteht, ohne die zu ändern, nach der getötet wird — und ein Gate,
+das noch entscheidet, wenn der Provider aufhört zuzuhören, wird getötet, was der Provider als
+„hook error, carry on", also als **Durchlass** liest.
+
+**Kette (gemessen, `docs/reviews/2026-08-05-tsk0013-measurements.md`, Abschnitt 7):** das Gate folgt
+der Datei, Aufruf für Aufruf — registrierte 6 s → Antwort nach 4,92 s, registrierte 1 s → 0,52 s,
+60 s → das volle Budget. `.claude/` ist dem Sitzungsagenten verweigert und einem **Subagenten**
+offen (H12, dort gemessen), und der Umsetzer arbeitet als Subagent. **Nicht gemessen und auch nicht
+messbar von hier aus:** dass der Provider seine Frist beim Sitzungsstart bindet. Das ist die Zusage,
+auf der dieses Repo ohnehin steht (`SR-0006`: „Alle vier binden beim Sitzungsstart"), keine Messung
+dieser Runde.
+
+**Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht
+schließbar von einem Hook aus: die einzige Zahl, die ein Prozess lesen kann, ist die in der Datei,
+und eine Kopie davon im Modul wäre die, die veraltet, sobald die Registrierung gesenkt wird. Was
+stattdessen begrenzt: **nichts Technisches** — dieselbe Lage wie H12, von der diese Kette abhängt,
+also Rollentrennung und Item. **Vorschlag:** `.claude/settings.json` auch für Subagenten sperren
+und den Umsetzer, der die Registrierung ändern soll, auf einen ausdrücklich erweiterten
+`allowed_scope` verweisen — dasselbe Vorhaben wie in H12, und es setzt dasselbe voraus: dass
+irgendetwas den `allowed_scope` liest.
+
+### H26 — Ein Trenner, den der Leser nicht als Trenner las — GESCHLOSSEN (TSK-0013, erweitert TSK-0015)
+
+**Mechanismus:** wo ein Befehl endet, beantwortete Gate 1 mit der Trennerliste der Kits
+(`gate_write_scope._PIPELINE_SEPARATORS`: `&&`, `||`, `;`). Der asynchrone Trenner steht dort
+nicht, und `shlex` liefert **aneinandergrenzende** Satzzeichen als EIN Token (`);`, `)&&`), das
+keiner Schreibweise gleicht. Beides hat dieselbe Folge: das Zeilenende gehört zum Verb davor — und
+ein lesendes Verb sammelt keine Schreibkandidaten. Es braucht dafür keinen Verzeichniswechsel.
+**Dieselbe Ursache im eigenen Leser, gefunden 2026-08-05:** der Stufenschnitt war ein VERGLEICH mit
+`|` statt einer Frage an die Zeichen, also traf er `)|` nicht; und `_cuts` las jeden Lauf mit einem
+`&` als asynchronen Trenner, also auch `|&` — die Pipe, die stderr mitnimmt.
+
+**Kette (gemessen 2026-08-05, ein Werkzeugaufruf, `bash` ändert die Datei wirklich):**
+`echo hi & sed -i "s/a/b/" team-kits/kernel/state.py` → **rc 0**; ebenso
+`cat docs/note.md & <schreiben>`, `(echo hi);<schreiben>` und `(echo hi)&&<schreiben>`. Dieselben
+Zeilen mit einem Leerzeichen vor dem Trenner waren rc 2. Dieselbe Ursache ohne jeden Schreibbefehl:
+`echo hi;>team-kits/kernel/state.py` → **rc 0**, und die Zeile **kürzt die Datei** — `;>` ist weder
+ein Trenner der Kits noch eine ihrer Umleitungsformen. In Gate 3 mit gültigem
+Urteil im Baum: `echo more >> docs/note.md & git commit -m wip` → **rc 0**, ebenso
+`(echo more >> docs/note.md);git commit -m wip`. Tabellen in
+`docs/reviews/2026-08-05-tsk0013-measurements.md`, Abschnitte 2 und 4.
+
+**Kette der zweiten Hälfte (gemessen 2026-08-05,
+`docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 4):**
+`(echo hi)|sed -i … team-kits/kernel/state.py` → **rc 0**, die Datei ändert sich wirklich; und
+`echo hi |& cd "<außerhalb>" ; <relativ schreiben>` → **rc 0**, weil der Leser hinter `|&` einen
+neuen Befehl sah und dessen `cd` die Basis bewegte, während `bash` es in einem Kind ausführt und
+stehen bleibt. Beide Male genügt **ein** Werkzeugaufruf.
+
+**Urteil: blockierend, geschlossen.** `_harness.commands` schneidet die Zeile, wo die Shell sie
+schneidet, und `_harness._cuts` beantwortet das an den **Zeichen** eines Satzzeichenlaufs statt an
+einer Liste von Schreibweisen — seit TSK-0015 gilt dasselbe für den Stufenschnitt
+(`_starts_a_stage`), und die Reihenfolge der Fragen entscheidet `|&`: ein Lauf, der noch ein `|`
+trägt, ist eine Pipe und kein Trenner. Die Trennerliste der Kits bleibt die Autorität: was sie
+führt und dieser Leser nicht platzieren kann, ist eine Verweigerung, kein stiller Rest. Rot ohne
+den Fix (TSK-0015 zusätzlich: „ein Stufenschnitt ist das Token `|`" und „ein Lauf mit `|` und `&`
+ist der asynchrone Trenner", beide über `test_gate1_refuses_a_line_exactly_where_the_shell_would
+_write`):
+`test_gate1_refuses_a_line_exactly_where_the_shell_would_write`,
+`test_a_separator_this_reader_cannot_place_refuses_the_line` und
+`test_gate3_refuses_a_line_that_moves_the_tree_before_it_commits`.
+
+**Was der Stolperdraht selbst kostet, gemessen und seit TSK-0015 enger gefasst:** er fragte, ob
+`_cuts` den Trenner platziert — und legte damit jede Zeile lahm, den Kernel-Aufruf dieses Repos
+eingeschlossen, sobald die Kits einen Trenner führen, den dieser Leser sehr wohl liest. Gemessen
+mit `|` in ihrer Liste: vier von vier Zeilen rc 2
+(`docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 4), obwohl `stages()` genau dort
+schneidet und die Wörter dahinter ihr eigenes Verb bekommen. Gefragt wird jetzt nach dieser Folge
+(`_placed_by_this_reader`); `>` und `NEWLINE-ISH` verweigern weiter.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:**
+`a write behind a backgrounded read`, `a write behind a backgrounded write`,
+`a write behind a glued terminator`, `a write behind a glued and`,
+`a redirect glued to the terminator in front of it`,
+`a redirect glued to a terminator behind a group`,
+`a write behind a pipe glued to a bracket`, `a write behind a pipe that carries stderr too`,
+`a write behind a pipe that carries stderr, glued`, `a move behind a pipe that carries stderr`,
+`a move in front of a pipe that carries stderr`, `a move behind a pipe glued to a bracket`,
+`glued to its terminator`, `behind a glued and`, `in a group glued to the terminator behind it`.
+
+### H27 — Die Kindschaft eines Verzeichnisverbs hatte eine Schreibweise — GESCHLOSSEN (TSK-0013)
+
+**Mechanismus:** ein Verzeichnisverb, das die Shell in einem **Kind** ausführt, lässt die Shell
+selbst stehen. Gezählt wurde das pro Pipeline und nur an der Klammer: hinter einem Listentrenner
+fing der Zähler wieder bei null an, obwohl die Klammer offen war, und die asynchrone Liste wie das
+Pipelineglied kamen im Zähler überhaupt nicht vor.
+
+**Kette (gemessen 2026-08-05, `bash` als Schiedsrichter über die Datei):** acht Zeilen, die alle in
+den geschützten Baum schreiben, während das Gate der Bewegung nach draußen gefolgt war und **rc 0**
+antwortete — `( true ; cd <außerhalb> ) ;`, `( true && cd … ) ;`, `( false || cd … ) ;`,
+`(cd …);`, `cd … &`, `cd … & true ;`, `cd … && true &` und `cd … | true ;`, jeweils gefolgt von
+einem relativen Schreibzugriff. Vier weitere Schreibweisen derselben Klasse waren schon vorher
+rc 2 (`( cd … ) ;`, `( ( cd … ) ) ;`, `( pushd … ) ;`, `true | cd … ;`) und sind es geblieben.
+Tabelle in `docs/reviews/2026-08-05-tsk0013-measurements.md`, Abschnitt 1.
+
+**Urteil: blockierend, geschlossen — und als BEWEIS statt als Suche nach Gefahr.**
+`_harness._runs_in_the_shell_itself` bewegt die Basis nur, wenn drei Dinge zugleich gelten (die
+Liste ist nicht asynchron, die Pipeline hat eine Stufe, keine Gruppe ist an der Stelle des Verbs
+offen); alles andere bleibt stehen, was die verweigernde Richtung ist. Die Gegenrichtung ist teuer
+und mitgemessen: elf Zeilen, in denen die Shell wirklich geht (darunter die geschweifte Gruppe, die
+kein Kind ist), bleiben rc 0. Rot ohne den Fix:
+`test_gate1_refuses_a_line_exactly_where_the_shell_would_write`, gegen die Tabelle, deren Spalte
+`test_the_shell_writes_where_the_table_of_line_shapes_says` aus einer echten Shell nimmt.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:** `in a group`,
+`in a group opened before a terminator`, `in a group opened before an and`,
+`in a group opened before an or`, `in a group inside a group`,
+`in a group glued to the terminator behind it`, `in a background list`,
+`in a background list with a command behind it`, `in an and-or list backgrounded at its end`,
+`as the first stage of a pipeline`, `as the last stage of a pipeline`,
+`in a brace group, which groups and is no child`, `after a group that closed`,
+`after a group whose list went to the background`, `behind a backgrounded command`,
+`with its own output redirected`, `run by the shell itself`.
+
+### H28 — Ein Verzeichnis, das existiert und nicht betretbar ist — GESCHLOSSEN (TSK-0013, korrigiert TSK-0015)
+
+**Mechanismus:** die Basis folgte einem `cd`, sobald das Ziel ein existierendes Verzeichnis war.
+Ein Verzeichnis, dessen Betreten verweigert wird, existiert aber — die Shell bleibt trotzdem
+stehen. **Betreten und Auflisten sind zwei Rechte**, und jede Frage, die nicht das Betreten selbst
+ist, beantwortet das andere: mit entzogenem Durchsuchrecht (`icacls /deny <user>:(X)`) antworten
+`os.path.isdir`, `os.stat`, `os.stat` des `.` darin, `os.access(X_OK)` **und** `os.scandir` mit ja,
+während `os.chdir` und `bash` `Permission denied` sagen.
+
+**Kette (gemessen 2026-08-05, `docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 2):**
+`cd "<durchsuchen entzogen>" ; <relativ schreiben>` — die Shell bleibt im Baum und die geschützte
+Datei ändert sich, das Gate folgte der Bewegung hinaus und antwortete **rc 0**. Mit entzogenem
+**Leserecht** lief dieselbe Konstruktion in die andere Richtung: die Shell geht hinaus, das Gate
+blieb stehen und verweigerte einen Schreibzugriff außerhalb des Baums (Reibung).
+
+**Urteil: blockierend, geschlossen.** `_harness._can_be_entered` **betritt** das Verzeichnis und
+kehrt zurück (`os.chdir`) — die einzige der sieben gemessenen Fragen, die in **beiden** Richtungen
+antwortet wie die Shell. Bis TSK-0015 stand hier das **Öffnen** des Verzeichnisses, mit genau
+dieser Behauptung im Docstring; gemessen war der Eintrag damit offen, nicht geschlossen. Rot ohne
+den Fix: `test_gate1_follows_a_move_a_process_can_make_and_no_other`.
+
+### H29 — Eine Operandenliste, die dieser Leser nicht verbuchen kann (neu, TSK-0015)
+
+**Mechanismus:** ob die Basis sich bewegt, hängt jetzt auch daran, dass der Leser die **Wörter
+hinter dem Verzeichnisverb** vollständig verbucht. Er kann genau eines: das Ziel. Welche Optionen
+ein eingebautes Verb annimmt, weiß nur dieses Verb — eine Liste von Flags hier wäre eine Behauptung
+über `bash`, die niemand prüft —, also ist **jedes** als Option angebotene Wort und jedes zweite
+Wort eine Liste, die er nicht verbuchen kann, und dann bleibt die Basis stehen. Dasselbe gilt für
+einen Dateideskriptor, der als eigenes Wort vor einer Umleitung steht (`cd <ziel> 2> log`), und für
+die Deskriptor-Verdopplung (`2>&1`).
+
+**Kette (gemessen 2026-08-05, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-05-tsk0015-measurements.md`, Abschnitt 6):** `cd -L "<außerhalb>" ;
+<relativ schreiben>`, ebenso mit `-P`, mit `--` und mit `2>&1` → die Shell geht wirklich hinaus und
+schreibt **nicht** in den geschützten Baum; das Gate bleibt stehen und verweigert (**rc 2**).
+
+**Eine der drei Schreibweisen ist seit TSK-0017 geschlossen, und ohne jede Aufzählung:** `--` ist
+keine Option, sondern das **Optionsende** der POSIX-Grammatik (Utility Syntax Guideline 10) — was
+dahinter steht, ist ein Operand, wie immer es geschrieben ist. `_harness._END_OF_OPTIONS` ist diese
+Definition; `cd -- "<außerhalb>" ; <relativ schreiben>` ist gemessen von rc 2 auf **rc 0** gegangen
+und steht als Zelle in der gekreuzten Tabelle. Rot ohne den Fix:
+`test_gate1_refuses_a_line_exactly_where_the_shell_would_write`.
+
+**Warum die beiden anderen bleiben, jede mit ihrem eigenen Grund** — die Begründung dieses Eintrags
+deckte bis TSK-0017 nur die erste:
+
+- `cd -L` / `cd -P`: welche Optionen ein Builtin annimmt, weiß nur das Builtin. Schließbar wäre das
+  nur mit einer Flagliste je Verb und Shell, also der Sorte Aufzählung, die hier jede Runde einen
+  Defekt später fällig wird.
+- `cd <ziel> 2>&1` und `cd <ziel> 2> log`: das ist **keine** fehlende Aufzählung, sondern eine
+  Information, die die Zerlegung verliert. `shlex` gibt `2`, `>&`, `1` als drei Token zurück und
+  trennt den Deskriptor vom Operator, den `bash` nur **geklebt** akzeptiert — danach ist
+  `cd <ziel> 2> log` von `cd 2 > log` (ein Verzeichnis, das wirklich `2` heißt) nicht mehr zu
+  unterscheiden. Den Deskriptor wegzuwerfen liefe im zweiten Fall ins Heimatverzeichnis, während
+  die Shell in `2/` geht — das ist die durchlassende Richtung. Ihn zu behalten macht die Liste
+  unverbuchbar, und das ist die verweigernde. Geschlossen wäre es nur über eine zweite Zerlegung
+  des Rohtexts, also genau die Drift, die H15 beschreibt.
+
+**Urteil: blockierend, geschlossen — und was bleibt, ist Über-Verweigerung.** Bis 2026-08-07 stand
+hier „Rest, keine Angriffskette", und das war für **beide** verbliebenen Schreibweisen falsch:
+gemessen (Abschnitt 2 des Protokolls zu TSK-0019) waren `cd "<außerhalb>" ; cd -L "<hier>" ;
+<relativ schreiben>` und dieselbe Zeile mit `2>&1` je **rc 0**, während `bash` zurück in den Baum
+ging und die geschützte Datei änderte. Eine Operandenliste, die dieser Leser nicht verbuchen kann,
+ist seither keine Bewegung, die er **nicht macht**, sondern eine, die er nicht **ausrechnen** kann:
+die Position wird unbekannt (H20). Die Gegenrichtung derselben Verbuchung war schon vorher ein
+Durchlass in einem Werkzeugaufruf: `cd "<außerhalb>" x ; <schreiben>` und `cd -q "<außerhalb>" ;
+<schreiben>` waren rc 0, während `bash` „too many arguments" bzw. „invalid option" sagte, **stehen
+blieb** und die geschützte Datei wirklich änderte (Abschnitt 1 des Protokolls zu TSK-0015). **Was
+als Reibung bleibt:** die Zeile wird auch dann verweigert, wenn die Shell wirklich draußen steht —
+`cd -L` und `2>&1` tragen ihren Grund oben, je einen eigenen. **Vorschlag:** offen lassen und die
+Reibung melden, wenn sie jemandem begegnet. In der gekreuzten Tabelle ist `cd -L` seit TSK-0017 eine
+eigene Zelle mit **zwei** Spalten (die Shell geht, der Leser bleibt) und seit TSK-0019 in **beiden**
+Richtungen gekreuzt, also 16 gemessene Zellen statt einer Fußnote. Rot ohne den Fix:
+`test_gate1_refuses_a_line_exactly_where_the_shell_would_write`.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:**
+`cd with an option the shell accepts`, `cd with an option the shell rejects`,
+`cd with a second operand the shell rejects`, `cd behind the end of the options`,
+`pushd with a second operand the shell rejects`, `a pop whose operand the shell rejects`,
+`a pop with an option the shell rejects`, `a pop of an index the stack does not have`,
+`a pop that only drops the entry`, `a push that only adds an entry, then a pop`.
+
+### H30 — Ein Wort, das die Shell nicht als dieses Verb ausführt, und ein Pop ohne sichere Richtung (neu, TSK-0017)
+
+**Mechanismus, eine Eigenschaft mit drei Gesichtern:** der Leser fragte nie, ob die Shell das Wort
+als **das Verb ausführt, für das er es hält**.
+
+1. Er übernahm die Lesart der Kits (`_stage_verb`), und die **faltet die Groß-/Kleinschreibung** und
+   nimmt den **Basisnamen**. Eine POSIX-Shell macht beides nicht: `CD` ist kein Befehl, und
+   `/usr/bin/cd` ist ein externes Programm, das die Shell nicht bewegt.
+2. Er kannte **eine** Verbliste für jede Shell. `set-location` ist ein Verb von PowerShell und in
+   `bash` ein unbekannter Befehl.
+3. Er nahm das Verb, das jene Lesart **hinter einem übersprungenen Wort** findet. Ein Wort vor dem
+   Befehlsnamen ist aber ein Befehl für sich, und was er mit dem Rest macht, ist seine Sache:
+   `env cd` erreicht das Builtin nie.
+
+**Kette (gemessen 2026-08-07, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-07-tsk0017-measurements.md`, Abschnitt 1):** elf Zeilen, alle in **einem**
+Werkzeugaufruf und ohne Vorbereitung — `CD`, `Cd`, `cD`, `PUSHD`, `PushD`, `set-location`,
+`Set-Location`, `/usr/bin/cd`, `env cd`, `nice cd`, `sudo cd`, jeweils mit einem Ziel außerhalb und
+einem relativen Schreibzugriff dahinter. Die Shell meldet jedes Mal *„command not found"* bzw.
+*„No such file or directory"*, **bleibt stehen** und ändert die geschützte Datei wirklich; das Gate
+war der Bewegung gefolgt und antwortete **rc 0**.
+
+**Zweite Hälfte: `popd` hat keine sichere Richtung** (Abschnitt 2 desselben Protokolls). Ein Pop
+geht **zurück**, also ist Stehenbleiben dort nicht die verweigernde Antwort. Mit dem Stapelkopf
+außerhalb und der Basis innerhalb waren `popd x`, `popd -q`, `popd +9`, `popd -n` und ein
+`pushd -n <hier> ; popd` je **rc 0**, während `bash` die Operandenliste zurückwies, im Projekt blieb
+und die geschützte Datei änderte. Die sechste Zeile ist die, die keine der anderen gezeigt hätte:
+`R="<hier>" ; pushd "$R" ; cd "<außerhalb>" ; popd ; <schreiben>` — der Leser kann den Push nicht
+ausrechnen, die Shell macht ihn, und der **bare** Pop dahinter geht auf einen Eintrag zurück, den
+der Leser nie gesehen hat.
+
+**Urteil: blockierend, geschlossen.** Drei Zweige, alle als Definition und keiner als Liste:
+`_harness._directory_role` fragt die Verbtabelle **der Shell, die der Werkzeugname nennt**
+(`SHELLS`), und vergleicht für POSIX zeichengenau und ohne Basisnamen;
+`_harness._is_the_command_name` verlangt, dass vor dem Wort **nur Syntax** steht
+(`_SYNTAX_CHARACTERS`, aus dem Zeichensatz des Tokenisers abgeleitet); und ein Pop, den der Leser
+nicht ausrechnen kann, macht die Position **unbekannt** (`_UNKNOWN_POSITION`), woraufhin jeder
+relative Kandidat als `_harness.Unplaceable` für **jeden** Aufrufer verweigert wird — ein absoluter
+Pfad bleibt lesbar, und ein absolutes `cd` beendet den Zustand. Rot ohne die Fixes:
+`test_gate1_refuses_a_line_exactly_where_the_shell_would_write` (alle drei Zweige einzeln
+zurückgedreht, Abschnitt 6 des Protokolls). Dass die Werte der beiden Achsen aus den Aufzählungen
+**erzeugt** werden, aus denen der Leser entscheidet, ist `DEC-0016` und steht in
+`test_the_words_the_kits_reader_steps_over_are_all_crossed` und
+`test_the_shells_this_reader_knows_are_the_ones_the_registration_names`.
+
+**Zweite Hälfte der dritten Ursache, gemessen 2026-08-07 (`docs/reviews/2026-08-07-tsk0019-measurements.md`,
+Abschnitt 2):** dass der Leser bei einem Wort vor dem Befehlsnamen **stehen bleibt**, war nicht nur
+Reibung. Mit der Basis außerhalb waren `command cd "<hier>"`, `time cd "<hier>"` und
+`! cd "<hier>"` je **rc 0**, während `bash` wirklich zurück in den Baum ging und die geschützte
+Datei änderte. Das ist dieselbe Kette wie in H20 und dort mit allen sieben Schreibweisen aufgeführt;
+geschlossen ist sie dort.
+
+**Zusammensetzung, aus der Prüfmenge erzeugt und gegen sie geprüft
+(`test_the_hole_list_states_the_over_refusal_the_table_carries`):** 64 von 1449 Zellen sind
+Über-Verweigerung — die Shell schreibt **nicht** in den geschützten Baum und das Gate verweigert
+trotzdem. Es sind genau die Bewegungen `cd into a directory that is not there`,
+`cd into a relative directory that is not there`, `cd to a target this reader cannot name`,
+`cd to a tilde the quoting keeps`, `cd with a second operand the shell rejects`,
+`cd with an option the shell accepts`, `cd with an option the shell rejects`,
+`pushd with a second operand the shell rejects`.
+
+Was sie gemeinsam haben, ist der Grund und nicht die Schreibweise: der Leser kann die Bewegung nicht
+ausrechnen und gibt die Position darum auf (H20). Die **Zusammensetzung stand hier bis 2026-08-07
+falsch, und zwar in beide Richtungen**: sie nannte die Deskriptor-Verdopplung und die Wörter, die
+die Kits vor dem Befehlsnamen überspringen — keines von beiden hat eine solche Zelle (die
+übersprungenen Wörter haben Zellen, deren Shell-Spalte **nichts behauptet**, was etwas anderes ist)
+— und sie ließ vier Bewegungen ungenannt, die die Hälfte der Zahl ausmachen. Nur die beiden Zahlen
+stimmten, und eine Runde davor war der Satz schon einmal von Hand korrigiert worden. Darum steht er
+jetzt nicht mehr als Prosa da, sondern wird aus der Tabelle erzeugt und in beide Richtungen
+verglichen. Enger fassen ließe die Reibung sich nur mit einer Liste der Wörter, die ein Builtin
+durchreichen — genau die Form, die diesen Eintrag erzeugt hat. **Vorschlag:** offen lassen und
+melden, wenn sie jemandem begegnet.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:**
+`enter spelled 'CD' -- run by the shell itself -- with the base outside it`,
+`cd behind 'env', which the kits' reader steps over -- run by the shell itself -- with the base outside it`,
+`a push and a pop`, `a push and a pop of the top by index`,
+`a push and a bare push that swaps back`, `a push and one pop too many`,
+`a pop whose operand the shell rejects`, `a pop with an option the shell rejects`,
+`a pop of an index the stack does not have`, `a pop that only drops the entry`,
+`a push that only adds an entry, then a pop`,
+`a push this reader cannot make, and a pop the shell can`,
+`a pop the shell really makes, back out of the tree`.
+
+### H31 — Eine Erweiterung, die die Quotierung unterdrückt (neu, TSK-0019)
+
+**Mechanismus:** eine Shell **erweitert** ein Wort und entfernt **danach** dessen Quotierung. Der
+Leser bekommt von `_compat.shell_readings` das Ergebnis des zweiten Schritts — das Wort, wie das
+Programm es sieht — und erweiterte darauf. Damit machte er genau die Erweiterung, die die
+Quotierung verhindert hatte. Nicht die Tilde ist der Mechanismus, sondern die **Reihenfolge**: jede
+Erweiterung, die eine Shell wegen der Quotierung unterlässt, gehört in dieselbe Klasse.
+
+**Kette (gemessen 2026-08-07, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-07-tsk0019-measurements.md`, Abschnitt 1):** `cd "~" ; <relativ schreiben>`
+→ **rc 0**; die Shell sagt `~: No such file or directory`, **bleibt stehen** und ändert die
+geschützte Datei wirklich. Dasselbe für `'~'`, `\~` und `"~/"`. Ende zu Ende, ein Werkzeugaufruf und
+ohne Vorbereitung: `cd "~" ; python -c "…"` schrieb `.claude/settings.json` von 2903 auf 2 Byte —
+die Registrierung aller vier Gates. Dieselbe Zeile **ohne** das `cd` ist rc 2.
+
+**Urteil: blockierend, geschlossen — und einmal falsch geschlossen gewesen.** `_harness.readings`
+gibt zu jedem Wert, den eine Shell einem Programm reichen könnte, mit an, ob eine Tilde darin
+**erweitert** werden darf, und stellt diese Frage an die Schreibweise, die die Shell erweitert hat
+(`_harness.TYPED_READING`, von `_harness.tokenise` an die Wörter der Kits gehängt) statt an den
+Text, den das Programm bekommt. Zwei Dinge fallen daraus:
+
+* erweitert wird nur die **erste** Lesart. Die weiteren sind dasselbe Wort ohne den Backslash der
+  Kits, und ein Backslash ist auch Quotierung — `\~/x` ist einer Shell ein literales `~/x`. Die
+  Kits führen dieselbe Unterscheidung an derselben Stelle und aus demselben Grund
+  (`gate_write_scope._operator`: ein Wort, das zu `>` **auflöst**, ist keine Umleitung);
+* **wo** die Quotierung steht, entscheidet — nicht, **ob** das Wort welche trägt. Genau das war die
+  Nachbesserung vom 2026-08-07: die erste Fassung fragte „ist in dieses Wort irgendeine Spanne
+  eingespleißt", also nach einer Eigenschaft des **ganzen Wortes**, und machte jedes quotierte Wort
+  unerweiterbar. Das war kein Preis, sondern H33 in voller Breite wieder offen (Kette dort). Jetzt
+  fragt `_harness._expands_a_tilde` die **Präfixspanne** der getippten Lesart, und nur eine
+  Quotierung in ihr unterdrückt. Dass die Maskierung der Kits die quotierten Trennzeichen
+  unsichtbar macht, gibt dabei genau die Regel der Shell her: das Präfix endet am ersten
+  **unquotierten** Trennzeichen — gemessen 2026-08-07, `~+"/team-kits"/kernel/state.py` ist rc 0
+  und `bash` schreibt die Datei nicht.
+
+Rot ohne den Fix: `test_gate1_refuses_a_line_exactly_where_the_shell_would_write` (die vier Zellen
+`cd "~"`/`cd ~` in beiden Richtungen); der rote Test der zweiten Hälfte steht mit ihrer Kette und
+ihrer Prüfmenge in **H33**.
+
+**Was bleibt, benannt statt behauptet — und der Satz, der hier bis 2026-08-07 stand, war falsch.**
+Er sagte, ein Wort, dessen Quotierung woanders steht als die Erweiterung (`~/"x"`), werde nicht
+erweitert, und nannte das Über-Verweigerung. Beides stimmte nicht: erweitert wurde es nicht, aber
+verweigert wurde es auch nicht, und dieselbe Eigenschaft ließ `~+/"team-kits"/…` durch. Heute wird
+`~/"x"` erweitert wie in einer Shell (gemessen: rc 0, die Shell schreibt ins Heimatverzeichnis).
+Über-Verweigerung bleibt dort, wo dieser Leser die **Stellung** der Quotierung nicht sehen kann: ein
+Wort, dessen führende Tilde hinter einer Quotierung steht (`""~+/team-kits/…`), wird verweigert,
+obwohl eine Shell es literal lässt — gemessen 2026-08-07, Gate rc 2 und `bash` schreibt nichts.
+
+**Der zweite Fall, der hier bis 2026-08-08 danebenstand, und wie er entstand.** Diese Stelle nannte
+zusätzlich „eine Tilde, die nicht am Wortanfang steht (`x=~+/…`)" als gemessene Über-Verweigerung.
+Sie ist keine: gegen ein Stellvertreterprojekt **außerhalb** des Heimatverzeichnisses ist die Zeile
+**rc 0** (gemessen 2026-08-08). Die rc 2 der Vorrunde kam aus der **Lage der Messung** — das
+Stellvertreterprojekt lag unter dem Verzeichnis, das ein bloßes `~` benennt, und genau dieses
+Verzeichnis ist der einzige Kandidat, den der Substring-Scan aus so einem Wort gewinnt; ein
+Verzeichnis, das geschützten Zustand **enthält**, wird für die Enthaltung verweigert (H19). Damit
+maß die Zeile einen Vorfahren statt der Eigenschaft. Auch die zweite Hälfte des Satzes stimmte
+nicht: `bash` **erweitert** `x=~+/y` zu `x=<cwd>/y` und lässt es nicht literal.
+
+Die Eigenschaft, die stattdessen gilt, ist als **Prüfmenge** hinterlegt statt als Satz
+(`test_gate1_answers_for_a_tilde_that_does_not_start_its_word`, Subjekte aus `_tilde_leads` erzeugt):
+nachdem die Shell die Quotierung entfernt hat, beginnt das Wort entweder mit einer Tilde, deren
+Präfix nicht leer ist — dann kann dieser Leser es nicht verorten und verweigert jedem —, oder es
+beginnt nicht damit, und dann ist hier nichts zu verweigern. Ein Vorlauf, den die Shell **entfernt**
+(die leere Spanne, die jedes Anführungszeichen des Lesers bilden kann), fällt in den ersten Fall,
+ein Vorlauf, den sie **behält** (jedes Zeichen aus `test_gates._word_alphabet`, darunter das `=`,
+an dem `x=~+/…` hängt), in den zweiten. Über keinen der beiden erreicht `bash` die geschützte Datei;
+die Prüfmenge misst auch das, und die Bau-Entscheidung, die daraus folgt, steht in
+`test_gates._base_outside_the_home_directory`: jedes Stellvertreterprojekt wird außerhalb des
+Heimatverzeichnisses gebaut, sonst antwortet der Vorfahre. Rot ohne diese Bau-Entscheidung: derselbe
+Test, im Klon mit dem Projekt unter `tmp_path` gefahren — elf Vorläufe, deren Zeichen
+`_harness._PATHISH` nicht trägt, kamen mit rc 2 heraus.
+
+**Geschlossen ist hier die Frage, OB erweitert werden darf — nicht, WOMIT.** Der Satz oben („nicht
+die Tilde ist der Mechanismus") stimmt und war zugleich die Lücke: er beschrieb die Verzweigung, und
+der **Wert**, den sie einspeist, war eine fremde Funktion, die eine andere Frage beantwortet. Diese
+zweite Hälfte derselben Klasse ist **H33**; sie war offen, als dieser Eintrag „geschlossen" trug.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:**
+`cd to a tilde the quoting keeps`, `cd to a tilde the shell expands`,
+`a write into a relative path with the span 0 separators in quoted by "`,
+`a write into a relative path with the span 1 separators in escaped`.
+
+### H32 — Ein Befehl, den eine Ersetzung einführt (neu, TSK-0019)
+
+**Mechanismus:** eine **Kommandoersetzung** ist ein eigener Befehl in einem Wort, und die Shell
+führt ihn aus, bevor das Wort den Befehl erreicht, in dem es steht. Die Zerlegung schnitt dort
+nicht: sie kennt Listentrenner, Stufenschnitte und Klammern, und ein Befehl in einem **Wort** kam in
+ihr nicht vor. Damit war er beiden Gates unsichtbar — Gate 1 sah eine lesende Stufe (`echo`), und
+Gate 3 wirft die committende Stufe als Ganzes weg, in der die Ersetzung stand.
+
+**Kette (gemessen 2026-08-07, `docs/reviews/2026-08-07-tsk0019-measurements.md`, Abschnitt 3):**
+`echo $(sed -i "s/a/b/" team-kits/kernel/state.py)` → **rc 0**, `bash` ändert die geschützte Datei
+wirklich; ebenso in Backticks und in einem doppelt quotierten Wort (`echo "$(…)"`). Mit gültigem
+Urteil im Baum, Ende zu Ende: `git commit -am wip $(sed -i s/prose/POISON/ docs/note.md)` → **rc 0**,
+`docs/note.md` trug danach `POISON`, **HEAD bewegte sich**, und der Commit trug das Gift.
+
+**Urteil: blockierend; geschlossen bis auf eine Hälfte, für die eine benannte Ausnahme steht,
+Abnahme des Nutzers offen.**
+`_harness.command_line` platziert den Befehl einer Ersetzung mit **derselben** Zerlegung wie jeden
+anderen: sein Text geht durch `commands()`, seine Stufen durch dieselben Verb- und
+Read-only-Fragen. Zwei Dinge über seine Stellung sind gesetzt statt ausgerechnet, beide in
+verweigernder Richtung — er läuft **vor** der Zeile, in der er steht (eine Ersetzung hinter einem
+Commit wird darum beurteilt, als stünde sie davor), und er läuft in einem **Kind**, also bewegt kein
+Verzeichnisverb darin die Basis der Zeile um ihn herum. Wo die Ersetzung endet, wird in **zwei**
+Lesarten beantwortet (`_harness._closings`), weil ein Schließer auf dieser Ebene nicht von einem
+Zeichen in der Quotierung des Rumpfes zu unterscheiden ist: die ausbalancierte und die letzte.
+Gemessen, warum es beide braucht: `echo $(sed -i "s/a/)/" <kitdatei>)` balanciert am `)` im
+`sed`-Skript aus, und `bash` schreibt die Datei. Rot ohne die Fixes:
+`test_gate1_refuses_a_line_exactly_where_the_shell_would_write` (die erzeugten Zellen aus
+`_harness.SHELLS[...]["substitutions"]` und die Zelle mit dem quotierten Schließer) und
+`test_gate3_refuses_a_line_that_moves_the_tree_before_it_commits`.
+
+**Die Hälfte, die offen bleibt, ist ein Sonderfall von H34 und wird dort geführt.** Sie wurde hier
+bis 2026-08-07 als „eine Ersetzung in einem quotierten **Nachrichtenargument**" beschrieben, also
+mit der Schreibweise, an der sie vorgeführt wurde. Gemessen ist der Mechanismus breiter, und der
+Vorspann dieses Abschnitts verlangt genau das andersherum. Die Kette dieser Hälfte:
+`git commit -m "wip $(sed -i s/a/b/ team-kits/kernel/state.py)"` ist **rc 0** in Gate 1 wie in
+Gate 3, und `bash` schreibt die geschützte Datei. **Warum nicht hier geschlossen, was stattdessen
+begrenzt und was der Vorschlag ist:** steht in H34.
+
+**Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:**
+`a write in a substitution whose closer is quoted`,
+`a write in a $() substitution behind a read-only verb`.
+
+### H33 — Die erweiternde Antwort kam von einer Funktion, die eine andere Frage beantwortet (neu, TSK-0021)
+
+**Mechanismus:** ob eine Lesart erweitert werden **darf**, ist seit H31 richtig entschieden. Was die
+Erweiterung **ist**, holte der Leser aus `os.path.expanduser`. Die beiden beantworten nicht dieselbe
+Frage. Eine Shell liest alles zwischen dem führenden `~` und dem ersten Trennzeichen als **einen
+Präfix** und löst ihn aus ihrem eigenen Zustand auf — Arbeitsverzeichnis, Herkunftsverzeichnis,
+Verzeichnisstapel, Benutzerdatenbank. Die Bibliotheksfunktion kennt davon zwei Lesarten und
+**schweigt zu den übrigen nicht**: sie macht aus jedem Präfix einen absoluten Pfad unterhalb des
+Heimatverzeichnisses, den nichts schützt. Das ist die gefährliche Richtung: eine falsche Antwort,
+keine verweigerte (`DEC-0020`).
+
+**Kette (gemessen 2026-08-07, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-07-tsk0021-measurements.md`, Abschnitt 1):** ein Werkzeugaufruf, ohne jede
+Vorbereitung — `sed -i "s/a/b/" ~0/team-kits/kernel/state.py` war **rc 0**, und `bash` änderte die
+Datei wirklich; dieselbe Zeile relativ geschrieben ist rc 2. Dieselbe Form erreichte
+`.claude/settings.json` (die Registrierung aller vier Gates), `.claude/hooks/_harness.py` und
+`project_memory/`, also kanonischen Zustand, der **jedem** verweigert ist. Mit einer Bewegung in
+derselben Zeile kamen `~-`, `~-0` und `~1` dazu. **Zwei Formen kamen nur zufällig verweigert
+heraus:** `~+` und `~+0` — nicht wegen eines Schutzes, sondern weil `+` in der Zeichenklasse
+`_harness._PATHISH` fehlt, sodass der Teilstring `/team-kits/…` als eigener Kandidat übrig blieb;
+gemessen war der Grund der Verweigerung dann das Heimatverzeichnis als **Vorfahre**, nicht das Wort.
+
+**Zweite Kette, gemessen 2026-08-07 nach dem ersten Fix
+(`docs/reviews/2026-08-07-tsk0022-measurements.md`, Abschnitt 1):** derselbe Mechanismus war durch
+**eine Quotierung irgendwo im Wort** wieder vollständig offen. `sed -i "s/a/b/"
+~+/"team-kits"/kernel/state.py` war **rc 0**, und `bash` änderte die geschützte Datei wirklich —
+ebenso mit `'team-kits'`, mit der Quotierung um `kernel`, um `state.py`, und auf
+`.claude/settings.json`, `.claude/hooks/_harness.py` und `project_memory/…` gerichtet. Ursache: der
+Fix stand auf der Frage „trägt dieses Wort **irgendwo** eine eingespleißte Spanne" — einer
+Eigenschaft des ganzen Wortes —, und eine Shell entfernt Quotierung **zeichenweise**: ein `"`
+hinter dem Präfix unterdrückt gar nichts.
+
+**Urteil: blockierend, geschlossen.** `_harness._tilde_prefix` ist die Spanne, nicht eine Liste von
+Schreibweisen, und `_harness._expanded` delegiert nur noch dort, wo die delegierte Antwort die der
+Shell **ist** — beim leeren Präfix. Jedes andere Präfix macht das Wort zu einem
+`_harness.Unplaceable`, das für **jeden** Aufrufer verweigert wird und seinen eigenen Grund trägt.
+Ob überhaupt erweitert wird, entscheidet seit der zweiten Kette `_harness._expands_a_tilde` an der
+**Präfixspanne der getippten Lesart** (H31), nicht an einer Eigenschaft des ganzen Wortes.
+Ein `cd` mit einem solchen Ziel macht dieselbe Aussage über die Position (`WorkingDirectory._resolve`
+→ unbekannt, H20). Rot ohne den Fix:
+`test_gate1_places_a_tilde_word_where_the_shell_puts_it` — für die erste Kette neun Zellen zugleich
+(darunter `~0`, `~00` und `~-0` ohne Vorbereitung), für die zweite jede Zelle, in der die Quotierung
+hinter dem Präfix steht.
+
+**Was das kostet, benannt statt behauptet:** Über-Verweigerung für jedes Präfix, das eine Shell sehr
+wohl auflösen kann und dieser Leser nicht — auf einem POSIX-Host trifft man zuerst den
+**Login-Namen** (`~jemand/…`, gemessen rc 2, Shell schreibt nichts). Dazu jedes Wort, dessen Tilde
+hinter einer Quotierung steht, die die Shell **entfernt** (`""~+/…`, `''~+/…`) — auch das gemessen
+rc 2 bei einer Shell, die literal bleibt. Das ist derselbe Preis wie in H20 und trifft jeden
+Aufrufer. **Was hier bis 2026-08-08 fälschlich mit in dieser Klammer stand**, war `x=~+/…`: das ist
+rc 0, sobald das Stellvertreterprojekt nicht unter dem Heimatverzeichnis liegt, und die rc 2 der
+Vorrunde war die Enthaltung dieses Verzeichnisses (H19), nicht das Wort — die Korrektur mit ihrer
+Messung und der Prüfmenge, die die Eigenschaft jetzt trägt, steht in **H31**. Die Prüfmenge dieses
+Tests kreuzt beide Enden: das leere Präfix bleibt erlaubt, wo die Shell es aus dem Baum führt, und
+zwar in **jeder** Quotierung und jedem Zustand.
+
+**Subjekte der Tilde-Prüfmenge, auf denen dieser Eintrag steht (aus ihr erzeugt und in beide
+Richtungen gegen sie geprüft, `test_every_tilde_subject_a_closed_hole_names_is_one_the_check_set_carries`):**
+7527 Subjekte aus 3 Zuständen und 157 Präfixen, gekreuzt mit der Achse, die bis 2026-08-07 fehlte —
+**wo im Zielwort die Quotierung steht**: `with no quoting in it`, `with the tilde itself escaped`,
+`with the tilde itself quoted by "`, `with the tilde itself quoted by '`,
+`with the rest of the tilde prefix escaped`, `with the rest of the tilde prefix quoted by "`,
+`with the rest of the tilde prefix quoted by '`, `with the span 1 separators in escaped`,
+`with the span 1 separators in quoted by "`, `with the span 1 separators in quoted by '`,
+`with the span 2 separators in escaped`, `with the span 2 separators in quoted by "`,
+`with the span 2 separators in quoted by '`, `with the span 3 separators in escaped`,
+`with the span 3 separators in quoted by "`, `with the span 3 separators in quoted by '`.
+Vorher waren es 471 Subjekte, von denen **keines** Quotierung im Zielwort trug.
+
+### H34 — Die Prosa-Entfernung löscht eine quotierte Spanne hinter einer Flagschreibweise, unabhängig vom Verb (neu, TSK-0021)
+
+**Mechanismus:** beide Gates lesen den Befehlstext erst, nachdem die **Prosa-Entfernung der Kits**
+darüber gelaufen ist (`_harness._prose_removed` → `gate_write_scope._MESSAGE_ARG_RX`). Diese sucht
+eine von mehreren **Flagschreibweisen** und löscht die quotierte Spanne dahinter — **irgendwo auf
+der Zeile und ohne das Verb anzusehen**. Damit verschwindet nicht nur eine Commit-Nachricht, sondern
+jeder quotierte Operand, der zufällig hinter einer dieser Schreibweisen steht. Bis 2026-08-07 stand
+diese Lücke als „eine Ersetzung in einem quotierten Nachrichtenargument" in H32, also mit der
+Schreibweise statt dem Mechanismus.
+
+**Kette (gemessen 2026-08-07, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-07-tsk0021-measurements.md`, Abschnitt 3):** ein Werkzeugaufruf, kein Commit,
+keine Ersetzung — `sed -i -e "s/a/b/" -b "team-kits/kernel/state.py"` ist **rc 0**, und `bash`
+ändert die geschützte Datei wirklich. `-b` ist für `sed` ein echtes Boolean, der quotierte Operand
+dahinter ist die **Datei**; die Prosa-Entfernung nimmt beides zusammen weg, und das Gate sieht eine
+Zeile ohne Pfad. Dieselbe Zeile ohne das Flag ist rc 2. Die Hälfte, die H32 offenließ, ist derselbe
+Mechanismus mit einem Verb, das die Schreibweise wirklich als Nachricht nimmt.
+
+**Urteil: blockierend — benannte Ausnahme, Abnahme des Nutzers offen.** **Warum nicht hier
+schließbar:** die Reparaturstelle liegt in `gate_write_scope._MESSAGE_ARG_RX`, also im **Kit**, und
+`team-kits/**` ist für TSK-0021 verbotener Bereich. Eine zweite Antwort auf „was ist Prosa" in
+`.claude/hooks/` wäre genau die Drift, die H15 beschreibt: die Kits entfernen die Spanne, weil sonst
+die Abhilfe, die eine Verweigerung selbst empfiehlt („melde den Defekt und zitiere die Zeile"),
+durch das Gate fällt, das sie melden soll. **Was stattdessen begrenzt: nichts Technisches** —
+dieselbe Lage wie H11 und H22, also Rollentrennung und Item. **Vorschlag:** die Spanne im Kit an das
+**Verb** binden statt an die Flagschreibweise (eine Nachricht ist ein Operand eines Befehls, der
+Nachrichten nimmt), zusammen mit H21, H22 und H24 als Kit-Item.
+
+### H35 — Was das Lesen einer Zeile kostet, war durch keine Frist begrenzt (neu, TSK-0021)
+
+**Mechanismus:** `_harness.substituted_lines` prüfte das Budget des Gates **einmal je Aufruf** und
+sagte im eigenen Docstring, es sei dadurch begrenzt. Die Arbeit steckt aber **in** einem Aufruf: die
+Kosten wachsen mit dem Produkt aus Vorkommen und Länge, weil jedes Vorkommen zwei Lesarten
+(`_closings`) erzeugt und beide rekursiv weitergehen. Zwischen zwei Prüfungen lag also die ganze
+Zeit. Ein Gate, das noch entscheidet, wenn der Provider aufhört zuzuhören, wird getötet — und ein
+getöteter Hook ist ein **Durchlass**.
+
+**Kette (gemessen 2026-08-07, `docs/reviews/2026-08-07-tsk0021-measurements.md`, Abschnitt 2):**
+gegen die registrierten 120 s antwortete Gate 1 auf 1006 Zeichen nach 24,1 s, auf 2006 Zeichen nach
+106,6 s mit **rc 0**. Ende zu Ende, ein Werkzeugaufruf und ohne Vorbereitung:
+`sed -i "s/a/b/" team-kits/kernel/state.py #` gefolgt von 1200 Ersetzungs-Öffnern und einem
+Schließer — 2444 Zeichen — kam erst nach **150,6 s** heraus, also **nach** der Frist, während `bash`
+die geschützte Datei wirklich änderte (das `#` versteckt die Öffner vor der Shell, nicht vor dem
+Gate). Die grüne Suite sagte dazu nichts: sie fuhr keine Zeile dieser Form.
+
+**Urteil: blockierend, geschlossen.** Die Grenze sitzt jetzt **außerhalb** der Entscheidung:
+`_harness._the_budget_is_spent` läuft in einem eigenen Faden neben `guarded()` und beendet den
+Prozess mit dem Verweigerungscode, sobald die Frist der Registrierung verbraucht ist. Damit ist die
+Zusicherung keine Eigenschaft einer einzelnen Funktion mehr, sondern des ganzen Wegs. Gemessen nach
+dem Fix, dieselbe Zeile: **rc 2 nach 96,2 s** gegen dieselben 120 s registrierten — und unverändert
+96,2 s bei 8006 und bei 40006 Zeichen. Rot ohne den Fix:
+`test_gate1_answers_before_its_registration_however_long_the_line_takes_to_read` (gemessen: 13,02 s
+gegen eine Registrierung von 2 s).
+
+### H36 — Ein einzelner Aufruf nach C gibt den Interpreter nicht zurück (neu, TSK-0021)
+
+**Mechanismus:** der Faden aus H35 kann nur unterbrechen, was der Interpreter zwischen zwei
+Bytecodes aus der Hand gibt. Ein einzelner Aufruf in eine C-Funktion tut das nicht. Der teuerste
+davon auf diesem Weg ist die Heredoc-Erkennung der Kits (`gate_write_scope._HEREDOC_RX`), deren
+Kosten quadratisch mit der Zahl der Öffner wachsen.
+
+**Kette, und wo sie endet (gemessen 2026-08-07,
+`docs/reviews/2026-08-07-tsk0021-measurements.md`, Abschnitt 4):** neben der Heredoc-Erkennung kam
+ein Faden dieser Bauart in 8,07 s **einmal** dran, neben der Ersetzungs-Zerlegung 517-mal in
+32,61 s — die Unterbrechbarkeit ist also gemessen und nicht angenommen. Die Frist reißt diese Stelle
+erst bei rund 480 000 Zeichen (129,5 s gegen 120 s registrierte). **Und genau dort endet die Kette
+auf diesem Host:** eine Zeile dieser Länge bekommt keine Shell mehr gestartet — gemessen schrieb
+`sed -i … <kitdatei>` mit 4000 Heredoc-Öffnern (24 042 Zeichen) die geschützte Datei wirklich und
+das Gate antwortete nach 0,6 s, während ab 36 042 Zeichen die Prozesserzeugung des Betriebssystems
+mit „Der Dateiname oder die Erweiterung ist zu lang" abbricht und **nichts** mehr läuft.
+
+**Urteil: Rest, keine Angriffskette auf diesem Host** — und das ist eine Messung über die
+Prozesserzeugung, keine über das Gate. **Was sie ändern würde:** ein Provider, der die Zeile über
+eine **Datei** statt über ein Argument an die Shell gibt, hebt die Längengrenze auf, und dann läuft
+die Kette durch; die Nutzlastgrenze der Hooks (`_compat.STDIN_LIMIT`, 16 MiB) liegt weit darüber.
+**Warum nicht geschlossen:** von Python aus ist ein laufender C-Aufruf nicht unterbrechbar, und die
+einzige Grenze, die von hier aus bliebe, wäre eine Längenzahl — also die Sorte Zählung, die
+`substituted_lines` ausdrücklich nicht führen wollte. Die Reparaturstelle liegt im **Kit**, beim
+Ausdruck selbst.
+
+### H37 — Die Messvorrichtung selbst schreibt den Baum, den sie misst (neu, TSK-0022)
+
+**Mechanismus:** jede Zeile beider Prüfmengen nennt ihr Ziel **relativ**
+(`test_gates.RELATIVE_WRITE`), und was sie vom echten Arbeitsbaum fernhält, war **allein** das
+`cwd=` an einer Stelle (`_changes_the_protected_file`). Eine Tilde löst aber nicht gegen `cwd` auf,
+sondern gegen den **eigenen Zustand der Shell**, und zwei Teile davon kommen über die **Umgebung**
+herein: `~+` liest `PWD`, `~-` liest `OLDPWD`. Eine Suite, die im Baum gestartet wird, den sie
+misst — genau so, wie `CLAUDE.md` es vorschreibt —, reicht diesen Baum in `OLDPWD` weiter, und `~-`
+ist ein Subjekt der Prüfmenge. Damit schreibt eine Zeile mit **völlig richtigem** `cwd` in den
+echten Baum.
+
+**Kette (gemessen 2026-08-07, `docs/reviews/2026-08-07-tsk0022-measurements.md`, Abschnitt 3):**
+`team-kits/kernel/state.py` dieses Repos kam dreimal in zwei Tagen mit dem ersten `a` jeder ihrer
+928 Zeilen durch `b` ersetzt heraus, und der Kernel importierte nicht mehr. Zweimal wurde das einem
+Messskript im falschen Verzeichnis zugeschrieben. Beim dritten Mal schlug der Sitzungsriegel
+(`the_repo_is_not_a_sandbox`) **während** des Laufs an und nannte die Datei, und der Mechanismus
+ließ sich isolieren: mit `cwd` = Sandbox und `OLDPWD` = ein anderer Baum druckt
+`printf "%s\n" ~-` den anderen Baum, und `sed -i "s/a/b/" ~-/team-kits/kernel/state.py` schreibt
+die Datei **in ihm**. Das Verzeichnis war nie die ganze Antwort.
+
+**Ein vierter Schaden, 2026-08-08 — und er zeigt, wo die Vorrichtung die Kette NICHT unterbricht**
+(Abschnitt 20 desselben Protokolls). Diesmal war es die **Rotmessung**: ein Klon außerhalb des
+Repos, in dem der Pin absichtlich mutiert wird. Der Klon war korrekt, der Sitzungsriegel lief mit —
+aber **im Klon**, und ein Riegel im Klon sieht keinen Schaden am Original. Der Mechanismus ist
+derselbe: der Messprozess wurde aus einer Shell mit `cd` gestartet, erbte damit
+`OLDPWD = <dieses Repo>` (nachgemessen), und die mutierte Fassung setzte `OLDPWD` nicht. Genau ein
+Präfix der 157 schreibt den `OLDPWD`-Baum (`~-`, nachgemessen), zwei Umgebungen des Laufs liefen mit
+dem geerbten Wert — und der Arbeitsbaum trägt exakt **zweimal** `sed -i "s/a/b/"` über der
+Index-Fassung, byte-genau nachgerechnet. **Die Lehre steht in Rest 1**: eine Rotmessung ist nicht
+irgendein Skript daneben, sondern die eine Gattung Lauf, die den Schutz absichtlich ausbaut und die
+feindliche Lage deshalb aus ihrer **eigenen** Umgebung bekommt.
+
+**Urteil: blockierend, geschlossen für den Mechanismus dieses Eintrags — mit benannten Resten, die
+unten einzeln stehen (Rest 1 bis Rest 5) und nicht dieselbe Klasse sind.**
+`_changes_the_protected_file` **setzt** die Verzeichniszustände der Shell auf die
+Sandbox — durch `_sandbox.sandbox_environment`, also mit derselben Antwort, auf der auch die
+Skripte neben dieser Datei stehen —, statt sie zu erben. Rot ohne den Fix:
+`test_the_arbiter_cannot_be_pointed_out_of_its_sandbox_by_the_state_a_tilde_reads` — der Test zeigt
+`PWD`/`OLDPWD` absichtlich auf einen dritten Baum, fährt **jedes** Präfix des Alphabets und
+verlangt, dass dieser Baum unberührt bleibt; gemessen im Klon ohne den Fix schlug er mit
+`assert 'b' == 'a'` an.
+
+**Wovon der Sitzungsriegel lebt, und wovon nicht:** er bewacht **Läufe dieser Datei**. Ein
+Messskript **daneben** — die Vorrichtung eines Prüfers, ein Einzelversuch aus einer Shell — fällt
+nicht darunter, solange keine Suite läuft; läuft eine, meldet der Riegel den fremden Schreibzugriff
+mit (sein Docstring sagt genau das). Das ist Rest 1 unten. Ein Riegel für alles, was in diesem Repo
+eine Shell startet, wäre ein Gate, und Gate 1 ist es bereits — es verweigert genau diese Zeile,
+wenn sie durch ein Werkzeug kommt, und sieht nicht, was ein Python-Prozess selbst startet.
+
+**Was stattdessen begrenzt — und was hier bis 2026-08-08 stand, war eine Zusicherung über eine
+Vorrichtung, die sie nicht baute.** Der Satz nannte „jedes Messskript pinnt sein
+Arbeitsverzeichnis und hasht die vom Zielpfad benannten Dateien". Beide Hälften waren gemessen
+falsch: das Pinnen betraf **nur** `cwd` und ließ `OLDPWD` auf dem echten Repo stehen — genau der
+Mechanismus dieses Eintrags —, und die Wachliste aus einem Spannen-Scan über die Zeilen fand von
+vier geschützten Zieldateien **eine**. Was heute an der Stelle steht, ist Code neben der Suite,
+`.claude/hooks/_sandbox.py`, und drei Tests messen ihn:
+
+* `pin()` schreibt die Verzeichnis-Namen, die ein Kindprozess erbt, in `os.environ` — welche das
+  sind, sagt `_sandbox.POINTED_AT_THE_SANDBOX`/`DROPPED` und **nicht dieser Eintrag**; es bleibt
+  eine Aufzählung, und der Stolperdraht dazu steht unten. Dazu verweigert `pin()` eine Sandbox, die
+  im Repo liegt oder es enthält. Gemessen mit Köder-Baum:
+  `test_the_measurement_sandbox_leaves_a_child_shell_no_directory_word_that_names_another_tree` —
+  der Kontrolllauf mit geerbtem Zustand **beschädigt** den Köder wirklich, der gepinnte lässt ihn
+  unberührt und trifft dabei die eigene Sandbox. **Was hier bis 2026-08-08 stand („`pin()` setzt
+  **jede** Verzeichnisangabe"), war gemessen falsch**: `HOME` und `CDPATH` waren nicht dabei, und
+  beide steuern Wort-Erweiterung — `~/…` schrieb den Köder, und `cd <köder> && sed -i …` fand ihn
+  über `CDPATH`. Beide sind seit dieser Runde gebaut;
+* die Wachliste ist die **geschützte Menge** des Gates selbst (`_harness.ProtectedArea.verdict`
+  über die Bereiche, die dieses Objekt nennt), nicht das, was eine Zeile buchstabiert;
+  `test_the_measurement_watch_list_is_the_area_the_gate_protects` vergleicht sie als
+  Mengen-Gleichheit gegen einen unabhängigen Lauf über den Baum, also in beide Richtungen;
+* der Wiederherstellungspfad prüft sein **Ziel** und nicht seinen Prozess
+  (`test_an_index_restore_refuses_a_target_outside_the_pinned_sandbox`). Vorher prüfte er nur, ob
+  der Prozess gepinnt war — womit ein falsches erstes Argument in den Arbeitsbaum schrieb, also
+  dieselbe Klasse, um die es hier geht.
+
+**Was diese Vorrichtung nicht deckt — fünf benannte Reste. Keiner ist blockierend: sie liegen alle
+in der Messvorrichtung, nicht im Schutz, den die Gates bauen.**
+
+**Rest 1 — sie wirkt nur, wo ein Skript sie importiert.** Ein Prozess, der sie nicht benutzt, ist
+unbewacht wie zuvor. **Warum nicht schließbar:** eine Vorrichtung kann nur bewachen, was in ihrem
+eigenen Prozess entsteht. **Gemessene Kette, 2026-08-08 (der vierte Schaden oben):** die schärfste
+Gestalt dieses Restes ist die **Rotmessung** selbst. Sie läuft in einem Klon außerhalb des Repos —
+was sicher aussieht und es für den Klon auch ist —, aber sie **baut den Pin absichtlich aus**, und
+was dann in die Lücke tritt, ist die Umgebung, aus der der Messprozess gestartet wurde. Ein Start
+über `cd <sandbox> && python …` reicht dem Prozess `OLDPWD = <das Repo>` weiter; der mutierte Pin
+setzt es nicht; `~-` schreibt das Original. **Was stattdessen begrenzt, und es ist Handarbeit:** die
+geschützte Menge des **Originals** um jeden Rotlauf herum hashen (`_sandbox.protected_files` /
+`watch`), nicht nur um die Läufe im Arbeitsbaum, und den Messprozess nicht aus einer Shell starten,
+die vorher im Repo stand. Beides ist Disziplin und kein Riegel — ein Riegel dafür wäre ein Gate, und
+Gate 1 sieht nicht, was ein Python-Prozess selbst startet.
+
+**Rest 3 — die Namensliste bleibt eine Aufzählung, und sie ist an beiden Enden verdrahtet.**
+`POINTED_AT_THE_SANDBOX`/`DROPPED` behaupten nicht, dass eine Shell keine weiteren Namen liest;
+gemessen ist nur, was gemessen wurde. Was der Stolperdraht leistet:
+`test_the_measurement_sandbox_leaves_a_child_shell_no_directory_word_that_names_another_tree` fährt
+jeden Namen **einzeln zurückgestellt** und vergleicht die gemessene Menge „trägt einen Baum" gegen
+`_sandbox.NOT_MEASURED_TO_CARRY_A_TREE`. Damit fällt beides auf: ein Name, der entgegen der
+Behauptung doch einen Baum trägt (`PWD` oder `DIRSTACK`, sobald eine Shell sie nicht mehr selbst
+herleitet), und ein Name, der für nichts behandelt wird. **Was er nicht leistet:** einen Namen
+finden, den niemand in die Liste geschrieben hat — die Prüfmenge fährt genau zwei
+Nutzlast-Gestalten, „Tilde-Präfix" und „relatives Wort über eine Suchliste".
+
+**Und dahinter steht eine offene Gattung und ausdrücklich keine „dritte Gestalt": was eine Shell
+beim Start aus der Umgebung liest, ist nicht auf Verzeichnis-Wörter beschränkt.** Verzeichnis-Pinning
+kann diese Gattung grundsätzlich nicht begrenzen, weil ihre Mitglieder entweder ein **Programm**
+einbringen oder die **Auflösungsregel** verstellen, statt ein Ziel zu nennen. Gemessen 2026-08-08,
+und die folgende Aufzählung ist die Ausbeute dieser Messung, nicht der Rand der Gattung:
+
+* `BASH_ENV` auf eine Datei gezeigt — schon `bash -c true` führt deren Inhalt aus, und die Zeile
+  darin hat den Köder außerhalb der Sandbox geschrieben (`decoy='b'`), **mit** der heutigen
+  Sandbox-Umgebung davor;
+* `BASHOPTS=cdable_vars` — ein **Schalter**, kein Ziel: er macht jede exportierte Variable zu einem
+  gültigen `cd`-Ziel, womit ein Name, den niemand für ein Verzeichniswort hält, einen Baum trägt;
+* eine **exportierte Shell-Funktion** (`BASH_FUNC_sed%%=() { … }`) — wie `BASH_ENV` ein Programm
+  statt eines Wortes, und sie besetzt dabei den Namen eines Befehls, den die Nutzlasten selbst
+  aufrufen.
+
+Gemessen **nicht** tragend: `ENV` (`decoy='a'`), `SHELLOPTS=posix`, `TMPDIR`, `GLOBIGNORE`,
+`MAILPATH`, `HISTFILE`, `PROMPT_COMMAND`.
+
+**Warum nicht in dieser Runde geschlossen:** einen dieser Namen in `DROPPED` zu schieben wäre je
+eine Zeile, aber der Stolperdraht dieser Liste verlangt für jeden Namen eine Nutzlast-Gestalt, die
+ihn misst — also weitere Prüfmengen und weitere Partitionen, und das ist eine eigene Änderung mit
+eigener Rotmessung. Bis dahin wäre es ein Name, der behandelt aussieht und nicht gemessen ist, also
+genau die Sorte Zusicherung, die diesen Eintrag entstehen ließ. **Was stattdessen begrenzt:** die
+feindliche Lage muss ein **Elternprozess** herstellen. Gemessen 2026-08-08 in der Sitzung, die diese
+Suite startet, sind `BASHOPTS`, `SHELLOPTS`, `BASH_ENV`, `ENV` und `CDPATH` dort sämtlich ungesetzt
+— ebenso `OLDPWD`, das eine Shell mit einem `cd` davor allerdings sehr wohl setzt (Rest 1). Damit
+läuft innerhalb einer Sitzung keine Kette durch, und nach `DEC-0022` §2 bleibt die Gattung ein Rest
+statt einer Runde. Und die Kontrollhälfte desselben Tests verlangt, dass die geerbte Lage den Köder
+wirklich beschädigt — die Prüfmenge fährt also nachweislich etwas.
+
+**Rest 4 — `watch` sieht eine Bewegung, keine Neuanlage** (`.claude/hooks/_sandbox.py`, Klasse
+`watch`). Die Pfadliste wird beim **Betreten** eingefroren, und verglichen werden nur Digests; eine
+Datei, die ein Lauf im geschützten Baum **anlegt**, kommt in beiden Aufnahmen nicht vor.
+**Gemessene Kette (2026-08-08, gegen eine Kopie dieses Baums außerhalb des Repos, 420 geschützte
+Dateien):** ein von Hand angelegtes `project_memory/evidence/active/EVD-9999.yaml` — für das
+`ProtectedArea.verdict` *everyone* antwortet — passierte den Riegel **still**, während die
+Kontrolle (eine Änderung an `team-kits/kernel/state.py`) korrekt mit „REPO DAMAGED" anschlug. Das
+ist genau die Schreibklasse, mit der `ProtectedArea` begründet, warum
+`project_memory/` **jedem** verweigert wird — ein handgeschriebenes `EVD` mit `result: pass` öffnet
+`git commit`. **Warum nicht in dieser Runde geschlossen:** die Reparatur ist ein Mengenvergleich
+statt eines Digest-Vergleichs, also eine Änderung an der Vorrichtung mit eigener Rotmessung; sie
+lag außerhalb dessen, was diese Abschlussrunde tragen sollte. **Was stattdessen begrenzt:** Gate 1
+verweigert denselben Schreibzugriff, wenn er durch ein **Werkzeug** kommt — unbewacht ist allein,
+was ein Python-Prozess selbst startet.
+
+**Rest 5 — „Sandbox im Repo" ist ein Pfadvergleich, der die Win32-Namensräume nicht kanonisiert**
+(`_sandbox._inside`, benutzt von `pin()` und von `restore_from_index`). Die Verweigerung steht auf
+`os.path.realpath` + `os.path.commonpath`. **Gemessene Kette (2026-08-08), innerhalb der
+Vorrichtung:** Groß-/Kleinschreibung (`inside=True`), `..` (`True`) und der echte 8.3-Kurzname
+`C:\OFFLIN~1\AGENTA~1` (`True`) greifen — aber `\\?\C:\…` (`False`), `\\localhost\C$\…` (`False`)
+und `\\?\C:\OFFLIN~1\AGENTA~1` (`False`) werden **akzeptiert**, also gepinnt, obwohl sie dieselbe
+Repo-Wurzel benennen; `restore_from_index` prüft gegen dieselbe Funktion und schriebe dorthin
+zurück. **Warum nicht in dieser Runde geschlossen:** derselbe Grund wie bei Rest 4 — Umfang.
+**Fix-Richtung, und zwar nicht als zweite Antwort:** die Autorität steht nebenan — `_harness`
+beantwortet „dieselbe Datei" über `(st_dev, st_ino)` (`_anchored`/`_identity`) statt über
+Schreibweisen, und genau diese fünf Namensräume sind dort schon gemessen (TSK-0008). `_sandbox`
+sollte diese Antwort benutzen, statt Namensräume aufzuzählen oder mit `os.path.splitdrive` eine
+eigene zu bauen. **Was stattdessen begrenzt:** Gate 1 ist von dieser Lücke **nicht** betroffen — es
+liest über `_harness` und kanonisiert die Namensräume; betroffen ist allein die Wahl der Sandbox in
+einem Messskript, und die trifft der Mensch, der das Skript schreibt, nicht die Nutzlast.
+
+**Rest 2 — eine zweite Vorrichtung schreibt denselben Bereich, und sie ist nicht die des Prüfers,
+sondern die Suite der Kits (gemessen 2026-08-08).** `team-kits/*/hooks/_audit.py` (`record_event`)
+legt seinen Pfad über `_root.find_repo_root()` an, und das läuft von `cwd` aufwärts bis zum ersten
+`.claude`/`project_memory`/`.git` — also landet ein Kit-Hook-Prozess, der irgendwo **in** diesem
+Repo gestartet wird, auf `<repo>/project_memory/.audit/`. Gemessen: die Datei
+`project_memory/.audit/hook_events.jsonl` **existiert** in diesem Arbeitsbaum, ist von **keiner**
+`.gitignore`-Regel gedeckt (`git check-ignore` rc 1) und ist untracked (`??`). Damit schreibt
+`pytest tools/` kanonischen Zustand des Baums, den es misst, in genau den Bereich, den Gate 1
+**jedem** verweigert, und der Sitzungsriegel sieht es nicht: seine Wachliste entsteht aus einer
+Sandbox, in der diese Datei nicht vorkommt.
+
+**Die Eigenschaft, und ausdrücklich keine Zählung: jeder Lauf hängt an.** Hier stand bis 2026-08-08
+eine Zahl (43 Ereignisse), und sie war beim Lesen schon falsch — der Abnahmelauf derselben Runde,
+die sie hingeschrieben hat, hatte drei weitere angehängt. Eine Zahl an dieser Stelle misst den
+Zeitpunkt des Schreibens, nicht den Mechanismus.
+
+**Und die Kette ist nicht erschlossen, sondern am eigenen Abnahmelauf ausgelöst worden**
+(2026-08-08, Runde 2 von TSK-0022): der von `CLAUDE.md` vorgeschriebene Lauf `pytest tools/ -q` hat
+`hook_events.jsonl` verlängert — ein Schreibzugriff in den für TSK-0022 **verbotenen** Bereich,
+ohne dass ein Werkzeugaufruf des Umsetzers ihn ausgelöst hätte. **Der Unterschied, den ein Leser
+dieser Liste erkennen soll:** das ist **kein Scope-Verstoß des Pakets**, sondern ein **Defekt der
+Kits**. Gate 1 sieht diesen Schreibzugriff nie, weil er aus einem Kit-Hook-**Unterprozess** kommt
+und nicht aus einem Werkzeug; das Item konnte ihn also gar nicht verbieten, und der Umsetzer konnte
+ihn nicht vermeiden, ohne den vorgeschriebenen Abnahmelauf zu unterlassen. Zurückgesetzt wurde er
+nicht: die Datei ist untracked, und ein Rücksetzen wäre selbst ein Eingriff in den verbotenen
+Bereich. **Warum nicht hier schließbar:** die Reparaturstelle liegt im Kit (`_audit.record_event`
+und die Wurzelauflösung darunter), und `team-kits/**` ist für TSK-0022 verbotener Bereich. **Was
+stattdessen begrenzt:** nichts Technisches — die Datei ist sichtbar (untracked in `git status`) und
+kein Beweismittel, mit dem Gate 3 urteilt; ein `EVD` entsteht dort nicht. Die Begrenzung ist damit
+**sozial**, wie bei H11.
+
+**Vorschlag:** die Messdisziplin als Pflichtfeld in jeden Prüf- und Umsetzerauftrag, zusammen mit
+H11 und H12 als Rollen-/Berechtigungsentscheidung des Nutzers.
+
+### H38 — Ein Programm, das ein Hier-Dokument einer Shell übergibt, liest keines der Gates (neu, TSK-0022)
+
+**Mechanismus:** beide Gates lesen den Befehlstext erst, nachdem die **Prosa-Entfernung der Kits**
+darüber gelaufen ist (`_harness._prose_removed`). Die entfernt neben dem Nachrichtenargument (H34)
+auch **jeden Rumpf eines Hier-Dokuments** (`gate_write_scope._HEREDOC_RX`), und zwar vollständig
+und ohne den Befehl davor anzusehen. Ein Rumpf ist aber nicht nur, wohin man eine Commit-Nachricht
+schreibt: er ist auch der Weg, auf dem eine Shell — oder jeder andere Interpreter — ein **Programm**
+bekommt. Damit ist jedes Programm, das so übergeben wird, für beide Gates unsichtbar; was es tut,
+steht in einer Spanne, die vor dem ersten Leser gelöscht wird. Der Mechanismus ist die Spanne, nicht
+eine Schreibweise: welches Verb davorsteht und welche Sprache im Rumpf steht, spielt keine Rolle.
+
+**Kette (gemessen 2026-08-08, `bash` als Schiedsrichter über die Datei,
+`docs/reviews/2026-08-07-tsk0022-measurements.md`, Runde 2):** ein Werkzeugaufruf, keine
+Vorbereitung, kein Commit. Ein Hier-Dokument, dessen Rumpf den relativen Schreibzugriff auf
+`team-kits/kernel/state.py` trägt, ist **rc 0** an Gate 1, und `bash` ändert die geschützte Datei
+wirklich; dieselbe Nutzlast als Argument derselben Shell ist rc 2. Es trifft ebenso einen Rumpf, den
+die Shell nicht selbst ausführt, sondern weiterreicht (ein Python-Programm im Rumpf schreibt die
+Datei genauso). **Was gemessen NICHT durchläuft:** steht ein `git commit` auf derselben Zeile,
+verweigert Gate 3 sie — nicht, weil es den Rumpf läse, sondern weil das Verb davor
+(`bash`) in der Read-only-Klassifikation der Kits kein lesendes ist.
+
+**Urteil: blockierend — benannte Ausnahme, Abnahme des Nutzers offen.** **Warum nicht hier
+schließbar:** die Reparaturstelle liegt in `gate_write_scope._HEREDOC_RX`, also im **Kit**, und
+`team-kits/**` ist für TSK-0022 verbotener Bereich. Eine zweite Antwort auf „was ist Prosa" in
+`.claude/hooks/` wäre dieselbe Drift, die H15 beschreibt und die H34 an derselben Stelle schon
+einmal aufgehalten hat. **Was stattdessen begrenzt: nichts Technisches für den Schreibzugriff.**
+Gemessen begrenzt ist allein die Commit-Hälfte (oben), und ein Nebengrund ist keine Maßnahme. Die
+Begrenzung ist **sozial** — Rollentrennung und Item —, wie bei H11, H22 und H34.
+
+**Wodurch es auffiele:** `test_gate1_does_not_see_a_program_a_here_document_hands_a_shell` hält die
+Kante in beide Richtungen fest (dieselbe Nutzlast als Argument ist rc 2, im Rumpf rc 0 **und** die
+Shell schreibt wirklich) und wird rot, sobald das Loch zugeht — dann sind Eintrag und Test zusammen
+zu korrigieren. Dass die Blindstelle überhaupt dort **steht**, wo gelesen wird, hält
+`test_every_span_the_kits_prose_removal_takes_out_is_named_where_it_is_documented` fest: es liest die
+Ausdrücke aus dem Syntaxbaum von `_prose_removed` und vergleicht sie in beide Richtungen mit dem,
+was `_harness.command_line` als seine Blindstelle nennt. Bis 2026-08-08 nannte dieser Docstring von
+zwei Spannen **eine** — und der Absatz, der die Warnung sein sollte, war damit selbst die
+Beruhigung.
+
+**Was dieser Stolperdraht nicht sieht, und H38 stützt sich auf ihn.** Er liest den **Syntaxbaum**
+und erkennt darin genau eine Gestalt: einen Attributzugriff, dessen Name auf `_RX` endet
+(`modul._X_RX.sub(...)`). **Gemessene Grenze:** eine dritte Entfernung, die über einen **lokalen
+Namen** läuft, lässt ihn grün; ebenso eine Entfernung in einer **gerufenen Hilfsfunktion**, deren
+Quelltext er gar nicht liest, und jeder Ausdruck, dessen Name nicht auf `_RX` endet. In allen drei
+Fällen wächst die Blindstelle beider Gates, ohne dass hier oder im Docstring etwas rot wird.
+**Warum nicht in dieser Runde geschlossen:** der Fix ist ein Wechsel des Messpunkts — die
+**Laufzeit** statt des Quelltexts, mit zählenden Stellvertretern für jeden `*_RX` des Kit-Moduls —,
+also eine eigene Änderung mit eigener Rotmessung, und sie liegt in der Vorrichtung, nicht im
+Schutz. **Was stattdessen begrenzt:** die Entfernung selbst steht im **Kit**, und jede Änderung
+daran geht durch den Spiegel-, Versions- und Suite-Lauf der Kits; sie entsteht nicht nebenbei.
+
+### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss
+
+1. **Der Auslöser ist als Werkzeugliste formuliert, nicht als Eigenschaft.** `SR-0006` beschreibt
+   den geschützten *Bereich* als Ableitung, den *Anlass* aber als vier Werkzeugnamen. Gate 1 folgte
+   dem korrekt und war damit auf der Shell blind. Es ist jetzt zusätzlich auf `Bash|PowerShell`
+   registriert — das ist **mehr, als der Vertrag sagt**.
+2. **Der geschützte Bereich ist weiter als der Vertrag.** `SR-0006` nennt `.claude/hooks/` und
+   `.claude/settings.json`; gebaut ist `.claude/` als Ganzes, dazu die Datei, aus der der Bereich
+   abgeleitet wird, und der kanonische Teil von `project_memory/` für jeden Aufrufer. Jede dieser
+   drei Erweiterungen schließt eine gemessene Kette (H3, H5, F3 des Prüfberichts) — aber sie sind
+   Erweiterungen, und eine stillschweigende Vertragserweiterung ist die andere Art, falsch zu sein.

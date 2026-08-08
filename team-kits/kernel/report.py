@@ -51,10 +51,50 @@ from .backlog_types import (
 from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
 from .lock import LOCK_SCHEMA_VERSION, ext_path
 from .schemas import validate
-from .state import ProjectState, _now_iso
+from .state import STAGING_DIRNAME, ProjectState, _now_iso
 
 ITEM_MAX_BYTES = 12 * 1024   # spec II.5: active item <= 200 lines / 12 KB
 ITEM_MAX_LINES = 200
+
+# WHAT THE DOCUMENT SCAN BELOW WILL SPEND, and why a reader with no bound is a gate with no
+# verdict. `validate_state` is not only a command a person types: the dev and research kits'
+# `gate_memory_complete` calls it on the PreToolUse path in front of `git merge`/`git push`, and a
+# hook that outlives the host's budget is KILLED, which the provider reads as "carry on". So an
+# unbounded reader on that path is a gate that a large enough file switches off -- the same
+# inversion `guard_guidelines` and `gate_test_coverage` carry their caps for, and this scan
+# shipped without one.
+#
+# WHICH PARSER PAYS FOR IT, because the previous version of this note named the wrong one and its
+# curve was too cheap by the difference. `migrate._read_document` calls `yaml.safe_load`, which is
+# `yaml.SafeLoader` -- the PURE PYTHON loader. `CSafeLoader` exists on this host and
+# `yaml.__with_libyaml__` is True, and neither of those is on this path: nothing here asks for the
+# C loader, so a note reading "PyYAML with libyaml" described a reader nobody runs.
+#
+# Re-measured on the loader it does use (2026-08-07, one office-shaped `filing_log.yaml` of dated
+# entries, `_check_no_v1_records_outside_the_archive` timed directly, best of three):
+# 1 MB 1.85 s · 2 MB 2.90 s · 4 MB 6.36 s · 8 MB 18.01 s. The per-MB cost is NOT constant -- it
+# runs from ~1.9 s/MB to ~2.3 s/MB across that span -- and the FIRST reading of each size, before
+# the cache was warm, was 1.7x to 2.7x higher again (2.9 to 4.2 s/MB), which is the reading a hook
+# gets on a machine that has not just read the file.
+# So the whole-scan value below is ~18 s warm and ~31 s cold: not twelve, and a third to a half of
+# the 60 s a PreToolUse hook has for EVERYTHING, `validate_state`'s other duties and the
+# interpreter start included. It is a bound, and it is not a comfortable one.
+#
+# TWO CAPS, because neither bounds the other: a per-DOCUMENT cap says nothing about a thousand
+# documents, and a whole-SCAN cap says nothing about the first file being 200 MB. They are the
+# same two values the hook-layer readers of a store carry, so that one project has ONE answer to
+# "how much may a blocking reader spend";
+# `test_hooks.test_every_blocking_store_reader_carries_the_same_two_caps` is what holds them
+# equal rather than this sentence, and it is where the other readers are named.
+#
+# WHAT IS SKIPPED IS REPORTED, never passed over -- for EVERY way of skipping, which is the
+# correction of 2026-08-07 and is a property of the loop rather than a list of causes: see
+# `_check_no_v1_records_outside_the_archive`. The three measured halves are in `test_migrate` --
+# `test_a_document_too_large_to_search_is_reported_as_unsearched_and_not_read`,
+# `test_the_whole_scan_budget_names_the_documents_it_did_not_reach` and
+# `test_an_unparsable_document_is_unsearched_and_still_refuses_the_merge`.
+DOCUMENT_MAX_BYTES = 2_000_000
+DOCUMENT_SCAN_MAX_BYTES = 8_000_000
 
 # The next step per root status. Three of the four are "obtain an approval", and that is not
 # editorial: those three edges are the ones `approvals.APPROVAL_TRANSITIONS` says an approval
@@ -139,9 +179,10 @@ def generate_session_brief(
                     "item": request.get("item") or request["kind"],
                 })
         staging = []
-        staging_dir = os.path.join(state.root, "staging")
+        staging_dir = state.staging_root()
         if os.path.isdir(ext_path(staging_dir)):
-            staging = ["staging/%s/" % d for d in sorted(os.listdir(ext_path(staging_dir)))]
+            staging = ["%s/%s/" % (STAGING_DIRNAME, d)
+                       for d in sorted(os.listdir(ext_path(staging_dir)))]
         findings = validate_state(state, _locked=True)
         brief = {
             "kit": kit,
@@ -159,7 +200,7 @@ def generate_session_brief(
             },
         }
         validate(brief, "session_brief")
-        path = os.path.join(state.root, "generated", "session_brief.yaml")
+        path = state.generated_path("session_brief.yaml")
         state._write_yaml_atomic(path, brief)
         return path
 
@@ -379,7 +420,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_ui_delivery_sequence(active_items))
     findings.extend(_check_dispatch_approval_presented(state, active_items))
     # staging orphans: neither an active task nor an active root item
-    staging_dir = os.path.join(state.root, "staging")
+    staging_dir = state.staging_root()
     if os.path.isdir(ext_path(staging_dir)):
         for entry in sorted(os.listdir(ext_path(staging_dir))):
             # A staging KEY is a directory named after an item. The template ships `staging/.gitkeep`
@@ -412,7 +453,160 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                 "warning", name, "stale-break remnant lockfile",
                 "safe to delete after inspection (doctor)",
             ))
+    findings.extend(_check_no_v1_records_outside_the_archive(state))
     return findings
+
+
+def _check_no_v1_records_outside_the_archive(state: ProjectState) -> list:
+    """SR-0001, enforced for good: no kit document may keep a V1 BACKLOG record.
+
+    WHY IT IS ENFORCED HERE AND NOT ONLY AT MIGRATION TIME. The migration is the step that ends
+    the double, and nothing afterwards stops a project from putting the monolith back -- restoring
+    it from git, or copying an old kit template in. Then the same thing exists twice in one
+    project and no reader can tell which copy is the state; SR-0001 asks for exactly this
+    permanent bolt ("damit ein Projekt nicht heimlich zurueckkippt").
+
+    THE RECOGNISER IS `migrate`'s OWN, not a second one. A V1 record is what `migrate.scan_document`
+    finds and `migrate` calls a backlog record: a self-identifying `<TYP>-nnnn` mapping that
+    carries a `status`, whose type some V1 or V2 contract knows. Reading it with a rule of this
+    module's own is how the dry run and the validator would come to disagree about the same file
+    -- and the dry run PROMISES this condition in advance
+    (`migrate._documents_still_holding_records`).
+
+    WHAT IS OUT OF SCOPE, and both exclusions fall out of one predicate rather than being named:
+    the scan is over KIT DOCUMENTS (`layout.is_project_document`), so `archive/` and `legacy/` are
+    outside it because both are kernel-written areas, and so is every item file the kernel wrote.
+    A dev project's `acceptance_reports.yaml` keys its criteria `AC-<n>` with a `status` and is NOT
+    flagged, because `AC` is a backlog type to nobody -- the same carve-out the migration makes,
+    asked of the same function, which is also where that example's field reading is recorded.
+
+    A DOCUMENT THAT PRODUCED NO VERDICT IS A FINDING, WHATEVER STOPPED IT, and that is a property
+    of the loop below rather than a list of causes it knows: the only way to reach the record
+    search is a document that was inside both budgets AND parsed, and every other path builds the
+    same "NOT SEARCHED" finding out of its own reason. This scan is the only thing between a V1
+    monolith copied back in and a project carrying the same records twice, so "could not look" may
+    not leave the same silence as "looked and found none".
+
+    IT WAS A LIST OF CAUSES FOR ONE ROUND, and the half it did not list is what the shape costs.
+    The two budgets were reported and an UNPARSABLE document was skipped in silence -- measured
+    2026-08-07 against the shipped `gate_memory_complete` as a process, in a scaffolded project
+    with a valid root item: a document holding one V1 record blocked `git merge` (rc 2); the same
+    document with one unparsable line added, the record still in it in plain text, rc 0. SR-0001's
+    bolt was switched off by a syntax error, and the dry run -- which reports such a file under
+    UNREADABLE and refuses the run -- contradicted this validator about the same file.
+    Both ends of that are measured in
+    `test_migrate.test_an_unparsable_document_is_unsearched_and_still_refuses_the_merge`.
+
+    ...AND THE RUN-UP TO THE LOOP WAS THE SAME SHAPE ONE STEP EARLIER: which files reach it was
+    decided here, in three conditions of this function's own, while the import decided the same
+    question differently. Measured 2026-08-07 with one `PROC-0001` laid down in seven places of one
+    state: three were reported by both readers and four fell into three different combinations of
+    "the dry run names it", "this scan names it" and "neither does". The run-up is now
+    `migrate.search_coverage`, which gives every file under the state root exactly one verdict, and
+    the two readers take the SEARCHED set and the unsearched reasons from it -- so a file they
+    could classify differently no longer exists. WHAT AN UNSEARCHED FILE COSTS HERE is the one
+    thing this function decides on its own: a file outside the record search's reach is reported as
+    coverage (`record_scan_coverage`) and is NOT a finding, because no gate can block a project out
+    of a `.md` file it ships itself -- so a V1 store renamed to `tasks.yaml.bak` inside the state
+    directory is named and does not stop a merge. That is a hole and it is carried as one, not as a
+    claim here.
+
+    WHAT IT WILL SPEND IS BOUNDED AND WHAT THE BOUND COSTS IS REPORTED -- see `DOCUMENT_MAX_BYTES`
+    for the measurement and for why an unbounded reader on the merge gate's path is a gate a large
+    enough file switches off. The documents are taken in sorted order, so which of them the
+    whole-scan budget reaches is a fact about the project rather than about the walk.
+    """
+    from . import migrate                   # lazy: `migrate` imports this module at its own import
+    findings = []
+    documents = [rel for rel, verdict, _why in migrate.search_coverage(state)
+                 if verdict == migrate.SEARCHED]
+    spent = 0
+    _bounded = (
+        "take the file out of the state directory (an editor or shell outside the "
+        "session -- a log or an export of this size is a business record, not project "
+        "state) or split it, then run `python scripts/harness.py validate` again")
+    for rel in sorted(documents):
+        path = ext_path(os.path.join(state.root, *rel.split("/")))
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
+        # (why this document produced no verdict, what to do about it) -- see the docstring: the
+        # ONLY way past this block is a document that was read AND parsed, so no reason to skip
+        # one can be added later without also passing through here.
+        unsearched = None
+        if size > DOCUMENT_MAX_BYTES:
+            unsearched = ("it is %d bytes and this scan reads at most %d bytes of one document"
+                          % (size, DOCUMENT_MAX_BYTES), _bounded)
+        elif spent + size > DOCUMENT_SCAN_MAX_BYTES:
+            unsearched = ("the %d bytes this scan may read in total were already spent on the "
+                          "documents before it (this one adds %d)"
+                          % (DOCUMENT_SCAN_MAX_BYTES, size), _bounded)
+        else:
+            spent += size
+            payload, problem = migrate._read_document(state, rel)
+            if problem:
+                unsearched = (
+                    "it %s -- the records in it, if any, are still there in plain text" % problem,
+                    "repair the file (an editor or shell outside the session; save it as UTF-8 -- "
+                    "a YAML document declares any other encoding by a BOM, and a Windows editor "
+                    "writing ANSI back is one of the ways a document gets here), or take it out "
+                    "of the state directory; `python scripts/harness.py migrate --dry-run` names "
+                    "it under UNREADABLE and refuses the run for the same reason")
+        if unsearched:
+            why, remedy = unsearched
+            findings.append(_finding(
+                # THE CAUSE LEADS, and the check it took down follows. This message used to open
+                # with "NOT SEARCHED for V1 backlog records", so a `project_config.yaml` with one
+                # bad line answered a merge with a sentence about a V1 backlog nobody in the
+                # project had ever heard of -- the failed CHECK named instead of the reason it
+                # failed. The refusal is right either way; what a reader can act on is not.
+                "error", rel,
+                "%s. It was therefore NOT SEARCHED for V1 backlog records, and whether it holds "
+                "any is unknown -- unknown is not empty. (This validator is also read by gates on "
+                "a hook path with a time budget, where a reader that outruns it is a check that "
+                "answers nothing at all, so it is bounded rather than thorough.)"
+                % (why[0].upper() + why[1:]),
+                remedy,
+            ))
+            continue
+        held = [key for _ordinal, key, record in migrate.scan_document(payload)
+                if migrate._declares_status(record)
+                and migrate._is_backlog_type(migrate.V1_ID_RE.match(key).group(1))]
+        if held:
+            findings.append(_finding(
+                "error", rel,
+                "holds %d V1 backlog record(s) (%s...) -- the same thing exists twice in this "
+                "project and nothing says which copy is the state"
+                % (len(held), ", ".join(sorted(held)[:3])),
+                "run `python scripts/harness.py migrate --dry-run`: a document whose records "
+                "all became items is moved to legacy/ by the import (SR-0005), and the dry "
+                "run names every record that still needs an answer first",
+            ))
+    return findings
+
+
+def record_scan_coverage(state: ProjectState) -> dict:
+    """What the SR-0001 record scan CAN look at and what it cannot -- coverage, not findings.
+
+    WHY IT IS NOT A FINDING. Every project ships files this scan does not read -- `README.md`,
+    `product/masterplan.md`, and in the research kit a whole `reports/assets/` tree. A finding
+    about them would be permanent, unclearable and (as an error) a merge no project could ever
+    pass; as a warning it would be an alarm about a state nobody can leave. So the difference
+    between "looked and found none" and "did not look" is carried where it is true -- in the
+    coverage this returns, which `python scripts/harness.py validate` prints under its findings and
+    `python scripts/harness.py doctor` carries in its payload, per file and with the reason the
+    import's own dry run prints for the same file.
+
+    WHAT THAT LEAVES OPEN, said here rather than implied: nothing BLOCKS on it. A V1 store renamed
+    to `tasks.yaml.bak`, or moved under `staging/` or under a dotted directory, is named by both
+    readers and stops no merge.
+    """
+    from . import migrate                   # lazy: `migrate` imports this module at its own import
+    coverage = migrate.search_coverage(state)
+    return {"searched": [rel for rel, verdict, _why in coverage if verdict == migrate.SEARCHED],
+            "not_searched": [{"path": rel, "why": why}
+                             for rel, why in migrate.unsearched_notes(coverage)]}
 
 
 def _check_dispatch_approval_presented(state: ProjectState, active_items: dict) -> list:
@@ -892,7 +1086,7 @@ def _in_archive(state: ProjectState, item_id: str) -> bool:
         item_type, _ = parse_id(item_id)
     except ValueError:
         return False
-    base = os.path.join(state.root, "archive", item_type)
+    base = os.path.join(state.archive_root(), item_type)
     if not os.path.isdir(ext_path(base)):
         return False
     for year in os.listdir(ext_path(base)):
@@ -1479,6 +1673,10 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
         "errors": [f for f in findings if f["severity"] == "error"],
         "warnings": [f for f in findings if f["severity"] == "warning"],
     }
+    # COVERAGE, NOT A VERDICT, and the tool of last resort is where it belongs: which files the
+    # SR-0001 record scan could look at is a fact `validator.errors` cannot carry, because a file
+    # nobody can make readable may not be an error.
+    report["record_scan_coverage"] = record_scan_coverage(state)
     repo_root = os.path.dirname(state.root)
     holes, holes_source = _known_hole_capabilities()
     matrix, reasons = capability_matrix(state, repo_root, (holes, holes_source))
@@ -1594,7 +1792,7 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
             "alone, and the mode is `audited`.",
             "reinstall the kit (a project has no `tools/`; inside the harness checkout, "
             "`python tools/gen_known_holes.py` regenerates it)."))
-    index_path = os.path.join(state.root, "generated", "index.yaml")
+    index_path = state.generated_path("index.yaml")
     report["index_present"] = os.path.exists(ext_path(index_path))
     return report
 

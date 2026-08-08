@@ -1,0 +1,23 @@
+id: DEC-0002
+title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
+context: 'Mein erster Vorschlag war, Architekturentscheidungen als getragene Dokumente
+  liegenzulassen. Der Nutzer widersprach: dann laegen 106 Entscheidungen dauerhaft
+  in V1-Form neben V2-DEC-Items -- zwei Formen fuer dieselbe Sache, fuer immer. Die
+  Messung gibt ihm recht: decisions.yaml ist ein Backlog-Speicher mit Ids, Status
+  und Lebenszyklus, genau wie tasks.yaml.'
+decision: 'ADR bekommt eine Zeile in der Typtabelle und wird zu DEC. Gemessen an einem
+  echten V1-Datensatz: title, context, decision, consequences decken sich WOERTLICH
+  mit REQUIRED_FIELDS[''DEC'']; source ist fuer einen migrierten Datensatz die Quelldatei,
+  also ableitbar. Der V1-status hat kein Gegenstueck (DEC hat keinen Automaten) und
+  lebt im Legacy-Abschnitt weiter.'
+consequences: '106 Datensaetze (69 synaipse, 37 portfoliomanaigement) werden Items
+  statt Altlast -- der sauberste Fall der ganzen Migration, sauberer als die 16 Verfahren
+  in BuyPlugGo. Offen und benannt: DEC hat kein Feld fuer ''loest ab''. Die Abloesung
+  ist das einzige Lebenszyklus-Ereignis einer Entscheidung und laesst sich nur in
+  Prosa im context ausdruecken, also nicht abfragen.'
+source: Gespraech 2026-08-04; Gegenmessung an v2-pilot/synaipse-KOPIE/project_memory/decisions.yaml
+  gegen backlog_types.REQUIRED_FIELDS
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:28:06'

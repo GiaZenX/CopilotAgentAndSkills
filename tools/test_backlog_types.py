@@ -175,9 +175,17 @@ def test_v1_mapping_table():
 
 
 def test_v1_mapping_targets_are_valid_v2_states():
-    from kernel.backlog_types import V1_STATUS_MAPPING
+    """Every mapped status has to be one the target type can actually carry.
+
+    Asked of `status_values`, not of `AUTOMATA` directly: a status-bearing type without an
+    automaton (`DEC`, `INV`) is not exempt from the question, it just answers it from a different
+    map -- and reading `AUTOMATA[v2t]` raised `KeyError` the moment the table gained its first
+    `DEC` row, which is a crash rather than a verdict.
+    """
+    from kernel.backlog_types import V1_STATUS_MAPPING, status_values
     for (_v1t, _v1s), (v2t, v2s, _arch) in V1_STATUS_MAPPING.items():
-        assert v2s in AUTOMATA[v2t].states, (v2t, v2s)
+        assert status_values(v2t), (v2t, "has no status vocabulary at all")
+        assert v2s in status_values(v2t), (v2t, v2s)
 
 
 def test_unknown_v1_status_blocks():

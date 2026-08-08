@@ -144,8 +144,12 @@ Anforderungen als Prosa behandelt) sind vollständig bestätigt.
 
 ## II.2 Zustandsmodell und IDs
 
-**Eine ID-Konvention:** V2 verwendet konsequent `PR-xxxx` für Product Requirements;
-importierte V1-Items erhalten `legacy_ids: [PRD-xxxx]`. Ablauf: neuer eigenständiger Wunsch →
+**Eine ID-Konvention:** V2 verwendet konsequent `PR-xxxx` für Product Requirements; ein
+importiertes V1-Item bekommt eine neue V2-ID und behält seinen früheren Namen als WERT unter
+`legacy_fields.legacy_id` (`kernel/migrate.py`) — kein Verweisfeld, sondern die Herkunft des
+Datensatzes. (Diese Zeile nannte bis 2026-08-04 ein Feld namens `legacy_ids`, das nie existiert
+hat; sie war der letzte Ort dieser Behauptung außerhalb der Korrekturen, die sie benennen.)
+Ablauf: neuer eigenständiger Wunsch →
 Draft-PR (kein FR→PRD-Umweg); Wunsch zu bestehendem PR → FR (Inbox); Änderung an bestätigter
 Revision → CR.
 
@@ -725,6 +729,85 @@ PRD/PROC `PROPOSED`→DRAFT · SR `DRAFT`→PROPOSED · SR `ACTIVE`→ACCEPTED �
 kollabieren auf ACCEPTED — ohne legacy_fields wäre das verlustbehaftet); unbekannte Werte →
 Block + Decision-Item, nie raten. (Das komplette V1-SR-Vokabular ist disjunkt zu V2 —
 verifiziert an synaipse/portfolio.)
+
+**Nachtrag 2026-08-04 — zwei Stellen, an denen der gebaute Import von diesem Absatz abweicht, und
+warum:** (a) *Anfangsstatus.* Ein Datensatz, den die Tabelle als abgeschlossen führt
+(`archive_candidate`), wird nach SR-0004/DEC-0004 direkt unter `archive/<typ>/<jahr>/` auf seinem
+gemappten Status geschrieben statt aktiv auf dem Anfangsstatus; der Feldvertrag gilt für ihn nicht.
+Beides ist an `kernel/state.capture_migrated_archive` begründet und dort auch begrenzt. (b) *Die
+ACCEPTED-Zeilen.* `PRD DONE`/`PRD ACCEPTED` sind oben mit „terminal → Archiv" notiert und werden
+NICHT archiviert: ein PR/RQ erreicht `ACCEPTED` nur über die Kante, die eine `acceptance`-Freigabe
+schließt, und der Import würde damit genau die automatisch erzeugte Userfreigabe erzeugen, die
+derselbe Absatz verbietet — dasselbe gilt für jeden anderen V1-Wert hinter einer Freigabekante.
+Solche Datensätze kommen aktiv auf ihrem Anfangsstatus an, der V1-Wert bleibt in `legacy_fields`.
+Die Regel selbst steht in `kernel/state.migration_writable_statuses`.
+
+(c) *Der zweite Riegel — GEMELDETE Vertragsabweichung, nicht umgedeutet.* SR-0002 verlangt die
+Ausnahme wörtlich „nur bei Endzuständen", SR-0004 „dessen abgebildeter Status ein Endzustand seines
+Automaten ist". Der gebaute Riegel ist ein anderer: `archive_candidate` (was das V1-Vokabular als
+beendet führt) **plus** Erreichbarkeit ohne Freigabekante. Die beiden Regeln fallen auf den
+ausgelieferten Tabellen in beide Richtungen auseinander — `TSK DONE` wird archiviert, obwohl `DONE`
+kein Terminal des Task-Automaten ist, und ein auf `ACCEPTED` gemapptes SR wird archiviert, obwohl
+`SUPERSEDED` das einzige Terminal dieses Automaten ist. Begründet ist der Ersatz an
+`kernel/state.migration_archive_status` (Terminalität ist eine Eigenschaft eines LEBENDEN V2-Items
+und sagt nichts über einen Datensatz von 2025 — genau diese Lesart hat erledigte V1-Tasks nach
+`tasks/active/` gelegt). SR-0002 und SR-0004 sind kanonischer Zustand und wurden NICHT nachgezogen;
+die Abweichung steht hier und an `capture_migrated_archive` (Riegel zwei) und wartet auf eine
+Entscheidung. Gemessen wird sie von
+`test_state.test_the_archive_paths_second_bolt_is_not_the_terminal_check_sr_0002_asks_for`.
+
+(d) *Die Zeile `SR DONE→ACCEPTED (+Archiv-Kandidat)` — offenes Loch, mit Mechanismus.* Sie greift
+heute, und der Grund ist eine FEHLENDE Zeile, keine Entscheidung: `approvals.APPROVAL_TRANSITIONS`
+kennt für `SR` überhaupt kein Freigabe-Kind, und `migration_writable_statuses` liest eine fehlende
+Kante als *keine Freigabe im Weg*. `approvals.required_approval_kinds` führt genau diese Kante
+(`SR PROPOSED → ACCEPTED`) als *„Reported, not bridged"* — also als Freigabe, die man bauen müsste
+und die niemand gebaut hat. Ergebnis, Ende zu Ende gemessen: `archive/SR/<jahr>/SR-nnnn.yaml` mit
+`status: ACCEPTED`, `approval_ref: null` und keiner Anfrage irgendwo — dieselbe Form, die derselbe
+Absatz für `CR APPLIED` als Defekt beschreibt, hier durch eine Abwesenheit erzeugt statt durch eine
+Subtraktion. Nichts im Harness kann *entschieden: keine Freigabe nötig* von *das Kind wurde nie
+gebaut* unterscheiden; das schließt erst ein APR-Kind mit Manifest, und das ist eine
+Spec-Entscheidung. Stolperdrähte an beiden Enden:
+`test_state.test_which_archive_bound_rows_rest_on_an_absent_approval_edge` (SR/TSK/FR/HYP) und
+`test_migrate.test_a_finished_v1_sr_is_archived_at_accepted_with_no_approval_behind_it`.
+
+(e) *Der Umzug nach `legacy/` — GEMELDETE Abweichung von den drei Auflagen unten, keine Umdeutung.*
+Der Absatz „Ablauf pro Repo" weiter unten verlangt für das Verschieben von V1-Dateien drei Dinge:
+eine **gesonderte Userzustimmung** („optionales späteres Verschieben nach legacy_v1/ nur mit
+gesonderter Userzustimmung"), ein **Legacy-Manifest**, über das SessionStart, Dashboard und Gates
+die Dateien ausschließen, und einen **fail-closed Integrity-Guard**, der Writes auf das Manifest und
+alle erfassten V1-Dateien blockiert. Gebaut ist etwas anderes — in allen drei Punkten, und unter
+einem vierten Namen:
+
+* Der Umzug passiert **im selben Lauf** wie der Import (`migrate._retire_absorbed_documents`),
+  nicht als späterer, eigens zugestimmter Schritt. Die einzige Zustimmung ist der Plan-Digest, den
+  der Trockenlauf druckt und den der schreibende Lauf zurückbekommen muss — der beweist, dass der
+  Zustand sich zwischen Lesen und Schreiben nicht bewegt hat, **nicht**, dass ein Nutzer dem
+  Verschieben zugestimmt hat. Was der Trockenlauf dafür leistet: er nennt jede Datei, die er
+  verschieben würde, unter einer eigenen Überschrift.
+* Es gibt **kein Manifest**. Die Ausschlusswirkung kommt statt dessen aus dem Ort selbst:
+  `legacy/` ist ein kernel-geschriebener Bereich (`state.legacy_root`), also liest `migrate` dort
+  keine V1-Quellen mehr, `gate_write_scope` weist einen Tool-Write dorthin ab und der SR-0001-Scan
+  überspringt ihn. Eine zweite, danebenliegende Aussage über dieselbe Menge Dateien entsteht damit
+  gar nicht erst — das ist der Grund, aber es ist eine andere Konstruktion als die verlangte, und
+  ein Wiederherstellungs-Befehl („Wiederherstellung nur über expliziten userbestätigten
+  Restore-Befehl") existiert nicht.
+* Es gibt **keinen Integrity-Guard**. Für die *stehenbleibenden* V1-Dateien ist das bereits im
+  Modulkopf von `kernel/migrate.py` als offenes Loch benannt; für die *verschobenen* gilt nur der
+  Tool-Write-Riegel von `gate_write_scope`, und der ist kein fail-closed Integritätsschutz: er
+  hindert einen Editor außerhalb der Session an nichts, und niemand prüft die im Beleg
+  festgehaltenen Pruefsummen jemals nach.
+* Und das **Verzeichnis heißt nicht so wie die Auflage es nennt**: verlangt ist `legacy_v1/`,
+  angelegt wird `legacy/` (`state.legacy_root`). Das ist der kleinste der vier Unterschiede und
+  steht trotzdem hier, weil er der einzige ist, den ein Leser für einen Tippfehler halten kann: wer
+  nach der Auflage sucht, sucht ein Verzeichnis, das kein Lauf anlegt.
+
+Was der gebaute Umzug dafür zusätzlich einhält und die Auflagen nicht verlangen: verschoben wird nur
+eine Datei, deren Datensätze **alle** zu Items geworden sind (SR-0005), und **nie** eine Datei, deren
+Inhalt ein registriertes, blockierfähiges Hook liest (`layout.gated_documents`) — sonst läse dieses
+Gate danach eine abwesende Datei. Die Abweichung steht hier und wartet auf eine Entscheidung; SR-0005
+ist kanonischer Zustand und wurde NICHT nachgezogen. Stolperdrähte:
+`test_migrate.test_a_fully_absorbed_v1_store_moves_to_legacy_with_its_hash_in_the_receipt` und
+`test_migrate.test_a_document_a_registered_gate_reads_is_never_moved_to_legacy`.
 
 **Branch↔Item-Konvention:** Arbeitsbranches heißen `<typ>/<ITEM-ID>-<slug>` mit Präfixen
 `pr/ rq/ bug/ cr/` (z. B. `pr/PR-0012-checkout`); gate_git prüft Existenz + TYPGERECHTEN

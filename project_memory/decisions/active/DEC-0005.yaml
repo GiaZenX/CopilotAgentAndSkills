@@ -1,0 +1,17 @@
+id: DEC-0005
+title: Abnahmeberichte werden Beweismittel, nicht Items
+context: synaipse traegt 31 Abnahmeberichte (AC-nnnn) in V1-Form. V2 kennt 'acceptance'
+  nur als abgeleitete Art -- einen Hash ueber die Felder eines Items -- nicht als
+  Item-Typ. Sie liegenzulassen hiesse, V1-Form dauerhaft im Arbeitsbaum zu behalten;
+  sie zu Items zu machen hiesse, einen Typ zu erfinden.
+decision: Ein Abnahmebericht wird ein Beweismittel (EVD) und haengt an dem Item, ueber
+  das er berichtet. Er ist kein Backlog-Posten, sondern eine Aussage ueber einen.
+consequences: 'Das Abschlusskriterium haelt auch fuer sie. Zu pruefen beim Bauen:
+  EVD hat NONEMPTY_FIELDS (''related'', ''artifact_refs'') -- ein Abnahmebericht ohne
+  auffindbares Zielitem kann also nicht geschrieben werden, und das ist richtig so,
+  muss aber als vorgelegte Entscheidung erscheinen statt als stiller Fehlschlag.'
+source: Gespraech 2026-08-04; gemessen an v2-pilot/synaipse-KOPIE und backlog_types.ACTIVE_DIRS
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:28:44'

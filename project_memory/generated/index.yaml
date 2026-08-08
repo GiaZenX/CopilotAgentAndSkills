@@ -1,0 +1,492 @@
+generated_at: '2026-08-08T19:51:12'
+items:
+- id: BUG-0001
+  type: BUG
+  title: Die Kommandoflaeche hat kein update -- ein Tippfehler kostet ein neues Item
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0002
+  type: BUG
+  title: robocopy /MOVE liest als Kopie
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0003
+  type: BUG
+  title: Die Ledger-Redirect-Regel liest rohen Text statt der aufgeloesten Zeichenkette
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0004
+  type: BUG
+  title: premise_rechecks hat keinen Schreiber
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0005
+  type: BUG
+  title: Der Sitzungsbrief verliert die letzte Nutzerentscheidung
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0006
+  type: BUG
+  title: Die CLI-Ableitung der Ordering-Kommandos ist direkt, nicht transitiv
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0007
+  type: BUG
+  title: ruff ist in CI ungepinnt -- das Ergebnis ist nicht reproduzierbar
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0008
+  type: BUG
+  title: Ein PowerShell-Modulcache liegt unverfolgt im Repo-Wurzelverzeichnis
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0009
+  type: BUG
+  title: Lebenszyklus-Ereignisse zwischen zwei Items werden nicht verlinkt
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0010
+  type: BUG
+  title: Ohne Lease ist eine Aufgabe nicht ehrlich abschliessbar -- und LEASED ist
+    genau das, was sweep-leases zuruecksetzt
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0011
+  type: BUG
+  title: Ein Satz, der die Abwesenheit des Kit-Markers behauptet, LOEST DIE UEBERGABE
+    AUS
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0012
+  type: BUG
+  title: Gate 1 liest eine Shell-Funktionsdefinition als Schreibzugriff auf den zugewiesenen
+    Wert
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0013
+  type: BUG
+  title: Kit-Hooks legen ihr eigenes Verzeichnis auf sys.path[0] und koennen damit
+    die Standardbibliothek verdecken
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: DEC-0001
+  type: DEC
+  title: Der PM spielt Kit-Updates selbst ein und erzwingt danach den Neustart
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0002
+  type: DEC
+  title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0003
+  type: DEC
+  title: In diesem Repo wird kein Kit installiert -- Buchfuehrung ohne Durchsetzung
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0004
+  type: DEC
+  title: Der Feldvertrag gilt nicht fuer Items, die migrate ins Archiv schreibt
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0005
+  type: DEC
+  title: Abnahmeberichte werden Beweismittel, nicht Items
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0006
+  type: DEC
+  title: Runde 4 wird auf unsere Daten zugeschnitten; Randfaelle gehen auf die Loecherliste
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0007
+  type: DEC
+  title: SR-0006 ist an zwei Stellen zu eng -- der gebaute Apparat geht bewusst darueber
+    hinaus
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0008
+  type: DEC
+  title: Kommentare tragen nur noch das Warum -- und verweisen dafuer auf Items
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0009
+  type: DEC
+  title: Der Migrator wird nicht weiter gehaertet -- Unaufloesbares wandert mit Begruendung
+    ins Archiv
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0010
+  type: DEC
+  title: Ein expected_output nennt eine EIGENSCHAFT -- nie eine Loesung und nie eine
+    Aufzaehlung
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0011
+  type: DEC
+  title: Hausregel 1 gilt auch fuer die Klammer -- und ein Beispiel im Auftrag wird
+    zur Pruefliste
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0012
+  type: DEC
+  title: Rote Mutationen decken die gebaute Loesung, nicht die verlangte Eigenschaft
+    -- und 'behauptet' meint zweierlei
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0013
+  type: DEC
+  title: Die Wurzelitems werden archiviert, und der PM legt danach ein frisches an
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0014
+  type: DEC
+  title: Die Achsen einer Testtabelle werden aus den Bedingungen abgeleitet, die der
+    Code fuer sich behauptet
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0015
+  type: DEC
+  title: Eine aufgezaehlte Dokumentenmenge im Auftrag ist dieselbe Fehlform wie eine
+    Klammer mit Beispielen
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0017
+  type: DEC
+  title: Die Naht zwischen einer Zusicherung und ihrem Verhalten wird von nichts gemessen
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0018
+  type: DEC
+  title: Jede Verzweigung der entscheidenden Funktion ist eine Achse -- loest DEC-0016
+    ab
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0019
+  type: DEC
+  title: Eine Reparatur, deren eigene Zusicherung nicht gemessen ist, ist nicht fertig
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0020
+  type: DEC
+  title: Jede Funktion, deren Rueckgabe der Leser fuer die Antwort des Geprueften
+    haelt, wird gegen das Geprueft gemessen
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0021
+  type: DEC
+  title: migration_confirmation_required wird umbenannt, nicht mit einem Leser versehen
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0022
+  type: DEC
+  title: Werkbank und Produkt tragen nicht dieselbe Beweislast
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0023
+  type: DEC
+  title: Die volle Suite ist ein Abnahmelauf, kein Iterationslauf
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: EVD-0001
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: FR-0001
+  type: FR
+  title: 'Ein Gate auf die Aufgabenliste: hoechstens ein Eintrag ohne Item-Id'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0002
+  type: FR
+  title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0003
+  type: FR
+  title: 'Die Wunschliste bekommt Stand: je Wunsch ein duennes FR, die Loecherliste
+    triagiert'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0004
+  type: FR
+  title: 'Stufe 5: Spec II.12 gegen das Gebaute abgleichen, seitliche V2-RC'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0005
+  type: FR
+  title: Ein Zuschnitt-Kritiker vor dem Arbeitsauftrag, der einen KLEINEREN Plan vorlegen
+    muss
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0006
+  type: FR
+  title: harness.py update-kit -- der PM spielt Kit-Updates selbst ein
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0007
+  type: FR
+  title: 'Die Kommentardisziplin in die Kits: Verfassung und Rollendefinitionen'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0009
+  type: FR
+  title: Fuenf Rollenberichte in docs/research tragen den falschen Rollennamen
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0010
+  type: FR
+  title: Die fuenf Fehlformen einer Auftragszeile gehoeren in die Rolle des Projektmanagers
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0011
+  type: FR
+  title: Die Gate-Suite kostet sechs Minuten Wandzeit je Lauf auf einem Host mit 16
+    logischen Kernen
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: PR-0001
+  type: PR
+  title: Migrationsweg V1 -> V2
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: PR-0002
+  type: PR
+  title: Dieses Repo fuehrt seinen eigenen Zustand
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: PR-0003
+  type: PR
+  title: Das V2-Harness ist auslieferbar
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: SR-0001
+  type: SR
+  title: 'Abschlusskriterium: keine V1-Form ausserhalb von archive/ und legacy/'
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0002
+  type: SR
+  title: Der Feldvertrag gilt nicht fuer Items, die migrate direkt ins Archiv schreibt
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0003
+  type: SR
+  title: Die V1->V2-Typtabelle deckt jeden Typ, den die Kits ausliefern
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0004
+  type: SR
+  title: Ein Datensatz in einem Endzustand landet im Archiv, nicht in active/
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0005
+  type: SR
+  title: Vollstaendig aufgegangene V1-Speicher wandern nach legacy/
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0006
+  type: SR
+  title: 'Die Durchsetzung dieses Repos: vier Hooks und ein gebundener Sitzungsagent'
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0007
+  type: SR
+  title: Feldzuordnungen kommen als Vorschlag, nicht als leere Frage
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0008
+  type: SR
+  title: Was ein Kommentar tragen darf
+  status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: TSK-0002
+  type: TSK
+  title: null
+  status: FAILED
+  revision: 1
+  approval_ref: null
+- id: TSK-0003
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0004
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0006
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0007
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0008
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0009
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0010
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0011
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0012
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0013
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0014
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0015
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0016
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0017
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0018
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0019
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0020
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0021
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0022
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0023
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0024
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null

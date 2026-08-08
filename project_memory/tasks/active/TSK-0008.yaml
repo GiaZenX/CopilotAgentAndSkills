@@ -1,0 +1,56 @@
+id: TSK-0008
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0007: B1, B2, B4 blockierend; B3 blockiert nur als unbenanntes
+  Loch; R-a bis R-d'
+- docs/reviews/2026-08-05-tsk0007-measurements.md -- das eigene Messprotokoll, dessen
+  Klasse B3 wieder oeffnet
+expected_outputs:
+- '_real beantwortet ''dieselbe Datei'', nicht ''derselbe Text'': Praefix-Normalisierung
+  fuer \?\ und \?\UNC\, Admin-Freigabe auf den lokalen Pfad, und wo der Pfad existiert
+  zusaetzlich Dateiidentitaet (st_dev/st_ino). Zehn gemessene Umgehungen des Pruefers
+  werden rc 2'
+- Der Docstring nennt keine Schreibweise mehr, die kein Test faehrt -- die \?\-Haelfte
+  war behauptet und ungemessen
+- shell_reader und compat sichern sys.path vor dem Fremdimport und stellen es danach
+  wieder her; ein shlex.py im Kit-Hook-Verzeichnis kann die Standardbibliothek nicht
+  mehr verdecken
+- guarded() reicht aus decide() heraus NUR SystemExit(2) durch; jeder andere Code
+  wird zur Verweigerung -- der eigene Erfolgsausgang steht nach decide(), also ist
+  jeder andere per Konstruktion fremd
+- 'decision_inputs misst, was sein Docstring verspricht: _subjects(data) vor ProtectedArea(root),
+  damit die vier Shell-Module in der Produzentenmenge stehen'
+- 'H16 in docs/POST_V2_WISHLIST.md: der Pfad steht in einer Variablen, das Gate liest
+  den Text -- mit gemessener Kette und Urteil, in derselben Form wie H11'
+- 'R-a: _moves_the_tree_first ueberspringt verblose Stufen wie written_paths es tut
+  -- die PowerShell-Vorsilbe dieses Repos wird vor einem Commit nicht mehr verweigert'
+- 'R-b: ''cwd unbekannt'' ist von ''cwd = Wurzel'' getrennt; relative Kandidaten werden
+  bei unbekanntem cwd verworfen. robocopy/xcopy/tar mit dem Repo als QUELLE sind keine
+  Schreibzugriffe'
+- 'R-c: H7 bekommt sein Urteilswort. R-d: H11 nennt, dass die Interpreter-Ausnahme
+  Gate 3 mit aufhebt -- gemessen, nicht abgeleitet'
+- 'Die Blockend-Regel traegt ihre zweite Haelfte: blockierend heisst geschlossen ODER
+  mit benannter, vom Nutzer abzunehmender Ausnahme, die sagt warum nicht schliessbar
+  und was stattdessen begrenzt'
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen; die Suite unter tools/
+  ist nicht dein Mass
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-05T04:09:15'

@@ -1,0 +1,15 @@
+id: SR-0001
+title: 'Abschlusskriterium: keine V1-Form ausserhalb von archive/ und legacy/'
+derives_from: PR-0001
+contract: 'Nach einem abgeschlossenen Lauf traegt keine Datei ausserhalb von archive/
+  und legacy/ mehr ein Mapping, das sich mit einer <TYP>-nnnn-Id ausweist und einen
+  status fuehrt. Der Trockenlauf meldet dieselbe Bedingung vorab: sagt er READY und
+  blieben Datensaetze uebrig, ist er falsch. validate setzt die Bedingung danach dauerhaft
+  durch, damit ein Projekt nicht heimlich zurueckkippt.'
+affected_components:
+- kernel/migrate.py
+- kernel/report.py (validate)
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:27:20'

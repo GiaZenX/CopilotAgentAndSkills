@@ -1,0 +1,61 @@
+id: FR-0005
+title: Ein Zuschnitt-Kritiker vor dem Arbeitsauftrag, der einen KLEINEREN Plan vorlegen
+  muss
+related_pr: PR-0003
+request_text: 'LUECKE: Der Pruefer misst, ob das GEBAUTE stimmt. Niemand prueft, ob
+  das GEPLANTE zu gross ist. Zwischen ''Anforderung steht'' und ''Auftrag geht raus''
+  sitzt keine Instanz.
+
+
+  GEMESSENER ANLASS, 2026-08-04, drei Faelle an einem Tag -- alle drei vom NUTZER
+  gefangen, keiner von einer Pruefrunde:
+
+  (a) Ich hielt Platzhalter in Pflichtfeldern fuer gefaehrlich. Gemessen: contract
+  und affected_components sind HASHED_FIELDS -- ein spaeter nachgetragener Inhalt
+  entwertet jede darauf stehende Freigabe automatisch. Der Platzhalter kann sich nicht
+  festsetzen.
+
+  (b) Ich hielt das fehlende SR.contract fuer ein grosses Problem. Gemessen: das V1-Feld
+  description traegt den Vertragssatz woertlich (''... MUST BE CREATED WITH ...'').
+  Eine Zuordnungszeile, 224 Datensaetze.
+
+  (c) Ich hielt die Archiv-Ausnahme fuer unzureichend. Gemessen: sie deckt 419 der
+  429 Aufgaben.
+
+
+  DER ENTWURF, damit es kein Theater wird: ein Agent, den man fragt ''ist das zu komplex?'',
+  findet IMMER etwas -- dieselbe Fehlerklasse wie ein Test, der nicht scheitern kann.
+  Deshalb drei Auflagen:
+
+  1. Er urteilt nicht, er LEGT EINEN KLEINEREN PLAN VOR -- konkret, gegen denselben
+  Vertrag, mit der Angabe, was der kleinere Plan NICHT abdeckt. Dann vergleicht man
+  zwei Plaene statt eine Meinung zu empfangen.
+
+  2. ''Der Plan ist minimal'' ist eine erlaubte und erwartete Antwort, mit Begruendung.
+  Ein Kritiker, der nie zustimmt, ist wertlos.
+
+  3. Er argumentiert gegen den VERTRAG (die SR), nicht gegen Geschmack. Die Frage
+  lautet: was ist die kleinste Aenderung, die diesen contract erfuellt, und warum
+  ist die geplante groesser?
+
+
+  DER AUSLOESER ist mechanisch und keine Heuristik: der Auftrag nennt in expected_outputs
+  einen Baustein, den KEINE Anforderung namentlich nennt. Genau das ist am 2026-08-04
+  passiert -- capture_migrated_archive, eine Schreibroute ohne Feldvertrag, stand
+  in keiner SR und kam trotzdem ins Paket; der Pruefer hat das Item deswegen als zu
+  grob geruegt.
+
+
+  FUER DIE KITS: dieselbe Luecke. Der Projektmanager zerlegt eine Anforderung in Aufgaben,
+  und niemand prueft die ZERLEGUNG -- die Spezialisten bekommen den Auftrag und bauen
+  ihn. Der software-architect entwirft, er auditiert nicht den Zuschnitt des PM. Kosten
+  beachten: ein Modellaufruf je Auftrag ist zu teuer als Pflicht; der Ausloeser oben
+  begrenzt es auf die Faelle, in denen der Auftrag ueber seine Anforderungen hinausgeht.
+
+
+  OFFEN: ob der Kritiker eine eigene Rolle ist oder eine Pflicht des bestehenden Pruefers
+  VOR dem Bauen. Zweiteres waere billiger und haette denselben frischen Kontext.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-04T23:10:54'

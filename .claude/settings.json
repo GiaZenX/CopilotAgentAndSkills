@@ -1,0 +1,58 @@
+{
+  "_comment": "This repo builds the team kits and can therefore install none of them (DEC-0003): gate_write_scope refuses every write-capable command line naming team-kits, and here every change is one. These four PreToolUse gates are the replacement SR-0006 specifies. gate_lead_write_scope is registered TWICE on purpose -- on the write tools and on the shell -- because a protected path is reachable from either, and registered on the write tools alone eight measured shell lines wrote kit code, this file and the producer of the protected area with rc 0 (2026-08-05). Every interpreter runs with -B because the gates import out of team-kits/, the source side of the kit hash, and a route that starts an interpreter over that tree must refuse to cache into it (kernel/hashing.py BYTECODE_SUFFIXES); _harness.py states the same flag for itself, because a rebuilt command line does not carry it. EVERY entry states a `timeout`, and none may be left to the provider's default: _harness.Deadline reads this file to learn when it will be killed, and a killed hook is read as 'hook error, carry on', i.e. as an ALLOW -- measured 2026-08-05, five candidates on unroutable UNC hosts cost gate 1 211.3 s against this 120. A gate that finds no timeout for its call refuses rather than race a deadline it cannot see. `agent:` binds the session role: without one, _compat.calling_subagent cannot tell the lead from a subagent, which is exactly the fixture blindness that let the July regression live for a month.",
+  "agent": "harness-lead",
+  "permissions": {
+    "deny": [
+      "Agent(harness-lead)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_lead_write_scope.py\"",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "Agent|Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_spawn_needs_item.py\"",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_lead_write_scope.py\"",
+            "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_commit_evidence.py\"",
+            "timeout": 120
+          }
+        ]
+      },
+      {
+        "matcher": "TodoWrite",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_todo_items.py\"",
+            "timeout": 120
+          }
+        ]
+      }
+    ]
+  }
+}

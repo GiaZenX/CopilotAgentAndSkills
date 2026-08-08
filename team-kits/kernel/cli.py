@@ -49,7 +49,7 @@ import subprocess
 import sys
 import time
 
-from . import approvals, dispatch, report, staging
+from . import approvals, dispatch, migrate, report, staging
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -433,6 +433,40 @@ def build_parser() -> argparse.ArgumentParser:
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
+    # THE V1 IMPORT (spec II.10). Two halves of one command rather than two commands, because the
+    # second half is only sound as the continuation of the first: `--dry-run` reads and prints a
+    # DIGEST over everything it read, and `--plan <digest>` refuses unless it re-derives the same
+    # value. Splitting them into `migrate-plan`/`migrate-apply` would have made "run the apply
+    # without ever running the plan" a spelling that exists.
+    #
+    # NO APPROVAL KIND IS ASKED FOR HERE, and `kernel/migrate.py`'s docstring is where the reason
+    # is argued rather than restated -- including why the kinds are named by ASKING
+    # (`approvals.item_derived_kinds`, `approvals.line_manifest_kinds`) rather than counted: this
+    # line said "all five" over a vocabulary of six and thereby put the two kinds that hash NEITHER
+    # an item nor a commit on the wrong side of its own sentence. What the digest proves is that
+    # the STATE has not moved since the run was presented -- not that a user consented -- and no
+    # text in this harness may say otherwise.
+    migration = sub.add_parser(
+        "migrate", help="import V1 records into the V2 item store (spec II.10); --dry-run first")
+    exclusive = migration.add_mutually_exclusive_group(required=True)
+    exclusive.add_argument("--dry-run", action="store_true",
+                           help="read the state and print what a run would do; writes nothing")
+    exclusive.add_argument("--plan", metavar="DIGEST",
+                           help="the digest the dry run printed; the run refuses any other state")
+    # A FLAG AND NOT A BODY ON STDIN, unlike `capture`: these are scalar pairs the DRY RUN ITSELF
+    # prints, so what a human does with them is paste a line back. Nothing here names a path, so
+    # `gate_write_scope` has nothing to refuse.
+    migration.add_argument("--map", action="append", dest="field_map", metavar="TYPE.FIELD=V1_FIELD",
+                         help="which V1 field feeds a V2 required field the record does not spell "
+                              "the same way (repeatable); the dry run prints the exact flags")
+    # THE ONE THING THE IMPORT REFUSES TO GUESS ABOUT A FINISHED RECORD (SR-0004). A record spec
+    # II.10's table calls finished is written under `archive/<TYPE>/<year>/`, and the year comes from
+    # the record's own newest date. Where a V1 store carries no date at all -- `system_requirements
+    # .yaml` carries none in either field project -- this is the answer, given once for the run,
+    # rather than a year this command picked.
+    migration.add_argument("--archive-year", type=int, metavar="YYYY",
+                           help="the archive year for finished records that carry no date of "
+                                "their own; the dry run blocks and asks for it when it needs it")
     return parser
 
 
@@ -553,6 +587,15 @@ def main(argv=None) -> int:
                 ))
             errors = [f for f in findings if f["severity"] == "error"]
             print("%d error(s), %d warning(s)" % (len(errors), len(findings) - len(errors)))
+            # WHAT THE V1 RECORD SCAN DID NOT LOOK AT, printed with the findings and not among
+            # them: it is coverage, so it carries no severity and no exit code (see
+            # `report.record_scan_coverage`), and without it "no finding about that file" and "that
+            # file was never read" are the same silence on this surface.
+            coverage = report.record_scan_coverage(state)
+            print("V1 record scan: searched %d document(s), did not search %d"
+                  % (len(coverage["searched"]), len(coverage["not_searched"])))
+            for entry in coverage["not_searched"]:
+                print("  NOT SEARCHED %s: %s" % (entry["path"], entry["why"]))
             return 1 if errors else 0
         if args.command == "generate-index":
             print(state.generate_index())
@@ -680,6 +723,72 @@ def main(argv=None) -> int:
             print("still leased: %s" % (", ".join(
                 "%s (%d s left)" % (task_id, int(left))
                 for task_id, left in dispatch.live_leases(state)) or "-"))
+            return 0
+        if args.command == "migrate":
+            field_map = migrate.parse_field_map(args.field_map)
+            plan = migrate.build_plan(state, field_map, args.archive_year)
+            digest = migrate.plan_digest(plan)
+            if args.dry_run:
+                print(migrate.render(plan, state))
+                # 1 = "there are findings", exactly as `validate` uses it: a dry run that cannot
+                # be executed as it stands is the same kind of answer as a state finding, and a
+                # caller scripting this needs to tell the two apart without parsing prose.
+                return 0 if migrate.plan_is_executable(plan) else 1
+            if args.plan != digest:
+                # A USAGE error and not a state refusal: the command was never attempted.
+                #
+                # WHAT THE MISMATCH DOES AND DOES NOT TELL THE CALLER, and why the answer is a
+                # DECOMPOSITION rather than a list of causes. This message has now been short
+                # THREE times, every time in the same direction and every time because it counted:
+                # first "something under the state directory changed" while the `--map` flags are
+                # in the plan too; then "the flags" while `--archive-year` is equally in it and
+                # while the plan carries the WALLS, which come out of the project's `.claude/`
+                # registration and not out of the state directory; and then those three while the
+                # kernel's OWN contract tables decide half of what a record classifies to.
+                # Measured 2026-08-07: adding one entry to `backlog_types.OPTIONAL_FIELDS` moves
+                # the digest with `state_fingerprint` byte-identical, the flags unchanged and the
+                # registration unchanged -- both places the message named answer nothing about it.
+                #
+                # A plan is a deterministic COMPUTATION, so it can move for exactly three kinds of
+                # reason: what it read, what it was told, and what computed it. That is closed by
+                # construction, which a list of three causes was not, and each kind is given the
+                # place that answers it rather than an answer restated here.
+                raise UsageError(
+                    "this run is not the run the dry run presented. You passed %r; this command "
+                    "line against this state digests to %s. The digest is a fingerprint of the "
+                    "whole PLAN, and a plan is a computation: it moves only when one of its "
+                    "inputs does, and it has three kinds of input. What the dry run READ -- the "
+                    "content of the state directory, and this project's hook REGISTRATION, "
+                    "because the plan records which documents are walls a gate reads (so "
+                    "installing, removing or re-pointing a refusal-capable hook moves the plan "
+                    "while every file under the state directory stays byte-identical). What it "
+                    "was TOLD -- the flags on this command line. And the CODE AND TABLES that "
+                    "computed it: a kit update between the two halves can change what the same "
+                    "records classify to, with every file and every flag byte-identical. In each "
+                    "case the plan you read is not the plan that would run. (WHICH files count is "
+                    "`kernel/migrate.state_fingerprint`, which also names what it leaves out; "
+                    "WHICH hooks count is `kernel/layout.gated_documents`; `%s doctor` reports "
+                    "both -- the walls it derives from that registration, each with the gate that "
+                    "reads it, and the `kit_version` this project is installed at, which is where "
+                    "the third kind shows.) This command cannot tell you WHICH of them moved: it "
+                    "holds the digest of the plan you read, not that plan. "
+                    "Remedy: `%s migrate --dry-run` with the flags you mean, read it again, and "
+                    "use the digest it prints."
+                    % (args.plan, digest, INVOCATION, INVOCATION))
+            result = migrate.execute(state, plan, digest)
+            if not result["created"]:
+                print("nothing to migrate: no record in this state is translatable and none was "
+                      "written, so this run changed nothing.")
+                return 0
+            print("imported %d item(s): %s" % (len(result["created"]),
+                                               ", ".join(result["created"])))
+            print("run recorded as %s" % result["receipt"])
+            # THE SAME WARNING THE DRY RUN PRINTS, on the half that actually produced the state.
+            # It stood in `render` only, so the executing run said nothing about a project it had
+            # just left without a root item -- and `render` is the half a scripted or scrolled-past
+            # invocation never reads. `migrate.root_item_warnings` is the one text.
+            for line in migrate.root_item_warnings(plan, written=True):
+                print(line)
             return 0
     except UsageError as exc:
         # BEFORE the generic handler, because UsageError IS a ValueError -- the broad clause below

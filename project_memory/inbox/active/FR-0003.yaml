@@ -1,0 +1,27 @@
+id: FR-0003
+title: 'Die Wunschliste bekommt Stand: je Wunsch ein duennes FR, die Loecherliste
+  triagiert'
+related_pr: PR-0002
+request_text: 'docs/POST_V2_WISHLIST.md hat elf Abschnitte, und niemand kann sagen,
+  welche leben, welche entschieden sind und welche tot. Es fehlt nicht der Text --
+  der ist als Analyse dort richtig -- sondern der STAND.
+
+
+  Je Wunsch ein duennes FR-Item: Titel plus Quelle auf den Abschnitt, sonst nichts.
+  Der FR-Automat passt genau: OPEN -> TRIAGED -> CONVERTED (wurde eine Anforderung)
+  / REJECTED (mit Grund) / MERGED (Dublette). Die Prosa NICHT hineinmigrieren -- sonst
+  entstehen zwei Wahrheiten, genau das Problem, das die Migration gerade loest.
+
+
+  Abschnitt 11 (Loecherliste) geht anders: das sind gemessene Defekte, keine Wuensche.
+  Jeder ist entweder ein BUG (soll geschlossen werden) oder eine DEC (wird bewusst
+  in Kauf genommen, mit Begruendung). Diese Einordnung ist die eigentliche Arbeit
+  und darf nicht pauschal passieren -- danach steht schwarz auf weiss, welche Luecken
+  V2 bewusst mitliefert. Das ist die Liste, die man vor einer Freigabe lesen will.
+
+
+  Dazu: docs/office-kit-from-field.md als Abschnitt 12 verlinken.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:59:51'

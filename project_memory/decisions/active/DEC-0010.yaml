@@ -1,0 +1,54 @@
+id: DEC-0010
+title: Ein expected_output nennt eine EIGENSCHAFT -- nie eine Loesung und nie eine
+  Aufzaehlung
+context: 'Zwei Zeilen aus TSK-0008 haben Defekte erzeugt, auf entgegengesetzte Weise,
+  und beide sind von MIR geschrieben.
+
+
+  (1) Die robocopy-Zeile war schlicht falsch. Der Umsetzer hat sie mit einer Gegenmessung
+  abgelehnt und damit richtig gehandelt. Das Erkennungsmerkmal, das der Pruefer benennt:
+  es war die EINZIGE Zeile, die ihre Subjekte aufzaehlen musste -- vier Verbnamen.
+  Alle anderen nannten eine Eigenschaft. Eine Zeile, die ohne Verbliste nicht formulierbar
+  ist, verlangt vom Umsetzer eine Aufzaehlung; das Item begeht dann Hausregel 1 stellvertretend,
+  und der Umsetzer hat nur die Wahl zwischen ''gegen den Auftrag'' und ''gegen die
+  Hausregel''.
+
+
+  (2) Die R-b-Zeile war zu eng, und sie hat vier neue Loecher erzeugt. Sie schrieb
+  den MECHANISMUS vor (''cwd unbekannt ist von cwd gleich Wurzel getrennt; relative
+  Kandidaten werden bei unbekanntem cwd verworfen'') statt der EIGENSCHAFT (''das
+  Gate loest ein relatives Wort dort auf, wo die Zeile wirklich laeuft''). Der Umsetzer
+  hat den vorgeschriebenen Drei-Zustands-Automaten exakt gebaut -- und weil in der
+  Vorschrift der Begriff ''der Wechsel GELINGT'' nicht vorkam, kommt er im Code auch
+  nicht vor. Gemessen: sechs Zeilen mit einem scheiternden cd, popd oder pushd schreiben
+  seitdem ungehindert in geschuetzte Pfade, vier davon neu durch diesen Fix.'
+decision: 'Zwei Pruefungen an jeder Zeile, bevor ein Item rausgeht.
+
+
+  ERSTENS: Kann ich diese Zeile hinschreiben, OHNE ein Verb, ein Werkzeug oder eine
+  Schreibweise zu nennen? Wenn nein, ist es kein expected_output, sondern ein Symptom
+  -- dann gehoert es als gemessene Kette in die Loecherliste, nicht als Forderung
+  ins Item.
+
+
+  ZWEITENS: Nennt die Zeile eine Datenstruktur oder eine Fallzahl (''drei Zustaende'',
+  ''eine Variable, die X verfolgt'')? Dann beschreibt sie eine LOESUNG, nicht eine
+  Anforderung -- und alles, was die Loesung nicht abdeckt, faellt beim Umsetzer UND
+  beim Pruefer aus dem Massstab heraus. Umformulieren als Eigenschaft, oder die Loesung
+  dem Umsetzer ueberlassen.'
+consequences: 'Das ist dieselbe Hausregel wie im Code -- Definitionen statt Aufzaehlungen
+  -- eine Ebene hoeher: sie gilt fuer den AUFTRAG, nicht erst fuer die Umsetzung.
+  Ein Item, das eine Loesung vorschreibt, macht den Umsetzer zum Schreiber und den
+  Pruefer blind fuer alles daneben.
+
+
+  Der Pruefer hat sich in derselben Sache selbst korrigiert: seine erste Fassung meldete
+  den Schattenangriff als ''shlex-Schatten'', also ueber eine Schreibweise. Die tragende
+  Formulierung -- ''jedes Verzeichnis, aus dem diese Entscheidung laeuft'' -- kam
+  vom Umsetzer. Derselbe Fehler, drei Rollen.'
+source: Pruefbericht zu TSK-0008, 2026-08-05, Abschnitt 'Hat TSK-0008 als Massstab
+  getragen?'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T08:59:37'

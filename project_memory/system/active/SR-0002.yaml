@@ -1,0 +1,17 @@
+id: SR-0002
+title: Der Feldvertrag gilt nicht fuer Items, die migrate direkt ins Archiv schreibt
+derives_from: PR-0001
+contract: 'Ein Item, das migrate direkt ins Archiv schreibt, muss den Id- und Statusvertrag
+  erfuellen (gueltige Nummer, Status ist ein Endzustand seines Automaten), aber NICHT
+  den Feldvertrag aus REQUIRED_FIELDS. Es haelt fest, welche Pflichtfelder beim Import
+  fehlten -- namentlich -- und aus welcher Kit-Version der Datensatz kam. Drei Riegel:
+  die Ausnahme greift nur ueber migrate und nicht ueber capture allgemein; nur bei
+  Endzustaenden; und ein so geschriebenes Item ist nicht reaktivierbar. Begruendung
+  in DEC.'
+affected_components:
+- kernel/migrate.py
+- kernel/state.py
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:27:21'

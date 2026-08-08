@@ -2069,6 +2069,43 @@ def test_the_two_readers_of_a_governed_source_area_agree(tmp_path):
     assert result.returncode == 2 and "compounder" in result.stderr
 
 
+def test_every_blocking_store_reader_carries_the_same_two_caps():
+    """One project, ONE answer to how much a reader may spend before a gate has to refuse.
+
+    THE READERS ARE NOT ONE SUBJECT AND THE BOUND IS. `guard_guidelines` and `gate_test_coverage`
+    walk the invariant store, `scripts/kit_checks.py` walks it from the repo side, and
+    `kernel/report`'s completion-criterion scan walks the kit DOCUMENTS -- different stores, and
+    every one of them is read on a path that ends in a PreToolUse verdict, where a reader that
+    outlives the host's budget is a killed hook and a killed hook is an allow. So what they share
+    is not the store but the cap, and a reader that keeps a limit of its own invents a divergence
+    rather than inheriting one.
+
+    The kernel's constants are spelled `DOCUMENT_*` because the store it walks is documents; the
+    hook-layer ones are `INVARIANT_*` for the same reason. The kernel cannot import a kit hook and
+    a kit hook does not import the kernel at module level, so the value exists twice by
+    construction -- which is what makes this pin the only thing that keeps them one answer.
+
+    RED if any of the four changes its numbers alone. What the pin does NOT claim: that the same
+    number of bytes costs the same TIME in each of them -- measured, it does not (`report`'s scan
+    parses YAML and the invariant readers read items), and the bound they share is a bound on the
+    reading, not on the clock.
+    """
+    pytest.importorskip("yaml")
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import report as kernel_report
+    readers = (_kit_checks_mod(),
+               load_kit_module("gate_test_coverage_for_caps",
+                               os.path.join(HOOKS, "gate_test_coverage.py")),
+               load_kit_module("guard_guidelines_for_caps",
+                               os.path.join(HOOKS, "guard_guidelines.py")))
+    per_item = {reader.INVARIANT_MAX_BYTES for reader in readers}
+    per_item.add(kernel_report.DOCUMENT_MAX_BYTES)
+    assert len(per_item) == 1, "the per-file caps of the blocking readers differ: %s" % per_item
+    whole_scan = {reader.INVARIANT_SCAN_MAX_BYTES for reader in readers}
+    whole_scan.add(kernel_report.DOCUMENT_SCAN_MAX_BYTES)
+    assert len(whole_scan) == 1, "the whole-scan caps differ: %s" % whole_scan
+
+
 def test_shared_kit_files_identical():
     """DERIVED, not listed. The old version enumerated six filenames, so every file mirrored after
     it was written stayed unpinned — `_gate.py`, `_kernel.py`, `_compat.py`, `kit_trust_state.py`
@@ -5579,6 +5616,19 @@ def test_kit_names_a_root_item_exactly_when_the_kernel_gives_it_one():
 MIGRATION_DOC_FILES = ("HARNESS_LOG.md",)
 MIGRATION_DOC_TREES = ("docs/", "radar/")
 
+# THE OTHER LEGITIMATE READER, and it is not documentation, so it is not in the list above. Once
+# `migrate` shipped there is code whose SUBJECT is the V1 layout, and its measurement has to build
+# a real V1 state directory and OPEN files inside it. What separates such a file from the leftovers
+# this sweep is for: its V1 paths are arguments to `open()` in a test that runs on every suite
+# pass, so a stale one raises there rather than sitting in prose nobody executes.
+# `team-kits/kernel/migrate.py` is deliberately NOT here -- it derives every path it touches from
+# the state directory it is pointed at and spells none, and the day it needs to spell one is the
+# day that decision should be visible in this list.
+# The list is an ENUMERATION, which is what it may not silently be, so
+# `test_the_migration_code_exemption_is_neither_dead_nor_free` measures both ends of it: an entry
+# that no longer exists, and an entry the sweep would not have flagged anyway.
+MIGRATION_CODE_FILES = ("tools/test_migrate.py",)
+
 # Trees that are not the repo's content: git's own store, caches, and the sandbox an e2e run builds.
 _SWEEP_SKIP_DIRS = frozenset((".git", ".pytest_cache", "__pycache__", "node_modules",
                               ".e2e-sandbox"))
@@ -5874,13 +5924,14 @@ def _sweep_state_root(stores):
 
 
 def _sweepable_files():
-    """Every file of the repo that is not the harness's own record of the migration."""
+    """Every file of the repo that is neither the harness's record of the migration nor its code."""
     for dirpath, dirs, files in os.walk(ROOT):
         dirs[:] = sorted(d for d in dirs if d not in _SWEEP_SKIP_DIRS)
         for name in sorted(files):
             path = os.path.join(dirpath, name)
             rel = os.path.relpath(path, ROOT).replace("\\", "/")
-            if rel in MIGRATION_DOC_FILES or rel.startswith(MIGRATION_DOC_TREES):
+            if (rel in MIGRATION_DOC_FILES or rel in MIGRATION_CODE_FILES
+                    or rel.startswith(MIGRATION_DOC_TREES)):
                 continue
             with open(path, "rb") as fh:
                 data = fh.read()
@@ -5991,6 +6042,34 @@ def test_nothing_shipped_still_spells_a_v1_monolith_path():
     assert not offences, (
         "these still point at one of the %d MOVED V1 monoliths in the state root:\n  %s"
         % (len(conftest.V1_MONOLITHS), "\n  ".join(sorted(set(offences)))))
+
+
+def test_the_migration_code_exemption_is_neither_dead_nor_free():
+    """`MIGRATION_CODE_FILES` is a list, so it is measured from both sides.
+
+    DEAD: an entry that no longer exists is an exemption for nothing, and the next file to take
+    that path inherits a hole with a comment over it.
+
+    FREE: an entry the sweep would not have flagged anyway is an exemption that was never needed,
+    and it is the shape a list grows by -- somebody adds a name "to be safe" and the sweep quietly
+    stops covering a file it always covered. So each entry has to be a file the sweep DOES find V1
+    tokens in; the moment it stops being one, it leaves the list.
+
+    Measured by running the sweep's own reader over the file with the exemption lifted, which is
+    the only way to ask "would this have been flagged" without a second reader.
+    """
+    for rel in MIGRATION_CODE_FILES:
+        path = os.path.join(ROOT, *rel.split("/"))
+        assert os.path.isfile(path), (
+            "%s is exempt from the V1 monolith sweep and does not exist; drop it from "
+            "MIGRATION_CODE_FILES." % rel)
+        with open(path, "rb") as handle:
+            text = handle.read().decode("utf-8", errors="replace")
+        found = list(_monolith_paths_in_file(path, text, conftest.V1_MONOLITHS))
+        assert found, (
+            "%s is exempt from the V1 monolith sweep but names no V1 store, so the exemption buys "
+            "nothing and costs the coverage of a whole file. Remedy: drop it from "
+            "MIGRATION_CODE_FILES." % rel)
 
 
 def test_a_store_the_inventory_records_as_a_glob_is_matched_as_a_glob():

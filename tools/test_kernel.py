@@ -428,6 +428,86 @@ def test_every_kernel_writer_lands_inside_the_declared_area(tmp_path):
         "these kernel writes landed outside `kernel_written_subtrees`: %s" % outside)
 
 
+_DIRECTORY_BUILDERS = ("staging_root", "archive_root", "legacy_root", "generated_path")
+
+
+def _builder_segments():
+    """{path segment: the builder that owns it} -- derived by ASKING the builders.
+
+    The builder NAMES are named here because they are what is under test; the SEGMENTS are not,
+    so a builder that starts composing a different directory moves this test with it instead of
+    leaving a stale literal behind.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel.state import ProjectState
+
+    probe = ProjectState(os.path.join(os.sep, "probe"))
+    answers = {name: getattr(probe, name)() if name != "generated_path"
+               else os.path.dirname(probe.generated_path("x"))
+               for name in _DIRECTORY_BUILDERS}
+    segments = {}
+    for name, path in answers.items():
+        rel = os.path.relpath(path, probe.root).replace(os.sep, "/")
+        assert rel and "/" not in rel and rel != os.pardir, (
+            "%s no longer answers a single directory under the state root (%r), so what this "
+            "test compares against is not a segment any more" % (name, rel))
+        segments[rel] = name
+    return segments
+
+
+def test_no_kernel_module_composes_a_directory_a_builder_already_owns():
+    """A path a builder composes is not composed a second time -- as a rule, not as a review.
+
+    THE DEFECT THIS IS THE TRIPWIRE FOR has been found three times in this package, once per
+    round, always the same way and always by reading rather than by measuring: the dry run
+    composed `archive/<type>/` out of `v2_type.lower()` while `ProjectState.archive_path` keys it
+    by the id's own TYPE, so the run created `archive/PROC/` and printed `archive/proc/` -- one
+    filesystem hid it and another does not. Then `legacy/` one file further on. Then the session
+    brief and the index writer, both composing `generated/` although `generated_path`'s own
+    docstring names those two as the writers it exists for, and `staging/` in four places.
+
+    THE RULE IS THE ONE PROPERTY: a string constant that names a directory a builder owns may
+    appear in a path composition only inside that builder. Everything else asks the builder.
+
+    RED the moment a module joins one of those names onto a path again -- which is what all four
+    of the occurrences above did, and what no amount of care has stopped so far.
+    """
+    import ast
+
+    segments = _builder_segments()
+    kernel_dir = os.path.join(TEAM_KITS_DIR, "kernel")
+    offenders = []
+    for name in sorted(os.listdir(kernel_dir)):
+        if not name.endswith(".py"):
+            continue
+        with open(os.path.join(kernel_dir, name), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=name)
+        owner_of = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                for inner in ast.walk(node):
+                    owner_of[id(inner)] = node.name
+        for node in ast.walk(tree):
+            # a path composition, not a message: `", ".join(...)` has a literal receiver
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "join"
+                    and not isinstance(node.func.value, ast.Constant)):
+                continue
+            for arg in node.args:
+                if not (isinstance(arg, ast.Constant) and arg.value in segments):
+                    continue
+                if owner_of.get(id(node)) == segments[arg.value]:
+                    continue
+                offenders.append("%s:%d composes %r, which %s already answers"
+                                 % (name, node.lineno, arg.value, segments[arg.value]))
+    assert not offenders, "\n".join(offenders)
+    # ...and the counter-direction: the builders themselves still compose their own directory, so
+    # a rule that simply matched nothing would not pass this.
+    assert len(segments) == len(_DIRECTORY_BUILDERS)
+
+
 def test_the_two_files_a_merge_gate_blocks_on_are_documents_no_writer_produces(tmp_path):
     """The root of B1, stated as the property rather than as two names.
 

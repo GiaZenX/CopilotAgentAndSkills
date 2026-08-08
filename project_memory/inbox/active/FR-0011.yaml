@@ -1,0 +1,32 @@
+id: FR-0011
+title: Die Gate-Suite kostet sechs Minuten Wandzeit je Lauf auf einem Host mit 16
+  logischen Kernen
+related_pr: PR-0002
+request_text: 'Gemessen 2026-08-07: .claude/hooks/test_gates.py laeuft 358 s fuer
+  134 Tests, ein Lauf, Leerlauf-Host. Jede Umsetzer- und jede Pruefrunde faehrt die
+  Suite mehrfach (rot sehen, gruen sehen, Gegenrichtung), also kostet jede Runde ein
+  Vielfaches davon -- der Nutzer wartet 90 Minuten auf eine Nachbesserung von vier
+  Befunden. Der Host hat 16 logische Kerne, die Suite nutzt einen.
+
+
+  Das Problem, nicht die Loesung: Wandzeit je Runde runter, ohne die Messungen zu
+  verfaelschen. Zwei Eigenschaften der Suite ziehen dabei in verschiedene Richtungen.
+  Die Zellen-Tests (1440-Zellen-Tabelle, echte Gate-Prozesse gegen je eigene Stellvertreterprojekte)
+  sind voneinander unabhaengig und damit grundsaetzlich nebenlaeufig fahrbar. Die
+  FRIST-Messungen sind es nicht ohne Weiteres: sie messen echte Laufzeiten gegen registrierte
+  Budgets, ein getoeteter Hook ist ein Durchlass, und unter Last von 15 Nachbarprozessen
+  wird aus einer Punktmessung Rauschen -- wobei ''gruen auch unter Nebenlast'' zugleich
+  eine zugesicherte Eigenschaft des Pakets ist (TSK-0021 expected_output 7), Last
+  also nicht nur Stoergroesse ist, sondern auch Messgegenstand. Dazu die Windows-Eigenheit,
+  dass Prozesserzeugung teuer ist und jeder Zellen-Test mehrere Prozesse startet.
+
+
+  Wer das baut, entscheidet den Schnitt (z. B. nebenlaeufige Zellen-Phase getrennt
+  von serieller Frist-Phase -- ein Kandidat, keine Vorgabe) und misst beide Enden:
+  dass die Wandzeit wirklich faellt, und dass kein Timing-Test unter der neuen Nebenlast
+  sein Urteil aendert. test_gates.py liegt in .claude/hooks/ und ist geschuetzter
+  Bereich -- die Aenderung ist ein Item fuer den Umsetzer, nicht fuer den Sitzungsagenten.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-07T21:48:18'

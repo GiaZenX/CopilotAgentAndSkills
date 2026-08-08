@@ -36,10 +36,14 @@ import yaml
 
 from .backlog_types import (
     ACTIVE_DIRS,
+    AUTOMATA,
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
     HASHED_FIELDS,
     IMMUTABLE_TYPES,
+    LEGACY_FIELD,
+    MIGRATION_FLAG,
+    NON_AUTOMATON_STATUSES,
     NONEMPTY_FIELDS,
     PARENT_FIELDS,
     REQUIRED_FIELDS,
@@ -52,11 +56,17 @@ from .backlog_types import (
     initial_status,
     invalidation_target,
     is_terminal,
+    map_v1_status,
     parse_id,
 )
 from .lock import KernelLock, ext_path
 
 _KERNEL_SET = ("id", "status", "revision", "approval_ref", "created")
+
+# Spec II.4's Vorschlagsbereich. Here rather than in `layout` because it is a path SEGMENT the
+# writers below compose (`staging_root`), and `layout` -- which imports this module -- re-exports
+# it for the predicates that compare a segment.
+STAGING_DIRNAME = "staging"
 
 # WHAT A CONFIRMATION MUST SHOW, per item type: {type: Evidence kind}. WHICH edge this guards is
 # not written here -- `backlog_types.confirming_edge` derives it from the type's own automaton, so
@@ -108,6 +118,158 @@ def split_revision(name: str):
     if not match:
         return None, None, None
     return match.group("base"), int(match.group("revision")), match.group("suffix") or ""
+
+
+# THE ONE EDGE WHOSE GUARD IS A CALLER ARGUMENT RATHER THAN A STORED RECORD (spec II.2
+# Querregeln: a failed task may only be retried on an approved retry). Written here as data
+# because TWO readers need it and a condition spelled at each of them is two rules: the transition
+# path refuses the edge without `approved_retry=True`, and `migration_writable_statuses` may not
+# count it as an edge a session walks on its own. `_transition_locked` is the enforcing reader.
+RETRY_APPROVAL_EDGE = ("TSK", "FAILED", "READY")
+
+
+def migration_writable_statuses(item_type: str) -> frozenset:
+    """The statuses a MIGRATION may write onto an item directly -- derived, never listed.
+
+    THE PROPERTY: a status this type can REACH from its initial one without ever walking an edge
+    whose guard the import cannot satisfy.
+
+    WHICH GUARDS ARE READ, AND WHICH ONE IS NOT. `_transition_locked` names FOUR things that stand
+    between a status and its new value, and this walk reads three of them:
+      * the AUTOMATON -- the walk is over `automaton.allowed`, so an undefined edge is not walked;
+      * the APPROVAL -- `approvals.APPROVAL_TRANSITIONS` read backwards, the same map
+        `approvals.required_approval_kinds` refuses an unapproved transition from;
+      * the TSK RETRY rule -- `RETRY_APPROVAL_EDGE`, one datum read by this walk and by the
+        transition path, rather than a condition spelled twice.
+    THE FOURTH IS NOT READ, AND WHAT THAT COSTS IS MEASURED RATHER THAN ASSUMED EITHER WAY:
+    `_assert_confirmed` demands the proof `CONFIRMING_EVIDENCE` names on a type's confirming edge,
+    and this walk does not consult it. On the shipped maps that costs NOTHING -- the only type
+    `CONFIRMING_EVIDENCE` covers is `BUG`, whose confirming edge ends at `VERIFIED`, and `VERIFIED`
+    already lies behind the `BUG` scope approval, so the approval bolt excludes it first. So this
+    is a guard that is not read rather than a status that escapes, and the difference matters:
+    adding a type to `CONFIRMING_EVIDENCE` whose confirming target IS reachable here would turn it
+    into the second thing without a line of this file changing.
+    `test_state.test_the_migration_write_set_reads_three_of_the_four_edge_guards` is what measures
+    that, in both directions, so this paragraph cannot quietly stop matching the maps.
+
+    REACHABILITY RATHER THAN THE EDGE'S OWN TARGET, and that is the correction of 2026-08-04: this
+    subtracted the approval TARGETS as a set, which leaves every status further down the same chain
+    writable although it sits behind that approval just as much. Measured end to end before it was
+    a walk -- a V1 `CR APPLIED` record was written to `archive/CR/<year>/` at `APPLIED`, a status
+    no user was ever asked about, with `approval_ref: null` and no request anywhere. Nothing
+    outside that file could say so either: `report.validate_state` judges the ACTIVE items, so an
+    archived one appears in no finding of any severity.
+
+    WHAT AN ABSENT APPROVAL EDGE MEANS -- and this is a HOLE, named with its mechanism rather than
+    described as a guard. This walk reads a missing row in `APPROVAL_TRANSITIONS` as "no approval
+    stands in the way". A missing row can mean that, and it can equally mean that the approval kind
+    was never built: `approvals.required_approval_kinds` records SR PROPOSED -> ACCEPTED as
+    "Reported, not bridged" -- an edge somebody may well have to sign, which has no KIND with a
+    manifest, hence no row, hence no guard. So the import writes `SR ACCEPTED` into the archive
+    with `approval_ref: null`, which is the same shape as the `CR APPLIED` defect one paragraph
+    up, produced by an absence rather than by a subtraction. Nothing here can tell the two readings
+    apart, because the harness states the difference only in that prose;
+    `test_state.test_which_archive_bound_rows_rest_on_an_absent_approval_edge` derives today's set
+    (SR, TSK, FR and HYP rows) and turns red when it changes in either direction. Closing it needs
+    an approval KIND, which is a spec decision and not this function's.
+
+    A type with no automaton has no status this kernel can walk to (`DEC`, `INV`), so the answer is
+    empty rather than "anything": the import may not decide a record's status on a vocabulary that
+    exists only in a comment.
+
+    `approvals.approved_statuses` is the neighbouring question -- which statuses an item holds
+    BECAUSE it was approved, for the spawn gates -- and it answers differently on purpose;
+    `test_state.test_the_statuses_a_migration_may_write_are_the_ones_reachable_without_an_approval`
+    names the types the two disagree about, so neither can be quietly rewritten into the other.
+    """
+    automaton = AUTOMATA.get(item_type)
+    if automaton is None:
+        return frozenset()
+    from . import approvals
+    gated = {edge for (owner, _kind), edge in approvals.APPROVAL_TRANSITIONS.items()
+             if owner == item_type}
+    if RETRY_APPROVAL_EDGE[0] == item_type:
+        gated.add(RETRY_APPROVAL_EDGE[1:])
+    reached, frontier = {automaton.initial}, [automaton.initial]
+    while frontier:
+        current = frontier.pop()
+        for edge in automaton.allowed:
+            if edge[0] != current or edge in gated or edge[1] in reached:
+                continue
+            reached.add(edge[1])
+            frontier.append(edge[1])
+    return frozenset(reached)
+
+
+def migration_archive_status(item_type: str, v1_type: str, v1_status: str) -> str:
+    """The status `capture_migrated_archive` writes, or a refusal -- the archive path's whole rule.
+
+    TWO QUESTIONS, ASKED OF TWO AUTHORITIES, because they are about different things:
+
+      * DOES THIS RECORD BELONG IN THE ARCHIVE -- the `archive_candidate` column of
+        `V1_STATUS_MAPPING`, since whether a V1 value means "this life is over" is a fact about the
+        V1 vocabulary and about nothing else. It used to be asked of the V2 AUTOMATON instead
+        (is the mapped status a terminal), and that is a different question: V1 `TSK DONE` maps to
+        `DONE`, which is no terminal of the V2 task automaton because V2 keeps `VALIDATED` for "QA
+        confirmed" -- a confirmation V1 never collected. So a task V1 recorded as DONE landed in
+        `tasks/active/` at DRAFT, presented as a fresh work order missing ten of eleven contract
+        fields: the state of affairs SR-0004 exists to prevent, produced by the exemption written
+        to prevent it, for the very rows whose number is its whole argument.
+      * MAY THE IMPORT WRITE THAT STATUS AT ALL -- `migration_writable_statuses`, which is the
+        approval bolt and which no table may talk its way past: a row that marks a status behind an
+        approval edge as archive-bound is refused here, not obeyed.
+
+    THIS IS A DIVERGENCE FROM THE WRITTEN CONTRACT, not an implementation of it: SR-0002 says "nur
+    bei Endzustaenden" and SR-0004 "dessen abgebildeter Status ein Endzustand seines Automaten
+    ist", i.e. exactly the terminal check the first bullet replaces. The replacement is argued
+    above and is what runs; the SRs still say the other thing and are canonical state this module
+    may not edit, so the divergence is REPORTED (`capture_migrated_archive`, bolt two) and awaits a
+    decision rather than being read as agreement.
+
+    Bounded by construction: whatever it returns is a member of `migration_writable_statuses`, so
+    the direct status write it feeds can be read off the kernel's own maps rather than trusted. The
+    mapping table is asked for the V2 value (`map_v1_status`) so that the archive path and the dry
+    run's classification cannot answer differently.
+    """
+    v2_type, v2_status, archive_candidate = map_v1_status(v1_type, v1_status)
+    if v2_type != item_type:
+        raise StateError(
+            "%s %r maps to a %s item, not to %s. Remedy: this is a caller bug -- the type the "
+            "table answers with is the type the item is written as."
+            % (v1_type, v1_status, v2_type, item_type))
+    if not archive_candidate:
+        raise StateError(
+            "the migration archive path takes records spec II.10's table marks as FINISHED, and "
+            "%s %r is not one of them. Remedy: import this record the ordinary way -- it lands in "
+            "active/ at its initial status with the V1 value kept in `%s`."
+            % (v1_type, v1_status, LEGACY_FIELD))
+    allowed = migration_writable_statuses(item_type)
+    if v2_status not in allowed:
+        raise StateError(
+            "%s %r maps to %r, which a %s reaches only through an edge a USER APPROVAL commits -- "
+            "writing it here would be the automatically generated approval spec II.10 forbids. The "
+            "import may write %s. Remedy: import this record the ordinary way -- it lands in "
+            "active/ at its initial status with the V1 value kept in `%s`."
+            % (v1_type, v1_status, v2_status, item_type,
+               "/".join(sorted(allowed)) or "no status of this type (it has no automaton)",
+               LEGACY_FIELD))
+    return v2_status
+
+
+def migration_archives(item_type: str, v1_type: str, v1_status: str) -> bool:
+    """Would the archive path take this record? -- the ROUTING question, asked of the writer's rule.
+
+    One judge for two callers. `migrate.build_plan` has to route each record and
+    `capture_migrated_archive` has to refuse everything that is not routed here, and while the
+    routing condition was spelled out at the planner a row could be added that the plan sent to the
+    archive and the writer then rejected mid-run -- a plan promising what the run cannot do, which
+    is the defect `capture_migrated_archive_preflight` exists to prevent one layer up.
+    """
+    try:
+        migration_archive_status(item_type, v1_type, v1_status)
+    except StateError:
+        return False
+    return True
 
 
 def _is_item_id(value) -> bool:
@@ -172,6 +334,18 @@ class ProjectState:
         item_type, _ = parse_id(item_id)
         return os.path.join(self.active_dir(item_type), item_id + ".yaml")
 
+    def staging_root(self) -> str:
+        """Spec II.4's proposal area -- the whole of it.
+
+        A builder for the same reason the two below are: `os.path.join(state.root, "staging")` was
+        composed by hand in the session brief, in the staging sweep and in `staging.staging_dir`,
+        and the name itself a fourth time in `layout`. Four spellings of one directory is how a
+        reader of one of them comes to look somewhere the writer does not write; the name lives
+        here, beside the writers, and `layout.STAGING_DIRNAME` re-exports it for the predicates
+        that compare a path SEGMENT rather than a path.
+        """
+        return os.path.join(self.root, STAGING_DIRNAME)
+
     def archive_root(self) -> str:
         """The whole archive subtree.
 
@@ -186,8 +360,30 @@ class ProjectState:
 
     def archive_path(self, item_id: str, year: int) -> str:
         item_type, _ = parse_id(item_id)
-        # deterministic archive paths (spec II.2): archive/<type>/<year>/<ID>.yaml
+        # deterministic archive paths (spec II.2): archive/<TYPE>/<year>/<ID>.yaml
         return os.path.join(self.archive_root(), item_type, str(year), item_id + ".yaml")
+
+    def legacy_root(self) -> str:
+        """The subtree a fully absorbed V1 store is moved into (SR-0005).
+
+        A DIRECTORY builder for the same reason `archive_root` is one: what lands under here keeps
+        its own relative path from the state root, so a probe of a file builder would declare one
+        name canonical and leave every other outside.
+
+        WHY IT IS A KERNEL-WRITTEN AREA AND NOT A KIT DOCUMENT AREA. `kernel.layout` asks the
+        builders themselves what the kernel writes, and that one answer decides three things at
+        once: `migrate` stops re-reading these files as V1 sources (SR-0005 asks for exactly that:
+        "legacy/ ist ausdruecklich als 'bereits verarbeitet' verzeichnet"), `gate_write_scope`
+        refuses a tool write into them -- a moved store is evidence of what the migration read, and
+        a hand edit there would be an edit to that evidence -- and the SR-0001 scan skips them
+        without needing a name of its own.
+        """
+        return os.path.join(self.root, "legacy")
+
+    def legacy_path(self, relative_path: str) -> str:
+        """Where a V1 document that fully became items is moved to, keeping its own path."""
+        parts = [part for part in str(relative_path).replace("\\", "/").split("/") if part]
+        return os.path.join(self.legacy_root(), *parts)
 
     def generated_path(self, name: str) -> str:
         """Where a REGENERABLE rollup lives (`generated/<name>`).
@@ -207,12 +403,28 @@ class ProjectState:
 
     @staticmethod
     def _write_yaml_atomic(path: str, data: dict) -> None:
+        """Write `data` to `path` atomically, leaving NO half-written file behind either way.
+
+        THE TEMP FILE IS CLEANED UP ON FAILURE, and that is not tidiness. `yaml.safe_dump` can
+        raise on a payload it cannot represent, and the `.tmp-<pid>` it had already opened then
+        stayed in the item directory -- measured in `procedures/active/`, where it is read by
+        `migrate.state_fingerprint` (so a later plan digest covers a file nobody wrote on purpose)
+        and by `report`'s directory readers. `os.replace` is still what makes the write atomic;
+        this only makes the FAILING write leave the directory as it found it.
+        """
         directory = os.path.dirname(path)
         os.makedirs(ext_path(directory), exist_ok=True)
         tmp = path + ".tmp-%s" % os.getpid()
-        with open(ext_path(tmp), "w", encoding="utf-8", newline="\n") as fh:
-            yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
-        os.replace(ext_path(tmp), ext_path(path))
+        try:
+            with open(ext_path(tmp), "w", encoding="utf-8", newline="\n") as fh:
+                yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
+            os.replace(ext_path(tmp), ext_path(path))
+        except BaseException:
+            try:
+                os.remove(ext_path(tmp))
+            except OSError:
+                pass          # never mask the original failure with the cleanup's own
+            raise
 
     def read_item(self, item_id: str) -> dict:
         path = self.active_path(item_id)
@@ -345,7 +557,7 @@ class ProjectState:
             item = self._read_yaml(frozen)
             if isinstance(item, dict) and item.get("id") == item_id:
                 return item, False
-        base = os.path.join(self.root, "archive", item_type)
+        base = os.path.join(self.archive_root(), item_type)
         if os.path.isdir(ext_path(base)):
             for year in sorted(os.listdir(ext_path(base))):
                 candidate = os.path.join(base, year, item_id + ".yaml")
@@ -360,7 +572,7 @@ class ProjectState:
         if self._frozen_revision_path(item_id) is not None:
             return True
         item_type, _ = parse_id(item_id)
-        base = os.path.join(self.root, "archive", item_type)
+        base = os.path.join(self.archive_root(), item_type)
         if not os.path.isdir(ext_path(base)):
             return False
         for year in sorted(os.listdir(ext_path(base))):
@@ -368,8 +580,17 @@ class ProjectState:
                 return True
         return False
 
-    def _assert_origins_resolve(self, item_type: str, fields: dict) -> None:
+    def _assert_origins_resolve(self, item_type: str, fields: dict, also_existing=()) -> None:
         """Every field BINDING an item to the work it belongs to must name items that EXIST.
+
+        `also_existing` is ids a PLANNER has undertaken to create before this body is written, and
+        it exists because asking this question at planning time otherwise had no true answer: a V1
+        store is a parent chain, so `migrate` planning `PROC-0001` and `PROC-0002 derives_from
+        PROC-0001` was told the parent does not exist -- which was true of the state BEFORE the
+        run and false of the state the run reaches. It defaults to empty, so every caller that
+        writes NOW still asks the unrelaxed question; only a caller that can name the ids it is
+        about to write may widen it, and `migrate.build_plan` then also has to order the writes and
+        refuse a cycle, because a promise to create A before B and B before A is not keepable.
 
         WHICH fields those are is `PARENT_FIELDS`, derived from the type's field contracts --
         this check must not carry its own list of types. It carried one (`TSK` and `EVD`,
@@ -414,6 +635,8 @@ class ProjectState:
                         "%s %r is not an item id. Remedy: %s -- free text there binds to "
                         "nothing." % (field, origin, remedy)
                     ) from None
+                if str(origin) in set(also_existing):
+                    continue
                 if not self.exists_anywhere(str(origin)):
                     raise StateError(
                         "%s %s does not exist. Remedy: create the item first, or point at the "
@@ -427,7 +650,7 @@ class ProjectState:
     def _max_number(self, item_type: str) -> int:
         highest = 0
         scan_dirs = [self.active_dir(item_type),
-                     os.path.join(self.root, "archive", item_type)]
+                     os.path.join(self.archive_root(), item_type)]
         for base in scan_dirs:
             if not os.path.isdir(ext_path(base)):
                 continue
@@ -448,8 +671,15 @@ class ProjectState:
 
     # -- operations ------------------------------------------------------------
 
-    def capture(self, item_type: str, fields: dict) -> dict:
-        """Create a new item: kernel assigns id/status/revision/approval_ref/created."""
+    def _assert_capture_shape(self, item_type: str, fields: dict) -> None:
+        """What is refused about a NEW item body whatever else is true of it.
+
+        Split out of `capture_preflight` because the migration's archive path (DEC-0004/SR-0002) is
+        exempt from the FIELD contract and from nothing else. What stays here is the part the
+        exemption may not touch: the type has to be one this kernel captures, and the body may not
+        carry a kernel-set field -- the `status` among them, which is the whole reason a caller may
+        not hand one in.
+        """
         if item_type not in REQUIRED_FIELDS:
             raise StateError(
                 "capture does not handle type %r (ARC/WFR go through the "
@@ -463,6 +693,28 @@ class ProjectState:
                 "Remedy: drop them; the kernel assigns id/status/revision/"
                 "approval_ref/created." % ", ".join(provided_kernel_fields)
             )
+        _assert_closed_vocabularies(item_type, fields)
+
+    def capture_preflight(self, item_type: str, fields: dict, also_existing=()) -> None:
+        """Everything `capture` refuses BEFORE it writes anything -- raised, never written.
+
+        WHY THIS IS ITS OWN METHOD, and it is not tidiness. A caller that wants to know whether a
+        body WOULD capture had no way to ask, so it guessed -- and `kernel/migrate.py` guessed
+        with the one check it could see (are the required fields present?). Measured against a dev
+        project holding a V1 `system_requirements.yaml`: every one of its records names
+        `derives_from: PRD-0001`, `PRD` is no V2 type, and `_assert_origins_resolve` refuses it --
+        but only at write time. The plan said READY, three items landed, the fourth raised, and the
+        run died in the middle with no receipt. A plan that cannot answer the question its own
+        writer will ask is not a plan.
+
+        So the write path and every planner ask the SAME function. Anything `capture` learns to
+        refuse is refused at planning time on the day it is added here, with no second reader to
+        keep in step.
+
+        `also_existing` is passed straight through to `_assert_origins_resolve` and is empty for
+        the write path; what it is for is argued there.
+        """
+        self._assert_capture_shape(item_type, fields)
         missing = [k for k in REQUIRED_FIELDS[item_type] if k not in fields]
         if missing:
             raise StateError(
@@ -481,8 +733,11 @@ class ProjectState:
                 "same claim as leaving the field out. Remedy: %s"
                 % (item_type, ", ".join(hollow), _NONEMPTY_REMEDY[item_type])
             )
-        _assert_closed_vocabularies(item_type, fields)
-        self._assert_origins_resolve(item_type, fields)
+        self._assert_origins_resolve(item_type, fields, also_existing)
+
+    def capture(self, item_type: str, fields: dict) -> dict:
+        """Create a new item: kernel assigns id/status/revision/approval_ref/created."""
+        self.capture_preflight(item_type, fields)
         with self.lock:
             item_id = self.allocate_id(item_type)
             item = {"id": item_id}
@@ -500,6 +755,178 @@ class ProjectState:
             # subdirectory -- item io, not state scaffolding (the state ROOT
             # must already exist; only the installer bootstrap creates it)
             self._write_yaml_atomic(self.active_path(item_id), item)
+            self._regenerate_index_locked()
+            return item
+
+    def capture_migrated_archive_preflight(self, item_type: str, fields: dict, v1_type: str,
+                                           v1_status: str, also_existing=()) -> None:
+        """Everything `capture_migrated_archive` refuses before it writes -- raised, never written.
+
+        The same split as `capture`/`capture_preflight` and for the same reason: `migrate` has to
+        be able to ask the writer's own verdict at PLANNING time, and a planner that asked the
+        ordinary `capture_preflight` about an archive-bound record would be told the field contract
+        is unmet -- which is exactly the contract this path is exempt from (DEC-0004). A plan that
+        measures a check the run does not run is the defect this method exists to prevent.
+        """
+        self._assert_capture_shape(item_type, fields)
+        legacy = fields.get(LEGACY_FIELD)
+        if not isinstance(legacy, dict) or not legacy.get("legacy_id"):
+            raise StateError(
+                "the archive import path is for MIGRATED records only: this body carries no `%s` "
+                "with a `legacy_id`, so nothing says where it came from. Remedy: use `capture`, "
+                "which enforces the full field contract." % LEGACY_FIELD)
+        migration_archive_status(item_type, v1_type, v1_status)
+        self._assert_origins_resolve(item_type, fields, also_existing)
+
+    def capture_migrated_archive(self, item_type: str, fields: dict, v1_type: str,
+                                 v1_status: str, year: int, also_existing=()) -> dict:
+        """Write ONE finished V1 record straight into `archive/<TYPE>/<year>/` (SR-0004/SR-0002).
+
+        WHY THERE IS A SECOND WRITE ENTRY POINT AT ALL. Measured 2026-08-04 across two field
+        projects: 260 of 264 tasks in one and 162 of 165 in the other are DONE, and a V1 task
+        record is missing TEN of `REQUIRED_FIELDS["TSK"]`'s eleven fields -- `allowed_scope`,
+        `expected_outputs`, `assigned_role` and the rest were never collected, not renamed. So the
+        import had exactly three options and two of them are worse than this one: writing
+        placeholders would hand `gate_write_scope` a sentence instead of leaving it a gap, and
+        relaxing the contract in `capture` would make V2's promises untrue for 700+ items with no
+        way to see it from outside. DEC-0004 chose the third: the field contract does not apply to
+        a record this method writes, because such a record is a PROTOCOL of what happened and not
+        a work order anybody will execute again.
+
+        THE THREE BOLTS ON THAT EXEMPTION, written as what this code CHECKS -- and the second one
+        is not the bolt SR-0002 asks for. That divergence is stated here rather than smoothed over,
+        because a comment that credits a contract with a lock the code does not build is how a
+        reader comes to trust the wrong thing:
+          * the exemption is reachable through THIS method only. `capture` is untouched and still
+            refuses a body missing a required field, so nothing about a normal capture changed.
+            (SR-0002's first bolt, built as written.)
+          * WHAT THE CODE CHECKS SECOND: the record's V1 status must be one spec II.10's own table
+            marks as FINISHED (`archive_candidate`), AND the status it maps to must be one this
+            kernel could have walked to without a user approval. Both halves are
+            `migration_archive_status`, which is where they are argued; the second is why a V1
+            `PRD ACCEPTED` is NOT written here -- it is imported at its initial status like every
+            other record, because minting an ACCEPTED PR without an APR is precisely the
+            "automatically generated user approval" spec II.10 forbids.
+            WHAT SR-0002 ASKS FOR INSTEAD, verbatim: "nur bei Endzustaenden" -- the status must be
+            a TERMINAL of the item's own automaton (SR-0004 words it the same way). This code does
+            not check that, and the two answers differ in both directions on the shipped tables:
+            `TSK DONE` is archived although `DONE` is no terminal of the task automaton, and an
+            `SR` mapped to `ACCEPTED` is archived although `SUPERSEDED` is that automaton's only
+            terminal. The reason for the replacement is argued at `migration_archive_status`
+            (terminality is a property of a live V2 item and says nothing about a 2025 record, and
+            reading it that way is what put finished V1 tasks into `tasks/active/`), and the
+            replacement is what shipped. SR-0002 and SR-0004 have NOT been rewritten to match --
+            they are canonical state and this module may not edit them -- so this is a REPORTED
+            contract divergence awaiting a decision, not a re-reading of the contract.
+            `test_state.test_the_archive_paths_second_bolt_is_not_the_terminal_check_sr_0002_asks_for`
+            measures both directions of it.
+          * an item written here is not reactivatable, and that is structural rather than a flag:
+            it never exists under `active/`, and this kernel has no operation that moves an item
+            out of the archive -- `transition` and `update_item` both resolve through
+            `active_path` and answer "no active item". (SR-0002's third bolt, built as written.)
+
+        WHAT THE ITEM RECORDS ABOUT ITS OWN GAPS is stamped HERE, not by the caller, because a
+        record of what is missing that the caller composes is a record that can disagree with the
+        body it describes: `legacy_fields.missing_required_fields` names every field of the
+        contract this body does not carry, and `legacy_fields.kit_version` is what the
+        installation says about itself (`report.installed_identity`), so a later reader can tell
+        which vocabulary the record was read with.
+        """
+        self.capture_migrated_archive_preflight(item_type, fields, v1_type, v1_status,
+                                                also_existing)
+        legacy = fields[LEGACY_FIELD]
+        from . import report
+        body = dict(fields)
+        body[LEGACY_FIELD] = dict(legacy)
+        body[LEGACY_FIELD]["missing_required_fields"] = [
+            name for name in REQUIRED_FIELDS[item_type] if name not in fields]
+        body[LEGACY_FIELD]["kit_version"] = report.installed_identity(self)["kit_version"]
+        body[MIGRATION_FLAG] = True
+        with self.lock:
+            item_id = self.allocate_id(item_type)
+            item = {"id": item_id}
+            item.update(body)
+            # INSIDE THE LOCK because this call is the archive-path REFUSAL as well as the value,
+            # and there is deliberately no second reader of that rule to raise earlier with. An id
+            # was allocated by then and nothing was written, so a refusal here leaves the store as
+            # it was; the id is not consumed, `allocate_id` re-derives it by max-scan.
+            item["status"] = migration_archive_status(item_type, v1_type, v1_status)
+            item["revision"] = 1
+            item["approval_ref"] = None
+            item["created"] = _now_iso()
+            self._write_yaml_atomic(self.archive_path(item_id, int(year)), item)
+            self._regenerate_index_locked()
+            return item
+
+    def capture_migrated_unresolved_preflight(self, item_type: str, fields: dict,
+                                              also_existing=()) -> None:
+        """Everything `capture_migrated_unresolved` refuses before it writes -- raised, never
+        written. Same split, same reason, as the two preflights above."""
+        self._assert_capture_shape(item_type, fields)
+        legacy = fields.get(LEGACY_FIELD)
+        if not isinstance(legacy, dict) or not legacy.get("legacy_id"):
+            raise StateError(
+                "the unresolved-import path is for MIGRATED records only: this body carries no "
+                "`%s` with a `legacy_id`, so nothing says where it came from. Remedy: use "
+                "`capture`, which enforces the full field contract." % LEGACY_FIELD)
+        # A SENTENCE, not merely something truthy. `str(x) or ""` accepted `True`, a number and a
+        # list -- each of which reads as "why" to this check and as nothing at all to the person
+        # who later opens the archived item looking for the reason it is there.
+        reason = legacy.get("unresolved")
+        if not isinstance(reason, str) or not reason.strip():
+            raise StateError(
+                "the unresolved-import path writes a record NOBODY could translate, so the item "
+                "has to say why: `%s.unresolved` is %s and this path needs a sentence. Remedy: "
+                "this is a caller bug -- `migrate` composes that sentence out of the fields the "
+                "record could not fill."
+                % (LEGACY_FIELD, "empty" if isinstance(reason, str) else "%r" % (reason,)))
+        self._assert_origins_resolve(item_type, fields, also_existing)
+
+    def capture_migrated_unresolved(self, item_type: str, fields: dict, year: int,
+                                    also_existing=()) -> dict:
+        """Write ONE V1 record no answer could translate into `archive/<TYPE>/<year>/` (DEC-0009).
+
+        THE SECOND ARCHIVE DOOR, and it is a different question from the first one. The door above
+        takes a record whose LIFE IS OVER, as the V1 vocabulary itself recorded it, and writes it at
+        the status that life ended in. This one takes a record that is still whatever V1 said it
+        was, and whose V2 required fields have no source anywhere -- neither spelled the same, nor
+        named by a `--map`, nor covered by a suggestion. DEC-0009's decision is that such a record
+        is archived with its reason rather than blocking the whole run, because the alternative was
+        measured: five hardening rounds spent on refusal messages for a command that runs three
+        times, while the real projects stayed unmigrated beside them.
+
+        THE STATUS IS THE TYPE'S INITIAL ONE, never the mapped V1 value, and that is what keeps
+        this door from being a way past the approval bolt `migration_archive_status` builds: an
+        initial status is what `capture` itself writes and is reachable without any approval by
+        construction. What V1 said is kept in `legacy_fields.legacy_status`, unwalked, exactly as
+        on the ordinary import path.
+
+        WHAT IS LOST, named because DEC-0009 names it: a record ONE field decision would have saved
+        is archived here, and this kernel has no operation that moves an item back out of the
+        archive. The mitigation is not in this method -- it is that `migrate`'s dry run lists every
+        record this door would take, with the fields it could not fill, BEFORE anything is written,
+        and that the field suggestions (SR-0007) run first.
+        """
+        self.capture_migrated_unresolved_preflight(item_type, fields, also_existing)
+        from . import report
+        body = dict(fields)
+        body[LEGACY_FIELD] = dict(fields[LEGACY_FIELD])
+        body[LEGACY_FIELD]["missing_required_fields"] = [
+            name for name in REQUIRED_FIELDS[item_type] if name not in fields]
+        body[LEGACY_FIELD]["kit_version"] = report.installed_identity(self)["kit_version"]
+        body[MIGRATION_FLAG] = True
+        with self.lock:
+            item_id = self.allocate_id(item_type)
+            item = {"id": item_id}
+            item.update(body)
+            if item_type in _AUTOMATON_TYPES:
+                item["status"] = initial_status(item_type)
+            elif item_type in _NON_AUTOMATON_INITIAL_STATUS:
+                item["status"] = _NON_AUTOMATON_INITIAL_STATUS[item_type]
+            item["revision"] = 1
+            item["approval_ref"] = None
+            item["created"] = _now_iso()
+            self._write_yaml_atomic(self.archive_path(item_id, int(year)), item)
             self._regenerate_index_locked()
             return item
 
@@ -599,8 +1026,10 @@ class ProjectState:
         FOUR things stand between a status and its new value, and they are four because their
         evidence lives in four different places:
           * the AUTOMATON (`assert_transition`) -- is this edge defined at all;
-          * the TSK retry rule -- its evidence is a caller argument, because spec II.2 records the
-            retry approval as a Querregel and no APR kind has a manifest for it;
+          * the TSK retry rule (`RETRY_APPROVAL_EDGE`) -- its evidence is a caller argument, because
+            spec II.2 records the retry approval as a Querregel and no APR kind has a manifest for
+            it. The edge is a datum rather than a condition here, because
+            `migration_writable_statuses` has to read the same one;
           * the APPROVAL (`approvals.assert_transition_approved`) -- derived from
             `APPROVAL_TRANSITIONS`, so which edges it guards follows from which edges an approval
             commits, rather than from a list kept beside it;
@@ -611,12 +1040,11 @@ class ProjectState:
         item = self.read_item(item_id)
         from_status = item.get("status")
         assert_transition(item_type, from_status, to_status)
-        if item_type == "TSK" and from_status == "FAILED" and to_status == "READY" \
-                and not approved_retry:
+        if (item_type,) + (from_status, to_status) == RETRY_APPROVAL_EDGE and not approved_retry:
             raise TransitionError(
-                "TSK FAILED -> READY requires an approved retry (spec II.2 "
+                "%s %s -> %s requires an approved retry (spec II.2 "
                 "Querregeln). Remedy: obtain the retry approval, then call "
-                "transition with approved_retry=True."
+                "transition with approved_retry=True." % RETRY_APPROVAL_EDGE
             )
         # DEFERRED import: `approvals` imports this module at its own module scope, so a top-level
         # import here would be a cycle. By the time any transition runs, both halves are loaded.
@@ -669,7 +1097,7 @@ class ProjectState:
                kind, item_id))
 
     def archive(self, item_id: str) -> str:
-        """Move a TERMINAL item to archive/<type>/<year>/ (never delete)."""
+        """Move a TERMINAL item to archive/<TYPE>/<year>/ (never delete)."""
         item_type, _ = parse_id(item_id)
         with self.lock:
             item = self.read_item(item_id)
@@ -727,11 +1155,12 @@ _AUTOMATON_TYPES = frozenset(
     ("PR", "RQ", "FR", "CR", "BUG", "SR", "TSK", "PROC", "HYP", "EXP")
 )
 
-# status-bearing types WITHOUT an automaton (spec II.2 Pflichtfelder):
-# Decision starts VALID (VALID|SUPERSEDED); INV starts `unverified` -- it only
-# becomes verified once its referenced check test exists and is collectable
-# (spec II.2 INV.check / review B.2-10)
-_NON_AUTOMATON_INITIAL_STATUS = {"DEC": "VALID", "INV": "unverified"}
+# status-bearing types WITHOUT an automaton (spec II.2 Pflichtfelder): the FIRST value of each
+# vocabulary in `backlog_types.NON_AUTOMATON_STATUSES`, derived rather than retyped -- the two
+# used to be one map here and one sentence in a comment, and the comment was the only place a
+# reader could learn that `DEC` also has `SUPERSEDED`.
+_NON_AUTOMATON_INITIAL_STATUS = {item_type: values[0]
+                                 for item_type, values in NON_AUTOMATON_STATUSES.items()}
 
 
 # Which field an item names its parent through is `backlog_types.PARENT_FIELDS`,

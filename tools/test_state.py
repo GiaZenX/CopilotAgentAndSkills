@@ -230,6 +230,75 @@ def test_archive_non_automaton_item_without_terminal_check(state):
     assert not os.path.exists(state.active_path(dec["id"]))
 
 
+# -- what a migration may write directly (SR-0004 / DEC-0004 bolt 2) -----------
+
+def test_the_statuses_a_migration_may_write_are_the_ones_reachable_without_an_approval(state):
+    """The archive path's approval bolt, measured as a WALK rather than as a subtraction.
+
+    `migration_writable_statuses` subtracted the statuses an approval commits as a SET, which left
+    every status FURTHER DOWN the same chain writable although it stands behind that approval just
+    as much -- `BUG VERIFIED`, `CR APPLIED` and `EXP ANALYZED` on the shipped automata, each of
+    them a status the V1 import then wrote into the archive with `approval_ref: null`.
+
+    The expectation is walked here from the type's own edge set, asking
+    `approvals.required_approval_kinds` -- the function `state.transition` itself consults -- which
+    edges are gated. That is a different derivation from the one under test (which reads
+    `APPROVAL_TRANSITIONS` directly), so this is a second opinion rather than a copy. The equality
+    carries BOTH directions: a bolt that widened again fails on the left, and one that narrowed --
+    dropping `PROC RETIRED`, `TSK CANCELLED`/`VALIDATED`, or the `FR` and `HYP` outcomes, none of
+    which any approval touches -- fails on the right.
+    """
+    from kernel import approvals
+    from kernel.backlog_types import AUTOMATA
+    from kernel.state import migration_writable_statuses
+
+    for item_type, automaton in AUTOMATA.items():
+        reachable, frontier = {automaton.initial}, [automaton.initial]
+        while frontier:
+            current = frontier.pop()
+            for source, target in automaton.allowed:
+                if source != current or target in reachable:
+                    continue
+                if approvals.required_approval_kinds(item_type, source, target):
+                    continue
+                reachable.add(target)
+                frontier.append(target)
+        assert migration_writable_statuses(item_type) == reachable, item_type
+
+    # ...and it has to REFUSE something, or the equality above is satisfied by "everything"
+    behind = {item_type: automaton.states - migration_writable_statuses(item_type)
+              for item_type, automaton in AUTOMATA.items()}
+    direct = {(owner, edge[1]) for (owner, _kind), edge in approvals.APPROVAL_TRANSITIONS.items()}
+    indirect = sorted((item_type, status) for item_type, states in behind.items()
+                      for status in states if (item_type, status) not in direct)
+    assert indirect, (
+        "no status is refused except the approval edges' own targets, so this is the set "
+        "subtraction again under a walk's name")
+    # a type with no automaton has no status this kernel can walk to
+    assert migration_writable_statuses("DEC") == frozenset()
+
+    # NOT THE NEIGHBOURING GATE QUESTION. `approvals.approved_statuses` answers "which statuses
+    # does an item hold BECAUSE it was approved" for the spawn gates, and it subtracts a terminal
+    # no approval put there -- so its complement is a DIFFERENT set, and rewriting either into the
+    # other would put a tombstone back within the import's reach.
+    disagree = sorted(item_type for item_type, automaton in AUTOMATA.items()
+                      if automaton.states - approvals.approved_statuses(item_type)
+                      != migration_writable_statuses(item_type))
+    assert disagree, (
+        "the two answers now coincide for every type; one of them has been rewritten into the "
+        "other and the reason each exists separately is gone")
+
+    # THE RUNTIME CONTROL, because everything above reads maps: the gated edge really is refused by
+    # the kernel with no approval in the store, and an ungated one really is walkable.
+    blocked, walkable = make_pr(state), make_pr(state)
+    assert "APPROVED" not in migration_writable_statuses("PR")
+    with pytest.raises(StateError):
+        state.transition(blocked["id"], "APPROVED")
+    assert "REJECTED" in migration_writable_statuses("PR")
+    state.transition(walkable["id"], "REJECTED")
+    assert state.read_item(walkable["id"])["status"] == "REJECTED"
+
+
 # -- generated index -----------------------------------------------------------
 
 def test_index_marks_corrupt_items_visibly(state):
@@ -472,3 +541,205 @@ def test_read_anywhere_follows_an_item_into_the_archive(state):
     assert archived and item["id"] == pr["id"]
     assert state.read_anywhere("PR-0099") == (None, False)
     assert state.read_anywhere("not an id") == (None, False)
+
+
+def test_a_write_that_fails_leaves_no_temp_file_in_the_item_directory(state):
+    """R-g: `_write_yaml_atomic` opened `<ID>.yaml.tmp-<pid>` and left it there when the dump raised.
+
+    The leftover is not inert. It sits in `procedures/active/` (measured there), it is read by
+    `migrate.state_fingerprint` -- so a plan digest becomes a statement about a file nobody wrote
+    on purpose -- and by every directory reader in `report`. `os.replace` still provides the
+    atomicity; this is about the FAILING write leaving the directory as it found it.
+
+    Driven with a payload `yaml.safe_dump` cannot represent, because that is a failure the dump
+    itself raises after the temp file is already open -- the shape the defect needs.
+    """
+    make_pr(state)
+    directory = state.active_dir("PR")
+    before = sorted(os.listdir(directory))
+    with pytest.raises(Exception):
+        state.capture("DEC", {"title": object(), "context": "c", "decision": "d",
+                              "consequences": "q", "source": "s"})
+    for item_dir in (directory, state.active_dir("DEC")):
+        if not os.path.isdir(item_dir):
+            continue
+        leftovers = [name for name in os.listdir(item_dir) if ".tmp-" in name]
+        assert not leftovers, leftovers
+    assert sorted(os.listdir(directory)) == before
+
+
+# -- what the archive path's second bolt really is (SR-0002 divergence, R-a, R-i) ------------------
+
+
+def _archive_bound_rows():
+    """[(v1 type, v1 status, v2 type, v2 status)] for every row spec II.10 marks as FINISHED."""
+    from kernel.backlog_types import V1_STATUS_MAPPING
+    return sorted((v1_type, v1_status, v2_type, v2_status)
+                  for (v1_type, v1_status), (v2_type, v2_status, finished)
+                  in V1_STATUS_MAPPING.items() if finished)
+
+
+def test_the_archive_paths_second_bolt_is_not_the_terminal_check_sr_0002_asks_for():
+    """The divergence `capture_migrated_archive` REPORTS, measured in both directions.
+
+    SR-0002 says the exemption holds "nur bei Endzustaenden" and SR-0004 "dessen abgebildeter
+    Status ein Endzustand seines Automaten ist". The code checks something else -- the V1 table's
+    `archive_candidate` plus approval reachability -- and this measures that the two rules really
+    are different rather than two wordings of one, so the divergence the docstring reports is a
+    fact about the shipped tables and not a caution.
+
+    BOTH DIRECTIONS have to be non-empty or "different" would be an overstatement:
+      * the code ACCEPTS rows whose mapped status is no terminal (`TSK DONE` is the row SR-0004's
+        own measurement is about: 418 field records stand there);
+      * the code REFUSES rows whose mapped status IS a terminal (`PR ACCEPTED`, behind the
+        acceptance approval).
+
+    RED as a report if the code is ever changed to the terminal check without the SRs and the
+    docstring moving with it: the first list empties and this says so.
+    """
+    from kernel.backlog_types import AUTOMATA
+    from kernel.state import migration_archives
+
+    accepted_non_terminal, refused_terminal = [], []
+    for v1_type, v1_status, v2_type, v2_status in _archive_bound_rows():
+        automaton = AUTOMATA.get(v2_type)
+        if automaton is None:
+            continue
+        terminal = v2_status in automaton.terminals
+        if migration_archives(v2_type, v1_type, v1_status) and not terminal:
+            accepted_non_terminal.append((v1_type, v1_status, v2_status))
+        if not migration_archives(v2_type, v1_type, v1_status) and terminal:
+            refused_terminal.append((v1_type, v1_status, v2_status))
+    assert ("TSK", "DONE", "DONE") in accepted_non_terminal, accepted_non_terminal
+    assert refused_terminal, (
+        "no archive-bound row with a terminal status is refused, so the two rules cannot be told "
+        "apart on the shipped tables and the reported divergence would be an overstatement")
+    # ...and it is the RUNNING rule, not only the table: the writer's own judge answers for a
+    # status that is not a terminal of its automaton.
+    from kernel.state import migration_archive_status
+    assert migration_archive_status("TSK", "TSK", "DONE") == "DONE"
+    assert "DONE" not in AUTOMATA["TSK"].terminals
+
+
+def test_which_archive_bound_rows_rest_on_an_absent_approval_edge():
+    """R-a: the archive path reads an ABSENT approval edge as permission -- the hole, measured.
+
+    `migration_writable_statuses` asks `approvals.APPROVAL_TRANSITIONS` which edges a user approval
+    commits. A type with no row there has no gated edge, so every status of it is writable -- and a
+    missing row means two different things that nothing in this harness can tell apart: "decided,
+    no approval is needed here" and "the approval kind was never built".
+    `approvals.required_approval_kinds` records `SR PROPOSED -> ACCEPTED` as "Reported, not
+    bridged", i.e. the second; so a V1 `SR DONE` record is archived at `ACCEPTED` with
+    `approval_ref: null`, which is the same shape as the `CR APPLIED` defect that walk was written
+    against, produced by an absence rather than by a subtraction.
+
+    This is a TRIPWIRE over the hole, not a fix: it derives today's set from the running maps and
+    fails in both directions. Adding an `("SR", <kind>)` row -- the fix -- takes `SR` out of the
+    set and turns it red; adding an archive-bound row for another type with no approval kind puts
+    one in and turns it red. Of the four types below, `TSK` is a documented decision (no kind's
+    manifest describes a task's progress) and `SR` is the reported gap; `FR` and `HYP` are in
+    neither statement, which is itself part of what this records.
+    """
+    from kernel import approvals
+    from kernel.state import migration_archives, migration_writable_statuses
+
+    unguarded = {item_type for (item_type, _kind) in approvals.APPROVAL_TRANSITIONS}
+    resting = sorted({(v1_type, v1_status, v2_type) for v1_type, v1_status, v2_type, _v2s
+                      in _archive_bound_rows()
+                      if migration_archives(v2_type, v1_type, v1_status)
+                      and v2_type not in unguarded})
+    assert {v2_type for _t, _s, v2_type in resting} == {"SR", "TSK", "FR", "HYP"}, resting
+    assert ("SR", "DONE", "SR") in resting, resting
+    # the shape the hole produces, read off the kernel's own maps rather than described
+    assert "ACCEPTED" in migration_writable_statuses("SR")
+    assert not approvals.required_approval_kinds("SR", "PROPOSED", "ACCEPTED")
+
+
+def _task_at(state, status):
+    """A fresh TSK walked to `status` along its own edges -- the origin really exists."""
+    pr = make_pr(state)
+    task = state.capture("TSK", {
+        "product_requirement": pr["id"], "root_revision": 1, "derives_from": pr["id"],
+        "type": "implementation", "assigned_role": "backend-developer",
+        "acceptance_refs": ["AC-1"], "required_inputs": [], "allowed_scope": ["src/"],
+        "forbidden_scope": ["secrets/"], "expected_outputs": ["src/x.py"], "dependencies": [],
+    })
+    for step in ("READY", "LEASED", "IN_PROGRESS", status):
+        state.transition(task["id"], step)
+    return task["id"]
+
+
+def test_the_migration_write_set_reads_three_of_the_four_edge_guards(state):
+    """R-i: which of `_transition_locked`'s four guards the write set reads, measured one by one.
+
+    THE RETRY GUARD IS READ, and measuring that needs an automaton in which the retry edge is the
+    ONLY way to its target -- on the shipped task automaton `READY` is reachable from `DRAFT` too,
+    so the set does not change and a set comparison would prove nothing. RED without
+    `RETRY_APPROVAL_EDGE` being read by the walk: `READY` comes back writable although the only
+    edge into it is the one `transition` refuses without an approved retry.
+
+    THE CONFIRMING-EVIDENCE GUARD IS NOT READ, and what that costs today is nothing -- which is a
+    different sentence from "it is guarded" and is the one that is true. `CONFIRMING_EVIDENCE`
+    covers `BUG` alone, its confirming edge ends at `VERIFIED`, and `VERIFIED` already sits behind
+    the `BUG` scope approval, so the approval bolt excludes it first. This measures exactly that:
+    for every type the evidence rule really enforces, the confirming target is out of the write
+    set for SOME reason. Add a type to `CONFIRMING_EVIDENCE` whose confirming target is reachable
+    and this goes red -- which is the moment the unread guard turns into a status that escapes.
+    """
+    from kernel import approvals
+    from kernel import state as state_module
+    from kernel.backlog_types import AUTOMATA, _Automaton, confirming_edge
+    from kernel.state import CONFIRMING_EVIDENCE, RETRY_APPROVAL_EDGE, migration_writable_statuses
+
+    owner, source, target = RETRY_APPROVAL_EDGE
+    only_through_the_retry = _Automaton(
+        chain=("DRAFT", source), terminals=("CANCELLED",),
+        terminal_from={"CANCELLED": ("DRAFT", source)},
+        extra_edges=((source, target),), extra_states=(target,))
+    import pytest as _pytest
+    monkey = _pytest.MonkeyPatch()
+    try:
+        monkey.setattr(state_module, "AUTOMATA", dict(AUTOMATA, **{owner: only_through_the_retry}))
+        reachable = migration_writable_statuses(owner)
+    finally:
+        monkey.undo()
+    assert target not in reachable, (
+        "%s is writable although the only edge into it is %s, which `transition` refuses without "
+        "an approved retry" % (target, " -> ".join(RETRY_APPROVAL_EDGE[1:])))
+    assert {"DRAFT", source, "CANCELLED"} == set(reachable), reachable
+
+    # THE FOURTH GUARD: not read, and today it does not have to be. What is measured is the
+    # CONSEQUENCE, not the reading -- a confirming target that the write set can reach would be a
+    # status the import writes while claiming a confirmation nobody recorded.
+    assert CONFIRMING_EVIDENCE, "no type demands confirming evidence, so this measures nothing"
+    for item_type in CONFIRMING_EVIDENCE:
+        edge = confirming_edge(item_type)
+        assert edge is not None, item_type
+        assert edge[1] not in migration_writable_statuses(item_type), (
+            "%s %s is writable by the import although reaching it needs the %r Evidence "
+            "`CONFIRMING_EVIDENCE` demands, and this walk does not read that guard -- so the "
+            "import would write a confirmation nobody recorded"
+            % (item_type, edge[1], CONFIRMING_EVIDENCE[item_type]))
+    # ...and the reason it is out is the APPROVAL bolt, which is what makes the sentence above a
+    # measurement of coincidence rather than of coverage.
+    for item_type in CONFIRMING_EVIDENCE:
+        assert any(owner == item_type for (owner, _kind) in approvals.APPROVAL_TRANSITIONS), (
+            "%s has no approval edge either, so nothing excludes its confirming target and the "
+            "unread guard has become a hole" % item_type)
+
+    # THE TWO READERS LOOK AT THE SAME EDGE, and that is measured off the RUNNING transition path
+    # rather than asserted about the constant: every edge out of `FAILED` is attempted on a fresh
+    # task, and the one the kernel refuses for a missing retry approval has to be exactly the one
+    # the walk above treated as gated. Point the datum somewhere else and both ends move together
+    # or this fails.
+    refused_for_retry = set()
+    for _from, _to in sorted(AUTOMATA[owner].allowed):
+        if _from != source:
+            continue
+        task = _task_at(state, source)
+        try:
+            state.transition(task, _to)
+        except TransitionError as exc:
+            if "approved retry" in str(exc):
+                refused_for_retry.add((_from, _to))
+    assert refused_for_retry == {(source, target)}, refused_for_retry

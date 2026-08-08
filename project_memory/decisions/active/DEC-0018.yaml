@@ -1,0 +1,57 @@
+id: DEC-0018
+title: Jede Verzweigung der entscheidenden Funktion ist eine Achse -- loest DEC-0016
+  ab
+context: 'DEC-0016 sagte: ''Damit endet die Rekursion. Es gibt keine weitere Ebene:
+  die Aufzaehlungen SIND die Entscheidungseingaben des Lesers.'' Der Pruefer hat diesen
+  Satz gemessen und widerlegt. Es gibt zwei weitere Ebenen, und beide haben in derselben
+  Runde ein Loch bezahlt.
+
+
+  ERSTENS: eine Bedingung, die als VERZWEIGUNG statt als Tabelle geschrieben ist,
+  erzeugt keine Achse. Die Basis-Verwaltung unterscheidet die RICHTUNG einer Bewegung
+  -- ein Pop bekommt die unbekannte Position, alles andere bleibt stehen. Das ist
+  eine Behauptung ueber die Richtung, und sie hat keine Achse. Gemessen: von 32 erzeugten
+  Bewegungen zielen 25 nach aussen, 7 haben kein Ziel, KEINE EINZIGE nach innen. Drei
+  Zellen nach innen eingetragen -- der Tabellentest sofort rot.
+
+
+  ZWEITENS: ein Uebersprung, der als PRAEDIKAT geschrieben ist, erzeugt keinen Wert.
+  Der Leser der Kits ueberspringt eine Feldzuweisung ueber eine Zeichenpruefung, nicht
+  ueber seine Wortliste -- und der Erzeuger liest nur die Wortliste. Gemessen: keine
+  der 638 Zellen traegt einen Zuweisungs-Vorsatz, und die Zeile ist rc 0.
+
+
+  Die Achsenwerte waren erzeugt. Die ACHSE fehlte.'
+decision: 'Jede Verzweigung der Funktion, die entscheidet, ist eine Achse der Pruefmenge,
+  und ihre Werte kommen aus der BEDINGUNG dieser Verzweigung. Das gilt fuer eine Verzweigung
+  ueber ein Praedikat genauso wie fuer eine ueber eine Liste -- die Schreibweise der
+  Bedingung entscheidet nicht darueber, ob sie eine Achse ist.
+
+
+  Damit loest diese Entscheidung DEC-0016 ab. Ihr Kern bleibt richtig und ist enthalten:
+  eine Aufzaehlung erzeugt ihre Achsenwerte. Falsch war der Zusatz, damit sei die
+  Rekursion beendet -- eine Aufzaehlung ist nur EINE Form, in der eine Bedingung geschrieben
+  sein kann.
+
+
+  Diesmal wird kein Satz ueber das Ende der Rekursion geschrieben. Ob eine weitere
+  Ebene existiert, ist eine Messung und keine Behauptung.'
+consequences: 'Zehnte Form, und die erste, die eine eigene Entscheidung ABLOEST statt
+  sie zu ergaenzen. DEC-0016 wandert ins Archiv.
+
+
+  Zweiter Befund derselben Pruefung, gleiche Familie und gegen mich gerichtet: ich
+  hatte in einer Auftragszeile behauptet, eine offene Schreibweise sei ueber die Umleitungsform
+  der Kits schliessbar. Der Umsetzer hat es beim Bauen widerlegt, der Pruefer hat
+  die Widerlegung bestaetigt. Sein Satz dazu: ich habe ueber die GESTALT eines regulaeren
+  Ausdrucks geurteilt statt ueber das, was der laufende Tokeniser ihm reicht.
+
+
+  Damit gilt die aelteste Hausregel dieses Repos auch fuer eine Auftragszeile: eine
+  Pruefung muss den Teil lesen, der laeuft -- und ein Auftrag ist eine Pruefung, die
+  noch niemand gefahren hat.'
+source: Pruefbericht zu TSK-0017, 2026-08-07, Antwort auf Frage (a) und (b)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-07T08:37:49'

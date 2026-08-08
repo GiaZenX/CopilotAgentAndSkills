@@ -1,0 +1,25 @@
+id: DEC-0001
+title: Der PM spielt Kit-Updates selbst ein und erzwingt danach den Neustart
+context: 'V1 sagte dem PM ''on their OK run the scaffold_team script''. V2 machte
+  daraus ''ASK THE USER TO RUN ... You cannot run either yourself''. Das war keine
+  Entscheidung ueber den Update-Fluss, sondern ein Nebeneffekt der gate_write_scope-Haertung:
+  sie verweigert jede schreibfaehige Befehlszeile, die .claude oder team-kits nennt,
+  und ein Installer-Start ist eine. Gemessen an den V1-Kits in v2-pilot gegen die
+  V2-Fassung im Repo.'
+decision: 'Ein Kernel-Kommando harness.py update-kit. Genau diese Befehlszeile laesst
+  gate_write_scope zu, alles andere verweigert weiter. Es prueft vorher: kein Downgrade,
+  Versionsstempel passt zum Inhalt, Zustand sauber. Danach setzt es eine Markierung,
+  die jedes Gate mit ''das Kit hat sich unter dir geaendert -- starte neu'' verweigern
+  laesst.'
+consequences: 'Der Nutzer fuehrt kein Skript mehr aus. Die Regel ''eine Sitzung aendert
+  die Regeln nicht, unter denen sie laeuft'' bleibt intakt, weil genau ein sanktioniertes
+  Kommando erlaubt ist statt beliebiger Schreibzugriffe. Der Neustart ist danach erzwungen
+  statt erhofft -- V1 hatte hier ein Loch, weil der PM nach dem Scaffold unter alten
+  Regeln weiterarbeiten konnte. Offen bleibt: dass der Nutzer zugestimmt hat, ist
+  eine Tatsache aus dem Gespraech, nicht aus einer Datei.'
+source: 'Nutzerentscheidung 2026-08-04, wortwoertlich: ''Nein der PM soll das kit
+  aktualisieren und dann sagen eine neue sitzung starten. So wie bisher auch.'''
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:28:05'

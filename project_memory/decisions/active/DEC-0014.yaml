@@ -1,0 +1,44 @@
+id: DEC-0014
+title: Die Achsen einer Testtabelle werden aus den Bedingungen abgeleitet, die der
+  Code fuer sich behauptet
+context: 'DEC-0012 verlangte, dass die rote Menge die EIGENSCHAFT deckt statt der
+  gemessenen Zeilen. Das hat gewirkt und ist gemessen: der Umsetzer baute eine Tabelle
+  aus 32 Zeilenformen mit elf Gegenenden, und alle acht Mutationen des Pruefers wurden
+  rot -- vier davon ueber Formen, die in keiner der acht Zeilen des Auftrags vorkamen.
+
+
+  Und trotzdem ist die Runde an zwei Loechern gescheitert, die beide in DERSELBEN
+  Luecke sitzen: die vier Achsen des Kreuzes hat dieselbe Hand gewaehlt, die den Leser
+  geschrieben hat. Der Docstring der Funktion nennt ZWEI Bedingungen -- ''die Shell
+  fuehrt das Verb selbst aus'' und ''der Wechsel gelingt''. Nur die erste ist eine
+  Achse. Die zweite ist im Code halb gebaut und im Test gar nicht gekreuzt.
+
+
+  Beweis, dass das keine Auslegungsfrage ist: der Pruefer hat einen Leser gebaut,
+  der bei einer von der Shell abgelehnten Operandenliste ins Heimatverzeichnis wandert
+  -- sachlich falsch -- und die Suite blieb gruen. Die Folge ist ein Durchlass in
+  einem Werkzeugaufruf bis in die Registrierungsdatei der vier Gates selbst, am Live-Gate
+  gemessen.'
+decision: 'Die Achsen des Kreuzes werden ABGELEITET, nicht gewaehlt: jede Bedingung,
+  die ein Docstring fuer sich behauptet, ist eine Achse der Tabelle -- oder sie ist
+  eine Grenze mit einem Eintrag in der Loecherliste. Ein Drittes gibt es nicht.
+
+
+  Damit wird die Tabelle aus derselben Quelle abgeleitet wie die Zusicherung, gegen
+  die sie prueft, und die Hand, die den Leser schreibt, kann ihre eigene Pruefmenge
+  nicht mehr beschneiden.'
+consequences: 'Das ist die sechste Fehlform in der Sammlung und die erste, die nicht
+  meine Auftragszeile betrifft, sondern die Bauweise der Pruefung. DEC-0010 und DEC-0011
+  halten die Formen, in denen ein Auftrag danebengeht; DEC-0012 und dieses hier die
+  Formen, in denen eine Pruefung ihre eigene Luecke erbt.
+
+
+  Gemeinsamer Nenner aller sechs: eine Menge, die jemand WAEHLT, ist so gross wie
+  sein Vorstellungsvermoegen -- eine Menge, die er ABLEITET, ist so gross wie das
+  Geprueft.'
+source: Pruefbericht zu TSK-0013, 2026-08-05, Befund F3 und der Abschnitt zur Zeile
+  aus DEC-0012
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T15:10:27'

@@ -1,0 +1,70 @@
+id: DEC-0022
+title: Werkbank und Produkt tragen nicht dieselbe Beweislast
+context: 'Dieses Repo behandelt zwei ungleiche Dinge mit derselben Strenge. team-kits/
+  (Kernel, drei Kits, Migration) laeuft in echten Projekten des Nutzers; ein Fehler
+  dort kostet fremden Zustand. .claude/hooks/ bremst einen Agenten in genau diesem
+  Repo; ein Fehler dort kostet eine Datei, die jemand zuruecksetzt.
+
+
+  Gemessen, Stand 2026-08-08: die Werkbank traegt eine Testdatei von 217 KB fuer vier
+  Hooks, eine Kreuztabelle mit 1449 Zellen, 7527 erzeugte Tilde-Subjekte und rund
+  17 Minuten je Suite-Lauf -- gegen 2305 Tests fuer das gesamte Produkt. Drei aufeinanderfolgende
+  Pruefrunden (TSK-0021, TSK-0022 Runden 1 bis 3) haben rund 10 Stunden gekostet;
+  Runde 1 schloss ein echtes Loch (ein Werkzeugaufruf erreichte project_memory/, also
+  den Beleg, mit dem Gate 3 urteilt), die Runden 2 und 3 fanden keine Angriffskette
+  mehr und scheiterten ausschliesslich an Saetzen UEBER den Schutz.
+
+
+  Die Kur ist teurer geworden als die Krankheit: viermal in drei Tagen hat das MESSEN
+  der Gates team-kits/kernel/state.py im echten Arbeitsbaum zerstoert. Die Gates selbst
+  haben in derselben Zeit keinen Schaden verhindert.
+
+
+  Dazu ein Befund ueber das Bedrohungsmodell: gehaertet wird gegen Tilde-Verzeichnisstack-Referenzen
+  mit eingestreuter Quotierung, gegen Win32-Device- und UNC-Namensraeume, gegen Heredoc-Ruempfe.
+  Das sind Wege, die ein Gegner mit Shell-Expertise ABSICHTLICH geht. Der einzige
+  Akteur hier ist ein Agent, der Anweisungen folgt; sein Irrtum nimmt den geradeaus
+  naheliegenden Weg.'
+decision: 'Die Beweislast richtet sich nach dem Schaden, den ein Fehler anrichtet,
+  nicht nach dem Ort im Baum.
+
+
+  1. PRODUKT -- alles, was in ein fremdes Projekt ausgeliefert wird (team-kits/, Kernel,
+  Migration, die Kits): volle Strenge unveraendert. Jede Zusicherung gemessen, jeder
+  Fix mit einem Test, der ohne ihn rot wird, Pruefer gegen den laufenden Code.
+
+
+  2. WERKBANK -- .claude/hooks/ und was nur diese Sitzung bindet: Fixes nur bei gemessenem
+  Schaden oder einer Angriffskette, die innerhalb einer Sitzung durchlaeuft. Eine
+  Luecke ohne solche Kette wird als Loecherlisten-Eintrag gefuehrt und NICHT gebaut.
+  Keine Haertungsrunde ohne einen Befund dieser Art.
+
+
+  3. Prosa ueber die Werkbank wird GEKUERZT, nicht gemessen ausgebaut. Ein Satz, der
+  nicht da ist, kann nicht luegen. CLAUDE.md sagt es bereits selbst -- ''Was das konkret
+  trifft, sagt das Gate, nicht dieser Absatz'' --, und genau daran hat sich dieses
+  Repo nicht gehalten: zwei Pruefrunden sind an Beschreibungen gescheitert, die es
+  nicht haette geben muessen. Die Verweigerung des Gates ist die Autoritaet; die Datei
+  verweist darauf.
+
+
+  Die Hausregel ''kein Kommentar darf Schutz behaupten, den der Code nicht baut''
+  bleibt in Kraft und gilt fuer beide. Fuer die Werkbank ist die Abhilfe aber STREICHEN
+  statt Messen.'
+consequences: 'TSK-0022 wird nach dem Pruefverdikt der Runde 3 geschlossen -- der
+  PASS wird fuer den Commit gebraucht (Gate 3), nicht fuer die Vollstaendigkeit der
+  Werkbank. Alle offenen Reste (H37 Rest 1 bis 5, H38, R1 bis R3) bleiben als dokumentierte
+  Loecher stehen; es gibt keine Runde 4.
+
+
+  Was diese Entscheidung NICHT aufweicht: die Zwei-Agenten-Schleife, Gate 3, und die
+  Strenge fuer TSK-0023 (Migration) und jede weitere Produktarbeit. Die Schleife hat
+  sich bewaehrt -- sie hat das echte Loch der Runde 1 gefunden und mehrfach Prosa
+  erwischt, die log.'
+source: Nutzerentscheidung 2026-08-08 auf die Frage, ob dieses Projekt over-engineert
+  ist; Pruefverdikte TSK-0022 Runden 1 bis 3; die vier Messschaeden vom 2026-08-06
+  bis 2026-08-08
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-08T11:55:25'

@@ -1,0 +1,22 @@
+id: SR-0006
+title: 'Die Durchsetzung dieses Repos: vier Hooks und ein gebundener Sitzungsagent'
+derives_from: PR-0002
+contract: 'Vier PreToolUse-Gates in .claude/, plus eine settings.json mit `agent:
+  harness-lead` und die zugehoerige Definition. (1) Der Hauptagent darf nichts schreiben,
+  was in eine Kit-Version eingeht -- der geschuetzte Bereich wird aus bump_kit_version.py
+  abgeleitet, nicht aufgezaehlt. (2) Ein Spawn im Aenderungskreis braucht ein Item.
+  (3) Kein Commit ohne ein Beweismittel-Item, das den aktuellen Diff-Hash deckt. (4)
+  Die Aufgabenliste traegt hoechstens EINEN Eintrag ohne Item-Id -- den laufenden;
+  jeder andere nennt ein Item, das Arbeit tragen KANN (TSK, BUG, FR) und nicht-terminal
+  ist. Gate 1 verweigert zusaetzlich Schreibzugriffe auf .claude/hooks/ aus der Sitzung
+  heraus: eine Sitzung aendert die Regeln nicht, unter denen sie laeuft. Alle vier
+  binden beim Sitzungsstart, gelten also ab der naechsten Sitzung.'
+affected_components:
+- .claude/settings.json
+- .claude/hooks/
+- .claude/agents/harness-lead.md
+- CLAUDE.md
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-04T17:30:27'

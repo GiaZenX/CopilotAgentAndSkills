@@ -1,0 +1,36 @@
+id: DEC-0009
+title: Der Migrator wird nicht weiter gehaertet -- Unaufloesbares wandert mit Begruendung
+  ins Archiv
+context: 'Fuenf Runden, rund zwanzig Stunden Agentenzeit, fuer ein Kommando, das DREIMAL
+  laeuft. Der Nutzer hat den Massstab in Frage gestellt und er hat recht: ''jedes
+  kuenftige V1-Projekt kann migrieren'' ist ein Argument ohne Bestand, weil es keine
+  kuenftigen V1-Projekte gibt. Der einzige echte Wert sind die drei Repos. Und in
+  fuenf Runden ist kein einziger schreibender Lauf gegen die echten Daten gefahren
+  worden: gehaertet wurde gegen hypothetische Datenformen, waehrend die echten unmigriert
+  danebenliegen.'
+decision: 'Keine weitere Haertungsrunde. Stattdessen: (1) die Feldvorschlaege aus
+  SR-0007 raeumen den mechanischen Topf leer; (2) was danach uebrigbleibt und ein
+  BACKLOG-Typ ist, wandert mit Begruendung ins Archiv statt zu blockieren -- die Archiv-Ausnahme
+  aus DEC-0004, eine Stufe weiter gedacht; (3) was kein Backlog-Typ ist, bleibt Dokument
+  und heisst weiterhin not_an_item. Damit faellt fast die ganze verbleibende Komplexitaet
+  weg: keine Blockaden, keine Entscheidungslisten, kein ''der Plan verweigert komplett''.
+  Was nicht blockiert, braucht keine perfekte Verweigerungsmeldung -- und die meisten
+  offenen Loecher betreffen genau solche Meldungen.'
+consequences: 'Beide Bedingungen des Nutzers bleiben erfuellt: nichts V1-Foermiges
+  bleibt im Arbeitsbaum, alte und neue Struktur stehen nicht nebeneinander. Verloren
+  geht Praezision -- ein Datensatz, den EINE Zuordnungsentscheidung gerettet haette,
+  koennte als unaufloesbar archiviert werden; deshalb laufen die Vorschlaege ZUERST.
+  Gemessene Groessenordnung: ~900 Datensaetze mechanisch (SR 266, erledigte Aufgaben
+  423, ADR 106, PROC 16, BUG/CR/FR ~80); ~35 brauchen einmal einen Menschen (18 Produktanforderungen,
+  10 lebendige Aufgaben, 5-15 uebergrosse); ~658 sind gar keine Items (id-foermige
+  Eintraege in design.yaml, acceptance_reports.yaml, review_reports.yaml). KORREKTUR
+  ZU DEC-0004: dort steht ''429 Aufgaben''. Gemessen 433 (264 + 169), davon 423 archivgebunden
+  und 10 lebendig. Die Substanz haelt -- die Zehn stimmen -- der Nenner war um genau
+  die vier Datensaetze zu klein, die der Scanner damals nicht sah. Dem Nutzer vorgelegt;
+  DEC-0004 selbst ist nicht aenderbar (BUG-0001).'
+source: Nutzerentscheidung 2026-08-05; Zaehlung aller drei Kopien, Pruefbericht zu
+  TSK-0006 (F7)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T06:59:18'

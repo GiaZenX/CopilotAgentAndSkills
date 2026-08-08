@@ -312,9 +312,8 @@ def _assert_state_write_allowed(rel, inside, task, data, root):
                    "an operation with a command has none. "
                    "`approve` is SPLIT rather than absent: `request-approval` opens the "
                    "kernel-generated question and the USER mints it by answering, which is "
-                   "why no command mints. What spec II.4 names and the surface still lacks is "
-                   "`migrate --dry-run`; that one is a gap to report. Proposals that are not "
-                   "canonical yet belong in project_memory/staging/<task-id>/.")
+                   "why no command mints. Proposals that are not canonical yet belong in "
+                   "project_memory/staging/<task-id>/.")
     if len(parts) < 2:
         _kernel.block(HOOK, "'%s' would write the staging ROOT — staging is keyed per task or per "
                             "root item (spec II.4)." % rel,

@@ -36,7 +36,14 @@ import xml.etree.ElementTree as ET
 from .backlog_types import ACTIVE_DIRS, parse_id
 from .lock import ext_path
 from .schemas import validate
-from .state import ProjectState, StateError, _now_iso, revision_name, split_revision
+from .state import (
+    STAGING_DIRNAME,
+    ProjectState,
+    StateError,
+    _now_iso,
+    revision_name,
+    split_revision,
+)
 
 
 class StagingError(StateError):
@@ -135,7 +142,7 @@ def contained_child(base: str, name: str, what: str) -> str:
 
 
 def staging_dir(state: ProjectState, key: str) -> str:
-    return contained_child(os.path.join(state.root, "staging"), key, "staging key")
+    return contained_child(state.staging_root(), key, "staging key")
 
 
 def _file_hash(path: str) -> str:
@@ -328,7 +335,7 @@ def clear_staging(state: ProjectState, key: str, mode: str, _locked: bool = Fals
         return source
     if mode == "rejected":
         year = time.strftime("%Y")
-        target = os.path.join(state.root, "archive", "staging", year, key)
+        target = os.path.join(state.archive_root(), STAGING_DIRNAME, year, key)
         os.makedirs(ext_path(os.path.dirname(target)), exist_ok=True)
         if os.path.isdir(ext_path(target)):
             raise StagingError(

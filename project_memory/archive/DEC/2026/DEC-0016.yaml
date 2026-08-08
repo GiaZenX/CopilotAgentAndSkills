@@ -1,0 +1,50 @@
+id: DEC-0016
+title: Die Werte einer Achse werden von den Aufzaehlungen erzeugt, aus denen der Leser
+  entscheidet
+context: 'DEC-0014 hat gewirkt und wurde trotzdem unterlaufen. Die Achsen sind jetzt
+  abgeleitet -- jede Bedingung des Docstrings ist eine -- und das Kreuz ist echt:
+  der Schiedsrichter kann scheitern, drei gekippte Zellen werden rot, fuenf nachgestellte
+  Defekte werden rot. Die Zeilenzahl stieg von 32 auf 213.
+
+
+  Und genau dahinter versteckte sich der Schnitt. DEC-0014 sagt ''jede Bedingung ist
+  eine Achse'' und sagt NICHTS ueber die WERTE einer Achse. Die Achse ''die Shell
+  fuehrt das Verb selbst aus'' wurde mit 19 Stellungen mal DREI kleingeschriebenen
+  Verben instanziiert -- waehrend die Aufzaehlung, aus der der Leser entscheidet,
+  VIER Eintraege hat und daneben eine Ueberspringliste fuer Woerter steht, die das
+  folgende Wort an ein Kind uebergeben.
+
+
+  Gemessen sind dadurch zwei Durchlaesse offen geblieben, beide in einem Werkzeugaufruf
+  bis in die Registrierungsdatei der vier Gates: ein Verzeichnisverb in anderer Gross-/Kleinschreibung,
+  das die Shell gar nicht kennt, und dasselbe mit einem vorangestellten Wort, das
+  an ein Kind uebergibt. Die Hand, die den Leser schrieb, hat ihre Pruefmenge nicht
+  mehr bei den ZEILEN beschnitten, sondern bei den ACHSENWERTEN -- unsichtbar, weil
+  die Zeilenzahl sich versechsfacht hat.'
+decision: 'Jede Aufzaehlung, aus der ein Leser entscheidet, ERZEUGT die Werte der
+  zugehoerigen Achse, und die Gleichheit beider Mengen steht in einem Stolperdraht.
+  Das ist Hausregel 1 an der Stelle, an der sie bisher nicht angewandt wurde: eine
+  Aufzaehlung im Code bekommt einen Draht, eine Aufzaehlung in der Pruefmenge bisher
+  nicht.
+
+
+  Damit endet die Rekursion. Es gibt keine weitere Ebene: die Aufzaehlungen SIND die
+  Entscheidungseingaben des Lesers. Wer sie erzeugt, kann die Pruefmenge nicht mehr
+  enger machen als das Geprueft.'
+consequences: 'Achte Form in der Sammlung, und die erste, die eine frueher aufgeschriebene
+  Regel repariert statt eine neue zu eroeffnen. Mit ihr waeren die beiden Durchlaesse
+  in DERSELBEN Runde aufgefallen, in der eine Flagform aufgefallen ist.
+
+
+  Zweiter Befund derselben Pruefung, gleiche Familie: ein Kommentar behauptet eine
+  Bedingung (''ein Pop kann die Basis nur naeher an den Baum bringen''), die weder
+  Achse noch Loecherlisteneintrag ist. Das ist ein direkter Verstoss gegen den Wortlaut
+  von DEC-0014, kein Auslegungsfall -- und die Bedingung ist gemessen falsch, sobald
+  der Stapelkopf ausserhalb und die Basis innerhalb liegt.'
+source: Pruefbericht zu TSK-0015, 2026-08-05, Antwort auf 'hat DEC-0014 das Problem
+  geloest oder verschoben'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-05T20:22:40'
+closed_at: '2026-08-07T08:37:49'

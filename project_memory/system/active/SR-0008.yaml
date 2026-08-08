@@ -1,0 +1,36 @@
+id: SR-0008
+title: Was ein Kommentar tragen darf
+derives_from: PR-0003
+contract: 'Ein Kommentar darf genau eines tragen: das WARUM, das aus dem Code nicht
+  hervorgeht -- eine Messung, eine verworfene Alternative, ein Defekt, der zu dieser
+  Zeile fuehrte. Und er traegt es als VERWEIS auf das Item, das die Sache fuehrt,
+  nicht als nacherzaehlte Geschichte.
+
+
+  Drei Faelle, mechanisch unterscheidbar und in dieser Reihenfolge zu pruefen: (a)
+  sagt der Kommentar, WAS der Code tut, faellt er weg -- der Code sagt es selbst,
+  notfalls nach besserer Benennung; (b) behauptet er eine EIGENSCHAFT (''X kann nicht
+  passieren'', ''nur Y erreicht Z''), wird er ein Test -- Prosa ist kein Beweis, und
+  ein Test, der ohne den Schutz rot wird, ist einer; (c) haelt er ein WARUM fest,
+  bleibt er, gekuerzt auf den Verweis.
+
+
+  Eine ZAHL steht an genau einem Ort. Wird sie im Code gebraucht, steht sie in einem
+  Item und der Kommentar verweist. Gemessen 2026-08-05: vier Feldzahlen waren in vierzehn
+  Stellen abgetippt, drei davon veraltet.
+
+
+  Die bestehende Regel ''kein Kommentar darf Schutz behaupten, den der Code nicht
+  baut'' bleibt und wird durch (b) praeventiv: der Satz entsteht gar nicht mehr, statt
+  hinterher gefangen zu werden.'
+affected_components:
+- team-kits/kernel/**
+- team-kits/*/hooks/**
+- .claude/hooks/**
+- .claude/agents/**
+- team-kits/*/constitution/AGENTS.md
+- CLAUDE.md
+status: PROPOSED
+revision: 1
+approval_ref: null
+created: '2026-08-05T07:00:06'

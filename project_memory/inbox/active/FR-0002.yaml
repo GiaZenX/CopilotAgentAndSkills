@@ -1,0 +1,24 @@
+id: FR-0002
+title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
+related_pr: PR-0003
+request_text: 'Vollstaendige Analyse in docs/office-kit-from-field.md (gemessen 2026-08-04
+  an der BuyPlugGo-Kopie, Kit 2026.07.17-8, vier Wochen Betrieb). Acht Punkte F1 bis
+  F8; die Prosa bleibt dort, dieses Item traegt nur Stand.
+
+
+  F1 ist BLOCKIEREND und der Grund fuer diesen Eintrag: das Kit liefert filing_plan.yaml
+  mit leerer Regelliste aus, gate_filing schlaegt darauf fail-closed an -- das ERSTE
+  Dokument, das ein frisch aufgesetztes Office-Projekt ablegen will, wird verweigert.
+  Und weil es ein Kit-Dokument ist, hat es nach der Installation keinen Schreiber
+  mehr: wer es beim Aufsetzen nicht fuellt, kommt nicht mehr heran. Ein Kit, dessen
+  Kernfunktion beim ersten Gebrauch verweigert, ist kein Kit.
+
+
+  F2-F6 sind Vorlagen- und Textarbeit im selben Zug (Aufbewahrungsfrist mit Rechtsgrundlage
+  und Ehrlichkeitsvermerk, Benennungsschema, die Grenze zwischen Eingang und Archiv
+  als Definition, die Loeschquarantaene, zwei .gitignore-Regeln). F7 (Eingangsroutine,
+  unabhaengige Projektpruefung) und F8 (Jahresansicht) sind eigene Pakete.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:59:50'
