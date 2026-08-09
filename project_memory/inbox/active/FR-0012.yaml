@@ -1,0 +1,56 @@
+id: FR-0012
+title: Eine Entscheidung, die in Prosa landet statt in einem Item, hat heute keinen
+  Faenger
+related_pr: PR-0002
+request_text: 'GEMESSENER ANLASS, 2026-08-09, zweimal an einem Tag, beide Male vom
+  NUTZER gefangen und keinmal von einer Pruefrunde: der Sitzungsagent schrieb bindende
+  Festlegungen in docs/pilot/2026-08-09-plan.md statt in ein Decision-Item. Beim zweiten
+  Mal zwei Stunden NACH DEC-0025, das genau diesen Fehler festgehalten hatte. Der
+  Kern war jedes Mal eine bindende ZAHL (erst 25, dann 100 Dollar Quotenriegel) plus
+  die Regel darum.
+
+
+  WAS ES HEUTE NICHT FAENGT, gemessen: guard_no_adhoc.py blockiert erfundene Ablagedateien
+  an ihrem NAMEN (*_summary.md, *_report.md, delegation_*) und liest ihren Inhalt
+  nicht; eine legitime Plandatei faellt nicht darunter. Die vier Repo-Gates pruefen
+  Schreibbereich, Spawn, Commit-Beleg und Aufgabenliste -- keines liest, WAS geschrieben
+  wird.
+
+
+  WARUM DER NAHELIEGENDE HOOK DIE FALSCHE FORM WAERE: ein Gate, das jeden Schreibzugriff
+  auf docs/ blockiert, bis ein DEC vorliegt, feuert bei jeder Dokumentaenderung, und
+  die allermeisten sind keine Entscheidungen. Die zweite Ordnung ist schlimmer --
+  es erzieht dazu, Muell-DECs zu erfassen, um sich zu entsperren. Dann fuellt sich
+  der Zustand mit Rauschen und verliert genau die Vertrauenswuerdigkeit, die ihn traegt.
+  Dieselbe Fehlerklasse wie ein Test, der nicht scheitern kann, nur umgedreht. FR-0010
+  hat fuer die Schwesterluecke bereits entschieden: keine Heuristik ueber Prosa.
+
+
+  DER ENTWURF, in der Form von FR-0005 -- mechanischer Ausloeser, urteilender Leser:
+
+
+  1. AUSLOESER, deterministisch und ohne Semantik: eine Zahl oder ein benannter Schwellwert
+  steht in einer docs-Datei und in keinem aktiven Item. Das ist keine neue Regel,
+  sondern die bestehende Hausregel ''eine Zahl steht an genau einem Ort'', angewandt
+  auf Prosa statt nur auf Code. Beide gemessenen Faelle haetten sie ausgeloest.
+
+
+  2. URTEIL durch einen Leser mit frischem Kontext, nicht durch eine Regex: ''traegt
+  dieser Absatz eine Festlegung, die kuenftiges Verhalten bindet?'' Der Leser legt
+  bei Ja den DEC-Rumpf vor, statt nur zu ruegen -- dieselbe Auflage wie bei FR-0005,
+  damit es kein Theater wird.
+
+
+  3. FAIL-OPEN und nicht blockierend. Ein Hinweis am Sitzungsende, keine Verweigerung.
+  Wer eine Entscheidung wirklich in Prosa lassen will, soll das koennen und dabei
+  gesehen werden.
+
+
+  OFFEN: ob das eine eigene Vorrichtung ist oder eine Pflicht des bestehenden Pruefers
+  -- dieselbe offene Frage, die FR-0005 am Ende stellt, und vermutlich dieselbe Antwort.
+  Und ehrlich: der Nutzer hat es zweimal gefangen und das kostete nichts; eine gebaute
+  Vorrichtung muss besser sein als das, sonst ist sie Zierde.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-09T09:35:01'

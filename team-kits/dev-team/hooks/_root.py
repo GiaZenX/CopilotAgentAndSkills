@@ -11,6 +11,7 @@ Resolution order:
      (.claude/ | project_memory/ | .git).
   3) Fallback to the original cwd.
 """
+import fnmatch
 import os
 
 
@@ -56,6 +57,25 @@ ROOT_ITEM_GLOBS = ("product/active/PR-*.yaml", "research/active/RQ-*.yaml")
 ROOT_ITEM_TYPES = tuple(os.path.basename(pattern).split("-", 1)[0] for pattern in ROOT_ITEM_GLOBS)
 
 
+def _names_matching(directory, pattern):
+    """The names in `directory` matching `pattern`, or None when the directory did not answer.
+
+    None is the THIRD answer this question has, and it is the one `glob` does not give: a directory
+    that exists and cannot be opened says neither "the item is here" nor "it is not". `glob` folds
+    that into the empty list and raises nothing.
+
+    A directory that is not there, and a plain file where a directory was expected, both answer --
+    nothing of that name can be inside either -- so those two are an empty list and not a None.
+    """
+    try:
+        names = os.listdir(directory)
+    except (FileNotFoundError, NotADirectoryError):
+        return []
+    except OSError:
+        return None
+    return [name for name in names if fnmatch.fnmatch(name, pattern)]
+
+
 def has_root_item(repo_root):
     """Has this project captured its first product requirement / research question yet?
 
@@ -66,12 +86,22 @@ def has_root_item(repo_root):
     is still being set up, and a quality gate that fires there blocks the setup it exists to
     protect.
 
-    Glob, not YAML: this runs on every guarded shell command, and the question is "does an item
+    Names, not YAML: this runs on every guarded shell command, and the question is "does an item
     exist", which a filename answers.
+
+    A DIRECTORY NOBODY CAN LIST COUNTS AS AN ITEM, which is the whole reason this is a listing and
+    no longer a `glob`. The two failure directions are not symmetric: answering "no item yet" makes
+    five gates stand down — among them the ones that decide whether a merge or a push may happen
+    at all — so a permission problem on the canonical directory switched off enforcement for
+    every command, silently. Answering "an item is there" over a directory that in fact holds none costs
+    a refusal in a project that is still being set up, and a refusal says so. Measured 2026-08-09,
+    the shipped `gate_git.py` as a real process against `git merge feat/PR-0001-x` with
+    `product/active/` denied read access: rc 0 before, rc 2 after.
     """
-    import glob as _glob
     state = os.path.join(repo_root, "project_memory")
     for pattern in ROOT_ITEM_GLOBS:
-        if _glob.glob(os.path.join(state, pattern.replace("/", os.sep))):
+        head, _sep, name = pattern.rpartition("/")
+        found = _names_matching(os.path.join(state, *head.split("/")), name)
+        if found is None or found:
             return True
     return False

@@ -813,8 +813,8 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                 "no pending approval request %s (consumed, expired-and-cleaned, "
                 "or never created). Remedy: run the kernel approval flow again "
                 "-- an invented request ID never mints. (A hand-WRITTEN pending "
-                "file with a self-chosen mint_code would mint; keeping "
-                "approvals/pending/ kernel-only is the write-scope gate's job, "
+                "file with a self-chosen mint_code would mint; keeping the "
+                "pending-request area kernel-only is the write-scope gate's job, "
                 "and the state validator flags hand edits.)" % request_id
             ) from None
         if time.time() > float(request["expires_at_epoch"]):
@@ -966,7 +966,8 @@ def revoke(state: ProjectState, apr_id: str) -> dict:
             apr = state._read_yaml(path)
         except FileNotFoundError:
             raise ApprovalError(
-                "no approval %s. Remedy: check generated/index.yaml." % apr_id
+                "no approval %s. Remedy: check the id against the generated index, "
+                "which lists every approval this project holds." % apr_id
             ) from None
         # ORDER MATTERS, do not "clean this up": the flag is written FIRST and is
         # checked first in both authorisation routes, so a crash between the two

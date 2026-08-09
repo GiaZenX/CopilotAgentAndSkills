@@ -1,0 +1,62 @@
+id: DEC-0025
+title: Die Versuchsanordnung der Piloten -- fuenf Festlegungen, die nicht in einer
+  Prosadatei bleiben duerfen
+context: 'docs/pilot/2026-08-09-plan.md traegt Methode und Beobachtungsraster; das
+  ist Prosa und gehoert nach CLAUDE.md dorthin. Inzwischen sind darin aber fuenf ENTSCHEIDUNGEN
+  gewachsen, und fuer die nennt dieselbe Tabelle decisions/active/. Vom Nutzer bemerkt,
+  nicht von mir.
+
+
+  Eine Entscheidung, die nur in einer Prosadatei steht, wird beim naechsten Umschreiben
+  derselben Datei still veraendert -- das ist genau der Fall, gegen den dieses Repo
+  seine Zustandsfuehrung gebaut hat.'
+decision: '1. NIEMAND IM LAUF ERFAEHRT, DASS ES EIN VERSUCH IST. Weder in der ersten
+  Nachricht noch spaeter. Ein Projektmanager, der weiss, dass er geprueft wird, ist
+  nicht der Projektmanager, den ein Nutzer bekommt. Die Bitte um ein kleineres Modell
+  wird als das formuliert, was ein Nutzer sagen wuerde.
+
+
+  2. DIE PILOTEN LAUFEN UEBER DIE SDK, NICHT UEBER DEN STAPELBETRIEB. Gemessen 2026-08-09
+  gegen das Rohprotokoll der Sonde in v2-pilot/_sdk-probe/observed.jsonl: claude_agent_sdk
+  0.2.129, AskUserQuestion steht in der Werkzeugliste (ask_offered true, 76 Werkzeuge),
+  can_use_tool feuert mit vollstaendigem input, und eine programmatisch gegebene Antwort
+  wird akzeptiert. Eigene Gegenmessung mit claude -p am selben Tag: die Einstiegsdatei
+  stellt ihre Frage dort in PROSA statt ueber das Werkzeug -- ein Befund ueber den
+  Stapelbetrieb, nicht ueber das Kit, und ein Pilot darauf haette die Rueckfallebene
+  gemessen und fuer das Kit gehalten.
+
+
+  3. DIE KOPIEN WERDEN VOR JEDEM MIGRATIONSLAUF SELBST NOCH EINMAL KOPIERT. C:/Offline
+  Repos/v2-pilot/ ist das Testbett, nicht das Versuchsobjekt: drei kuratierte Kopien
+  mit entfernten GitHub-Remotes, ersetzt durch lokale Bare-Repos, ohne Secrets, mit
+  einzeln begruendeten Auslassungen. Ein Lauf, der eine davon zerschreibt, kostet
+  Arbeit, die niemand mehr herstellt. Die Originale werden in keinem Fall geoeffnet,
+  und dass sie unberuehrt blieben, wird gehasht statt behauptet.
+
+
+  4. DIE DREI NEUEN VORHABEN ENTSTEHEN IN FRISCHEN VERZEICHNISSEN, NICHT IN DEN KOPIEN.
+  Zwei verschiedene Fragen, zwei Anordnungen: die Kopien beantworten, ob ein gewachsenes
+  Projekt die Migration uebersteht; die frischen Verzeichnisse, ob der Apparat fuer
+  ein neues Vorhaben taugt.
+
+
+  5. KEIN V1-VERGLEICHSLAUF. Das Testbett liess 2026-08-04 offen, ob erst ein Migrationsweg
+  gebaut oder die drei zuerst auf V1 gefahren werden. Den Weg gibt es jetzt; ein V1-Lauf
+  wuerde messen, was ohnehin abgeloest wird.'
+consequences: 'Die Plandatei bleibt, was sie sein soll: Methode und Raster. Wer eine
+  der fuenf Festlegungen aendern will, loest diese Entscheidung ab, statt einen Absatz
+  umzuschreiben.
+
+
+  Offen und hier benannt statt in der Prosa versteckt: die globale Ablage ~/.claude/team-kits
+  steht auf 2026.08.03-7, gebaut ist neuer, und die Einstiegsdatei ruft das Scaffold
+  fest von dort. Ein Pilot ohne Tausch misst das alte Kit. Der Tausch wird vor dem
+  ersten Lauf angemeldet, gesichert und danach zurueckgenommen, und die Ruecknahme
+  wird gemessen -- Version und Inhaltshash der drei Kits gegen den Stand davor.'
+source: Nutzerfrage 2026-08-09 warum der Plan eine Markdown-Datei statt eines Items
+  ist; docs/pilot/2026-08-09-plan.md; Rohprotokoll C:/Offline Repos/v2-pilot/_sdk-probe/observed.jsonl;
+  eigene claude -p Gegenmessung
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-09T03:29:32'

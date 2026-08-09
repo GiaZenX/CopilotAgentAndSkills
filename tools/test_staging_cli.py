@@ -649,11 +649,18 @@ def test_cli_capture_refuses_a_body_over_the_item_budget(state, capsys):
     afterwards -- about a file nothing can edit any more (`update_item` refuses hashed-field
     surgery, and there is no edit command at all). The cap is `report.ITEM_MAX_BYTES`, read from
     the validator's own constant so the two cannot drift.
+
+    THE REFUSAL NAMES NO LANDING PLACE, and the word `staging` used to be asserted here. DEC-0024
+    took it out of the message: a place a remedy prints is a place the reader completes, and what
+    they put there can already be taken. So what is asserted is the number and the direction the
+    refusal gives -- an item REFERENCES its detail --, measured on the printed line rather than on
+    the module's constant. `test_migrate.test_no_remedy_literal_this_repo_ships_names_a_place_
+    inside_a_state_directory` is what keeps a place from coming back.
     """
     body = dict(PR_FIELDS, problem="x" * (report.ITEM_MAX_BYTES + 1))
     assert run_cli_with_body(state, json.dumps(body), "capture", "PR") == 2
     err = capsys.readouterr().err
-    assert str(report.ITEM_MAX_BYTES) in err and "staging" in err
+    assert str(report.ITEM_MAX_BYTES) in err and "REFERENCES its detail" in err
     assert not os.path.exists(state.active_path("PR-0001"))
 
 

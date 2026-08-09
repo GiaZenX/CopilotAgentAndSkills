@@ -181,8 +181,14 @@ def generate_session_brief(
         staging = []
         staging_dir = state.staging_root()
         if os.path.isdir(ext_path(staging_dir)):
+            # A STAGING KEY IS A DIRECTORY, and this is the SECOND reader of that -- `validate_state`
+            # is the other one, and until now only that one asked. A pointer here is printed with a
+            # trailing slash, so every FILE under `staging/` was announced to every session as a
+            # directory: `staging/.gitkeep/` in every fresh project, and, since the migration prints
+            # instructions that put a file there on purpose, a deposit copy as well.
             staging = ["%s/%s/" % (STAGING_DIRNAME, d)
-                       for d in sorted(os.listdir(ext_path(staging_dir)))]
+                       for d in sorted(os.listdir(ext_path(staging_dir)))
+                       if os.path.isdir(ext_path(os.path.join(staging_dir, d)))]
         findings = validate_state(state, _locked=True)
         brief = {
             "kit": kit,
@@ -340,7 +346,8 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                     "error", item_id,
                     "item exceeds budget (%d bytes / %d lines; max %d/%d)"
                     % (size, lines, ITEM_MAX_BYTES, ITEM_MAX_LINES),
-                    "move detail to staging/evidence and reference it (spec II.5)",
+                    "keep the summary in the item and capture the detail as an evidence item of "
+                    "its own through the entry point, then reference it (spec II.5)",
                 ))
         except OSError:
             pass
@@ -487,6 +494,13 @@ def _check_no_v1_records_outside_the_archive(state: ProjectState) -> list:
     monolith copied back in and a project carrying the same records twice, so "could not look" may
     not leave the same silence as "looked and found none".
 
+    ...AND A DIRECTORY THAT PRODUCED NO FILES AT ALL IS THE SAME SENTENCE ONE STOREY LOWER. The
+    loop's completeness rests on the walk in `migrate.search_coverage`, and a walk is silent about a
+    directory it cannot open: measured 2026-08-08 with one subdirectory of the state denied read
+    access to the running user, this check made no finding and the shipped merge gate answered rc 0
+    over a `PROC-0001` sitting in it. `UNLISTABLE` is now a verdict of the coverage and the first
+    thing this function turns into an error.
+
     IT WAS A LIST OF CAUSES FOR ONE ROUND, and the half it did not list is what the shape costs.
     The two budgets were reported and an UNPARSABLE document was skipped in silence -- measured
     2026-08-07 against the shipped `gate_memory_complete` as a process, in a scaffolded project
@@ -518,8 +532,23 @@ def _check_no_v1_records_outside_the_archive(state: ProjectState) -> list:
     """
     from . import migrate                   # lazy: `migrate` imports this module at its own import
     findings = []
-    documents = [rel for rel, verdict, _why in migrate.search_coverage(state)
-                 if verdict == migrate.SEARCHED]
+    coverage = migrate.search_coverage(state)
+    # A SUBTREE NOBODY COULD LIST IS THE ONE COVERAGE ANSWER THAT IS A FINDING, and it is the only
+    # one of them that says this scan's own reach is unknown rather than bounded. An unsearched FILE
+    # is named and blocks nothing on purpose (see below); a directory the walk could not open hides
+    # an unknown number of files, so "did not look" is not even countable there. Both readers of the
+    # coverage refuse on it -- the dry run puts it in `unreadable`.
+    for where, why in migrate.unlistable_notes(coverage):
+        # THE STEP IS THE MIGRATION'S OWN and is not spelled a second time here (DEC-0024, second
+        # clause). The alternative that stood here until round 9 -- "or take it out of the state
+        # directory" -- is the one `migrate.THE_ONLY_UNLISTABLE_STEP` had just been stripped of, on
+        # the same class of directory: this row is produced for ANY walk error (`L28`), the
+        # canonical ones included, so a reader who followed it could carry off the directory the
+        # root item lives in. Two printers offering two answers for one condition is how the
+        # removed one comes back, so there is one answer and one place it is written.
+        findings.append(_finding("error", where, why[0].upper() + why[1:],
+                                 migrate.THE_ONLY_UNLISTABLE_STEP))
+    documents = [rel for rel, verdict, _why in coverage if verdict == migrate.SEARCHED]
     spent = 0
     _bounded = (
         "take the file out of the state directory (an editor or shell outside the "
@@ -580,8 +609,9 @@ def _check_no_v1_records_outside_the_archive(state: ProjectState) -> list:
                 "project and nothing says which copy is the state"
                 % (len(held), ", ".join(sorted(held)[:3])),
                 "run `python scripts/harness.py migrate --dry-run`: a document whose records "
-                "all became items is moved to legacy/ by the import (SR-0005), and the dry "
-                "run names every record that still needs an answer first",
+                "all became items is moved into the kernel's legacy area by the import "
+                "(SR-0005), and the dry run names every record that still needs an answer "
+                "first",
             ))
     return findings
 
@@ -600,7 +630,12 @@ def record_scan_coverage(state: ProjectState) -> dict:
 
     WHAT THAT LEAVES OPEN, said here rather than implied: nothing BLOCKS on it. A V1 store renamed
     to `tasks.yaml.bak`, or moved under `staging/` or under a dotted directory, is named by both
-    readers and stops no merge.
+    readers and stops no merge (`L19` in `docs/POST_V2_WISHLIST.md`), and one dropped into a
+    kernel-written area is not even named (`L20` there).
+
+    WHAT IS DELIBERATELY NOT IN HERE is the coverage's fifth verdict: a directory the walk could not
+    open is an error finding of `_check_no_v1_records_outside_the_archive`, not coverage, because it
+    says the coverage itself is short.
     """
     from . import migrate                   # lazy: `migrate` imports this module at its own import
     coverage = migrate.search_coverage(state)

@@ -1,0 +1,43 @@
+id: TSK-0026
+product_requirement: PR-0001
+derives_from: SR-0001
+type: test
+assigned_role: harness-verifier
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- docs/pilot/**
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- team-kits/kernel/migrate.py in der Fassung, die TSK-0023 abnimmt
+- docs/reviews/2026-08-08-tsk0023-measurements.md -- woran die Migration bisher gemessen
+  wurde
+- C:/Offline Repos/synaipse und C:/Offline Repos/portfoliomanaigement als QUELLEN,
+  die NIE geschrieben werden
+expected_outputs:
+- Die Migration laeuft gegen KOPIEN echter Projekte ausserhalb ihres Originals, und
+  dass das Original unberuehrt blieb, ist gemessen und nicht behauptet -- Hash vor
+  und nach jedem Lauf
+- 'Fuer jede Kopie: Trockenlauf, dann Ausfuehrung, dann validate, doctor, Index, Sitzungsbrief
+  -- je mit Rueckgabecode und Laufzeit'
+- 'Jede Deckungsklasse, die der Trockenlauf meldet, wird gegen den wirklichen Inhalt
+  der Kopie gehalten: was nicht durchsucht wurde, wird einzeln benannt und beurteilt'
+- Jede gedruckte Abhilfe wird MECHANISCH angewandt und das Ergebnis gemessen -- nach
+  DEC-0024 darf keine etwas ueberschreiben, und ein echtes Projekt ist der Ort, an
+  dem sich das zeigt
+- 'Der Unterschied zwischen synthetischem Pruefstand und echtem Projekt wird benannt:
+  welche Klasse kam nur hier vor'
+- Ein Defekt wird NOTIERT und nicht behoben, solange dieser Lauf laeuft
+dependencies:
+- TSK-0023
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-09T03:20:24'

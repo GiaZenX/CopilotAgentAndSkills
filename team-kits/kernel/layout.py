@@ -58,8 +58,8 @@ from .state import STAGING_DIRNAME, ProjectState
 # builder composes it. This module compares a path SEGMENT (`is_project_document`) and so needs the
 # name; the writers need the path, and one of the two spelling the other's answer is how a
 # predicate and a writer come to disagree about a directory.
-__all__ = ["STAGING_DIRNAME", "gated_documents", "is_kernel_written", "is_project_document",
-           "kernel_written_subtrees", "path_segments_composed"]
+__all__ = ["STAGING_DIRNAME", "gated_documents", "is_in_proposal_area", "is_kernel_written",
+           "is_project_document", "kernel_written_subtrees", "path_segments_composed"]
 
 # Probe values handed to the path builders. They name nothing that has to exist: a path builder
 # composes a name, it does not open a file, so `TSK-0001` and a zero request id are enough to make
@@ -120,11 +120,45 @@ def is_kernel_written(root: str, relative_path: str) -> bool:
     return False
 
 
+def is_in_proposal_area(relative_path: str) -> bool:
+    """Does this state-relative path lie in spec II.4's proposal area (`staging/`)?
+
+    ONE ANSWER FOR EVERY READER OF IT, and it is here because two of them gave two. This predicate
+    used to be a segment comparison written out wherever it was needed, and the copies did not fold
+    case: `is_project_document` compared the LOWERED path (`_relative` folds, for the reason written
+    there), `migrate._coverage_of` and `migrate.imported_legacy_ids` compared the path as the walk
+    spelled it. Measured 2026-08-08 in a state holding `Staging/PR-0001/old_procs.yaml` -- one
+    directory on this filesystem, two verdicts: the import's run-up called it SEARCHED while the
+    document inventory (this function's caller) called it no document at all, so the dry run read
+    it nowhere and named it nowhere, and the validator reported a V1 backlog record in it and
+    refused the merge. The proposal area is the one place where that split is expensive in both
+    directions: a body staged for capture carries an id and a status, so searching it reports every
+    proposal as a V1 record, and NOT searching it silently hides a V1 store somebody moved there.
+
+    The folding is the same one `_relative` does and the same one `gate_write_scope._norm` does, so
+    what this refuses to search, what a role may write and what the gate scopes per task key are
+    one answer about one directory.
+
+    TWO RESIDUALS, AND THEY POINT OPPOSITE WAYS. On a case-sensitive filesystem a directory really
+    named `Staging/` is a different directory there and is treated as the proposal area anyway --
+    an over-exclusion, which costs a report rather than a refusal. The other way round, `str.lower`
+    is not the folding a filesystem does: measured 2026-08-08 on this host, `staging.` opens the
+    same directory as `staging` (and `staging..` opens nothing), while this predicate answers False
+    for the first of the two -- so the fold agrees with the disk in case and not in this. Nothing
+    reaches that today
+    because every caller feeds it a name `os.walk` produced, and a walk produces the name the
+    directory really has -- so it is a residual of the PREDICATE and not a hole in the harness. It
+    is the entry `L29` in `docs/POST_V2_WISHLIST.md`.
+    """
+    rel = str(relative_path or "").replace("\\", "/").strip("/").lower()
+    return bool(rel) and rel.split("/")[0] == STAGING_DIRNAME
+
+
 def is_project_document(root: str, relative_path: str) -> bool:
     """Is this state-relative path a KIT DOCUMENT -- prose or config with no kernel writer?
 
     The complement of `is_kernel_written`, minus the two areas the module docstring names: a
-    dotted segment is machinery and `staging/` has its own rule.
+    dotted segment is machinery and the proposal area has its own rule (`is_in_proposal_area`).
     """
     rel = str(relative_path or "").replace("\\", "/").strip("/").lower()
     if not rel:
@@ -132,7 +166,7 @@ def is_project_document(root: str, relative_path: str) -> bool:
     parts = rel.split("/")
     if any(part.startswith(".") for part in parts):
         return False
-    if parts[0] == STAGING_DIRNAME:
+    if is_in_proposal_area(rel):
         return False
     return not is_kernel_written(root, rel)
 

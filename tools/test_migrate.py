@@ -15,17 +15,24 @@ file that existed" is a fact about the file. If the history is unreachable these
 than skip -- a measurement that quietly does not happen is the failure mode this suite has been
 bitten by before, and a skip is indistinguishable from a pass in a summary line.
 """
+import ast
 import collections
+import contextlib
 import copy
+import getpass
 import hashlib
 import importlib.util
 import io
+import itertools
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import tokenize
+import unicodedata
+import urllib.parse
 
 import pytest
 import yaml
@@ -353,8 +360,8 @@ def _migrated(state):
 
 
 def test_the_import_writes_typed_items_at_their_initial_status(v1_state):
-    """Spec II.10: an imported item keeps its REGULAR INITIAL status and carries the confirmation
-    flag with a null approval_ref. RED if the V1 status were walked onto the automaton."""
+    """Spec II.10: an imported item keeps its REGULAR INITIAL status and carries the import mark
+    with a null approval_ref. RED if the V1 status were walked onto the automaton."""
     assert _migrated(v1_state) == 0
     items = [name for name, _path in v1_state.iter_active_items("PROC")]
     active, _archived = _fixture_split()
@@ -362,7 +369,7 @@ def test_the_import_writes_typed_items_at_their_initial_status(v1_state):
     active_in_v1 = v1_state.read_item("PROC-0001")
     assert active_in_v1["status"] == "DRAFT"
     assert active_in_v1["approval_ref"] is None
-    assert active_in_v1[migrate.CONFIRMATION_FLAG] is True
+    assert active_in_v1[migrate.IMPORT_MARK] is True
     assert active_in_v1[migrate.LEGACY_FIELD]["legacy_status"] == "ACTIVE"
     assert active_in_v1[migrate.LEGACY_FIELD]["mapped_status"] == "ACTIVE"
     # carried VERBATIM: the V1 record's scalar `owner` arrives as a scalar `roles`, because no
@@ -521,7 +528,7 @@ def test_a_document_that_does_not_parse_refuses_the_run(v1_state):
     io.open(os.path.join(v1_state.root, "broken.yaml"), "w", encoding="utf-8",
             newline="\n").write("processes:\n  PROC-0001: {\n")
     plan = _planned(v1_state)
-    assert plan["unreadable"] and "broken.yaml" in plan["unreadable"][0]
+    assert plan["unreadable"] and plan["unreadable"][0][0] == "broken.yaml", plan["unreadable"]
     assert not migrate.plan_is_executable(plan)
     before = _snapshot(v1_state.root)
     assert _run(v1_state, "migrate", "--plan", migrate.plan_digest(plan),
@@ -1133,7 +1140,7 @@ def test_a_record_finished_in_v1_is_written_to_the_archive_and_not_to_active(v1_
     assert item["id"] not in in_active
     assert item[migrate.LEGACY_FIELD]["written_to"] == "archive"
     # it is still an unconfirmed import: no approval was minted for it
-    assert item["approval_ref"] is None and item[migrate.CONFIRMATION_FLAG] is True
+    assert item["approval_ref"] is None and item[migrate.IMPORT_MARK] is True
 
 
 def test_the_archive_path_takes_a_record_the_field_contract_would_refuse(v1_state):
@@ -1177,7 +1184,13 @@ def test_the_archive_path_takes_a_record_the_field_contract_would_refuse(v1_stat
     assert open_task[0][migrate.LEGACY_FIELD]["legacy_status"] == "TODO"
     assert "root_revision" in open_task[0][migrate.LEGACY_FIELD]["unresolved"]
 
-    # remove the open task entirely and the finished one migrates on its own, in a fresh state
+    # remove the open task entirely and the finished one migrates on its own. The run above
+    # absorbed `tasks.yaml` and retired it to `legacy/tasks.yaml`, so writing a THIRD document of
+    # that name is the field case `occupied_landings` refuses: the move would replace the copy the
+    # receipt above carries the hash of. This does what the refusal's own remedy says -- takes the
+    # retired copy out of the state directory -- because what is measured below is the archive
+    # path, not the retirement.
+    os.remove(os.path.join(v1_state.root, "legacy", "tasks.yaml"))
     io.open(os.path.join(v1_state.root, "tasks.yaml"), "w", encoding="utf-8", newline="\n").write(
         "tasks:\n"
         "  TSK-0001:\n"
@@ -2162,7 +2175,7 @@ def test_a_finished_v1_sr_is_archived_at_accepted_with_no_approval_behind_it(v1_
     item = yaml.safe_load(io.open(os.path.join(archived, names[0]), encoding="utf-8"))
     assert item["status"] == "ACCEPTED", item
     assert item["approval_ref"] is None, item
-    assert item[migrate.CONFIRMATION_FLAG] is True, item
+    assert item[migrate.IMPORT_MARK] is True, item
     # ...and nothing anywhere was asked: no approval request of any kind exists in this state, so
     # `ACCEPTED` rests on the missing table row and on nothing else
     pending = os.path.join(v1_state.root, "approvals", "pending")
@@ -2275,7 +2288,7 @@ def test_a_record_no_answer_can_fill_is_archived_with_its_reason_instead_of_bloc
     assert "class" in legacy["unresolved"] and "priority" in legacy["unresolved"], legacy
     assert set(legacy["missing_required_fields"]) == set(entry["unresolved_fields"])
     assert filed[0]["status"] == initial_status("PR")
-    assert filed[0][migrate.CONFIRMATION_FLAG] is True
+    assert filed[0][migrate.IMPORT_MARK] is True
     assert filed[0]["approval_ref"] is None
     # ...and nothing about it is live: the archive is where it is, and no active item exists
     assert not os.path.exists(v1_state.active_path(filed[0]["id"]))
@@ -2338,6 +2351,307 @@ def test_a_fully_absorbed_v1_store_moves_to_legacy_with_its_hash_in_the_receipt(
     assert before in receipt["consequences"], receipt["consequences"]
     assert "legacy/process_definitions.yaml" in receipt["consequences"], receipt["consequences"]
     assert not report.validate_state(v1_state)
+
+
+def _retirement_state(tmp_path, name):
+    """A state whose single V1 document is fully absorbed by one run -- the shortest SR-0005 case."""
+    state = _plain_state(tmp_path, name)
+    _write_document(state, "a.yaml", _v1_records_text())
+    return state
+
+
+def _one_run(state):
+    plan = migrate.build_plan(state, {}, _ARCHIVE_YEAR)
+    return migrate.execute(state, plan, migrate.plan_digest(plan))
+
+
+def test_a_second_document_of_the_same_name_does_not_replace_the_one_already_retired(tmp_path):
+    """`os.replace` is atomic AND silent, and SR-0005's move never asked what was there.
+
+    Measured 2026-08-09: a run absorbed `old_procs.yaml`, retired it to `legacy/old_procs.yaml` and
+    filed that copy's sha256 in its Decision item. A second document of the same name appeared --
+    the field case is a restored backup or a fresh export -- and the second run replaced the
+    retired copy. The first receipt's hash then named bytes that exist nowhere, and nothing said
+    so: the dry run printed `old_procs.yaml -> legacy/old_procs.yaml` exactly as it had the first
+    time.
+
+    THE SAME AUTHORITY THE REMEDIES ARE ASKED ABOUT, one file over: being planned says nothing
+    about the landing place being free. It is reported by the dry run (SR-0001's rule that the run
+    refuses on nothing the dry run did not name) and asked again one step before the write.
+
+    RED without `occupied_landings`: the second run returns 0, `legacy/old_procs.yaml` holds the
+    second document, and the first receipt's hash matches nothing in the state. It is NOT red
+    without the second half of that bolt -- the question inside `_retire_absorbed_documents` --
+    because the plan built here already carries the occupied landing and `plan_is_executable`
+    refuses above the move loop. That half has its own measurement in the test below, and this
+    sentence names the seam rather than claiming to cover it.
+    """
+    state = _retirement_state(tmp_path, "retired_twice")
+    first = _one_run(state)
+    retired = os.path.join(state.root, "legacy", "a.yaml")
+    kept = first["moved"][0]["sha256"]
+    assert hashlib.sha256(open(retired, "rb").read()).hexdigest() == kept
+
+    _write_document(state, "a.yaml", _v1_records_text(count=1, first=2))
+    plan = migrate.build_plan(state, {}, _ARCHIVE_YEAR)
+    assert plan["occupied_landings"] == [["a.yaml", "legacy/a.yaml", kept]], (
+        "the row the refusal is built from no longer carries what stands there: %s"
+        % plan["occupied_landings"])
+    assert not migrate.plan_is_executable(plan)
+    printed = migrate.render(plan, state)
+    assert "ALREADY TAKEN" in printed and "legacy/a.yaml is already taken" in printed, printed
+    with pytest.raises(migrate.MigrationError) as refused:
+        migrate.execute(state, plan, migrate.plan_digest(plan))
+    assert "already taken" in str(refused.value), refused.value
+    assert hashlib.sha256(open(retired, "rb").read()).hexdigest() == kept, (
+        "the copy the first run's receipt carries the hash of was replaced after all")
+
+    # ...and the counter-direction: with the retired copy taken out of the state directory -- the
+    # remedy the refusal names -- the same second document retires normally.
+    os.remove(retired)
+    second = _one_run(state)
+    assert [doc["path"] for doc in second["moved"]] == ["a.yaml"], second
+    assert hashlib.sha256(open(retired, "rb").read()).hexdigest() != kept
+
+
+def _occupied_report(state):
+    """The `ALREADY TAKEN` section of a real dry run over `state`, line by line."""
+    printed = migrate.render(migrate.build_plan(state, {}, _ARCHIVE_YEAR), state).splitlines()
+    start = next(i for i, line in enumerate(printed) if line.startswith("LANDING PLACE UNDER"))
+    end = next((i for i in range(start + 1, len(printed)) if not printed[i].startswith(" ")),
+               len(printed))
+    return printed[start:end]
+
+
+def test_the_place_a_taken_landing_is_freed_to_is_named_and_lies_outside_the_state_directory(
+        tmp_path):
+    """The user's decision of 2026-08-09 on `L35`, carried out instead of argued about.
+
+    WHAT THIS SECTION USED TO SAY: "take the file each line above names on the right out of the
+    state directory, from a shell outside the session, then re-run the dry run. Where it goes is
+    yours to choose." No destination, and the source gone -- and what the reader carries off is a
+    file an EARLIER run put under the kernel's legacy area, whose only other trace is the sha256 in
+    that run's Decision item. DEC-0024's second clause forbids exactly this: an instruction may not
+    destroy, not even its own source.
+
+    WHY THE PLACE MAY NOT BE THE ONE `deposit_of` NAMES, which is the whole reason there is a
+    second construction: the point of this remedy is that the file afterwards is GONE from the
+    landing place. A copy under `staging/` would leave it inside the project, and the next run
+    would find the same condition it just reported.
+
+    THE THREE PROPERTIES, each measured by doing it and not by reading the sentence:
+
+      * the named place lies OUTSIDE the state directory -- resolved against the state root, not
+        judged by how it is spelled;
+      * carrying the two steps out in the printed order frees the landing place AND keeps the file:
+        the copy is byte-for-byte the original, and the next dry run is executable;
+      * two different files that occupy the SAME landing place at different times are sent to two
+        different names. That is the chain the digest in the name exists for, and it runs here:
+        first occupant copied out and removed, second run retires a different document to the same
+        place, and the second instruction may not land on the first copy.
+
+    RED without the construction: with "take the file out of the state directory, where it goes is
+    yours to choose" back, the section names no place at all and `_instruction` returns None on
+    every line of it. RED with `overflow_deposit_of` reduced to the landing path -- the shape
+    `deposit_of` has -- on the last assertion: one name for two files, and the first one is gone.
+    """
+    state = _retirement_state(tmp_path, "freed_landing")
+    first = _one_run(state)
+    retired = os.path.join(state.root, "legacy", "a.yaml")
+    kept = first["moved"][0]["sha256"]
+    _write_document(state, "a.yaml", _v1_records_text(count=1, first=2))
+
+    section = _occupied_report(state)
+    named = [one for one in (_instruction(line) for line in section) if one is not None]
+    assert len(named) == 1 and len(named[0]) == 1, (
+        "the section names %s place(s) to copy the occupant to: %s" % (named, section))
+    target = named[0][0]
+
+    # OUTSIDE, ASKED OF THE RESOLVED PATH. A spelling test would agree with any `..` somebody wrote.
+    landed = os.path.normcase(os.path.abspath(os.path.join(state.root, *target.split("/"))))
+    root = os.path.normcase(os.path.abspath(state.root)) + os.sep
+    assert not landed.startswith(root), (
+        "the copy the reader is told to make lands inside the state directory: %s" % landed)
+    assert target == migrate.overflow_deposit_of("legacy/a.yaml", kept), target
+
+    # THE TWO STEPS, IN THE PRINTED ORDER, on the real filesystem.
+    os.makedirs(os.path.dirname(landed))
+    shutil.copy(retired, landed)
+    assert hashlib.sha256(open(landed, "rb").read()).hexdigest() == kept, (
+        "the copy is not the file it was made of")
+    os.remove(retired)
+    freed = migrate.build_plan(state, {}, _ARCHIVE_YEAR)
+    assert freed["occupied_landings"] == [] and migrate.plan_is_executable(freed), (
+        "the two steps this section prints do not clear the condition it prints them for: %s"
+        % freed["occupied_landings"])
+    migrate.execute(state, freed, migrate.plan_digest(freed))
+    assert hashlib.sha256(open(retired, "rb").read()).hexdigest() != kept, (
+        "the same bytes are back at the landing place, so the line below measures one file")
+
+    # ...AND THE SAME PLACE, TAKEN BY A DIFFERENT FILE, IS SENT SOMEWHERE ELSE. Without the content
+    # in the name this second instruction lands on the copy made above and the first file is gone.
+    _write_document(state, "a.yaml", _v1_records_text(count=1, first=3))
+    again = [one for one in (_instruction(line) for line in _occupied_report(state))
+             if one is not None]
+    assert len(again) == 1 and len(again[0]) == 1, again
+    assert again[0][0] != target, (
+        "two files that stood at legacy/a.yaml in turn are sent to one name, so following the "
+        "second instruction takes the first one away: %s" % target)
+    assert os.path.isfile(landed) and \
+        hashlib.sha256(open(landed, "rb").read()).hexdigest() == kept, (
+        "the first copy did not survive the second instruction")
+
+    # ...AND THE BRANCH WHERE THE NAME CANNOT BE BUILT AT ALL, because a section that names a place
+    # it could not construct would be the worst of the three. The occupant is made unreadable, so
+    # `_occupant_digest` has nothing: no place may be named, and no cause may be guessed either --
+    # `_is_occupied` counts a directory and a dangling link too, and a remedy that said "give the
+    # session read access" would send the reader after the wrong thing for those.
+    with _unreadable(retired):
+        blind = _occupied_report(state)
+        assert [one for one in (_instruction(line) for line in blind) if one is not None] == [], (
+            "a place is named for a file this run could not read, so the name cannot carry that "
+            "file's content: %s" % blind)
+        assert any("could not read" in line for line in blind), blind
+
+
+def test_the_move_asks_again_when_the_place_was_free_while_the_plan_was_built(tmp_path):
+    """The second half of the same bolt, in the only order that reaches it.
+
+    The test above builds its plan when the landing place is ALREADY taken, so
+    `plan_is_executable` refuses at the top of `execute` and the move loop is never entered:
+    measured 2026-08-09, that test stays GREEN with the question inside
+    `_retire_absorbed_documents` removed. What reaches that question is this order -- the place
+    free while the plan is built, the file appearing afterwards, the same plan then executed.
+
+    WHAT SPAN IT REALLY GUARDS, and this is why the test drives `execute` directly instead of the
+    command line: through the CLI a file appearing between the dry run and the writing run is
+    caught earlier, by the digest and by `occupied_landings` in the freshly built plan. The span
+    left over is the one inside a single run, between `build_plan` and the move loop, where nothing
+    else asks again.
+
+    RED without the `_is_occupied` question in `_retire_absorbed_documents`: `os.replace` takes the
+    retired copy away without a word, the run finishes, and the hash the FIRST run's Decision item
+    carries names bytes that exist nowhere.
+    """
+    state = _retirement_state(tmp_path, "taken_after_planning")
+    first = _one_run(state)
+    retired = os.path.join(state.root, "legacy", "a.yaml")
+    kept = first["moved"][0]["sha256"]
+    carried = open(retired, "rb").read()
+    assert hashlib.sha256(carried).hexdigest() == kept
+
+    _write_document(state, "a.yaml", _v1_records_text(count=1, first=2))
+    os.remove(retired)
+    plan = migrate.build_plan(state, {}, _ARCHIVE_YEAR)
+    assert plan["occupied_landings"] == [], (
+        "the plan already knows the place is taken, so this measures the first half again")
+    assert migrate.plan_is_executable(plan), "the run refuses above the move loop"
+
+    io.open(retired, "wb").write(carried)         # ...and now something stands there again
+    with pytest.raises(migrate.MigrationError) as refused:
+        migrate.execute(state, plan, migrate.plan_digest(plan))
+    assert "already there" in str(refused.value), refused.value
+    assert hashlib.sha256(open(retired, "rb").read()).hexdigest() == kept, (
+        "the copy the first run's receipt carries the hash of was replaced after all")
+    assert os.path.exists(os.path.join(state.root, "a.yaml")), (
+        "the document was moved away even though the run refused the move")
+
+
+def test_the_move_replaces_a_file_that_appears_between_the_question_and_the_write(tmp_path,
+                                                                                 monkeypatch):
+    """The entry is `L30` in `docs/POST_V2_WISHLIST.md`.
+
+    The question one step before the write is not the write. Between `_is_occupied` and the
+    `os.replace` that carries the document there are two more calls, and `os.replace` has no
+    no-clobber variant on either platform this harness runs on -- it replaces what is there,
+    atomically and without a word. So a file created inside that window is taken away by a run
+    that asked and was told the place was free.
+
+    THE WINDOW IS OCCUPIED DETERMINISTICALLY HERE rather than raced for: `os.makedirs` is the call
+    the run makes between the two, so a writer standing in for "something else wrote just now" is
+    put there. That is the mechanism itself and not an approximation of it -- what the test cannot
+    do is decide how likely the window is, which is why this is an entry in the hole list and not
+    a defect report.
+
+    RED the day the move stops being an `os.replace` onto a bare path -- which is the only way to
+    close this -- and green while it is one.
+    """
+    state = _retirement_state(tmp_path, "window")
+    plan = migrate.build_plan(state, {}, _ARCHIVE_YEAR)
+    assert plan["occupied_landings"] == [] and migrate.plan_is_executable(plan)
+
+    landing = os.path.join(state.root, "legacy", "a.yaml")
+    real_makedirs = os.makedirs
+    here = os.path.normcase(os.path.abspath(os.path.dirname(landing)))
+
+    def occupy(path, **kwargs):
+        real_makedirs(path, **kwargs)
+        # ONLY the call the move itself makes: `capture` builds directories too, and occupying one
+        # of those would measure something else entirely.
+        asked = os.path.normcase(os.path.abspath(str(path).replace("\\\\?\\", "")))
+        if asked == here and not os.path.exists(landing):
+            io.open(landing, "w", encoding="utf-8", newline="\n").write("somebody else's file\n")
+
+    monkeypatch.setattr(migrate.os, "makedirs", occupy)
+    result = migrate.execute(state, plan, migrate.plan_digest(plan))
+    monkeypatch.undo()
+
+    assert [doc["path"] for doc in result["moved"]] == ["a.yaml"], result["moved"]
+    assert "somebody else's file" not in io.open(landing, encoding="utf-8").read(), (
+        "the move no longer replaces what appeared in the window, so this entry is closed")
+
+
+def test_a_run_that_stops_half_way_through_the_move_says_which_documents_it_moved(tmp_path):
+    """The receipt of an interrupted run, about the one thing that run did to a source file.
+
+    Measured 2026-08-09, every condition a real filesystem condition and nothing patched: a state
+    holding `a.yaml` (a document an earlier run imported and that was put back, so this run absorbs
+    it through `already_imported`) and `sub/b.yaml` (a record this run imports), with a FILE at
+    `legacy/sub` so that `os.makedirs` cannot build the second document's landing directory. The
+    run moved `a.yaml`, stopped on `sub/b.yaml` -- and its Decision item said
+
+        fully absorbed and moved to legacy/ (every record of them became an item): none
+        carried, not translated (left in place, hashes in `context` above): a.yaml
+
+    Two sentences about one file, in canonical state, both false: `a.yaml` was under `legacy/` and
+    had been renamed by this very run. The receipt of a half-written run is the one record of what
+    happened, so a `none` there is worse than the silence it replaced.
+
+    RED without the caller-held `moved` list: the two lines above come back, and the refusal names
+    no moved document either.
+    """
+    state = _plain_state(tmp_path, "interrupted_move")
+    _write_document(state, "a.yaml", _v1_records_text())
+    _one_run(state)
+    shutil.copy(os.path.join(state.root, "legacy", "a.yaml"),
+                os.path.join(state.root, "a.yaml"))
+    os.remove(os.path.join(state.root, "legacy", "a.yaml"))
+    _write_document(state, "sub/b.yaml", _v1_records_text(count=1, first=2))
+    io.open(os.path.join(state.root, "legacy", "sub"), "w", encoding="utf-8",
+            newline="\n").write("a file where the second document's landing directory would go\n")
+
+    plan = migrate.build_plan(state, {}, _ARCHIVE_YEAR)
+    assert migrate.absorbed_documents(plan) == ["a.yaml", "sub/b.yaml"], plan
+    assert migrate.plan_is_executable(plan), (
+        "the run refuses before it starts, so nothing below measures an INTERRUPTED one")
+    with pytest.raises(migrate.MigrationError) as refused:
+        migrate.execute(state, plan, migrate.plan_digest(plan))
+
+    assert not os.path.exists(os.path.join(state.root, "a.yaml")), (
+        "nothing was moved, so this measures no interrupted move")
+    assert os.path.exists(os.path.join(state.root, "legacy", "a.yaml"))
+    assert "a.yaml" in str(refused.value), refused.value
+
+    receipt = yaml.safe_load(io.open(
+        sorted(path for _name, path in state.iter_active_items("DEC"))[-1], encoding="utf-8"))
+    assert "THE RUN DID NOT FINISH" in receipt["decision"], receipt["decision"]
+    moved_line = [line for line in receipt["consequences"].splitlines()
+                  if "moved to legacy/" in line]
+    carried_line = [line for line in receipt["consequences"].splitlines()
+                    if line.startswith("carried")]
+    assert len(moved_line) == 1 and "a.yaml -> legacy/a.yaml" in moved_line[0], moved_line
+    assert len(carried_line) == 1 and "a.yaml" not in carried_line[0], (
+        "a document this run moved and renamed is reported as left in place: %s" % carried_line)
 
 
 def test_a_partly_translated_store_stays_exactly_where_it_is(v1_state):
@@ -3325,7 +3639,8 @@ def test_moving_the_kernels_own_contract_table_alone_moves_the_digest(
     THE COUNTER-DIRECTION IS IN THE SAME RUN, because "the digest moves when the kit moves" would
     be the opposite lie: a kernel constant the plan draws no VERDICT from leaves it exactly where
     it was. The digest is over the plan, not over the harness's version -- and what a kit update
-    changes BELOW the plan (how `execute` writes what the plan describes) it does not cover.
+    changes BELOW the plan (how `execute` writes what the plan describes) it does not cover. That
+    last half is the entry `L22` in `docs/POST_V2_WISHLIST.md`.
     """
     from kernel import layout
     repo = os.path.dirname(v1_state.root)
@@ -3464,6 +3779,8 @@ def test_no_shipped_text_says_an_import_arrives_at_its_initial_status_full_stop(
 
     RED before this round: the sentence in all three constitutions -- `Imports arrive at their
     INITIAL status carrying no approval, so nothing an import writes opens a gate.`
+
+    What the three word lists cannot decide is the entry `L21` in `docs/POST_V2_WISHLIST.md`.
     """
     assert _migrated(v1_state) == 0
     arrived = [(item["id"], item["status"], initial_status(parse_id(item["id"])[0]))
@@ -3585,6 +3902,122 @@ def test_the_whole_scan_budget_names_the_documents_it_did_not_reach(v1_state, mo
             "%s was not reached and not reported: %s" % (rel, sorted(findings)))
 
 
+# The probe that measures WHICH DOCUMENTS a `validate_state` run opens, in its own process for the
+# same reason as `_WHO_OPENED_IT`: `sys.addaudithook` cannot be taken off again.
+#
+# WHY IT IS THE `open` EVENT AND NOT THE SCAN'S OWN READER. `_reads_recorded` wraps
+# `migrate._read_document`, which answers "was it parsed"; the question here is whether the BYTES
+# were ever in this process's hand, and a second opener beside that reader would be invisible to a
+# wrapper around it.
+_WHICH_DOCUMENTS_THE_VALIDATOR_OPENS = '''\
+import json
+import os
+import sys
+
+STATE, KERNEL = sys.argv[1], sys.argv[2]
+sys.path.insert(0, KERNEL)
+
+_MARKER = os.path.normcase(os.path.abspath(STATE))
+_armed = []
+_seen = set()
+
+
+def _state_relative(target):
+    """`target` as a path under the state root, or None -- INDEPENDENT OF THE PATH'S SPELLING.
+
+    The kernel composes paths through `ext_path`, so one and the same document arrives at this
+    hook extended-length from one caller and plain from another -- measured on this host, the root
+    item and the lock came extended, the scanned document plain. Anchored with `startswith` every
+    extended-length open falls out of the measurement, and that is the direction which makes a file
+    that WAS read look like one that was never opened. So the root is looked for inside the
+    resolved path, where the prefix cannot sit in front of it.
+    """
+    resolved = os.path.normcase(os.path.abspath(target))
+    at = resolved.find(_MARKER)
+    if at < 0:
+        return None
+    return resolved[at + len(_MARKER):].lstrip(os.sep).replace(os.sep, "/")
+
+
+def _hook(event, args):
+    if event != "open" or not _armed:
+        return
+    if not isinstance(args[0], str):
+        return                                  # a file descriptor names no path
+    rel = _state_relative(args[0])
+    if rel:
+        _seen.add(rel)
+
+
+sys.addaudithook(_hook)
+from kernel import report                                               # noqa: E402
+from kernel.state import ProjectState                                   # noqa: E402
+
+_armed.append(True)
+state = ProjectState(STATE)
+findings = report.validate_state(state)
+_armed.pop()
+print(json.dumps({"opened": sorted(_seen), "findings": findings}))
+'''
+
+
+def test_the_two_remedies_that_still_move_a_file_differ_in_whether_the_file_was_read(tmp_path):
+    """Two remedies say "take the file out of the state directory", and only ONE of them cannot
+    name a destination.
+
+    WHAT THIS IS UNDER. `L35` in `docs/POST_V2_WISHLIST.md` names a constructed destination
+    (`migrate.overflow_deposit_of`) for the one remedy that makes a reader remove a file, and
+    carries the other two as rests. The reason it recorded for both was that they "deliberately do
+    not read the file", so no sha256 for the name exists -- and for one of the two that was false:
+    a document that fails to PARSE has been read, one line earlier, by `migrate._read_document`.
+    An entry may be a rest, but not for a reason the code contradicts.
+
+    SO THE PROPERTY IS MEASURED INSTEAD OF ASSERTED, and it is the one the split rests on: the
+    document over `DOCUMENT_MAX_BYTES` is never opened at all -- there the digest really is only
+    available for the price of the unbounded reader the bound exists against -- while the
+    unparsable one is opened before it fails, so its bytes were in hand.
+
+    RED in either direction: it goes red if the bounded branch starts reading (measured in a clone
+    outside this repo by moving the read in front of the size question -- `big.yaml` then appears
+    among the opened paths), and red if the parse branch stops reading, which is what would make
+    the sentence it corrects true again.
+    """
+    from kernel import report
+    state = _state_with_a_root_item(tmp_path, "what_validate_opens")
+    _write_document(state, "broken.yaml", "processes:\n  PROC-0001: {\n")
+    big = _write_document(state, "big.yaml",
+                          "padding: |\n"
+                          + "  the V1 monolith of a project that has been running for years\n"
+                          * (report.DOCUMENT_MAX_BYTES // 60 + 200))
+    assert os.path.getsize(big) > report.DOCUMENT_MAX_BYTES, os.path.getsize(big)
+    probe = tmp_path / "what_validate_opens.py"
+    io.open(str(probe), "w", encoding="utf-8", newline="\n").write(
+        _WHICH_DOCUMENTS_THE_VALIDATOR_OPENS)
+    done = subprocess.run([sys.executable, "-B", str(probe), state.root,
+                           os.path.join(ROOT, "team-kits")],
+                          capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, done.stdout + done.stderr
+    seen = json.loads(done.stdout.strip().splitlines()[-1])
+    opened = set(seen["opened"])
+    findings = {one["item"]: one for one in seen["findings"]}
+
+    # WHICH REMEDIES THIS IS ABOUT, taken off the run rather than listed here: every finding whose
+    # remedy still sends the reader out of the state directory. A third one appearing is a change
+    # `L35` has to answer for, so it fails here rather than passing unnoticed.
+    moves = sorted(rel for rel, one in findings.items()
+                   if "out of the state directory" in one["remedy"])
+    assert moves == ["big.yaml", "broken.yaml"], moves
+    # THE COUNTER-DIRECTION FIRST: this run really did open files under the state root, so "not
+    # opened" below is an answer and not an empty measurement.
+    assert [rel for rel in opened if rel.startswith("product/active/")], sorted(opened)
+    assert "big.yaml" not in opened, (
+        "the document over the per-document bound was opened after all, so `_bounded` stands where "
+        "a digest for its name would cost nothing and L35's reason for it is gone")
+    assert "broken.yaml" in opened, (
+        "the unparsable document was never opened, so the parse failed without bytes and the "
+        "reason L35 used to give for both remedies would be true again")
+
+
 def _gate_memory_complete(repo, item_id="PR-0001"):
     """The shipped merge gate as a PROCESS, against `repo`. rc 2 = refused, 0 = the merge proceeds.
 
@@ -3676,7 +4109,7 @@ def test_the_dry_run_and_the_validator_name_an_unreadable_document_the_same_way(
     state = _state_with_a_root_item(tmp_path, "agree")
     _write_document(state, "old_procs.yaml", _v1_records_text() + "  PROC-0002: {\n")
     plan = migrate.build_plan(state)
-    assert plan["unreadable"] and plan["unreadable"][0].startswith("old_procs.yaml "), plan
+    assert plan["unreadable"] and plan["unreadable"][0][0] == "old_procs.yaml", plan
     assert not migrate.plan_is_executable(plan)
     finding = [one for one in report_module().validate_state(state)
                if one["item"] == "old_procs.yaml"]
@@ -3725,9 +4158,14 @@ def test_a_kit_document_in_the_encoding_a_windows_editor_writes_is_named_not_a_t
         the file's name is in the gate's message, the message is not an internal error, and
         `validate` makes a finding about that file instead of dying.
 
-    RED without the widened `except` in `_read_document`: the ANSI half fails on the first three
-    assertions (the gate says "internal error", carries a traceback and never names the file) and
-    the UTF-16 half fails because `validate_state` raises out of the test.
+    RED WITHOUT THE BYTE-READING in `_read_document` -- and NOT without the widened `except`, which
+    is what the previous version of this line claimed. Both directions measured 2026-08-08 in a
+    clone outside this repo: with `except (OSError, yaml.YAMLError)` restored, this test and the
+    reader's contract test stay GREEN (a `ReaderError` IS a `YAMLError`, so the encoding class was
+    never the one the widening carries); with the read put back into text mode with a codec chosen
+    in the module, this test fails -- the UTF-16 half first, because a stream the format declares
+    stops being read. What the widened `except` does carry is measured one test further on,
+    `test_a_document_nested_deeper_than_the_reader_can_follow_is_named_not_a_crash`.
     """
     state = _state_with_a_root_item(tmp_path, "encodings")
     repo = os.path.dirname(state.root)
@@ -3754,7 +4192,7 @@ def test_a_kit_document_in_the_encoding_a_windows_editor_writes_is_named_not_a_t
     assert ansi_findings["old_procs.yaml"]["severity"] == "error"
     assert "NOT SEARCHED" in ansi_findings["old_procs.yaml"]["message"]
     plan = migrate.build_plan(state)
-    assert plan["unreadable"] and plan["unreadable"][0].startswith("old_procs.yaml "), plan
+    assert plan["unreadable"] and plan["unreadable"][0][0] == "old_procs.yaml", plan
     assert not migrate.plan_is_executable(plan)
 
 
@@ -3840,11 +4278,18 @@ def _seven_placements(state, text):
 
     Seven WRITES rather than seven states, because what is measured is that the two readers agree
     about each file, and a reader that answers per file has to meet them all at once.
+
+    Returns the record of what it wrote. That record is an ORACLE the readers under test do not
+    share: it is built while writing, so nothing about it depends on being able to walk the tree
+    afterwards.
     """
+    written = []
     for rel in ("old_procs.yaml", "sub/old_procs.yaml", "old_procs.yml", "old_procs.json",
                 "old_procs.yaml.bak", ".legacy/old_procs.yaml",
                 "staging/PR-0001/old_procs.yaml"):
         _write_document(state, rel, text)
+        written.append(rel)
+    return written
 
 
 def test_every_file_under_the_state_root_gets_exactly_one_search_verdict(tmp_path):
@@ -3855,22 +4300,28 @@ def test_every_file_under_the_state_root_gets_exactly_one_search_verdict(tmp_pat
     predecessor made a property of: `report` decided which files reach the search with three
     conditions of its own while `migrate` decided it with three others.
 
+    THE ORACLE IS THE FIXTURE'S OWN WRITES, not a walk. The previous version of this test compared
+    `search_coverage` against an `os.walk` of the same tree -- the same call whose blindness it was
+    supposed to measure -- so both sides went silent together over a directory the walk could not
+    open, and the test stayed green through it (measured 2026-08-08; see
+    `test_a_directory_the_walk_cannot_open_is_named_and_refuses_the_run`). What is written below is
+    recorded as it is written, and the coverage is held against that record.
+
     RED without `search_coverage`: there is no single answer to compare, which is the point --
     with the run-up restored to two implementations the agreement test below fails and this one
     cannot be written at all.
+
+    The residual measured at the end -- a dotted path that is no YAML document is in no report --
+    is carried by `L19` in `docs/POST_V2_WISHLIST.md`.
     """
     state = _plain_state(tmp_path, "total")
-    _seven_placements(state, _v1_records_text())
-    walked = set()
-    for current, _dirs, files in os.walk(state.root):
-        for name in files:
-            walked.add(os.path.relpath(os.path.join(current, name),
-                                       state.root).replace(os.sep, "/"))
+    written = _seven_placements(state, _v1_records_text())
     coverage = migrate.search_coverage(state)
-    assert [rel for rel, _v, _w in coverage] == sorted(walked), (
-        "the coverage and the directory are not the same set of files")
+    assert [rel for rel, _v, _w in coverage] == sorted(written), (
+        "the coverage and what this fixture put on the disk are not the same set of files")
     assert len({rel for rel, _v, _w in coverage}) == len(coverage), "a file was classified twice"
-    verdicts = {migrate.SEARCHED, migrate.UNSEARCHED, migrate.KERNEL, migrate.MACHINERY}
+    verdicts = {migrate.SEARCHED, migrate.UNSEARCHED, migrate.KERNEL, migrate.MACHINERY,
+                migrate.UNLISTABLE}
     assert {verdict for _rel, verdict, _why in coverage} <= verdicts
     assert all(why for _rel, verdict, why in coverage if verdict != migrate.SEARCHED), (
         "a verdict other than SEARCHED came back without a reason")
@@ -3962,8 +4413,7 @@ def test_the_dry_run_and_the_validator_answer_the_same_about_every_file(tmp_path
     # many words: an unsearched file is NAMED and stops nothing. A V1 store renamed out of the
     # search's reach passes the merge gate, and the reason it is not an error is that a project
     # cannot be blocked out of the `README.md` and `product/masterplan.md` its own kit ships. The
-    # entry that has to carry this belongs in the hole list, which is outside this task's scope;
-    # it is proposed with the round rather than written here.
+    # entry that has to carry this is `L19` in `docs/POST_V2_WISHLIST.md`.
     alone = _state_with_a_root_item(tmp_path, "renamed_out_of_reach")
     _write_document(alone, "old_procs.yaml.bak", _v1_records_text())
     assert [entry["path"] for entry
@@ -3972,6 +4422,2614 @@ def test_the_dry_run_and_the_validator_answer_the_same_about_every_file(tmp_path
     assert _gate_memory_complete(os.path.dirname(alone.root)).returncode == 0, (
         "the merge is refused over an unsearched file -- if that is now intended, the sentence in "
         "`report.record_scan_coverage` and the hole entry behind it are what is out of date")
+
+
+@contextlib.contextmanager
+def _unlistable(directory):
+    """`directory` unopenable to THIS process for the body, and back to normal afterwards.
+
+    THE MECHANISM IS PER PLATFORM AND THE PROPERTY IS ASSERTED, which is the whole difference
+    between measuring the thing under test and measuring the test's own environment: the body only
+    ever runs under a directory `os.listdir` really refuses, and if this host will not produce one
+    the test FAILS here instead of skipping. A skip is indistinguishable from a pass in a summary
+    line, and this is a tripwire for a silence.
+    """
+    who = getpass.getuser()
+    if os.name == "nt":
+        subprocess.run(["icacls", directory, "/deny", "%s:(OI)(CI)(RD,RA)" % who],
+                       capture_output=True, text=True, timeout=60)
+        undo = ["icacls", directory, "/remove:d", who]
+    else:                                    # pragma: no cover -- this suite runs on Windows
+        os.chmod(directory, 0)
+        undo = None
+    try:
+        try:
+            os.listdir(directory)
+        except OSError:
+            pass
+        else:
+            raise AssertionError(
+                "%s is still listable to %s, so nothing below measures a walk that goes blind"
+                % (directory, who))
+        yield
+    finally:
+        if undo:
+            subprocess.run(undo, capture_output=True, text=True, timeout=60)
+        else:                                # pragma: no cover -- see above
+            os.chmod(directory, 0o755)
+        os.listdir(directory)
+
+
+def test_a_directory_the_walk_cannot_open_is_named_and_refuses_the_run(tmp_path):
+    """Totality is a claim about the WALK, and `os.walk` is silent about what it cannot open.
+
+    Measured 2026-08-08 in a state outside this repo whose `hidden/` directory was denied read
+    access to the running user, with a `PROC-0001` (`status: ACTIVE`) inside it: `search_coverage`
+    came back with two rows and named neither the directory nor the file, `build_plan` was
+    executable, `validate` had no finding, and the shipped `gate_memory_complete` answered `git
+    merge` with rc 0. The classifier answered for every file it was handed; nobody handed it that
+    subtree. Both the run-up and its own tripwire were blind in the same way, because the tripwire's
+    oracle was another `os.walk`.
+
+    THE ORACLE HERE IS WHAT THE FIXTURE WROTE. The file inside the denied directory is known
+    because this test put it there, so its absence from the coverage is measurable without asking
+    the walk anything.
+
+    RED without the `onerror` in `search_coverage`: the coverage names the directory nowhere, the
+    plan is executable, `validate` reports nothing, and the merge gate answers rc 0 over a V1 store
+    it never saw.
+
+    WHAT THE ROW COSTS IN THE OTHER DIRECTION is not measured here and is carried as `L28` in
+    `docs/POST_V2_WISHLIST.md`: the row is produced for EVERY walk error, including directories
+    nothing would have searched even when readable.
+    """
+    state = _state_with_a_root_item(tmp_path, "blind")
+    repo = os.path.dirname(state.root)
+    hidden = os.path.join(state.root, "hidden")
+    inside = _write_document(state, "hidden/old_procs.yaml", _v1_records_text())
+    assert os.path.isfile(inside)
+    assert _gate_memory_complete(repo).returncode == 2, (
+        "the fixture's own record does not stop a merge while it is READABLE, so nothing below "
+        "measures what hiding it costs")
+
+    with _unlistable(hidden):
+        coverage = migrate.search_coverage(state)
+        classified = {rel for rel, _v, _why in coverage}
+        assert "hidden/old_procs.yaml" not in classified, (
+            "the walk reached the denied directory after all, so this measures nothing")
+        named = dict(migrate.unlistable_notes(coverage))
+        assert list(named) == ["hidden/"], (
+            "a subtree nothing could look into is not in the coverage: %s" % sorted(classified))
+        assert "could not be listed" in named["hidden/"]
+        plan = migrate.build_plan(state)
+        assert "hidden/" in migrate._unreadable_paths(plan), plan["unreadable"]
+        assert not migrate.plan_is_executable(plan), (
+            "the dry run promises a run over a state it could not read all of")
+        findings = {one["item"]: one for one in report_module().validate_state(state)}
+        assert findings["hidden/"]["severity"] == "error", sorted(findings)
+        # ONE CONDITION, ONE ANSWER, and this is the assertion that says the two printers agree.
+        # Until round 9 the validator offered a second step of its own -- "or take it out of the
+        # state directory" -- which is exactly the alternative the migration's own row had just
+        # been stripped of, on a row that can name the canonical directory (`L28`, `L35`). A
+        # sentence removed at one printer and standing at the other is the same defect with a
+        # longer path to it, so the validator hands the migration's constant through. What that
+        # constant may SAY is pinned literally, one test down, off this module.
+        assert findings["hidden/"]["remedy"] == migrate.THE_ONLY_UNLISTABLE_STEP, (
+            "the validator answers an unlistable directory with a step of its own: %r"
+            % findings["hidden/"]["remedy"])
+        refused = _gate_memory_complete(repo)
+        assert refused.returncode == 2, (
+            "a directory nobody could list let the merge through: %s" % (refused.stderr or "rc 0"))
+        assert "hidden" in (refused.stdout + refused.stderr)
+
+    # ...and the counter-direction, in the same run: with the directory readable again the same
+    # state has no such finding, so the refusal above is the denial and not the fixture.
+    assert not [one for one in report_module().validate_state(state)
+                if one["item"] == "hidden/"]
+    assert migrate.unlistable_notes(migrate.search_coverage(state)) == []
+
+
+def test_the_remedy_for_a_directory_nobody_can_list_offers_no_step_that_moves_it(tmp_path):
+    """DEC-0024's second clause -- an instruction may not destroy, not even its own source.
+
+    THE ROW IS PRODUCED FOR EVERY WALK ERROR (`L28` in `docs/POST_V2_WISHLIST.md`), so the directory
+    it names can be the canonical one the root item lives in. Until round 8 the printed remedy
+    offered two steps and the second was "take the directory out of the state directory": a reader
+    who followed it on THIS row carried off the root item, and after the install no writer for it
+    exists -- `gate_write_scope` refuses every tool write under the state directory and the kernel
+    captures typed items only.
+
+    BOTH ENDS, out of one real run of the shipped command:
+
+      * the row's remedy is the ONE step and nothing after it, so an alternative added back is a
+        difference this test sees rather than prose it agrees with;
+      * that step IS a step: carrying it out -- the access comes back -- makes the row and the
+        refusal it caused go away, so the remedy is not merely short.
+
+    AND THE PRICE OF THE REMOVED ALTERNATIVE IS CARRIED OUT rather than argued: move this very
+    directory out of the state directory, as the old sentence said, and the dev kit's `gate_git`,
+    which refused a merge a moment earlier, answers rc 0 -- the project has no root item any more,
+    so the gate that guards it stands down. That is the state nothing in this harness can undo.
+
+    AND THE SAME DENIAL IS MEASURED AGAINST THE GATE, in the same run, because until round 9 it was
+    the cheaper way to the same loss: `_root.has_root_item` answered a directory it could not list
+    with "no root item yet", and five gates read that as "this project is still being set up".
+    `gate_git` therefore let the merge through without anybody moving anything. It refuses now, and
+    an rc 0 here says that predicate has gone back to `glob` -- see `L36` in
+    `docs/POST_V2_WISHLIST.md`, which carries the chain.
+
+    WHAT THIS TEST DOES NOT CLOSE, measured in the same run: `report.validate_state` raises
+    `PermissionError` instead of a finding, which is `L37` in `docs/POST_V2_WISHLIST.md`.
+
+    RED with the second step back in `migrate.THE_ONLY_UNLISTABLE_STEP`: the row no longer ends at
+    the sentence pinned below. RED, in the other direction, if the step stops working: the run
+    still names the directory after the access is back.
+    """
+    state = _state_with_a_root_item(tmp_path, "canonical_blind")
+    repo = os.path.dirname(state.root)
+    root_item = state.active_path("PR-0001")
+    canonical = os.path.dirname(root_item)
+    assert os.path.isfile(root_item), "the fixture's root item is not where this test looks"
+    rel = os.path.relpath(canonical, state.root).replace(os.sep, "/") + "/"
+
+    def merge():
+        return subprocess.run(
+            [sys.executable, os.path.join(ROOT, "team-kits", "dev-team", "hooks", "gate_git.py")],
+            input=json.dumps({"tool_name": "Bash", "cwd": repo,
+                              "tool_input": {"command": "git merge feat/PR-0001-x"}}),
+            capture_output=True, text=True,
+            env=dict(os.environ, CLAUDE_PROJECT_DIR=repo,
+                     HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits")),
+            timeout=120)
+
+    guarded = merge()
+    assert guarded.returncode == 2, (
+        "this project is not guarded while its root item stands, so losing the item below would "
+        "cost nothing measurable: rc %s %s" % (guarded.returncode, guarded.stdout + guarded.stderr))
+
+    with _unlistable(canonical):
+        rows = dict(migrate.unlistable_notes(migrate.search_coverage(state)))
+        assert list(rows) == [rel], (
+            "this run does not report the canonical directory as unlistable, so nothing below is "
+            "about the row under test: %s" % sorted(rows))
+        # THE SENTENCE IS PINNED HERE AND NOT READ BACK OFF THE MODULE THAT PRINTS IT. What
+        # DEC-0024's second clause forbids is what this remedy does NOT offer, and an absence
+        # cannot be read out of prose by any rule. Comparing against `migrate.
+        # THE_ONLY_UNLISTABLE_STEP` would make this assertion agree with whatever that constant
+        # holds -- measured in round 8: with the removed alternative put back INTO the constant,
+        # the assertion was still green. So a change to the offer has to come through this line.
+        assert rows[rel].endswith("Remedy: give the session read access to it"), (
+            "the remedy for a directory that may be the canonical one offers more than the single "
+            "step that changes nothing the state directory holds (DEC-0024): %r" % rows[rel])
+
+        # ...AND THE GATE OVER THE SAME DENIAL, which is the second way to the same loss and the
+        # one that needed no remedy at all: the predicate five gates share.
+        blind = merge()
+        assert blind.returncode == 2, (
+            "`gate_git` stands down over a canonical directory it cannot list, so a permission "
+            "problem switches off the gates that guard the root item (`_root.has_root_item`): "
+            "rc %s %s" % (blind.returncode, blind.stdout + blind.stderr))
+        with pytest.raises(PermissionError):
+            report_module().validate_state(state)      # `L37`, same file
+
+    # THE ONE STEP, CARRIED OUT: `_unlistable` gave the access back on the way out.
+    assert migrate.unlistable_notes(migrate.search_coverage(state)) == [], (
+        "the only step this command offers does not clear the finding it is offered for")
+
+    # ...AND THE ALTERNATIVE THAT NO LONGER STANDS THERE, carried out on the same directory.
+    shutil.move(canonical, str(tmp_path / "taken_out_of_the_state_directory"))
+    opened = merge()
+    assert opened.returncode == 0 and not os.path.exists(root_item), (
+        "following the removed alternative was supposed to leave the project without its root "
+        "item and the merge gate standing down; it did not, so this half measures nothing: rc %s"
+        % opened.returncode)
+
+
+@contextlib.contextmanager
+def _unreadable(path):
+    """`path` unopenable to THIS process for the body, and back to normal afterwards.
+
+    The same discipline as `_unlistable` one class up, for the same reason: the body only ever runs
+    while `open` really refuses, and a host that will not produce that FAILS here instead of
+    skipping, because a skip and a pass look the same in a summary line.
+    """
+    who = getpass.getuser()
+    if os.name == "nt":
+        subprocess.run(["icacls", path, "/deny", "%s:(RD,RA)" % who],
+                       capture_output=True, text=True, timeout=60)
+        undo = ["icacls", path, "/remove:d", who]
+    else:                                    # pragma: no cover -- this suite runs on Windows
+        os.chmod(path, 0)
+        undo = None
+    try:
+        try:
+            with open(path, "rb") as handle:
+                handle.read()
+        except OSError:
+            pass
+        else:
+            raise AssertionError(
+                "%s is still readable to %s, so nothing below measures a read that fails"
+                % (path, who))
+        yield
+    finally:
+        if undo:
+            subprocess.run(undo, capture_output=True, text=True, timeout=60)
+        else:                                # pragma: no cover -- see above
+            os.chmod(path, 0o644)
+        with open(path, "rb") as handle:
+            handle.read()
+
+
+def _cli_process(state, *argv):
+    """The kernel CLI as its own PROCESS -- the only place a traceback is distinguishable.
+
+    `_run` calls `cli.main`, so an exception it does not handle arrives in the test as an
+    exception; what a user meets is an exit code and whatever went to stderr. The claim measured
+    with this is about the second.
+    """
+    return subprocess.run(
+        [sys.executable, "-B", "-m", "kernel.cli", "--root", state.root] + list(argv),
+        capture_output=True, text=True, timeout=300,
+        env=dict(os.environ, PYTHONPATH=os.path.join(ROOT, "team-kits")))
+
+
+def test_a_document_the_run_cannot_open_is_named_and_refuses_instead_of_crashing(tmp_path):
+    """The same blindness one storey lower: a file the walk LISTS and nobody can open.
+
+    Measured 2026-08-08 on this host, `icacls /deny <user>:(RD,RA)` on ONE kit document of an
+    otherwise clean state, the shipped commands as real processes:
+
+        `validate`           rc 1 with a finding naming the document -- and a remedy telling the
+                             reader that the dry run "names it under UNREADABLE and refuses the
+                             run for the same reason"
+        `migrate --dry-run`  rc 1 with a `PermissionError` TRACEBACK out of `_file_facts`
+
+    So two shipped texts promised what the second command did not do: that remedy, and this
+    module's own head ("an unreadable one refuses the run"). The walk was not blind here at all --
+    the classifier answered SEARCHED for the file; the two callers that HASH it opened without a
+    handler.
+
+    BOTH OF THEM ARE MEASURED, and separately, because they answer different questions and either
+    could be fixed alone: the document inventory (`_file_facts`, which is what the receipt's source
+    list is built from) and the digest (`state_fingerprint`, whose rows are what an executing run
+    is handed back).
+
+    RED without either handler: `build_plan` raises `PermissionError` out of this test, and the dry
+    run answers a process with a traceback instead of a refusal.
+    """
+    state = _state_with_a_root_item(tmp_path, "denied")
+    repo = os.path.dirname(state.root)
+    doc = _write_document(state, "handbook.yaml", "note: an ordinary kit document\n")
+    assert migrate.plan_is_executable(migrate.build_plan(state)), (
+        "this state is not migratable while the document is READABLE, so nothing below measures "
+        "what denying it costs")
+    assert _gate_memory_complete(repo).returncode == 0, "the fixture already refuses the merge"
+
+    with _unreadable(doc):
+        verdicts = {rel: verdict for rel, verdict, _why in migrate.search_coverage(state)}
+        assert verdicts.get("handbook.yaml") == migrate.SEARCHED, (
+            "the walk itself went blind, so this measures the directory case again: %s" % verdicts)
+
+        facts, problem = migrate._file_facts(state, "handbook.yaml")
+        assert facts is None and problem, "the inventory produced a row for a file it cannot read"
+        rows, notes = migrate.state_fingerprint(state)
+        assert "handbook.yaml" not in [rel for rel, _sha in rows], (
+            "the fingerprint hashed a file nobody can open")
+        assert [one for one in notes if one[0] == "handbook.yaml"], (
+            "the digest is short one file and says nothing about it: %s" % notes)
+
+        plan = migrate.build_plan(state)
+        assert [one for one in plan["unreadable"] if one[0] == "handbook.yaml"], plan
+        assert not migrate.plan_is_executable(plan), (
+            "the dry run promises a run over a state it could not read all of")
+        assert "handbook.yaml" not in [row["path"] for row in plan["documents"]]
+
+        # ONE FILE, TWO TRUE SENTENCES ABOUT IT, and a refusal that counts DOCUMENTS may not read
+        # that as two. Both halves are asserted, because collapsing them would be the other error.
+        assert len([one for one in plan["unreadable"] if one[0] == "handbook.yaml"]) > 1, (
+            plan["unreadable"])
+        assert migrate._unreadable_paths(plan) == {"handbook.yaml"}, plan["unreadable"]
+        with pytest.raises(migrate.MigrationError) as refused:
+            migrate.execute(state, plan, migrate.plan_digest(plan))
+        assert "1 path(s) unreadable" in str(refused.value), str(refused.value)
+
+        done = _cli_process(state, "migrate", "--dry-run")
+        said = done.stdout + done.stderr
+        assert done.returncode == 1, said
+        assert "Traceback" not in said, (
+            "the dry run answers an unreadable document with a crash rather than a refusal: %s"
+            % said)
+        assert "handbook.yaml" in said, said
+
+        findings = {one["item"]: one for one in report_module().validate_state(state)}
+        assert findings["handbook.yaml"]["severity"] == "error", sorted(findings)
+        assert _gate_memory_complete(repo).returncode == 2
+
+    # ...and the counter-direction in the same run: readable again, the same state is migratable,
+    # so the refusal above is the denial and not the fixture.
+    assert migrate.plan_is_executable(migrate.build_plan(state))
+    assert migrate.state_fingerprint(state)[1] == []
+    assert _gate_memory_complete(repo).returncode == 0
+
+    # ...AND EVERY PRODUCER OF THE `unreadable` LIST NAMES ITS PATH AS A PATH. The list used to be
+    # sentences and the count recovered the path with `line.split(" ")[0]`, which rests on "a line
+    # BEGINS with its path" -- true of every producer, and silent about where the path ENDS. THE
+    # NAMES HERE CARRY SPACES for exactly that reason: measured 2026-08-09 with two denied documents
+    # so named, `_unreadable_paths` answered `{'my'}` and `execute` refused with "1 path(s)
+    # unreadable" for two files. Four of the five producers are reached in one state here; the fifth
+    # (`_read_document` out of `execute`) writes into a refusal message and not into this list.
+    many = _state_with_a_root_item(tmp_path, "many_producers")
+    _write_document(many, "my broken procedures.yaml", "processes:\n  PROC-0001: {\n")
+    denied_doc = _write_document(many, "my denied procedures.yaml", "note: a document\n")
+    _write_document(many, "my shut away/inside.yaml", "note: another\n")
+    item = [path for _name, path in many.iter_active_items("PR")][0]
+    expected = {"my broken procedures.yaml", "my denied procedures.yaml", "my shut away/",
+                os.path.relpath(item, many.root).replace(os.sep, "/")}
+    with _unreadable(denied_doc), _unreadable(item), \
+            _unlistable(os.path.join(many.root, "my shut away")):
+        entries = migrate.build_plan(many)["unreadable"]
+        assert len(entries) > len(expected), (
+            "one path per entry, so no producer is measured twice over: %s" % entries)
+        for path, why in entries:
+            assert os.path.exists(os.path.join(many.root, *path.rstrip("/").split("/"))), (
+                "an entry of `unreadable` does not name a path of this state: %r" % (path,))
+            assert why, "an entry of `unreadable` carries no reason: %r" % (path,)
+        assert migrate._unreadable_paths({"unreadable": entries}) == expected, sorted(
+            migrate._unreadable_paths({"unreadable": entries}))
+        with pytest.raises(migrate.MigrationError) as refused:
+            migrate.execute(many, migrate.build_plan(many), "unchecked")
+        assert "%d path(s) unreadable" % len(expected) in str(refused.value), str(refused.value)
+
+
+# The probe that measures WHO opened a file, run as its own process because `sys.addaudithook`
+# cannot be taken off again and every `open` of the pytest session would pay for it.
+#
+# THE ASKER IS DEFINED, NOT LISTED: walking out from the `open` event, the first frame that is
+# neither in the standard library nor in this probe is the code that wanted the file. That is why
+# `pathlib.Path.read_bytes`, `codecs.open`, `os.open` and `io.open` are all covered without being
+# named -- each of them is stdlib frames on top of the frame that asked.
+_WHO_OPENED_IT = '''\
+import json
+import os
+import sys
+import sysconfig
+
+STATE, KERNEL = sys.argv[1], sys.argv[2]
+sys.path.insert(0, KERNEL)
+
+_SELF = os.path.normcase(os.path.abspath(__file__))
+_STDLIB = tuple(sorted({os.path.normcase(os.path.abspath(where))
+                        for key in ("stdlib", "platstdlib")
+                        for where in [sysconfig.get_paths().get(key)] if where}))
+_ROOT = os.path.normcase(os.path.abspath(STATE)) + os.sep
+_armed = []
+_seen = []
+
+
+def _machinery(filename):
+    if not filename or filename.startswith("<"):
+        return True
+    resolved = os.path.normcase(os.path.abspath(filename))
+    return resolved == _SELF or resolved.startswith(_STDLIB)
+
+
+def _asker():
+    depth = 1
+    while True:
+        try:
+            frame = sys._getframe(depth)
+        except ValueError:
+            return ("", "")
+        if not _machinery(frame.f_code.co_filename):
+            return (os.path.abspath(frame.f_code.co_filename), frame.f_code.co_name)
+        depth += 1
+
+
+def _hook(event, args):
+    if event != "open" or not _armed:
+        return
+    target = args[0]
+    if not isinstance(target, str):
+        return                      # a file descriptor names no path
+    if not os.path.normcase(os.path.abspath(target)).startswith(_ROOT):
+        return
+    _seen.append(_asker())
+
+
+sys.addaudithook(_hook)
+from kernel import migrate                                              # noqa: E402
+from kernel.state import ProjectState                                   # noqa: E402
+
+# WHICH FUNCTIONS THIS RUN WALKS, collected in the same process as the opens above so the two
+# answers are about ONE run. `None` back from the tracer means the frame is not traced line by
+# line -- the question is only whether the function was entered at all.
+_MIGRATE = os.path.normcase(os.path.abspath(migrate.__file__))
+_entered = set()
+
+
+def _trace(frame, event, arg):
+    if event == "call" and os.path.normcase(
+            os.path.abspath(frame.f_code.co_filename)) == _MIGRATE:
+        _entered.add(frame.f_code.co_name)
+    return None
+
+
+sys.settrace(_trace)
+state = ProjectState(STATE)
+_armed.append(True)
+plan = migrate.build_plan(state, {}, 2026)
+migrate.render(plan, state)
+migrate.execute(state, plan, migrate.plan_digest(plan))
+
+# A DOCUMENT NOBODY CAN PARSE, planned on its own: the failing-read path is where the reason for
+# an unreadable file is composed, and a run that never fails a read never walks it. Written with
+# the hook disarmed, so this probe's own `open` is not one of the opens it measures.
+_armed.pop()
+io_handle = open(os.path.join(STATE, "unparsable.yaml"), "w", encoding="utf-8", newline="\\n")
+io_handle.write("processes:\\n  PROC-0001: {\\n")
+io_handle.close()
+_armed.append(True)
+migrate.build_plan(state, {}, 2026)
+during = list(_seen)
+
+# THE COUNTER-DIRECTION: a reader that really is in `migrate.py` and really is not `_read_bytes`.
+# Compiled with that filename so the frame the detector walks to is a frame of that module -- the
+# spelling is `pathlib`, which the rule this replaces could not see at all.
+del _seen[:]
+exec(compile("import pathlib\\n"
+             "def a_second_reader(path):\\n"
+             "    return pathlib.Path(path).read_bytes()\\n",
+             migrate.__file__, "exec"), globals())
+a_second_reader(os.path.join(STATE, "project_config.yaml"))             # noqa: F821
+planted = list(_seen)
+_armed.pop()
+sys.settrace(None)
+
+
+def rows(seen):
+    return sorted({(os.path.basename(where), what) for where, what in seen})
+
+
+print(json.dumps({"module": os.path.basename(migrate.__file__),
+                  "during": rows(during), "planted": rows(planted),
+                  "entered": sorted(_entered)}))
+'''
+
+
+def test_every_state_file_this_module_opens_it_opens_through_read_bytes(tmp_path):
+    """`_read_bytes`'s own claim, measured as a PROPERTY of the run instead of as a spelling.
+
+    WHAT THE CLAIM IS FOR: a file nobody can open had three different stories in this module until
+    every read was funnelled through one function that REPORTS the failure. A second reader added
+    later is a second story, and it is the shape in which `migrate --dry-run` answered a denied kit
+    document with a `PermissionError` traceback while the validator named it.
+
+    THE RULE THIS REPLACES WAS WRONG IN BOTH DIRECTIONS, and both were measured (2026-08-09, in a
+    clone outside this repo): it counted `ast.Call` nodes whose `func.id` was `open`.
+
+        a real second reader, `io.open(...)` in `_retire_absorbed_documents`, unhandled
+            -> the AST rule stayed GREEN
+        a behaviour-preserving rewrite INSIDE `_read_bytes`, `io.open` instead of `open`
+            -> the AST rule went RED, with a message that was then untrue
+
+    `pathlib.Path.read_bytes`, `codecs.open` and `os.open` were outside it as well. So the question
+    is asked of the RUNNING process: `sys.addaudithook` sees the `open` event every one of those
+    spellings raises, and the frame that asked for the file is derived (see `_WHO_OPENED_IT`) rather
+    than matched against a list of opener names.
+
+    TWO RESIDUALS, AND THE SECOND ONE IS WHY THIS TEST IS ONE OF A PAIR.
+
+      * the asker is the first frame outside the standard library, so a THIRD-PARTY library opening
+        a state file on this module's behalf would be attributed to that library. Nothing does that
+        today -- `yaml` is handed bytes, never a path. It is the entry `L31` in
+        `docs/POST_V2_WISHLIST.md`.
+      * this measurement is total over the SPELLING and only over the path this one run walks. A
+        second reader planted in a branch this run never enters is invisible here, and the old AST
+        rule -- wrong as it was -- would have found it. What covers that direction is
+        `test_nothing_but_these_functions_can_name_a_file_of_the_state_directory`, which is total
+        over the FILE and says nothing about spellings. The two are the two directions of one
+        question, and neither is the other's duplicate.
+
+    WHERE THEY MEET IS MEASURED HERE RATHER THAN STATED: the same process records which functions
+    of the module it entered (`sys.settrace`), and every function the static rule licences has to be
+    one of them. That is what turns "the two cover each other" into a claim with a red state -- a
+    licensed function this run never enters is a hole in exactly the middle, and the assertion names
+    it. What is left after both, said as narrowly as it is true: a second reader INSIDE one of the
+    licensed functions, in a branch this run does not enter.
+
+    BOTH ENDS IN ONE RUN. The planted second reader is what makes the empty violation list mean
+    something: it is in a frame of `migrate.py`, it is not `_read_bytes`, it is spelled with
+    `pathlib`, and the probe has to report it. And the run has to have opened state files through
+    `_read_bytes` at all, or "no violations" would only say that nothing was read.
+    """
+    state = _state_with_a_root_item(tmp_path, "who_opened_it")
+    _write_document(state, "project_config.yaml", "name: demo\nstacks: [python]\n")
+    _write_document(state, "procedures.yaml",
+                    "processes:\n"
+                    "  PROC-0001:\n"
+                    "    title: \"file the post\"\n"
+                    "    status: ACTIVE\n"
+                    "    roles: [clerk]\n"
+                    "    trigger: \"inbox\"\n"
+                    "    steps: [\"file it\"]\n"
+                    "    source: \"the V1 store\"\n")
+    # AN ARCHIVE-BOUND RECORD BESIDE THE ACTIVE ONE, and it is here for the coverage and not for
+    # the records: without it `archive_location` is the one path-composing function of the module
+    # this run never enters, and the static rule below rests on all of them being entered.
+    _write_document(state, "tasks.yaml",
+                    "tasks:\n"
+                    "  TSK-0001:\n"
+                    "    title: \"a task that was finished in V1\"\n"
+                    "    status: DONE\n"
+                    "    closed: \"2025-03-04\"\n")
+    probe = tmp_path / "who_opened_it.py"
+    io.open(str(probe), "w", encoding="utf-8", newline="\n").write(_WHO_OPENED_IT)
+    done = subprocess.run([sys.executable, "-B", str(probe), state.root,
+                           os.path.join(ROOT, "team-kits")],
+                          capture_output=True, text=True, timeout=300)
+    assert done.returncode == 0, done.stdout + done.stderr
+    seen = json.loads(done.stdout.strip().splitlines()[-1])
+
+    module = seen["module"]
+    through = [what for where, what in seen["during"] if where == module]
+    assert through == ["_read_bytes"], (
+        "`%s` opened a file under the state directory somewhere other than `_read_bytes`, so a "
+        "file nobody can read has more than one story again: %s" % (module, seen["during"]))
+    assert seen["during"], (
+        "the run opened no state file at all, so an empty violation list says nothing")
+    assert [what for where, what in seen["planted"] if where == module] == ["a_second_reader"], (
+        "the probe cannot see a second reader of a state file even when one is planted in a frame "
+        "of `%s`, so its silence above measures nothing: %s" % (module, seen["planted"]))
+
+    # ...AND THE TWO RULES MEET WHERE THIS SAYS THEY DO. Every function the static rule licences to
+    # compose a state path is entered by THIS run, so the spelling-total measurement above covers
+    # every function the file-total one licences. Both ends: a licensed function this run never
+    # enters is named, and the run has to have entered more of the module than just those.
+    entered = set(seen["entered"])
+    missing = sorted(set(_NAMES_A_STATE_FILE) - entered)
+    assert not missing, (
+        "these functions may compose a state path and this run never enters them, so a second "
+        "reader in one of them is invisible to BOTH tripwires at once: %s" % missing)
+    assert len(entered) > len(_NAMES_A_STATE_FILE), (
+        "this run walks no more of the module than the licensed functions themselves, so the "
+        "sentence above about where the two rules meet says nothing: %s" % sorted(entered))
+
+
+# EVERY FUNCTION OF `kernel/migrate.py` THAT CAN NAME A FILE OF THE STATE DIRECTORY AT ALL, with
+# what it does with the name. This is an enumeration, and it is one of the module's OWN functions --
+# a closed set that changes only when somebody edits that file -- rather than of opener spellings,
+# which is the enumeration the rule before this one died of. Both ends are measured by the test
+# below: an entry that no longer composes a path is dead, and a function that composes one without
+# an entry is the thing the rule exists to catch.
+_NAMES_A_STATE_FILE = {
+    "_relative": "turns an absolute path back into a state-relative one; it opens nothing, and it "
+                 "is therefore also the one call a composed path may be HANDED to -- what comes "
+                 "back is a state-relative name and the flow rule below stops there",
+    "_state_path": "the module's ONE composer of an absolute path under the state root",
+    "_read_bytes": "the one function that opens a state file, which is the claim itself",
+    "_without_path": "composes the path only to STRIP it out of a failure message; it takes `rel` "
+                     "and composes rather than being handed the path, FOR THIS RULE -- a function "
+                     "that only RECEIVES a path names nothing this rule can see",
+    "_is_occupied": "asks `os.path.lexists`, whose answer is a yes or a no and never bytes",
+    "documents": "walks the state root for the inventory and hands names on",
+    "search_coverage": "walks the state root for the coverage and hands names on",
+    "imported_legacy_ids": "walks the item store and reads each item through `_read_document`",
+    "state_fingerprint": "walks the state root and hashes each file through `_read_bytes`",
+    "_classify": "hands `state.root` to `layout.is_kernel_written`, which answers from names",
+    "walls_of": "hands the repository root to `layout.gated_documents`",
+    "archive_location": "composes against a throwaway `ProjectState(os.curdir)`, so it names no "
+                        "file of any state directory",
+    "legacy_location": "the same throwaway probe, for the `legacy/` target",
+    "_retire_absorbed_documents": "moves a document with `os.replace`; its hash comes from "
+                                  "`_file_facts`, which reads through `_read_bytes`",
+}
+
+
+def _names_a_state_file(node, stashed=()):
+    """Is this expression a way of naming a file under the state root?
+
+    THE DEFINITION, and it is about the PATH and not about the opening: to read a file of the
+    state directory a caller must first name it, and there are exactly two shapes for that in this
+    module -- the module's own composer, and a path builder of the state object. `ProjectState`
+    spells every one of the latter `root`, `..._path` or `..._root`, and
+    `test_the_path_builders_of_the_state_object_all_carry_one_of_two_name_shapes` measures that
+    the shape really covers them.
+
+    `stashed` is the third: a module-level name a function PARKED a path in (`_stashed_names`).
+    Reading it back names the file just as much, and the reader would compose nothing.
+    """
+    if isinstance(node, ast.Name) and (node.id == "_state_path" or node.id in stashed):
+        return node.id
+    if isinstance(node, ast.Attribute) and (
+            node.attr == "root" or node.attr.endswith(("_path", "_root"))):
+        return "." + node.attr
+    return None
+
+
+def _by_function(tree, stashed=()):
+    """{function name: [(what it named, line)]} for one parsed module, innermost function wins."""
+    found = {}
+
+    def walk(node, holder):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                walk(child, child.name)
+                continue
+            named = _names_a_state_file(child, stashed)
+            if named:
+                found.setdefault(holder, []).append((named, child.lineno))
+            walk(child, holder)
+
+    walk(tree, "<module>")
+    return found
+
+
+def _module_own_names(tree):
+    """Every name through which control can reach code of THIS module.
+
+    WHY THE LINE IS DRAWN AT THE IMPORT. A call that mentions one of these can transfer control into
+    THIS file -- it is a function of it, a class of it, or an object of one -- and this file is where
+    a second reader would be added and where `_NAMES_A_STATE_FILE` is the only thing that accounts
+    for one. A name an import bound belongs to another module: what `os.path.join` or `open` does
+    with a path is not what this rule claims, and `_read_bytes` says so in its own words.
+
+    A `def` NESTED IN A FUNCTION IS CODE OF THIS FILE TOO, and reading only the top level was
+    measured blind (B1, round 8): a helper `def` inside the host function took the state bytes into
+    a real reader while both halves of the rule reported nothing. So the walk descends into every
+    body, but it collects only the names a `def` or a `class` binds there; a LOCAL of a body is not
+    a way into this file's code and stays out.
+
+    WHAT COLLECTING THE NAME DOES NOT BUY, and it is the same shape one turn further (DEC-0029): a
+    nested `def` that reads the path out of the CLOSURE rather than through an argument hands
+    nothing over, so no call expression carries a state path into it and the rule reports `[]` --
+    measured in round 8's review with a real reader that returned the bytes it had read. Being in
+    this set is what makes a receiver ASKABLE; it is not what makes a hand-over visible.
+    """
+    imported = {(alias.asname or alias.name).split(".")[0]
+                for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))
+                for alias in node.names}
+    # A `global` declaration binds at the top level wherever it stands, so it belongs here as much
+    # as a `def` does -- and it is the only way a module name can exist without a module-level
+    # statement writing it, which is exactly the shape `_stashed_names` is about.
+    bound = {name for node in ast.walk(tree) if isinstance(node, ast.Global) for name in node.names}
+
+    def walk(node, inside_a_body):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                bound.add(child.name)
+                walk(child, True)
+                continue
+            if not inside_a_body and isinstance(child, ast.Name) \
+                    and isinstance(child.ctx, ast.Store):
+                bound.add(child.id)
+            walk(child, inside_a_body)
+
+    walk(tree, False)
+    return bound - imported
+
+
+def _root_name(node):
+    """The name a callee expression starts at -- `os` for `os.path.join`, `_SIDECAR` for
+    `_SIDECAR.read`, `functools` for `functools.partial`, the function's own name for a bare call.
+
+    WHICH SHAPE THE CALLEE HAS is exactly what this rule must not depend on: the rule before it
+    looked at `ast.Name` callees only, and `_SIDECAR.read(_state_path(state, rel))` walked past it.
+    """
+    if isinstance(node, (ast.Attribute, ast.Subscript, ast.Starred)):
+        return _root_name(node.value)
+    if isinstance(node, ast.Call):
+        return _root_name(node.func)
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def _binds(node):
+    """(what is computed, what it is bound to) for every shape that binds a name inside a function.
+
+    Assignment, annotated and augmented assignment, walrus, `for` target, comprehension target and
+    `with ... as`. A value that reaches a name through any of them is the same value.
+    """
+    if isinstance(node, ast.Assign):
+        return node.value, node.targets
+    if isinstance(node, (ast.AnnAssign, ast.AugAssign)) and node.value is not None:
+        return node.value, [node.target]
+    if isinstance(node, ast.NamedExpr):
+        return node.value, [node.target]
+    if isinstance(node, (ast.For, ast.AsyncFor)):
+        return node.iter, [node.target]
+    if isinstance(node, ast.comprehension):
+        return node.iter, [node.target]
+    if isinstance(node, ast.withitem) and node.optional_vars is not None:
+        return node.context_expr, [node.optional_vars]
+    return None, []
+
+
+def _carries_a_state_path(expr, tainted, own, stashed):
+    """What in `expr` can answer with a path under the state root, or None -- the FLOW, not a shape.
+
+    THE ONE PLACE THE FLOW STOPS is a call into this file's own code: the path went in, whether that
+    was allowed is `_handed_a_finished_path`'s question, and what comes back is that function's own
+    answer -- `_relative` hands back a state-relative name, and its licence entry says so. The
+    composer is the exception, and it is not one written here: `_state_path` is a naming node by
+    `_names_a_state_file`, so its call answers with a path wherever it stands.
+
+    Everything else is followed: `os.path.join`, `str`, a slice, a format, a tuple. That is the
+    direction the rule before this one was blind in -- it read the call SHAPE, so a path in a local
+    variable, in a wrapper's argument list or behind one `os.path.dirname` was invisible.
+    """
+    named = _names_a_state_file(expr, stashed)
+    if named:
+        return named
+    if isinstance(expr, ast.Name):
+        return expr.id if expr.id in tainted else None
+    if isinstance(expr, ast.Call) and _root_name(expr.func) in own:
+        return _carries_a_state_path(expr.func, tainted, own, stashed)
+    for child in ast.iter_child_nodes(expr):
+        found = _carries_a_state_path(child, tainted, own, stashed)
+        if found:
+            return found
+    return None
+
+
+def _tainted_in(scope, own, stashed):
+    """Every name of `scope` that can hold a path under the state root, to a fixed point.
+
+    The fixed point is what covers a loop: a name bound from another name that is only tainted later
+    in the body is tainted on the second pass, and the walk repeats until nothing grows.
+    """
+    tainted = set()
+    while True:
+        grown = set(tainted)
+        for node in ast.walk(scope):
+            value, targets = _binds(node)
+            if value is None or not _carries_a_state_path(value, grown, own, stashed):
+                continue
+            grown.update(name.id for target in targets for name in ast.walk(target)
+                         if isinstance(name, ast.Name))
+        if grown == tainted:
+            return tainted
+        tainted = grown
+
+
+def _stashed_names(tree, own):
+    """The module-level names a function of this file parks a state path in.
+
+    A PATH DOES NOT HAVE TO BE PASSED TO LEAVE THE FUNCTION THAT COMPOSED IT. Parked where a name of
+    the module reaches it, it is in reach of every other function, and a reader there composes
+    nothing and is handed nothing -- so both halves of the rule would be silent.
+
+    WHAT MAKES A STORE REACH THE MODULE IS THE TARGET'S ROOT NAME, and asking the STATEMENT instead
+    was measured blind (F1, round 7): `global _STASHED; _STASHED = path` was the only spelling read,
+    while `_A_DICT["parked"] = path`, `_A_LIST[0] = path` and `_SIDECAR.parked = path` bind no name
+    at all and reach exactly as far -- they mutate an object a module name answers with, and each of
+    them carried the state bytes into a reader that this rule then named nowhere. So a store counts
+    when its target is a bare name the scope declares `global`, or an attribute or subscript rooted
+    in a name of this module. A local shadowing such a name is over-reported by that, which is the
+    harmless direction: it costs a licence entry, never a silence.
+
+    EMPTY IN THE SHIPPED FILE, which is why the corpus of
+    `test_the_rule_against_handing_a_state_path_on_follows_the_value_and_not_the_call_shape`
+    carries every one of those spellings: an addition nothing can make red is a claim, not a defence.
+    """
+    stashed = set()
+    while True:
+        grown = set(stashed)
+        for scope in ast.walk(tree):
+            if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            tainted = _tainted_in(scope, own, grown)
+            grown |= tainted & {name for node in ast.walk(scope) if isinstance(node, ast.Global)
+                                for name in node.names}
+            for node in ast.walk(scope):
+                value, targets = _binds(node)
+                if value is None or not _carries_a_state_path(value, tainted, own, grown):
+                    continue
+                grown |= {_root_name(reached) for target in targets
+                          for reached in ast.walk(target)
+                          if isinstance(reached, (ast.Attribute, ast.Subscript))} & own
+        if grown == stashed:
+            return stashed
+        stashed = grown
+
+
+def _value_leads_to(expr, aliases, own):
+    """{(name of THIS module, whether the value came OUT OF a call of it)} for the value of `expr`.
+
+    WHAT A VALUE LEADS TO, with the one distinction the rule below needs recorded rather than
+    decided here. `_SIDECAR.read` leads to `_SIDECAR` and IS that object's code; `_a_reader_factory()`
+    leads to `_a_reader_factory` but is not that function -- it is whatever the function returned.
+    Which of the two a name holds decides nothing on its own, so both are carried and the ANSWER is
+    given at the place the value is used (`_receives`, and its `invoked` argument).
+
+    Deciding it HERE was measured wrong in both directions (B1, round 8): dropping calls entirely
+    made `reader = _a_reader_factory(); reader(path)` invisible while a real reader took the state
+    bytes, and keeping them made the shipped module report `absorbed_documents` as receiving a path
+    it never gets -- `for rel in absorbed_documents(plan, written)` binds a string, and `rel` then
+    stands in the argument list of `state.legacy_path(rel)`.
+    """
+    if isinstance(expr, ast.Call):
+        return {(name, True) for name, _out_of_a_call
+                in _value_leads_to(expr.func, aliases, own)}
+    if isinstance(expr, (ast.Attribute, ast.Subscript, ast.Starred)):
+        return _value_leads_to(expr.value, aliases, own)
+    if isinstance(expr, ast.Name):
+        return ({(expr.id, False)} if expr.id in own else set()) | set(aliases.get(expr.id, ()))
+    found = set()
+    for child in ast.iter_child_nodes(expr):
+        found |= _value_leads_to(child, aliases, own)
+    return found
+
+
+def _receives(expr, aliases, own, invoked=False):
+    """Which names of THIS module an expression standing in a call can hand control to.
+
+    THE OTHER HALF OF A HAND-OVER, followed like the path is (F1, round 7): a rule that reads the
+    callee's SPELLING is blind to `reader = _a_second_reader`, which is ordinary code and hid the
+    receiver completely while the reader really took the state bytes. `_root_name` reduces the
+    spelling -- `_SIDECAR.read`, `_HANDLERS[kind]` and `_make_reader()` all answer with the name
+    this file binds -- and `aliases` answers for a local that was bound from one.
+
+    `invoked` IS THE CALLEE POSITION, and it is the one place a value that came OUT OF a call of
+    this module counts as that call's code: there the program itself says the value is callable. In
+    an argument position the same value is data -- a function of this file that returns a string
+    returns a string -- and reading its producer's name off it there is the false positive measured
+    on the shipped module (`_value_leads_to`). What is left over by that split is named in
+    `_handed_a_finished_path`.
+    """
+    root = _root_name(expr)
+    if root is None:
+        return set()
+    return (({root} if root in own else set())
+            | {name for name, out_of_a_call in aliases.get(root, ())
+               if invoked or not out_of_a_call})
+
+
+def _aliases_in(scope, own):
+    """{name of `scope`: what its value can lead to} -- to a fixed point, `_value_leads_to`'s pairs.
+
+    The receiver half of `_tainted_in`, and it repeats for the same reason that one does: a name
+    bound from a name that only becomes an alias later in the body is an alias on the second pass.
+    """
+    aliases = {}
+    while True:
+        grown = {name: set(what) for name, what in aliases.items()}
+        for node in ast.walk(scope):
+            value, targets = _binds(node)
+            if value is None:
+                continue
+            leads_to = _value_leads_to(value, grown, own)
+            if not leads_to:
+                continue
+            for target in targets:
+                for name in ast.walk(target):
+                    if isinstance(name, ast.Name):
+                        grown.setdefault(name.id, set()).update(leads_to)
+        if grown == aliases:
+            return aliases
+        aliases = grown
+
+
+def _handed_a_finished_path(tree):
+    """[(where, what it hands over, to whom, line)] -- every call that lets a state path leave.
+
+    THE HALF OF THE RULE THAT IS ABOUT THE VALUE AND NOT ABOUT THE BODY. `_by_function` asks who
+    NAMES a path, and a function that is HANDED one names nothing: it is invisible there, and a
+    reader inside it is licensed by nothing. That is not hypothetical -- `_unreadable_because(exc,
+    _state_path(state, rel))` and `_without_path(text, path)` were exactly that shape, and a real
+    second reader planted in the first of them left both tripwires green while the audit probe's run
+    never entered the branch.
+
+    THE VERSION BEFORE THIS ONE ASKED THE QUESTION OF THE CALL SYNTAX and was measured to see only
+    one spelling of it: the callee had to be a bare `ast.Name` of a function of this module, and the
+    composition had to stand inside the argument expression itself. A local variable in between, a
+    method of an object of this module, and a wrapper carrying the reader along all walked past it
+    (F1, round 6). So the question is asked of the VALUE: `_carries_a_state_path` follows what a
+    name holds, and the callee's shape is read only to answer WHO receives it (`_root_name`).
+
+    WHO RECEIVES IT is this file's own code, and that half is asked of the VALUE as well
+    (`_value_leads_to`): the callee, or a callee's alias, or a function travelling along as an
+    argument, which is how a wrapper reaches the same place. Reading the CALLEE'S SPELLING alone was
+    measured blind to a local alias (F1, round 7) -- `reader = _a_second_reader` is ordinary code and
+    it hid the receiver completely. A receiver the licence list names is allowed, because a reader
+    inside it is accounted for.
+
+    WHERE THE VALUE CAME FROM DECIDES NOTHING; WHERE IT STANDS DOES. A name holding the result of a
+    call of this module is code of this module in the CALLEE position and data in an argument
+    position, and hanging that difference on the BINDING site instead was measured wrong in both
+    directions at once (B1, round 8): `reader = _a_reader_factory(); reader(path)` fed a real reader
+    while the rule said nothing, and the opposite setting made the shipped module report
+    `absorbed_documents`. So `_receives` answers it, once per position.
+
+    A CALL CARRIES A PATH WHEREVER THE PATH STANDS IN IT, the expression that says WHO is called
+    included. A path parked in an attribute of a function of this module -- `_a_reader.__defaults__
+    = (path,)` -- is carried by nothing the argument list holds, and `_a_reader()` then reads it
+    while naming nothing (measured, B1 round 8: the bytes arrive, the rule reports an empty list).
+    The stashed name IS the callee there, so the callee is read as a carrier like every other word.
+
+    WHAT THIS IS AND WHAT IT IS NOT (DEC-0029). It is a SET OF MEASURED ROUTES, each one carried by
+    a real reader in `_HOW_A_PATH_TRAVELS`, and it is NOT a proof that a path under the state root
+    reaches no unlicensed code. Whether a value in arbitrary Python can arrive somewhere is not
+    statically decidable, and the count of routes this has bought -- six, then twelve, then sixteen,
+    with a seventeenth found in the same review as the sixteenth -- is what that undecidability looks
+    like from inside. A callee that needs a path takes `(state, rel)` and asks `_state_path` itself,
+    which puts it back in front of `_by_function`.
+
+    THE OTHER HALF OF THE PROTECTION IS THE ONE THAT IS TOTAL, and in the opposite direction:
+    `test_every_state_file_this_module_opens_it_opens_through_read_bytes` runs a plan under an audit
+    hook and sees EVERY open of a state file, however the path got there -- and is blind to every
+    branch that run does not enter. This rule is the static half of that pair, not its guarantee.
+
+    THE MECHANISM, so that what is left over can be read off it rather than guessed: a hand-over is
+    seen where a path and a name of THIS module meet -- in one call expression, following both
+    values through the locals of the scope, or in a store whose target is rooted in such a name
+    (`_stashed_names`, which puts the reading end back in front of `_by_function`). WHAT IS LEFT
+    OVER is therefore a receiver this module's own names do not lead to at the place it is used, and
+    that is NOT the same as "another module's object". Five shapes of it are measured rather than
+    assumed and all five are carried as `L34` in `docs/POST_V2_WISHLIST.md`: a receiver fetched out
+    of `sys.modules` or with `getattr`; a callee that reduces to no name at all, such as a lambda
+    applied on the spot; a path parked in an object of ANOTHER module; a call RESULT of this module
+    handed on as an ARGUMENT to a foreign wrapper that then calls it (`reader = _a_reader_factory();
+    functools.partial(reader, path)()`), which is the price of the split above; and a nested `def`
+    that takes the path out of the CLOSURE instead of through an argument, where there is no call
+    expression to see at all. Every one of them reaches a real reader. DEC-0022 is why they are left
+    standing, and DEC-0029 is why no further ones are hunted.
+    """
+    own = _module_own_names(tree)
+    stashed = _stashed_names(tree, own)
+    handed = []
+    for scope in ast.walk(tree):
+        if not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        tainted = _tainted_in(scope, own, stashed)
+        aliases = _aliases_in(scope, own)
+        for node in ast.walk(scope):
+            if not isinstance(node, ast.Call):
+                continue
+            words = list(node.args) + [pair.value for pair in node.keywords]
+            carried = next((found for found in
+                            (_carries_a_state_path(word, tainted, own, stashed)
+                             for word in [node.func] + words) if found), None)
+            if not carried:
+                continue
+            receivers = set().union(*([_receives(node.func, aliases, own, invoked=True)]
+                                      + [_receives(word, aliases, own) for word in words]))
+            for who in sorted(receivers - set(_NAMES_A_STATE_FILE)):
+                handed.append((scope.name, carried, who, node.lineno))
+    return sorted(set(handed))
+
+
+def test_the_path_builders_of_the_state_object_all_carry_one_of_two_name_shapes():
+    """The half of the rule above that is about `ProjectState` rather than about `migrate.py`.
+
+    `_names_a_state_file` reads a name shape -- `root`, `*_path`, `*_root` -- and a shape is a
+    claim about the class it is read off. So the claim is asked of the class: every public
+    attribute of `ProjectState` that answers with a path under a state root has to carry one of
+    those spellings, or `migrate.py` could name a state file through a member this rule is blind
+    to.
+
+    RED if `ProjectState` gains a path builder spelled otherwise -- which is exactly the day the
+    rule above would start missing a reader.
+    """
+    state = ProjectState(os.path.join(os.path.dirname(os.path.abspath(__file__)), "no_such_state"))
+    builders = []
+    for name in sorted(dir(state)):
+        if name.startswith("_"):
+            continue
+        member = getattr(state, name)
+        answer = member
+        if callable(member):
+            try:
+                answer = member("PR-0001")
+            except Exception:                                            # noqa: BLE001
+                continue
+        if isinstance(answer, str) and os.path.isabs(answer) \
+                and os.path.normcase(answer).startswith(os.path.normcase(state.root)):
+            builders.append(name)
+    assert builders, "nothing on `ProjectState` answers with a path, so this measures nothing"
+    astray = [name for name in builders
+              if not (name == "root" or name.endswith(("_path", "_root")))]
+    assert not astray, (
+        "`ProjectState` names a path builder in a shape `migrate.py`'s static rule cannot see, so "
+        "that rule is blind to any reader going through it: %s" % astray)
+
+
+def test_nothing_but_these_functions_can_name_a_file_of_the_state_directory():
+    """The SECOND tripwire under `_read_bytes`'s claim -- total over the FILE, silent about spelling.
+
+    WHY THERE ARE TWO. The audit-hook rule above sees every SPELLING of an open and only the code
+    this one run walks. A second reader put in a branch that run never enters is green there. This
+    rule reads the whole file and never runs it, so the two blind spots are each other's opposite --
+    and neither is the enumeration of opener names that the rule before both of them died of,
+    because this one asks how a file can be NAMED at all, one step before anything can be opened.
+
+    THE THIRD ASSERTION IS WHAT MAKES THE FIRST TWO A RULE INSTEAD OF A LIST OF THE FUNCTIONS THAT
+    HAPPEN TO COMPOSE TODAY. A function can also be HANDED a finished path, and then it names
+    nothing here: `_unreadable_because(exc, _state_path(state, rel))` and `_without_path(text,
+    path)` were that shape, they were invisible to this rule, and they sit in a failure branch. A
+    real second reader planted in the first of them left BOTH tripwires green, measured
+    (2026-08-09, in a clone outside this repo). So the property is not "these functions compose"
+    but "a state path reaches no code of this module that is not named here" -- how the value is
+    followed, and what is left over when it is, is `_handed_a_finished_path`.
+
+    BOTH ENDS OF THE ENUMERATION, because an enumeration in this repo owes both: a function that
+    composes a state path and is not named here fails the first assertion, and a name here that no
+    longer composes one fails the second -- so a deleted or renamed function cannot leave a dead
+    licence standing.
+
+    RED three ways: a second reader `io.open(_state_path(state, path))` in `render`'s wall branch --
+    a branch the audit probe's run does not enter -- puts `render` in the first list; a removed
+    entry leaves a name in the second; and handing a composed path to a function of this module
+    again puts it in the third. That third way is measured in every spelling it has by
+    `test_the_rule_against_handing_a_state_path_on_follows_the_value_and_not_the_call_shape`, which
+    is where this assertion's own blindness is kept honest.
+    """
+    source = io.open(migrate.__file__, encoding="utf-8").read()
+    tree = ast.parse(source, migrate.__file__)
+    found = _by_function(tree, _stashed_names(tree, _module_own_names(tree)))
+    unlicensed = {where: named for where, named in found.items()
+                  if where not in _NAMES_A_STATE_FILE}
+    assert not unlicensed, (
+        "these parts of `%s` can name a file of the state directory and are not accounted for, so "
+        "a read from them would be a second story about a file nobody can open: %s"
+        % (os.path.basename(migrate.__file__), unlicensed))
+    dead = sorted(set(_NAMES_A_STATE_FILE) - set(found))
+    assert not dead, (
+        "these names carry a licence to compose a state path and compose none, so the list above "
+        "is a claim about code that is gone: %s" % dead)
+    handed = _handed_a_finished_path(tree)
+    assert not handed, (
+        "these calls let a composed state path reach code of `%s` that is not licensed above, so "
+        "that code can read a state file while naming nothing this rule sees -- take `(state, "
+        "rel)` and compose there instead: %s" % (os.path.basename(migrate.__file__), handed))
+
+
+# A REAL SECOND READER, and everything a planted one needs to be more than a shape in a parse tree:
+# it opens the file it is given and keeps the bytes, so a run can show that it read the state. Every
+# place a path can be parked in has its own reader for the same reason -- each of them has to be
+# able to reach the file, or the corpus below would be measuring text. `_STASHED` is deliberately
+# NOT bound here: a `global` declaration is the only thing that makes it a name of the module, which
+# is the harder of the two shapes for `_module_own_names` and therefore the one worth planting.
+_A_PLANTED_READER = '''
+
+import functools
+
+_PLANTED = []
+_A_DICT = {}
+_A_LIST = [None]
+
+
+def _a_second_reader(path):
+    _PLANTED.append(open(path, "rb").read())
+
+
+def _a_reader_of_the_stash():
+    _PLANTED.append(open(_STASHED, "rb").read())
+
+
+def _a_reader_of_the_dict():
+    _PLANTED.append(open(_A_DICT["parked"], "rb").read())
+
+
+def _a_reader_of_the_list():
+    _PLANTED.append(open(_A_LIST[0], "rb").read())
+
+
+class _Sidecar(object):
+    def read(self, path):
+        _a_second_reader(path)
+
+
+_SIDECAR = _Sidecar()
+
+
+def _a_reader_of_the_member():
+    _PLANTED.append(open(_SIDECAR.parked, "rb").read())
+
+
+def _a_reader_factory():
+    return _a_second_reader
+
+
+def _a_reader_of_the_default(parked=None):
+    _PLANTED.append(open(parked, "rb").read())
+'''
+
+# HOW A COMPOSED PATH CAN TRAVEL from the function that composed it to one that reads it, and who
+# ends up holding it. These are AXES of one property -- the value moves -- and not a list of
+# offending syntaxes: the rule follows the value, so each entry only has to show that a different
+# route reaches the same place. What each one is worth is measured in the test below, twice: the
+# route really carries the bytes when it runs, and the rule really names the holder.
+#
+# THE TWO AXES ARE THE TWO HALVES OF A HAND-OVER, and round 7 measured that only one of them had
+# been walked: five ordinary routes -- three ways of PARKING the path where a module name reaches
+# it, two of hiding the RECEIVER behind a local -- carried the state bytes while the rule named
+# nobody. So the corpus crosses the axes instead of listing syntaxes.
+#
+# AND ROUND 8 MEASURED THE CROSSING ITSELF. A corpus that walks two axes but never multiplies them
+# is a list again: `out of a factory` and `behind a local alias` were both covered while their
+# PRODUCT -- a factory result put in a local and called from there -- fed a real reader with the
+# rule silent, and so did a `def` nested in the host and a path parked in a callee's own defaults.
+# So each axis appears alone AND crossed with the other, and the two entries that cost nothing to
+# add (the ones asking the CALLEE with the value rule) stay, because an entry nothing can make red
+# is a claim.
+#
+# AND WHAT IT IS, AFTER ALL OF THAT, IS SIXTEEN MEASURED ROUTES (DEC-0029). Round 9 stopped driving
+# this towards completeness: six, then twelve, then sixteen, and the review that measured the
+# sixteenth found a seventeenth in the same sitting. Whether a value in arbitrary Python reaches a
+# place is not statically decidable, so this corpus says "these routes are seen", never "the others
+# do not exist". The ones that are seen and NOT covered are `L34` in `docs/POST_V2_WISHLIST.md`; the
+# audit-hook test beside this one is the half that is total over what a run executes.
+_HOW_A_PATH_TRAVELS = {
+    "in the argument itself": ("_a_second_reader(_state_path(state, rel))", "_a_second_reader"),
+    "through a local name": ("path = _state_path(state, rel)\n"
+                             "_a_second_reader(path)", "_a_second_reader"),
+    "through a computation": ("path = _state_path(state, rel)\n"
+                              "_a_second_reader(os.path.join(os.path.dirname(path),\n"
+                              "                              os.path.basename(path)))",
+                              "_a_second_reader"),
+    "beside the reader in a wrapper": ("functools.partial(_a_second_reader,\n"
+                                       "                  _state_path(state, rel))()",
+                                       "_a_second_reader"),
+    "through a member of this module": ("_SIDECAR.read(_state_path(state, rel))", "_SIDECAR"),
+    "parked in a name of the module": ("global _STASHED\n"
+                                       "_STASHED = _state_path(state, rel)\n"
+                                       "_a_reader_of_the_stash()", "_a_reader_of_the_stash"),
+    "parked in an attribute of a member of this module": (
+        "_SIDECAR.parked = _state_path(state, rel)\n"
+        "_a_reader_of_the_member()", "_a_reader_of_the_member"),
+    "parked in a mapping of this module": ('_A_DICT["parked"] = _state_path(state, rel)\n'
+                                           "_a_reader_of_the_dict()", "_a_reader_of_the_dict"),
+    "parked in a list of this module": ("_A_LIST[0] = _state_path(state, rel)\n"
+                                        "_a_reader_of_the_list()", "_a_reader_of_the_list"),
+    "behind a local alias of the reader": ("reader = _a_second_reader\n"
+                                           "reader(_state_path(state, rel))", "_a_second_reader"),
+    "out of a factory of this module": ("_a_reader_factory()(_state_path(state, rel))",
+                                        "_a_reader_factory"),
+    "behind a local alias, with the path in a local too": ("reader = _a_second_reader\n"
+                                                           "path = _state_path(state, rel)\n"
+                                                           "reader(path)", "_a_second_reader"),
+    "out of a factory and called from a local": ("reader = _a_reader_factory()\n"
+                                                 "reader(_state_path(state, rel))",
+                                                 "_a_reader_factory"),
+    "out of a factory, called from a local, path in a local too": (
+        "reader = _a_reader_factory()\n"
+        "path = _state_path(state, rel)\n"
+        "reader(path)", "_a_reader_factory"),
+    "into a def nested in the host function": ("def _a_nested_reader(one):\n"
+                                               "    _PLANTED.append(open(one, 'rb').read())\n"
+                                               "_a_nested_reader(_state_path(state, rel))",
+                                               "_a_nested_reader"),
+    "parked in the defaults of a function of this module": (
+        "_a_reader_of_the_default.__defaults__ = (_state_path(state, rel),)\n"
+        "_a_reader_of_the_default()", "_a_reader_of_the_default"),
+}
+
+
+def _with_a_second_reader(source, flow):
+    """`migrate.py` with a real second reader planted in `_read_bytes`, reached by `flow`.
+
+    THE HOST IS A LICENSED FUNCTION ON PURPOSE. Its licence covers a reader that COMPOSES, so
+    whatever the rule says about this source it says about the hand-over and about nothing else --
+    plant the same flow in an unlicensed function and the first assertion fires for the host, which
+    would make every entry of the corpus pass for the wrong reason.
+
+    WHERE THE FLOW GOES IS READ OFF THE PARSE -- the end of that function's docstring -- rather than
+    matched against a line quoted from another file, so nothing here rots when it is edited.
+    """
+    tree = ast.parse(source, "<migrate>")
+    host = next(node for node in ast.walk(tree)
+                if isinstance(node, ast.FunctionDef) and node.name == "_read_bytes")
+    lines = source.splitlines(True)
+    planted = "".join("    %s\n" % one for one in flow.splitlines())
+    return ("".join(lines[:host.body[0].end_lineno] + [planted]
+                    + lines[host.body[0].end_lineno:]) + _A_PLANTED_READER)
+
+
+def _what_the_rule_names(source):
+    """Every piece of unlicensed code the two halves of the rule report about one module source."""
+    tree = ast.parse(source, "<migrate>")
+    own = _module_own_names(tree)
+    stashed = _stashed_names(tree, own)
+    named = {where for where in _by_function(tree, stashed) if where not in _NAMES_A_STATE_FILE}
+    return named | {who for _where, _what, who, _line in _handed_a_finished_path(tree)}
+
+
+_READS_ONE_STATE_FILE = '''
+import json
+import sys
+
+from kernel import migrate
+from kernel.state import ProjectState
+
+migrate._read_bytes(ProjectState(sys.argv[1]), "project_config.yaml")
+print(json.dumps([one.decode("utf-8") for one in migrate._PLANTED]))
+'''
+
+
+def test_the_rule_against_handing_a_state_path_on_follows_the_value_and_not_the_call_shape(tmp_path):
+    """`_handed_a_finished_path`'s own claim, measured on a reader that really reads the state.
+
+    WHY THIS EXISTS. The rule this replaces asked the question of the CALL SYNTAX: the callee had to
+    be a bare name of a function of the module, and the composition had to stand inside the argument
+    expression. Measured (2026-08-09, in a clone outside this repo) against a real reader printing
+    the state bytes it got, three of the four routes below walked past it -- a local variable, a
+    member of the module, and a wrapper carrying the reader along -- while the rule's own docstring
+    and three sentences in this file claimed the property in full.
+
+    AND THE ROUND AFTER THAT MEASURED THE OTHER HALF OF THE SAME MISTAKE. Following the PATH was not
+    enough: five ordinary routes handed the state bytes to a real reader while the rule reported an
+    empty list -- a path parked in an attribute, in a mapping or in a list of this module (a store,
+    so nothing is ever passed and `ast.Global` sees none of them), and a receiver behind a local
+    alias, with or without the path in a local as well (F1, round 7). So `_value_leads_to` follows
+    the RECEIVER the way `_carries_a_state_path` follows the path, and `_stashed_names` asks a
+    store's target for its root name instead of asking the statement for a `global`.
+
+    AND THE ROUND AFTER THAT MEASURED THE CROSSING OF THE TWO AXES. Four more ordinary routes fed
+    the same real reader with the rule silent (B1, round 8): a factory result put in a LOCAL and
+    called from there -- the product of the two axes above, with and without the path in a local as
+    well -- a `def` nested in the host function, and a path parked in a callee's own `__defaults__`.
+    So the asymmetry between "this value IS module code" and "this value CAME OUT OF module code"
+    moved from the binding site to the USE site (`_receives`, `invoked`), a nested `def` counts as
+    code of this file (`_module_own_names`), and the callee is read as a carrier like every other
+    word of the call.
+
+    SO THE QUESTION IS ASKED OF THE VALUE, on both ends. `_carries_a_state_path` follows what a name
+    holds and `_value_leads_to` follows who a name is; the callee's shape is read by neither. The
+    corpus is the routes a value can take, and every entry of it is measured from both ends in one
+    run:
+
+      * IT REALLY READS THE STATE. The planted module is written into a copy of the kernel outside
+        this file's own tree and run as a process; the reader opens what it was handed and hands the
+        bytes back, and they have to be the marker this test wrote. A route that cannot carry the
+        path is a route this test would otherwise be scoring as caught.
+      * THE RULE REALLY NAMES THE HOLDER. Not "something was reported" -- the piece of code that
+        ends up with the path is named, so an entry cannot pass on a finding about its neighbour.
+
+    AND THE SHIPPED FILE IS SILENT, which is what makes the findings mean anything.
+
+    WHAT THIS TEST THEREFORE CLAIMS, and DEC-0029 is where the line was drawn: that these sixteen
+    routes are seen. Not that a seventeenth does not exist -- one was measured in the same review as
+    the sixteenth (a nested `def` reading the path out of its CLOSURE, `L34`), and "no value in
+    arbitrary Python reaches this place" is not a question a parse can answer. The routes that are
+    seen and NOT covered stand in `L34`; the guarantee lives next door, in
+    `test_every_state_file_this_module_opens_it_opens_through_read_bytes`, which is total over what
+    a run executes and blind to what it does not.
+
+    RED with the syntax rule back: `through a local name`, `through a member of this module`,
+    `beside the reader in a wrapper` and `parked in a name of the module` report nothing. RED with
+    the value rule but round 6's two blind spots back -- a `global`-only `_stashed_names` and
+    `_root_name(node.func)` as the receiver: the three parked routes and the two aliased ones report
+    nothing, which is the state this test was in when it was green. RED with round 7's asymmetry
+    back, the one that sat on the BINDING site (`_value_leads_to` dropping calls outright): the two
+    `out of a factory ... from a local` routes report nothing. RED with the top-level-only
+    `_module_own_names`: `into a def nested in the host function` reports nothing. RED with the
+    callee left out of the carriers: `parked in the defaults of a function of this module` reports
+    nothing. And RED in the other direction -- on the FIRST assertion, about the shipped file -- if
+    the argument position resolves a call result too: `absorbed_documents` is reported as receiving
+    a path it never gets.
+    """
+    source = io.open(migrate.__file__, encoding="utf-8").read()
+    assert not _what_the_rule_names(source), (
+        "the shipped module already trips this rule, so nothing the corpus below reports can be "
+        "read as the corpus's doing: %s" % sorted(_what_the_rule_names(source)))
+
+    marker = "name: a-state-file-only-a-planted-reader-would-open\n"
+    state = tmp_path / "state"
+    os.makedirs(str(state))
+    io.open(str(state / "project_config.yaml"), "w", encoding="utf-8", newline="\n").write(marker)
+    package = str(tmp_path / "importable")
+    shutil.copytree(os.path.join(ROOT, "team-kits", "kernel"), os.path.join(package, "kernel"),
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    probe = str(tmp_path / "reads_one_state_file.py")
+    io.open(probe, "w", encoding="utf-8", newline="\n").write(_READS_ONE_STATE_FILE)
+
+    for route, (flow, holder) in sorted(_HOW_A_PATH_TRAVELS.items()):
+        planted = _with_a_second_reader(source, flow)
+        assert planted != source, route
+        io.open(os.path.join(package, "kernel", "migrate.py"), "w",
+                encoding="utf-8", newline="\n").write(planted)
+        environment = dict(os.environ, PYTHONPATH=package)
+        done = subprocess.run([sys.executable, "-B", probe, str(state)], env=environment,
+                              capture_output=True, text=True, timeout=300)
+        assert done.returncode == 0, "%s: %s" % (route, done.stdout + done.stderr)
+        assert json.loads(done.stdout.strip().splitlines()[-1]) == [marker], (
+            "the reader planted %s never got the state file's bytes, so this route measures a "
+            "shape and not a reader: %r" % (route, done.stdout))
+        assert holder in _what_the_rule_names(planted), (
+            "a state path travels %s into `%s` and the rule does not name it, so a reader there is "
+            "licensed by nothing and reported by nothing: %s"
+            % (route, holder, sorted(_what_the_rule_names(planted))))
+
+
+def test_every_verdict_the_run_up_can_produce_is_named_where_it_is_documented(tmp_path):
+    """DEC-0019: the seam between what `search_coverage` says about itself and what it does.
+
+    The docstring of a classifier is a claim about its answers, and this file has twice been the
+    place where such a claim went stale one round after it was written -- the paragraph said "the
+    four answers ... and there is no fifth" while a fifth was what the round was adding. So both
+    ends are read off the running thing: the verdicts are collected from a state built to reach
+    every one of them, and the names are looked up in the module's own constants.
+
+    RED in both directions: a verdict the code produces and the docstring does not name, and a
+    verdict name the docstring carries that no state can produce any more.
+    """
+    state = _plain_state(tmp_path, "verdicts")
+    _seven_placements(state, _v1_records_text())          # searched and unsearched
+    _write_document(state, ".audit/hook_events.jsonl", "{}\n")        # machinery
+    _write_document(state, "generated/index.yaml", "items: []\n")     # kernel
+    hidden = os.path.join(state.root, "denied")
+    _write_document(state, "denied/old_procs.yaml", _v1_records_text())
+    with _unlistable(hidden):                             # unlistable
+        produced = {verdict for _rel, verdict, _why in migrate.search_coverage(state)}
+    named = {name: value for name, value in vars(migrate).items()
+             if name.isupper() and isinstance(value, str) and value in produced}
+    assert len(named) == len(produced), (
+        "a verdict this module produces is not one of its own named constants: %s" % sorted(
+            produced - set(named.values())))
+    documented = {word for word in re.findall(r"\b[A-Z][A-Z_]{3,}\b",
+                                              migrate.search_coverage.__doc__)
+                  if isinstance(getattr(migrate, word, None), str)}
+    assert documented == set(named), (
+        "the docstring names %s and the code produces %s"
+        % (sorted(documented), sorted(named)))
+
+
+def _proposal_area_spellings():
+    """Every case spelling of the proposal area's directory name -- the product, not a sample.
+
+    Derived from `layout.STAGING_DIRNAME` rather than listed, so a renamed directory is measured in
+    all of its spellings on the day it is renamed.
+    """
+    from kernel import layout
+    return sorted({"".join(letters) for letters in itertools.product(
+        *[(one.lower(), one.upper()) for one in layout.STAGING_DIRNAME])})
+
+
+def test_every_spelling_of_the_proposal_area_gets_one_answer_from_both_readers(tmp_path, capsys,
+                                                                               monkeypatch):
+    """One directory, one verdict -- for every way this filesystem lets it be spelled.
+
+    Measured 2026-08-08, before this: a state holding `Staging/PR-0001/old_procs.yaml` (the same
+    directory this filesystem opens under either spelling) had the run-up call it SEARCHED while
+    `documents` -- which folds case, because `layout._relative` does -- called it no document at
+    all. So the dry run read it nowhere, named it nowhere and printed nothing about it, and the
+    validator reported a V1 backlog record in it and refused the merge. The one answer the round
+    before had built was split again by a capital letter.
+
+    WHAT IS ASSERTED IS THE IMPLICATION, not the verdict: whatever the run-up calls SEARCHED must be
+    a file the dry run's own inventory holds, in every spelling. A future rule that answers
+    differently is caught by that rather than by this list of spellings.
+
+    AND THE COUNTER-DIRECTION IS WHY THE ANSWER IS *UNSEARCHED* AND NOT *SEARCHED*: an item body
+    staged for capture carries an id and a status, so the recogniser cannot tell it from a V1
+    record. Two of them in one state are measured below through the recogniser itself -- searching
+    the proposal area would turn every proposal into a finding no run can clear, in a project whose
+    proposals are the normal way of working.
+
+    RED without the folded predicate in `_coverage_of`: the capitalised spelling is SEARCHED and in
+    no inventory, and the assertion in the loop fails for 127 of the 128 spellings.
+
+    What the proposal area costs in the other direction -- a V1 store moved there is named and
+    blocks nothing -- is the entry `L19` in `docs/POST_V2_WISHLIST.md`. WHAT THIS DOES NOT MEASURE
+    is the rest of the folding: case is only one of the things a filesystem folds, and a trailing
+    dot is one it folds while `str.lower` does not -- the entry `L29` in
+    `docs/POST_V2_WISHLIST.md`.
+    """
+    from kernel import layout
+    spellings = _proposal_area_spellings()
+    assert len(spellings) > 1, "the proposal area's name has no second spelling to measure"
+    for index, spelling in enumerate(spellings):
+        state = _plain_state(tmp_path, "spelling_%03d" % index)
+        rel = "%s/PR-0001/old_procs.yaml" % spelling
+        _write_document(state, rel, _v1_records_text())
+        coverage = migrate.search_coverage(state)
+        inventory = set(migrate.documents(state))
+        for path, verdict, _why in coverage:
+            assert (verdict == migrate.SEARCHED) == (path in inventory), (
+                "%s: the run-up says %s and the document inventory says %s"
+                % (path, verdict, path in inventory))
+        verdict = dict((path, one) for path, one, _why in coverage)[rel.replace("//", "/")] \
+            if rel in [path for path, _v, _why in coverage] else None
+        assert verdict in (None, migrate.UNSEARCHED), (
+            "%s is searched, and the proposal area is not searched under its own name" % rel)
+
+    # one spelling end to end, through the readers a project actually meets
+    state = _state_with_a_root_item(tmp_path, "capitalised")
+    repo = os.path.dirname(state.root)
+    alternative = next(one for one in spellings if one != layout.STAGING_DIRNAME)
+    rel = "%s/PR-0001/old_procs.yaml" % alternative
+    _write_document(state, rel, _v1_records_text())
+    walked = {path for path, _v, _why in migrate.search_coverage(state)}
+    spelled = next(path for path in walked if path.endswith("PR-0001/old_procs.yaml"))
+    opened = _reads_recorded(monkeypatch)
+    findings = {one["item"]: one for one in report_module().validate_state(state)}
+    assert spelled not in opened, "%s was searched by the validator" % spelled
+    assert spelled not in findings, (
+        "the validator reports a record in the proposal area: %s" % findings.get(spelled))
+    _run(state, "migrate", "--dry-run")
+    printed = capsys.readouterr().out
+    assert spelled in printed, "the dry run says nothing at all about %s" % spelled
+    assert _gate_memory_complete(repo).returncode == 0, (
+        "a proposal under a differently spelled proposal area refuses the merge")
+
+    # the counter-direction: what the recogniser makes of two ordinary staged item bodies
+    for number in (1, 2):
+        _write_document(state, "%s/PR-0001/proposal_%d.yaml" % (alternative, number),
+                        "id: TSK-000%d\nstatus: DRAFT\ntitle: \"what this task would do\"\n"
+                        % number)
+    staged = [key for path in ("proposal_1.yaml", "proposal_2.yaml")
+              for _ordinal, key, record in migrate.scan_document(yaml.safe_load(io.open(
+                  os.path.join(state.root, alternative, "PR-0001", path), encoding="utf-8")))
+              if migrate._declares_status(record)
+              and migrate._is_backlog_type(migrate.V1_ID_RE.match(key).group(1))]
+    assert staged == ["TSK-0001", "TSK-0002"], (
+        "the recogniser no longer reads a staged item body as a record, so the reason the "
+        "proposal area is out of the search has changed: %s" % staged)
+    assert _gate_memory_complete(repo).returncode == 0, (
+        "two staged proposals refuse the merge, which is what searching the proposal area costs")
+
+
+def test_the_remedy_for_an_unsearched_file_names_every_condition_that_keeps_it_out(tmp_path):
+    """An answer that names one of two conditions describes the file only half.
+
+    Measured 2026-08-07 and left standing: `staging/PR-0001/old_procs.yaml.bak` was answered with
+    "it is no YAML document ... rename it back if it is a V1 store". Renaming it produces
+    `staging/PR-0001/old_procs.yaml`, which is unsearched for the OTHER reason -- one nothing in
+    the message had mentioned. The reader ends up where they started, having done what they were
+    told.
+
+    THE THIRD CONDITION IS IN HERE FOR THE SAME REASON, and it is the one the first cut of that fix
+    left behind: a dotted path was decided by an early return, so `staging/.bak/old_procs.yaml`
+    named the dotted condition alone. The same half-description, one branch over.
+
+    WHAT CHANGED UNDER DEC-0024 and what did not. The per-condition STEPS are gone -- each of them
+    was a move a reader could follow onto a file that was there -- so this no longer measures that
+    two steps are joined. The conditions themselves are what the reader needs in order to decide
+    anything at all, and a file kept out by two of them still has to carry both.
+
+    RED without the composed reason: the answer for a doubly-excluded file names one condition.
+    """
+    state = _plain_state(tmp_path, "both_reasons")
+    singly = ("old_procs.yaml.bak", "staging/PR-0001/old_procs.yaml", ".bak/old_procs.yaml")
+    doubly = ("staging/PR-0001/old_procs.yaml.bak", "staging/.bak/old_procs.yaml")
+    for rel in singly + doubly:
+        _write_document(state, rel, _v1_records_text())
+    why = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    # every condition a singly excluded file names, derived from its own text rather than from a
+    # sentence somebody wrote here
+    heads = {rel: why[rel].split(", so nothing here can say")[0] for rel in singly}
+    for rel in doubly:
+        both = why[rel]
+        carried = [head for head in heads.values() if head in both]
+        assert len(carried) == 2, (
+            "%s is kept out by two conditions and its answer names %d: %r"
+            % (rel, len(carried), both))
+
+
+def _remedy_corpus(state):
+    """Every shape a file can be kept out of the search in, over THIS state's own kernel areas.
+
+    DERIVED IN BOTH HALVES. The areas come from `layout.kernel_written_subtrees`, which asks the
+    writers' own path builders -- so an area the kernel gains is in the corpus on the day a writer
+    starts landing there, which a list of directory names could not be. The shapes are the product
+    of the conditions `migrate._classify` can hold at once, so a fourth condition makes this corpus
+    twice as large by itself.
+    """
+    from kernel import layout
+    subtrees = layout.kernel_written_subtrees(state.root)
+    areas = sorted(set(subtrees) | {one.split("/")[0] for one in subtrees} | {"", "docs"})
+    corpus = set()
+    for area, dotted, renamed, staged in itertools.product(areas, (0, 1), (0, 1), (0, 1)):
+        name = "old_procs.yaml.bak" if renamed else "old_procs.yaml"
+        parts = [one for one in area.split("/") if one]
+        if dotted and parts:
+            parts[0] = "." + parts[0]
+        elif dotted:
+            name = "." + name
+        if staged:
+            parts.insert(0, layout.STAGING_DIRNAME)
+        corpus.add("/".join(parts + [name]))
+    return sorted(corpus)
+
+
+# EVERY WAY TWO DIFFERENT STRINGS CAN BECOME ONE FILE NAME that this corpus knows about -- each with
+# the way to SPELL it and the way to UNDO it. It is an enumeration, and what it owes at BOTH ends is
+# only what the code below can pay: a folding this host does not actually perform is not put into the
+# model (the pair stays two files on disk), and a folding that changes no subject of the corpus is
+# reported as never asked.
+#
+# WHAT IT DOES NOT PAY -- and the claim that it did was itself the defect (B5, round 8): a folding
+# this host performs that this list does not KNOW is reported by nothing here, because the corpus of
+# subjects is generated out of `_FOLDINGS` itself. Measured 2026-08-09: removing `"upper case"`
+# leaves this test green on NTFS. So the risk of the list is that it is short, and a short list makes
+# this measure LESS than it claims rather than wrong.
+#
+# WHAT LIMITS THE SHORTNESS is not a longer list but the escape: `deposit_of` writes into
+# `migrate._NAME_ALPHABET`, on which every folding of this list is the identity. The last assertion
+# below is the half of this test that does NOT depend on the list at all -- it creates the deposit
+# name of every corpus entry on the real disk and counts the files, so whatever this host folds
+# decides that count. A subject the corpus never contains is still outside it; that is the price.
+#
+# THE UNDO HALF IS NEW IN ROUND 7 AND SO IS THE REASON FOR IT. The model used to be written down --
+# `name.rstrip(". ").lower()`, which is what this host does -- and that wired one platform into the
+# measurement: on ext4 (WSL `/tmp`, measured 2026-08-09) it disagreed with the disk about 18 pairs of
+# this corpus and the corpus folded nothing at all, so both assertions of the test below failed on a
+# platform this repo's CI runs (`.github/workflows/ci.yml` runs `ubuntu-latest` and `windows-
+# latest`). The PROPERTY is the same on both -- the model agrees with the disk, and a deposit name
+# survives whatever this host folds -- only the answer differs, so the answer is asked of the disk.
+_FOLDINGS = {
+    "upper case": (lambda one: one.upper(), lambda one: one.lower()),
+    "a trailing dot": (lambda one: one + ".", lambda one: one.rstrip(".")),
+    "a trailing space": (lambda one: one + " ", lambda one: one.rstrip(" ")),
+    "a decomposed accent": (lambda one: unicodedata.normalize("NFD", one),
+                            lambda one: unicodedata.normalize("NFC", one)),
+    "a composed accent": (lambda one: unicodedata.normalize("NFC", one),
+                          lambda one: unicodedata.normalize("NFC", one)),
+}
+
+# WHAT THE FOLDINGS ARE APPLIED TO, and the reason there is more than one: a folding has to be the
+# ONLY difference in at least one pair, or the corpus scores an encoder as injective for a reason
+# that has nothing to do with it. Measured 2026-08-09: with an accented name as the only subject,
+# the encoder that lost `PROC-0811a` against `PROC-0811A` passed this test, because upper-casing
+# that name also changes the accent's own escape and the two names stay apart by accident.
+# The decomposed spelling is a subject and not only a folding, because a folding that changes
+# nothing about any subject is one the corpus never reaches -- and the assertion in the test says so.
+_FOLDING_SUBJECTS = ("old_procs.yaml", "Proçedures.yaml",
+                     unicodedata.normalize("NFD", "Proçedures.yaml"))
+
+
+def _foldings_this_filesystem_performs(where):
+    """Which entries of `_FOLDINGS` THIS filesystem really performs -- asked of it, not written down.
+
+    Both spellings of a pair are created in a directory of their own, and the folding is one this
+    host performs exactly when one file is left. That is the same question the test below asks of
+    the whole corpus; it is asked here first because the MODEL has to be built out of the answer,
+    and a model built out of one host's answer is what round 7 found hard-wired.
+    """
+    performed = []
+    for ordinal, name in enumerate(sorted(_FOLDINGS)):
+        spell, _undo = _FOLDINGS[name]
+        subject = next((one for one in _FOLDING_SUBJECTS if spell(one) != one), None)
+        assert subject is not None, (
+            "no subject of the corpus is changed by %r, so this host is never asked about it and "
+            "the entry measures nothing" % name)
+        probe = os.path.join(where, "performs_%d" % ordinal)
+        os.makedirs(probe)
+        for spelling in (subject, spell(subject)):
+            io.open(os.path.join(probe, spelling), "w", encoding="utf-8", newline="\n").write("x")
+        if len(os.listdir(probe)) == 1:
+            performed.append(name)
+    return performed
+
+
+def _folded(name, performed):
+    """What this filesystem makes of a file name before it decides WHICH FILE it is -- a model.
+
+    It is a model of another program's behaviour, so it is built from what that program answered
+    (`_foldings_this_filesystem_performs`) and never used anywhere it has not been measured:
+    `test_two_sources_this_filesystem_would_fold_together_get_two_deposits` creates both names of
+    every pair of a corpus and requires this answer and the filesystem's own to agree, in both
+    directions. On a host that folds nothing this is the identity, which is the right model there.
+
+    TO A FIXED POINT, because one undo step can expose what another one strips: `x. ` loses the dot
+    only after the space is gone, and in the other order only after a second pass. Which steps are
+    in the list at all is the disk's answer rather than an order somebody wrote here, so no order
+    they are applied in may decide the result.
+    """
+    while True:
+        after = name
+        for one in performed:
+            after = _FOLDINGS[one][1](after)
+        if after == name:
+            return name
+        name = after
+
+
+def test_two_sources_this_filesystem_would_fold_together_get_two_deposits(tmp_path):
+    """`deposit_of`'s injectivity, asked AFTER the filesystem instead of of the string.
+
+    THE CLASS, IN THE ENCODER'S OWN WORDS: two names a filesystem folds into one are one name, so
+    injectivity has to hold after the folding and not only in the string. It has been closed twice
+    for ONE folding and reopened by the next: the trailing dot was escaped, and then a document
+    holding `PROC-0811a` and `PROC-0811A` produced two instructions of one report landing on one
+    file -- measured 2026-08-09 on a real dry run, `instructions: 2, deposit files afterwards: 1`.
+    A YAML key tells the two records apart; this filesystem does not tell their deposits apart.
+
+    SO THE ANSWER IS THE ALPHABET AND NOT A THIRD ESCAPE (`migrate._NAME_ALPHABET`): every character
+    a deposit name can carry is one on which the folding is the identity. That is a property, and
+    this measures the property rather than the pairs that produced it -- the corpus is generated by
+    applying every folding this test knows to a seed that carries something for each of them.
+
+    BOTH ENDS, AND BOTH READ OFF THE FILESYSTEM:
+
+      * the sources themselves are created, so a folding this host does not perform cannot be
+        counted as one that was survived -- and `_folded`, the model the report's own collision
+        check uses, has to give the same answer as the disk for every pair.
+      * the deposit names are created, and there have to be as many files as there were distinct
+        sources.
+
+    RED with `urllib.parse.quote(rel, safe="").replace(".", "%2E")` back: the upper-case pair gives
+    two names, the disk gives one file, and the count is short.
+
+    ON A HOST THAT FOLDS NOTHING -- a case-sensitive filesystem, which is what this repo's CI runs
+    on `ubuntu-latest` -- the first assertion is the identity on both sides and the second falls
+    back to injectivity in the string. That is less, and it says so instead of failing.
+
+    THERE IS NO THIRD ASSERTION, and its absence is the round-8 correction (B4). It read
+    `bool(folded_here) == bool(performed)` and could not fail: `disagreed` is asserted empty
+    directly above it, the corpus holds the probe's own pair by construction, and the coupling then
+    follows in both directions from what has already been asserted -- measured on ext4, where the
+    first two assertions are vacuous, a host answer of `[]` was GREEN. Asking the same two sources
+    per folding and per subject instead was tried and dropped for the same reason: whenever a
+    folding is in `performed`, `_folded` collapses its pair by construction, so `disagreed` already
+    decides it; the pairs where the two could part company need two undos of this list to coincide
+    on one pair, which happens on neither filesystem this repo runs on. A longer spelling of the
+    same vacuum is not an improvement on it.
+
+    WHAT REALLY CARRIES THE HOST'S ANSWER is that the model is BUILT from it: an error in
+    `_foldings_this_filesystem_performs` moves `_folded`, and `disagreed` reports it against the
+    disk. That is one measurement with one authority, and it is the one that goes red.
+    """
+    corpus = {spell(subject) for subject in _FOLDING_SUBJECTS
+              for spell, _undo in _FOLDINGS.values()}
+    corpus |= set(_FOLDING_SUBJECTS)
+    asked = str(tmp_path / "asked")
+    os.makedirs(asked)
+    performed = _foldings_this_filesystem_performs(asked)
+
+    # WHAT THIS HOST REALLY FOLDS, pair by pair, and whether the model built from its answer agrees.
+    disagreed = []
+    for ordinal, (one, other) in enumerate(sorted(itertools.combinations(sorted(corpus), 2))):
+        where = str(tmp_path / ("pair%d" % ordinal))
+        os.makedirs(where)
+        for name in (one, other):
+            io.open(os.path.join(where, name), "w", encoding="utf-8", newline="\n").write(name)
+        on_disk = len(os.listdir(where)) == 1
+        if on_disk != (_folded(one, performed) == _folded(other, performed)):
+            disagreed.append((one, other, "one file" if on_disk else "two files"))
+    assert not disagreed, (
+        "`_folded` and this filesystem disagree about which names are one name, so the collision "
+        "check that uses the model is measuring something else: %s" % disagreed)
+
+    deposits = str(tmp_path / "deposits")
+    os.makedirs(deposits)
+    for source in sorted(corpus):
+        name = migrate.deposit_of(source).split("/")[-1]
+        io.open(os.path.join(deposits, name), "w", encoding="utf-8", newline="\n").write(source)
+    assert sorted(os.listdir(deposits)) and len(os.listdir(deposits)) == len(corpus), (
+        "%d sources this filesystem tells apart were given deposit names it does not, so a copy "
+        "would land on a copy of something else: %d file(s) for %s"
+        % (len(corpus), len(os.listdir(deposits)), sorted(corpus)))
+
+
+_THE_INSTRUCTION = "COPY it -- the original stays where it is -- to "
+
+
+def _instruction(why):
+    """The path the printed answer tells a reader to put a COPY at, taken out of the message.
+
+    THE SEAM THIS WHOLE FAMILY LIVED IN is between what the code derives and what a reader is told,
+    so the destination is parsed back out of the sentence rather than asked of `deposit_of`. A
+    message whose instruction half names no path, or more than one, is a failure of the caller
+    rather than something to skip.
+    """
+    _head, marker, tail = why.partition(_THE_INSTRUCTION)
+    if not marker:
+        return None
+    return re.findall(r"`([^`]+)`", tail)
+
+
+def test_the_instruction_this_module_prints_has_exactly_one_composer():
+    """`copy_instruction`'s own claim -- that there is one shape and one place that makes it.
+
+    THE CLAIM IS WHAT THE REST OF THIS FAMILY RESTS ON. Two printed instructions -- the coverage
+    note for a file out of reach and the refusal of a record too large -- used to be two sentences,
+    and the second of them named a bare directory while the first named a constructed file. If a
+    third sentence composed the phrase itself, the tests that parse it (`_instruction`) would read
+    it and the composer's guarantees (a constructed name, the note about a name too long) would not
+    apply to it. So the claim is asked of the shipped code rather than left in a docstring.
+
+    RED with a second composer: any other literal carrying the phrase puts its file and line here.
+    """
+    composers = []
+    for base, directories, files in os.walk(os.path.join(ROOT, "team-kits")):
+        directories[:] = [one for one in directories if one != "__pycache__"]
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(base, name)
+            for node in ast.walk(ast.parse(io.open(path, encoding="utf-8").read(), path)):
+                if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                        and _THE_INSTRUCTION in node.value:
+                    composers.append(
+                        (os.path.relpath(path, ROOT).replace(os.sep, "/"), node.lineno))
+    assert len(composers) == 1, (
+        "the instruction this harness prints is composed in %d places, so what one of them "
+        "guarantees says nothing about the others: %s" % (len(composers), composers))
+    assert migrate.copy_instruction("staging/x").startswith(_THE_INSTRUCTION), (
+        "the one composer no longer produces the phrase the tests read it by")
+
+
+def _carry_out(state, source, target):
+    """Do to the state exactly what the instruction says: copy, and leave the original alone."""
+    destination = os.path.join(state.root, *target.split("/"))
+    os.makedirs(os.path.dirname(destination), exist_ok=True)
+    shutil.copy(os.path.join(state.root, *source.split("/")), destination)
+
+
+def test_no_instruction_this_command_prints_can_take_a_file_away(tmp_path):
+    """DEC-0024, measured by CARRYING OUT every instruction of one report at once.
+
+    WHY THE WHOLE REPORT AND NOT ONE LINE. Three review rounds closed this family one clause at a
+    time -- the target was a kernel area, then a wall, then an occupied path -- and the fourth
+    round found the shape no per-line clause can see: TWO answers of ONE run named one free path.
+    Measured 2026-08-09, three hiding places of one name, each held out of the search by a
+    different condition:
+
+        .legacy/old_procs.yaml           -> old_procs.yaml          taken=False
+        old_procs.yaml.bak               -> old_procs.yaml          taken=False
+        staging/PR-0001/old_procs.yaml   -> PR-0001/old_procs.yaml  taken=False
+
+    A reader who followed the first two lost a V1 store to a silent `mv`, and every authority the
+    derivation had been taught to ask answered "free".
+
+    WHAT REPLACES IT IS A CONSTRUCTION AND NOT A FOURTH AUTHORITY (`migrate.deposit_of`): a COPY,
+    into an area under `staging/` this command owns, under a name that is the source path itself,
+    percent-encoded. So this measures the three properties that construction has, and it measures
+    them by doing what the report says instead of by reading what it says:
+
+      * every named destination lies inside that area -- never a wall, never a kernel path, never
+        anything a gate or another command owns;
+      * no two lines of one report name one file -- asked after the FOLDING and not of the strings,
+        because two names this filesystem folds together are one file. That the model of the folding
+        used here is the filesystem's own is measured separately, in
+        `test_two_sources_this_filesystem_would_fold_together_get_two_deposits`, which is also where
+        the encoder's injectivity under it lives; `unquote` inverting the encoding is asserted here
+        rather than assumed;
+      * after every instruction of the report has been carried out, every file that was there
+        before is byte-for-byte the file it was -- the sources included.
+
+    WHICH INSTRUCTIONS THIS IS OVER, said because the test's name is wider than its corpus: the
+    coverage notes of one report. The dry run prints ONE further instruction that is deliberately
+    not in it -- the occupied landing place, whose second step removes the original on purpose
+    (`L35`, the user's decision of 2026-08-09). Its own measurement is
+    `test_the_place_a_taken_landing_is_freed_to_is_named_and_lies_outside_the_state_directory`, and
+    it is a different claim: not "nothing is taken away" but "the file is somewhere else first".
+
+    RED without the construction: with the derivation restored, the corpus below produces two lines
+    naming one destination, and the byte comparison at the end reports the source that was lost.
+    """
+    from kernel import layout
+    state = _plain_state(tmp_path, "one_report")
+    corpus = _remedy_corpus(state)
+    assert len(corpus) > 50, "the corpus collapsed to %d paths" % len(corpus)
+    for ordinal, rel in enumerate(corpus):
+        _write_document(state, rel, "# %d\n%s" % (ordinal, _v1_records_text()))
+    before = _snapshot(state.root)
+
+    answers = migrate.unsearched_notes(migrate.search_coverage(state))
+    assert len(answers) > 20, "only %d paths of the corpus are unsearched" % len(answers)
+    asked = str(tmp_path / "asked")
+    os.makedirs(asked)
+    performed = _foldings_this_filesystem_performs(asked)
+    told = {}
+    for rel, why in answers:
+        named = _instruction(why)
+        assert named is not None, (
+            "%s is named and the answer tells the reader nothing: %r" % (rel, why))
+        assert len(named) == 1, (
+            "%s: the instruction half names %d paths, so a reader has to choose: %r"
+            % (rel, len(named), why))
+        target = named[0]
+        assert migrate.in_deposit(target), (
+            "%s: the instruction names %s, which is outside the area this command owns"
+            % (rel, target))
+        assert layout.is_in_proposal_area(target), target
+        assert not layout.is_kernel_written(state.root, target), target
+        assert urllib.parse.unquote(target.split(migrate._DEPOSIT_MARK, 1)[1]) == rel, (
+            "%s: the deposit name does not carry its own source back, so two sources could share "
+            "one name: %s" % (rel, target))
+        # ...AND THE COLLISION IS ASKED AFTER THE FOLDING AND NOT BEFORE IT. Two names this
+        # filesystem folds into one ARE one place, so comparing the strings would pass over exactly
+        # the pair that costs a file. What the folding is was asked of this host above; that the
+        # model agrees with it is `test_two_sources_this_filesystem_would_fold_together_get_two_
+        # deposits`.
+        folded = _folded(target, performed)
+        assert folded not in told, (
+            "COLLISION: two answers of one report land on %s -- for %s and for %s"
+            % (folded, told.get(folded)[0], rel))
+        told[folded] = (rel, target)
+
+    for _folded_target, (rel, target) in sorted(told.items()):
+        _carry_out(state, rel, target)
+    after = _snapshot(state.root)
+    for path, blob in sorted(before.items()):
+        assert after.get(path) == blob, (
+            "carrying out the answers of ONE report changed %s -- the report cost the reader a "
+            "file it told them about" % path)
+
+    # ...AND THE COPY IS NOT ANSWERED WITH A COPY OF ITSELF. A deposit file is still under
+    # `staging/`, so the run-up names it as unsearched -- and pointing it at a deposit again would
+    # nest one level per run, which is the step-that-changes-nothing this module prints nowhere.
+    again = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    for _folded_target, (rel, target) in sorted(told.items()):
+        assert target in again, (
+            "%s is not named at all, so the coverage is no longer total" % target)
+        assert _instruction(again[target]) is None, (
+            "%s is a deposit copy and the report tells the reader to deposit it again: %r"
+            % (target, again[target]))
+
+
+def _staging_keys_of(state):
+    """What each reader of `staging/` calls a KEY -- the validator's findings and the brief's list.
+
+    ONE QUESTION, ASKED OF EVERY READER THERE IS. The comment at `migrate._DEPOSIT_MARK` argues that
+    a deposit is a file name because a DIRECTORY there is a staging key, and it used to ask that of
+    `validate_state` alone. `generate_session_brief` reads the same directory, and it listed every
+    entry -- so it announced `staging/.gitkeep/` to every session of every fresh project, and a
+    deposit copy on top of that as soon as the migration started naming one.
+    """
+    findings = [one["item"] for one in report_module().validate_state(state)
+                if "orphaned staging dir" in one["message"]]
+    brief = yaml.safe_load(io.open(
+        report_module().generate_session_brief(state, "dev-team", "0", "hard"),
+        encoding="utf-8").read())
+    return sorted(findings), sorted(brief["staging_pointers"])
+
+
+def test_a_deposit_name_too_long_to_create_says_so_where_it_is_printed(tmp_path):
+    """The price of an injective name, said in the message that charges it.
+
+    THE REST THAT STAYS OPEN is the entry `L32` in `docs/POST_V2_WISHLIST.md`: the name cannot be
+    shortened without giving two sources one place, so past the limit the printed instruction is not
+    executable at all. This measures the half that is closed -- that the message says so.
+
+    THE CONSTRUCTION NEVER SHORTENS -- that is what makes two sources two names -- so a long enough
+    source produces a deposit name this filesystem will not take. Measured 2026-08-09 on this host:
+    a source of 248 characters is created without complaint, its deposit name is 262, and creating
+    THAT answers `OSError: [Errno 22] Invalid argument`. Until now the instruction was printed with
+    nothing said about it, so the reader met the refusal instead of the report.
+
+    THE PAIRING IS THE MEASUREMENT, and it is deliberately a coupling to the host rather than a
+    restatement of `_NAME_MAX_CHARS`: the clause has to appear exactly when the filesystem refuses
+    the name. On a host with a different limit this goes red -- which is the right answer, because
+    then the constant is what is wrong.
+
+    RED without the clause: the instruction for the long source carries no sentence about itself
+    while the name it names cannot be created.
+    """
+    state = _state_with_a_root_item(tmp_path, "long_names")
+    for length, expected in ((248, True), (100, False)):
+        rel = "a" * (length - len(".yaml")) + ".yaml"
+        _write_document(state, rel, _v1_records_text())
+        target = migrate.deposit_of(rel)
+        name = target.split("/")[-1]
+        try:
+            io.open(os.path.join(str(tmp_path), name), "w").close()
+            refused = False
+        except OSError:
+            refused = True
+        assert refused is expected, (
+            "a deposit name of %d characters is %s by this filesystem, which is not what "
+            "`_NAME_MAX_CHARS` (%d) says" % (len(name), "refused" if refused else "taken",
+                                             migrate._NAME_MAX_CHARS))
+        assert bool(migrate.deposit_note(target)) is refused, (
+            "the note about the name and the filesystem's answer disagree for a name of %d "
+            "characters: %r" % (len(name), migrate.deposit_note(target)))
+
+    # ...AND IT REACHES THE READER WHERE THE NAME IS PRINTED, not only where it is composed.
+    long_source = "a" * (248 - len(".yaml")) + ".yaml"
+    told = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    assert long_source not in told, (
+        "a `.yaml` document at the top level is searchable, so this fixture measures the wrong file")
+    renamed = long_source + ".bak"
+    _write_document(state, renamed, _v1_records_text())
+    told = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    clause = migrate.deposit_note(migrate.deposit_of(renamed))
+    assert clause, "this fixture no longer produces an over-long deposit name, so the line below is "\
+                   "an empty string in a haystack and measures nothing"
+    assert clause in told[renamed], (
+        "the printed instruction names a file this filesystem cannot take and says nothing about "
+        "it: %r" % told[renamed])
+
+
+def test_the_deposit_an_instruction_names_is_no_staging_key_either_reader_reports(tmp_path):
+    """Why the deposit is a file NAME under `staging/` and not a directory under it.
+
+    A DIRECTORY under `staging/` is a staging KEY: `report.validate_state` walks them and reports
+    every one that is no active item as an orphaned staging dir, and `report.generate_session_brief`
+    lists them as the session's staging pointers. A deposit directory would therefore make this
+    command's own printed instruction produce a finding in another command -- the reader does what
+    one part of the harness says and another part reports them for it.
+
+    BOTH READERS, because the claim is about the directory and not about one function: until this
+    round only the validator was asked, and the brief was announcing the template's own
+    `staging/.gitkeep` as a key in every project.
+
+    BOTH DIRECTIONS IN ONE STATE, because the claim is about the difference: the deposit file is
+    carried without a finding, and a directory of the same name in the same place produces one.
+
+    RED if `deposit_of` composes a directory (the first half fails with the finding the second half
+    asserts), and RED without the brief's own `isdir` filter (the deposit and `.gitkeep` come back
+    as staging pointers).
+    """
+    state = _state_with_a_root_item(tmp_path, "deposit_is_no_key")
+    _write_document(state, ".legacy/old_procs.yaml", _v1_records_text())
+    os.makedirs(state.staging_root(), exist_ok=True)
+    io.open(os.path.join(state.staging_root(), ".gitkeep"), "w").close()
+    why = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    target = _instruction(why[".legacy/old_procs.yaml"])[0]
+    _carry_out(state, ".legacy/old_procs.yaml", target)
+
+    orphans, pointers = _staging_keys_of(state)
+    assert not orphans, (
+        "the deposit this command's own instruction names is reported as an orphaned staging key: "
+        "%s" % orphans)
+    assert pointers == [], (
+        "a session is told that files under `staging/` are staging keys -- the deposit this "
+        "command's instruction names among them: %s" % pointers)
+
+    os.makedirs(os.path.join(state.root, *target.split("/")) + "-as-a-directory")
+    orphans, pointers = _staging_keys_of(state)
+    assert orphans and pointers, (
+        "a directory under `staging/` is no longer reported by both readers, so the sentences "
+        "above about why the deposit is a file name measure nothing: %s / %s"
+        % (orphans, pointers))
+
+
+def _state_paths_in(text, state):
+    """Every backticked word of `text` that names a place inside this state directory.
+
+    THE SEGMENTS COME FROM THE STATE ITSELF, not from a list written here: what a kernel writer
+    lands in (`layout.kernel_written_subtrees`), the proposal area, and whatever the directory
+    really holds. A word with a space in it is a command line and not a path.
+    """
+    from kernel import layout
+    heads = {one.split("/")[0] for one in layout.kernel_written_subtrees(state.root)}
+    heads.add(layout.STAGING_DIRNAME)
+    heads.update(name.lower() for name in os.listdir(state.root))
+    found = []
+    for word in re.findall(r"`([^`]+)`", text or ""):
+        if " " in word.strip():
+            continue
+        head = word.strip().replace("\\", "/").strip("/").split("/")[0].lower()
+        if head in heads:
+            found.append(word)
+    return found
+
+
+def test_the_place_an_oversized_record_is_sent_to_is_constructed_and_costs_nothing(v1_state):
+    """DEC-0024 for the refusal that is NOT about the coverage: a record too large for one item.
+
+    THIS LINE SAID "move its bulk to `staging/`", and it is the shape the whole family has: a
+    DIRECTORY, so the reader picks the file name, and a picked name can already be taken. Measured
+    2026-08-09 as a real chain rather than as a worry: `gate_write_scope` answers rc 0 for a tool
+    write onto an EXISTING file under `staging/` -- the one place under `project_memory/` it lets
+    through -- so a followed instruction overwrites inside the session, with no shell outside it.
+    And `move` is the second half: what a reader moves out of a V1 file is gone from it.
+
+    WHAT REPLACES IT IS THE SAME CONSTRUCTION THE COVERAGE NOTE USES, which is the point of
+    `migrate.copy_instruction` -- two printed instructions, one shape, one composer. The name is
+    `record_deposit_of`, so it belongs to ONE record of ONE document and can collide with nothing
+    else this report prints; the verb is COPY, so the V1 record stays whole; and the shortening
+    happens in the reader's own V1 document, which is the one file the whole remedy asks them to
+    touch.
+
+    RED with the old sentence back: `_instruction` finds no destination, and the assertion that the
+    remedy names a deposit fails on `staging/`.
+    """
+    bulk = "x" * 40000
+    io.open(os.path.join(v1_state.root, "bulky.yaml"), "w", encoding="utf-8", newline="\n").write(
+        "processes:\n"
+        "  PROC-0811:\n"
+        "    title: \"a record that inlines its own detail\"\n"
+        "    owner: bookkeeper\n"
+        "    steps: [\"%s\"]\n"
+        "    status: PROPOSED\n"
+        "    created: 2026-01-06\n" % bulk)
+    before = _snapshot(v1_state.root)
+    entry = next(one for one in _planned(v1_state)["records"] if one["legacy_id"] == "PROC-0811")
+    assert entry["verdict"] == "blocked", entry
+
+    named = _instruction(entry["reason"])
+    assert named and len(named) == 1, (
+        "the refusal for a record too large names no single place to copy its bulk to: %r"
+        % entry["reason"])
+    target = named[0]
+    assert migrate.in_deposit(target), (
+        "the bulk is sent somewhere this command did not construct, so the reader picks the name: "
+        "%s" % target)
+    assert target == migrate.record_deposit_of("bulky.yaml", "PROC-0811"), target
+    # ...AND IT COLLIDES WITH NO DOCUMENT'S OWN DEPOSIT, which is the argument in
+    # `record_deposit_of`'s docstring: a document is a file, so no path of this state has it as a
+    # directory component. Asked of every document this state really holds, not of the one.
+    inventory = migrate.documents(v1_state)
+    assert "bulky.yaml" in inventory, (
+        "the document holding the record is not in the inventory, so the comparison below is over "
+        "the wrong set: %s" % inventory)
+    clash = [rel for rel in inventory if migrate.deposit_of(rel) == target]
+    assert not clash, (
+        "one record's bulk and a whole document are sent to one place: %s" % clash)
+
+    # ...AND THE PROSE IS A SENTENCE. `_too_large` answers with a whole clause, and it used to be
+    # dropped into the middle of another one ("the item would be N bytes ... as an error does not
+    # fit in one item: ..."). A remedy a reader cannot parse is a remedy nobody follows.
+    assert "as an error does not fit" not in entry["reason"], entry["reason"]
+
+    # ...AND CARRYING IT OUT COSTS NOTHING, which is the whole of DEC-0024 in one line.
+    _carry_out(v1_state, "bulky.yaml", target)
+    after = _snapshot(v1_state.root)
+    for path, blob in sorted(before.items()):
+        assert after.get(path) == blob, (
+            "following the refusal's own remedy changed %s" % path)
+
+
+def test_two_records_of_one_document_that_differ_only_in_case_get_two_deposits(v1_state):
+    """The chain F2 came back through, carried out end to end instead of argued about.
+
+    A V1 DOCUMENT CAN HOLD BOTH `PROC-0811a` AND `PROC-0811A`, because a YAML key is case-sensitive
+    and V1 numbered by hand (`migrate.V1_ID_RE` reads the discriminator for exactly that reason).
+    This filesystem is not case-sensitive, so while the deposit name carried the record id in its own
+    case, ONE report printed TWO instructions that landed on ONE file. Measured 2026-08-09 on a real
+    dry run, before the alphabet: `instructions: 2, deposit files afterwards: 1`.
+
+    WHY THAT IS A LOST RECORD AND NOT A TIDINESS PROBLEM. The instruction says to copy the bulk out
+    and then shorten the record IN THE V1 FILE -- so a reader who follows both loses the first
+    record's body from the V1 file and from the deposit, and the deposit they are left with is the
+    other record's. That is the whole of DEC-0024's "no printed remedy can take a file away",
+    reached through the encoder rather than through a derived target.
+
+    RED with `quote(rel, safe="").replace(".", "%2E")` back: two instructions, one file.
+    """
+    bulk = "x" * 40000
+    io.open(os.path.join(v1_state.root, "bulky.yaml"), "w", encoding="utf-8", newline="\n").write(
+        "processes:\n"
+        + "".join("  PROC-0811%s:\n"
+                  "    title: \"a hand-numbered record that inlines its own detail\"\n"
+                  "    owner: bookkeeper\n"
+                  "    steps: [\"%s\"]\n"
+                  "    status: PROPOSED\n"
+                  "    created: 2026-01-06\n" % (discriminator, bulk)
+                  for discriminator in ("a", "A")))
+    records = [one for one in _planned(v1_state)["records"]
+               if one["legacy_id"].startswith("PROC-0811")]
+    assert sorted(one["legacy_id"] for one in records) == ["PROC-0811A", "PROC-0811a"], (
+        "the two hand-numbered records are not read as two, so this measures one record: %s"
+        % [one["legacy_id"] for one in records])
+
+    told = []
+    for entry in records:
+        assert entry["verdict"] == "blocked", entry
+        named = _instruction(entry["reason"])
+        assert named and len(named) == 1, entry["reason"]
+        told.append(named[0])
+    assert len(told) == 2, told
+
+    from kernel import layout
+    for target in told:
+        _carry_out(v1_state, "bulky.yaml", target)
+    landed = [one for one in os.listdir(v1_state.staging_root())
+              if migrate.in_deposit("%s/%s" % (layout.STAGING_DIRNAME, one))]
+    assert len(landed) == len(told), (
+        "one report printed %d instructions and this filesystem holds %d file(s) afterwards, so a "
+        "reader who follows both keeps one record's bulk and loses the other's: %s -> %s"
+        % (len(told), len(landed), told, landed))
+
+
+def test_no_remedy_the_validator_prints_names_a_place_inside_the_state_directory(tmp_path):
+    """The OTHER report's half of DEC-0024, executed rather than read.
+
+    The migration's instructions are carried out by the tests above. `report.validate_state` prints
+    remedies too, on the same documents and to the same reader, and until this round they had only
+    been read. So they are produced here from a state that reaches each of them, and the question is
+    asked of the answer: a remedy that names a place inside the state directory is a place the
+    reader has to create or overwrite, and this validator offers none -- it sends every one of them
+    OUT of the state directory or to a command.
+
+    RED if a remedy here starts naming a landing place: the finding's own text carries it.
+    """
+    state = _state_with_a_root_item(tmp_path, "validator_remedies")
+    _write_document(state, "broken.yaml", "processes:\n  PROC-0001: {\n")
+    _write_document(state, "big.yaml", "notes: \"%s\"\n" % ("x" * (report_module().
+                                                                  DOCUMENT_MAX_BYTES + 10)))
+    _write_document(state, "still_v1.yaml",
+                    "processes:\n  PROC-0002:\n    title: t\n    status: ACTIVE\n")
+    os.makedirs(os.path.join(state.staging_root(), "TSK-9999"))
+    findings = report_module().validate_state(state)
+    assert len(findings) > 3, "this state reaches too few remedies to measure anything: %s" % findings
+    for finding in findings:
+        named = _state_paths_in(finding.get("remedy", ""), state)
+        assert not named, (
+            "the validator's remedy for %s sends the reader to a place inside the state directory, "
+            "which is a name they have to pick or overwrite: %s -- %r"
+            % (finding["item"], named, finding["remedy"]))
+
+    # ...AND THE READER ABOVE IS NOT BLIND, measured on the one place this harness really does name:
+    # the migration's own instruction for the same state. Without this the loop's silence would say
+    # only that `_state_paths_in` found nothing anywhere.
+    _write_document(state, ".legacy/old_procs.yaml", _v1_records_text())
+    notes = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    told = _state_paths_in(notes[".legacy/old_procs.yaml"], state)
+    assert told and all(migrate.in_deposit(one) for one in told), (
+        "the check above cannot see a place inside the state directory even where one is named, so "
+        "its silence measures nothing: %s" % told)
+
+
+def _parameter_names(tree):
+    """{function name: [parameter names]} for every `def` in one parsed module.
+
+    Nested definitions included, because a helper defined inside a function is called the same way
+    from inside it. A name defined twice in one module keeps the LAST definition, which is what the
+    call sites below it see.
+    """
+    found = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            found[node.name] = [one.arg for one in
+                                list(node.args.posonlyargs) + list(node.args.args)]
+    return found
+
+
+def _remedy_literals(tree, module, signatures):
+    """[(how it is one, the constant)] -- every string this module ships AS a remedy.
+
+    THREE WAYS A STRING BECOMES ONE, and all three are the product's own convention read off the
+    parse rather than a spelling guessed here:
+
+      * it carries the WORD `Remedy` itself -- the shape a message composes for its own reader;
+      * it stands in a `remedy` SLOT: the keyword argument `_kernel.block` prints under
+        `"\\nRemedy: %s"`, or the `remedy` key of a `report.validate_state` finding. The word is
+        added by the printer, so the literal never carries it.
+      * it is BOUND to a parameter called `remedy` by its POSITION. Which parameter a positional
+        argument lands in is a fact about the callee, so it is read off the callee's own `def`
+        (`signatures`) rather than off the call: `_finding(severity, item, message, remedy)`,
+        `_refuse(pipeline, what, why, remedy)`, `_fail(message, remedy)`.
+
+    EVERY NARROWING OF THIS DOMAIN SO FAR WAS MEASURED TO BE A DOMAIN AND NOT A PROPERTY, three
+    times. Round 7: the spelling `Remedy:` missed `Remedy, per document:` (221 literals under the
+    colon, 224 under the word), and the one offender only the punctuation kept out named a
+    kernel-written area. Round 8 (B2): the word missed the slots outright -- 95 shipped slot values
+    at the time of the finding, NONE of which carries a `Remedy` of its own, so the whole `remedy=`
+    half of the product was outside the rule while seven of those values named a place inside a
+    state directory. Round 9: the KEYWORD spelling missed every remedy handed over by position --
+    57 of them, `report.validate_state`'s whole set among them, and two of those were the round's
+    blocking product findings.
+
+    WHERE THE CALLEE IS LOOKED UP, and what that costs: a bare name against the module being read,
+    a dotted one against the module of that name (`_kernel.block` against `_kernel.py`). A remedy
+    parameter of a function reached under any other spelling -- an alias, an attribute of an object,
+    an import that renames -- is outside this domain, and the counters below only say that no half
+    of it has collapsed, never that it is complete.
+    """
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and re.search(r"\bRemedy\b", node.value):
+            found.append(("the word", node))
+        if isinstance(node, ast.Call):
+            found += [("a `remedy=` slot", pair.value) for pair in node.keywords
+                      if pair.arg == "remedy" and isinstance(pair.value, ast.Constant)
+                      and isinstance(pair.value.value, str)]
+            if isinstance(node.func, ast.Name):
+                parameters = signatures.get(module, {}).get(node.func.id, [])
+            elif isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
+                parameters = signatures.get(node.func.value.id, {}).get(node.func.attr, [])
+            else:
+                parameters = []
+            found += [("a remedy parameter", argument)
+                      for index, argument in enumerate(node.args)
+                      if index < len(parameters) and parameters[index] == "remedy"
+                      and isinstance(argument, ast.Constant) and isinstance(argument.value, str)]
+        if isinstance(node, ast.Dict):
+            found += [("a `remedy` key", value) for key, value in zip(node.keys, node.values)
+                      if isinstance(key, ast.Constant) and key.value == "remedy"
+                      and isinstance(value, ast.Constant) and isinstance(value.value, str)]
+    return found
+
+
+def _places_inside_a_state_directory(text, heads):
+    """Every path-shaped word of `text` that lies inside a state directory.
+
+    PATH-SHAPED IS A PROPERTY OF THE WORD -- it holds a separator -- and NOT of the punctuation
+    around it. Requiring backticks was measured to be the whole difference between a rule and a
+    silence (B2, round 8): `cli.py`'s "put the bulk in staging/<key>/" is the very defect DEC-0024
+    was written for, and it went unreported for as long as the backticks were absent; putting them
+    back made this test red without changing a single character of the offer.
+
+    EVERY COMPONENT IS ASKED, not the first: `project_memory/staging/<task-id>/` puts the state
+    root's own name in front, and reading only the head answered `project_memory` -- a name that is
+    in no list here -- about seven shipped slot values that all end inside `staging/`.
+
+    AND THE SEPARATOR IS COUNTED BEFORE ANY OF IT IS TAKEN AWAY, which is round 9's correction. The
+    strip of the surrounding slashes used to happen FIRST, so `evidence/` -- a directory named the
+    only way a sentence can name one -- lost the very character that makes it path-shaped and fell
+    out one line later. Three shipped kit remedies were sending readers into a canonical directory
+    behind that silence (`guard_memory_budget`), and the offer read exactly like a pass here.
+    """
+    found = []
+    for word in re.findall(r"[^\s`'\"()\[\]{},;]+", text):
+        cleaned = word.strip().replace("\\", "/")
+        if "/" not in cleaned:
+            continue
+        if {one.lower().rstrip(".,;:") for one in cleaned.strip("/").split("/") if one} & heads:
+            found.append(word)
+    return found
+
+
+def test_no_remedy_literal_this_repo_ships_names_a_place_inside_a_state_directory():
+    """The same question asked of every remedy LITERAL this repo ships, one step before anything runs.
+
+    WHY BOTH. The test above runs two commands and sees the remedies those two runs reach; this one
+    reads the shipped string CONSTANTS and sees the ones no fixture happens to produce. Neither is
+    the other's duplicate: a remedy no state reaches is invisible there, and a remedy whose place is
+    composed at runtime is invisible here.
+
+    THAT SECOND BLINDNESS IS NOT HYPOTHETICAL AND IS NOT CLOSED. `state.py` and `approvals.py` each
+    build a remedy that names a path inside the state directory through a format placeholder and
+    proposes `git restore` onto it -- in the approval case discarding the user's edit is the point.
+    Neither is a literal, so neither is in this domain, and the name of this test says LITERAL for
+    that reason. It is carried as `L33` in `docs/POST_V2_WISHLIST.md` with the mechanism and the
+    reason it is a rest rather than a blocker.
+
+    WHAT A REMEDY IS and WHERE IT MAY NOT SEND ANYONE are both properties, and each of them has its
+    own reader here: `_remedy_literals` for the domain, `_places_inside_a_state_directory` for the
+    offence. Both were narrowed by a SPELLING until round 8, and both silences were measured.
+
+    THE RULE IS ASKED OF THE PLACE AND NOT OF THE INTENT, and that is a deliberate over-reach.
+    Telling a reader to LOOK at `generated/index.yaml` endangers nothing; telling them to PUT
+    something in `staging/<key>/` is the defect DEC-0024 exists for. Nothing here can tell the two
+    apart -- the difference is a verb, and a rule that read verbs would be a list of them. So the
+    rule refuses both, and the shipped messages that only wanted the reader to look now name the
+    THING instead of the path (`the generated index`, `the archive`). That costs a path in four
+    kernel messages and buys a rule with no spelling in it.
+
+    WHAT IT DOES NOT ASK is whether a remedy proposes a MOVEMENT at all. Two shipped remedies of
+    `report.validate_state` still tell the reader to take a file out of the state directory and name
+    no destination -- `L35` in `docs/POST_V2_WISHLIST.md` carries both, with a reason PER REMEDY:
+    unavailable for one of them, available and not built for the other, which is not the same
+    sentence and stood as one until round 10. This rule is about the place a remedy NAMES, and a
+    place it does not name is outside it by construction.
+
+    RED for any new one like it, and RED with any of the five narrowings back -- three measured in
+    round 8, two in round 9: the backtick requirement (`cli.py`'s `staging/<key>/` disappears), the
+    first-component-only reading (the seven `project_memory/staging/...` slot values disappear), the
+    word-only domain (the whole `remedy=` half of the product disappears), the KEYWORD-only domain
+    (`report.py`'s `staging/evidence` and three siblings disappear -- 56 literals), and stripping a
+    word's separators before asking whether it is path-shaped (three kits' `evidence/` disappears).
+    """
+    from kernel import layout
+    heads = {one.split("/")[0] for one in layout.kernel_written_subtrees(os.curdir)}
+    heads.add(layout.STAGING_DIRNAME)
+    shipped = []
+    for base, directories, files in os.walk(os.path.join(ROOT, "team-kits")):
+        directories[:] = [one for one in directories if one != "__pycache__"]
+        shipped += [os.path.join(base, name) for name in sorted(files) if name.endswith(".py")]
+    # THE CALLEES ARE COLLECTED BEFORE ANY CALL IS READ, because a positional remedy is a fact
+    # about the `def` and the `def` is regularly in another file than the call.
+    parsed = {path: ast.parse(io.open(path, encoding="utf-8").read(), path) for path in shipped}
+    signatures = {}
+    for path, tree in parsed.items():
+        signatures.setdefault(os.path.splitext(os.path.basename(path))[0], {}).update(
+            _parameter_names(tree))
+    seen, offending = collections.Counter(), []
+    for path in shipped:
+        module = os.path.splitext(os.path.basename(path))[0]
+        for how, node in _remedy_literals(parsed[path], module, signatures):
+            seen[how] += 1
+            offending += [(os.path.relpath(path, ROOT).replace(os.sep, "/"), node.lineno, how,
+                           word)
+                          for word in _places_inside_a_state_directory(node.value, heads)]
+    assert not offending, (
+        "these shipped remedies name a place inside a state directory, so the name the reader puts "
+        "there is one they picked and one that can already be taken (DEC-0024): %s" % offending)
+    # ...AND THE READER IS NOT BLIND TO THE SHAPE THAT HID THREE SHIPPED OFFERS UNTIL ROUND 9: a
+    # directory named the only way a sentence can name one, with its single separator at the end.
+    # An absence proves nothing about a reader that cannot see the thing, so the reader is asked
+    # directly -- the silence above and this line together are the claim.
+    bare = "%s/" % sorted(heads)[0]
+    assert _places_inside_a_state_directory("put it in %s and move on" % bare, heads) == [bare], (
+        "a word whose only separator is the trailing one is not read as a path any more, so an "
+        "offer naming a bare state directory reads exactly like a pass: %r" % bare)
+    # ALL THREE HALVES OF THE DOMAIN, counted apart: each round that added one found the ones
+    # before it carrying the whole rule, and a collapse of any of them would be a silence that
+    # reads exactly like a pass.
+    assert seen["the word"] > 100 and seen["a `remedy=` slot"] + seen["a `remedy` key"] > 50 \
+        and seen["a remedy parameter"] > 40, (
+        "the collector above has collapsed on one part of its domain: %s" % dict(seen))
+
+
+def _scaffolded_kit(tmp_path, name, kit="dev-team"):
+    """A project the way the scaffold leaves it -- the kit's own state templates, hooks, settings.
+
+    WHICH FILES ARE WALLS IS A PROPERTY OF AN INSTALLATION and not of a document, so the one
+    measured with this is the installation a kit really ships: its `templates/project_memory/` as
+    the state, its `hooks/` and its `settings/settings.json` as the `.claude/` beside it. A hook
+    this file writes (`_install_wall_gate`) reaches the same condition and answers a different
+    question -- whether the RULE holds -- while this one answers what a user's own project gets.
+    """
+    repo = str(tmp_path / name)
+    base = os.path.join(ROOT, "team-kits", kit)
+    shutil.copytree(os.path.join(base, "templates", "project_memory"),
+                    os.path.join(repo, "project_memory"))
+    shutil.copytree(os.path.join(base, "hooks"), os.path.join(repo, ".claude", "hooks"))
+    shutil.copy(os.path.join(base, "settings", "settings.json"),
+                os.path.join(repo, ".claude", "settings.json"))
+    return ProjectState(os.path.join(repo, "project_memory"))
+
+
+def test_a_document_a_registered_gate_reads_is_offered_no_way_to_move_or_rename_it(tmp_path):
+    """The SOURCE end of the family: the answer for a WALL, and what following it does to its gate.
+
+    A wall is a kit document whose content a registered, refusal-capable hook reads. Two of the
+    three a dev kit ships are prose, and prose has no document suffix -- so a wall is UNSEARCHED,
+    and the answer used to be "rename it back to a .yaml document". Measured 2026-08-09 on a real
+    scaffolded dev-team project: `product/masterplan.md` was answered with exactly that. A reader
+    who does it leaves `gate_memory_complete` reading a file that is not there, and nothing in this
+    harness writes that file afterwards.
+
+    THE ORACLE IS THE INSTALLATION'S OWN WALL LIST, run before and after: `layout.gated_documents`
+    walks the state directory, so a document a gate reads that is no longer there is a document
+    that has dropped out of it. Both directions are here -- following what this command prints
+    leaves the list and the bytes exactly as they were, and following the step it used to print
+    takes the wall out of the list.
+
+    RED without the deposit construction: the answer for `product/masterplan.md` names a rename,
+    and carrying it out empties the wall list.
+    """
+    from kernel import layout
+    state = _scaffolded_kit(tmp_path, "wall_source")
+    repo = os.path.dirname(state.root)
+    walls = layout.gated_documents(repo, state.root)
+    unsearched = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    prose_walls = sorted(set(walls) & set(unsearched))
+    assert prose_walls, (
+        "no wall of this installation is unsearched, so nothing here reaches the case: walls=%s"
+        % sorted(walls))
+
+    before = _snapshot(state.root)
+    for rel in prose_walls:
+        named = _instruction(unsearched[rel])
+        assert named and len(named) == 1, (rel, unsearched[rel])
+        assert migrate.in_deposit(named[0]), (rel, named)
+        assert named[0] not in walls, (
+            "%s: the instruction names another document a gate of this installation reads (%s)"
+            % (rel, named[0]))
+        _carry_out(state, rel, named[0])
+    assert layout.gated_documents(repo, state.root) == walls, (
+        "following the printed answers changed which documents this installation's gates read")
+    after = _snapshot(state.root)
+    for rel in prose_walls:
+        assert after[rel] == before[rel], "%s was rewritten by its own answer" % rel
+
+    # ...AND THE COUNTER-DIRECTION: the step this command used to print, carried out on the same
+    # wall. Nothing here asserts a message; it renames the file the way the old sentence said and
+    # asks the installation what its gates now read.
+    victim = prose_walls[0]
+    renamed = os.path.splitext(victim)[0] + migrate._DOCUMENT_SUFFIXES[0]
+    os.replace(os.path.join(state.root, *victim.split("/")),
+               os.path.join(state.root, *renamed.split("/")))
+    assert victim not in layout.gated_documents(repo, state.root), (
+        "renaming %s left it in the wall list, so this state cannot measure what the old step "
+        "cost" % victim)
+
+
+def test_a_document_nested_deeper_than_the_reader_can_follow_is_named_not_a_crash(tmp_path):
+    """What the unconditional `except` in `_read_document` carries, measured at the one class that
+    is neither an `OSError` nor a `yaml.YAMLError`.
+
+    THE ENCODING CASE IS NOT THAT CLASS, which is what this test exists to separate: bytes handed
+    to `yaml.safe_load` come back as `yaml.reader.ReaderError` for anything that is not a stream,
+    and a `ReaderError` IS a `YAMLError`. So the encoding test's own claim that it goes red without
+    the widened `except` was wrong about its own code; what it goes red without is the byte-reading.
+
+    THE CLASS THAT IS NEITHER: `yaml`'s composer recurses once per nesting level, so a document
+    nested deeper than this interpreter allows raises `RecursionError` -- a `RuntimeError`. The
+    depth is derived from `sys.getrecursionlimit()` rather than typed, because it is a fact about
+    the running interpreter and not about this file.
+
+    AND THE COUNTER-DIRECTION AT THE BOUNDARY: `scan_document` walks recursively too, so "the
+    parser gives up first" is a claim that has to be measured where it is decided. The deepest
+    document that still READS is scanned in the same run.
+
+    RED with `except (OSError, yaml.YAMLError)` restored: the `RecursionError` leaves the reader,
+    `validate_state` raises out of this test, and the shipped merge gate answers with its crash
+    handler instead of a finding that names the file.
+    """
+    state = _state_with_a_root_item(tmp_path, "deep")
+    repo = os.path.dirname(state.root)
+    deep = sys.getrecursionlimit() * 4
+    _write_bytes(state, "deep.yaml", b"a: " + b"[" * deep + b"]" * deep)
+    payload, problem = migrate._read_document(state, "deep.yaml")
+    assert payload is None and problem, "a document this deep parsed after all"
+    assert "RecursionError" in problem, problem
+    findings = {one["item"]: one for one in report_module().validate_state(state)}
+    assert findings["deep.yaml"]["severity"] == "error"
+    assert "NOT SEARCHED" in findings["deep.yaml"]["message"]
+    refused = _gate_memory_complete(repo)
+    said = refused.stdout + refused.stderr
+    assert refused.returncode == 2, said
+    assert "internal error" not in said and "Traceback" not in said, said
+    assert "deep.yaml" in said, said
+    assert not migrate.plan_is_executable(migrate.build_plan(state))
+
+    # THE BOUNDARY ITSELF: the deepest document this reader still returns a payload for is one the
+    # record walk survives. Bisected here rather than assumed, because both readers recurse and
+    # the one that gives up first decides whether the other is ever reached.
+    low, high = 1, deep
+    while low < high:
+        middle = (low + high + 1) // 2
+        _write_bytes(state, "boundary.yaml", b"a: " + b"[" * middle + b"]" * middle)
+        if migrate._read_document(state, "boundary.yaml")[1] is None:
+            low = middle
+        else:
+            high = middle - 1
+    assert low > 1, "no depth reads at all, so there is no boundary to measure"
+    _write_bytes(state, "boundary.yaml", b"a: " + b"[" * low + b"]" * low)
+    payload, problem = migrate._read_document(state, "boundary.yaml")
+    assert problem is None, problem
+    assert migrate.scan_document(payload) == [], (
+        "the deepest readable document is one this walk cannot follow -- the parser is no longer "
+        "the tighter bound, and `scan_document` needs its own answer")
+
+
+def test_a_v1_store_inside_a_kernel_written_area_is_in_no_report(tmp_path):
+    """The entry is `L20` in `docs/POST_V2_WISHLIST.md`.
+
+    `KERNEL` is a verdict about an AREA, not about who wrote a file: everything under a kernel
+    writer's directory is taken to be the kernel's own writing. A V1 store copied into `generated/`
+    is therefore in neither report -- not searched, and not named as unsearched either -- and the
+    merge gate answers rc 0 over it. The same file one directory up is a finding and refuses the
+    merge, which is what makes the silence a silence rather than a policy.
+
+    WHICH AREAS THIS REALLY COVERS is asked of the areas themselves rather than assumed, and the
+    answer is smaller than "everything the kernel writes": under an ITEM directory the same file is
+    caught, by the item validator, as an item missing every required field. The message is about
+    something else, but the merge does stop -- so the hole is the kernel-written areas no item
+    validator walks, and the loop below is what keeps that distinction measured instead of stated.
+
+    What limits it is not this classifier: `gate_write_scope` refuses every tool write under the
+    state directory, so putting a file there takes a shell outside the session or a checkout.
+    """
+    state = _state_with_a_root_item(tmp_path, "kernel_area")
+    repo = os.path.dirname(state.root)
+    silent, caught = [], []
+    for area in ("generated", "archive/PROC/2026", "product/active"):
+        rel = "%s/old_procs.yaml" % area
+        _write_document(state, rel, _v1_records_text())
+        verdicts = dict((one, verdict) for one, verdict, _why in migrate.search_coverage(state))
+        assert verdicts[rel] == migrate.KERNEL, rel
+        coverage = report_module().record_scan_coverage(state)
+        assert rel not in [one["path"] for one in coverage["not_searched"]], (
+            "%s is named as unsearched after all, so it is not in this silent class" % rel)
+        assert not [one for one in report_module().validate_state(state)
+                    if "V1 backlog record" in one["message"]], (
+            "%s was searched for V1 records after all" % rel)
+        (silent if _gate_memory_complete(repo).returncode == 0 else caught).append(rel)
+        os.remove(os.path.join(state.root, *rel.split("/")))
+    assert silent, (
+        "no kernel-written area hides a V1 store from every reader any more -- L20 is closed and "
+        "the entry is what is out of date")
+    assert caught == ["product/active/old_procs.yaml"], (
+        "which areas stop the merge for an unrelated reason has moved: silent=%s caught=%s"
+        % (silent, caught))
+    # the counter-direction: one directory up, the same bytes are a V1 finding and a refusal
+    _write_document(state, "old_procs.yaml", _v1_records_text())
+    refused = _gate_memory_complete(repo)
+    assert refused.returncode == 2 and "V1 backlog record" in refused.stderr, refused.stderr
+
+
+def test_two_item_bodies_outside_the_kernels_own_areas_refuse_every_merge(tmp_path):
+    """The entry is `L25` in `docs/POST_V2_WISHLIST.md`.
+
+    A V2 item body NAMES ITSELF -- `id: SR-0001` with a `status`, in a file of that name -- which is
+    exactly the shape `migrate.scan_document` recognises a V1 backlog record by. The two are
+    indistinguishable to the recogniser, and the only thing keeping a project's own items out of the
+    SR-0001 scan is WHERE they lie: the kernel's own areas are skipped wholesale, and the proposal
+    area is skipped for this very reason. A body that ends up anywhere else -- a copy, a hand-saved
+    item, a proposal lifted out of `staging/` -- is read as a V1 record.
+
+    Measured here: two of them turn `git merge` into a refusal that names them, and nothing inside a
+    session can clear it, because `gate_write_scope` refuses every tool write under the state
+    directory. That is L16's shape one document over.
+    """
+    state = _state_with_a_root_item(tmp_path, "self_naming")
+    repo = os.path.dirname(state.root)
+    assert _gate_memory_complete(repo).returncode == 0
+    for number in (1, 2):
+        _write_document(
+            state, "notes/SR-000%d.yaml" % number,
+            "id: SR-000%d\nproduct_requirement: PR-0001\ntitle: t\nstatus: PROPOSED\n"
+            "revision: 1\napproval_ref: null\n" % number)
+    findings = [one for one in report_module().validate_state(state)
+                if "V1 backlog record" in one["message"]]
+    assert len(findings) == 2, findings
+    refused = _gate_memory_complete(repo)
+    assert refused.returncode == 2 and "SR-0001" in refused.stderr, refused.stderr
+    # ...and the counter-direction, which is why the exclusion is where it is: the same two bodies
+    # in the proposal area say nothing at all.
+    for number in (1, 2):
+        os.remove(os.path.join(state.root, "notes", "SR-000%d.yaml" % number))
+        _write_document(
+            state, "staging/PR-0001/SR-000%d.yaml" % number,
+            "id: SR-000%d\nproduct_requirement: PR-0001\ntitle: t\nstatus: PROPOSED\n"
+            "revision: 1\napproval_ref: null\n" % number)
+    assert _gate_memory_complete(repo).returncode == 0, (
+        "a staged item body refuses the merge, which is what searching the proposal area costs")
+
+
+def test_the_import_mark_says_where_an_item_came_from_and_claims_no_lever(v1_state):
+    """DEC-0021, measured on both halves: what the mark is called, and what reads it.
+
+    The field was `migration_confirmation_required`, a name that promises a confirmation duty. Two
+    rounds measured that nothing enforces it. A name is a claim like a docstring is, so the seam
+    between the two is measured here rather than argued: every imported item carries the mark, and
+    NOTHING in the shipped kernel, hooks or scripts reads it -- while `approval_ref`, the bolt that
+    is read, stays null.
+
+    THE SECOND HALF IS READ OFF THE CODE, not off a list: every shipped Python file is parsed and
+    every place that takes the mark OUT of a mapping is collected. Naming the field in a printed
+    sentence is not reading it, which is why the rule is about the operation and not about the
+    occurrence: `render` and `_receipt_fields` both tell a reader that the mark is written, and
+    neither asks any item for it.
+
+    WHICH OPERATIONS COUNT AS READING IS AN ENUMERATION OF TWO -- a subscript that loads it and a
+    `.get` of it -- and it does not cover the ways a reader would most naturally be written.
+    Measured 2026-08-08, one real reader inserted at a time: `IMPORT_MARK in item`, `item.pop(
+    IMPORT_MARK)`, a key comparison inside a field loop and `getattr` all stay GREEN; only the
+    subscript is red. So this is a tripwire for the shape DEC-0021 was written against, not for
+    every reader -- the gap is the entry `L27` in `docs/POST_V2_WISHLIST.md`.
+
+    RED without the rename: the written field is the old name, and the name itself claims a lever
+    the harness does not build.
+    """
+    import ast
+
+    from kernel.backlog_types import IMPORT_MARK
+    assert _migrated(v1_state) == 0
+    items = [yaml.safe_load(io.open(path, encoding="utf-8"))
+             for _name, path in v1_state.iter_active_items("PROC")]
+    items += _archived_items(v1_state, "PROC")
+    assert items, "this run imported nothing, so there is no mark to measure"
+    for item in items:
+        assert item[IMPORT_MARK] is True, item
+        assert item["approval_ref"] is None, item
+        assert "confirmation" not in " ".join(item), (
+            "an imported item carries a field whose name promises a confirmation: %s" % sorted(item))
+
+    def names_the_mark(node):
+        return ((isinstance(node, ast.Name) and node.id == "IMPORT_MARK")
+                or (isinstance(node, ast.Constant) and node.value == IMPORT_MARK))
+
+    readers, writes = [], []
+    for current, dirs, files in os.walk(os.path.join(ROOT, "team-kits")):
+        dirs[:] = [one for one in dirs if one != "__pycache__"]
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(current, name)
+            source = io.open(path, encoding="utf-8").read()
+            if IMPORT_MARK not in source and "IMPORT_MARK" not in source:
+                continue
+            tree = ast.parse(source, filename=path)
+            owner = {}
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    for inner in ast.walk(node):
+                        owner[id(inner)] = node.name
+            for node in ast.walk(tree):
+                where = "%s.%s" % (name, owner.get(id(node), "<module level>"))
+                if isinstance(node, ast.Subscript) and names_the_mark(node.slice):
+                    (writes if isinstance(node.ctx, ast.Store) else readers).append(where)
+                elif (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "get"
+                        and any(names_the_mark(one) for one in node.args)):
+                    readers.append(where)
+    assert sorted(set(writes)) == ["migrate.py._with_legacy",
+                                   "state.py.capture_migrated_archive",
+                                   "state.py.capture_migrated_unresolved"], sorted(set(writes))
+    assert not readers, (
+        "the mark has a reader again (%s). DEC-0021 decided against one: a second bolt beside "
+        "`approval_ref` is two answers to one question." % sorted(set(readers)))
 
 
 def test_a_broken_document_says_what_broke_before_it_says_which_check_it_took_down(tmp_path):
@@ -4037,12 +7095,23 @@ def test_an_unreadable_item_refuses_the_run_instead_of_importing_its_record_agai
         "an item the idempotency scan could not read left the run executable, so the record it "
         "holds would be imported a second time: %s"
         % sorted({entry["verdict"] for entry in blinded["records"]}))
-    assert any(item.replace(os.sep, "/") in reason for reason in blinded["unreadable"]), (
-        blinded["unreadable"])
+    assert item.replace(os.sep, "/") in migrate._unreadable_paths(blinded), blinded["unreadable"]
     assert any(entry["legacy_id"] == blinded_record and entry["verdict"] != "already_imported"
                for entry in blinded["records"]), (
         "the record whose item became unreadable is still recognised as imported, so this "
         "measures the refusal and not the blindness it exists for")
+
+
+def _wall_lines(printed):
+    """Every line of the dry run's WALLS section, stripped -- one document per line.
+
+    Its own reader because a wall's name also appears under CARRIED, NOT TRANSLATED: matching on
+    the name alone matches two lines and makes an assertion depend on which came first.
+    """
+    lines = printed.splitlines()
+    start = lines.index(next(line for line in lines if line.startswith("WALLS (")))
+    return [line.strip() for line in lines[start + 1:]
+            if len(line.split()) > 1 and line.split()[1].endswith(".py")]
 
 
 def _wall_line(printed):
@@ -4081,6 +7150,38 @@ def test_a_wall_that_does_not_parse_is_not_printed_as_a_wall_with_nothing_in_it(
     _write_document(v1_state, "compliance_register.yaml", "obligations: []\nreviewed: 2026-07-01\n")
     readable = _wall_line(migrate.render(migrate.build_plan(v1_state), v1_state))
     assert "top-level keys: obligations, reviewed" in readable, readable
+
+
+def test_a_wall_that_is_prose_is_not_reported_as_a_document_that_failed_to_parse(v1_state):
+    """An alarm about a healthy shipped file is the same defect as silence about a broken one.
+
+    Two of the three walls a kit ships are PROSE -- `product/masterplan.md` is the one every
+    project's user fills in -- and the wall listing handed each of them to `yaml.safe_load`.
+    Measured 2026-08-08 with the dev kit's own shipped masterplan template: `NOT READ: could not be
+    read (ScannerError: while scanning a simple key ...)`, printed about a file that is exactly as
+    it should be, in the section whose purpose is to tell a reader which files a gate blocks on.
+
+    RED without `_is_yaml_document` in `render`: the prose wall's line carries `NOT READ` and a
+    parser's exception class, and a reader is sent to repair a file with nothing wrong with it.
+    """
+    shipped = io.open(os.path.join(ROOT, "team-kits", "dev-team", "templates", "project_memory",
+                                   "product", "masterplan.md"), encoding="utf-8").read()
+    _write_document(v1_state, "product/masterplan.md", shipped)
+    _install_wall_gate(v1_state, "product/masterplan.md")
+    plan = migrate.build_plan(v1_state)
+    assert "product/masterplan.md" in plan["gated_documents"], plan["gated_documents"]
+    walls = _wall_lines(migrate.render(plan, v1_state))
+    wall = next(line for line in walls if line.split()[0] == "product/masterplan.md")
+    assert "NOT READ" not in wall, (
+        "the dry run reports a shipped prose wall as a document that failed to parse: %r" % wall)
+    assert "not a YAML document" in wall, wall
+    # ...and the counter-direction in the same state: a wall that IS a YAML document and does not
+    # parse still says so, so this is not a rule that stopped reading walls.
+    _write_document(v1_state, "compliance_register.yaml", "obligations:\n  - {\n")
+    _install_wall_gate(v1_state, "compliance_register.yaml", hook_name="gate_procs")
+    walls = _wall_lines(migrate.render(migrate.build_plan(v1_state), v1_state))
+    broken = [line for line in walls if line.startswith("compliance_register.yaml")]
+    assert len(broken) == 1 and "NOT READ" in broken[0], walls
 
 
 # -- the holes this round NAMES and does not close --------------------------------------------
@@ -4268,6 +7369,25 @@ def _hole_list_entries():
     return entries
 
 
+def _tests_of_this_suite():
+    """{module name: {test function names}} for every test module beside this one.
+
+    DERIVED, and that is the correction of a reach this test claimed and did not have. It read ONE
+    file, so an entry measured from `test_kernel.py` or `test_disposition.py` was in the list with
+    nothing holding it, and a test there could name an entry that did not exist -- the same shape
+    as the rule this round found one directory over (`L24`). What the pair is about is the
+    MEASUREMENT and the entry, not which file the measurement happens to sit in.
+    """
+    found = {}
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in sorted(os.listdir(here)):
+        if not (name.startswith("test_") and name.endswith(".py")):
+            continue
+        source = io.open(os.path.join(here, name), encoding="utf-8").read()
+        found[name[: -len(".py")]] = (source, set(re.findall(r"^def (test_\w+)", source, re.M)))
+    return found
+
+
 def test_every_hole_a_test_measures_is_carried_by_the_hole_list():
     """A measured hole and the entry that records it are one thing, so neither may go alone.
 
@@ -4277,27 +7397,127 @@ def test_every_hole_a_test_measures_is_carried_by_the_hole_list():
     list's own rule asks for: a verdict, and -- unless it is closed -- what limits the damage
     instead.
 
-    BOTH DIRECTIONS, because each of them is a way for the pair to come apart: a test that names
-    an entry the list does not carry, and an entry that names a test this file does not have.
+    WHICH DIRECTIONS THIS REALLY CLOSES, and the paragraph that stood here said "BOTH" over a loop
+    that runs across ONE of them. The loop is over the entries a TEST NAMES, so it catches a test
+    that names an entry the list does not carry, a named entry without a verdict, and a citation
+    pointing at a test no module of this suite defines. What it does NOT catch is an entry the list
+    carries that no test names at all -- an orphan is green here. Measured 2026-08-08 in a clone:
+    a missing entry is red, a dead citation is red, an orphaned entry is GREEN. That gap and its
+    second one -- the reference is matched in one spelling, so an entry cited as "carried by `L19`"
+    is not seen -- are the entry `L26` in `docs/POST_V2_WISHLIST.md`.
 
-    RED when an entry is deleted or renamed, when one is added without either half, and when a
-    tripwire named in the list is renamed without the list following.
+    ACROSS THE WHOLE SUITE, not across this file -- see `_tests_of_this_suite`.
+
+    RED when an entry a test names is deleted or renamed, when a test names one without either
+    half, and when a tripwire cited in the list is renamed without the list following.
     """
     entries = _hole_list_entries()
-    own_source = io.open(os.path.abspath(__file__), encoding="utf-8").read()
-    named = sorted(set(_HOLE_REFERENCE.findall(own_source)))
+    suite = _tests_of_this_suite()
+    named = sorted({one for source, _defined in suite.values()
+                    for one in _HOLE_REFERENCE.findall(source)})
     assert named, "no test names a hole-list entry any more, so this pin measures nothing"
-    defined = set(re.findall(r"^def (test_\w+)", own_source, re.M))
     for name in named:
         assert name in entries, (
-            "%s is measured here and the hole list carries no such entry" % name)
+            "%s is measured in this suite and the hole list carries no such entry" % name)
         body = "\n".join(entries[name])
         assert "**Urteil:" in body, "%s carries no verdict" % name
         if "GESCHLOSSEN" not in body:
             assert "**Was stattdessen begrenzt:" in body, (
                 "%s is open and does not say what limits it instead" % name)
-        cited = set(re.findall(r"`test_migrate\.(test_\w+)`", body))
-        assert cited, "%s names no measurement in this file" % name
-        assert cited <= defined, (
-            "%s cites %s, which %s does not define"
-            % (name, sorted(cited - defined), os.path.basename(__file__)))
+        cited = set(re.findall(r"`(test_\w+)\.(test_\w+)`", body))
+        assert cited, "%s names no measurement in this suite" % name
+        for module, test in sorted(cited):
+            assert module in suite, "%s cites %s, which is no module of this suite" % (name, module)
+            assert test in suite[module][1], (
+                "%s cites %s.%s, which that module does not define" % (name, module, test))
+
+
+_A_CITATION = re.compile(r"\A(?:([A-Za-z_]\w*)\.)?(test_\w+)\Z")
+
+
+def _prose_of(path):
+    """Every block of PROSE a shipped module carries -- its comments and its docstrings.
+
+    Read as the parser reads them and not off the raw lines: a comment is a token, a docstring is a
+    node. Consecutive comment lines are joined into one block because a name in backticks may be
+    wrapped across them, and the join keeps no whitespace for the same reason.
+    """
+    source = io.open(path, encoding="utf-8").read()
+    blocks, run, previous = [], [], None
+    with io.open(path, encoding="utf-8") as handle:
+        for token in tokenize.generate_tokens(handle.readline):
+            if token.type != tokenize.COMMENT:
+                continue
+            if previous is not None and token.start[0] != previous + 1:
+                blocks.append("".join(run))
+                run = []
+            run.append(token.string.lstrip("#"))
+            previous = token.start[0]
+    if run:
+        blocks.append("".join(run))
+    for node in ast.walk(ast.parse(source, path)):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            written = ast.get_docstring(node, clean=False)
+            if written:
+                blocks.append(written)
+    return blocks
+
+
+def test_every_test_the_shipped_code_cites_by_name_is_a_test_that_exists():
+    """A citation nothing resolves is a claim that rots, so every one of them is resolved.
+
+    WHY THIS IS A DEFINITION AND NOT A FIX OF ONE WORD. `migrate.py` cited
+    `test_the_deposit_a_remedy_names_...` while the test was named
+    `test_the_deposit_an_instruction_names_...`: one word, in a comment that carries the whole
+    argument for why a deposit is a file name and not a directory. Renaming that one word would have
+    left every OTHER citation of the product resting on nothing -- and the assertion below reports
+    how many there are rather than this sentence claiming a number. What a reader does with such a
+    comment is look the test up, so the test is looked up here.
+
+    WHAT COUNTS AS A CITATION IS THE PRODUCT'S OWN CONVENTION, read rather than guessed: a name in
+    backticks, optionally with its module in front. A span that is only a module name resolves
+    against the suite's file list and is not a citation of a test. Names wrapped across two lines of
+    one comment or docstring are joined, which is why `_prose_of` reads tokens and nodes instead of
+    lines.
+
+    ITS DOMAIN IS WHAT THIS REPO SHIPS (`team-kits/`), which is where a rotten citation reaches a
+    user. The suite's own citations are not in it, and the reason is not tidiness: `tools/test_hooks`
+    carries a tombstone for a test that was deliberately removed, and an obituary is prose no rule
+    should be able to tell from a citation.
+
+    RED with the defect restored: the one-word mismatch above puts that name in the failure list.
+    """
+    suite = _tests_of_this_suite()
+    defined = {name: module for module, (_source, names) in suite.items() for name in names}
+    dangling, seen = [], 0
+    for base, directories, files in os.walk(os.path.join(ROOT, "team-kits")):
+        directories[:] = [one for one in directories if one != "__pycache__"]
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(base, name)
+            for block in _prose_of(path):
+                for span in re.findall(r"`([^`]*)`", block, re.S):
+                    token = "".join(span.split())
+                    if token in suite:
+                        continue
+                    found = _A_CITATION.match(token)
+                    if not found:
+                        continue
+                    seen += 1
+                    module, test = found.group(1), found.group(2)
+                    where = os.path.relpath(path, ROOT).replace(os.sep, "/")
+                    if test not in defined:
+                        dangling.append((where, token, "no test of this suite has that name"))
+                    elif module in suite and defined[test] != module:
+                        dangling.append(
+                            (where, token, "that module does not define it; %s does" % defined[test]))
+    assert not dangling, (
+        "shipped code names tests that cannot be looked up, so the argument each of those comments "
+        "carries rests on nothing: %s" % dangling)
+    assert seen > 50, (
+        "only %d citations were found in what this repo ships, so the collector above has "
+        "collapsed and its silence measures nothing" % seen)
+    assert len(defined) > seen, (
+        "the suite defines %d tests and the product cites %d, which is not a corpus this rule can "
+        "have resolved against" % (len(defined), seen))

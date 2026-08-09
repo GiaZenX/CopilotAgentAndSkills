@@ -92,8 +92,8 @@ def main(argv=None):
     missing = sorted(wanted - {n[:-5] for n in names})
     if missing:
         return _fail("no active PROC named %s." % ", ".join(missing),
-                     "check the id in project_memory/generated/index.yaml; archived procedures "
-                     "live under archive/.")
+                     "check the id in the generated index; archived procedures live in the "
+                     "archive.")
     if not seen:
         print("no active PROC items")
     return 1 if stale else 0

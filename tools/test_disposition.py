@@ -398,6 +398,8 @@ def test_every_citation_in_the_migration_addenda_carries_the_wording_it_cites():
     italics; the limit is the price of that convention holding in one place only. The numbers
     above are a reading of one day and nothing pins them -- what is pinned is that the addenda
     still carry citations at all (asserted below) and that every one of them resolves.
+
+    The 28 spans outside the addenda are the entry `L23` in `docs/POST_V2_WISHLIST.md`.
     """
     with io.open(SPEC, encoding="utf-8") as handle:
         spec = handle.read()

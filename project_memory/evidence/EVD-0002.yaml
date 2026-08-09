@@ -1,0 +1,26 @@
+id: EVD-0002
+kind: review
+related:
+- TSK-0022
+result: pass
+summary: 'verifier PASS for diff:ed66919b10237a59ffdd86eee4cec9d17a684a5a58d376c70c62a04d962506f8
+  -- Abschlussrunde TSK-0022. Das Verdikt der Abschlussrunde nannte GENAU EINEN Blocker
+  (F1: der Sitzungsriegel behauptete in Docstring und Meldung, cwd sei die ganze Antwort,
+  waehrend die Ursache des vierten Messschadens OLDPWD war), Abhilfe laut Pruefer:
+  Streichen bzw. Umformulieren zweier Spannen, keine Messung, kein Test, keine weitere
+  Runde. Der Umsetzer hat sie angewandt und danach seine EIGENE erste Fassung nochmals
+  korrigiert, weil sie erneut zu viel behauptete. Der Pruefer hat den finalen Wortlaut
+  aller drei Spannen gegengelesen und mit PASS bestaetigt: der Docstring deckt Setzen
+  UND Entfernen, die Riegel-Meldung behauptet keinen Mechanismus mehr, H37 Rest 3
+  nennt die Gattung statt einer dritten Gestalt. Ein angemerkter Rest ohne Befundcharakter:
+  eine Historienzeile sagt ''the damage'' statt ''part of the damage''. Inhaltlich
+  zuvor bestaetigt: Kern-Fix holes none ueber 23 Schreibweisen gegen echtes bash,
+  F1-Mechanismus, die erzeugte Achse, Wachliste total, H38-Stolperdraht echt. Laeufe
+  siehe EVD-0001 (Gate-Suite 143 gruen in einem Lauf; Produkt-Suite 2304 bestanden,
+  12 uebersprungen, 1 lastbedingte Messverweigerung, isoliert gruen in 7,64 s, vom
+  Nutzer ausdruecklich so abgenommen).'
+artifact_refs:
+- staging/TSK-0022/verdict-round3-2026-08-08.md
+revision: 1
+approval_ref: null
+created: '2026-08-08T19:53:47'

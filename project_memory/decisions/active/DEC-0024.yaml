@@ -1,0 +1,64 @@
+id: DEC-0024
+title: Eine gedruckte Abhilfe darf nichts vorschlagen, das etwas ueberschreiben kann
+context: 'Drei Pruefrunden an TSK-0023 haben ACHT Fundstellen derselben Familie ergeben,
+  jede in einer anderen Dimension: die Abhilfe nannte einen kernel-geschriebenen Bereich
+  als Ziel (B2 und drei Geschwister); sie nannte eine Wand als Ziel (F1 Runde 2 --
+  wer folgt, ueberschreibt project_config.yaml, und danach existiert kein Schreiber
+  mehr dafuer, weil gate_write_scope jeden Werkzeug-Schreibzugriff unter project_memory/
+  verweigert); sie nannte eine Wand als QUELLE (N2 -- ''benenn masterplan.md zurueck
+  in ein .yaml'', danach liest gate_memory_complete eine abwesende Datei); der Zug
+  nach legacy/ ueberschrieb still ein gleichnamiges Dokument (N1); und zuletzt nennen
+  ZWEI Abhilfen DESSELBEN Berichts denselben freien Zielort, sodass ein Leser, der
+  beiden folgt, einen V1-Speicher durch ein stilles mv verliert (F3 Runde 3, Kette
+  laeuft innerhalb einer Sitzung durch).
+
+
+  Jede einzelne wurde geschlossen, indem eine weitere Autoritaet gefragt wurde: der
+  Klassifikator, dann die Existenz, dann die Wandliste, dann die uebrigen Saetze desselben
+  Berichts. Die naechste Runde fand jedes Mal die naechste ungefragte Autoritaet.
+  Das ist kein Muster von Nachlaessigkeit, sondern die Bauform: eine gedruckte Anweisung
+  ist eine Aussage ueber einen ZUKUENFTIGEN Dateisystemzustand, den dieses Werkzeug
+  nicht kontrolliert -- der Leser fuehrt sie ausdruecklich in einer Shell AUSSERHALB
+  der Sitzung aus, und zwischen Auskunft und Handlung liegt beliebig viel Zeit (bereits
+  als L30 gefuehrt).'
+decision: 'Keine gedruckte Abhilfe schlaegt mehr eine Bewegung vor, die etwas ueberschreiben
+  kann.
+
+
+  Statt eines Ziels, das aus dem Zustandsbaum abgeleitet und gegen wachsend viele
+  Autoritaeten geprueft wird, nennt eine Abhilfe einen Bereich, den das Werkzeug SELBST
+  besitzt und in dem ein Name per Konstruktion eindeutig ist -- die Ablage unter staging/.
+  Und sie sagt KOPIEREN, nicht verschieben oder umbenennen: das Original bleibt stehen,
+  also kann kein befolgter Rat etwas vernichten, auch nicht die Quelle.
+
+
+  Damit fallen alle acht Fundstellen zusammen weg, und zwar konstruktiv statt durch
+  je eine Klausel: ein Ziel im eigenen Bereich ist nie eine Wand, nie ein kernel-geschriebener
+  Pfad, nie belegt, und zwei Abhilfen desselben Laufs koennen nicht denselben Platz
+  nennen. Die Klausel-Kette, die dafuer heute gebaut ist, wird durch diese eine Eigenschaft
+  ersetzt und nicht neben ihr weitergefuehrt -- zwei Antworten auf dieselbe Frage
+  sind die Drift, gegen die DEC-0021 bereits entschieden hat.
+
+
+  Was dabei NICHT wegfaellt: die eigene Bewegung des Kommandos (der Zug nach legacy/)
+  bleibt gegen einen belegten Landeplatz gesichert, weil sie unter der Kontrolle dieses
+  Werkzeugs steht und keine Auskunft ist, sondern eine Handlung.'
+consequences: 'Der Trockenlauf verliert die Faehigkeit, dem Nutzer den kuerzesten
+  Weg zu nennen; er nennt stattdessen einen sicheren. Das ist ein bewusster Tausch:
+  eine laengere Anleitung gegen die Unmoeglichkeit, mit ihr Daten zu verlieren.
+
+
+  Wer die Klausel-Kette spaeter doch wieder braucht, muss diese Entscheidung ausdruecklich
+  abloesen -- ein wiedereingefuehrter Zielvorschlag ausserhalb des eigenen Bereichs
+  ist per Definition ein Rueckfall in die Familie, nicht ein Einzelfall.
+
+
+  Vom Nutzer am 2026-08-09 entschieden, nachdem drei Runden je eine weitere Dimension
+  derselben Klasse gefunden hatten (Auswahl: Klasse abschaffen, gegen punktuell reparieren
+  und Abhilfen ganz weglassen).'
+source: Pruefberichte zu TSK-0023 Runden 1 bis 3; die acht gemessenen Fundstellen
+  B2, drei Geschwister, F1 R2, N1, N2, F3 R3; Nutzerentscheidung 2026-08-09
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-09T03:01:48'

@@ -312,12 +312,17 @@ def _assert_state_write_allowed(rel, inside, task, data, root):
                    "an operation with a command has none. "
                    "`approve` is SPLIT rather than absent: `request-approval` opens the "
                    "kernel-generated question and the USER mints it by answering, which is "
-                   "why no command mints. Proposals that are not canonical yet belong in "
-                   "project_memory/staging/<task-id>/.")
+                   "why no command mints. Proposals that are not canonical yet belong in the "
+                   "staging area, under the key this agent's own task owns.")
     if len(parts) < 2:
+        # THE PLACE IS COMPOSED WHERE IT IS KNOWN AND NAMED NOWHERE WHERE IT IS NOT (DEC-0024): a
+        # remedy that spells the key as a slot for the reader to fill is a name the reader picks.
         _kernel.block(HOOK, "'%s' would write the staging ROOT — staging is keyed per task or per "
                             "root item (spec II.4)." % rel,
-                      remedy="write to project_memory/staging/<task-id>/<file>.")
+                      remedy=("write under project_memory/staging/%s/." % task["id"]
+                              if task is not None else
+                              "write one directory below the staging root, under the key this "
+                              "agent's own task owns; the staging root itself holds no files."))
     key = parts[1]
     if task is not None:
         # spec II.4 names BOTH keys: `staging/<task_id>/` for a specialist's proposal and
@@ -955,8 +960,10 @@ def handle_shell(data):
                         "project_memory has exactly one writer, the kernel — and a shell write is "
                         "the path that bypasses every Edit/Write guard.",
                         "use the entry point (`python scripts/harness.py <command>`, from the "
-                        "project root; `python scripts/harness.py --help` lists the surface); "
-                        "non-canonical proposals go to project_memory/staging/<task-id>/.")
+                        "project root; `python scripts/harness.py --help` lists the surface); a "
+                        "non-canonical proposal goes into the task's own proposal area (spec "
+                        "II.4), which is the one place under the state directory a tool write "
+                        "reaches.")
         if _stage_verb(pipeline) in ("cd", "pushd", "popd", "set-location"):
             # everything after `cd project_memory` is inside it, and the later pipelines no longer
             # NAME it -- that shape walked straight past a path-only check. Mirrored for the

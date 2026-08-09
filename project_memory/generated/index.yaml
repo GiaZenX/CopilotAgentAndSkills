@@ -1,4 +1,4 @@
-generated_at: '2026-08-08T19:51:12'
+generated_at: '2026-08-09T19:31:24'
 items:
 - id: BUG-0001
   type: BUG
@@ -79,6 +79,12 @@ items:
   type: BUG
   title: Kit-Hooks legen ihr eigenes Verzeichnis auf sys.path[0] und koennen damit
     die Standardbibliothek verdecken
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0014
+  type: BUG
+  title: Die Gate-Suite dieses Repos ist rot, und niemand hat es bemerkt
   status: OPEN
   revision: 1
   approval_ref: null
@@ -223,7 +229,53 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0024
+  type: DEC
+  title: Eine gedruckte Abhilfe darf nichts vorschlagen, das etwas ueberschreiben
+    kann
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0025
+  type: DEC
+  title: Die Versuchsanordnung der Piloten -- fuenf Festlegungen, die nicht in einer
+    Prosadatei bleiben duerfen
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0026
+  type: DEC
+  title: In diesem Projekt wird nichts geloescht -- es wird nach C:/Trash verschoben
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0027
+  type: DEC
+  title: Der Quotenriegel je Pilot steht bei 100 Dollar Gegenwert
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0028
+  type: DEC
+  title: Ein Leser dieses Apparats ist ein versionierter Agent, keine verschachtelte
+    SDK-Sitzung aus einem Hook
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0029
+  type: DEC
+  title: Der statische Draht gegen einen zweiten Leser wird als gemessene Routenmenge
+    gefuehrt, nicht als Vollstaendigkeit
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0002
   type: EVD
   title: null
   status: null
@@ -289,6 +341,13 @@ items:
   type: FR
   title: Die Gate-Suite kostet sechs Minuten Wandzeit je Lauf auf einem Host mit 16
     logischen Kernen
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0012
+  type: FR
+  title: Eine Entscheidung, die in Prosa landet statt in einem Item, hat heute keinen
+    Faenger
   status: OPEN
   revision: 1
   approval_ref: null
@@ -485,6 +544,24 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0024
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0025
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0026
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0027
   type: TSK
   title: null
   status: DRAFT

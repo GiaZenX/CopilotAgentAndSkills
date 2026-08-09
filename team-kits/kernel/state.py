@@ -41,8 +41,8 @@ from .backlog_types import (
     EVIDENCE_RESULTS,
     HASHED_FIELDS,
     IMMUTABLE_TYPES,
+    IMPORT_MARK,
     LEGACY_FIELD,
-    MIGRATION_FLAG,
     NON_AUTOMATON_STATUSES,
     NONEMPTY_FIELDS,
     PARENT_FIELDS,
@@ -432,9 +432,9 @@ class ProjectState:
             item = self._read_yaml(path)
         except FileNotFoundError:
             raise StateError(
-                "no active item %s (expected at %s). Remedy: check the id via "
-                "generated/index.yaml; archived items live under archive/."
-                % (item_id, path)
+                "no active item %s (expected at %s). Remedy: check the id in the "
+                "generated index; a finished item lives in the archive rather "
+                "than among the active ones." % (item_id, path)
             ) from None
         if not isinstance(item, dict) or item.get("id") != item_id:
             raise StateError(
@@ -841,7 +841,7 @@ class ProjectState:
         body[LEGACY_FIELD]["missing_required_fields"] = [
             name for name in REQUIRED_FIELDS[item_type] if name not in fields]
         body[LEGACY_FIELD]["kit_version"] = report.installed_identity(self)["kit_version"]
-        body[MIGRATION_FLAG] = True
+        body[IMPORT_MARK] = True
         with self.lock:
             item_id = self.allocate_id(item_type)
             item = {"id": item_id}
@@ -914,7 +914,7 @@ class ProjectState:
         body[LEGACY_FIELD]["missing_required_fields"] = [
             name for name in REQUIRED_FIELDS[item_type] if name not in fields]
         body[LEGACY_FIELD]["kit_version"] = report.installed_identity(self)["kit_version"]
-        body[MIGRATION_FLAG] = True
+        body[IMPORT_MARK] = True
         with self.lock:
             item_id = self.allocate_id(item_type)
             item = {"id": item_id}

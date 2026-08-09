@@ -1,0 +1,53 @@
+id: DEC-0026
+title: In diesem Projekt wird nichts geloescht -- es wird nach C:/Trash verschoben
+context: 'Bei der Arbeit an diesem Repo raeumen die Rollen staendig auf: Pruefer entfernen
+  ihre Kopien und Sandkaesten, der Sitzungsagent seine Sonden. Das geschieht mit rm
+  -rf und mit einem Pfad, der aus einer Variablen, einer Erweiterung oder einer Zusammensetzung
+  stammt.
+
+
+  Dieselbe Woche hat gemessen, wohin so ein Pfad geraten kann: VIERMAL in drei Tagen
+  hat eine Messung team-kits/kernel/state.py im echten Arbeitsbaum zerschrieben --
+  einmal aus falschem Arbeitsverzeichnis, einmal aus geerbtem OLDPWD bei korrektem
+  cwd, einmal aus einer Rotmessung, die den Pin absichtlich ausbaut. Jede Einzelursache
+  wurde geschlossen, und der naechste Weg war jedes Mal ein anderer. Ein SCHREIBZUGRIFF
+  ist reparabel, weil git die Fassung haelt. Ein rm -rf auf einen danebengelandeten
+  Pfad ist es nicht.
+
+
+  In Reichweite liegen: die drei kuratierten Kopien unter C:/Offline Repos/v2-pilot/
+  (2,4 GB BuyPlugGo, entfernte Remotes, geprueft secret-frei -- Arbeit, die niemand
+  mehr herstellt), die echten Projekte daneben, und C:/4-BuyPlugGo. Der Nutzer hat
+  es angesprochen, bevor es passiert ist.'
+decision: 'Kein Beteiligter dieses Projekts loescht. Was weg soll, wird nach C:/Trash/<datum>-<was>/
+  VERSCHOBEN; der Nutzer loescht von Hand.
+
+
+  Das gilt fuer den Sitzungsagenten, fuer Umsetzer und fuer Pruefer, und es gilt fuer
+  Sandkaesten, Klone, Sonden, Messordner und Zwischenstaende gleichermassen. Jeder
+  Auftrag an einen Subagenten nennt diese Regel ausdruecklich, statt sie vorauszusetzen.
+
+
+  Ausgenommen ist, was ein Werkzeug in seinem eigenen, selbst angelegten Wegwerfordner
+  tut, den es nicht selbst benennt -- pytests tmp_path etwa. Nicht ausgenommen ist
+  ein Ordner, dessen Pfad eine Rolle selbst zusammengesetzt hat: genau dort entsteht
+  der Fehler.
+
+
+  Der Grund ist keine Vorsicht, sondern Asymmetrie: ein falscher Schreibzugriff kostet
+  einen git checkout, ein falsches Loeschen kostet die Sache.'
+consequences: 'C:/Trash waechst und muss vom Nutzer geleert werden -- das ist der
+  Preis und er ist gewollt. Ein Bericht, der Aufraeumen meldet, sagt kuenftig wohin
+  verschoben wurde, nicht dass geloescht wurde; ein Bericht, der ''entfernt'' sagt,
+  ist damit selbst ein Befund.
+
+
+  Vom Nutzer am 2026-08-09 verlangt, bevor ein Schaden eingetreten ist. Der Sitzungsagent
+  hatte am selben Tag zweimal mit rm -rf aufgeraeumt und die Pruefer taten es routinemaessig;
+  diese Entscheidung loest das ab.'
+source: Nutzeranweisung 2026-08-09; die vier Messschaeden vom 2026-08-06 bis 2026-08-08;
+  das Testbett C:/Offline Repos/v2-pilot/ mit _DIES_SIND_KOPIEN.md
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-09T09:10:26'

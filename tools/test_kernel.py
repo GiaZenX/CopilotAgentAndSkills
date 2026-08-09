@@ -471,8 +471,16 @@ def test_no_kernel_module_composes_a_directory_a_builder_already_owns():
     THE RULE IS THE ONE PROPERTY: a string constant that names a directory a builder owns may
     appear in a path composition only inside that builder. Everything else asks the builder.
 
-    RED the moment a module joins one of those names onto a path again -- which is what all four
-    of the occurrences above did, and what no amount of care has stopped so far.
+    WHERE THE RULE IS READ, said here because the paragraph that stood here claimed it for all code
+    and this loop opens one directory: the KERNEL PACKAGE. Outside it the same names are composed
+    by shipped code that has no `ProjectState` at the point of use -- the hooks' bridge and two
+    template scripts -- and by this suite, where an independently composed path is the point rather
+    than the defect. The first of those two is a hole with its own measurement and its own
+    tripwire: `L24` in `docs/POST_V2_WISHLIST.md`, measured by
+    `test_the_path_rule_stops_at_the_kernel_package_and_the_rest_is_counted` below.
+
+    RED the moment a module of this package joins one of those names onto a path again -- which is
+    what all four of the occurrences above did, and what no amount of care has stopped so far.
     """
     import ast
 
@@ -506,6 +514,73 @@ def test_no_kernel_module_composes_a_directory_a_builder_already_owns():
     # ...and the counter-direction: the builders themselves still compose their own directory, so
     # a rule that simply matched nothing would not pass this.
     assert len(segments) == len(_DIRECTORY_BUILDERS)
+
+
+def _compositions_outside_the_kernel_package():
+    """{module path: [(line, segment)]} for SHIPPED code that composes a builder-owned directory.
+
+    Shipped means: everything under `team-kits/` that a project installs or runs, minus the kernel
+    package where the rule holds. This suite is deliberately not in it -- a test composing the path
+    it expects is the independent oracle, and folding it in would make the count below a fact about
+    the tests rather than about the product.
+    """
+    import ast
+
+    segments = _builder_segments()
+    kernel_dir = os.path.join(TEAM_KITS_DIR, "kernel")
+    found = {}
+    for current, dirs, files in os.walk(TEAM_KITS_DIR):
+        dirs[:] = [name for name in dirs if name != "__pycache__"]
+        if os.path.normpath(current) == os.path.normpath(kernel_dir):
+            continue
+        for name in sorted(files):
+            if not name.endswith(".py"):
+                continue
+            path = os.path.join(current, name)
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+            for node in ast.walk(tree):
+                if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                        and node.func.attr == "join"
+                        and not isinstance(node.func.value, ast.Constant)):
+                    continue
+                for arg in node.args:
+                    if isinstance(arg, ast.Constant) and arg.value in segments:
+                        found.setdefault(
+                            os.path.relpath(path, TEAM_KITS_DIR).replace(os.sep, "/"),
+                            []).append((node.lineno, arg.value))
+    return found
+
+
+# What the reach of the rule above costs today, measured 2026-08-08 with the reader beside this
+# line. A count rather than a list of places, and it is pinned in BOTH directions on purpose: the
+# entry in the hole list is out of date the moment a new composition appears, and equally out of
+# date the moment the last one goes. The places themselves are named in `L24`; naming them here as
+# well would be the second statement of one fact, which is the failure mode this whole rule exists
+# against.
+_COMPOSITIONS_OUTSIDE_THE_PACKAGE = 7
+
+
+def test_the_path_rule_stops_at_the_kernel_package_and_the_rest_is_counted():
+    """The entry is `L24` in `docs/POST_V2_WISHLIST.md`.
+
+    The rule above holds inside the kernel package and is READ there. Shipped code outside it
+    composes the same directory names by hand, because at those points there is no `ProjectState`
+    to ask: the hooks' bridge decides whether a repo is greenfield by walking around `generated/`,
+    and two template scripts address `generated/` and `archive/` directly. Each of them is a second
+    spelling of a builder's answer, which is exactly the defect the rule is a tripwire for -- the
+    difference is only that closing them would move a kernel-free bootstrap path onto the kernel.
+
+    RED in both directions, which is what a counted residual owes: a new composition outside the
+    package, and the last one disappearing without the entry being closed.
+    """
+    found = _compositions_outside_the_kernel_package()
+    places = sum(len(hits) for hits in found.values())
+    assert places == _COMPOSITIONS_OUTSIDE_THE_PACKAGE, (
+        "shipped code outside the kernel package composes a builder-owned directory in %d "
+        "place(s), and L24 records %d: %s"
+        % (places, _COMPOSITIONS_OUTSIDE_THE_PACKAGE,
+           {name: hits for name, hits in sorted(found.items())}))
 
 
 def test_the_two_files_a_merge_gate_blocks_on_are_documents_no_writer_produces(tmp_path):

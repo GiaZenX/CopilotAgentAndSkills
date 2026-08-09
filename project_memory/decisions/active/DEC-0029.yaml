@@ -1,0 +1,69 @@
+id: DEC-0029
+title: Der statische Draht gegen einen zweiten Leser wird als gemessene Routenmenge
+  gefuehrt, nicht als Vollstaendigkeit
+context: 'Seit Runde 5 versucht ein statischer Draht in tools/test_migrate.py zu beweisen,
+  dass kein Wert eines Zustandspfades an einen zweiten Leser gelangt. Gemessener Verlauf:
+  Runde 6 sechs Routen, Runde 7 zwoelf, Runde 8 sechzehn -- und der Pruefer fand in
+  derselben Pruefung die siebzehnte (ein def INNERHALB der Wirtsfunktion, der den
+  Pfad aus der Closure liest statt als Argument). Jede Runde kaufte eine Schreibweise,
+  keine Eigenschaft.
+
+
+  Der Grund ist nicht Nachlaessigkeit, sondern die Aufgabe: ob ein Wert in beliebigem
+  Python-Code eine bestimmte Stelle erreichen kann, ist statisch nicht entscheidbar.
+  Ein Draht, der es behauptet, behauptet Deckung, die er nicht bauen kann -- und das
+  ist die Hausregel, gegen die dieses Repo gebaut ist, nur diesmal im Pruefapparat
+  statt im Produkt.
+
+
+  Der Pruefer benennt das Muster in seinem eigenen Verdikt: ''die Deckung wird als
+  Liste von Schreibweisen gefuehrt''. Und derselbe Runde ist das Symptom passiert,
+  das es beweist: die gefaehrliche Bewegungsanweisung wurde an EINEM Drucker gestrichen
+  und in derselben Runde am ANDEREN wieder eingefuehrt.
+
+
+  Daneben steht ein zweiter Waechter, der dieselbe Frage zur LAUFZEIT beantwortet:
+  ein Audithook misst, welche Funktion jede Datei unter der Zustandswurzel wirklich
+  oeffnet. Der ist vollstaendig fuer das, was ein Lauf ausfuehrt, und blind fuer nicht
+  betretene Zweige -- die umgekehrte Haelfte.'
+decision: 'Der statische Draht wird nicht weiter auf Vollstaendigkeit getrieben. Er
+  wird als das benannt, was er ist: eine MENGE GEMESSENER ROUTEN, jede mit einem echten
+  Leser belegt, ohne Anspruch darauf, dass es keine achtzehnte gibt.
+
+
+  Jede Zusicherung, jeder Docstring und jeder Loecherlisten-Eintrag, der heute Vollstaendigkeit
+  behauptet, wird auf diese Aussage zurueckgenommen. Der Laufzeit-Waechter bleibt
+  der eigentliche Schutz; seine Blindheit fuer nicht betretene Zweige wird ausdruecklich
+  danebengeschrieben, statt vom statischen Draht als gedeckt ausgegeben zu werden.
+
+
+  Was dagegen weiterhin voll gilt: jeder PRODUKTbefund derselben Pruefungen wird geschlossen.
+  Die Grenze verlaeuft zwischen dem, was in einem fremden Projekt Schaden anrichtet,
+  und dem, was ueber unseren eigenen Pruefapparat behauptet wird -- dieselbe Grenze
+  wie DEC-0022, eine Ebene tiefer.
+
+
+  Vom Nutzer am 2026-08-09 entschieden, nachdem neun Runden dasselbe Muster gezeigt
+  hatten (Auswahl: Produkt schliessen, Draht ehrlich benennen -- gegen konstruktiven
+  Umbau und gegen Weiterhaerten).'
+consequences: 'TSK-0023 kann abgenommen werden, sobald die Produktbefunde geschlossen
+  sind. Was am Draht offen bleibt, steht als benannte Routenmenge und nicht als Luecke,
+  die jemand schliessen muesste.
+
+
+  Der konstruktive Ausweg ist damit nicht verworfen, sondern vertagt: ein eigener
+  Typ, den nur der Pfadbauer erzeugt und nur der Leser annimmt, wuerde den Draht ueberfluessig
+  machen. Das ist ein Umbau am Kernel und gehoert hinter die Piloten, nicht davor
+  -- als eigenes Item.
+
+
+  Wer den Draht spaeter doch wieder als vollstaendig ausgibt, loest diese Entscheidung
+  ab. Eine Route mehr in seinem Korpus ist dagegen jederzeit willkommen und braucht
+  keine Entscheidung.'
+source: Nutzerentscheidung 2026-08-09; Pruefberichte TSK-0023 Runden 5 bis 8; die
+  gemessene Routenzahl 6 -> 12 -> 16 -> 17; das Verdikt des Pruefers zu Runde 8 mit
+  der Diagnose 'Liste von Schreibweisen'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-09T16:08:51'

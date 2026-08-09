@@ -411,7 +411,8 @@ templates restored out of this repository's history — the same schemas, no han
 anywhere. A separate reading was taken by hand on a real office project outside this repository
 and is NOT reproducible from it: the kit version that run was on cannot be re-derived here, so the
 numbers it produced are not quoted. **What it does not do,** and this is the half worth reading
-twice: it mints no approval. Every imported item carries `migration_confirmation_required: true`
+twice: it mints no approval. Every imported item carries `imported_from_v1: true` — a mark saying
+where its content came from, which nothing in this harness reads as a permission (DEC-0021) —
 and `approval_ref: null`, so the import opens no gate that needs an approval — `gate_proc_approved`
 still refuses a spawn afterwards, measured, until the user approves each procedure. That is the
 property, and the STATUS is not part of it: where a record lands and at which status is per record

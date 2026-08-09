@@ -802,12 +802,69 @@ einem vierten Namen:
   nach der Auflage sucht, sucht ein Verzeichnis, das kein Lauf anlegt.
 
 Was der gebaute Umzug dafür zusätzlich einhält und die Auflagen nicht verlangen: verschoben wird nur
-eine Datei, deren Datensätze **alle** zu Items geworden sind (SR-0005), und **nie** eine Datei, deren
+eine Datei, deren Datensätze **alle** zu Items geworden sind (SR-0005); **nie** eine Datei, deren
 Inhalt ein registriertes, blockierfähiges Hook liest (`layout.gated_documents`) — sonst läse dieses
-Gate danach eine abwesende Datei. Die Abweichung steht hier und wartet auf eine Entscheidung; SR-0005
+Gate danach eine abwesende Datei; und **nie auf einen Platz, an dem schon etwas liegt** (seit
+2026-08-09): `os.replace` ersetzt still, und was dort liegt, ist das, wovon die Quittung eines
+früheren Laufs den Hash trägt. Der Trockenlauf meldet diesen Fall vorab, und der Lauf fragt
+unmittelbar vor der Zugschleife noch einmal. **Was das nicht deckt**, und es steht hier statt
+implizit zu bleiben: zwischen dieser Frage und dem `os.replace` liegen zwei weitere Aufrufe, und
+`os.replace` hat keine no-clobber-Variante — eine Datei, die in dieser Spanne entsteht, wird
+ersetzt. Das ist der Eintrag `L30` in `docs/POST_V2_WISHLIST.md`, mit gemessener Kette und
+Begrenzung. Die Abweichung steht hier und wartet auf eine Entscheidung; SR-0005
 ist kanonischer Zustand und wurde NICHT nachgezogen. Stolperdrähte:
-`test_migrate.test_a_fully_absorbed_v1_store_moves_to_legacy_with_its_hash_in_the_receipt` und
-`test_migrate.test_a_document_a_registered_gate_reads_is_never_moved_to_legacy`.
+`test_migrate.test_a_fully_absorbed_v1_store_moves_to_legacy_with_its_hash_in_the_receipt`,
+`test_migrate.test_a_document_a_registered_gate_reads_is_never_moved_to_legacy`,
+`test_migrate.test_a_second_document_of_the_same_name_does_not_replace_the_one_already_retired`
+und `test_migrate.test_the_move_asks_again_when_the_place_was_free_while_the_plan_was_built`.
+
+(e2) *Was der Trockenlauf einem Leser über eine unerreichbare Datei sagt (DEC-0024).* Der
+SR-0001-Vorlauf nennt jede Datei, die der Datensatz-Suchlauf nicht lesen kann, mit **allen** Gründen
+dafür — und **leitet kein Ziel im Zustandsbaum mehr ab**. Das ist die eingeengte Fassung eines
+Satzes, der bis Runde 7 „schlägt keine Bewegung mehr vor" behauptete. **Eine** Abhilfe verlangt
+weiterhin eine Bewegung, die des belegten `legacy/`-Landeplatzes — sie nennt seit Runde 9 aber ein
+Ziel, und zwar ein konstruiertes **außerhalb** des Zustandsverzeichnisses
+(`migrate.overflow_deposit_of`: `../v1-legacy-overflow/`, Name aus Landeplatzpfad und sha256 des dort
+stehenden Inhalts). Gedruckt werden zwei Schritte in dieser Reihenfolge: erst die **Kopie**, dann das
+Entfernen des Originals. `L35` in `docs/POST_V2_WISHLIST.md` trägt die Kette und die zwei Reste, die
+dabei benannt und nicht geschlossen sind. Die `UNLISTABLE`-Zeile bot dieselbe Bewegung bis Runde 8
+als Alternative an und tut es nicht mehr: sie kann jedes Verzeichnis treffen, auch `product/active/`,
+wo das Wurzelitem liegt, und für das existiert nach der Installation kein Schreiber
+(`migrate.THE_ONLY_UNLISTABLE_STEP`, den seit Runde 9 auch `report.validate_state` durchreicht,
+statt eine zweite Antwort auf dieselbe Bedingung zu drucken). Bis 2026-08-09 leitete er ein
+Ziel aus dem Zustandsbaum ab (*benenn es zurück in ein `.yaml`-Dokument*); acht gemessene
+Fundstellen in vier Prüfrunden zeigten, dass jedes so abgeleitete Ziel gegen eine weitere Autorität
+zu prüfen gewesen wäre (kernel-geschriebener Bereich, Wand als Ziel, Wand als Quelle, belegter
+Platz, und zuletzt zwei Abhilfen **eines** Berichts auf denselben freien Platz). Statt der nächsten
+Klausel nennt die Meldung jetzt eine **Kopie** in die Ablage unter `staging/`, die dieses Kommando
+selbst besitzt und deren Name der kodierte Quellpfad ist (`migrate.deposit_of`): das Original
+bleibt stehen, zwei Zeilen eines Berichts können nicht **auf derselben Datei landen**, und ein Ziel
+dort ist weder Wand noch kernel-geschrieben. Die zweite Zusicherung gilt seit TSK-0023 Runde 6
+**nach der Faltung des Dateisystems** und nicht nur für die Zeichenketten: prozentkodiert allein
+ergaben `PROC-0811a` und `PROC-0811A` zwei Namen und eine Datei. Der Name wird darum in ein Alphabet
+kodiert, auf dem die Faltung dieses Dateisystems die Identität ist (`migrate._NAME_ALPHABET`). Der
+Preis ist benannt: die Meldung sagt nicht mehr, wohin eine Datei gehört, damit der nächste Lauf sie
+durchsucht — das entscheidet der Nutzer, und der Trockenlauf ist das Orakel dafür. Stolperdrähte:
+`test_migrate.test_no_instruction_this_command_prints_can_take_a_file_away`,
+`test_migrate.test_the_place_a_taken_landing_is_freed_to_is_named_and_lies_outside_the_state_directory`,
+`test_migrate.test_two_sources_this_filesystem_would_fold_together_get_two_deposits`,
+`test_migrate.test_two_records_of_one_document_that_differ_only_in_case_get_two_deposits` und
+`test_migrate.test_a_document_a_registered_gate_reads_is_offered_no_way_to_move_or_rename_it`.
+
+(f) *Der Name des Flags — umbenannt auf Nutzerentscheidung, kein Leser gebaut (DEC-0021).* Der
+Prinzipien-Absatz oben verlangt das Flag `migration_confirmation_required: true`; geschrieben wird
+seit dieser Runde `imported_from_v1: true` (`kernel/backlog_types.IMPORT_MARK`, drei Schreibstellen:
+`migrate._with_legacy`, `state.capture_migrated_archive`, `state.capture_migrated_unresolved`). Der
+Grund ist eine Messung, kein Geschmack: **kein** Leser im Kernel, in den Hooks, im Sitzungsbrief
+oder im Dashboard wertet das Feld aus, und diese Spec verspricht auch keinen — der Name behauptete
+damit eine Bestätigungspflicht, die nichts durchsetzt, also genau die Klasse *Kommentar behauptet
+Schutz, den der Code nicht baut*, nur im Datenschema statt in Prosa. Zwei Prüfrunden haben das
+unabhängig gemessen. Der wirksame Riegel ist `approval_ref`, und der **wird** gelesen; ein zweiter
+Riegel daneben wären zwei Antworten auf dieselbe Frage. Der Nutzer hat am 2026-08-07 zwischen
+*umbenennen*, *Leser bauen* und *als Loch führen* entschieden: umbenennen, ohne Leser. Was die
+importierten Items dieser Runde tragen, wandert damit erst beim nächsten Lauf mit — die Migration
+ist wiederholbar, das ist ihr abgenommener Entwurf. Stolperdraht:
+`test_migrate.test_the_import_mark_says_where_an_item_came_from_and_claims_no_lever`.
 
 **Branch↔Item-Konvention:** Arbeitsbranches heißen `<typ>/<ITEM-ID>-<slug>` mit Präfixen
 `pr/ rq/ bug/ cr/` (z. B. `pr/PR-0012-checkout`); gate_git prüft Existenz + TYPGERECHTEN

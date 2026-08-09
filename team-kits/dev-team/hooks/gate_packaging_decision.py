@@ -141,8 +141,8 @@ def main():
         "silently forgotten."
         % ("no active architecture item states one" if seen else
            "this project has no architecture item yet"),
-        remedy="have the architect stage the architecture diagram under "
-               "project_memory/staging/<ROOT-ID>/<ARC-ID>.drawio.svg, then freeze it through the "
+        remedy="have the architect stage the architecture diagram under the root item's own "
+               "staging key, then freeze it through the "
                "entry point with the decision attached — `python scripts/harness.py "
                "freeze-architecture`, run from the project root, with the body on stdin: "
                "{\"staging_key\": \"<ROOT-ID>\", \"arc_id\": \"ARC-0001\", \"title\": \"…\", "

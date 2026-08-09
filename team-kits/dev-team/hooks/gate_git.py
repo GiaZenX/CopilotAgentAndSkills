@@ -54,7 +54,9 @@ name.
 Two situations are handled deliberately rather than by the main rule:
   * NO ROOT ITEM YET (`_root.has_root_item`) — the gate does not apply at all. A repo before
     its first PR/RQ is still being set up, and a quality gate firing there blocks the setup it
-    exists to protect.
+    exists to protect. "No root item" means the directory answered; a canonical directory that
+    exists and refuses to be listed is not an answer, and that predicate says so — otherwise a
+    permission problem would switch off this gate and four others.
   * NO ITEM NAMED (no id in the command, none in the branch name) — the gate still applies, but
     it has nothing to bind evidence to, so it asks the weaker question the store can still answer:
     is anything currently failing, ANYWHERE. Refusing outright for the missing binding would block

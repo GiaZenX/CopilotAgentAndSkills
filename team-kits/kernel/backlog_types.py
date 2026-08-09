@@ -623,7 +623,19 @@ TSK_PLAN_FIELDS = frozenset((
 # and which kit version the record came from -- SR-0002). A constant in `migrate` would have made
 # the kernel import the caller it is called by.
 LEGACY_FIELD = "legacy_fields"
-MIGRATION_FLAG = "migration_confirmation_required"
+# WHAT THE MARK SAYS, AND WHY IT NO LONGER SAYS MORE (DEC-0021). It was
+# `migration_confirmation_required`, and that name promised a duty: something
+# somewhere would demand a human confirmation before the item counted. Nothing
+# does -- no reader in this kernel, in the hooks, in the session brief or in the
+# dashboard asks for it, and the spec promises none either. Two review rounds
+# measured that independently. The bolt that IS read is `approval_ref`, so a
+# second one beside it would be two answers to one question, which is the drift
+# class this repo has measured on itself. The mark therefore states its subject
+# and nothing else: this item's content came out of a V1 store rather than out
+# of a session. `test_migrate.test_the_import_mark_says_where_an_item_came_from
+# _and_claims_no_lever` is where the seam between the name and the behaviour
+# under it is measured.
+IMPORT_MARK = "imported_from_v1"
 
 # WHAT THE THIRD COLUMN MEANS, stated ONCE for every row rather than argued per row -- and it is
 # stated here because without it the column is a list of individual calls, which is what it had

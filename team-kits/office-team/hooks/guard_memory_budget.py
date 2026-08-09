@@ -322,7 +322,8 @@ def _check_ids(rel, budget, text):
             "never project status, tasks, decisions or session progress (spec II.5). A note "
             "pinned to an item goes stale the moment the item moves, and the next session reads "
             "it as true." % (rel, ", ".join(found[:5])),
-            remedy="put the fact on the item itself (or in evidence/), and keep in memory only "
+            remedy="put the fact on the item it belongs to — the kernel captures items, and "
+                   "`python scripts/harness.py --help` lists the surface — and keep in memory only "
                    "the generalisable lesson, with no id in it.")
 
 

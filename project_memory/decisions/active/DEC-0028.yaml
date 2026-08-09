@@ -1,0 +1,57 @@
+id: DEC-0028
+title: Ein Leser dieses Apparats ist ein versionierter Agent, keine verschachtelte
+  SDK-Sitzung aus einem Hook
+context: 'Beim Entwurf zu FR-0012 schlug der Sitzungsagent vor, den kleinen Prosa-Pruefer
+  als Hook zu bauen, der ueber die SDK einen Leser ruft. Begruendung: der bestehende
+  project-auditor wird je Lauf auf einer Freigabe zugeteilt, und ein Check je Schreibvorgang
+  koenne keine Freigabe je Schreibvorgang tragen.
+
+
+  Der Nutzer hat den Fehlschluss gefunden: die Freigabepflicht ist eine Eigenschaft
+  DIESER einen Rolle, nicht von Agenten ueberhaupt. Eine neue Rolle erbt sie nicht.
+  Das Muster existiert in diesem Repo bereits -- radar-watcher und codex-watcher laufen
+  read-only und ohne Item (harness_item: none).
+
+
+  Was eine verschachtelte SDK-Sitzung dagegen mitbraechte, ist gemessen und keine
+  Vermutung: ein eigenes Transkript an ungewohnter Stelle, eine eigene Kostenrechnung,
+  eigene Ausfallarten -- und vor allem eine Ausfuehrungsschicht AUSSERHALB dessen,
+  was der Provider als Durchsetzungsschicht liest. Die vier Gates dieses Repos binden
+  an dem, was in .claude/ steht; ein Prozess, den ein Hook startet, steht dort nicht.
+
+
+  Ohne diesen Eintrag laesst sich DEC-0025 falsch lesen: dort steht, die Piloten laufen
+  ueber die SDK. Ein spaeterer Leser koennte daraus schliessen, SDK-Aufrufe seien
+  ueberall zulaessig.'
+decision: 'Ein Leser oder Pruefer, der zum Apparat dieses Projekts gehoert, ist ein
+  AGENT mit Definition unter .claude/agents/ -- versioniert, im Kit-Hash, von den
+  Gates lesbar, mit erklaerter Modellstufe und erklaerten Werkzeugen. Er wird ueber
+  den gewoehnlichen Spawn-Weg gestartet, damit jeder Aufruf sichtbar ist.
+
+
+  Ein Hook darf einen solchen Lauf VORBEREITEN -- mechanisch pruefen, einen Befund
+  melden, eine Verweigerung aussprechen -- aber er startet keinen Modellprozess. Was
+  ein Hook tut, kostet nichts und ist deterministisch; das ist seine Rolle in dieser
+  Arbeitsteilung.
+
+
+  Die SDK bleibt zulaessig fuer GENAU EINEN Zweck: eine Nutzersitzung nachzubilden,
+  die von aussen auf diesen Apparat blickt -- die Piloten nach DEC-0025. Dort ist
+  die verschachtelte Sitzung der Gegenstand der Messung und nicht ein verstecktes
+  Glied der Durchsetzungskette.'
+consequences: 'Der Preis ist ein Ausloeser, der nicht selbst handeln kann: der Hook
+  meldet, gespawnt wird ueber den gewoehnlichen Weg. Das ist bewusst -- ein Ausloeser,
+  der selbst einen Modellprozess starten koennte, waere eine Ausfuehrungsschicht,
+  die kein Gate sieht.
+
+
+  Wer spaeter doch einen Modellaufruf aus einem Hook braucht, loest diese Entscheidung
+  ausdruecklich ab und baut die Gates dafuer mit. Ein Aufruf, der sich still danebenstellt,
+  ist damit als Rueckfall erkennbar und nicht als Einzelfall.'
+source: Nutzerfrage 2026-08-09 warum nicht ein zweiter Agent statt des SDK-Weges;
+  die Rollendefinition project-auditor; radar-watcher und codex-watcher als bestehendes
+  Muster; DEC-0025 als der Eintrag, der ohne diesen falsch gelesen werden koennte
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-09T10:11:29'

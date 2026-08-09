@@ -1,0 +1,42 @@
+id: TSK-0027
+product_requirement: PR-0001
+derives_from: SR-0001
+type: test
+assigned_role: harness-lead
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- docs/pilot/**
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- docs/pilot/2026-08-09-plan.md -- Methode, Beobachtungsraster und die Regel dass
+  niemand im Lauf erfaehrt dass es ein Versuch ist
+- TSK-0025 -- der erste Pilot, dessen Methode hier auf zwei weitere Vorhaben angewandt
+  wird
+expected_outputs:
+- Ein zweiter Pilot mit einem kleinen Spiel -- gewaehlt, weil ein Spiel Regeln und
+  Zustand hat und keine Fachdomaene, also den Apparat ohne Fachwissen auslastet
+- 'Ein dritter Pilot mit einem Rechnungswerkzeug, das eine echte Fachdomaene traegt:
+  Umsatzsteuer, Kleinunternehmerregelung, hinterlegte Produkte, hinterlegte Kunden,
+  fortlaufende Nummern'
+- Fuer das Rechnungswerkzeug wird eigens gemessen, ob der Apparat eine FACHLICHE Anforderung
+  als solche fuehrt oder sie zu einer technischen verkuerzt -- dort entscheidet sich,
+  ob ein Nicht-Entwickler damit arbeiten kann
+- 'Die drei Piloten werden nebeneinander gelegt: was in allen dreien gleich lief,
+  ist Eigenschaft des Apparats; was nur in einem lief, ist Eigenschaft des Vorhabens'
+- 'Die Selbstaendigkeit wird je Pilot an derselben Zahl gemessen: Nutzereingaben bis
+  zum ersten lauffaehigen Ergebnis, und die Stelle des Stehenbleibens'
+- Ein Defekt wird NOTIERT und nicht behoben, solange die Piloten laufen
+dependencies:
+- TSK-0025
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-09T03:20:40'

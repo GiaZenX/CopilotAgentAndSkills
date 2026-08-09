@@ -330,7 +330,9 @@ def test_index_regenerated_by_every_operation(state):
 
 
 def test_read_item_names_remedy_for_missing(state):
-    with pytest.raises(StateError, match="index.yaml"):
+    # The remedy points at the generated index by NAME and no longer by path: DEC-0024 keeps a
+    # place inside the state directory out of every printed remedy, and `index.yaml` was one.
+    with pytest.raises(StateError, match="generated index"):
         state.read_item("PR-0099")
 
 

@@ -508,8 +508,10 @@ def _json_body(command: str = "capture") -> dict:
         raise UsageError(
             "the %s body is %d bytes; an active item is capped at %d (spec II.5, the same "
             "limit `python scripts/harness.py validate` reports and `guard_memory_budget` enforces "
-            "on tool writes). Remedy: an item REFERENCES its detail -- put the bulk in "
-            "staging/<key>/ or an Evidence artefact and name it from the item."
+            "on tool writes). Remedy: an item REFERENCES its detail -- send a body that fits and "
+            "keep the bulk in the artefact it belongs to, named from the item. No place for it is "
+            "offered here: a place named in a message is one the reader completes, and what they "
+            "put there can already be taken (DEC-0024)."
             % (command, len(raw.encode("utf-8")), report.ITEM_MAX_BYTES))
     try:
         body = json.loads(raw)

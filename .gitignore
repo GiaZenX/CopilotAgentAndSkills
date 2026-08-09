@@ -21,3 +21,13 @@ __pycache__/
 
 # Logs
 *.log
+
+# Stray runtime state a measurement run drops into the repo root. Both landed in
+# b32ec98 because nothing ignored them: a PowerShell module cache (a subagent ran with
+# HOME pointing here) and the kit audit log, which a kit HOOK SUBPROCESS writes through
+# find_repo_root() -- gate 1 never sees that write, and the item measuring the kits
+# cannot forbid it. The audit log is the open remainder H37 Rest 2 in
+# docs/POST_V2_WISHLIST.md; ignoring it keeps it out of the next commit but does NOT
+# close it -- the repair belongs in the kit.
+Microsoft/
+project_memory/.audit/

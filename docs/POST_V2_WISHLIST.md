@@ -797,9 +797,27 @@ Hook ist ein Durchlass. Mit der Grenze wird ein Dokument über der Marke **nicht
 V1-Datensätze hält, ist danach unbekannt.
 
 **Kette (gemessen 2026-08-05):** ein Kit-Dokument über der Marke mit einem `PROC`-Datensatz darin →
-der Parser bekommt es nicht mehr zu sehen, `validate` meldet es als `error … NOT SEARCHED for V1
-backlog records`; ein Dokument unter der Marke im selben Lauf wird weiterhin gelesen und sein
-Datensatz weiterhin gemeldet.
+der Parser bekommt es nicht mehr zu sehen, `validate` meldet es als Fehler mit der Wendung
+`NOT SEARCHED for V1 backlog records` **in der Mitte** der Meldung (seit der Umrahmung vom
+2026-08-07 führt die Ursache, und die Prüfung folgt: „It is N bytes … . It was therefore NOT
+SEARCHED for V1 backlog records"); ein Dokument unter der Marke im selben Lauf wird weiterhin
+gelesen und sein Datensatz weiterhin gemeldet.
+
+**Korrektur 2026-08-07:** die früher hier notierte Kurve war unter „PyYAML with libyaml" gemessen;
+dieser Pfad ruft `yaml.safe_load` und damit den **reinen Python-Loader** (`yaml.SafeLoader`),
+obwohl `yaml.__with_libyaml__` True ist. Nachgemessen mit
+`report._check_no_v1_records_outside_the_archive` direkt (bester von 3, ein büroartiges
+`filing_log.yaml`): 1 MB 1,85 s · 2 MB 2,90 s · 4 MB 6,36 s · 8 MB 18,01 s; die erste, kalte
+Lesung jeder Größe liegt Faktor 1,7–2,7 darüber (2,9–4,2 s je MB). Das Gesamtbudget von 8 MB
+kostet damit **~18 s warm und ~31 s kalt** — ein Drittel bis die Hälfte der 60 s, die ein
+`PreToolUse`-Hook für **alles** hat.
+
+**Feldzahl (gemessen 2026-08-07, dieselbe Auswahl, die der Scan trifft):** `synaipse` hält 20
+Kit-Dokumente mit zusammen 5 114 314 B = **63,9 % des Gesamtbudgets**, seine größte Datei
+`design.yaml` 1 015 193 B = **50,8 % der Einzelgrenze**; `portfoliomanaigement` liegt bei 12,2 %
+bzw. 6,3 %. Die Antwort auf „trifft ein echtes Projekt die Grenze?" lautet damit nicht *nein*,
+sondern **noch nicht** — und die Abhilfe („nimm die Datei außerhalb der Sitzung heraus") ist genau
+der Griff, den `gate_write_scope` innerhalb der Sitzung verbietet.
 
 **Urteil: GESCHLOSSEN mit benanntem Rest.** Der unbegrenzte Leser ist weg; unbekannt bleibt
 unbekannt.
@@ -831,6 +849,813 @@ Lauf schaltet nichts ab. Was fehlt, ist die Ansage.
 DEC-0013 macht das frische Wurzelitem zur ersten Aufgabe der ersten Sitzung nach der Migration.
 
 **Stolperdraht:** `test_migrate.test_the_root_warning_is_silent_for_a_project_that_held_no_root_item_before`
+
+### L19 — Ein V1-Speicher außerhalb der Domäne des Suchlaufs wird benannt und blockiert nicht
+
+**Mechanismus:** der SR-0001-Scan durchsucht die YAML-Dokumente des Zustandsverzeichnisses. Was
+kein YAML-Dokument ist, im Vorschlagsbereich (`staging/`) oder unter einem gepunkteten Pfad liegt,
+wird seit TSK-0020 von beiden Lesern **benannt** (`migrate.search_coverage`,
+`report.record_scan_coverage`), aber nicht als Befund geführt — also verweigert kein Gate.
+
+**Kette (gemessen 2026-08-07):** Zustand mit gültigem Wurzel-Item + `project_memory/old_procs.yaml.bak`
+mit `PROC-0001` (`status: ACTIVE`) → `validate` druckt `NOT SEARCHED old_procs.yaml.bak: …`,
+`gate_memory_complete` auf `git merge` **rc 0**. Dieselbe Datei als `old_procs.yaml`: rc 2.
+
+**Urteil: OFFEN, nicht schließbar ohne einen neuen Fehlklang.** Ein Befund über diese Klasse wäre
+in jedem Projekt dauerhaft und unauflösbar: das Forschungs-Kit liefert 27 nicht-YAML-Dateien unter
+`project_memory/` aus (`README.md`, `product/masterplan.md`, `reports/assets/**`), Dev und Office je
+zwei. Als `error` ein Merge, den kein Projekt je besteht; als `warning` ein Alarm über einen Zustand,
+den niemand verlassen kann.
+
+**Die Gegenrichtung ist teurer, und sie ist gemessen (2026-08-08):** der Vorschlagsbereich ist nicht
+aus Bequemlichkeit ausgenommen. Ein für `capture` vorbereiteter Item-Body trägt eine Id und einen
+`status`, ist also für denselben Erkenner ununterscheidbar von einem V1-Datensatz —
+`migrate.scan_document` liest zwei gewöhnliche Vorschläge unter `staging/PR-0001/` als `TSK-0001`
+und `TSK-0002`. Würde der Scan dort suchen, verweigerte das Merge-Gate jedem Projekt den Merge,
+sobald zwei Vorschläge im Zustandsbaum liegen — für den Normalzustand des Arbeitens.
+
+**Was stattdessen begrenzt:** die Datei ist nicht mehr stumm — `validate` druckt sie pro Datei mit
+Grund, `doctor` trägt sie unter `record_scan_coverage`, der Trockenlauf der Migration nennt sie unter
+`NOT SEARCHED`. Seit TSK-0023 nennt der Grund **jede** Bedingung, die die Datei draußen hält, samt
+der zugehörigen Abhilfe (vorher führte die Abhilfe für eine Nicht-YAML-Datei unter `staging/` auf
+eine Datei, die weiterhin unsearched ist). Und der eigentliche SR-0001-Fall (das zurückkopierte
+Monolith) trägt seinen V1-Namen und liegt damit *in* der Domäne; unter dieses Loch fällt nur eine
+Datei, die jemand zusätzlich umbenannt oder verschoben hat.
+
+**Restfall des Vorlaufs:** eine Datei unter gepunktetem Pfad, die kein YAML-Dokument ist, gilt als
+`machinery` — weder durchsucht noch genannt. Das hält `.kernel.lock`, `.audit/hook_events.jsonl` und
+ein `.gitkeep` je Item-Verzeichnis aus beiden Berichten; ein dort versteckter V1-Datensatz steht in
+keinem.
+
+**Stolperdrähte:** `test_migrate.test_the_dry_run_and_the_validator_answer_the_same_about_every_file`
+(letzter Block: rc 0, rot sobald der Merge dafür verweigert),
+`test_migrate.test_every_spelling_of_the_proposal_area_gets_one_answer_from_both_readers` (die
+Gegenrichtung) und `test_migrate.test_every_file_under_the_state_root_gets_exactly_one_search_verdict`
+(der Restfall).
+
+### L20 — Ein V1-Speicher in einem kernel-geschriebenen Bereich steht in keinem Bericht
+
+**Mechanismus:** `migrate.search_coverage` urteilt `kernel` über den **Bereich**, nicht über den
+Schreiber: alles unter einem Pfad, den ein Kernel-Bauer nennt, gilt als Schreibung des Kernels und
+wird weder durchsucht noch als „nicht durchsucht" genannt. Das ist die zweite stumme Klasse neben
+`machinery`, und die weitere von beiden.
+
+**Kette (gemessen 2026-08-08):** Zustand mit gültigem Wurzel-Item, `processes: {PROC-0001: {status:
+ACTIVE}}` je einmal in `generated/`, in `archive/PROC/2026/` und in `product/active/` abgelegt →
+Deckung `kernel`, `record_scan_coverage` nennt keine der drei, kein V1-Befund. `gate_memory_complete`
+auf `git merge`: **rc 0** für `generated/` und `archive/PROC/2026/`; für `product/active/` rc 2 —
+aber aus einem anderen Grund, der Item-Validator liest die Datei als Item ohne Pflichtfelder.
+Dieselben Bytes eine Ebene höher: rc 2 mit `holds 1 V1 backlog record(s)`.
+
+**Urteil: OFFEN.** Der Ausweg wäre eine Aussage darüber, welche **Namen** ein Kernel-Bauer in einem
+Bereich erzeugt (Item-Dateien, `index.yaml`, Freigabe-Ids …) — also eine Tabelle pro Bereich, und
+damit genau die Aufzählung, gegen die dieses Repo gebaut ist. `legacy/` müsste ohnehin ausgenommen
+bleiben: dort liegen absorbierte V1-Dokumente absichtlich.
+
+**Was stattdessen begrenzt:** in diese Bereiche schreibt kein Werkzeug einer Sitzung —
+`gate_write_scope` verweigert jeden Tool-Write unter `project_memory/`, und der Kernel legt dort nur
+seine eigenen Dateien ab. Eine Datei kommt dorthin nur über eine Shell außerhalb der Sitzung oder
+einen Checkout. Und der Bereich, den ein Item-Validator ohnehin abläuft (die aktiven
+Item-Verzeichnisse), verweigert den Merge trotzdem — mit einer Meldung über etwas anderes.
+
+**Stolperdraht:** `test_migrate.test_a_v1_store_inside_a_kernel_written_area_is_in_no_report`
+
+### L21 — Die Prosa-Regel entscheidet Wort-Kovorkommen, nicht Paarung
+
+**Mechanismus:**
+`test_migrate.test_no_shipped_text_says_an_import_arrives_at_its_initial_status_full_stop`
+fragt drei Wortlisten an einem Satz ab: ein Import-Wort, ein Anfangsstatus-Wort, kein Wort der
+anderen Tür. Ob der Satz die Hälfte **behauptet** oder sie **verneint**, sieht keine der drei.
+
+**Kette (gemessen 2026-08-07 an den ausgelieferten Regexen, je eine Probe):**
+`Imports arrive at their INITIAL status, never at the mapped one.` — falsch über dieses Harness,
+**geht durch**; `A record the table calls unfinished is imported at its initial status.` — wahr und
+harmlos, **wird abgelehnt**; `Importierte Items kommen im Anfangsstatus an und tragen keine
+Freigabe.` — dieselbe Behauptung auf Deutsch, **geht durch**; `Every imported PROC arrives in DRAFT
+and carries no approval.` — dieselbe Behauptung mit **benanntem** Status, **geht durch**. Deckung
+über das abgeleitete Korpus: 2704 Sätze in 70 Dokumenten, 56 mit Import-Wort, 2 mit
+Anfangsstatus-Wort, **genau einer** wird angesehen.
+
+**Urteil: NICHT SCHLIESSBAR mit dem Instrument.** Die Paarung zu entscheiden ist eine Lesart; ein
+Prüfer, der einen richtigen Satz meldet, ist schlechter als keiner — die zweite Probe ist bereits
+dieser Fall und ist der Preis der ersten.
+
+**Was stattdessen begrenzt:** der Docstring behauptet die Paarung nicht mehr, sondern nennt alle
+vier Proben; und der Test **fällt**, sobald die Zahl der angesehenen Sätze null erreicht — eine
+Prüfung, die nichts ansieht, ist kein grünes Licht.
+
+**Stolperdraht:** derselbe Test (die Vakuum-Zusicherung), rot gesehen, indem der eine angesehene
+Satz in `README.md` umformuliert wurde.
+
+### L22 — Der Plan-Digest deckt den Plan, nicht das Harness
+
+**Mechanismus:** `migrate.plan_digest` ist über das Plan-Objekt genommen. Eine Kit-Änderung, die den
+**Inhalt** des Plans bewegt, invalidiert einen vorgelegten Plan (gemessen: ein zusätzlicher Eintrag
+in `backlog_types.OPTIONAL_FIELDS` bewegt den Digest bei byte-identischem `state_fingerprint`,
+unveränderten Flaggen und unveränderter Registrierung). Eine Kit-Änderung **unterhalb** des Plans —
+wie `execute` schreibt, was der Plan beschreibt — bewegt ihn nicht.
+
+**Kette:** Trockenlauf lesen → Kit-Update, das nur die Schreibhälfte ändert → `--plan <digest>`
+läuft durch, weil der Digest stimmt, und schreibt anders, als der gelesene Trockenlauf beschrieb.
+
+**Urteil: OFFEN, nicht blockierend innerhalb einer Sitzung** — die Kette braucht eine
+Neuinstallation zwischen den beiden Hälften.
+
+**Was stattdessen begrenzt:** die Verweigerungsmeldung nennt Code und Tabellen jetzt als dritte Art
+von Eingabe und schickt an `doctor`, das die `kit_version` berichtet; und die Gegenrichtung ist
+gemessen (`test_migrate.test_moving_the_kernels_own_contract_table_alone_moves_the_digest`, zweite
+Hälfte): eine Konstante ohne Verdikt bewegt den Digest nicht — der Digest ist also kein
+Versionsstempel und darf nicht als einer gelesen werden.
+
+**Stolperdraht:** `test_migrate.test_moving_the_kernels_own_contract_table_alone_moves_the_digest`
+
+### L23 — Zitate außerhalb der II.10-Nachträge prüft nichts
+
+**Mechanismus:**
+`test_disposition.test_every_citation_in_the_migration_addenda_carries_the_wording_it_cites`
+prüft nur die Nachträge, weil nur dort die Konvention „Zitat in Anführungszeichen, Paraphrase
+kursiv" gilt.
+
+**Kette (gezählt 2026-08-07 mit dem Leser derselben Datei):** 35 zitatförmige Spannen in der Spec,
+7 in den Nachträgen (alle auflösbar), 28 außerhalb, davon **17 unauflösbar**. Die frühere
+Begründung („zitieren die Welt außerhalb dieses Repos") hält für die Mehrzahl und **nicht** für
+drei: `Prefer Mermaid over draw.io` (eigenes früheres Kit-Ruling), `je <=150 Zeilen` (eigene frühere
+Zeilengrenze), `Derived 1:1 from … v1.11` (Kopfzeile des eigenen V1-Ablageplans) — Artefakte dieses
+Repos, die keine Zeile hier mehr trägt.
+
+**Urteil: OFFEN.** Ein Zitat zurückgezogenen Textes liest sich genau wie ein falsch abgeschriebenes;
+das zu trennen braucht die Paarung Regel↔Abschnitt, also eine Lesart.
+
+**Was stattdessen begrenzt:** die Konvention gilt in den Nachträgen, dort sind alle sieben Zitate
+geprüft, und der Test fällt, wenn die Nachträge fast keine Zitate mehr tragen.
+
+**Stolperdraht:**
+`test_disposition.test_every_citation_in_the_migration_addenda_carries_the_wording_it_cites`
+
+### L24 — Die Pfadregel gilt im Kernel-Paket und wird nur dort gelesen
+
+**Mechanismus:** die Regel „ein Verzeichnisname, den ein Bauer besitzt, wird nur in diesem Bauer
+zusammengesetzt" ist ein Stolperdraht über `team-kits/kernel/*.py`. Ausgelieferter Code **außerhalb**
+des Pakets setzt dieselben Namen von Hand zusammen, weil dort kein `ProjectState` in der Hand liegt.
+
+**Kette (gemessen 2026-08-08, AST-Leser über `team-kits/**/*.py` ohne das Kernel-Paket):** die Zahl
+der Stellen steht **nur** im Pin `test_kernel._COMPOSITIONS_OUTSIDE_THE_PACKAGE` und wird hier
+absichtlich nicht wiederholt — bis 2026-08-08 stand sie an beiden Orten, und die Prosakopie war die,
+die niemand nachzieht. Die Stellen selbst: `hooks/_kernel.py` (`generated`, je Kit dreimal gespiegelt),
+`templates/repo/scripts/generate_dashboard.py` (`archive`, `generated`),
+`templates/repo/scripts/retro.py` (`generated`, dev und research). Jede davon ist eine zweite
+Schreibweise der Antwort eines Bauers: zieht `state.generated_path` um, liest der Bridge-Code
+weiter am alten Ort und meldet ein Projekt fälschlich als greenfield.
+
+**Urteil: OFFEN, nicht blockierend** — die Kette braucht eine Umbenennung im Kernel, und der
+Bridge-Pfad ist genau der, der ohne Kernel funktionieren muss (`_kernel.state_is_empty` antwortet
+auch dann, wenn der Kernel nicht importierbar ist; ihn an einen Bauer zu hängen, verlegt eine
+Bootstrap-Antwort auf den Kernel).
+
+**Was stattdessen begrenzt:** die Zahl ist gepinnt, und zwar in **beiden** Richtungen — eine neue
+Stelle wird rot, und die letzte verschwundene Stelle wird ebenfalls rot, damit der Eintrag nicht
+als toter Text stehen bleibt. Der Docstring der Regel behauptet ihre Reichweite nicht mehr für
+allen Code.
+
+**Stolperdraht:** `test_kernel.test_the_path_rule_stops_at_the_kernel_package_and_the_rest_is_counted`
+
+### L25 — Ein Item-Body, der sich selbst nennt, ist von einem V1-Datensatz nicht unterscheidbar
+
+**Mechanismus:** ein V2-Item trägt `id: SR-0001` und einen `status` — genau die Form, an der
+`migrate.scan_document` einen V1-Datensatz erkennt. Die beiden sind für den Erkenner dasselbe. Was
+die eigenen Items eines Projekts aus dem SR-0001-Scan hält, ist allein ihr **Ort**: kernel-eigene
+Bereiche werden pauschal übersprungen (L20), der Vorschlagsbereich ebenfalls (L19). Ein Body, der
+woanders landet — eine Kopie, ein von Hand gesichertes Item, ein aus `staging/` hochgezogener
+Vorschlag —, wird als V1-Datensatz gelesen.
+
+**Kette (gemessen 2026-08-08):** Zustand mit gültigem Wurzel-Item, Merge rc 0 → zwei Dateien
+`project_memory/notes/SR-0001.yaml` und `SR-0002.yaml` mit je `id`, `status: PROPOSED` →
+`validate` meldet **zwei** `holds 1 V1 backlog record(s)`, `gate_memory_complete` auf `git merge`
+**rc 2**, und innerhalb der Sitzung räumt das niemand weg: `gate_write_scope` verweigert jeden
+Tool-Write unter `project_memory/`. Dieselben zwei Bodies unter `staging/PR-0001/`: rc 0.
+
+**Urteil: OFFEN, nicht schließbar mit diesem Erkenner.** „Ist dieses Dokument ein V2-Item oder ein
+V1-Datensatz?" ist an der Form nicht entscheidbar; die einzige verfügbare Antwort ist der Ort, und
+den nennt die Meldung bereits.
+
+**Was stattdessen begrenzt:** kein Werkzeug einer Sitzung schreibt dorthin, der Kernel legt Items
+nur in seine eigenen Bereiche, und der Vorschlagsbereich — der einzige Ort im Zustandsbaum, an dem
+eine Rolle solche Bodies wirklich erzeugt — ist genau deshalb aus dem Scan heraus. Die Verweigerung
+nennt die Datei, und die Abhilfe („nimm sie außerhalb der Sitzung heraus") ist ausführbar.
+
+**Stolperdraht:** `test_migrate.test_two_item_bodies_outside_the_kernels_own_areas_refuse_every_merge`
+
+### L26 — Der Kopplungstest schließt das Paar nur einseitig, und die Referenz ist eine Schreibweise
+
+**Mechanismus:** `test_migrate.test_every_hole_a_test_measures_is_carried_by_the_hole_list` läuft
+über die Menge der Einträge, die ein **Test nennt** (`named`), nie über die Einträge der Liste
+(`entries`). Ein Eintrag, den kein Test nennt, wird deshalb von nichts geprüft — weder auf Urteil
+noch auf Begrenzung noch darauf, dass sein zitierter Stolperdraht existiert. Zweite Aufzählung im
+selben Test: `_HOLE_REFERENCE` ist **eine** Schreibweise (`` `L19` in `docs/POST_V2_WISHLIST.md` ``);
+eine Nennung als „getragen von `L19`" ist kein Treffer.
+
+**Kette (gemessen 2026-08-08 im Klon außerhalb des Repos, je eine Probe):** fehlender Eintrag zu
+einer Test-Nennung ⇒ **rot**; Zitat auf einen umbenannten Test ⇒ **rot**; Eintrag ohne jede
+Test-Nennung (verwaist), Urteil entfernt ⇒ **grün**. Ein verwaister Eintrag ist genau die Hälfte,
+für die der Docstring bis heute „BOTH DIRECTIONS" behauptete.
+
+**Urteil: OFFEN, nicht blockierend innerhalb einer Sitzung** — die Wirkung ist ein Eintrag, der als
+toter Text stehen bleibt, kein Durchlass an einem Gate. Die Richtung „Test nennt einen Eintrag, den
+es nicht gibt" ist die, an der ein Paket auseinanderfällt, und die ist zu.
+
+**Was stattdessen begrenzt:** der Docstring behauptet die zweite Richtung nicht mehr, sondern nennt
+sie als Lücke mit dieser Nummer; und die Einträge dieses Pakets sind alle von einem Test genannt,
+liegen also in der geprüften Hälfte.
+
+**Stolperdraht:** `test_migrate.test_every_hole_a_test_measures_is_carried_by_the_hole_list`
+(die geprüfte Richtung)
+
+### L27 — Der DEC-0021-Stolperdraht definiert „Leser" als zwei Operationen
+
+**Mechanismus:** der Test parst allen ausgelieferten Python-Code und sammelt jede Stelle, die
+`IMPORT_MARK` aus einem Mapping **holt** — als Subscript oder als `.get`. Das ist eine Aufzählung
+zweier Operationen und keine Eigenschaft; die Marke ist eine Präsenzmarke, und die liest man am
+natürlichsten mit `in`.
+
+**Kette (gemessen 2026-08-08, je ein echter Leser in `kernel/report.py` eingesetzt und der Test
+gefahren):** `IMPORT_MARK in item` ⇒ **grün**; `item.pop(IMPORT_MARK, None)` ⇒ **grün**; ein
+Schlüsselvergleich `if name == IMPORT_MARK` in einer Feldschleife ⇒ **grün**;
+`getattr(item, IMPORT_MARK, None)` ⇒ **grün**; nur das Subscript ⇒ rot. DEC-0021 entschied gegen
+jeden Leser; vier von fünf Formen kämen unbemerkt hinein.
+
+**Urteil: OFFEN, nicht blockierend** — ein Leser dieser Marke ist kein Durchlass, sondern eine
+Entscheidung, die jemand ein zweites Mal treffen müsste. Die Eigenschaft sauber zu fassen („der Name
+erscheint in einer Position, die nicht die Store-Seite einer Zuweisung ist") ist machbar und wurde
+hier bewusst nicht gebaut: der Test liegt im Prüfwerk, nicht im Produkt.
+
+**Was stattdessen begrenzt:** die **Schreib**seite ist vollständig gepinnt — der Test verlangt
+exakt drei Schreibstellen, also wird eine vierte Stelle, die die Marke setzt, sofort rot; und der
+Docstring behauptet nicht mehr, jeder morgen hinzugefügte Leser werde rot.
+
+**Stolperdraht:** `test_migrate.test_the_import_mark_says_where_an_item_came_from_and_claims_no_lever`
+
+### L28 — Die `UNLISTABLE`-Zeile entsteht für jeden Walk-Fehler, auch wo nie gesucht würde
+
+**Mechanismus:** `migrate.search_coverage` hängt seinen `onerror`-Sammler an den **ganzen** Walk.
+Jeder Fehler wird eine `UNLISTABLE`-Zeile, und beide Leser verweigern darauf — unabhängig davon, ob
+unter dem Verzeichnis überhaupt gesucht worden wäre. Für `staging/`, für gepunktete Pfade und für
+kernel-eigene Bereiche ist die Antwort auf ein lesbares Verzeichnis „wird nicht durchsucht"; die
+Antwort auf ein unlesbares ist „der ganze Lauf wird verweigert".
+
+**Kette (gemessen 2026-08-08, `icacls /deny <user>:(OI)(CI)(RD,RA)` auf je ein Verzeichnis eines
+sauberen Zustands mit Wurzel-Item, `gate_memory_complete` als Prozess auf `git merge`):**
+`.audit/` lesbar ⇒ **rc 0**, gesperrt ⇒ **rc 2** und die Meldung nennt das Verzeichnis; `staging/`
+lesbar ⇒ **rc 0**, gesperrt ⇒ **rc 2**, ebenso benannt. Beide Verzeichnisse werden im lesbaren
+Zustand von keinem Suchlauf angesehen. Die Abhilfe der Meldung verlangt eine Shell außerhalb der
+Sitzung, weil `gate_write_scope` jeden Tool-Write unter `project_memory/` verweigert.
+
+**Urteil: OFFEN als Über-Verweigerung, kein Loch.** Fail-closed ist hier die richtige Richtung: ein
+Verzeichnis, das der Walk nicht öffnen kann, hat keinen Pfad, über den sich sein Inhalt einordnen
+ließe — der Name im Fehler ist alles, was existiert, und daraus „hier wäre ohnehin nicht gesucht
+worden" abzuleiten hieße, dem Fehlerpfad zu vertrauen, wo gerade nichts gelesen werden konnte.
+
+**Was stattdessen begrenzt:** die Verweigerung nennt das Verzeichnis und eine ausführbare Abhilfe,
+und sie ist nicht dauerhaft — Leserechte zurückgeben löst sie auf. Die Gegenrichtung ist gemessen:
+dasselbe Verzeichnis wieder lesbar ⇒ kein Befund.
+
+**Stolperdraht:** `test_migrate.test_a_directory_the_walk_cannot_open_is_named_and_refuses_the_run`
+
+### L29 — Die Faltung des Vorschlagsbereichs ist `str.lower`, die des Dateisystems eine andere
+
+**Mechanismus:** `layout.is_in_proposal_area` vergleicht das erste Pfadsegment nach `str.lower()`.
+Ein Windows-Dateisystem faltet mehr als Groß-/Kleinschreibung.
+
+**Kette (gemessen 2026-08-08 auf diesem Host):** `staging/x.yaml`, `Staging/x.yaml` und
+`STAGING/x.yaml` — Dateisystem öffnet, Prädikat sagt ja. `staging./x.yaml` — Dateisystem öffnet
+**dieselbe** Datei, Prädikat sagt **nein**; `staging../x.yaml` öffnet nichts. Ein V1-Speicher, den
+jemand unter dieser Schreibweise anspricht, wäre also `searched` statt `unsearched`.
+
+**Urteil: OFFEN, heute nicht erreichbar.** Jeder Aufrufer im Kernel füttert das Prädikat mit einem
+Namen, den `os.walk` erzeugt hat, und ein Walk liefert den Namen, den das Verzeichnis wirklich
+trägt — die abweichende Schreibweise entsteht nur, wenn ein Aufrufer einen von Hand getippten Pfad
+hereinreicht. Ein Rest des **Prädikats**, kein Loch im Harness.
+
+**Was stattdessen begrenzt:** die Richtung des Fehlers ist die harmlose beider Seiten — eine Datei
+würde zusätzlich durchsucht und damit **gemeldet**, nicht verschwiegen; und der Docstring des
+Prädikats nennt jetzt beide Reste statt nur den der Gegenrichtung.
+
+**Stolperdraht:**
+`test_migrate.test_every_spelling_of_the_proposal_area_gets_one_answer_from_both_readers`
+(die gemessene Hälfte: die Groß-/Kleinschreibung)
+
+### L30 — Zwischen der Frage nach dem Landeplatz und dem `os.replace` bleibt eine Spanne
+
+**Was hier bis 2026-08-09 stand, ist weg statt begrenzt.** Der Eintrag beschrieb die gedruckte
+Abhilfe des Trockenlaufs: sie nannte einen Landeplatz, der im Augenblick des Lesens frei war, und
+der Leser handelte später in einer Shell außerhalb der Sitzung. **DEC-0024** hat diese Klasse
+konstruktiv abgeschafft — eine Abhilfe nennt heute nur noch eine **Kopie** in die Ablage unter
+`staging/`, die dieses Kommando selbst besitzt und in der der Name aus dem Quellpfad abgeleitet ist
+(`migrate.deposit_of`). Sie schlägt keine Bewegung mehr vor, also gibt es dort keinen Platz mehr,
+den jemand später besetzen könnte. Was übrig bleibt und diesen Eintrag jetzt trägt, ist die
+**eigene** Bewegung des Kommandos.
+
+**Mechanismus:** `migrate._retire_absorbed_documents` fragt `_is_occupied(landing)`, ruft dann
+`os.makedirs` und danach `os.replace`. `os.replace` hat auf keiner der beiden Plattformen, auf denen
+dieses Harness läuft, eine no-clobber-Variante: es ersetzt, atomar und wortlos. Zwischen Frage und
+Ersetzung liegen also zwei Aufrufe, und eine Datei, die in dieser Spanne entsteht, wird von einem
+Lauf weggenommen, der gefragt und „frei" gehört hat. Der frühere Satz an dieser Stelle — die eigene
+Bewegung frage „dort, wo **keine Spanne** bleibt" — war damit eine Zusicherung, die der Code nicht
+baut.
+
+**Kette (gemessen 2026-08-09):** Zustand mit einem vollständig absorbierten `a.yaml`, Plan gebaut,
+`occupied_landings == []`, `plan_is_executable` True. Die Spanne wird deterministisch besetzt, indem
+der Aufruf besetzt wird, der wirklich dazwischen liegt (`os.makedirs` legt zusätzlich
+`legacy/a.yaml` an). Ergebnis: der Lauf endet mit rc 0, `moved` nennt `a.yaml`, und der Inhalt von
+`legacy/a.yaml` ist der des Dokuments — die fremde Datei ist ohne Meldung fort.
+
+**Urteil: OFFEN, mit den heutigen Primitiven nicht ohne Umbau schließbar.** Ein no-clobber-Zug
+bräuchte `os.link` + `unlink` (schlägt mit `EEXIST` fehl) statt `os.replace`; das ist ein anderer
+Zug mit anderen Dateisystem-Voraussetzungen und keine Formulierungsfrage. Diese Runde hat ihn nicht
+gebaut, und der Eintrag behauptet nicht, dass er nicht nötig wäre.
+
+**Was stattdessen begrenzt:** die Spanne ist **innerhalb einer Sitzung nicht erreichbar** —
+`gate_write_scope` verweigert jeden Werkzeug-Schreibzugriff unter `project_memory/` außerhalb von
+`staging/`, und `legacy/` ist kernel-geschrieben, also kann kein Aufrufer der Sitzung dort in dieser
+Spanne etwas anlegen; erreichbar ist sie für einen zweiten Prozess oder einen Editor außerhalb der
+Sitzung. Der Fall, dass beim **Planen** schon etwas dort liegt, ist vollständig abgedeckt: der
+Trockenlauf meldet ihn vorab (`occupied_landings`), und der Lauf fragt unmittelbar vor der
+Zugschleife noch einmal.
+
+**Stolperdrähte:**
+`test_migrate.test_the_move_replaces_a_file_that_appears_between_the_question_and_the_write`
+(die Spanne selbst) und
+`test_migrate.test_the_move_asks_again_when_the_place_was_free_while_the_plan_was_built`
+(die Hälfte, die abgedeckt ist)
+
+### L31 — „Wer hat die Datei geöffnet" ist der erste Rahmen außerhalb der Standardbibliothek
+
+**Mechanismus:** die Zusicherung „jeder Lesezugriff dieses Moduls unter der Zustandswurzel geht
+durch `_read_bytes`" wird an einem `sys.addaudithook` gemessen: beim `open`-Ereignis wird der Stapel
+nach außen gegangen, und der **erste Rahmen außerhalb der Standardbibliothek** gilt als der, der die
+Datei wollte. Öffnet eine Bibliothek, die nicht zur Standardbibliothek gehört, eine Zustandsdatei im
+Auftrag dieses Moduls, wird der Vorgang ihr zugerechnet und ist im Ergebnis unsichtbar.
+
+**Kette (gemessen 2026-08-09 im Klon außerhalb des Repos):** die Regel davor zählte `ast.Call` mit
+`func.id == "open"` und war in **beiden** Richtungen falsch — ein echter zweiter, ungehandelter
+Leser (`io.open` in `_retire_absorbed_documents`) ließ sie **grün**, eine verhaltensgleiche
+Umschreibung innerhalb `_read_bytes` machte sie **rot** mit einer dann unwahren Meldung. Die neue
+Messung ist in beiden Fällen richtig (rot / grün) und sieht zusätzlich `pathlib.Path.read_bytes`,
+`codecs.open` und `os.open`. Was sie nicht sieht, ist der Fall oben.
+
+**Der zweite Rest, und er ist der größere:** die Messung ist total über die **Schreibweise** und nur
+über den Pfad, den **dieser eine Lauf** ausführt. Ein zweiter Leser in einem nie betretenen Zweig ist
+hier grün — die abgelöste AST-Regel hätte ihn gefunden. Deshalb steht die statische Regel seit dieser
+Runde **wieder daneben**, in der anderen Richtung:
+`test_migrate.test_nothing_but_these_functions_can_name_a_file_of_the_state_directory`
+liest die ganze **Datei** und fragt, welche Funktionen einen Pfad unter der Zustandswurzel überhaupt
+**benennen** können — einen Schritt vor jedem Öffnen, also ohne Aufzählung von Öffner-Namen.
+(Hier stand bis 2026-08-09 eine Deckungszahl „439 von 819 Anweisungszeilen". Sie stand an drei
+Orten, nannte ihre Zählregel nicht — der Prüfer kam mit seiner eigenen auf 496 von 890 — und kein
+Test hielt sie. Sie ist ersatzlos weg; was sie belegen sollte, ist jetzt die Zusicherung unten.)
+
+**Die Korrektur dieser Runde, und sie war ein echtes Loch:** die statische Regel sieht nur, wer einen
+Pfad **benennt**. Eine Funktion, die einen fertig komponierten Pfad **entgegennimmt**, benennt nichts
+— `_unreadable_because(exc, path)` und `_without_path(text, path)` waren genau diese Form, lagen im
+Fehlerzweig, und ein **echter zweiter Leser** in der ersten ließ **beide** Stolperdrähte grün
+(gemessen 2026-08-09 im Klon außerhalb des Repos: beide Wächter rc 0, ganze Datei 125 passed,
+Audithook meldete den Leser trotzdem nicht als Verletzung). Beide nehmen jetzt `rel` und komponieren
+selbst, stehen damit wieder vor der Regel, und eine dritte Zusicherung im selben Test hält die
+Eigenschaft statt der Liste: **kein Aufruf dieses Moduls reicht einen komponierten Zustandspfad an
+eine andere Funktion desselben Moduls weiter** (`_handed_a_finished_path`).
+
+**Urteil: OFFEN als Rest der Messung, kein Loch im Produkt.** Die Fremdbibliothek-Zurechnung
+erreicht heute nichts: `yaml` ist die einzige Fremdbibliothek auf diesem Pfad, und ihr werden Bytes
+übergeben, nie ein Pfad. Eine Aufzählung der erlaubten Zwischenschichten wäre wieder die Aufzählung,
+gegen die dieses Repo gebaut ist.
+
+**Was stattdessen begrenzt:** die Gegenrichtung läuft im selben Test mit — ein absichtlich
+eingesetzter zweiter Leser in einem Rahmen von `migrate.py` **muss** gemeldet werden, sonst ist der
+Test rot; und der Test verlangt, dass der Lauf überhaupt Zustandsdateien durch `_read_bytes`
+geöffnet hat, damit „keine Verletzung" nicht heißt „es wurde nichts gelesen". Dass die beiden Regeln
+sich in der Mitte treffen, ist seit dieser Runde **keine Prosa mehr, sondern eine Zusicherung
+desselben Tests**: derselbe Prozess sammelt per `sys.settrace`, welche Funktionen er betreten hat,
+und **jede** Funktion, die die statische Regel lizenziert, muss darunter sein. Was nach beidem
+bleibt, ist ein zweiter Leser **innerhalb** einer lizenzierten Funktion, in einem Zweig, den der Lauf
+nicht betritt.
+
+**Stolperdraht:**
+`test_migrate.test_every_state_file_this_module_opens_it_opens_through_read_bytes`
+
+### L32 — Der Ablagename ist injektiv, weil er nie kürzt — und wird darum irgendwann unanlegbar
+
+**Mechanismus:** `migrate.deposit_of` kodiert den ganzen Quellpfad in den Dateinamen und kürzt ihn
+nie; genau das macht zwei Quellen zu zwei Namen (DEC-0024). Der Preis ist die Länge: `staging/` +
+`v1-deposit--` + Quellpfad, kodiert in `migrate._NAME_ALPHABET` — jedes Zeichen, das nicht
+Kleinbuchstabe, Ziffer, `-` oder `_` ist, wird zu einem `%xx`-Tripel in Kleinhex. Seit TSK-0023
+Runde 6 gehört der **Großbuchstabe** dazu (F2: sonst faltet dieses Dateisystem zwei Ablagenamen zu
+einem), er kostet also drei Zeichen statt einem. Ein Quellpfad, den das Dateisystem noch annimmt,
+kann damit einen Ablagenamen erzeugen, den es nicht mehr annimmt.
+
+**Kette (gemessen 2026-08-09 auf diesem Host):** die längste anlegbare Namenskomponente ist **255**
+Zeichen, 256 antwortet `OSError: [Errno 22] Invalid argument`. Eine Quelldatei aus **248** ASCII-
+Zeichen wird angelegt, ihr Ablagename ist **262** Zeichen lang und ist nicht anlegbar. Nicht-ASCII
+trifft es früher, weil jedes Zeichen zu drei oder mehr Prozent-Tripeln wird: **29 CJK-Zeichen**
+ergeben 235, **43 kyrillische** 247 — die nächste Handvoll darüber liegt jenseits der Grenze. Bis zu
+dieser Runde druckte der Trockenlauf die Anweisung wortlos, und der Leser traf die Verweigerung des
+Dateisystems statt einen Satz im Bericht.
+
+**Urteil: OFFEN, nicht schließbar ohne den Defekt zurückzuholen, gegen den die Konstruktion gebaut
+ist.** Kürzen oder Hashen macht aus zwei Quellen wieder einen Platz — das ist die Kollision, wegen
+der DEC-0024 überhaupt eine Konstruktion statt einer Klausel verlangt. Ein zweistufiger Name
+(Unterverzeichnis pro Quellverzeichnis) verschiebt die Grenze, macht die Ablage aber zu einem
+**Verzeichnis** unter `staging/` — und das ist ein Staging-Schlüssel, den beide Leser als verwaist
+melden. Diese Runde hat keinen dritten Weg gebaut und behauptet nicht, dass es keinen gibt.
+
+**Was stattdessen begrenzt:** die Meldung sagt es jetzt dort, wo sie den Namen druckt
+(`migrate.deposit_note`): um wie viele Zeichen der Name zu lang ist, dass dieses Dateisystem ihn
+nicht nimmt, und dass dieses Kommando keinen kürzeren anzubieten hat und warum. Die Richtung des
+Restes ist die harmlose: die Anweisung ist **nicht ausführbar**, nicht etwa ausführbar mit
+Datenverlust — der Leser verliert nichts, er bekommt keinen Platz. Und die Grenze selbst steht an
+genau einem Ort im Code (`migrate._NAME_MAX_CHARS`), gekoppelt an das Dateisystem statt
+nacherzählt: der Stolperdraht legt die Namen wirklich an und verlangt, dass der Satz genau dann
+erscheint, wenn das Anlegen scheitert — auf einem Host mit anderer Grenze wird er rot, und das ist
+die richtige Antwort.
+
+**Dieselbe Grenze trifft den Overflow-Namen 67 Zeichen früher, und dort ist die Folge größer:**
+`migrate.overflow_deposit_of` (L35) kodiert nicht nur den Pfad, sondern Pfad **plus** sha256 — das
+sind `%2f` und 64 Hex-Zeichen, gemessen 2026-08-09 als Differenz der beiden Namen für denselben Pfad
+(`deposit_of` 37 Zeichen, `overflow_deposit_of` 104). Die Kette oben („248 ASCII → 262") liegt für
+diesen Namen also 67 Zeichen früher; die blockierende Bedingung ist ein **belegter** Landeplatz unter
+`legacy/`, dessen Pfad plus 67 über `_NAME_MAX_CHARS` geht. Was den Unterschied ausmacht, ist nicht
+die Länge, sondern der Preis: ein unanlegbarer `deposit_of`-Name kostet den Bulk **eines
+Datensatzes**, ein unanlegbarer Overflow-Name hängt an `occupied_landings` — und solange der
+Landeplatz belegt ist, ist `plan_is_executable` **falsch**, die Migration also durch keine der
+gedruckten Routen mehr abschließbar. Rest und nicht Blocker, weil die Ausfallrichtung dieselbe
+harmlose ist wie oben (die Anweisung ist nicht ausführbar, sie verliert nichts) und `deposit_note`
+auch hier an der Druckstelle steht — `copy_instruction` ist der eine Komponist für beide Namen, der
+Satz erscheint also für den Overflow-Namen genauso (gemessen: „That name is 40 character(s) longer
+than the 255 …" für einen 200-Zeichen-Landeplatz).
+
+**Ein weiterer Rest im selben Eintrag, weil er dieselbe Grenze betrifft:** `migrate.deposit_note`
+misst nur die **Namenskomponente**, nicht den Gesamtpfad. Auf einem Host ohne Langpfad-Unterstützung
+kann ein Name unter 255 Zeichen die Gesamtpfadgrenze sprengen, und dann fehlt der Satz genau dort,
+wo er gebraucht wird. **Auf diesem Host nicht erreichbar** (gemessen 2026-08-09, in einem
+Verzeichnisbaum außerhalb dieses Repos: Gesamtpfade von 261, 271, 321, 401, 451 und 520 Zeichen
+werden alle angelegt, Namenskomponente jeweils unter 255). Nicht gebaut, weil die Grenze, die dann
+gälte, auf diesem Host nicht messbar ist — und eine Zahl, die niemand hier messen kann, wäre genau
+die nacherzählte Konstante, gegen die der Absatz darüber argumentiert.
+
+**Stolperdraht:**
+`test_migrate.test_a_deposit_name_too_long_to_create_says_so_where_it_is_printed`
+(die Namenskomponente; für den Gesamtpfad gibt es keinen, siehe Absatz darüber)
+
+### L33 — Eine Abhilfe, deren Ortsangabe erst zur Laufzeit entsteht, liest die statische Regel nicht
+
+**Mechanismus:** `test_migrate.test_no_remedy_literal_this_repo_ships_names_a_place_inside_a_state_directory`
+liest **Zeichenketten-Literale** des ausgelieferten Codes (`_remedy_literals`) und fragt jedes Wort
+darin, ob es pfadförmig ist und eine Komponente im Zustandsverzeichnis nennt
+(`_places_inside_a_state_directory`). Eine Abhilfe, die ihren Ort über einen **Formatplatzhalter**
+einsetzt, hat im Literal kein solches Wort — der Ort entsteht erst beim Formatieren, und `%s` nennt
+nichts.
+
+Zwei weitere Formen fallen aus derselben Domäne, beide gemessen und beide **keine** Backtick-Frage
+mehr: eine Abhilfe, die als **Name** statt als Literal übergeben wird
+(`report.validate_state` reicht seit Runde 9 `migrate.THE_ONLY_UNLISTABLE_STEP` durch — die Zählung
+der Parameter-Hälfte fiel dadurch von 57 auf 56), und eine, deren Empfänger unter einer Schreibweise
+steht, die die Signaturauflösung nicht kennt (Alias, Attribut eines Objekts, umbenennender Import).
+Die Backtick- und Leerzeichenbedingung, die bis Runde 7 hier stand, gehört **nicht mehr** zu dieser
+Regel: sie sitzt in `_state_paths_in`, dem Leser des **Laufzeit**-Tests
+(`test_no_remedy_the_validator_prints_names_a_place_inside_the_state_directory`), und dort wertet
+`if " " in word.strip(): continue` ein Wort mit Leerzeichen weiterhin als Befehlszeile statt als
+Pfad.
+
+**Kette (gemessen 2026-08-09):** zwei solche Abhilfen existieren heute, beide nennen einen Ort im
+Zustandsverzeichnis und schlagen eine **überschreibende** Bewegung darauf vor:
+
+- `team-kits/kernel/state.py` — `corrupt item file for %s at %s … Remedy: \`git restore %s\``
+- `team-kits/kernel/approvals.py` — `… Remedy: re-approve the current revision, or \`git restore %s\`
+  to return to the approved content` — dort ist das Verwerfen der Nutzerbearbeitung ausdrücklich der
+  Zweck.
+
+Beide sind für die statische Regel unsichtbar; der Trockenlauf-Test daneben
+(`test_no_remedy_the_validator_prints_names_a_place_inside_the_state_directory`) sieht nur, was seine
+Fixtures erreichen, und erreicht keine der beiden.
+
+**Urteil: OFFEN als Rest, nicht blockierend.** Die Kette läuft **nicht innerhalb einer Sitzung**
+durch, und das ist gemessen statt geschlossen: die gedruckte Zeile selbst, als echter Hook-Prozess
+mit JSON auf stdin, 2026-08-09 —
+
+```
+gate_lead_write_scope (dieses Repo)  git restore project_memory/tasks/active/TSK-0023.yaml  -> rc 2
+gate_write_scope (dev/office/research, je frisch scaffoldetes Projekt)
+                                     git restore project_memory/product/active/PR-0001.yaml  -> rc 2
+```
+
+Der Leser muss also eine Shell **außerhalb** der Sitzung öffnen. Und anders als bei DEC-0024 ist die
+vorgeschlagene Bewegung im Fall von `approvals.py` genau das, was der Nutzer will.
+
+**Was stattdessen begrenzt:** der Name des Tests und sein erster Satz sagen **LITERAL** statt „jede
+Zeichenkette, die der ausgelieferte Code drucken kann", und sein Docstring nennt die beiden Stellen.
+Die Behauptung deckt damit genau die Domäne, die die Regel wirklich liest; vorher behauptete sie
+eine, die sie nicht hatte. Die Domäne selbst ist seit Runde 9 dreiteilig — Wort, `remedy`-Slot und
+**Positionsargument, das in einem `remedy`-Parameter landet** — und die dritte Hälfte hat allein 56
+Literale, darunter alle Befunde von `report.validate_state`.
+
+**Stolperdraht:** keiner für die Laufzeit-Hälfte. Für die Literal-Hälfte:
+`test_migrate.test_no_remedy_literal_this_repo_ships_names_a_place_inside_a_state_directory`
+
+### L34 — Ein Empfänger, zu dem die Namen dieses Moduls an der Verwendungsstelle nicht führen, ist für die Übergaberegel unsichtbar
+
+**Mechanismus:** `test_migrate._handed_a_finished_path` sieht eine Übergabe genau dort, wo ein
+Zustandspfad und ein **Name dieses Moduls** zusammentreffen — in einem Aufrufausdruck (beide Seiten
+über die Locals verfolgt: `_carries_a_state_path` für den Pfad, `_value_leads_to` für den Empfänger)
+oder in einer Ablage, deren Ziel in einem Modulnamen wurzelt (`_stashed_names`). Was übrig bleibt,
+ist ein Empfänger, zu dem diese Namen **an der Stelle, an der er benutzt wird**, nicht führen.
+
+Die Grenze „eigenes gegen fremdes Modul" war bis Runde 8 die Beschreibung dieses Rests und ist
+gemessen **keine** Grenze: vier gewöhnliche Routen **innerhalb** dieser Datei trugen die Bytes in
+einen echten Leser, während die Regel `[]` meldete (B1). Sie sind seither gedeckt. Und die
+Beschreibung, die in Runde 8 an ihre Stelle trat — „der Rest ist ein Empfänger, zu dem die Namen
+dieses Moduls **an der Verwendungsstelle** nicht führen" — ist **ebenfalls widerlegt**: die
+Closure-Route unten führt in einen Empfänger, den `_module_own_names` sehr wohl kennt, und wird
+trotzdem nicht gesehen, weil es überhaupt keinen Aufrufausdruck gibt, der etwas überträgt.
+
+**DEC-0029 ist die Konsequenz daraus und gilt für diesen ganzen Eintrag:** die Regel wird als
+**Menge gemessener Routen** geführt (heute sechzehn im Korpus, fünf hier als offen benannt), nicht
+als Deckung. Ob ein Wert in beliebigem Python eine Stelle erreicht, ist statisch nicht entscheidbar;
+der Verlauf 6 → 12 → 16 → 17 ist genau das von innen gesehen.
+
+**Kette (gemessen 2026-08-09, echter Prozess, Markerdatei, Leser gibt die gelesenen Bytes zurück):**
+in `_read_bytes` gepflanzt —
+
+```
+os.environ["PARKED"] = _state_path(state, rel)      # Ablage in einem fremden Modulobjekt
+_a_reader_of_a_foreign_module()                     # liest open(os.environ["PARKED"], "rb")
+parked in an object of ANOTHER module               reads: YES   rule says: []
+
+reader = _a_reader_factory()                        # Aufrufergebnis DIESES Moduls ...
+functools.partial(reader, _state_path(state, rel))()   # ... als ARGUMENT an einen fremden Wrapper
+out of a factory, handed to a foreign wrapper       reads: YES   rule says: []
+```
+
+Und die Route, die der Prüfer in derselben Prüfung fand, in der Runde 8 die sechzehnte einbaute — ein
+`def` **innerhalb** der Wirtsfunktion, der den Pfad aus der **Closure** liest statt ihn als Argument
+zu bekommen. Hier nachgemessen (2026-08-09, dieselbe Vorrichtung, echter Prozess; der Leser meldet
+sich über eine **Markerdatei**, weil der Kanal die Antwort mitentscheidet — siehe direkt darunter):
+
+```
+path = _state_path(state, rel)
+def _a_closure_reader():                              # kein Argument, kein Aufrufausdruck ...
+    open(r"<marker>", "wb").write(open(path, "rb").read())   # ... liest aus der Closure
+_a_closure_reader()
+into a def that closes over the path        reads: YES   rule says: []   handed: []
+```
+
+**Und was dabei auffiel, gemessen im selben Lauf:** dieselbe Route wird **doch** gemeldet, sobald der
+geschachtelte Leser seine Bytes an irgendeinen Namen dieses Moduls weiterreicht
+(`_PLANTED.append(open(path, "rb").read())` → `handed: [('_read_bytes', 'path', '_PLANTED', 766)]`,
+und ebenso mit einem Zwischen-Local). Das ist kein Schutz, sondern ein Zufall der Beobachtung: was
+die Regel dort sieht, ist der **Aufruf, der die Bytes ablegt**, nicht die Übergabe des Pfades. Ein
+Leser, der über einen Kanal außerhalb dieses Moduls meldet, ist unsichtbar — und genau das ist die
+Route.
+
+Die zweite Route ist der Preis der Asymmetrie, die B1 an die Verwendungsstelle gehängt hat: ein
+Aufrufergebnis dieses Moduls zählt nur in der **Callee-Position** als Code dieses Moduls, weil dort
+das Programm selbst sagt, dass der Wert aufrufbar ist. In der Argumentposition dieselbe Auflösung zu
+fahren, meldet das ausgelieferte Modul mit `absorbed_documents` als Empfänger eines Pfades, den es
+nie bekommt (gemessen, dieselbe Runde). Ebenfalls offen und derselben Klasse: ein Empfänger aus
+`sys.modules` oder `getattr`, und ein Aufrufausdruck, der sich auf gar keinen Namen reduzieren lässt
+(ein sofort angewandtes Lambda).
+
+Zum Vergleich, im selben Lauf: **jede** Route des Korpus (`_HOW_A_PATH_TRAVELS`) — darunter die
+Ablage in Attribut, Mapping, Liste und **Default-Argument** dieses Moduls, der lokale Alias des
+Empfängers, deren Kreuzung, und ein `def` innerhalb der Wirtsfunktion, **der den Pfad als Argument
+bekommt** — wird benannt.
+
+**Urteil: OFFEN als Rest, nicht blockierend (DEC-0022 zum Bedrohungsmodell dieser Regel, DEC-0029
+zur Anspruchshöhe).** Die Regel ist ein Stolperdraht gegen einen **zweiten Leser**, den ein Autor
+dieses Moduls versehentlich hinzufügt; sie ist keine Sandbox gegen einen Autor, der ihn verstecken
+will. Ein Pfad, der durch `os.environ` reist, und ein Fabrikergebnis, das durch einen fremden
+Wrapper zurückgereicht wird, sind keine Schreibweisen, in die man hineinfällt — die Closure-Route
+dagegen **schon**, und sie bleibt trotzdem offen: sie zu sehen hieße, Datenfluss ohne Übertragung zu
+verfolgen, und genau davor endet die statische Frage.
+
+**Was stattdessen begrenzt:** der eigentliche Schutz ist nicht dieser Draht.
+`test_every_state_file_this_module_opens_it_opens_through_read_bytes` läuft mit einem Audithook und
+sieht **jedes** Öffnen einer Datei unter der Zustandswurzel, egal wie der Pfad dorthin kam und egal
+wie das Öffnen geschrieben ist. Was **dieser** Wächter nicht sieht, gehört ausdrücklich daneben: er
+misst nur, was ein Lauf wirklich ausführt, und ist für jeden nicht betretenen Zweig blind — die
+umgekehrte Hälfte des statischen Drahts. Dazu schreibt der Docstring von `_handed_a_finished_path`
+den **Mechanismus** hin statt einer Liste gedeckter Schreibweisen und nennt alle fünf offenen Formen
+beim Namen.
+
+**Stolperdraht:** keiner für diese fünf Routen (das ist das Loch). Für die gedeckten:
+`test_migrate.test_the_rule_against_handing_a_state_path_on_follows_the_value_and_not_the_call_shape`
+
+### L35 — Eine gedruckte Abhilfe verlangte eine Bewegung ohne Ziel — GESCHLOSSEN durch ein konstruiertes Ziel außerhalb des Zustandsverzeichnisses (Runde 9)
+
+**Mechanismus (was hier stand):** DEC-0024 hat zwei Klauseln. Die erste verbietet, einen Platz **im**
+Zustandsverzeichnis zu nennen, den der Leser anlegen oder überschreiben müsste. Die zweite verlangt
+**Kopieren statt Verschieben**, „also kann kein befolgter Rat etwas vernichten, **auch nicht die
+Quelle**". Genau **eine** ausgelieferte Abhilfe verlangte weiterhin eine Bewegung: die des **belegten
+Landeplatzes** im Trockenlauf (`team-kits/kernel/migrate.py`, Abschnitt *LANDING PLACE UNDER legacy/
+ALREADY TAKEN*). Sie nannte kein Ziel — die Wahl lag beim Leser — aber sie nahm die Quelle weg:
+
+```
+migrate.render, belegter Landeplatz   "Remedy, per document: take the file each line above names
+                                       on the right out of the state directory, from a shell
+                                       outside the session, then re-run the dry run."
+                                      nennt ein Ziel: nein     verlangt eine Bewegung: ja
+```
+
+Was der Leser bewegt, ist eine Datei unter `legacy/` — ein kernel-geschriebener Bereich, in dem eine
+frühere Migration ihr Ergebnis abgelegt hat. Wer sie irgendwohin schiebt und dort vergisst, verliert
+sie; das Decision-Item des früheren Laufs trägt nur ihren Hash, nicht ihren Inhalt.
+
+**Entscheidung des Nutzers (2026-08-09): Ziel konstruieren.** Nicht die Ausnahme abnehmen und nicht
+den Vorschlag streichen, sondern ein **konstruiertes, kollisionsfreies Ziel außerhalb des
+Zustandsverzeichnisses** nennen — so wie `deposit_of` es innerhalb von `staging/` tut, nur außerhalb.
+Die frühere Begründung („das Werkzeug darf kein Ziel ableiten") betraf Ziele **im** Zustandsbaum; für
+ein Ziel daneben gilt sie nicht.
+
+**Was gebaut ist:** `migrate.overflow_deposit_of(rel, digest)` — `../v1-legacy-overflow/` neben dem
+Zustandsverzeichnis, darunter ein Name aus demselben Kodierer wie `deposit_of` (`_encoded_name`,
+`migrate._NAME_ALPHABET`), der den **Landeplatzpfad und den sha256 des dort stehenden Inhalts** trägt.
+Der Abschnitt druckt pro Zeile den einen Composer (`copy_instruction`) und danach den zweiten Schritt:
+erst **kopieren**, dann — und nur dann — das Original entfernen.
+
+```
+  a.yaml                       -> legacy/a.yaml is already taken
+     Remedy: COPY it -- the original stays where it is -- to
+     `../v1-legacy-overflow/v1-deposit--legacy%2fa%2eyaml%2f3d51709d…`. Then, and only once that
+     copy exists, remove legacy/a.yaml itself from a shell outside the session -- the copy is what
+     keeps the file, and removing the original is what frees the place.
+```
+
+**Warum der Inhalt im Namen steht und nicht nur der Pfad** — das ist der Unterschied zu `deposit_of`
+und eine gemessene Kette, keine Vorsicht: dort bleibt die Quelle stehen, ein belegter Name hält also
+eine frühere Kopie **derselben** Datei. Hier entfernt der Leser das Original, und derselbe
+Landeplatzpfad kann später andere Bytes tragen (Lauf 1 legt A ab; Leser kopiert A heraus und löscht
+es; Lauf 2 legt B am selben Platz ab; Lauf 3 bietet dieselbe Abhilfe wieder an). Mit dem Pfad allein
+im Namen landet die dritte Anweisung auf A. Mit dem Digest darin ist ein belegter Name eine Datei mit
+**identischen Bytes**.
+
+**Urteil: GESCHLOSSEN.** Ausgeführt und gemessen, nicht behauptet:
+`test_migrate.test_the_place_a_taken_landing_is_freed_to_is_named_and_lies_outside_the_state_directory`
+fährt beide Schritte auf der echten Platte — die Kopie ist byte-gleich, der Landeplatz danach frei,
+der nächste Plan ausführbar — und lässt anschließend eine **zweite** Datei denselben Platz belegen:
+die zweite Anweisung nennt einen anderen Namen, und die erste Kopie steht danach unverändert da.
+
+**Was offen bleibt und hier benannt statt geschlossen wird:** zwei weitere Abhilfen von
+`report.validate_state` sagen weiterhin *take the file out of the state directory* (`_bounded` für ein
+Dokument über einem der beiden Lesebudgets, und die Abhilfe für ein unparsbares Dokument). Sie nennen
+**kein** Ziel, überschreiben also nichts; sie können aber die Quelle kosten. Warum die hier gebaute
+Konstruktion an beiden Stellen fehlt, ist **nicht derselbe Grund** — bis Runde 10 stand hier einer für
+beide („diese Stellen lesen die Datei absichtlich nicht"), und für die zweite war er falsch:
+
+- **`_bounded` — nicht verfügbar.** Der Name braucht den sha256 der Datei, und dieser Zweig
+  entscheidet allein aus `os.path.getsize`, **vor** jedem Lesen — genau weil das Lesen es ist, was
+  `DOCUMENT_MAX_BYTES`/`DOCUMENT_SCAN_MAX_BYTES` auf dem Pfad des Merge-Gates verbieten. Ein Digest
+  wäre hier nur zum Preis des unbegrenzten Lesers zu haben, gegen den der Bund gebaut ist.
+- **Unparsbares Dokument — verfügbar und nicht gebaut.** Dieser Zweig wird erst hinter `spent += size`
+  erreicht, über `migrate._read_document` → `_read_bytes`; der Parse scheitert **nach** dem Lesen, die
+  Bytes waren also in der Hand. Gemessen 2026-08-09 mit `sys.addaudithook` über einen echten
+  `report.validate_state`-Lauf außerhalb dieses Repos: geöffnet wurden `.kernel.lock`, das Wurzelitem
+  und `broken.yaml`, **nicht** aber das übergroße `big.yaml`. Der Digest hätte hier keinen einzigen
+  zusätzlichen Byte-Zugriff gekostet. Was fehlt, ist der Rückweg — `_read_document` gibt die Bytes
+  nicht heraus, und ein Ziel anzubieten kostet eine Signaturänderung an einem Leser mit fünf
+  Aufrufstellen. Nicht gebaut; das ist ein Rest und keine Unmöglichkeit.
+
+Dazu der Unterschied, der beide von dieser Fundstelle trennt: was sie bewegen lassen, ist ein Dokument,
+das der Leser **selbst geschrieben** hat, während unter `legacy/` eine Datei liegt, für die es nach
+der Installation keinen Schreiber mehr gibt. Ein Rest, kein Blocker — die Kette braucht eine Shell
+außerhalb der Sitzung und die Unachtsamkeit des Lesers mit seiner eigenen Datei.
+
+**Und ein dritter Rest, in der geschlossenen Abhilfe selbst:** der Zusatz *from a shell outside the
+session* hängt in `migrate.py` (Abschnitt *LANDING PLACE UNDER legacy/ ALREADY TAKEN*) am
+**Entfernen**; der **Kopie** ist keiner beigegeben, obwohl auch sie an diesem Gate vorbei muss. Gemessen
+2026-08-09 gegen den ausgelieferten `gate_write_scope.py` als Prozess, in einem gescaffoldeten Projekt
+außerhalb dieses Repos mit gültigem Wurzelitem: `cp`, `cp -p` mit absolutem Ziel, `Copy-Item` (relativ
+und absolut) und `python -c "shutil.copy(...)"` antworten **rc 2**, das Entfernen (`rm`,
+`Remove-Item`) ebenfalls rc 2, reines Lesen rc 0. Der fehlende Halbsatz wäre aber **nicht pauschal
+wahr**, und deshalb steht er hier statt eingesetzt im Code: eine Umleitung, die die Quelle nur liest
+und außerhalb landet (`cat < project_memory/legacy/a.yaml > ../v1-legacy-overflow/<name>`,
+`Get-Content … > …`), antwortet **rc 0** — diese eine Schreibweise der Kopie gelingt in der Sitzung.
+Ausfallrichtung harmlos: wer die Kopie mit einem Kopierbefehl versucht, bekommt eine Verweigerung, die
+der Satz nicht ankündigt, aber keinen Verlust. Fix wäre ein Halbsatz an derselben Stelle, der die
+Verweigerung nennt, ohne sie für jede Schreibweise zu behaupten.
+
+**Was stattdessen begrenzt:** die Datei, die der Leser bewegt, ist im selben Abschnitt **beim Namen
+genannt** (linke und rechte Spalte je Zeile), und der Abschnitt sagt, warum sie dort steht. Dazu die
+Domäne des DEC-0024-Stolperdrahts: seit Runde 9 sind es **drei** Arten, wie dieses Repo eine Abhilfe
+ausliefert — das **Wort** `Remedy` (225 Literale), der `remedy`-Slot als Schlüsselwort (92) und das
+**Positionsargument, das in einem `remedy`-Parameter landet** (56, darunter alle Befunde von
+`report.validate_state`) — und die Ortsangabe wird backtick-unabhängig über **alle** Pfadkomponenten
+gelesen, jetzt auch bei einem Wort, dessen einziger Trenner am Ende steht (`evidence/`).
+Der Spec-Satz in `docs/HARNESS_V2_SPEC.md` (e2) behauptet nicht, der Vorlauf schlage „keine Bewegung"
+vor, sondern er leite **kein Ziel im Zustandsbaum** mehr ab.
+
+**Stolperdraht:** für die Ortsangabe
+`test_migrate.test_no_remedy_literal_this_repo_ships_names_a_place_inside_a_state_directory`;
+für die geschlossene Bewegung
+`test_migrate.test_the_place_a_taken_landing_is_freed_to_is_named_and_lies_outside_the_state_directory`;
+für die unlistbare Hälfte
+`test_migrate.test_the_remedy_for_a_directory_nobody_can_list_offers_no_step_that_moves_it`;
+für die Eigenschaft, auf der die Trennung der beiden Reste ruht — welches der beiden Dokumente ein
+Lauf öffnet und welches nicht —
+`test_migrate.test_the_two_remedies_that_still_move_a_file_differ_in_whether_the_file_was_read`
+(rot in beide Richtungen gemessen, siehe `docs/reviews/2026-08-08-tsk0023-measurements.md`, R10.1);
+für die Reste selbst keiner.
+
+### L36 — Ein kanonisches Verzeichnis, das niemand auflisten kann, las sich für die Gates wie „noch kein Wurzelitem" — GESCHLOSSEN (Runde 9)
+
+**Mechanismus:** `_root.has_root_item` (in allen drei Kits) beantwortete die Frage „hat dieses Projekt
+schon ein Wurzelitem?" mit `glob.glob` über `project_memory/**`. `glob` meldet ein Verzeichnis, das
+es nicht öffnen kann, als **leer** — ohne Fehler. Die Antwort war dann `False`, und fünf Gates lesen
+`False` als „das Projekt wird noch eingerichtet, wir gelten nicht". Ein Verzeichnis, das niemand
+lesen kann, schaltete also genau die Gates ab, die das Wurzelitem schützen.
+
+**Kette (gemessen 2026-08-09, echter Hook-Prozess, JSON auf stdin, Zustand außerhalb dieses Repos):**
+
+```
+product/active/ lesbar        gate_git.py "git merge feat/PR-0001-x"   -> rc 2 (verweigert)
+product/active/ nicht listbar gate_git.py "git merge feat/PR-0001-x"   -> rc 0 (durch)   [vorher]
+product/active/ nicht listbar gate_git.py "git merge feat/PR-0001-x"   -> rc 2           [nachher]
+```
+
+**Das Urteil bis Runde 8 war „OFFEN als Rest", und es war falsch.** Es stützte sich darauf, dass die
+Rechteänderung aus der Sitzung heraus nicht erreichbar sei — `gate_write_scope` verweigert vier
+naheliegende Zeilen (`icacls` in zwei Schreibweisen, `chmod`, `attrib`; alle rc 2, gemessen). Der
+Prüfer hat das umgangen, und der Mechanismus stand als `L4` („Schreibverben innerhalb einer
+Programmsprache … bewusst nicht geschlossen") zwei Bildschirmseiten weiter oben in derselben Datei:
+
+```
+python -c "import os,subprocess;p=os.path.join('project'+'_memory','product','active');
+           subprocess.run(['icacls',p,'/deny','zenti:(RD,RA)'])"
+alle acht Bash-Hooks rc 0  ->  die Zeile läuft  ->  gate_git rc 2 wird rc 0
+```
+
+Zweite Route ohne `-c`: `Write scripts/deny_it.py` (alle Schreibhooks rc 0 außer `guard_pm_scope`,
+das die PM-Rolle betrifft), dann ausführen. Die Kette läuft damit **innerhalb einer Sitzung** durch
+und ist blockierend.
+
+**Fix:** ein Verzeichnis, das existiert und nicht auflistbar ist, ist **nicht** „noch kein
+Wurzelitem". `has_root_item` listet jetzt selbst (`_root._names_matching`) und kennt drei Antworten
+statt zwei: Namen gefunden, nichts da (nicht vorhanden oder kein Verzeichnis), und **keine Antwort**
+— jeder andere `OSError`. Der dritte Fall zählt als Wurzelitem, weil die beiden Ausfallrichtungen
+nicht symmetrisch sind: „kein Item" schaltet fünf Gates ab, „ein Item" kostet in einem Projekt, das
+noch eingerichtet wird, eine Verweigerung — und eine Verweigerung sagt es.
+
+**Stolperdraht:**
+`test_migrate.test_the_remedy_for_a_directory_nobody_can_list_offers_no_step_that_moves_it`
+misst beide Seiten mit dem ausgelieferten `gate_git.py` als echtem Prozess: `rc 2` bei lesbarem
+Verzeichnis und `rc 2` bei unlesbarem. Fällt der Prädikat auf `glob` zurück, wird dieser Test rot.
+
+### L37 — `validate_state` stürzt über ein kanonisches Verzeichnis, das es nicht auflisten kann
+
+**Mechanismus:** `report._iter_active` läuft über `ProjectState.iter_active_items`, und das ruft
+`os.listdir` ohne `onerror`-Behandlung. Ein kanonisches Verzeichnis ohne Leserecht liefert dort einen
+ungefangenen `PermissionError`, statt ein Finding zu erzeugen. `migrate.search_coverage` behandelt
+denselben Fall (`onerror` → `UNLISTABLE`); der Validator tut es nicht.
+
+**Kette (gemessen 2026-08-09, Zustand außerhalb dieses Repos, `product/active/` ohne Leserecht):**
+
+```
+migrate.search_coverage(state)   -> Zeile "product/active/  unlistable  ..."
+report.validate_state(state)     -> PermissionError [WinError 5] ... \project_memory\product\active
+```
+
+**Urteil: OFFEN als Rest, nicht blockierend.** Ein Absturz ist **laut**: kein Aufrufer liest ihn als
+„keine Befunde". Die Ausfallrichtung ist damit die harmlose — anders als bei `L36`, wo dieselbe
+Ursache still durchließ. Der Auslöser ist derselbe wie dort, und er ist **innerhalb einer Sitzung
+erreichbar** (die `python -c`-Kette bei `L36`); was diesen Eintrag trotzdem zum Rest macht, ist
+allein die Richtung des Ausfalls, nicht die Unerreichbarkeit.
+
+**Was stattdessen begrenzt:** der Vorlauf der Migration beantwortet dieselbe Frage über denselben
+Zustand und tut es vollständig (`UNLISTABLE`, blockierend), und `report.validate_state` läuft in
+jedem Kit hinter einem Hook, der einen Absturz als Verweigerung weitergibt statt als Freigabe.
+
+**Stolperdraht:**
+`test_migrate.test_the_remedy_for_a_directory_nobody_can_list_offers_no_step_that_moves_it`
+verlangt den `PermissionError` ausdrücklich; wird der Fall zu einem Finding, wird der Test rot.
+
+### L38 — Die Gate-Suite dieses Repos war rot, und keine Runde hat es bemerkt
+
+**Mechanismus:** `.claude/hooks/test_gates.py` läuft **nicht** in `python -m pytest tools/` mit; sie
+wird ausdrücklich gestartet (`python -B -m pytest .claude/hooks/test_gates.py -q`). Ein Rot darin
+kommt also durch jede Abnahme, die nur die Werkzeugsuite fährt. Genau das ist passiert: der Ausfall
+kam mit TSK-0022 herein und hat mindestens eine ganze Runde überlebt, ohne irgendwo zu stehen.
+
+**Kette (gemessen 2026-08-09 vom Prüfer, isoliert reproduziert):** `1 failed, 142 passed`. Gefallen
+ist die **Kontrolle** eines Sandkasten-Tests — der Host stellt den Unfall nicht mehr her, gegen den
+der Test gebaut ist, also sagt nicht nur eine Zusicherung nichts, sondern der ganze Test.
+
+**Urteil: OFFEN, und nicht dieser Runde zuzurechnen.** Die Ursache liegt in `.claude/`, dem
+verbotenen Bereich von TSK-0023; diese Runde fasst dort nichts an. Der Befund ist als
+`project_memory/bugs/active/BUG-0014.yaml` erfasst — mit Messung, Repro und den drei
+Abnahmekriterien (Test misst wieder, Ursache benannt, ein Weg der ein Rot dieser Suite bemerkt).
+
+**Was stattdessen begrenzt:** die Suite ist rot und nicht still — wer sie fährt, sieht es sofort;
+und was sie misst, sind die vier Gates dieses Repos, deren Verhalten in Abschnitt 12 mit eigenen
+Ketten steht. Bis BUG-0014 abgearbeitet ist, ist der Sandkasten-Test dieser einen Datei **keine**
+Deckung, und keine Runde darf ihn als solche zitieren.
+
+**Stolperdraht:** keiner in `tools/` — das ist der Kern des Eintrags. BUG-0014 AC-3 verlangt einen.
 
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
