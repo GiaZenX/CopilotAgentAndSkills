@@ -214,6 +214,67 @@ def test_e2e_memory_complete_accepts_bom_config(tmp_path):
     assert "project_config.yaml" in r2.stderr.decode("utf-8", "replace")
 
 
+# ---------------- scenario: capture body decode is the kernel's, not the console's ----------
+def _capture_cli(root, item_type, body, extra_env=None):
+    """Run `python -B -m kernel.cli capture <TYPE>` as a REAL process, UTF-8 bytes on stdin.
+
+    The heredoc a role types delivers UTF-8 bytes; the reproduction control is the CALLER's stdin
+    codepage, forced to cp1252 so the RED is host-independent (a UTF-8 host would hide it). The fix
+    reads `sys.stdin.buffer` and decodes UTF-8, so the caller's codepage no longer decides -- and
+    the test never sets PYTHONUTF8/PYTHONIOENCODING to UTF-8 to get there.
+    """
+    env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "team-kits"),
+               PYTHONIOENCODING="cp1252")
+    env.pop("PYTHONUTF8", None)
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(
+        [sys.executable, "-B", "-m", "kernel.cli", "--root", "project_memory",
+         "capture", item_type],
+        input=body, capture_output=True, env=env, cwd=str(root), timeout=120)
+
+
+def test_e2e_capture_stores_umlaut_body_as_utf8_bytes_whatever_the_stdin_codepage(tmp_path):
+    """A `capture` body carrying `ü` must land in the item as UTF-8 bytes even when the caller's
+    stdin decodes as cp1252 -- measured on the RAW BYTES of the written file, not the console.
+
+    Without the fix `sys.stdin.read()` decoded the piped c3bc as cp1252 (`Ã¼`) and yaml.safe_dump
+    re-encoded it, storing c383c2bc in an L2-immutable field -- the exact corruption that drove a
+    pilot's root-item drift (BUG-0018).
+    """
+    os.makedirs(str(tmp_path / "project_memory"))
+    body = json.dumps({
+        "title": "Käufer-Rechnung als UTF-8 ablegen",
+        "context": "der Käufer sieht Umlaute im Konto",
+        "decision": "der Kernel dekodiert den Body selbst als UTF-8",
+        "consequences": "kein Mojibake mehr für Müller",
+        "source": "docs/reviews/2026-08-10-tsk0028-measurements.md",
+    }, ensure_ascii=False).encode("utf-8")
+    r = _capture_cli(tmp_path, "DEC", body)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    written = sorted((tmp_path / "project_memory" / "decisions" / "active").glob("DEC-*.yaml"))
+    assert len(written) == 1, [p.name for p in written]
+    data = written[0].read_bytes()
+    assert b"K\xc3\xa4ufer" in data          # ä stored as real UTF-8 (c3a4), the item is readable
+    assert b"M\xc3\xbcller" in data          # ü stored as real UTF-8 (c3bc)
+    assert b"\xc3\x83\xc2\xbc" not in data    # NOT the double-encoded 'Ã¼' the cp1252 read produced
+    assert b"\xc3\x83\xc2\xa4" not in data    # NOT the double-encoded 'Ã¤' either
+
+
+def test_e2e_capture_refuses_a_body_that_is_not_utf8_instead_of_crashing(tmp_path):
+    """The counter-direction: a body that is genuinely not UTF-8 (a lone cp1252 0xFC) is refused
+    with a UsageError (rc 2), not a bare UnicodeDecodeError traceback -- the kernel does not guess
+    a codepage, and the refusal keeps the same clean-exit contract every other malformed body has.
+    """
+    os.makedirs(str(tmp_path / "project_memory"))
+    body = b'{"title": "M\xfcller", "request_text": "x"}'  # 0xFC is cp1252 'ü', invalid UTF-8
+    r = _capture_cli(tmp_path, "FR", body)
+    assert r.returncode == 2, r.stderr.decode("utf-8", "replace")
+    err = r.stderr.decode("utf-8", "replace")
+    assert "not valid UTF-8" in err
+    assert "Traceback" not in err
+
+
 # ---------------- scenario: the V2 chain itself — draft PR, approval, SR, task, spawn ----------
 sys.path.insert(0, os.path.join(ROOT, "team-kits"))
 from kernel import approvals, dispatch  # noqa: E402

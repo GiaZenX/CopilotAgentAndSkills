@@ -1,0 +1,52 @@
+id: DEC-0030
+title: Bei technischer Unsicherheit wird recherchiert oder gemessen, nicht geraten
+  -- auch in diesem Repo
+context: 'Die drei Kit-Verfassungen tragen die Regel bereits woertlich (team-kits/dev-team/constitution/AGENTS.md:226):
+  ''when uncertain RESEARCH (research-engineer, sources) instead of asking. A technical
+  question to the user is a defect; a senior team decides and informs.'' Der Sitzungsagent
+  dieses Repos hatte sie NICHT -- und das hat gemessen Schaden angerichtet.
+
+
+  Am 2026-08-09/10 hat der Sitzungsagent fuenfmal aus unvollstaendiger Kenntnis eine
+  Aussage ueber das Ganze gemacht, und jedes Mal hat der Nutzer sie korrigiert: die
+  Kit-Verfassungen haetten keine Testpflicht (falsch, gate_test_coverage existiert);
+  ''keine Regel verlangt die volle Suite'' (Kit-Enforcement mit Entwicklungsgewohnheit
+  vermischt); es gebe keine SDK zur Nutzer-Nachbildung (sie lag im Testbett); memory
+  files loaded 0 (blinder Fleck der eigenen Sonde); Produktcode gezaehlt, ohne das
+  Kit-Geruest abzuziehen. Keiner dieser Fehler war noetig -- jeder war mess- oder
+  recherchierbar.'
+decision: 'Bevor der Sitzungsagent eine technische Tatsachenbehauptung aufstellt,
+  auf die eine Entscheidung oder ein Auftrag gebaut wird, misst oder recherchiert
+  er sie. Fuer Fragen ueber Claude Code, die SDK oder das Oekosystem wird ein Rechercheagent
+  (claude-code-guide oder general-purpose, Sonnet reicht) eingeschaltet; fuer Fragen
+  ueber den eigenen Code wird gemessen (ein Lauf, eine Sonde), nicht aus dem Gedaechtnis
+  geantwortet.
+
+
+  Die Schwelle ist nicht jede Aussage, sondern jede, die WEITERGETRAGEN wird -- in
+  ein Item, eine Entscheidung, einen Auftrag, eine Antwort an den Nutzer, auf die
+  er handelt. Eine beilaeufige Vermutung im Denken bleibt erlaubt, solange sie als
+  Vermutung kenntlich ist und nichts auf ihr aufsetzt.
+
+
+  Eine Recherche- oder Messantwort nennt ihren Sicherheitsgrad (sicher / plausibel
+  / unbekannt) und ihre Quelle. ''Nicht gefunden'' ist eine zulaessige Antwort; ''existiert
+  nicht'' ist eine Behauptung und braucht einen Beleg -- der Unterschied ist genau
+  die Klasse, die dieses Repo an seinen Gates dreimal bestraft hat, hier beim Sitzungsagenten
+  selbst.'
+consequences: 'Kostet je unsicherer Behauptung einen Recherche- oder Messlauf (Minuten,
+  ein Sonnet-Subagent oder eine Sonde). Der Nutzer hat fuenf Fehler an einem Tag gefangen
+  und das kostete ihn Aufmerksamkeit; diese Regel verschiebt die Last vom Nutzer auf
+  einen billigen Agenten.
+
+
+  Abgrenzung zu DEC-0023/DEC-0028: dort ging es um WIE oft geprueft und WER prueft.
+  Hier geht es um die Vorbedingung jeder Behauptung. Die Regel ist die des Kits, nur
+  auf den Sitzungsagenten dieses Repos uebertragen -- damit ist der Sitzungsagent
+  an denselben Massstab gebunden, den er den Kits abverlangt.'
+source: Nutzerhinweis 2026-08-10 auf die Recherche-Regel der Kits; die fuenf gemessenen
+  Fehlbehauptungen des Sitzungsagenten vom 2026-08-09/10; team-kits/dev-team/constitution/AGENTS.md:224-227
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T09:43:38'

@@ -1,4 +1,4 @@
-generated_at: '2026-08-09T19:31:24'
+generated_at: '2026-08-10T14:51:39'
 items:
 - id: BUG-0001
   type: BUG
@@ -85,6 +85,41 @@ items:
 - id: BUG-0014
   type: BUG
   title: Die Gate-Suite dieses Repos ist rot, und niemand hat es bemerkt
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0015
+  type: BUG
+  title: Die Migration empfiehlt ein Flag, das die Verfahrensdokumentation fuer die
+    Steuerberatung buchstabenweise fuellt
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0016
+  type: BUG
+  title: Die Einstiegssitzung sagt die Neustart-Bitte und arbeitet danach weiter,
+    wenn der Nutzer weiterredet
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0017
+  type: BUG
+  title: Der Freigabe-/Mint-Mechanismus funktioniert im Headless-/SDK-Betrieb nicht
+    und fuehrt zu Nutzer-Irrefuehrung
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0018
+  type: BUG
+  title: harness.py capture verstuemmelt Nicht-ASCII auf der Windows-Default-Codepage,
+    und die Unveraenderlichkeit treibt daraus Wurzelitem-Drift
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0019
+  type: BUG
+  title: Der PM der zweiten Sitzung stuetzt den Handover auf das Rohtranskript, nicht
+    auf den Sitzungsbrief
   status: OPEN
   revision: 1
   approval_ref: null
@@ -269,6 +304,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0030
+  type: DEC
+  title: Bei technischer Unsicherheit wird recherchiert oder gemessen, nicht geraten
+    -- auch in diesem Repo
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -276,6 +318,18 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0002
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0003
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0004
   type: EVD
   title: null
   status: null
@@ -348,6 +402,13 @@ items:
   type: FR
   title: Eine Entscheidung, die in Prosa landet statt in einem Item, hat heute keinen
     Faenger
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0013
+  type: FR
+  title: guard_pm_scope der Kits deckt die Schreibwerkzeuge, aber nicht die Shell
+    -- eine Bash-Zeile umgeht ihn
   status: OPEN
   revision: 1
   approval_ref: null
@@ -562,6 +623,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0027
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0028
   type: TSK
   title: null
   status: DRAFT

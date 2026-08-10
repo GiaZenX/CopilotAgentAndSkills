@@ -488,7 +488,26 @@ def _json_body(command: str = "capture") -> dict:
             "%s reads its fields as a JSON object on STDIN and nothing is piped in -- "
             "it does not prompt for them. Remedy: `%s %s <<'EOF'` … `EOF`."
             % (command, INVOCATION, command))
-    raw = sys.stdin.read()
+    # THE BODY IS A UTF-8 BYTE STREAM, DECODED HERE AND NOT BY THE CONSOLE (BUG-0018/TSK-0028).
+    # `sys.stdin.read()` decodes with `sys.stdin.encoding`, which on Windows is the console
+    # codepage (cp1252), so a heredoc `ü` (c3bc) arrived as the two cp1252 chars `Ã¼` and
+    # `yaml.safe_dump` re-encoded them -- the item stored the double-encoded c383c2bc in a field
+    # L2 makes immutable, so a user could only fix it by replacing the whole item. The bytes are
+    # the same whatever the codepage; the decode is the kernel's, exactly like every file it opens
+    # (state/report/schemas/layout all pass encoding="utf-8"). `buffer` is absent only when a
+    # caller replaced stdin with an in-memory text stream (the in-process CLI tests), which already
+    # holds decoded text -- there is nothing to decode.
+    stdin_buffer = getattr(sys.stdin, "buffer", None)
+    if stdin_buffer is None:
+        raw = sys.stdin.read()
+    else:
+        try:
+            raw = stdin_buffer.read().decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise UsageError(
+                "the %s body on stdin is not valid UTF-8 (%s). Remedy: send the body as UTF-8 -- "
+                "the kernel stores and hashes it as UTF-8 and does not guess a console codepage."
+                % (command, exc)) from None
     if not raw.strip():
         raise UsageError(
             "%s reads its fields as a JSON object on STDIN and got nothing. Remedy: "

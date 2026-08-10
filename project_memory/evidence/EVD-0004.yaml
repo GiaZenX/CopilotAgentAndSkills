@@ -1,0 +1,24 @@
+id: EVD-0004
+kind: review
+related:
+- TSK-0028
+result: pass
+summary: 'verifier PASS for diff:d81dc31a0d025d0368c8ce2e04fa647e50d73e93a4b9e3c7dd5709f3123dd3ce
+  -- TSK-0028, Fix zu BUG-0018. Der Pruefer hat unabhaengig gemessen und PASS gegeben:
+  capture/_json_body liest stdin jetzt als Bytes und dekodiert utf-8 statt im Konsolen-Text-Modus
+  (cp1252). Der .buffer-Fallback ist fuer ECHTES stdin nachweislich unerreichbar (Pipe,
+  <-Umleitung, Heredoc, /dev/null -> alle TextIOWrapper mit .buffer); er trifft nur
+  io.StringIO der In-Process-Tests. Beide neuen Tests in tools/test_e2e.py werden
+  ohne den Fix ROT (byte-genaue Korruption c383c2bc statt c3bc bei rc 0; nicht-UTF-8
+  rc 0 statt rc 2), beide Enden selbst reproduziert. freeze-* geht durch denselben
+  Pfad und ist mitgeschuetzt. Kein zweiter Codepage-Pfad im Kernel offen (state/report/schemas/layout/trays/hashing/staging/lock/migrate
+  alle explizit utf-8 oder binaer). Volle Suite in EINEM sauberen Lauf: 2340 bestanden,
+  12 uebersprungen, rc 0 (33:55). ruff sauber, kernel.cli validate rc 0, alle drei
+  Kits 2026.08.10-1. Nicht blockierende Beobachtung: PowerShell-BOM-Body wird sicher
+  mit rc 2 abgewiesen (kein Wiederauftreten, ein sicherer Fehlschlag) -- optionale
+  Haertung utf-8-sig im Pruefbericht benannt.'
+artifact_refs:
+- staging/TSK-0027/schleife-runde1-2026-08-10.md
+revision: 1
+approval_ref: null
+created: '2026-08-10T14:51:39'

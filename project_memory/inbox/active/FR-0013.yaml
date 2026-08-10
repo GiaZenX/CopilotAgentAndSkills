@@ -1,0 +1,43 @@
+id: FR-0013
+title: guard_pm_scope der Kits deckt die Schreibwerkzeuge, aber nicht die Shell --
+  eine Bash-Zeile umgeht ihn
+related_pr: PR-0002
+request_text: 'GEMESSEN am laufenden Code, 2026-08-10: team-kits/dev-team/settings/settings.json
+  registriert guard_pm_scope.py auf ''Edit|Write|MultiEdit|NotebookEdit'', NICHT auf
+  ''Bash|PowerShell''. Der Hook-Docstring benennt die Luecke selbst ausdruecklich:
+  ''Bash writes bypass Edit/Write hooks -- this is a 95% guard; the QA gate is the
+  hard backstop.'' Ein PM, der `echo ... > services/pay.py` oder `python -c "open(...).write(...)"`
+  in der Bash faehrt, schreibt damit Produktionscode an guard_pm_scope vorbei.
+
+
+  Das ist dieselbe Klasse, die dieses Repo an seinem eigenen Sitzungsagenten bereits
+  geschlossen hat: gate_lead_write_scope.py ist auf BEIDE Ereignisklassen registriert
+  (Schreibwerkzeuge UND Bash|PowerShell), mit dem gemessenen Grund im settings.json-Kommentar
+  dieses Repos: ''registered on the write tools alone eight measured shell lines wrote
+  kit code with rc 0 (2026-08-05)''. Der Vorlauf existiert also -- ein Hook, der eine
+  Befehlszeile auf Schreibzugriffe in verbotene Bereiche prueft.
+
+
+  WARUM NICHT TRIVIAL: die Bash-Haelfte ist kein einfacher Pfad-Match. Sie muss eine
+  Befehlszeile zerlegen, Umleitungen und schreibende Verben erkennen, cd-Bewegungen,
+  Tilde- und Umgebungsaufloesung, Kommandoersetzung -- genau der Apparat, an dem gate_lead_write_scope
+  in TSK-0021/0022 zehn Messschaeden und mehrere Loecher (H19, H20, H33, H34, L4)
+  produziert hat. Eine Verbliste (sed, awk, jq, perl -e, python -c) ist ausdruecklich
+  KEINE Loesung (L4: ''eine Liste dieser Verben waere genau die Behauptung''). Wer
+  das ins Kit uebernimmt, uebernimmt auch diese offene Loecherklasse -- der Nutzen
+  ist real, der Preis ist ein zweiter Ort, an dem dieselbe schwere Maschinerie gepflegt
+  werden muss.
+
+
+  OFFEN, vom Umsetzer zu entscheiden: (a) ob der Bash-Scan aus gate_lead_write_scope/_harness
+  in die Kits GETEILT statt kopiert wird -- ein gemeinsamer Kern statt zweier driftender
+  Kopien; (b) ob die PM-Bereichslogik (ALLOW_TOP/CODE_EXT als Eigenschaft der Datei)
+  und die Befehlszeilen-Zerlegung sauber trennbar sind; (c) ob der QA-Gate-Backstop,
+  den der Docstring heute als harten Riegel nennt, den Aufwand ueberhaupt rechtfertigt
+  -- vielleicht ist die 95%-Grenze mit einem ehrlichen Loecherlisten-Eintrag im Kit
+  die guenstigere Antwort als eine zweite Kopie des Bash-Apparats. Das ist eine Nutzen-gegen-Wartungslast-Frage
+  und keine reine Baufrage.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-10T10:12:03'

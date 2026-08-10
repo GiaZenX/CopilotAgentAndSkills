@@ -1,0 +1,36 @@
+id: EVD-0003
+kind: review
+related:
+- TSK-0023
+result: pass
+summary: 'verifier PASS for diff:13ba2527693ddda6db311e4b91dba7434287d02b2d7e2ca2c0c146237fb03f46
+  -- TSK-0023, Abnahme nach ZEHN Runden. Der Pruefer hat die Schlussbestaetigung mit
+  PASS geschlossen und ausdruecklich gesagt: TSK-0023 ist abnahmefaehig, es kann in
+  den Commit. Geprueft wurde zuletzt B1 (die Unmoeglichkeitsbehauptung ueber zwei
+  stehengebliebene Abhilfen) und B3 (seine eigene Gegenmessung). Beide PASS. Der Pruefer
+  hat sich dabei SELBST korrigiert: sein B3-Befund war in der Praemisse falsch, weil
+  er nur Kopierverben gemessen hatte und nicht die Umleitungsklasse -- der von ihm
+  abgeleitete Halbsatz waere eine pauschale Behauptung gewesen, die der Code nicht
+  traegt. Der Umsetzer hat ihn deshalb zu Recht NICHT eingesetzt.\n\nWas diese zehn
+  Runden geschlossen haben, jeweils mit rotem Test belegt und mehrfach mit gemessener
+  Datenverlustkette: eine gedruckte Abhilfe, die auf eine Wand zeigte und sie ueberschrieb;
+  ein Ablagename, der unter der Faltung des Dateisystems nicht injektiv war (zwei
+  Anweisungen, eine Datei); ein Rat, der das Wurzelitem eines Projekts zerstoert haette;
+  has_root_item, das ein gesperrtes Verzeichnis als ''noch kein Wurzelitem'' las und
+  damit FUENF Gates abschaltete (gate_git rc 2 -> rc 0, gemessen an echten Prozessen);
+  sechs weitere ausgelieferte Abhilfen, die einen Ort im Zustandsverzeichnis nannten;
+  ein Fix, der die CI auf ubuntu-latest rot gemacht haette (auf echtem ext4 gemessen).\n\nOFFEN
+  und benannt, nicht verschwiegen: L30 bis L38 als Loecherlisten-Reste, darunter die
+  Routenmenge des statischen Drahtes (nach DEC-0029 ausdruecklich KEINE Vollstaendigkeitsbehauptung
+  mehr), das Namensbudget des Overflow-Ziels, die Umleitungsklasse an gate_write_scope,
+  und BUG-0014: die Gate-Suite dieses Repos ist rot (1 failed, 142 passed) und war
+  es mindestens eine Runde lang unbemerkt, weil sie nicht in pytest tools/ mitlaeuft.
+  Das Rot stammt aus dem vorigen Commit b32ec98, nicht aus diesem Paket.\n\nAbnahmelauf:
+  python -B -m pytest tools/ -q -> 2338 bestanden, 12 uebersprungen, 0 rot, ein Lauf,
+  26:34. ruff sauber, tools/validate.py sauber, alle drei Kits 2026.08.09-11 und bump_kit_version.py
+  --check dreimal unchanged. Kernel-validate 0 Fehler.'
+artifact_refs:
+- staging/TSK-0022/verdict-round3-2026-08-08.md
+revision: 1
+approval_ref: null
+created: '2026-08-09T20:21:10'
