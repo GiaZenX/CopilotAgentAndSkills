@@ -1,0 +1,13 @@
+id: EVD-0005
+kind: review
+related:
+- TSK-0031
+result: pass
+summary: verifier PASS for diff:e37642a7f1d3f0d9d235e6d967fb351cb07d6062eab9f6d5dd582e38f6bade05
+  (handover-fix rework B1/B2; F1 L11->L39 closed at hook L45+L75; acceptance 2352
+  passed/13 skipped, ruff+validate clean, stamp unchanged)
+artifact_refs:
+- docs/reviews/2026-08-10-tsk0031-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-10T21:59:46'

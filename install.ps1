@@ -31,6 +31,7 @@ $mergeScript      = Join-Path $repoRoot "user\merge_settings.py"
 $claudeGlobal   = Join-Path $env:USERPROFILE ".claude"
 $claudeSkills   = Join-Path $claudeGlobal "skills"
 $claudeAgents   = Join-Path $claudeGlobal "agents"
+$claudeHooks    = Join-Path $claudeGlobal "hooks"
 $claudeTeamKits = Join-Path $claudeGlobal "team-kits"
 # Legacy Copilot destinations — only referenced to REMOVE files older installs put there.
 $copilotSkills  = Join-Path $env:USERPROFILE ".copilot\skills"
@@ -147,7 +148,7 @@ if ($Target -eq "both" -or $Target -eq "claude") {
 Assert-NoReparseTree $teamKitsSrc
 Assert-NoReparseComponents $backupDir
 Assert-NoReparseComponents $claudeGlobal
-foreach ($path in @($claudeAgents, $claudeSkills, $claudeTeamKits,
+foreach ($path in @($claudeAgents, $claudeSkills, $claudeHooks, $claudeTeamKits,
         (Join-Path $claudeGlobal "CLAUDE.md"), (Join-Path $claudeGlobal "settings.json"),
         (Join-Path $claudeGlobal "statusline.py"))) {
     Assert-NoReparseTree $path
@@ -213,6 +214,7 @@ Backup-Item (Join-Path $claudeGlobal "CLAUDE.md")
 Backup-Item (Join-Path $claudeGlobal "settings.json")
 Backup-Item (Join-Path $claudeGlobal "statusline.py")
 Backup-Item $claudeAgents
+Backup-Item $claudeHooks
 Backup-Item $claudeSkills
 Backup-Item $claudeTeamKits
 # Legacy Copilot files older installs put into VS Code prompts — backed up before cleanup below.
@@ -309,6 +311,15 @@ if ($Target -eq "both" -or $Target -eq "claude") {
     if (Test-Path $claudeAgentsSrc) {
         Get-ChildItem -Path $claudeAgentsSrc -Filter "*.md" | ForEach-Object {
             Install-File -Src $_.FullName -Dest (Join-Path $claudeAgents $_.Name) -Label "agent: $($_.Name)"
+        }
+    }
+    # Global hooks: the BUG-0016 handover guard MUST be a user-scope hook — it acts in the entry
+    # session, before the freshly installed project hooks are active (settings-watcher gap). Its
+    # registration is merged into settings.json below; here we install the script it names.
+    $claudeHooksSrc = Join-Path $userClaudeSrc "hooks"
+    if (Test-Path $claudeHooksSrc) {
+        Get-ChildItem -Path $claudeHooksSrc -Filter "*.py" | ForEach-Object {
+            Install-File -Src $_.FullName -Dest (Join-Path $claudeHooks $_.Name) -Label "hook: $($_.Name)"
         }
     }
     # Add missing global defaults while preserving existing personal values; union permission lists.

@@ -52,6 +52,7 @@ MERGE_SCRIPT="$REPO_ROOT/user/merge_settings.py"
 CLAUDE_GLOBAL="$HOME/.claude"
 CLAUDE_SKILLS="$HOME/.claude/skills"
 CLAUDE_AGENTS="$HOME/.claude/agents"
+CLAUDE_HOOKS="$HOME/.claude/hooks"
 CLAUDE_TEAM_KITS="$HOME/.claude/team-kits"
 # Legacy Copilot destination — only referenced to REMOVE files older installs put there.
 COPILOT_SKILLS="$HOME/.copilot/skills"
@@ -149,7 +150,7 @@ install_file() {
 assert_no_symlink_tree "$TEAM_KITS_SRC"
 assert_no_symlink_components "$BACKUP_DIR"
 assert_no_symlink_components "$CLAUDE_GLOBAL"
-for path in "$CLAUDE_AGENTS" "$CLAUDE_SKILLS" "$CLAUDE_TEAM_KITS" \
+for path in "$CLAUDE_AGENTS" "$CLAUDE_SKILLS" "$CLAUDE_HOOKS" "$CLAUDE_TEAM_KITS" \
             "$CLAUDE_GLOBAL/CLAUDE.md" "$CLAUDE_GLOBAL/settings.json" \
             "$CLAUDE_GLOBAL/statusline.py"; do
     assert_no_symlink_tree "$path"
@@ -209,6 +210,7 @@ backup_item "$CLAUDE_GLOBAL/CLAUDE.md"
 backup_item "$CLAUDE_GLOBAL/settings.json"
 backup_item "$CLAUDE_GLOBAL/statusline.py"
 backup_item "$CLAUDE_AGENTS"
+backup_item "$CLAUDE_HOOKS"
 backup_item "$CLAUDE_SKILLS"
 backup_item "$CLAUDE_TEAM_KITS"
 # Legacy Copilot files older installs put into VS Code prompts — backed up before cleanup below.
@@ -282,6 +284,18 @@ if [[ "$TARGET" == "both" || "$TARGET" == "claude" ]]; then
         for f in "$USER_CLAUDE_SRC/agents"/*.md; do
             [[ -e "$f" ]] || continue
             install_file "$f" "$CLAUDE_AGENTS/$(basename "$f")" "agent: $(basename "$f")"
+        done
+    fi
+    # Global hooks: the BUG-0016 handover guard MUST be a user-scope hook — it acts in the entry
+    # session, before the freshly installed project hooks are active (settings-watcher gap). Its
+    # registration is merged into settings.json below; here we install the script it NAMES, before
+    # that merge, so the registration can never point at a missing file. A missing target makes
+    # `python <path>` exit 2, and a PreToolUse hook that exits 2 is read as BLOCK — that would refuse
+    # EVERY tool call in EVERY session, not merely fail to install (mirrors install.ps1).
+    if [[ -d "$USER_CLAUDE_SRC/hooks" ]]; then
+        for f in "$USER_CLAUDE_SRC/hooks"/*.py; do
+            [[ -e "$f" ]] || continue
+            install_file "$f" "$CLAUDE_HOOKS/$(basename "$f")" "hook: $(basename "$f")"
         done
     fi
     if [[ -f "$MERGE_SCRIPT" && -f "$USER_CLAUDE_SRC/settings.json" ]]; then

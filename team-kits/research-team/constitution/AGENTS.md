@@ -65,7 +65,7 @@
    resolve the repo root via `_root.py`; shell gates match Bash AND PowerShell.
 
    WHAT RUNS HERE, complete in both directions — no mechanism that runs is missing from this
-   list, and no name on it is one no registration starts: `format_on_write`, `gate_approval`, `gate_dispatch`, `gate_git`, `gate_memory_complete`, `gate_pipeline`, `gate_push_token`, `gate_shell_hygiene`, `gate_subagent_output`, `gate_write_scope`, `guard_agent_spawn`, `guard_guidelines`, `guard_harness_selfmod`, `guard_memory_budget`, `guard_no_adhoc`, `guard_pm_scope`, `guard_question_context`, `guard_scratchpad_ref`, `guard_yaml_valid`, `kit_trust_state`, `notify_agent_events`, `session_status`.
+   list, and no name on it is one no registration starts: `clear_handover_marker`, `format_on_write`, `gate_approval`, `gate_dispatch`, `gate_git`, `gate_memory_complete`, `gate_pipeline`, `gate_push_token`, `gate_shell_hygiene`, `gate_subagent_output`, `gate_write_scope`, `guard_agent_spawn`, `guard_guidelines`, `guard_harness_selfmod`, `guard_memory_budget`, `guard_no_adhoc`, `guard_pm_scope`, `guard_question_context`, `guard_scratchpad_ref`, `guard_yaml_valid`, `kit_trust_state`, `notify_agent_events`, `session_status`.
    What each one refuses, on which event, and the condition under which it does NOT refuse is
    one table in `ENFORCEMENT.md` beside the installed hooks (`.claude/hooks/ENFORCEMENT.md`).
    That table is reference, not instruction: nothing loads it into a session — this file does

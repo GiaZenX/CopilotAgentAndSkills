@@ -1,0 +1,42 @@
+id: FR-0015
+title: 'BuyPlugGo-Ziel: Produktpflege ueber die API durch einen Subagenten -- bisher
+  von nichts angearbeitet'
+related_pr: PR-0001
+request_text: 'NUTZERZIEL (2026-08-10), fuer den konkreten BuyPlugGo-Fall im Office-Kit:
+  ein Subagent soll die Produkte ueber die (Shop-)API pflegen -- Artikelbeschreibungen
+  nach VORLAGE erzeugen, Preise anpassen wenn eine neue Preisliste kommt, Produkte
+  anlegen/aktualisieren. Alles sauber, jede Aenderung nachvollziehbar, ueber einen
+  Subagenten (nicht der Manager selbst), unter den Gates des Kits.
+
+
+  EHRLICHER STAND: darauf hat bisher KEIN Schritt hingearbeitet. Es ist Folgearbeit
+  (Plan II.14, BuyPlugGo-Zeile) und existiert heute nicht -- nicht im Kernel, nicht
+  als Faehigkeit des Office-Kits, nicht getestet. Das Office-Kit hat heute shop-curator
+  und office-developer als Rollen, aber kein gemessener Lauf hat eine API-Produktpflege
+  gefahren.
+
+
+  WAS ES BRAUCHT, als Skizze (nicht als Bauauftrag -- erst wenn office-team ueberhaupt
+  als Workflow getragen ist, FR-0014):
+
+  - eine Vorlage fuer Artikelbeschreibungen, aus der der Subagent erzeugt (deterministischer
+  Teil) plus der generative Teil, der gegen die Vorlage geprueft wird.
+
+  - ein Preislisten-Import, der Preise anpasst und JEDE Aenderung als nachvollziehbaren
+  Schritt fuehrt (welches Produkt, alt -> neu, Quelle), nicht still.
+
+  - API-Zugriff (Schreiben in einen echten Shop) ist ein Schreibzugriff nach aussen
+  -- er braucht dieselbe Sorgfalt wie ein git push: ausdrueckliche Nutzerfreigabe,
+  kein stiller Live-Write. Im Piloten gegen eine Sandbox/Testshop, nie den echten
+  Shop.
+
+  - die V1-Schmerzen aus FR-0014 gelten hier verschaerft: kein doppeltes Anlegen,
+  korrekte Benennung, ein unbekanntes Produkt wird vorgelegt statt angenommen.
+
+
+  REIHENFOLGE: erst muss office-team als Workflow ueberhaupt tragen (FR-0014), dann
+  diese API-Faehigkeit. Heute ist es ein benanntes Ziel im Zustand, kein Bauauftrag.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-10T17:18:09'

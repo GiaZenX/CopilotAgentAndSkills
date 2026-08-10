@@ -80,8 +80,9 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "d6bfed9fb10716ac",
+        "digest": "661e02339f74a95c",
         "hooks": [
+          "clear_handover_marker",
           "format_on_write",
           "gate_approval",
           "gate_dispatch",
@@ -156,8 +157,9 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "3ac8c2a0058ff263",
+        "digest": "902fd06e5b23281b",
         "hooks": [
+          "clear_handover_marker",
           "format_on_write",
           "gate_approval",
           "gate_dispatch",
@@ -291,8 +293,9 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "343dde7499713efa",
+        "digest": "52b4a581315ff542",
         "hooks": [
+          "clear_handover_marker",
           "gate_approval",
           "gate_dispatch",
           "gate_filing",
@@ -371,8 +374,9 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "055d9dead5269dc4",
+        "digest": "c121aaf388b0b25b",
         "hooks": [
+          "clear_handover_marker",
           "gate_approval",
           "gate_dispatch",
           "gate_filing",
@@ -511,8 +515,9 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "da7ab6b1bd0d719b",
+        "digest": "d110be5cb0cfe0e1",
         "hooks": [
+          "clear_handover_marker",
           "format_on_write",
           "gate_approval",
           "gate_dispatch",
@@ -583,8 +588,9 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "f6e6e854f8cc774e",
+        "digest": "cdced66b9a2c60a1",
         "hooks": [
+          "clear_handover_marker",
           "format_on_write",
           "gate_approval",
           "gate_dispatch",

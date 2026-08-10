@@ -1,0 +1,58 @@
+id: DEC-0034
+title: Modell-Eskalation als EINE geordnete Leiter T0-T3 statt zweier unabhaengiger
+  Regler
+context: 'Wunschlisten-Punkt 4 (2026-07-31) schlug vor: alle auf Opus, nur am Effort
+  drehen -- ein Regler sei leichter zu begruenden als zwei. Der Nutzer will aber sowohl
+  Modell als auch Effort nutzen (fable fuer Planung, runter fuer Bau, hoch nach Fehlern).
+  Die Aufloesung der Spannung: nicht zwei unabhaengige Regler, sondern EINE geordnete
+  Leiter, deren Sprossen je ein (Modell, Effort)-Paar sind. Das ist ein Regler ueber
+  vier Sprossen, nicht zwei Dimensionen.
+
+
+  Der Nutzer hat die Leiter selbst formuliert und sich zugleich als unsicher erklaert,
+  WANN genau hochgestuft wird und wie viele Stufen sinnvoll sind (''wenn wir 15 Stufen
+  einbauen, bringt das ja nichts''). Die Einstiegssitzung laeuft vor jeder Kit-Konfiguration
+  -- ihr Modell setzt der Nutzer als globalen Default (fable), der Harness kann es
+  nicht erzwingen; ab der PM-Sitzung pinnt der Harness die Sprosse.'
+decision: "Die zustandsabhaengige Eskalation nutzt EINE geordnete Leiter (Nutzer-Entwurf\
+  \ 2026-08-10):\n\n  T0 Worker : Sonnet 5 - High   -> normale Implementierung, Tests,\
+  \ repetitive Arbeit\n  T1 Senior : Opus - High       -> schwierige Bugs, komplexere\
+  \ Aenderungen, Reviews\n  T2 Deep   : Opus - X-High     -> Architekturprobleme,\
+  \ festgefahrene Worker, harte Design-/Integrationsentscheidungen\n  T3 Lead   :\
+  \ Fable - High/X-High -> Planung, Architektur, kritische Entscheidungen, mehrfach\
+  \ gescheiterte Loesungswege\n\nRegeln:\n1. AUSLOESER AUS DEM ZUSTAND, nicht aus\
+  \ der Zeit (wie Wunschliste 4): Planung/Architektur starten auf T3; sobald Scope-Freigabe\
+  \ gepraegt UND Architektur eingefroren/SRs akzeptiert sind, faellt der Bau auf T0\
+  \ (Worker) bzw. T1 (Leads/Reviews).\n2. NACH JEDEM FAIL EINE SPROSSE HOCH (Nutzer).\
+  \ Ein festgefahrener Worker steigt T0->T1->T2; reicht das nicht, T3.\n3. ZURUECKGESTUFT\
+  \ wird ebenso: nach der hochriskanten Phase runter auf die Bau-Sprosse; eine CR,\
+  \ die die Architektur beruehrt, hebt fuer diese CR zurueck auf T3 (Umkehrbarkeit,\
+  \ Wunschliste 4 -- sonst ist die Stufe eine Einbahnstrasse).\n4. DESIGN startet\
+  \ hoeher, nicht auf T0 -- das Design soll von Anfang an gut sein (Nutzer).\n5. QA\
+  \ NIE unter T1 (Wunschliste 4): das hohe QA ist das Netz, das die billigen Bau-Sprossen\
+  \ erst tragfaehig macht.\n6. Einstiegssitzung: fable als globaler Default des Nutzers\
+  \ (seine Startwahl); ab der PM-Sitzung pinnt der Harness die Sprosse."
+consequences: 'Vier Sprossen, kein 15-Stufen-Dschungel; Ab- UND Aufstieg gebaut. Loest
+  die Zwei-Regler-Frage, indem Modell und Effort zu EINER Ordnung verschmelzen.
+
+
+  WAS OFFEN BLEIBT und im Loop GEMESSEN statt geraten wird (DEC-0030): die genauen
+  Ausloeser -- WANN ein Worker als ''festgefahren'' gilt (nach wie vielen Fehlversuchen
+  T0->T1), ob Design auf T2 oder T3 startet, ob T1 oder T2 die richtige Bau-Ruecklage
+  ist. Der Nutzer ist hier ausdruecklich unsicher; die Pilotlaeufe zeigen, WO die
+  billige Sprosse wirklich versagt, und liefern die Zahlen, die diese Ausloeser fixieren.
+  Bis dahin sind die Startsprossen aus Regel 1/4/5 die Vorgabe.
+
+
+  KOSTEN/BAU: die Sprosse muss der DISPATCHER beim Spawn aus dem Zustand waehlen --
+  neue Kernel-Mechanik (Wunschliste 4), kein Konfig-Eintrag. Das ist ein Wunschlisten-Arbeitsposten
+  und wird gebaut, wenn dev-team bis zur Wunschliste kommt (DEC-0033). Diese Entscheidung
+  verfeinert Wunschlisten-Punkt 4 (Effort-only) zur Leiter, loest ihn aber nicht ab,
+  bis er gebaut ist.'
+source: Nutzerentwurf der T0-T3-Leiter 2026-08-10; Wunschliste Punkt 4 (Zustandsauloeser,
+  QA-nicht-billig, Umkehrbarkeit); die Messung, dass die Einstiegssitzung vor jeder
+  Kit-Konfig laeuft (BUG-0016-Wurzel)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T17:29:54'

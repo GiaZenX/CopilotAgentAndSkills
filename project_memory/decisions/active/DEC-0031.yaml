@@ -1,0 +1,58 @@
+id: DEC-0031
+title: Die Pilot-Persona ist ein fordernder, ideengetriebener Nutzer -- kein hoeflicher,
+  der nach drei Punkten aufhoert
+context: 'Gemessen in Runde 1/2 der Piloten-Schleife: die bisherige Persona sagt spaet
+  im Gespraech Small Talk (Cool, danke! / viel Spass euch beiden) und laeuft nur bis
+  zum Zug-Limit. Ein solcher Nutzer loest genau die Backlog-Maschinerie NICHT aus,
+  die den Kern des Kits ausmacht -- keine Change Requests, keine nachgereichten Feature
+  Requests, keine Bug-Meldungen, keine Aenderungswuensche an schon Gebautem. Der Apparat
+  wird damit nur im Erst-Interview und Erstbau geprueft, nicht im Leben eines Projekts.
+
+
+  Der Nutzer hat das als Einwand formuliert: die Persona soll wie ein echter Mensch
+  sein, der ein Produkt will, nicht genau weiss was er will, aber STAENDIG Ideen nachschiebt
+  und kritisch bleibt.'
+decision: 'Die Pilot-Persona ist ab sofort ein kritischer, fordernder Nutzer mit diesen
+  Eigenschaften, festgeschrieben in der Charakterbeschreibung des Persona-Laeufers:
+
+
+  1. Sie weiss ungefaehr was sie will, aber nicht genau, und bringt WAEHREND des Bauens
+  laufend neue Ideen ein -- ''koennen wir noch X machen'', ''ich haette gern auch
+  Y'', ''mir gefaellt Z nicht, aender das'', ''ich habe ueberlegt, W noch zu ergaenzen''.
+
+  2. Sie sagt NICHT ''cool, danke'' und hoert auch nicht nach drei Punkten auf. Kein
+  Small Talk als Gespraechsende. Sie bleibt kritisch und schiebt nach, solange das
+  Gespraech laeuft.
+
+  3. Sie loest damit gezielt die volle Backlog-Maschinerie aus: Aenderungswuensche
+  werden Change Requests, neue Wuensche Feature Requests, Fehler am Gebauten Bugs
+  -- genau das soll gemessen werden.
+
+  4. Bei UI-Vorhaben verlangt sie, das Ergebnis zu SEHEN, und beurteilt es kritisch
+  (''die UI gefaellt mir nicht, mach X anders''). Dazu braucht sie ein Bild des laufenden
+  Ergebnisses (Screenshot), das sie einlesen kann -- ob und wie das ueber die SDK
+  geht, ist vor dem Bau zu messen (DEC-0030), nicht anzunehmen.
+
+
+  Was gleich bleibt: sie hilft dem Apparat nicht, benutzt keine Fachsprache, fuehrt
+  technische Anweisungen nicht brav aus, hat keine Werkzeuge und keinen Zugang zum
+  Repo. Kritisch heisst fordernd, nicht kompetent.'
+consequences: 'Piloten messen ab der naechsten Runde nicht mehr nur den Erstbau, sondern
+  das Projektleben -- CR/FR/BUG-Fluss, Umgang mit Meinungsaenderungen, UI-Kritik.
+  Das ist teurer je Sitzung (mehr Zuege), aber der 100-Dollar-Riegel (DEC-0027) bleibt.
+
+
+  Die laufende Runde 2 (BUG-0018-Regression) bleibt auf der alten, hoeflichen Persona
+  -- ihr Zweck ist eng (ueberlebt der Umlaut), dafuer genuegt sie. Die neue Persona
+  greift ab Runde 3.
+
+
+  Der Screenshot-Teil ist feasibility-gebunden: kann die SDK-Persona ein Bild als
+  Eingabe empfangen? Wenn nein, wird die UI-Kritik textuell gefuehrt und die Grenze
+  benannt, statt eine nicht gebaute Faehigkeit zu behaupten.'
+source: Nutzereinwand 2026-08-10 zur Persona-Qualitaet; gemessene Small-Talk-Beobachtung
+  des Pruefers in Runde 1 (Zugzahl ist kein Arbeitsmass)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T15:28:37'

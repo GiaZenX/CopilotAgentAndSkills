@@ -1,0 +1,47 @@
+id: DEC-0035
+title: 'Schleifen-Disziplin: wann gefixt wird, wann Piloten aufhoeren'
+context: 'Der Nutzer hat gefragt, ab wann Bugs gefixt werden (nach jedem Lauf?) und
+  wann die Piloten enden. Ohne klare Regel wuchs die Sorge, das Repo werde nie sauber,
+  weil zuletzt mehr gefunden als behoben wurde (Find-Phase). Gemessen: ein Fix ist
+  ein voller Zyklus (Umsetzer -> Pruefer -> Commit -> in die globale Ablage einspielen),
+  Piloten und Fixe teilen sich ~/.claude und laufen daher sequenziell; viele Bugs
+  gehoeren zu Familien (BUG-0016/0017/0019 = Handover).'
+decision: 'FIX-KADENZ, nicht pro Lauf:
+
+  1. SOFORT gefixt wird, was Datenverlust verursacht oder alles bricht (Bsp. BUG-0018
+  Umlaut-Korruption, BUG-0016 Handover-Ueberlauf).
+
+  2. GEBUENDELT gefixt werden verwandte Bugs, wenn die Familie reif ist -- nicht je
+  Bug eine eigene Runde.
+
+  3. NICHT gefixt, sondern DOKUMENTIERT werden benannte Reste (unschliessbare Loecher,
+  Ueber-Verweigerungen) -- als Loecherlisten-Eintrag mit Mechanismus und Begrenzung.
+
+  4. PRIORITAET: blockierend zuerst; dann Fixe, die auch office/research helfen (uebertragbar);
+  dann Reste.
+
+  Rhythmus: Find-Runde -> Fix-Buendel -> Nachtest -> naechste Find-Runde. Jeder Fix
+  durch die volle Zwei-Agenten-Schleife, jeder mit rotem Test, jeder committet, bevor
+  der naechste beginnt.
+
+
+  PILOTEN-STOPP als messbares Signal (loop-until-dry), nicht als feste Zahl: die Find-Phase
+  fuer dev-team endet, wenn ZWEI aufeinanderfolgende frische Vorhaben KEINE neue Bug-Klasse
+  mehr finden, sondern nur bekannte bestaetigen. Dann werden die offenen blockierenden
+  dev-team-Bugs runter-gefixt, und erst danach wandern die Piloten zu office/research
+  (DEC-0033).'
+consequences: 'Die Zahl der offenen Items darf in der Find-Phase wachsen -- das ist
+  Finden, kein Verfall; jeder Fix rastet per rotem Test ein und kann nicht zurueckkommen.
+  Das Trocken-Signal macht die Piloten endlich statt unendlich. Wenn der Nutzer die
+  offene Liste unuebersichtlich findet, loest eine Triage (blockierend / benannter
+  Rest / Duplikat) sie in eine echte Rest-Zahl auf.
+
+
+  Vom Nutzer am 2026-08-10 angestossen (Fragen: ab wann fixen, wann Piloten aufhoeren);
+  der Nutzer will vorerst weiter sammeln.'
+source: Nutzerfragen 2026-08-10; gemessener Fix-Zyklus und die Sequenzialitaet ueber
+  ~/.claude; DEC-0033 (dev-team zuerst)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T20:16:11'

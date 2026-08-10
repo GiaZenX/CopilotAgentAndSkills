@@ -1,4 +1,4 @@
-generated_at: '2026-08-10T14:51:39'
+generated_at: '2026-08-10T21:59:46'
 items:
 - id: BUG-0001
   type: BUG
@@ -120,6 +120,20 @@ items:
   type: BUG
   title: Der PM der zweiten Sitzung stuetzt den Handover auf das Rohtranskript, nicht
     auf den Sitzungsbrief
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0020
+  type: BUG
+  title: Gate 1 vertraut der Aufruf-Form, nicht dem laufenden Kernel -- capture mit
+    fremdem PYTHONPATH und rm kanonischer Items laufen durch
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0021
+  type: BUG
+  title: capture verweigert einen stdin-Body mit UTF-8-BOM, obwohl die Fehlermeldung
+    selbst utf-8-sig als Abhilfe nennt
   status: OPEN
   revision: 1
   approval_ref: null
@@ -311,6 +325,40 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0031
+  type: DEC
+  title: Die Pilot-Persona ist ein fordernder, ideengetriebener Nutzer -- kein hoeflicher,
+    der nach drei Punkten aufhoert
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0032
+  type: DEC
+  title: Der Handover-Ueberlauf wird durch einen globalen Marker-Hook geschlossen,
+    weiche Variante
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0033
+  type: DEC
+  title: dev-team wird zuerst fertig gehaertet -- bis ueber die Wunschliste -- dann
+    office und research
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0034
+  type: DEC
+  title: Modell-Eskalation als EINE geordnete Leiter T0-T3 statt zweier unabhaengiger
+    Regler
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0035
+  type: DEC
+  title: 'Schleifen-Disziplin: wann gefixt wird, wann Piloten aufhoeren'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -330,6 +378,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0004
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0005
   type: EVD
   title: null
   status: null
@@ -409,6 +463,20 @@ items:
   type: FR
   title: guard_pm_scope der Kits deckt die Schreibwerkzeuge, aber nicht die Shell
     -- eine Bash-Zeile umgeht ihn
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0014
+  type: FR
+  title: Das Office-Kit ist als Workflow nie getestet -- ein Pilot gegen die gemessenen
+    V1-Schmerzen fehlt
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0015
+  type: FR
+  title: 'BuyPlugGo-Ziel: Produktpflege ueber die API durch einen Subagenten -- bisher
+    von nichts angearbeitet'
   status: OPEN
   revision: 1
   approval_ref: null
@@ -629,6 +697,24 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0028
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0029
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0030
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0031
   type: TSK
   title: null
   status: DRAFT

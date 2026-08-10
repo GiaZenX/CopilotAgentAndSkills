@@ -1,0 +1,49 @@
+id: FR-0014
+title: Das Office-Kit ist als Workflow nie getestet -- ein Pilot gegen die gemessenen
+  V1-Schmerzen fehlt
+related_pr: PR-0001
+request_text: 'STAND 2026-08-10: Alle bisherigen Piloten (TSK-0025/0027) waren dev-team.
+  office-team wurde nur ueber die Migration einer BuyPlugGo-Kopie beruehrt (TSK-0026)
+  und durch BUG-0015 (Rollen buchstabenweise in der Verfahrensdokumentation). Kein
+  einziger Office-WORKFLOW ist je als Pilot gefahren worden. research-team ist gar
+  nicht getestet.
+
+
+  Der Office-Pilot ist ANDERS geformt als die dev-Piloten: der geprüfte Agent baut
+  keinen Code, er VERARBEITET Dokumente. Die kritische Persona (DEC-0031, gebaut)
+  spielt den Geschaeftsinhaber und wirft dem Office-Manager echte Belege hin (eingehende
+  Rechnung, Foto eines Bons, ein unbekanntes Dokument, eine neue Preisliste).
+
+
+  DIE ABNAHMEKRITERIEN kommen aus den vom Nutzer gemessenen V1-Fehlern -- genau das
+  soll das V2-Office-Kit NICHT mehr tun:
+
+  1. Rechnung korrekt benannt nach der Ablageplan-Regel (filing_plan), nicht frei
+  erfunden.
+
+  2. Richtig abgelegt, NICHT doppelt, umbenannt wo die Regel es verlangt.
+
+  3. JEDE Datei einzeln geprueft, nicht im Buendel durchgewunken.
+
+  4. Bilder nach Vorgabe umbenannt.
+
+  5. Ordner-BAUM (echte Verzeichnisstruktur), sauber festgelegt und aktualisiert --
+  NICHT alles in einer Markdown, nicht vermischt.
+
+  6. Ein unbekanntes/unklares Dokument wird dem Nutzer VORGELEGT, keine stille Annahme
+  getroffen. Das ist der schaerfste Punkt -- genau die Klasse stiller Annahmen, gegen
+  die dieses Repo gebaut ist.
+
+
+  Wie in den dev-Piloten: beobachten, nicht sofort fixen; je Punkt gegen echte erzeugte
+  Ablage/Items messen (filing_log, master_data, die reale Verzeichnisstruktur der
+  Kopie), nicht gegen den Eindruck. Ein Befund wird notiert und wird ein Item. gate_filing
+  und die Office-Verfassung sind der Massstab, an dem gemessen wird.
+
+
+  OFFEN: ob die kritische Persona fuer den dokumentzentrierten Fluss angepasst werden
+  muss (sie fuettert Dokumente statt Bauwuensche); das ist Teil des Aufbaus.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-10T17:17:43'

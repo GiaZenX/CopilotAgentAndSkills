@@ -1,0 +1,22 @@
+id: DEC-0033
+title: dev-team wird zuerst fertig gehaertet -- bis ueber die Wunschliste -- dann
+  office und research
+context: 'Stand 2026-08-10: alle Piloten waren dev-team. office-team ist nur ueber
+  die Migration und BUG-0015 beruehrt, research-team gar nicht. Der Nutzer hat die
+  Reihenfolge entschieden, statt breit auf allen drei Kits zu arbeiten.'
+decision: 'dev-team wird zuerst zu Ende gehaertet und ausgearbeitet -- ueber die offenen
+  BUGs UND die Wunschliste hinweg -- bis der Nutzer es produktiv nutzen kann. Erst
+  danach werden office-team und research-team abgearbeitet. Findings aus dev-team
+  werden dabei bewusst als Kandidaten fuer office/research mitgefuehrt (vieles ist
+  uebertragbar: Handover, Encoding, Freigabe-Weg, Persona-Test), statt sie dreifach
+  neu zu entdecken.'
+consequences: Die Schleife bleibt vorerst auf dev-team (Handover-Fix, dann offene
+  BUGs, dann Wunschliste). FR-0014 (Office-Workflow-Test) und FR-0015 (BuyPlugGo-API)
+  bleiben offen und benannt, aber nachgelagert. Wenn ein dev-team-Fix strukturell
+  auch office/research trifft (gespiegelte Hooks, Kernel), wird er dort gleich mitgezogen
+  -- das ist kein Vorziehen der anderen Kits, sondern Spiegelpflicht.
+source: Nutzerentscheidung 2026-08-10
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T17:24:16'

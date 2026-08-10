@@ -624,5 +624,20 @@ if ($keptList.Count -gt 0) {
     Remove-Item $pendFile -Force
 }
 
+# BUG-0016 handover marker (DEC-0032): set it LAST, when the install has otherwise succeeded, so
+# the global ~/.claude/hooks/handover_guard.py refuses product-code writes and further derivation
+# for the rest of THIS entry session -- the window in which the project hooks just installed are not
+# yet active (settings-watcher gap). The project-owned clear_handover_marker.py
+# SessionStart(startup) hook deletes it on the next REAL restart; it is safe to delete by hand.
+$claudeDir = Join-Path $repo ".claude"
+if (-not (Test-Path $claudeDir)) { New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null }
+$handoverMarker = @(
+    "# agents-and-skills handover marker (BUG-0016, DEC-0032)",
+    "# The entry session installed team '$Team' and asked for a restart. Until that restart the",
+    "# global handover guard refuses product-code writes and further derivation in this session.",
+    "# A SessionStart(startup) hook clears this file on the next real restart. Safe to delete."
+)
+Set-Content -Path (Join-Path $claudeDir "HANDOVER_PENDING") -Value $handoverMarker -Encoding utf8
+
 Write-Host "Team '$Team' installed locally. RESTART the session (close/reopen, or start a new session in this folder) -- the new agents and the 'agent: $lead' setting only load at session start. After the restart, type anything (e.g. 'weiter') -- nothing is auto-sent, YOU stay in control of the first message; the '$lead' lead then greets you with a one-line status and picks up any draft plan in project_memory/." -ForegroundColor Cyan
 Write-Host "NOTE: if a session is ALREADY running in this folder (even suspended at a usage limit), its hooks are live on the new files from this moment -- a real restamp landed mid-session and entangled kit files with build changes. Finish or restart that session before continuing work there." -ForegroundColor Yellow

@@ -155,6 +155,214 @@ def test_settings_merge_rejects_invalid_existing_json_without_touching_it(tmp_pa
     assert not (tmp_path / "settings.json.bak").exists()
 
 
+# ---------------- BUG-0016 / DEC-0032: global handover guard + merge, marker cleanup ----------------
+HANDOVER_GUARD = os.path.join(ROOT, "user", "claude", "hooks", "handover_guard.py")
+_HANDOVER_GROUP = {"matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Task|Agent",
+                   "hooks": [{"type": "command",
+                              "command": "python ~/.claude/hooks/handover_guard.py", "timeout": 10}]}
+
+
+def _run_handover(payload):
+    return subprocess.run([sys.executable, HANDOVER_GUARD], input=json.dumps(payload),
+                          capture_output=True, text=True, timeout=30)
+
+
+def test_settings_merge_unions_hooks_so_the_handover_guard_survives_a_user_hooks_key(tmp_path):
+    """DEC-0032: without a `hooks` union the guard is silently dropped for a user who already runs
+    their own global hooks. RED before the fix: `hooks` fell into the "existing wins" branch, so the
+    target's hooks were preserved verbatim and the handover group never appeared."""
+    ours_path = tmp_path / "defaults.json"
+    target_path = tmp_path / "settings.json"
+    user_group = {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo mine"}]}
+    ours_path.write_text(json.dumps({"hooks": {"PreToolUse": [_HANDOVER_GROUP]}}), encoding="utf-8")
+    target_path.write_text(json.dumps({"theme": "dark",
+                                       "hooks": {"PreToolUse": [user_group]}}), encoding="utf-8")
+
+    result = subprocess.run([sys.executable, MERGE_SETTINGS, str(ours_path), str(target_path)],
+                            capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0, result.stderr
+    merged = json.loads(target_path.read_text(encoding="utf-8"))
+    groups = merged["hooks"]["PreToolUse"]
+    assert user_group in groups, "the user's own global hook must be preserved"
+    assert _HANDOVER_GROUP in groups, "the handover guard must be added, not dropped"
+    # idempotent: a second merge must not duplicate the group
+    subprocess.run([sys.executable, MERGE_SETTINGS, str(ours_path), str(target_path)],
+                   capture_output=True, text=True, timeout=30)
+    twice = json.loads(target_path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+    assert twice.count(_HANDOVER_GROUP) == 1, "the union must dedupe on a re-run"
+
+
+def test_settings_merge_adds_hooks_key_when_target_has_none(tmp_path):
+    """The other half: a fresh user with no `hooks` key gets ours (this half worked before, but a
+    fix that only added the union branch and broke the add branch would pass the test above)."""
+    ours_path = tmp_path / "defaults.json"
+    target_path = tmp_path / "settings.json"
+    ours_path.write_text(json.dumps({"hooks": {"PreToolUse": [_HANDOVER_GROUP]}}), encoding="utf-8")
+    target_path.write_text(json.dumps({"theme": "dark"}), encoding="utf-8")
+    subprocess.run([sys.executable, MERGE_SETTINGS, str(ours_path), str(target_path)],
+                   capture_output=True, text=True, timeout=30)
+    merged = json.loads(target_path.read_text(encoding="utf-8"))
+    assert merged["hooks"]["PreToolUse"] == [_HANDOVER_GROUP]
+
+
+def test_the_shipped_user_settings_register_the_handover_guard(tmp_path):
+    """The running registration, not a memory of it: the file the installer merges must name the
+    guard on PreToolUse, and every tool the guard classifies must be in the matcher."""
+    settings = json.load(open(os.path.join(ROOT, "user", "claude", "settings.json"),
+                              encoding="utf-8"))
+    groups = settings.get("hooks", {}).get("PreToolUse", [])
+    guard = [g for g in groups
+             if any("handover_guard.py" in h.get("command", "") for h in g.get("hooks", []))]
+    assert guard, "user/claude/settings.json does not register handover_guard.py on PreToolUse"
+    matcher = guard[0]["matcher"]
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.report import _matches_tool  # noqa: E402
+    for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "PowerShell", "Task", "Agent"):
+        assert _matches_tool(matcher, (tool,)), (
+            "the guard classifies %s but its matcher %r never fires for it" % (tool, matcher))
+
+
+def _handover_repo(tmp_path, marker=True):
+    (tmp_path / ".claude").mkdir(parents=True, exist_ok=True)
+    if marker:
+        (tmp_path / ".claude" / "HANDOVER_PENDING").write_text("pending\n", encoding="utf-8")
+    return {"cwd": str(tmp_path)}
+
+
+def test_handover_guard_is_a_noop_without_the_marker(tmp_path):
+    """Outside a handover the guard must be invisible — a product write is allowed."""
+    base = _handover_repo(tmp_path, marker=False)
+    payload = dict(base, tool_name="Write",
+                   tool_input={"file_path": str(tmp_path / "src" / "app.py")})
+    assert _run_handover(payload).returncode == 0
+
+
+def test_handover_guard_blocks_product_code_write_under_marker(tmp_path):
+    base = _handover_repo(tmp_path)
+    payload = dict(base, tool_name="Write",
+                   tool_input={"file_path": str(tmp_path / "src" / "app.py")})
+    result = _run_handover(payload)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "product code" in result.stderr
+
+
+@pytest.mark.parametrize("rel", ["project_memory/product/masterplan.md",
+                                 "project_memory/project_config.yaml",
+                                 "project_memory/product/active/PR-0001.yaml"])
+def test_handover_guard_allows_plan_artifacts_under_marker(tmp_path, rel):
+    base = _handover_repo(tmp_path)
+    payload = dict(base, tool_name="Edit",
+                   tool_input={"file_path": str(tmp_path / rel)})
+    assert _run_handover(payload).returncode == 0, rel
+
+
+def test_handover_guard_blocks_spawns_and_engine_shell_but_not_reading(tmp_path):
+    base = _handover_repo(tmp_path)
+    spawn = dict(base, tool_name="Task", tool_input={"subagent_type": "backend-developer"})
+    assert _run_handover(spawn).returncode == 2
+    for blocked in (
+        dict(base, tool_name="Bash",
+             tool_input={"command": "python scripts/harness.py capture SR < x.yaml"}),
+        # regression guard: `-h`/`--help` must match as a WHOLE token, not as a substring of
+        # `--header`, or a dispatch would read as an allowed engine "read"
+        dict(base, tool_name="Bash",
+             tool_input={"command": "python scripts/harness.py dispatch --header foo"}),
+        dict(base, tool_name="Bash",
+             tool_input={"command": "python -m kernel.cli create-task"}),
+    ):
+        assert _run_handover(blocked).returncode == 2, blocked["tool_input"]
+    # reading, asking and a read-only engine call stay allowed (talking is never a tool)
+    for allowed in (
+        dict(base, tool_name="Bash", tool_input={"command": "git status"}),
+        dict(base, tool_name="Bash", tool_input={"command": "python scripts/harness.py doctor"}),
+        # naming the engine while only READING it (cat/grep) is not driving it
+        dict(base, tool_name="Bash", tool_input={"command": "cat scripts/harness.py"}),
+        dict(base, tool_name="AskUserQuestion", tool_input={"questions": []}),
+        dict(base, tool_name="Read", tool_input={"file_path": str(tmp_path / "src" / "app.py")}),
+    ):
+        assert _run_handover(allowed).returncode == 0, allowed["tool_input"]
+
+
+def test_handover_guard_blocks_compound_engine_forms(tmp_path):
+    """B2 (TSK-0031): a routine chained shell line must be judged per segment, not by its first
+    word. RED without the fix: `_handle_shell` read only the leading verb, so every form below
+    returned rc 0 (measured bypasses). Each segment is now split on &&, ||, ; and | and the
+    engine-driving one is refused."""
+    base = _handover_repo(tmp_path)
+    for blocked in (
+        "cd project_memory && python ../scripts/harness.py capture",
+        "echo hi && python scripts/harness.py capture",
+        "true; python scripts/harness.py dispatch",
+        "ls && python -m kernel.cli create-task",
+        "cat foo | python scripts/harness.py capture",
+    ):
+        result = _run_handover(dict(base, tool_name="Bash", tool_input={"command": blocked}))
+        assert result.returncode == 2, blocked
+    # A read segment in the same line must NOT excuse a derivation segment.
+    mixed = "python scripts/harness.py doctor && python scripts/harness.py capture"
+    assert _run_handover(dict(base, tool_name="Bash", tool_input={"command": mixed})).returncode == 2
+    # And the inverse: chaining two reads stays allowed (a pipe through a read is not driving).
+    for allowed in (
+        "cat scripts/harness.py | grep capture",
+        "git status && python scripts/harness.py doctor",
+    ):
+        r = _run_handover(dict(base, tool_name="Bash", tool_input={"command": allowed}))
+        assert r.returncode == 0, allowed
+
+
+def test_handover_guard_wrapped_engine_forms_are_the_named_residue(tmp_path):
+    """The boundary the fix does NOT close, pinned so it cannot silently move (POST_V2_WISHLIST
+    L39, DEC-0029): a work-engine call wrapped in `sh -c '...'` / `bash -lc '...'` has a shell in
+    verb position, not python, so the segment splitter does not reach the inner string. These stay
+    rc 0 by design; the true boundary is the restart. If a later change starts refusing them, this
+    test and L39 must be corrected together."""
+    base = _handover_repo(tmp_path)
+    for residue in (
+        "sh -c 'python scripts/harness.py capture'",
+        "bash -lc 'python -m kernel.cli create-task'",
+    ):
+        r = _run_handover(dict(base, tool_name="Bash", tool_input={"command": residue}))
+        assert r.returncode == 0, residue
+
+
+def _shipping_kits():
+    """Every kit that ships hooks, discovered rather than listed (KITS is defined further down)."""
+    base = os.path.join(ROOT, "team-kits")
+    return [name for name in sorted(os.listdir(base))
+            if os.path.isdir(os.path.join(base, name, "hooks"))]
+
+
+def test_clear_handover_marker_removes_it_only_on_a_real_restart(tmp_path):
+    """DEC-0032: the cleanup fires on source=startup (a genuine restart) and leaves the marker in
+    place on a resume/reconnect. RED without the `source == "startup"` guard: the resume case would
+    delete it too, and the entry session would lose its guard on a reattach. Checked in EVERY kit
+    that ships the hook, so a kit whose mirror drifted is caught here too."""
+    checked = 0
+    for kit in _shipping_kits():
+        hooks = os.path.join(ROOT, "team-kits", kit, "hooks")
+        if not os.path.isfile(os.path.join(hooks, "clear_handover_marker.py")):
+            continue
+        checked += 1
+        repo = tmp_path / kit
+        marker = repo / ".claude" / "HANDOVER_PENDING"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("pending\n", encoding="utf-8")
+        # resume must NOT clear it
+        r = run_hook_process("clear_handover_marker.py",
+                             {"hook_event_name": "SessionStart", "source": "resume",
+                              "cwd": str(repo)}, repo, hooks_dir=hooks)
+        assert r.returncode == 0, (kit, r.stderr)
+        assert marker.exists(), "%s: a reconnect (source=resume) must not clear the marker" % kit
+        # startup must clear it
+        r = run_hook_process("clear_handover_marker.py",
+                             {"hook_event_name": "SessionStart", "source": "startup",
+                              "cwd": str(repo)}, repo, hooks_dir=hooks)
+        assert r.returncode == 0, (kit, r.stderr)
+        assert not marker.exists(), "%s: a real restart (source=startup) must clear the marker" % kit
+    assert checked >= 3, "expected the cleanup hook in at least three kits, saw %d" % checked
+
+
 # ---------------- guard_pm_scope ----------------
 def test_pm_blocked_from_src(tmp_path):
     (tmp_path / "project_memory").mkdir()
@@ -8355,6 +8563,57 @@ def test_install_sh_rejects_invalid_target():
         ["bash", os.path.join(ROOT, "install.sh"), "--target", "invalid", "--force"],
         cwd=str(ROOT), capture_output=True, text=True, timeout=30)
     assert result.returncode != 0 and "Invalid target" in result.stderr
+
+
+def _registered_hook_scripts(settings, home):
+    """Every local hook SCRIPT path a settings.json registers, resolved against `home`.
+
+    Read out of the running registration, not a memory of it: a hook command names the script it
+    runs (`python ~/.claude/hooks/handover_guard.py`), and a leading `~` is the user's home. Any
+    token that resolves to a `.py` under `<home>/.claude/hooks` is a script the provider will try to
+    execute. Yields those absolute paths across every event and group.
+    """
+    hooks_root = os.path.normcase(os.path.join(str(home), ".claude", "hooks"))
+    for groups in (settings.get("hooks") or {}).values():
+        for group in groups or []:
+            for hook in group.get("hooks") or []:
+                command = hook.get("command") or ""
+                for token in command.replace("~", str(home)).split():
+                    token = token.strip("\"'")
+                    if not token.lower().endswith(".py"):
+                        continue
+                    resolved = os.path.normpath(token)
+                    if os.path.normcase(resolved).startswith(hooks_root):
+                        yield resolved
+
+
+def test_install_sh_places_every_hook_it_registers(tmp_path):
+    """B1 (BUG-0016 / TSK-0031): `merge_settings.py` registers the handover guard UNCONDITIONALLY.
+    If `install.sh` does not also COPY the hook script into `~/.claude/hooks`, the registration
+    points at a missing file -> `python <missing>` exits 2 -> a PreToolUse hook that exits 2 is a
+    BLOCK -> EVERY tool call in EVERY session is refused on POSIX (not merely "the fix does not
+    install"). RED before the fix: this test found the guard registered but its file absent
+    (measured 2026-08-10 by removing the copy step in an external clone).
+
+    Principle asserted, not a single path: NO installer registers a hook whose file it did not place.
+    """
+    if os.name == "nt" or not shutil.which("bash"):
+        pytest.skip("POSIX installer integration runs on Unix CI")
+    home = tmp_path / "home"
+    home.mkdir()
+    pythonpath = os.pathsep.join(path for path in sys.path if path)
+    env = dict(os.environ, HOME=str(home), PYTHONPATH=pythonpath)
+    result = subprocess.run(
+        ["bash", os.path.join(ROOT, "install.sh"), "--target", "claude", "--force"],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=300, env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    settings = json.loads((home / ".claude" / "settings.json").read_text(encoding="utf-8"))
+    scripts = list(_registered_hook_scripts(settings, home))
+    assert any(s.endswith("handover_guard.py") for s in scripts), (
+        "the shipped merge should register the handover guard, but no local hook script was found: %s"
+        % scripts)
+    missing = [s for s in scripts if not os.path.isfile(s)]
+    assert not missing, "install.sh registered hook(s) whose file it did not place: %s" % missing
 
 
 # ---------------- codex_global_config.py: opt-in user-wide secret shield ----------------

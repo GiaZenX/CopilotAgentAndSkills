@@ -150,7 +150,12 @@ def test_only_comfort_hooks_opt_out_of_the_bound():
     was the original member for exactly that reason. (`auto_dashboard` was a third such member
     until the phase-2 lockstep deleted it: the INDEX is written atomically by the kernel's own state
     writes, not by a Stop hook. The dashboard is a separate, explicit render step —
-    `scripts/generate_dashboard.py` — and no kernel path produces it.)"""
+    `scripts/generate_dashboard.py` — and no kernel path produces it.)
+
+    EXTENDED 2026-08-10 (BUG-0016 / DEC-0032): `clear_handover_marker.py` joins the set. It is a
+    SessionStart(startup) hook that deletes `.claude/HANDOVER_PENDING`; it maintains a project file
+    and contains no `sys.exit(2)`, so making it fail-closed would let an unreadable payload block a
+    fresh session — the opposite of what a marker-cleanup hook is for."""
     tolerating, blockers = set(), set()
     for kit in KITS:
         for path in globmodule.glob(os.path.join(TEAM_KITS, kit, "hooks", "*.py")):
@@ -163,8 +168,8 @@ def test_only_comfort_hooks_opt_out_of_the_bound():
                 tolerating.add(name)
                 if "sys.exit(2)" in body:
                     blockers.add(name)
-    assert tolerating == {"format_on_write.py", "session_status.py",
-                          "notify_agent_events.py", "kit_trust_state.py"}
+    assert tolerating == {"format_on_write.py", "session_status.py", "notify_agent_events.py",
+                          "kit_trust_state.py", "clear_handover_marker.py"}
     # ...and the rule itself, asserted rather than trusted to the list above: nothing that can
     # BLOCK may opt out, whatever it is called.
     assert blockers == set(), "%s can exit 2 and must not tolerate overflow" % sorted(blockers)

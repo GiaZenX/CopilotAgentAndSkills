@@ -1,0 +1,68 @@
+id: DEC-0032
+title: Der Handover-Ueberlauf wird durch einen globalen Marker-Hook geschlossen, weiche
+  Variante
+context: 'BUG-0016: die Einstiegssitzung schreibt nach der Neustart-Bitte weiter Produktcode
+  und leitet ab, waehrend die frisch installierten Projekt-Hooks durch die Watcher-Luecke
+  inaktiv sind. Gemessen (staging/BUG-0016/messung-2026-08-10.md, reload-recherche,
+  fix-design-2026-08-10.md): nur ein GLOBALER Hook in ~/.claude/settings.json ist
+  in der Einstiegssitzung aktiv; /clear umgeht ihn nicht; SessionStart-Hooks blockieren
+  nicht, taugen aber als faelschungssicherer Cleanup, weil ein frisch installierter
+  Projekt-Hook nur bei echtem Prozess-Neustart feuert.
+
+
+  Gemessener Schreiber-Plan (gate_write_scope.py:12): project_memory/** ist KERNEL-ONLY
+  -- Items entstehen ueber den Kernel per Bash, Produktcode ueber Write/Edit. Das
+  ist die Trennlinie, die der Hook nutzt.
+
+
+  Die Invasivitaet (ein globaler Hook laeuft dauerhaft in JEDER Claude-Code-Sitzung
+  des Nutzers) wurde dem Nutzer vorgelegt; er hat zugestimmt, nachdem geklaert war,
+  dass der Hook nur einzelne Werkzeugaufrufe ABLEHNT und erklaert -- die Sitzung nie
+  schliesst, Reden immer erlaubt bleibt, und er ausserhalb von Kit-Projekten (ohne
+  Marker) ein sofortiges No-op ist.'
+decision: 'BUG-0016 wird geschlossen durch: (1) einen globalen PreToolUse-Hook, ausgerollt
+  ueber user/claude/settings.json nach ~/.claude/settings.json; (2) eine Marker-Datei
+  .claude/HANDOVER_PENDING, die das Scaffold setzt; (3) einen projekteigenen SessionStart(startup)-Cleanup-Hook,
+  der den Marker beim echten Neustart loescht.
+
+
+  Der Hook prueft zuerst den Marker im cwd; fehlt er -> exit 0 (No-op). Mit Marker
+  gilt die WEICHE Variante, vom Nutzer gewaehlt:
+
+  - ERLAUBT bleiben Schreibungen an PLAN-Artefakten: product/masterplan.md, project_config.yaml,
+  das Wurzelitem product/active/PR-0001. Der Nutzer darf den Plan bis zuletzt verfeinern.
+
+  - BLOCKIERT werden Produktcode (Write/Edit ausserhalb der Plan-Artefakte und des
+  Zustands) und weitere ABLEITUNG (Bash-Zeilen, die neue Items ueber den Kernel kapturen,
+  Spezialisten spawnen, den Lebenszyklus fahren). Also alles, was zum Post-Handover-PM
+  gehoert.
+
+  - Reden (fragen/antworten/erklaeren) ist nie betroffen; der Hook lehnt nur einzelne
+  Werkzeugaufrufe ab.
+
+
+  ZWINGENDE VORAUSSETZUNG: user/merge_settings.py muss fuer den hooks-Key eine Array-Union-Sonderbehandlung
+  bekommen (wie heute fuer permissions.allow/deny), sonst wird der Handover-Hook bei
+  jedem Nutzer mit bereits vorhandenem globalem hooks-Key stillschweigend uebersprungen
+  (gemessen: merge_settings.py:85-89).'
+consequences: 'BUG-0017 ist NICHT mitgeloest -- der Freigabe-/Mint-Weg bricht vor
+  Marker/Installation und braucht einen eigenen Fix.
+
+
+  VOR dem Bau ist zu MESSEN (DEC-0030), nicht anzunehmen: feuert ein User-Scope-PreToolUse-Hook
+  unter bypassPermissions wie ein Projekt-Hook; ueberspringt merge_settings.py wirklich
+  bei vorhandenem Ziel-hooks-Key; feuert der SessionStart(startup)-Cleanup nur bei
+  echtem Neustart und nicht bei IDE-Reconnect/Terminal-Reattach; spuerbare Latenz
+  des globalen No-op-Hooks. Diese vier Messungen sind Teil des Fix-Auftrags und gehen
+  ihm voran.
+
+
+  Vom Nutzer am 2026-08-10 entschieden (globaler Hook + Marker + weiche Variante),
+  nach Klaerung, dass der Hook die Sitzung nie schliesst.'
+source: Nutzerentscheidung 2026-08-10; staging/BUG-0016/fix-design-2026-08-10.md (Design-Scan,
+  gegen die eigenen Messungen gehalten); gate_write_scope.py:12 als Beleg des Schreiber-Plans;
+  merge_settings.py:85-89
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T16:35:12'

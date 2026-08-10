@@ -1657,6 +1657,37 @@ Deckung, und keine Runde darf ihn als solche zitieren.
 
 **Stolperdraht:** keiner in `tools/` — das ist der Kern des Eintrags. BUG-0014 AC-3 verlangt einen.
 
+### L39 — Der Handover-Guard liest den äußeren Verb, nicht den einer gewrappten oder kodierten Zeile (TSK-0031)
+
+**Mechanismus:** `user/claude/hooks/handover_guard.py::_handle_shell` zerlegt die Kommandozeile seit
+TSK-0031 an `&&`, `||`, `;` und `|` und prüft **je Teilbefehl** den Verb (`_segment_drives_engine`).
+Damit sind die **routinemäßigen** Ketten gedeckt, die ein überlaufender Einstiegsagent wirklich tippt.
+Was das nicht liest, ist der Befehl, den ein **Wrapper mit eigenem Verb** erst intern startet: bei
+`sh -c 'python scripts/harness.py capture'` oder `bash -lc '…'` steht in Verbposition `sh`/`bash`, die
+Ableitung liegt in einer Zeichenkette, die dieser Hook nicht ausführt und darum nicht bewertet.
+Dieselbe Blindheit trifft jede **kodierte/verschleierte** Form (base64 an `python -c`, eine Variable,
+die die Zeile trägt).
+
+**Kette (gemessen 2026-08-10 unter Marker, isoliertes cwd):** gedeckt und jetzt rc 2 —
+`cd project_memory && python ../scripts/harness.py capture`, `echo hi && python scripts/harness.py
+capture`, `true; python scripts/harness.py dispatch`, `ls && python -m kernel.cli create-task`,
+`cat foo | python scripts/harness.py capture`. Offen und rc 0 — `sh -c 'python scripts/harness.py
+capture'`, `bash -lc 'python -m kernel.cli create-task'`.
+
+**Urteil: Ausnahme, Abnahme offen** — die Restmenge ist **bewusst nicht** geschlossen. Ein
+vollständiger Shell-Parser im globalen Hook wäre genau das Aufzählungs-/Parser-Kaninchenloch, gegen
+das DEC-0029 entschieden hat; und das Bedrohungsmodell (DEC-0032) ist ein **wohlmeinender**
+Einstiegsagent, der weiterarbeitet, kein Gegner, der absichtlich verschleiert — deshalb ist die
+routinemäßige Kette der reale Vektor (gebaut), die verschleiernde der benannte Rest.
+
+**Was stattdessen begrenzt:** die eigentliche Grenze ist der Neustart selbst — nach ihm sind die
+Kit-Gates aktiv und `gate_write_scope`/`gate_dispatch` fangen dieselben Ableitungen strukturell.
+Bis dahin ist der Guard ein Gurt, kein Sandkasten (Docstring). **Sozial** ergänzt: der Einstiegsagent
+folgt seiner Verfassung, die ihm die Ableitung ohnehin untersagt.
+
+**Roter Test ohne den Fix:** `test_hooks.py::test_handover_guard_blocks_compound_engine_forms` — die
+zusammengesetzten Formen kommen gegen den Vor-Fix-Körper (erster Verb) mit rc 0 statt 2 zurück.
+
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier
