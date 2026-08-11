@@ -1,7 +1,16 @@
 # Lint config for the agents-and-skills repo's own shipped Python.
+#
+# The rule set is CHOSEN here, never inherited (BUG-0007). Without an explicit `select` ruff lints
+# with whatever default set the installed version happens to ship, so a ruff upgrade silently
+# changes the findings instead of being a decision (the version-drift measurement lives in
+# tools/test_ci_lint_pinned.py). This `select` is the set this repo has been green under; widening
+# it is a deliberate edit, and the ruff version is pinned in .github/workflows/ci.yml so both ends
+# stay reproducible.
 [lint]
-# The enforcement hooks must insert their directory on sys.path BEFORE importing the
-# co-located helpers (_root, _audit), so module-level imports after sys.path.insert are
-# intentional in hooks. Scope the E402 exception to hooks only.
+select = ["E4", "E7", "E9", "F"]
+
 [lint.per-file-ignores]
+# The enforcement hooks must insert their directory on sys.path BEFORE importing the co-located
+# helpers (_root, _audit), so module-level imports after sys.path.insert are intentional in hooks.
+# Scope the E402 exception to hooks only.
 "team-kits/*/hooks/*.py" = ["E402"]

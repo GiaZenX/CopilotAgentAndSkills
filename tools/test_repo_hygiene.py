@@ -19,6 +19,7 @@ open remainder H37 Rest 2 in `docs/POST_V2_WISHLIST.md`, and the repair belongs 
 tracked-and-ignored OUTSIDE that tree is a new tool trace that must be untracked.
 """
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -43,6 +44,8 @@ def test_git_tracks_no_ignored_file_outside_canonical_state():
     to be untracked (`git rm --cached`) for the rule to mean anything. `project_memory/` is excluded
     because it is gate-protected canonical state a harness session cannot untrack (H37).
     """
+    if not shutil.which("git"):
+        pytest.skip("git not on PATH")
     if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT,
                       capture_output=True, text=True).returncode != 0:
         pytest.skip("not a git work tree")
@@ -62,6 +65,8 @@ def test_the_known_out_of_scope_trace_is_still_the_only_exception():
     should be removed; if a SECOND ignored file appears under project_memory/, it surfaces here
     rather than hiding behind the prefix.
     """
+    if not shutil.which("git"):
+        pytest.skip("git not on PATH")
     if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT,
                       capture_output=True, text=True).returncode != 0:
         pytest.skip("not a git work tree")

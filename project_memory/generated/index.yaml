@@ -1,4 +1,4 @@
-generated_at: '2026-08-11T10:48:03'
+generated_at: '2026-08-11T13:04:10'
 items:
 - id: BUG-0001
   type: BUG
@@ -158,10 +158,38 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
-- id: DEC-0001
-  type: DEC
-  title: Der PM spielt Kit-Updates selbst ein und erzwingt danach den Neustart
-  status: VALID
+- id: BUG-0026
+  type: BUG
+  title: record_deposit_of laesst den Digest weg, waehrend die Abhilfe den Leser die
+    Quelle kuerzen heisst -- ein echter Datensatz kann spurlos verschwinden
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0027
+  type: BUG
+  title: Die gedruckte READY-Zeile der Migration laesst die Flags weg, mit denen der
+    Plan gebaut wurde
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0028
+  type: BUG
+  title: Jede angewandte NOT-SEARCHED-Abhilfe erzeugt dauerhaft eine weitere NOT-SEARCHED-Zeile,
+    ohne Rueckweg
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0029
+  type: BUG
+  title: doctor kann das Kit eines V1-Projekts nicht benennen (kit unknown bei bekannter
+    kit_version)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0030
+  type: BUG
+  title: Zwei literale Backspace-Zeichen (0x08) im Quelltext von gate_ledger_valid.py
+  status: OPEN
   revision: 1
   approval_ref: null
 - id: DEC-0002
@@ -430,6 +458,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0008
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0009
   type: EVD
   title: null
   status: null
