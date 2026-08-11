@@ -26,8 +26,19 @@ __pycache__/
 # b32ec98 because nothing ignored them: a PowerShell module cache (a subagent ran with
 # HOME pointing here) and the kit audit log, which a kit HOOK SUBPROCESS writes through
 # find_repo_root() -- gate 1 never sees that write, and the item measuring the kits
-# cannot forbid it. The audit log is the open remainder H37 Rest 2 in
-# docs/POST_V2_WISHLIST.md; ignoring it keeps it out of the next commit but does NOT
-# close it -- the repair belongs in the kit.
+# cannot forbid it.
+#
+# A .gitignore rule DOES NOTHING to a file git already tracks, and both of these were
+# committed (b32ec98), so the rules below were dead until each file was also untracked.
+# The PowerShell cache was untracked in TSK-0037 (`git rm --cached Microsoft/`); with the
+# committed copy gone this rule now keeps it from being re-added. Enforced by
+# tools/test_repo_hygiene.py, which fails if git tracks any file a rule here ignores.
+#
+# project_memory/.audit/hook_events.jsonl is STILL tracked and cannot be untracked from a
+# harness session: it is canonical state under gate 1, which refuses every tool write to
+# project_memory/. So for THAT file this rule is still a no-op -- it is committed and stays
+# committed until the kit stops writing it. That is the open remainder H37 Rest 2 in
+# docs/POST_V2_WISHLIST.md; the repair belongs in the kit, and the hygiene test excludes
+# project_memory/ for exactly this reason.
 Microsoft/
 project_memory/.audit/

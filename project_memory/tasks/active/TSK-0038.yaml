@@ -1,0 +1,33 @@
+id: TSK-0038
+product_requirement: PR-0003
+derives_from: BUG-0007
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- ruff.toml
+- .github/**
+- tools/**
+- team-kits/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- 'BUG-0007: CI installiert ruff ohne Version, ruff.toml setzt kein select, erbt also
+  die ausgelieferte Regelmenge. Gemessen: ruff 0.16.0 -> 913 Funde, 0.16.1 -> 2164
+  (Faktor 2,4). Zwei Laeufe derselben CI auf demselben Stand muessen dasselbe liefern'
+expected_outputs:
+- 'Regelmenge explizit gewaehlt statt geerbt (Upgrade wird Entscheidung, nicht Ereignis);
+  ruff-Version gepinnt. Waehle ein select, das die HEUTIGE gruene Regelmenge erhaelt
+  (minimale Churn), oder fixe was surfaced. Ein Test/CI-Beleg: zwei Laeufe = dasselbe
+  Ergebnis'
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T09:37:08'

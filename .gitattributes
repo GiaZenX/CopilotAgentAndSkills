@@ -1,5 +1,12 @@
-* text=auto
-*.py text eol=lf
-*.sh text eol=lf
-team-kits/*/VERSION text eol=lf
+# Every text file checks out with LF on every platform, so a Windows clone with the default
+# core.autocrlf=true sees the same bytes the Linux/CI checkout does. This is a DEFINITION, not an
+# enumeration of extensions: byte-size and byte-identity checks in this repo (lead_package.size vs
+# tools/lead_package_sizes.json, the mirror parity in tools/validate.py) are line-ending sensitive,
+# and pinning only *.py/*.sh/VERSION was exactly BUG-0025 -- a CRLF checkout inflated the lead
+# instruction package (.md) past its recorded size and install.sh's validate step aborted before it
+# installed any hook. `eol=lf` overrides core.autocrlf, so the working tree no longer depends on it.
+# (The kit content hash normalizes CRLF itself -- kernel.hashing.kit_hash -- so it is unaffected
+# either way; the size check is the one that reads raw on-disk bytes.)
+* text=auto eol=lf
+# The one binary kind in the tree; `binary` (later rule wins) keeps git from touching these bytes.
 *.woff2 binary

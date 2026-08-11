@@ -1,0 +1,14 @@
+id: EVD-0008
+kind: review
+related:
+- TSK-0036
+result: pass
+summary: verifier PASS (Family D quick) for diff:15ee09fd54f9c629bbfe954d764e025fda87ca0b346bc5d6a59aac454533805d
+  -- BUG-0025 .gitattributes definition (autocrlf clone validate rc1->rc0, kit-hash
+  unaffected); BUG-0008 git rm --cached non-destructive, .audit residue named H37;
+  2447 passed/13 skipped, ruff+validate clean, stamp unchanged
+artifact_refs:
+- docs/reviews/2026-08-11-family-d-quick-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-11T10:48:02'

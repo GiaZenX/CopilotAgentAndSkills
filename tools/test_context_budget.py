@@ -200,6 +200,49 @@ def test_the_recorded_ceiling_is_the_measurement_and_not_a_typed_number():
         % drifted)
 
 
+def test_every_file_the_package_weighs_checks_out_lf():
+    """A CRLF checkout must not inflate the byte-size-checked package past its record (BUG-0025).
+
+    THE RECORD IS TAKEN ON AN LF TREE and `validate.py` compares it against `lead_package.size`,
+    which is `os.path.getsize` — raw on-disk bytes, not CRLF-normalized (unlike `kit_hash`, which
+    replaces `\\r\\n` before it digests, so the kit content hash is unaffected either way). So a
+    Windows clone with the default `core.autocrlf=true` adds one byte per line to every `.md` the
+    package weighs and pushes it over its record. Measured end to end: dev-team goes 30674 -> 31006
+    against a 30674 record, `tools/validate.py` exits 1 with "lead instruction package … > …
+    recorded (spec II.5)", and `install.sh` runs validate BEFORE it installs any hook — so a plain
+    Windows clone installs nothing, handover_guard included.
+
+    The mechanism that prevents it is `.gitattributes` pinning these files to `eol=lf`, which
+    overrides `core.autocrlf`. This test asks git's OWN attribute resolution (`git check-attr`, the
+    running machinery reading the working-tree `.gitattributes`) about every file the package
+    actually weighs — derived from `lead_package.files`, not listed — so pinning by an enumeration
+    of extensions that forgets one (which is how BUG-0025 shipped: `*.py`/`*.sh`/VERSION and not
+    `.md`) turns this red for the file it forgot.
+    """
+    git = shutil.which("git")
+    if not git:
+        pytest.skip("git not on PATH")
+    if subprocess.run([git, "rev-parse", "--is-inside-work-tree"], cwd=ROOT,
+                      capture_output=True, text=True).returncode != 0:
+        pytest.skip("not a git work tree (exported source)")
+    weighed = [path for kit in KITS for path in lead_package.files(_kit_dir(kit))]
+    assert weighed, "the package weighs nothing — the subject derived to nothing"
+    wrong = {}
+    for path in weighed:
+        rel = os.path.relpath(path, ROOT)
+        result = subprocess.run([git, "check-attr", "eol", "--", rel], cwd=ROOT,
+                                capture_output=True, text=True, encoding="utf-8",
+                                errors="replace", timeout=60)
+        assert result.returncode == 0, result.stderr
+        resolved = result.stdout.strip().rsplit(": ", 1)[-1]
+        if resolved != "lf":
+            wrong[rel] = resolved
+    assert not wrong, (
+        "these files feed the byte-size check but do not check out LF, so a core.autocrlf=true "
+        "clone would inflate the lead package past its recorded size and abort install.sh before "
+        "any hook is installed (BUG-0025): %s" % wrong)
+
+
 OBSERVATIONS = json.load(io.open(os.path.join(ROOT, "tools", "provider_observations.json"),
                                  encoding="utf-8"))
 
