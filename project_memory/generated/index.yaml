@@ -1,4 +1,4 @@
-generated_at: '2026-08-11T05:02:26'
+generated_at: '2026-08-11T09:33:40'
 items:
 - id: BUG-0001
   type: BUG
@@ -148,6 +148,13 @@ items:
   type: BUG
   title: 'create-task nimmt expected_outputs: [] an -- ein Auftrag ohne erwartete
     Ausgaben ist kein Auftrag'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0025
+  type: BUG
+  title: .gitattributes pinnt .md nicht auf eol=lf -- ein Standard-Windows-Klon blaeht
+    das Lead-Paket ueber das Limit und install.sh bricht ab
   status: OPEN
   revision: 1
   approval_ref: null
@@ -411,6 +418,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0006
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0007
   type: EVD
   title: null
   status: null

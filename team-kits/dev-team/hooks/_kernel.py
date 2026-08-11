@@ -52,15 +52,41 @@ unmeasurable correctness risk in the one code path that must never be wrong. If 
 shows the p95 target missed, the fix is a JSON sidecar written by the kernel — not a second
 parser for the same files.
 """
-import contextlib
-import importlib
-import json
 import os
 import sys
-import time
-import traceback
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# THE GATE PREAMBLE PUT THIS DIRECTORY AT sys.path[0], and it outlives the preamble. Every stdlib
+# name a gate imports AFTER `import _kernel` (`re`, `shlex` in gate_write_scope) and every one the
+# sibling helpers below pull in (`re` in _compat) would otherwise be answerable by a file planted
+# in this directory -- measured 2026-08-05 (BUG-0013): a no-op `re.py`/`shlex.py` here left the
+# tokeniser empty, `written_paths` empty, and gate 1 allowed `sed -i` into
+# `team-kits/kernel/state.py` with rc 0 and no stderr.
+#
+# THE GUARD ITSELF LIVES IN `_stdlib_guard`, which is also what `_gate.py` installs BEFORE it
+# executes any gate -- one definition, two positions, and the launcher's is the one that covers the
+# hooks which never import this module. What THIS position adds is the direct run: a hook started
+# without the launcher is guarded if it uses the bridge.
+#
+# WHAT RUNS AHEAD OF THE GUARD IS `os`, `sys` AND `_stdlib_guard`, AND NOTHING ELSE -- which is the
+# correction of 2026-08-11. This paragraph used to name `importlib` among them and call all three
+# "already in sys.modules"; measured, `importlib` is NOT preloaded, so `import importlib` ahead of
+# the guard really did execute a planted `importlib.py` (the process still ended in rc 2, but
+# through the preamble's fail-closed bracket, not because the plant was refused). `os` and `sys`
+# ARE preloaded by interpreter start-up, and `_stdlib_guard` imports nothing beyond them and
+# reaches `PathFinder` through `sys.meta_path` instead of importing it -- see its docstring.
+_HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _HOOKS_DIR)
+
+import _stdlib_guard  # noqa: E402
+
+_stdlib_guard.install((_HOOKS_DIR,))
+
+import contextlib  # noqa: E402 -- after the guard on purpose (see above)
+import importlib  # noqa: E402
+import json  # noqa: E402
+import time  # noqa: E402
+import traceback  # noqa: E402
+
 from _root import find_repo_root  # noqa: E402
 import _audit  # noqa: E402
 import _compat  # noqa: E402

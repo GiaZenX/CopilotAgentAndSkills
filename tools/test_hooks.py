@@ -1663,6 +1663,36 @@ def test_packaging_gate_clears_on_a_kernel_written_architecture_item(prd_repo):
     assert run_hook("gate_packaging_decision.py", _merge_payload(prd_repo), prd_repo) == 0
 
 
+def _stage_kernel_bridge(hooks, source=None):
+    """Copy `_kernel.py` and everything it needs into `hooks` — the bridge a scaffolded project has.
+
+    The transitive closure lives in `conftest.sibling_import_closure` — one home, so this stager
+    and `test_hooks_v2._stage_launcher` cannot drift into two answers about what a helper needs
+    (they did, each written out by hand and each one dependency short when `_kernel` grew
+    `_stdlib_guard`).
+    """
+    source = source or HOOKS
+    names = conftest.sibling_import_closure("_kernel.py", source)
+    for name in names:
+        shutil.copy(os.path.join(source, name), os.path.join(str(hooks), name))
+    return names
+
+
+def test_the_kernel_bridge_is_staged_with_everything_it_imports(tmp_path):
+    """The derivation above, measured — a stager that quietly staged too little would make the
+    tests using it report the bridge as ABSENT while measuring nothing about their own subject.
+
+    Both ends in one assertion: the bridge itself and the helpers it cannot load without, including
+    the standard-library guard it gained with BUG-0013. Naming that one here is what turns this red
+    if `_kernel` ever stops installing the guard — the day the kits are exposed again."""
+    hooks = tmp_path / "hooks"
+    hooks.mkdir()
+    names = _stage_kernel_bridge(hooks)
+    for required in ("_kernel.py", "_root.py", "_audit.py", "_compat.py", "_stdlib_guard.py"):
+        assert required in names, "%s is not staged with the bridge: %s" % (required, names)
+    assert set(names) == set(os.listdir(str(hooks))), "the closure and what landed differ"
+
+
 # ---------------- dashboard generator: typed items + kernel index -> generated/dashboard.html ----------------
 DASHBOARD = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts",
                          "generate_dashboard.py")
@@ -1679,8 +1709,7 @@ def _dashboard_repo(tmp_path):
     src = os.path.dirname(DASHBOARD)
     hooks = tmp_path / ".claude" / "hooks"
     hooks.mkdir(parents=True)
-    for helper in ("_kernel.py", "_root.py", "_audit.py", "_compat.py"):
-        shutil.copy(os.path.join(HOOKS, helper), str(hooks / helper))
+    _stage_kernel_bridge(hooks)
     scripts = tmp_path / "scripts"
     scripts.mkdir()
     for name in ("generate_dashboard.py", "progress.dashboard.template.html", "kit_checks.py"):
@@ -2110,8 +2139,7 @@ def _repo_with_kernel_bridge(tmp_path):
     """A repo where kit_checks can reach the kernel the way a scaffolded project does."""
     hooks = tmp_path / ".claude" / "hooks"
     hooks.mkdir(parents=True)
-    for helper in ("_kernel.py", "_root.py", "_audit.py", "_compat.py"):
-        shutil.copy(os.path.join(HOOKS, helper), str(hooks / helper))
+    _stage_kernel_bridge(hooks)
     return {"HARNESS_KERNEL_PATH": os.path.join(ROOT, "team-kits")}
 
 

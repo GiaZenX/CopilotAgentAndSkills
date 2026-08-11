@@ -16,13 +16,21 @@ launcher whose own compile is the only one that must succeed." This is that laun
 
 WHY THIS IS AN IMPROVEMENT AND NOT A RELOCATION. It does not make compilation infallible — this
 file can be truncated too. It reduces the number of files whose compile must succeed from "every
-gate, forever, including every gate anyone adds later" to exactly one, and makes that one as small
-as it can be: three stdlib imports, no helpers, no module-level work. What is left is a
-file short enough to read in full and stable enough that a kit update rarely rewrites it.
-The trade runs the other way too, and is named here rather than discovered later: a
-truncated `_gate.py` now disarms every blocking gate in the kit at once, where before it
-would have disarmed one. That is the deal — one file that must hold, instead of twenty
+gate, forever, including every gate anyone adds later" to a small fixed set, and keeps that set as
+small as the job allows. What is left is a file short enough to read in full and stable enough that
+a kit update rarely rewrites it. The trade runs the other way too, and is named here rather than
+discovered later: a truncated `_gate.py` now disarms every blocking gate in the kit at once, where
+before it would have disarmed one. That is the deal — one file that must hold, instead of twenty
 that each might not.
+
+THAT SET IS TWO FILES, NOT ONE, SINCE BUG-0013, and this paragraph used to say "three stdlib
+imports, no helpers, no module-level work" — a promise this file stopped keeping the moment it
+began installing the standard-library guard. It now imports `_stdlib_guard` (a sibling that itself
+imports only `os` and `sys`) and REFUSES if that import fails, so a half-finished kit update that
+delivers this file without that one stops every gated call instead of running gates that could be
+reading a planted module. Both directions of that are deliberate: the dependency is the price of
+the guard covering the hooks which never import `_kernel`, and the refusal is the same fail-closed
+reading the rest of this file applies to itself.
 
 CONTRACT: `python _gate.py <gate>.py [<gate>.py ...]` — compile and run each named gate in this
 process as `__main__`, IN ORDER, so a gate behaves exactly as when run directly (it still reads
@@ -66,7 +74,6 @@ gate-defined classes then match a direct run exactly; `__loader__` and
 """
 import os
 import sys
-import types
 
 # NO BYTECODE FROM A GATE RUN. `.claude/hooks` and `.claude/kernel` are the hashed enforcement
 # bundle, and everything a gate imports — `_kernel`, `_compat`, the whole kernel package — would
@@ -74,7 +81,9 @@ import types
 # the argument that once kept bytecode out of the hash and thereby out of the measurement (see
 # `kernel.hashing.BYTECODE_SUFFIXES`). The kits register every hook as `python -B`, so in
 # production this line is redundant; it is here for a run THROUGH THIS LAUNCHER that was started
-# without `-B`. It must precede the gate's own preamble, which imports `_kernel`. Cost, measured:
+# without `-B`. It must precede the gate's own preamble, which imports `_kernel` — and it stands
+# FIRST in this file, ahead of the guard import below, because that import is the first one this
+# launcher makes out of the bundle and would otherwise cache itself into it. Cost, measured:
 # ~5 ms on a full kernel import.
 #
 # WHAT IT DOES NOT COVER, and this sentence used to claim the opposite: a gate started DIRECTLY
@@ -85,7 +94,45 @@ import types
 # project with an empty cache: the FIRST such run refuses its own spawn with the bundle reason.
 # Closing that means the flag has to move into `GATE_PREAMBLE` (`_kernel.py`), i.e. into every
 # shipped gate of every kit; until that release the residual is this paragraph, not a guarantee.
+# THE SAME DIRECT-RUN RESIDUAL APPLIES TO THE GUARD BELOW, and is named there.
 sys.dont_write_bytecode = True
+
+# THE STANDARD LIBRARY WINS, BEFORE ANYTHING ELSE OF THIS DIRECTORY IS IMPORTED OR EXECUTED
+# (BUG-0013). Every hook puts this directory at `sys.path[0]` as it loads, so a file planted here
+# and NAMED after a standard-library module answers that name for the gate. Installing it in the
+# LAUNCHER is what makes the protection a property of the registration rather than of a list of
+# gates: the hooks that never import `_kernel` — `gate_pipeline`, `gate_test_coverage`,
+# `guard_no_adhoc`, `guard_question_context`, `guard_guidelines` — reach `re` and `subprocess`
+# themselves, and every one of them is registered behind this file. Measured 2026-08-11 through
+# this launcher with a no-op `subprocess.py` planted beside it: `gate_pipeline` read a RED
+# `scripts/quality.py` as green and allowed the push, rc 0, no stderr. It stands ahead of
+# `import types` for the same reason it stands ahead of `exec`: `types` is a standard-library name
+# and is NOT preloaded by the interpreter (`os` and `sys` are, measured), so it is shadowable here.
+#
+# FAIL-CLOSED ON ITS OWN FAILURE, like the gate preamble it precedes: a launcher that cannot
+# install the guard has not established what it is about to run, and exit 1 would be read as an
+# allow. `_refuse` is not defined yet at this point, so this writes the same shape by hand.
+#
+# WHAT IS LEFT OPEN, on the same footing as the `-B` residual above and for the same reason: a hook
+# run DIRECTLY does not execute this file, so it is guarded only if it imports `_kernel`, which
+# installs the same guard. The five hooks that do not import `_kernel` are therefore unguarded in a
+# direct run — the test suite and hand diagnosis — and guarded in production, where the
+# registration puts every one of them behind this launcher.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+try:
+    import _stdlib_guard
+    _stdlib_guard.install((_HERE,))
+except BaseException as exc:  # noqa: BLE001 — a launcher that cannot guard must not mean "allow"
+    sys.stderr.write("[team-kit gate launcher] refused: the standard-library guard could not be "
+                     "installed (%r) — a gate that may be reading a planted module has not "
+                     "inspected the call (spec II.4 fail-closed).\nRemedy: run "
+                     "`python scripts/harness.py doctor`; a partial checkout or half-finished kit "
+                     "update is the usual cause.\n" % (exc,))
+    sys.exit(2)
+
+import types  # noqa: E402 — after the guard on purpose (see above)
 
 
 def _refuse(reason):

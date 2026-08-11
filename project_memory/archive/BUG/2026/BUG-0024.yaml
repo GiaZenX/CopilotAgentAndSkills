@@ -1,0 +1,38 @@
+id: BUG-0024
+title: Der Lead-Package-Groessencheck laeuft nicht in der Abnahme-Suite -- zwei Commits
+  landeten mit rotem tools/validate.py
+related_pr: PR-0003
+observed: 'Live-Handover-Pilot 2026-08-11 (docs/pilot/2026-08-11-live-handover-bypasspermissions.md):
+  install.sh ruft tools/validate.py, das mit exit 1 abbricht (Lead-Instruction-Package
+  ueber spec II.5: dev 31006>30674, office 32124>31787, research 35129>34761). Am
+  Lead unabhaengig an einem sauberen ''git archive 394ba2b''-Checkout bestaetigt.
+  Der Check laeuft NICHT in ''pytest tools/'' und NICHT in Gate 3 -- deshalb sind
+  die Commits 41dd8f4 (TSK-0031) und 394ba2b (TSK-0032) mit strukturell ungueltigem
+  tools/validate.py gelandet, obwohl beide Abnahmelaeufe ''validate.py sauber'' meldeten
+  (die Umsetzer massen in einer Kopie des jeweils VORIGEN Standes, nicht am wachsenden
+  Arbeitsbaum). Gleiche Klasse wie BUG-0014 (roter Check ausserhalb der pytest-Suite).'
+expected: Ein Check, dessen Rot einen Ship verhindert (install.sh bricht ab), ist
+  Teil der Abnahme, gegen die committet wird -- entweder laeuft tools/validate.py
+  in 'pytest tools/' mit, oder Gate 3 verlangt seinen gruenen Lauf, oder beides. Ein
+  Commit mit rotem tools/validate.py ist dann nicht mehr moeglich, ohne dass es jemand
+  sieht.
+repro: 'git archive <HEAD> | tar -x -C /tmp/x; cd /tmp/x; PYTHONPATH=team-kits python
+  -B tools/validate.py -> VALIDATION FAILED (3). Dann: git log zeigt zwei Commits,
+  deren Abnahme ''validate.py sauber'' behauptete.'
+severity: high
+acceptance_criteria:
+- id: AC-1
+  text: tools/validate.py (inkl. Lead-Package-Groesse) laeuft in der Abnahme, gegen
+    die Gate 3 committen laesst -- gemessen, dass ein Commit mit rotem validate.py
+    verweigert oder sichtbar wird
+- id: AC-2
+  text: 'Ein Test wird ohne den Fix rot: ein Baum mit ueber-grossem Lead-Package committet
+    heute durch, danach nicht mehr (extern belegt)'
+- id: AC-3
+  text: Geprueft, welche weiteren Checks nur in tools/validate.py und nicht in pytest
+    tools/ liegen -- gemessen, nicht aufgezaehlt (Verwandtschaft zu BUG-0014)
+status: REJECTED
+revision: 1
+approval_ref: null
+created: '2026-08-11T05:31:51'
+closed_at: '2026-08-11T05:58:59'

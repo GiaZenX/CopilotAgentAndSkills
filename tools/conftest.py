@@ -18,10 +18,40 @@ failure", which is the one label a reader must not walk away with.
 """
 
 
+import ast
+import io
 import os
 import sys
 
 import pytest
+
+
+def sibling_import_closure(start, source):
+    """`start` plus every sibling module it imports, TRANSITIVELY — file names, `start` first.
+
+    ONE HOME for the derivation two test modules need (`test_hooks._stage_kernel_bridge`,
+    `test_hooks_v2._stage_launcher`): a hook helper that is copied into a scaffolded `.claude/hooks`
+    for a real-process test has to travel with everything it imports, or the launcher/bridge meets
+    its own fail-closed refusal instead of the behaviour under test. Both stagers wrote out the
+    list by hand and both were one dependency short the day one grew — `_kernel` gained
+    `_stdlib_guard` (BUG-0013) and nine real-process tests reported the bridge ABSENT while it was
+    present. DERIVED, and TRANSITIVE, so a grandchild import is covered too; a cycle terminates
+    because each name is followed once. Only siblings that EXIST in `source` are followed —
+    stdlib and package imports are not siblings and drop out.
+    """
+    order, pending = [], [start]
+    while pending:
+        name = pending.pop(0)
+        if name in order or not os.path.isfile(os.path.join(source, name)):
+            continue
+        order.append(name)
+        with io.open(os.path.join(source, name), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), name)
+        for node in ast.walk(tree):
+            modules = ([alias.name for alias in node.names] if isinstance(node, ast.Import)
+                       else [node.module or ""] if isinstance(node, ast.ImportFrom) else [])
+            pending.extend(module.partition(".")[0] + ".py" for module in modules)
+    return order
 
 # NO BYTECODE IN THE SOURCE TREES. tools/validate.py states the principle for itself ("validation
 # must never create __pycache__ that the installer could pick up") and the suite kept breaking it one

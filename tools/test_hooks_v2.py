@@ -1329,6 +1329,66 @@ USES_BRIDGE = re.compile(r"^\s*(?:import _kernel\b|from _kernel import )", re.M)
 USES_BLOCKING = re.compile(r"\b(?:run_gate|fail_closed|_kernel\.block|payload)\s*\(")
 
 
+def _stage_launcher(hooks, kit="dev-team", source=None):
+    """Copy `_gate.py` AND everything it imports, transitively, into `hooks`. Returns the names.
+
+    The closure is `conftest.sibling_import_closure` — ONE home, shared with
+    `test_hooks._stage_kernel_bridge`, so neither can be a hand-written list that goes one short.
+    The launcher gained its first sibling dependency with BUG-0013 (`_stdlib_guard`, which installs
+    the standard-library guard before any gate is compiled or executed) and REFUSES when that
+    import fails, so a stager that staged `_gate.py` alone would make every launcher test measure
+    the fail-closed refusal instead of its subject. Transitive rather than one-level: the day
+    `_stdlib_guard` (or any dependency) grows a sibling of its own, a one-level parse of `_gate.py`
+    would miss it and reopen exactly that failure.
+    """
+    source = source or os.path.join(TEAM_KITS, kit, "hooks")
+    names = conftest.sibling_import_closure("_gate.py", source)
+    os.makedirs(str(hooks), exist_ok=True)
+    for name in names:
+        shutil.copyfile(os.path.join(source, name), os.path.join(str(hooks), name))
+    return names
+
+
+def test_the_launcher_is_staged_with_everything_it_imports():
+    """The direct dependency, asserted: the launcher and the guard it must not run without.
+
+    Named because it is the dependency that exists TODAY; this turns red if the launcher stops
+    importing the guard (the day BUG-0013 is open again). The GRANDCHILD case — the one a
+    one-level parse would miss — is the separate test below."""
+    import tempfile
+    staged = tempfile.mkdtemp(prefix="launcher-staging-")
+    try:
+        names = _stage_launcher(os.path.join(staged, "hooks"))
+        assert "_gate.py" in names and "_stdlib_guard.py" in names, names
+        assert set(names) <= set(os.listdir(os.path.join(staged, "hooks"))), "not all staged"
+    finally:
+        shutil.rmtree(staged, ignore_errors=True)
+
+
+def test_stage_launcher_follows_a_grandchild_import(tmp_path):
+    """`_stage_launcher` must follow the closure to ANY depth, not just `_gate.py`'s own imports.
+
+    RED WITHOUT THE FIX: a one-level parse of `_gate.py` sees `_stdlib_guard` (a direct import) but
+    NOT a module `_stdlib_guard` itself imports. Here a synthetic hooks tree gives `_stdlib_guard`
+    a fresh sibling; the transitive closure stages it, a one-level parse would not — and a launcher
+    test staged one module short measures the launcher's fail-closed refusal, not its subject,
+    which is the very failure the closure exists to prevent.
+    """
+    source = tmp_path / "src"
+    source.mkdir()
+    for name in os.listdir(HOOKS):
+        if name.endswith(".py"):
+            shutil.copyfile(os.path.join(HOOKS, name), str(source / name))
+    (source / "_grandchild.py").write_text("VALUE = 1\n", encoding="utf-8")
+    with io.open(str(source / "_stdlib_guard.py"), "a", encoding="utf-8") as handle:
+        handle.write("\nimport _grandchild  # noqa: E402,F401 — synthetic grandchild for the test\n")
+
+    names = _stage_launcher(tmp_path / "hooks", source=str(source))
+    assert "_grandchild.py" in names, (
+        "a module imported by _stdlib_guard (a grandchild of _gate) was not staged: %s" % names)
+    assert os.path.isfile(str(tmp_path / "hooks" / "_grandchild.py"))
+
+
 @pytest.mark.parametrize("kit", KITS)
 def test_a_gate_that_does_not_compile_still_blocks(tmp_path, kit):
     """The last fail-open gap, and the only one no Python file could close from inside itself. A
@@ -1340,9 +1400,7 @@ def test_a_gate_that_does_not_compile_still_blocks(tmp_path, kit):
 
     Measured directly: run a truncated gate both ways and compare the exit codes."""
     hooks = tmp_path / "hooks"
-    os.makedirs(str(hooks))
-    for helper in ("_gate.py",):
-        shutil.copyfile(os.path.join(TEAM_KITS, kit, "hooks", helper), str(hooks / helper))
+    _stage_launcher(hooks, kit)
     write(str(hooks / "gate_truncated.py"), "import os\nif True:\n")   # cut mid-write
     payload = json.dumps({"tool_name": "Write", "tool_input": {}, "cwd": str(tmp_path)})
     direct = subprocess.run([sys.executable, str(hooks / "gate_truncated.py")],
@@ -1505,8 +1563,8 @@ def test_the_launcher_runs_nothing_but_a_sibling_gate(tmp_path, argument):
     green while `_gate.py ../../evil.py` ran a foreign script. Each decoy below sits exactly where
     the unreduced path would find it, and the marker proves it stayed unrun."""
     hooks = tmp_path / "hooks"
+    _stage_launcher(hooks)
     os.makedirs(str(hooks / "sub"), exist_ok=True)
-    shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_gate.py"), str(hooks / "_gate.py"))
     decoy = "import sys; sys.stderr.write('DECOY RAN\\n'); sys.exit(0)\n"
     write(str(tmp_path / "evil.py"), decoy)
     write(str(hooks / "sub" / "evil.py"), decoy)
@@ -1523,8 +1581,7 @@ def test_a_working_gate_behaves_the_same_through_the_launcher(tmp_path, kit):
     must still see `__main__`, still read stdin, and still own its own exit code — the launcher
     must never overrule a gate that said 0."""
     hooks = tmp_path / "hooks"
-    os.makedirs(str(hooks))
-    shutil.copyfile(os.path.join(TEAM_KITS, kit, "hooks", "_gate.py"), str(hooks / "_gate.py"))
+    _stage_launcher(hooks, kit)
     write(str(hooks / "gate_probe.py"),
           "import json, sys\n"
           "data = json.load(sys.stdin)\n"
@@ -1985,9 +2042,7 @@ def test_the_launcher_makes_the_gate_the_real___main__(tmp_path):
     first among them — gets the launcher. Asserted directly so the next change to this file
     cannot quietly undo it."""
     hooks = tmp_path / "hooks"
-    os.makedirs(str(hooks))
-    shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_gate.py"),
-                    str(hooks / "_gate.py"))
+    _stage_launcher(hooks)
     write(str(hooks / "gate_probe.py"),
           "import sys\n"
           "m = sys.modules['__main__']\n"
@@ -2000,9 +2055,7 @@ def test_the_launcher_makes_the_gate_the_real___main__(tmp_path):
 def _chain_hooks(tmp_path):
     """A hooks directory with the shipped launcher and three probes that log what they saw."""
     hooks = tmp_path / "hooks"
-    os.makedirs(str(hooks))
-    shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_gate.py"),
-                    str(hooks / "_gate.py"))
+    _stage_launcher(hooks)
     shutil.copyfile(os.path.join(TEAM_KITS, "dev-team", "hooks", "_compat.py"),
                     str(hooks / "_compat.py"))
     for name, code in (("a", 0), ("b", 2), ("c", 0)):
@@ -3689,16 +3742,49 @@ def _gate_constant(kit, name):
     raise AssertionError("%s defines no %s" % (path, name))
 
 
-def _cli_commands_reaching(producers):
-    """The `args.command` values whose branch in `kernel/cli.py` calls one of `producers`.
+def _functions_by_name(tree):
+    """Every function DEFINED in this module, by name -- the call-graph nodes a branch may jump to."""
+    return {node.name: node for node in ast.walk(tree)
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
-    THE DERIVATION, so the gate's map cannot be a tuple that was true once. `create_task` and
-    `create_lease` are the kernel's two producers of "work somebody else executes"; which CLI
-    subcommands reach them is a fact of `cli.py` and is read out of it here.
+
+def _reaches_producer(node, producers, functions, seen):
+    """Does `node` reach one of `producers`, following calls into LOCAL helper functions?
+
+    TRANSITIVE, WITH CYCLE PROTECTION (BUG-0006, the class of review round 2's B7). A check that
+    stopped at the first hop read a branch reaching a producer only THROUGH a helper as not
+    reaching it at all -- and for the map this derivation pins, that silence removes an ordering
+    command from rule 4, which then stops refusing it for a subagent. A producer call is a `Call`
+    whose func names one of `producers` (as `x.create_task` or a bare `create_task`); a local hop
+    is a `Call` to a bare Name that this module defines. `seen` (function names already entered)
+    makes a self- or mutually-recursive helper terminate instead of looping forever.
     """
-    path = os.path.join(TEAM_KITS, "kernel", "cli.py")
-    with io.open(path, encoding="utf-8") as handle:
-        tree = ast.parse(handle.read(), path)
+    for inner in ast.walk(node):
+        if not isinstance(inner, ast.Call):
+            continue
+        func = inner.func
+        if isinstance(func, ast.Attribute) and func.attr in producers:
+            return True
+        if isinstance(func, ast.Name):
+            if func.id in producers:
+                return True
+            target = functions.get(func.id)
+            if target is not None and func.id not in seen:
+                seen.add(func.id)
+                if _reaches_producer(target, producers, functions, seen):
+                    return True
+    return False
+
+
+def _commands_reaching(source, path, producers):
+    """The `args.command` constants whose branch in `source` reaches one of `producers`.
+
+    Split from `_cli_commands_reaching` so the transitive resolution can be measured against a
+    constructed module (a branch that reaches a producer only via a helper) rather than only
+    against whatever `cli.py` happens to route directly today.
+    """
+    tree = ast.parse(source, path)
+    functions = _functions_by_name(tree)
     found = set()
     for node in ast.walk(tree):
         if not isinstance(node, ast.If):
@@ -3710,11 +3796,24 @@ def _cli_commands_reaching(producers):
                 and isinstance(test.left.value, ast.Name) and test.left.value.id == "args"
                 and isinstance(test.comparators[0], ast.Constant)):
             continue
-        for inner in ast.walk(node):
-            if (isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute)
-                    and inner.func.attr in producers):
-                found.add(test.comparators[0].value)
+        # each branch gets its OWN `seen` -- one command's helper walk must not suppress another's
+        if any(_reaches_producer(stmt, producers, functions, set()) for stmt in node.body):
+            found.add(test.comparators[0].value)
     return found
+
+
+def _cli_commands_reaching(producers):
+    """The `args.command` values whose branch in `kernel/cli.py` reaches one of `producers`.
+
+    THE DERIVATION, so the gate's map cannot be a tuple that was true once. `create_task` and
+    `create_lease` are the kernel's two producers of "work somebody else executes"; which CLI
+    subcommands reach them is a fact of `cli.py` and is read out of it here -- at ANY call depth,
+    so a future refactor that routes an ordering command through a helper cannot make this fall
+    silent (see `_reaches_producer`).
+    """
+    path = os.path.join(TEAM_KITS, "kernel", "cli.py")
+    with io.open(path, encoding="utf-8") as handle:
+        return _commands_reaching(handle.read(), path, producers)
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -3734,6 +3833,51 @@ def test_the_ordering_commands_are_the_cli_routes_to_the_task_producers(kit):
         % (kit, sorted(_gate_constant(kit, "_ORDERING_COMMANDS")), sorted(routes)))
 
 
+# A module whose ordering branches reach the producer at THREE depths -- direct, one hop, two
+# hops -- plus a branch that reaches it only through a CYCLE (must terminate, must not count) and
+# an innocent branch that reaches no producer at all. The direct-only predecessor of
+# `_reaches_producer` returned only {"direct"} for this source.
+_CLI_WITH_HELPER_HOPS = '''
+def _order(state, args):
+    return dispatch.create_task(state, {})
+
+def _relay(state, args):
+    return _order(state, args)
+
+def _loop(state, args):
+    return _loop(state, args)          # self-recursive: cycle protection must terminate this
+
+def main(args, state):
+    if args.command == "direct":
+        dispatch.create_task(state, {})
+    if args.command == "one-hop":
+        _order(state, args)
+    if args.command == "two-hops":
+        _relay(state, args)
+    if args.command == "cyclic":
+        _loop(state, args)
+    if args.command == "innocent":
+        state.capture("EVD", {})
+'''
+
+
+def test_the_route_derivation_follows_helper_hops_with_cycle_protection():
+    """BUG-0006: the derivation that pins `_ORDERING_COMMANDS` must find an ordering branch at ANY
+    call depth. If `cli.py` is refactored to route `create-task` through a helper, a direct-only
+    scan drops it; the pin then goes green on a SMALLER set, `_ORDERING_COMMANDS` is "corrected"
+    down to match, and rule 4 stops refusing that ordering command for a subagent -- the exact hole
+    rule 4 exists to close, reopened by a green test.
+
+    RED WITHOUT THE FIX: the first cut of `_reaches_producer` walked only the branch body for a
+    direct producer call, so this returns {"direct"} -- "one-hop" and "two-hops" are missing. The
+    cyclic branch reaches no producer and must be ABSENT (and must not hang), and the innocent one
+    must be absent too, so the assertion also fails if the walk over-counts.
+    """
+    found = _commands_reaching(_CLI_WITH_HELPER_HOPS, "<cli-with-hops>",
+                               {"create_task", "create_lease"})
+    assert found == {"direct", "one-hop", "two-hops"}, found
+
+
 @pytest.mark.parametrize("kit", KITS)
 def test_the_gate_knows_the_entry_point_the_kernel_installs(kit):
     """The other half a hand-typed constant could get wrong: rule 4 only ever fires on a line that
@@ -3742,6 +3886,335 @@ def test_the_gate_knows_the_entry_point_the_kernel_installs(kit):
     assert _gate_constant(kit, "_HARNESS_SCRIPT") == os.path.basename(cli.ENTRY_POINT)
     assert _gate_constant(kit, "_KERNEL_CLI_MODULE") == "%s.%s" % (
         cli.__name__.split(".")[0], cli.__name__.split(".")[-1])
+
+
+# -- BUG-0013: a kit hook must not resolve a stdlib name from an agent-writable directory --------
+#
+# A module that returns _Anything() for EVERY attribute access when it is imported and NOTHING else.
+# It stands in for a stdlib module without breaking the import machinery that pulls it in (a stub
+# that merely raised would surface as an import error and fail-closed for the wrong reason). Same
+# shape `.claude/hooks/test_gates.py::SILENT_MODULE` uses for the same measurement.
+_SILENT_STDLIB_STUB = (
+    "class _Anything(object):\n"
+    "    def __call__(self, *a, **k): return _Anything()\n"
+    "    def __getattr__(self, name): return _Anything()\n"
+    "    def __setattr__(self, name, value): pass\n"
+    "    def __iter__(self): return iter(())\n"
+    "    def __bool__(self): return False\n"
+    "    def __str__(self): return ''\n"
+    "class _Module(object):\n"
+    "    def __getattr__(self, name): return _Anything()\n"
+    "import sys as _sys\n"
+    "_sys.modules[__name__] = _Module()\n"
+)
+
+
+def test_a_planted_stdlib_module_cannot_disable_the_kit_gate(tmp_path):
+    """BUG-0013: a file NAMED like a standard-library module, planted in the kit hooks directory the
+    gate preamble puts at sys.path[0].
+
+    Measured 2026-08-05, and again here: a no-op `shlex.py` there answered `import shlex` for the
+    gate's tokeniser (imported AFTER `import _kernel`), which then returned no tokens; gate 1 saw an
+    empty pipeline and allowed `sed -i` into `team-kits/kernel/state.py`. `_kernel`'s
+    `_StandardLibraryWins`, installed while `_kernel` loads, resolves every name the interpreter
+    calls standard library from the standard library instead of from the guarded directory.
+
+    THE SUBJECT RUNS AS A REAL PROCESS -- an in-process import would already hold the real `shlex`
+    in `sys.modules`, so the plant could never win and the test could never fail. Red without the
+    fix (guard install removed in an external clone): the same plant flips this to rc 0, which is
+    what makes the assertion measure the finder rather than the path check that stands behind it.
+    """
+    hooks = tmp_path / "hooks"
+    shutil.copytree(HOOKS, str(hooks))
+    (hooks / "shlex.py").write_text(_SILENT_STDLIB_STUB, encoding="utf-8")
+    payload = json.dumps(shell_payload(tmp_path, "sed -i s/a/b/ team-kits/kernel/state.py"))
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=TEAM_KITS)
+    proc = subprocess.run([sys.executable, str(hooks / "gate_write_scope.py")],
+                          input=payload, capture_output=True, text=True, env=env, timeout=120)
+    assert proc.returncode == 2, (
+        "a shlex.py planted in the kit hooks directory disabled gate 1's tokeniser: rc=%d %s"
+        % (proc.returncode, proc.stderr[:400]))
+    assert "enforcement layer" in proc.stderr, (
+        "refused, but not for naming the enforcement layer -- the plant took the decision "
+        "elsewhere, so this run does not prove the finder held: %s" % proc.stderr[:400])
+
+
+# A module that RECORDS that it was imported and then answers a subprocess call as "green". The
+# marker is the measurement: a planted file that is never imported cannot decide anything, and an
+# exit code alone does not say which of the two happened.
+_MARKING_SUBPROCESS = (
+    "import os\n"
+    "open(%r, 'a').close()\n"
+    "class _Result(object):\n"
+    "    returncode = 0\n"
+    "    stdout = ''\n"
+    "    stderr = ''\n"
+    "def run(*a, **k): return _Result()\n"
+    "def check_output(*a, **k): return ''\n"
+    "class TimeoutExpired(Exception): pass\n"
+    "class SubprocessError(Exception): pass\n"
+    "DEVNULL = -3\nPIPE = -1\nSTDOUT = -2\n"
+)
+
+
+def _launched(hooks, project, gate, payload, timeout=300):
+    """Run a gate the way the REGISTRATION does — through `_gate.py` — as a real process."""
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project))
+    env.pop("HARNESS_KERNEL_PATH", None)
+    proc = subprocess.run([sys.executable, "-B", os.path.join(str(hooks), "_gate.py"), gate],
+                          input=json.dumps(payload), capture_output=True, text=True,
+                          env=env, timeout=timeout)
+    return proc.returncode, proc.stderr or ""
+
+
+def _kit_project(tmp_path, name):
+    """A project carrying this kit's hooks at `.claude/hooks`, outside the repo tree."""
+    project = tmp_path / name
+    hooks = project / ".claude" / "hooks"
+    shutil.copytree(HOOKS, str(hooks))
+    return project, hooks
+
+
+def test_a_planted_stdlib_module_cannot_disable_a_launched_gate(tmp_path):
+    """BUG-0013, the half the `_kernel` guard did not reach: a gate that never imports `_kernel`.
+
+    `gate_pipeline` is the DoD teeth — it RUNS `scripts/quality.py` and blocks a red one — and it
+    reaches `subprocess` on its own (`gate_pipeline.py:22`), as do `gate_test_coverage`,
+    `guard_no_adhoc`, `guard_question_context` and `guard_guidelines` for `re`. Measured
+    2026-08-11 through the real launcher with a no-op `subprocess.py` planted beside the hooks: the
+    gate read a RED pipeline as green and allowed `git push`, rc 0, no stderr.
+
+    THE GUARD THEREFORE SITS IN THE LAUNCHER (`_gate.py`), which every registered enforcement hook
+    of this kit runs behind — a property of the registration rather than of a set of gate names.
+    `test_every_refusal_capable_registered_hook_runs_through_the_launcher` is the other half of
+    that claim.
+
+    RED WITHOUT THE FIX: removing the `_stdlib_guard.install` line from `_gate.py` in an external
+    clone flips this to rc 0 with the marker written (measured). Both are asserted, because the
+    marker is what separates "the plant lost" from "the plant never ran".
+    """
+    project, hooks = _kit_project(tmp_path, "launched-gate")
+    (project / "project_memory" / "product" / "active").mkdir(parents=True)
+    (project / "project_memory" / "product" / "active" / "PR-0001.yaml").write_text(
+        "id: PR-0001\n", encoding="utf-8")
+    (project / "scripts").mkdir()
+    (project / "scripts" / "quality.py").write_text(
+        "import sys\nprint('FAIL: the pipeline is red')\nsys.exit(1)\n", encoding="utf-8")
+    marker = str(tmp_path / "planted-subprocess-ran")
+    (hooks / "subprocess.py").write_text(_MARKING_SUBPROCESS % marker, encoding="utf-8")
+
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(project),
+               "tool_input": {"command": "git push origin main"}}
+    rc, err = _launched(hooks, project, "gate_pipeline.py", payload)
+    assert not os.path.exists(marker), (
+        "a subprocess.py planted beside the hooks answered for gate_pipeline — that module is what "
+        "RUNS the quality pipeline whose exit code the merge/push block is made of")
+    assert rc == 2, (
+        "the DoD teeth were disarmed by a planted module: a RED quality pipeline was allowed "
+        "through (rc=%d) %s" % (rc, err[:400]))
+    assert "quality pipeline is RED" in err, (
+        "refused, but not for the red pipeline — the plant moved the decision elsewhere: %s"
+        % err[:400])
+
+
+def test_a_planted_stdlib_module_cannot_take_over_a_launched_guards_decision(tmp_path):
+    """The same property for a `_compat.stop` guard, and here the EXIT CODE IS NOT THE SUBJECT.
+
+    Measured 2026-08-11 with `re.py` planted and the launcher guard removed: the process still ends
+    in rc 2 — but from the launcher's own catch-all (`guard_no_adhoc.py failed while running
+    (TypeError…)`), not from the guard's judgement. An exit-code-only assertion would therefore be
+    GREEN without the fix, which is why this asserts the REASON. With the guard the same run
+    produces the guard's own refusal.
+
+    The subject is rule 2 of `guard_no_adhoc` (a file named after an item id), which is the branch
+    `re` decides; the path is under `docs/` so that neither the fnmatch rule nor the loose-root-doc
+    rule can answer instead and mask the measurement.
+    """
+    project, hooks = _kit_project(tmp_path, "launched-guard")
+    (project / "docs").mkdir(parents=True)
+    (hooks / "re.py").write_text(_SILENT_STDLIB_STUB, encoding="utf-8")
+
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(project),
+               "tool_input": {"file_path": str(project / "docs" / "PR-0002_notes.md"),
+                              "content": "x"}}
+    rc, err = _launched(hooks, project, "guard_no_adhoc.py", payload)
+    assert rc == 2, "a planted re.py let an item-named document through: %s" % err[:400]
+    assert "Blocked creating" in err, (
+        "rc 2, but not from the guard: the planted module crashed it into the launcher's catch-all "
+        "instead of losing to the standard library — %s" % err[:400])
+
+
+def _refuses(path):
+    """Does this hook FILE call a NO-RETURN REFUSAL? — parsed as a property, never grepped.
+
+    The property, not a two-construct list: a hook refuses when it calls something that ends the
+    process with a blocking code. That is
+      * `_compat.stop(...)` — the funnel every refusal goes through — or `_kernel.block(...)`,
+        which itself calls `stop`/`os._exit(2)`; either as an attribute or under an import alias
+        (`from _compat import stop as s`);
+      * `sys.exit(...)` or `os._exit(...)` — attribute or aliased — with an argument that is NOT a
+        literal 0/None. A literal 0 is "allow"; a literal non-zero is a refusal; a NON-literal
+        (`sys.exit(status)`) is treated as a refusal because it can be 2, which is the fail-closed
+        direction for a tripwire (over-including a hook only demands it run behind the launcher).
+    The predecessor enumerated exactly `_compat.stop` (unaliased) and a literal `sys.exit(2)`, so a
+    gate refusing via `os._exit(2)`, `sys.exit(<var>)` or an aliased `stop` would have read as
+    non-refusing and run unguarded. Measured over the shipped tree, this property still splits the
+    enforcement hooks from the comfort hooks (`session_status`, `kit_trust_state`,
+    `clear_handover_marker`, `notify_agent_events`, `format_on_write`), which exit only on a literal
+    0 — the `os._exit(2)` in `session_status` is in a COMMENT, which the parse does not see.
+
+    THE RESIDUAL, named rather than claimed away: a refusal reached FULLY DYNAMICALLY —
+    `raise SystemExit(2)`, `getattr(_compat, "stop")(...)`, or a callable stored in a variable and
+    called — is not recognised. No shipped hook does any of these (measured 2026-08-11); the day one
+    does, this reader needs the new shape, and the launcher test it feeds would go quietly green for
+    that hook.
+    """
+    with io.open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), path)
+    # names bound to an always-refusing callable, and names bound to an exit callable, via
+    # `from <mod> import <name> [as <alias>]`
+    stop_aliases, exit_aliases = set(), set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        if node.module == "_compat":
+            stop_aliases |= {a.asname or a.name for a in node.names if a.name == "stop"}
+        elif node.module == "_kernel":
+            stop_aliases |= {a.asname or a.name for a in node.names if a.name == "block"}
+        elif node.module in ("sys", "os"):
+            exit_aliases |= {a.asname or a.name for a in node.names if a.name in ("exit", "_exit")}
+
+    def _is_always_refusal(func):
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            return ((func.value.id == "_compat" and func.attr == "stop")
+                    or (func.value.id == "_kernel" and func.attr == "block"))
+        return isinstance(func, ast.Name) and func.id in stop_aliases
+
+    def _is_exit_call(func):
+        if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+            return ((func.value.id == "sys" and func.attr == "exit")
+                    or (func.value.id == "os" and func.attr == "_exit"))
+        return isinstance(func, ast.Name) and func.id in exit_aliases
+
+    def _exit_refuses(call):
+        if not _is_exit_call(call.func):
+            return False
+        if not call.args:               # exit() == exit(None) == 0 == allow
+            return False
+        arg = call.args[0]
+        if isinstance(arg, ast.Constant) and arg.value in (0, None):
+            return False                # a literal allow; anything else can be a 2
+        return True
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if _is_always_refusal(node.func) or _exit_refuses(node):
+            return True
+    return False
+
+
+def test_refuses_recognises_a_no_return_refusal_beyond_the_two_literal_forms(tmp_path):
+    """`_refuses` must read the PROPERTY "calls a no-return refusal", not two spellings of it.
+
+    RED WITHOUT THE FIX: the predecessor recognised only `_compat.stop` (unaliased) and a literal
+    `sys.exit(2)`. Each variant below refuses, and each was invisible to it — so a gate written any
+    of these ways would have read as non-refusing and been allowed to run off the launcher,
+    unguarded. The allow forms must stay non-refusing, or the launcher tripwire would start
+    demanding the launcher for a comfort hook.
+    """
+    refusing = {
+        "os_exit": "import os\ndef main():\n    os._exit(2)\n",
+        "exit_variable": "import sys\ndef main():\n    code = 2\n    sys.exit(code)\n",
+        "exit_literal_nonzero": "import sys\nsys.exit(2)\n",
+        "aliased_stop": "from _compat import stop as s\ndef main():\n    s('x', 'PreToolUse')\n",
+        "aliased_exit": "from sys import exit as bail\ndef main():\n    bail(2)\n",
+        "kernel_block": "import _kernel\ndef main():\n    _kernel.block('h', 'm')\n",
+        "compat_stop": "import _compat\ndef main():\n    _compat.stop('x', 'PreToolUse')\n",
+    }
+    for name, src in refusing.items():
+        target = tmp_path / (name + ".py")
+        target.write_text(src, encoding="utf-8")
+        assert _refuses(str(target)), "%s reads as non-refusing" % name
+    allowing = {
+        "exit_zero": "import sys\nsys.exit(0)\n",
+        "exit_none": "import sys\nsys.exit()\n",
+        "no_exit": "from _compat import run_captured\ndef main():\n    run_captured(['git'])\n",
+    }
+    for name, src in allowing.items():
+        target = tmp_path / ("ok_" + name + ".py")
+        target.write_text(src, encoding="utf-8")
+        assert not _refuses(str(target)), "%s wrongly reads as refusing" % name
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_every_refusal_capable_registered_hook_runs_through_the_launcher(kit):
+    """BUG-0013's tripwire, and it is fastened to the REGISTRATION rather than to a set of gates.
+
+    The standard-library guard is installed by `_gate.py` (and again by `_kernel`, for a direct
+    run). A hook that can REFUSE but is registered to run WITHOUT the launcher would therefore
+    resolve `re`, `subprocess` and every other standard-library name out of the hooks directory —
+    which is the measured hole: a no-op `subprocess.py` made `gate_pipeline` allow a red push.
+
+    So the property is: whatever a shipped registration starts, if the file it starts can produce
+    the block code, the command that starts it also runs the launcher. Every half is derived —
+    `_refuses` PARSES the hook, `_registered_commands` reads both registration surfaces as data,
+    and `_scripts_in` says which files a command names. A new gate wired directly turns this red on
+    the day it ships; so does an existing one moved off the launcher.
+
+    The comfort hooks are not exempted by name: they simply carry neither refusal construct, which
+    is what `_refuses` asks. `format_on_write` and the three SessionStart hooks are registered
+    WITHOUT the launcher today and pass for that reason — if one of them ever grew a refusal, this
+    test would demand the launcher for it too, which is the correct demand.
+    """
+    hooks_dir = os.path.join(TEAM_KITS, kit, "hooks")
+    checked = set()
+    for _event, _matcher, command in _registered_commands(kit):
+        scripts = _scripts_in(command)
+        for name in scripts:
+            path = os.path.join(hooks_dir, name)
+            if not os.path.isfile(path) or not _refuses(path):
+                continue
+            checked.add(name)
+            assert GATE_LAUNCHER in scripts, (
+                "%s/%s can refuse (it reaches the block code) but its registration starts it "
+                "without %s, so nothing installs the standard-library guard for it: %r"
+                % (kit, name, GATE_LAUNCHER, command))
+    assert checked, "%s: no refusal-capable hook was found in any registration — the derivation " \
+                    "broke, not the wiring" % kit
+
+
+def test_no_kit_module_is_named_after_a_standard_library_module():
+    """The other end of `_kernel._StandardLibraryWins`, and the one that would break work rather
+    than let it through: the finder answers for EVERY name the interpreter calls standard library,
+    so a kit hooks directory that ever shipped `queue.py` or `types.py` would find its own module
+    replaced by the standard one. BUG-0013 measured 0 collisions over the shipped names; this
+    re-measures it and turns red the day one appears -- the day the finder needs a narrower
+    question. Only the directories the finder actually guards are checked: the kit HOOKS trees, the
+    one place `_kernel` installs the guard over (`_HOOKS_DIR`)."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.hashing import is_kit_dir
+    guarded = [os.path.join(TEAM_KITS, name, "hooks")
+               for name in sorted(os.listdir(TEAM_KITS))
+               if is_kit_dir(os.path.join(TEAM_KITS, name))]
+    assert guarded, "no kit directories found -- the derivation, not the kits, changed"
+    offenders = []
+    for directory in guarded:
+        if not os.path.isdir(directory):
+            continue
+        for entry in sorted(os.listdir(directory)):
+            if entry.endswith(".py"):
+                name = entry[:-3]
+            elif os.path.isfile(os.path.join(directory, entry, "__init__.py")):
+                name = entry
+            else:
+                continue
+            if name in sys.stdlib_module_names:
+                offenders.append(os.path.join(directory, entry))
+    assert not offenders, (
+        "these modules are named after a standard-library module, which "
+        "`_kernel._StandardLibraryWins` would answer from the standard library instead of from the "
+        "kit: %s" % offenders)
 
 
 def test_a_specialist_may_not_write_another_tasks_staging(tmp_path):
