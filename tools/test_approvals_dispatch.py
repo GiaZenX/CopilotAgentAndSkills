@@ -11,7 +11,7 @@ import pytest
 TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits")
 sys.path.insert(0, TEAM_KITS)
 
-from conftest import approve, mint_via_hook  # noqa: E402 -- ONE mint helper for the suite
+from conftest import approve, drive_task_to, mint_via_hook  # noqa: E402 -- shared suite helpers
 from kernel import approvals, backlog_types, dispatch, hashing, staging  # noqa: E402
 from kernel.approvals import ApprovalError  # noqa: E402
 from kernel.dispatch import DispatchError  # noqa: E402
@@ -362,9 +362,9 @@ def test_open_dependency_blocks_lease(state):
     state.transition(task_b["id"], "READY")
     with pytest.raises(DispatchError, match="open dependencies"):
         dispatch.create_lease(state, task_b["id"])
-    # dependency reaches DONE -> lease possible
-    for step in ("LEASED", "IN_PROGRESS", "SUBMITTED", "DONE"):
-        state.transition(task_a["id"], step)
+    # dependency reaches DONE -> lease possible. Through the real lease lifecycle (DEC-0038): a bare
+    # transition into LEASED is now refused, so `drive_task_to` mints the lease on the way to DONE.
+    drive_task_to(state, task_a["id"], "DONE")
     assert dispatch.create_lease(state, task_b["id"])["task_id"] == task_b["id"]
 
 
@@ -502,8 +502,8 @@ def test_dependency_that_opens_after_the_lease_blocks_dispatch(state):
     second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
                                               dependencies=[first["id"]]))
     state.transition(second["id"], "READY")
-    for status in ("LEASED", "IN_PROGRESS", "SUBMITTED", "DONE"):
-        state.transition(first["id"], status)
+    # `first` reaches DONE through the real lease lifecycle (DEC-0038), not a bare transition.
+    drive_task_to(state, first["id"], "DONE")
     lease = dispatch.create_lease(state, second["id"])
     header = dispatch.parse_header(dispatch.dispatch_header(lease))
     state.transition(first["id"], "FAILED")
@@ -1734,16 +1734,19 @@ def test_no_optional_argument_of_transition_can_skip_the_approval_check(state):
                     state.transition(pr["id"], "APPROVED", **{name: value})
 
 
-def _possible_statuses(node):
+def _possible_statuses(node, constants=None):
     """Every status an assignment expression can produce, or None when that cannot be bounded.
 
-    FOUR KINDS OF SHAPE, and each one's values come from the kernel map that produces them rather
-    than from a list here: a string literal; a conditional between two of them (`submit_result`);
-    a call to a kernel function whose whole range is a kernel map (`initial_status`,
-    `invalidation_target`, `migration_archive_status`, `widest_status`); a lookup in
-    `_NON_AUTOMATON_INITIAL_STATUS`. Anything else is None, which the caller reports -- fail-closed,
-    because the shape this whole check exists for (`item["status"] = transition[1]` in the old
-    `mint`) is exactly an expression a reader cannot bound.
+    FIVE KINDS OF SHAPE, and each one's values come from the kernel map that produces them rather
+    than from a list here: a string literal; a module-level string constant bound to exactly one
+    value (`constants`, e.g. `dispatch.LEASE_MINTED_STATUS` -- as readable as the quoted string it
+    stands for, the same reason `_module_string_constants` reads such a name as a KEY); a
+    conditional between two of them (`submit_result`); a call to a kernel function whose whole range
+    is a kernel map (`initial_status`, `invalidation_target`, `migration_archive_status`,
+    `widest_status`); a lookup in `_NON_AUTOMATON_INITIAL_STATUS`. Anything else is None, which the
+    caller reports -- fail-closed, because the shape this whole check exists for
+    (`item["status"] = transition[1]` in the old `mint`) is exactly an expression a reader cannot
+    bound. `constants` defaults to empty, so a caller that passes none reads only literals.
 
     `migration_archive_status` is the V1 import's archive write (SR-0004), and reading it here is
     what keeps the caller's verdict honest rather than excusing it: the function is bounded by
@@ -1764,10 +1767,14 @@ def _possible_statuses(node):
     from kernel.backlog_types import AUTOMATA, INVALIDATION_TARGET
     from kernel.state import _NON_AUTOMATON_INITIAL_STATUS, migration_writable_statuses
 
+    constants = constants or {}
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return {node.value}
+    if isinstance(node, ast.Name) and node.id in constants:
+        return {constants[node.id]}
     if isinstance(node, ast.IfExp):
-        left, right = _possible_statuses(node.body), _possible_statuses(node.orelse)
+        left = _possible_statuses(node.body, constants)
+        right = _possible_statuses(node.orelse, constants)
         return None if left is None or right is None else left | right
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
         if node.func.id == "initial_status":
@@ -2276,14 +2283,19 @@ def test_the_reader_that_finds_direct_status_writes_sees_every_shape_it_claims_t
         # one resolves to `status`, and the `constant_key_elsewhere` sample below resolves to a
         # different field and is therefore not a status write at all.
         "constant_key": 'K = "status"\ndef f(i):\n    i[K] = "APPROVED"\n',
+        # a module constant as the VALUE is as readable as the quoted string, and the kernel writes
+        # one that way (`dispatch.create_lease` -> `task["status"] = LEASE_MINTED_STATUS`): it must
+        # RESOLVE, not surface as a value this reader cannot bound.
+        "constant_value": 'V = "APPROVED"\ndef f(i):\n    i["status"] = V\n',
         "update_dict": 'def f(i):\n    i.update({"status": "APPROVED"})\n',
         "update_keyword": 'def f(i):\n    i.update(status="APPROVED")\n',
         "dict_keyword": 'def f(i):\n    j = dict(i, status="APPROVED")\n',
     }
     for name, source in bounded.items():
-        writes = _status_writes(ast.parse(source))
+        tree = ast.parse(source)
+        writes = _status_writes(tree)
         assert len(writes) == 1, "%s: the reader found %d writes" % (name, len(writes))
-        assert _possible_statuses(writes[0][1]) == {"APPROVED"}, name
+        assert _possible_statuses(writes[0][1], _module_string_constants(tree)) == {"APPROVED"}, name
     # ...and the forms it CANNOT bound have to surface as unbounded rather than as nothing: the
     # asymmetry between "value I cannot read" (offender) and "form I cannot read" (silence) is
     # what let `i.update(changes)`, `i |= {...}` and a computed key past this reader entirely.
@@ -2683,12 +2695,13 @@ def test_no_direct_status_write_can_produce_a_status_an_approval_commits():
             continue
         with open(os.path.join(kernel_dir, name), encoding="utf-8") as handle:
             tree = ast.parse(handle.read())
+        module_constants = _module_string_constants(tree)
         for function, value_node in _status_writes(tree):
             where = "%s:%s" % (name, function)
             if where == "state.py:_transition_locked":
                 continue
             writers.append(where)
-            produced = _possible_statuses(value_node)
+            produced = _possible_statuses(value_node, module_constants)
             if produced is None:
                 if _refuses_the_key(tree, function):
                     continue      # it raises on a `status` in its input before it merges anything

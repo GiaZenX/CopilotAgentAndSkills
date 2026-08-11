@@ -740,6 +740,117 @@ def test_a_running_lease_is_reported_with_the_time_it_has_left(tmp_path):
     assert 0 < reported[0][1] <= 120.0
 
 
+# ---------------- DEC-0038 / BUG-0010: lease honesty ----------------
+
+def test_a_bare_transition_cannot_mint_leased(tmp_path):
+    """DEC-0038 AC-1: a lease-bearing status is established by a real lease, never by a transition.
+
+    RED without `assert_lease_backed_transition_locked`: `transition READY -> LEASED` returned
+    rc 0 and left a task reading LEASED with no lease file -- untrue bookkeeping that `sweep-leases`
+    would later be asked to reconcile. The test measures the STATE, not a message: the task stays
+    READY and no lease file appears.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)                 # READY, approved root, no lease yet
+    with pytest.raises(dispatch.DispatchError, match="real dispatch lease"):
+        state.transition(task_id, "LEASED")
+    assert state.read_item(task_id)["status"] == "READY"
+    assert not os.path.exists(os.path.join(root, "tasks", "leases", task_id + ".lease.yaml"))
+
+
+def test_the_dispatch_path_still_reaches_leased_after_the_guard(tmp_path):
+    """DEC-0038 AC-2 (regression): the guard refuses ONLY the bare transition -- `create_lease`
+    still mints LEASED. RED if the guard were placed on the status WRITE instead of the transition
+    (it would stop the whole dispatch lifecycle, `create_lease` raising instead of leasing).
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    lease = dispatch.create_lease(state, task_id)
+    assert state.read_item(task_id)["status"] == "LEASED"
+    assert lease["nonce"]
+    assert dispatch.lease_in_force(state, task_id)
+
+
+def test_sweep_reports_a_leased_task_whose_lease_vanished(tmp_path):
+    """DEC-0038 AC-3: a LEASED task with no live lease is REPORTED, never silently reset.
+
+    The lease file is removed by hand -- the only way LEASED-without-lease can arise once the
+    transition guard stands (old state / corruption). RED without `leased_without_live_lease`:
+    the TTL sweep sees no lease file, so nothing surfaces the anomaly and the untrue bookkeeping
+    stays invisible. The task must be NAMED and must NOT be reset.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    dispatch.create_lease(state, task_id)           # -> LEASED + lease file
+    os.remove(os.path.join(root, "tasks", "leases", task_id + ".lease.yaml"))
+    assert dispatch.sweep_expired_leases(state) == []       # no lease file -> nothing to sweep
+    assert dispatch.leased_without_live_lease(state) == [task_id]
+    assert state.read_item(task_id)["status"] == "LEASED"   # reported, NOT reset
+
+
+def test_an_in_progress_task_without_a_lease_is_not_flagged(tmp_path):
+    """The counter-direction, so the reporter cannot be satisfied by flagging every lease-bearing
+    status: a running child legitimately outlives its lease. `sweep_expired_leases` drops an
+    expired lease but leaves IN_PROGRESS in place, and that is expected state, not corruption -- so
+    it must NOT appear in the report.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    dispatch.create_lease(state, task_id)                   # -> LEASED + lease file
+    dispatch.spawn_outcome(state, task_id, ok=True)         # LEASED -> IN_PROGRESS (keeps the lease)
+    os.remove(os.path.join(root, "tasks", "leases", task_id + ".lease.yaml"))  # child outlived it
+    assert state.read_item(task_id)["status"] == "IN_PROGRESS"
+    assert not dispatch.lease_in_force(state, task_id)
+    assert dispatch.leased_without_live_lease(state) == []  # IN_PROGRESS-without-lease is not flagged
+
+
+def test_sweep_leases_cli_names_a_leased_task_without_a_lease(tmp_path, capsys):
+    """AC-3 through the command a role actually runs: `sweep-leases` prints the anomaly line."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import cli, dispatch
+    from kernel.state import ProjectState
+
+    root = _template_state(tmp_path)
+    state = ProjectState(root)
+    task_id = _leasable_task(state)
+    dispatch.create_lease(state, task_id)
+    os.remove(os.path.join(root, "tasks", "leases", task_id + ".lease.yaml"))
+    assert cli.main(["--root", root, "sweep-leases"]) == 0
+    out = capsys.readouterr().out
+    assert "LEASED without a lease" in out and task_id in out
+    assert state.read_item(task_id)["status"] == "LEASED"
+
+
 # ---------------- a task cannot be created against another root's criteria ----------------
 
 def test_a_cross_root_origin_is_refused_at_creation(tmp_path):

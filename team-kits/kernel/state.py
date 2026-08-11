@@ -1046,6 +1046,14 @@ class ProjectState:
                 "Querregeln). Remedy: obtain the retry approval, then call "
                 "transition with approved_retry=True." % RETRY_APPROVAL_EDGE
             )
+        # A lease-bearing status is ESTABLISHED by a real lease, not by this path (DEC-0038/
+        # BUG-0010): the dispatch lifecycle sets LEASED/IN_PROGRESS directly and never comes through
+        # here, so a direct transition INTO one of them with no live lease is the untrue bookkeeping
+        # -- LEASED without a lease -- that a later lease sweep would be asked to reconcile. The
+        # enforcing reader is dispatch.assert_lease_backed_transition_locked; deferred import for the
+        # same cycle reason the approvals and dispatch modules are imported deferred below.
+        from . import dispatch as _dispatch
+        _dispatch.assert_lease_backed_transition_locked(self, item_id, to_status)
         # DEFERRED import: `approvals` imports this module at its own module scope, so a top-level
         # import here would be a cycle. By the time any transition runs, both halves are loaded.
         from . import approvals

@@ -8,7 +8,7 @@ import yaml
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
 
-from conftest import walk_to_status  # noqa: E402 -- the ONE sanctioned way to walk a chain
+from conftest import drive_task_to, walk_to_status  # noqa: E402 -- the sanctioned chain walkers
 from kernel.backlog_types import PARENT_FIELDS, REQUIRED_FIELDS, TransitionError  # noqa: E402
 from kernel.state import _CLOSED_VOCABULARY, ProjectState, StateError  # noqa: E402
 
@@ -114,8 +114,9 @@ def test_tsk_failed_ready_requires_approved_retry(state):
         "expected_outputs": ["src/x.py"],
         "dependencies": [],
     })
-    for step in ("READY", "LEASED", "IN_PROGRESS", "FAILED"):
-        state.transition(task["id"], step)
+    # LEASED/IN_PROGRESS come from the real lease lifecycle (DEC-0038): a bare transition into a
+    # lease-bearing status is now refused, so the honest walk mints the lease.
+    drive_task_to(state, task["id"], "FAILED")
     with pytest.raises(TransitionError, match="approved retry"):
         state.transition(task["id"], "READY")
     state.transition(task["id"], "READY", approved_retry=True)
@@ -658,7 +659,11 @@ def test_which_archive_bound_rows_rest_on_an_absent_approval_edge():
 
 
 def _task_at(state, status):
-    """A fresh TSK walked to `status` along its own edges -- the origin really exists."""
+    """A fresh TSK walked to `status` along its own edges -- the origin really exists.
+
+    Through `drive_task_to`, so the walk past LEASED/IN_PROGRESS goes through the real lease
+    lifecycle rather than the bare transition DEC-0038 now refuses.
+    """
     pr = make_pr(state)
     task = state.capture("TSK", {
         "product_requirement": pr["id"], "root_revision": 1, "derives_from": pr["id"],
@@ -666,9 +671,7 @@ def _task_at(state, status):
         "acceptance_refs": ["AC-1"], "required_inputs": [], "allowed_scope": ["src/"],
         "forbidden_scope": ["secrets/"], "expected_outputs": ["src/x.py"], "dependencies": [],
     })
-    for step in ("READY", "LEASED", "IN_PROGRESS", status):
-        state.transition(task["id"], step)
-    return task["id"]
+    return drive_task_to(state, task["id"], status)["id"]
 
 
 def test_the_migration_write_set_reads_three_of_the_four_edge_guards(state):

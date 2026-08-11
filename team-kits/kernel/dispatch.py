@@ -204,7 +204,7 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
             "agent_id": None,
         }
         state._write_yaml_atomic(lease_path, lease)
-        task["status"] = "LEASED"
+        task["status"] = LEASE_MINTED_STATUS
         task["leased_at"] = _now_iso()
         state._write_yaml_atomic(state.active_path(task_id), task)
         state._regenerate_index_locked()
@@ -756,6 +756,17 @@ def live_leases(state: ProjectState) -> list:
     return sorted(remaining)
 
 
+# The single status a lease MINTS, and the one whose loss RESETS the task: `create_lease` produces
+# it and `_release_lease_locked` returns a task in it to READY once the lease is gone. That
+# one-to-one -- LEASED at rest <=> a live lease -- is what DEC-0038/BUG-0010 rests on: it is why a
+# bare transition may not reach it (`assert_lease_backed_transition_locked`) and why a task FOUND in
+# it without a live lease is an anomaly to REPORT rather than a running child to leave be
+# (`leased_without_live_lease`). IN_PROGRESS is deliberately NOT this status: a running child can
+# hold IN_PROGRESS past its lease's expiry -- `sweep_expired_leases` drops the lease but leaves the
+# status (`_release_lease_locked` resets only LEASED) -- so IN_PROGRESS without a lease is expected,
+# not corrupt. One spelling, referenced by `create_lease` and `_release_lease_locked`.
+LEASE_MINTED_STATUS = "LEASED"
+
 # The statuses a lease SERVES, and therefore the only ones it may outlive its creation into.
 # `create_lease` puts a task in the first and `spawn_outcome` moves it to the second while keeping
 # the lease, because `task_for_agent` resolves a running child's writes through it; `submit_result`
@@ -763,8 +774,70 @@ def live_leases(state: ProjectState) -> list:
 # there blocks the next claim for its whole TTL with nothing on the other end.
 # `test_the_lease_bearing_statuses_are_the_ones_the_lifecycle_produces` drives create_lease,
 # spawn_outcome and submit_result and reads the statuses off the running code, so this tuple cannot
-# quietly stop describing the lifecycle.
-LEASE_BEARING_STATUSES = ("LEASED", "IN_PROGRESS")
+# quietly stop describing the lifecycle. It is ALSO the set a bare transition may not enter without
+# a live lease (DEC-0038): a lease-served status can only be reached honestly through the lease.
+LEASE_BEARING_STATUSES = (LEASE_MINTED_STATUS, "IN_PROGRESS")
+
+
+def lease_in_force(state: ProjectState, task_id: str) -> bool:
+    """True when a live (unexpired) lease file exists for this task -- the record a lease-bearing
+    status rests on (DEC-0038). Caller holds the lock; a missing, corrupt or expired lease is not
+    in force. Reuses `_read_lease`/`_expired` so "in force" has one definition."""
+    if not os.path.exists(_lease_path(state, task_id)):
+        return False
+    try:
+        lease = _read_lease(state, task_id)
+    except DispatchError:
+        return False
+    return not _expired(lease)
+
+
+def assert_lease_backed_transition_locked(state: ProjectState, item_id: str, to_status: str) -> None:
+    """Refuse a DIRECT transition INTO a lease-bearing status when no live lease backs it.
+
+    DEC-0038/BUG-0010: a lease-bearing status is ESTABLISHED by a real dispatch lease, never by a
+    bare `transition`. `create_lease` (READY -> LEASED) and `spawn_outcome` (LEASED -> IN_PROGRESS)
+    write those statuses DIRECTLY and never come through `state.transition`, so this refuses ONLY
+    the parallel non-dispatch path -- the dispatch lifecycle is untouched (`create_lease` still
+    reaches LEASED). The property is `LEASE_BEARING_STATUSES`, so a lifecycle that started keeping a
+    lease into a further status would carry this guard with it rather than leaving a new hole.
+
+    Caller holds the lock. No item-type test is needed: a lease-bearing status name lives only in
+    the TSK automaton, so `assert_transition` has already refused it for any other type, and the
+    membership test below simply returns for every status but LEASED/IN_PROGRESS.
+    """
+    if to_status not in LEASE_BEARING_STATUSES:
+        return
+    if lease_in_force(state, item_id):
+        return
+    raise DispatchError(
+        "%s cannot be moved to %s by a direct transition: a lease-bearing status is established by "
+        "a real dispatch lease, not by a status write (DEC-0038/BUG-0010). LEASED with no lease is "
+        "untrue bookkeeping -- a later `sweep-leases` finds no lease to reconcile. Remedy: lease the "
+        "task through the dispatch path (`python scripts/harness.py dispatch %s`), which mints the "
+        "lease and moves it to LEASED." % (item_id, to_status, item_id))
+
+
+def leased_without_live_lease(state: ProjectState) -> list:
+    """Active tasks that read LEASED but hold no live lease -- REPORTED, never silently reset.
+
+    After DEC-0038 a bare transition can no longer mint LEASED, so a LEASED task with no live lease
+    is old state or a removed/corrupt lease. `sweep-leases` NAMES it (with the id) instead of
+    throwing it back to READY: a silent reset would erase the only sign the bookkeeping was ever
+    wrong, and a status the automaton calls LEASED whose lease is gone is a fact a human should see
+    (BUG-0010 AC-3). Only `LEASE_MINTED_STATUS`, not the whole lease-bearing set -- an IN_PROGRESS
+    task legitimately outlives its lease (see that constant), so flagging it would be noise.
+    """
+    flagged = []
+    with state.lock:
+        for stem, _path in state.iter_active_items("TSK"):
+            try:
+                task = state.read_item(stem)
+            except StateError:
+                continue
+            if task.get("status") == LEASE_MINTED_STATUS and not lease_in_force(state, stem):
+                flagged.append(stem)
+    return sorted(flagged)
 
 
 def release_lease_for_status_locked(state: ProjectState, task_id: str, status: str) -> bool:
@@ -1251,6 +1324,6 @@ def _remove_lease(state: ProjectState, task_id: str) -> None:
 def _release_lease_locked(state: ProjectState, task_id: str, to_ready: bool) -> None:
     _remove_lease(state, task_id)
     task = state.read_item(task_id)
-    if to_ready and task.get("status") == "LEASED":
+    if to_ready and task.get("status") == LEASE_MINTED_STATUS:
         task["status"] = "READY"
         state._write_yaml_atomic(state.active_path(task_id), task)

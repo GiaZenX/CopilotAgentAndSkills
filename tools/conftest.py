@@ -267,6 +267,49 @@ def walk_to_status(state, item, target):
     return state.read_item(item["id"])
 
 
+def drive_task_to(state, task_id, target):
+    """Walk a TSK to `target` the HONEST way (DEC-0038): LEASED and IN_PROGRESS come from the real
+    dispatch lifecycle, never from a bare transition, exactly as `walk_to_status` mints an approval
+    on a gated chain edge instead of transitioning past it.
+
+    `create_lease` mints the lease (READY -> LEASED) and `spawn_outcome` records the spawn
+    (LEASED -> IN_PROGRESS); everything from SUBMITTED on -- and an off-chain terminal such as
+    FAILED or CANCELLED -- is a plain chain/back edge the guard does not touch. Leasing needs the
+    ROOT to carry a dispatch approval, so this mints a scope approval when the root has none. There
+    is deliberately no shortcut past `create_lease`, for the same reason `walk_to_status` has none
+    past the mint: a fixture that hand-wrote a lease would prove the guard on a path production never
+    takes.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import dispatch
+    from kernel.backlog_types import AUTOMATA
+
+    chain = AUTOMATA["TSK"].chain          # DRAFT,READY,LEASED,IN_PROGRESS,SUBMITTED,DONE,VALIDATED
+    order = {status: index for index, status in enumerate(chain)}
+
+    def now():
+        return state.read_item(task_id)["status"]
+
+    # off-chain targets (FAILED, CANCELLED) ride from their chain predecessor; on the shipped TSK
+    # automaton that predecessor is IN_PROGRESS or later, so walk the chain to IN_PROGRESS first.
+    chain_target = target if target in order else "IN_PROGRESS"
+    if order[chain_target] >= order["LEASED"]:
+        root = state.read_item(state.read_item(task_id)["product_requirement"])
+        if not root.get("approval_ref"):
+            approve(state, root["id"], "scope")
+    if order[now()] < order["READY"] <= order[chain_target]:
+        state.transition(task_id, "READY")
+    if order[now()] < order["LEASED"] <= order[chain_target]:
+        dispatch.create_lease(state, task_id)               # READY -> LEASED (mints the lease)
+    if order[now()] < order["IN_PROGRESS"] <= order[chain_target]:
+        dispatch.spawn_outcome(state, task_id, ok=True)     # LEASED -> IN_PROGRESS
+    while order[now()] < order[chain_target]:
+        state.transition(task_id, chain[order[now()] + 1])  # SUBMITTED..VALIDATED: plain edges
+    if target not in order:
+        state.transition(task_id, target)                   # the single off-chain edge
+    return state.read_item(task_id)
+
+
 def load_kit_module(name, path):
     """Import a shipped kit script by path, without polluting the kit tree or `sys.path`.
 

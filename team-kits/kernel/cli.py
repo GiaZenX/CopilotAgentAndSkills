@@ -784,6 +784,12 @@ def main(argv=None) -> int:
             print("still leased: %s" % (", ".join(
                 "%s (%d s left)" % (task_id, int(left))
                 for task_id, left in dispatch.live_leases(state)) or "-"))
+            # A LEASED task with no lease is not a lease the sweep releases -- it is the untrue
+            # bookkeeping DEC-0038 makes unreachable by a bare transition. Where old state or a
+            # removed lease still shows it, the sweep REPORTS it (BUG-0010 AC-3) rather than
+            # resetting it silently, so a human sees the anomaly instead of the sweep papering over it.
+            print("LEASED without a lease (report only): %s" % (
+                ", ".join(dispatch.leased_without_live_lease(state)) or "-"))
             return 0
         if args.command == "migrate":
             field_map = migrate.parse_field_map(args.field_map)

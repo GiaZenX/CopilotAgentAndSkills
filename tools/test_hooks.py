@@ -2893,12 +2893,14 @@ def test_gate_git_evidence_bound_to_an_archived_task_still_resolves(prd_repo):
     """A task is archived when it reaches VALIDATED — which is BEFORE the merge it was validated
     for. Resolving only active items would lose the binding exactly at the finish line."""
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import drive_task_to
     from kernel.state import ProjectState
     state = ProjectState(os.path.join(str(prd_repo), "project_memory"))
     task = capture_task(prd_repo)
     capture_full_qa(prd_repo, related=(task["id"],))
-    for status in ("READY", "LEASED", "IN_PROGRESS", "SUBMITTED", "DONE", "VALIDATED"):
-        state.transition(task["id"], status)
+    # to VALIDATED through the real lease lifecycle (DEC-0038): a bare transition into LEASED is
+    # refused, so `drive_task_to` mints the lease (PR-0001 already carries a delivery approval here).
+    drive_task_to(state, task["id"], "VALIDATED")
     state.archive(task["id"])
     assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
 

@@ -1,4 +1,4 @@
-generated_at: '2026-08-11T21:30:41'
+generated_at: '2026-08-11T23:47:30'
 items:
 - id: BUG-0001
   type: BUG
@@ -422,6 +422,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0038
+  type: DEC
+  title: 'BUG-0010: ein lease-hergestellter Status ist ohne Lease nicht per transition
+    erreichbar (Ehrlichkeit statt paralleler Abschlussweg)'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -495,6 +502,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0013
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0014
   type: EVD
   title: null
   status: null
@@ -929,6 +942,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0047
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0048
   type: TSK
   title: null
   status: DRAFT

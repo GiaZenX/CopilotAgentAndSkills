@@ -1,0 +1,15 @@
+id: EVD-0014
+kind: review
+related:
+- TSK-0048
+result: pass
+summary: verifier PASS (BUG-0010/DEC-0038) for diff:95ab4610bbd83144ea0899d8fe705dc2582877c07ca8012343eba0909f8174cc
+  -- bare transition into a lease-bearing status (LEASED/IN_PROGRESS) without a live
+  lease refused, the real dispatch path unbroken (writes status directly, not via
+  transition), sweep reports a LEASED-without-lease instead of silently resetting,
+  lease_in_force = live and unexpired, backward-compat 0/0; kits 2026.08.11-11
+artifact_refs:
+- docs/reviews/2026-08-11-tsk0048-bug0010-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-11T23:47:30'

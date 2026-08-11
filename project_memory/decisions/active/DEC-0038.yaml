@@ -1,0 +1,40 @@
+id: DEC-0038
+title: 'BUG-0010: ein lease-hergestellter Status ist ohne Lease nicht per transition
+  erreichbar (Ehrlichkeit statt paralleler Abschlussweg)'
+source: Lead-Entscheidung 2026-08-11 zu BUG-0010 (system-seitig, DEC-0037); Wahl zwischen
+  AC-1 und AC-2 des Items
+context: 'create-task erzeugt DRAFT; die einzigen Kanten aus DRAFT sind CANCELLED
+  und READY; jeder Weg zu einem Endzustand fuehrt ueber LEASED. transition TSK LEASED
+  laeuft heute durch, OHNE dass ein Lease-Datensatz entsteht -- die Buchfuehrung ist
+  damit unwahr (LEASED ohne Lease), und sweep-leases (gebaut, abgelaufene Leases nach
+  READY zurueckzugeben) wuerde so ein Item stillschweigend zuruecksetzen. Folge von
+  DEC-0003 (keine Leases ohne Hooks): dieses Repo nutzt keinen Dispatch/keine Leases
+  und fuehrt seine Aufgaben faktisch ueber Evidence+Commit zum Abschluss, nicht ueber
+  den Automaten -- die TSK stehen bewusst auf DRAFT. Ein installiertes Kit MIT Dispatch
+  dagegen stellt LEASED korrekt ueber eine Lease (create-lease) her.'
+decision: 'AC-1 gewaehlt, NICHT AC-2: transition verweigert das direkte Setzen eines
+  lease-hergestellten Status (LEASED; und jeden Status, dessen Ehrlichkeit eine lebende
+  Lease voraussetzt), wenn keine Lease in Kraft ist. Damit ist LEASED nur ueber eine
+  echte Lease erreichbar (Dispatch/create-lease im dispatch-fuehrenden Projekt). sweep-leases
+  wirft ein LEASED-Item ohne Lease NICHT mehr stillschweigend nach READY zurueck,
+  sondern meldet es (Fehler/Warnung). Kein paralleler Nicht-Dispatch-Abschlussweg
+  wird erfunden.'
+consequences: 'Die Buchfuehrung wird ehrlich: ein LEASED-Item hat immer eine Lease,
+  oder der Zustand ist gar nicht erreichbar (die Luecke ist sichtbar statt mit einem
+  Fake-LEASED ueberdeckt). Ein Nicht-Dispatch-Projekt (wie dieses Repo) kann seine
+  Aufgaben weiterhin nicht ueber den Automaten zum Endzustand fuehren -- das ist bereits
+  Realitaet (Evidence+Commit ist der Abschluss-Beleg) und jetzt ehrlich benannt statt
+  umgangen. Der weitergehende Wunsch ''die Systemseite schliesst ihre eigenen Aufgaben
+  ab'' (DEC-0037) ist getrennte, spaetere Arbeit: er braucht einen bewussten Abschlussweg,
+  kein Fake-LEASED. Begruendung gegen AC-2: ein zweiter, dispatch-freier Lifecycle-Mechanismus
+  konkurrierte mit dem Lease/Dispatch-Weg und ist genau die Drift, die der Kernel
+  vermeidet.'
+related:
+- BUG-0010
+- DEC-0003
+- DEC-0037
+- PR-0002
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-11T21:32:22'
