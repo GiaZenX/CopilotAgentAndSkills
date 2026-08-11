@@ -31,7 +31,7 @@ acceptance_criteria:
   text: Ein Body ohne BOM funktioniert unveraendert weiter (kein Regress am Bash-Heredoc-Pfad)
 - id: AC-3
   text: Ein Test deckt beide Faelle und wird ohne den Fix fuer den BOM-Fall rot
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T15:51:14'

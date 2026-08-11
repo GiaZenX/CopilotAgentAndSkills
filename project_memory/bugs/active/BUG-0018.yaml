@@ -43,7 +43,7 @@ acceptance_criteria:
 - id: AC-4
   text: 'Die daraus folgende Wurzelitem-Drift ist adressiert: nach dem Fix entsteht
     bei einem Umlaut-Projekt genau ein -0001, kein supersede-Zyklus'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T11:05:20'

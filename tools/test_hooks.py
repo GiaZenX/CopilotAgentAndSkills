@@ -311,16 +311,307 @@ def test_handover_guard_blocks_compound_engine_forms(tmp_path):
         assert r.returncode == 0, allowed
 
 
+# The shell forms that put a work-engine call behind something benign, written with the REAL
+# characters (not their escapes) so each case exercises what a shell would see. Two-character
+# operators are in here as BEHAVIOUR (`&&` must refuse), not as separate entries of the guard's
+# separator set — the set is single characters, and `&&` is two of them with an empty span between.
+# Measured 2026-08-10/11 against the respective previous guard: `newline`, `carriage_return`,
+# `background` and `pipe_both` were rc 0 before TSK-0032, and every `compound_*`/`continuation_*`
+# case was rc 0 before this rework.
+_LAUNDERING_FORMS = {
+    "and": "echo hi && python scripts/harness.py capture",
+    "or": "false || python scripts/harness.py capture",
+    "semicolon": "echo hi; python scripts/harness.py capture",
+    "pipe": "echo hi | python scripts/harness.py capture",
+    "pipe_both": "echo hi |& python scripts/harness.py capture",
+    "background": "echo hi & python scripts/harness.py capture",
+    "newline": "echo hi\npython scripts/harness.py capture",
+    "carriage_return": "echo hi\rpython scripts/harness.py capture",
+    "continuation_before_dash_m": "python \\\n  -m kernel.cli create-task",
+    "continuation_before_module": "python -m \\\n  kernel.cli create-task",
+    "continuation_after_env": ("PYTHONPATH=x python -B \\\n  -m kernel.cli "
+                               "--root project_memory capture PR"),
+    "compound_for": "for f in a b; do python scripts/harness.py capture $f; done",
+    "compound_while": "while read x; do python -m kernel.cli create-task; done < list.txt",
+    "compound_until": "until false; do python scripts/harness.py capture; done",
+    "compound_if": "if true; then python scripts/harness.py capture; fi",
+    "compound_else": "if false; then ls; else python scripts/harness.py capture; fi",
+    "compound_subshell": "(python scripts/harness.py capture)",
+    "compound_group": "{ python scripts/harness.py capture; }",
+    "compound_negation": "! python scripts/harness.py capture",
+    "after_heredoc": "cat > f <<'EOF'\nbody\nEOF\npython scripts/harness.py capture",
+    "after_unbalanced_quote": "echo \\\" ; python scripts/harness.py capture",
+    "herestring_is_not_a_heredoc": "python scripts/harness.py capture <<< 'x'",
+    # round 3: a `<<` that opens no here-document must not make the rest disappear. Each spelling
+    # comes twice — once trailing off (only the terminator rule can save it) and once with a line
+    # that MATCHES the would-be delimiter, which is what makes the two structural rules load-bearing
+    # instead of decoration: without them the derivation between the two lines is dropped as "body".
+    "false_heredoc_arithmetic_shift": "echo $((1<<2))\npython scripts/harness.py capture",
+    "false_heredoc_arithmetic_shift_closed":
+        "echo $((1<<2))\npython scripts/harness.py capture\n2",
+    "false_heredoc_in_a_comment": "# see <<HERE for details\npython scripts/harness.py capture",
+    "false_heredoc_in_a_comment_closed":
+        "# see <<HERE for details\npython scripts/harness.py capture\nHERE",
+    "false_heredoc_behind_a_quote": "echo it's \"<<EOF\"\npython scripts/harness.py capture",
+    "false_heredoc_behind_a_quote_closed":
+        "echo it's \"<<EOF\"\npython scripts/harness.py capture\nEOF",
+    # round 3: with a QUOTED delimiter the body is literal, so `EOF` after a trailing backslash
+    # closes the document and the next line RUNS (measured against a real bash)
+    "after_quoted_heredoc_with_a_markdown_break":
+        "cat > project_memory/product/masterplan.md <<'EOF'\n# Plan \\\nEOF\n"
+        "python scripts/harness.py capture",
+    # round 3: a case pattern / function header stands where a command name would
+    "case_pattern": "case x in a) python scripts/harness.py capture;; esac",
+    "function_body": "f() { python scripts/harness.py capture; }",
+    # round 3: a read WORD is not a read INVOCATION
+    "read_word_as_argument": "python scripts/harness.py capture doctor",
+    "read_word_as_option_value": 'python scripts/harness.py capture --note "doctor"',
+    # round 4 R3-1: the `<<` REDIRECTION line itself ends on a continuation, so joining after the
+    # body was cut used to bridge the cut and glue the derivation into the `cat` segment. The
+    # blank-line replacement keeps the line count so the join spans nothing.
+    "heredoc_redirect_line_continues":
+        "cat <<'EOF' \\\n  > project_memory/product/masterplan.md\n# Leitidee\nEOF\n"
+        "python scripts/harness.py capture",
+    "heredoc_redirect_line_continues_into_a_pipe":
+        "cat <<EOF \\\n | tee log.txt\nbody\nEOF\npython scripts/harness.py capture",
+    # round 4 R3-3: a help flag inside a QUOTED value is not a flag to argparse, so capture runs
+    "help_flag_in_a_quoted_value":
+        'python scripts/harness.py capture --body "see --help for details"',
+    "dash_h_in_a_quoted_value": 'python scripts/harness.py capture --note "use -h"',
+}
+
+# Refusals this reader makes although the shell would NOT run the command — the price of the rule
+# that a here-document body is only data once its terminator has been seen. Pinned so the price
+# stays visible and cannot grow unnoticed; POST_V2_WISHLIST L39 carries the chain.
+_NAMED_OVER_REFUSALS = {
+    "unterminated_heredoc": "cat <<EOF\npython scripts/harness.py capture",
+    # bash joins across a trailing backslash INSIDE an unquoted-delimiter body and swallows past
+    # `EOF` (measured 2026-08-11 with a real bash: the command after it did NOT run)
+    "unquoted_heredoc_with_a_trailing_backslash":
+        "cat > project_memory/product/masterplan.md <<EOF\n# Plan \\\nEOF\n"
+        "python scripts/harness.py capture",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_LAUNDERING_FORMS))
+def test_handover_guard_blocks_laundered_engine_calls(tmp_path, name):
+    """TSK-0032 rework: a work-engine call is refused however the line dresses it up — behind a
+    separator, behind a line continuation the shell JOINS across, or inside a compound command
+    whose reserved word sits where a command name would. RED without the respective fix: 11 of
+    these were rc 0 against the pre-rework guard, and POST_V2_WISHLIST L39 carries which and why."""
+    base = _handover_repo(tmp_path)
+    command = _LAUNDERING_FORMS[name]
+    result = _run_handover(dict(base, tool_name="Bash", tool_input={"command": command}))
+    assert result.returncode == 2, repr(command)
+
+
+@pytest.mark.parametrize("command", [
+    "cd x\nls -la",                             # a benign second line is not derivation
+    "cd x\npython scripts/harness.py doctor",   # a READ after a newline stays allowed
+    "sleep 5 & ls",                             # backgrounding a benign command
+    "cat scripts/harness.py | grep capture",    # reading the engine through a pipe is not driving it
+    "ls \\\n  -la",                             # a continuation inside one benign command
+    # a READ the agent wrapped across two lines — refusing this was the TSK-0032 over-refusal
+    "python scripts/harness.py \\\n  doctor",
+    "python -m kernel.cli \\\n  --help",
+    # a separator INSIDE quotes is data, not a separator
+    "echo 'a; python scripts/harness.py capture'",
+    'echo "a; python scripts/harness.py capture"',
+    # the ALLOWED plan artefact, written the way an entry agent writes it: the here-document body
+    # is data the shell never executes, so judging it refused a path DEC-0032 explicitly permits
+    "cat > project_memory/product/masterplan.md <<'EOF'\npython scripts/harness.py capture\nEOF",
+    "cat > project_memory/project_config.yaml <<EOF\npython scripts/harness.py capture\nEOF",
+    # ...and the same body ending in a markdown hard break, with a real command after the document.
+    # This is the case that makes the ORDER load-bearing: cutting the body out before the
+    # continuations are joined keeps `EOF` on its own line, so the body stays data and only `ls` is
+    # judged. Joined first, the body glues onto `EOF`, no terminator is found, and the body's own
+    # `python … capture` is judged as a command — a refusal on the plan-artefact path.
+    "cat > project_memory/product/masterplan.md <<'EOF'\npython scripts/harness.py capture \\\nEOF\nls",
+    # the READ forms this repo and the entry gate actually ship — the subcommand-position rule was
+    # cut at these, so they must stay allowed however the options in front of them are spelled
+    "python -m kernel.cli --root project_memory doctor",
+    "python -m kernel.cli --root project_memory --help",
+    "python -m kernel.cli --root project_memory capture --help",
+    # round 4 R3-2: a `)` in the PROSE of a quoted argument must not open a name position, or a
+    # plausible commit message that happens to name the engine becomes an over-refusal
+    'git commit -m "close TSK-0001 (see plan) then python scripts/harness.py capture"',
+    'echo "after the restart run python scripts/harness.py capture"',
+])
+def test_handover_guard_allows_benign_multiline_reads_and_heredoc_bodies(tmp_path, command):
+    """No false positive: the wider reading must not turn benign multiline blocks, reads, quoted
+    data or a here-document body into refusals. The heredoc entries are the measured over-refusal
+    of the TSK-0032 round — they hit the plan-artefact path the soft variant allows. The last three
+    are the shipped read invocations: `--help` is honoured by the engine wherever it stands
+    (measured: `kernel.cli --root project_memory capture --help` exits 0), and `doctor` stands in
+    subcommand position behind an option and its value."""
+    base = _handover_repo(tmp_path)
+    assert _run_handover(
+        dict(base, tool_name="Bash", tool_input={"command": command})).returncode == 0, repr(command)
+
+
+# The guard's OWN PRECONDITION as a target: with the marker gone every later call is a no-op, so
+# these disable it rather than work around it. Measured 2026-08-11 on the running hook (RPG pilot,
+# then reproduced here): all of them were rc 0, and a product write straight after was rc 0 too.
+_MARKER_REMOVALS = {
+    "rm": "rm .claude/HANDOVER_PENDING",
+    "rm_force": "rm -f .claude/HANDOVER_PENDING",
+    "del": "del .claude\\HANDOVER_PENDING",
+    "mv_away": "mv .claude/HANDOVER_PENDING /tmp/parked",
+    "powershell_remove_item": "Remove-Item .claude\\HANDOVER_PENDING",
+    "powershell_move_item": "Move-Item .claude\\HANDOVER_PENDING C:\\parked",
+    "redirect_onto_it": "echo x > .claude/HANDOVER_PENDING",
+    "chained_behind_a_benign_word": "echo hi && rm .claude/HANDOVER_PENDING",
+    "assigned_to_a_variable_first": "M=.claude/HANDOVER_PENDING; rm $M",
+    "wrapped_in_a_shell": "sh -c 'rm .claude/HANDOVER_PENDING'",
+    "through_python": "python -c \"import os; os.remove('.claude/HANDOVER_PENDING')\"",
+}
+
+# The same class, and what is NOT built: the marker is reached without its NAME ever appearing as a
+# word, so a rule that reads words cannot see it. Measured, pinned, and named in L39.
+_MARKER_RESIDUE = {
+    "renaming_the_directory": "mv .claude .claude_off",
+    "a_glob_instead_of_the_name": "rm .claude/HANDOVER*",
+    "a_wildcard_sweep": "rm -f .claude/*",
+    "find_by_pattern": "find .claude -name 'HANDOVER*' -delete",
+    "a_path_built_by_substitution": "M=$(ls .claude | head -1); rm .claude/$M",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_MARKER_REMOVALS))
+def test_handover_guard_refuses_removing_its_own_marker(tmp_path, name):
+    """A guard whose precondition can be deleted from inside the session it guards protects nothing.
+    RED without the fix: every one of these was rc 0 (measured 2026-08-11), and with the marker gone
+    the next product write and the next spawn were rc 0 as well."""
+    base = _handover_repo(tmp_path)
+    command = _MARKER_REMOVALS[name]
+    assert _run_handover(
+        dict(base, tool_name="Bash", tool_input={"command": command})).returncode == 2, command
+
+
+@pytest.mark.parametrize("command", [
+    "cat .claude/HANDOVER_PENDING",
+    "ls .claude/",
+    "ls -la .claude/",
+    "Get-Content .claude\\HANDOVER_PENDING",
+    "grep -r handover_pending .",
+    "test -f .claude/HANDOVER_PENDING",
+])
+def test_handover_guard_still_lets_the_marker_be_read(tmp_path, command):
+    """The other side of the marker rule: the session must keep being able to SEE why it is being
+    refused. The verb allowlist runs the safe way round — an unlisted verb is refused — so this
+    measures that the listed readers really do come back allowed."""
+    base = _handover_repo(tmp_path)
+    assert _run_handover(
+        dict(base, tool_name="Bash", tool_input={"command": command})).returncode == 0, command
+
+
+@pytest.mark.parametrize("name", sorted(_MARKER_RESIDUE))
+def test_handover_guard_marker_residue_is_named_not_closed(tmp_path, name):
+    """The measured residue of the marker rule, pinned so the boundary cannot move silently: the
+    marker is reached without its name appearing as a word. NOT closed — a rule that matched globs,
+    wildcards and directory moves would have to model the file system, which is the same rabbit
+    hole DEC-0029 decided against. POST_V2_WISHLIST L39 carries the chain and the severity."""
+    base = _handover_repo(tmp_path)
+    command = _MARKER_RESIDUE[name]
+    assert _run_handover(
+        dict(base, tool_name="Bash", tool_input={"command": command})).returncode == 0, command
+
+
+def test_handover_guard_refuses_a_tool_write_onto_its_own_marker(tmp_path):
+    """The file-tool half. This was already refused as "not a plan artefact", so what is measured
+    here is the REASON: a refusal that calls the guard's own precondition product code sends the
+    reader looking for the wrong thing."""
+    base = _handover_repo(tmp_path)
+    result = _run_handover(dict(base, tool_name="Write",
+                                tool_input={"file_path": str(tmp_path / ".claude"
+                                                             / "HANDOVER_PENDING")}))
+    assert result.returncode == 2
+    assert "handover marker" in result.stderr
+
+
+@pytest.mark.parametrize("name", sorted(_NAMED_OVER_REFUSALS))
+def test_handover_guard_over_refuses_an_unterminated_heredoc(tmp_path, name):
+    """The NAMED price of the terminator rule, pinned rather than described (house rule 3).
+
+    A here-document whose delimiter line is not in the same tool call has its body judged as
+    commands, so this is rc 2 while a real bash executes nothing. That is deliberate: the opposite
+    direction was measured to let three different non-here-documents swallow the rest of the line
+    (round 3 N1). If a later change makes one of these allowed, L39 has to say so too."""
+    base = _handover_repo(tmp_path)
+    command = _NAMED_OVER_REFUSALS[name]
+    assert _run_handover(
+        dict(base, tool_name="Bash", tool_input={"command": command})).returncode == 2, repr(command)
+
+
+def _guard_module():
+    """The shipped guard, imported so a mutation can be measured against the code that RUNS."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("handover_guard_under_test", HANDOVER_GUARD)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_every_separator_character_is_load_bearing(tmp_path):
+    """Both ends of `_SEPARATORS` (house rule 1), by MUTATION rather than by assertion.
+
+    One end: a character missing from the set lets a laundered call through — that is what the
+    cases above measure. The other end, the one that was claimed and not built: a character that
+    could be deleted without any case noticing is decoration. Measured 2026-08-11 on the previous
+    guard: dropping `&&`, `||` and `|&` from its regex left all 23 handover tests green, because a
+    single `&`/`|` already covered them. So each character is removed from the running module in
+    turn and at least one laundering form must stop being refused.
+
+    The guard's own functions are called here (not a subprocess) because the subject is what the
+    module computes with a mutated constant — a process could only be given the file as it stands.
+    What is called is `_handle_shell`, the ENTRY POINT, so the order of its steps is part of what
+    is measured: a rebuilt copy of the pipeline would keep passing after that order changed.
+    """
+    module = _guard_module()
+
+    def refuses(command):
+        try:
+            module._handle_shell({"command": command})
+        except SystemExit as stop:
+            return stop.code == 2
+        return False
+
+    original = module._SEPARATORS
+    assert original, "the guard defines no separator set"
+    for character in sorted(original):
+        module._SEPARATORS = frozenset(original - {character})
+        try:
+            still_caught = [refuses(command) for command in _LAUNDERING_FORMS.values()]
+        finally:
+            module._SEPARATORS = original
+        assert not all(still_caught), (
+            "removing %r from _SEPARATORS changes nothing — it is a dead entry" % character)
+    # ...and with the set intact every form is caught, so the loop above compared against a real
+    # baseline rather than against a guard that catches nothing anyway.
+    missed = [name for name, command in _LAUNDERING_FORMS.items() if not refuses(command)]
+    assert not missed, "the intact guard does not refuse: %s" % missed
+
+
 def test_handover_guard_wrapped_engine_forms_are_the_named_residue(tmp_path):
     """The boundary the fix does NOT close, pinned so it cannot silently move (POST_V2_WISHLIST
-    L39, DEC-0029): a work-engine call wrapped in `sh -c '...'` / `bash -lc '...'` has a shell in
-    verb position, not python, so the segment splitter does not reach the inner string. These stay
-    rc 0 by design; the true boundary is the restart. If a later change starts refusing them, this
-    test and L39 must be corrected together."""
+    L39, DEC-0029). ONE class, two spellings of it: the verb position is occupied by something this
+    reader does not follow — a shell that will run the string later (`sh -c`, `bash -lc`), a
+    substitution that produces a command (`$(...)`, backticks, `<(...)`), or a launcher word no
+    closed set can hold (`nohup`, `timeout`, `uv`, `xargs`, `eval`). These stay rc 0 BY DESIGN; the
+    true boundary is the restart. If a later change starts refusing one of them, this test and L39
+    must be corrected together — that is the point of pinning them."""
     base = _handover_repo(tmp_path)
     for residue in (
         "sh -c 'python scripts/harness.py capture'",
         "bash -lc 'python -m kernel.cli create-task'",
+        "echo $(python scripts/harness.py capture)",
+        "echo `python scripts/harness.py capture`",
+        "diff <(python scripts/harness.py capture) /dev/null",
+        "nohup python scripts/harness.py capture",
+        "timeout 60 python scripts/harness.py capture",
+        "uv run python scripts/harness.py capture",
+        "xargs -I{} python scripts/harness.py capture",
+        "eval python scripts/harness.py capture",
     ):
         r = _run_handover(dict(base, tool_name="Bash", tool_input={"command": residue}))
         assert r.returncode == 0, residue

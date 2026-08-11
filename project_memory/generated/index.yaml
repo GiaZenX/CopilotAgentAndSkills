@@ -1,139 +1,153 @@
-generated_at: '2026-08-10T21:59:46'
+generated_at: '2026-08-11T05:02:26'
 items:
 - id: BUG-0001
   type: BUG
   title: Die Kommandoflaeche hat kein update -- ein Tippfehler kostet ein neues Item
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0002
   type: BUG
   title: robocopy /MOVE liest als Kopie
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0003
   type: BUG
   title: Die Ledger-Redirect-Regel liest rohen Text statt der aufgeloesten Zeichenkette
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0004
   type: BUG
   title: premise_rechecks hat keinen Schreiber
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0005
   type: BUG
   title: Der Sitzungsbrief verliert die letzte Nutzerentscheidung
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0006
   type: BUG
   title: Die CLI-Ableitung der Ordering-Kommandos ist direkt, nicht transitiv
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0007
   type: BUG
   title: ruff ist in CI ungepinnt -- das Ergebnis ist nicht reproduzierbar
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0008
   type: BUG
   title: Ein PowerShell-Modulcache liegt unverfolgt im Repo-Wurzelverzeichnis
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0009
   type: BUG
   title: Lebenszyklus-Ereignisse zwischen zwei Items werden nicht verlinkt
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0010
   type: BUG
   title: Ohne Lease ist eine Aufgabe nicht ehrlich abschliessbar -- und LEASED ist
     genau das, was sweep-leases zuruecksetzt
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0011
   type: BUG
   title: Ein Satz, der die Abwesenheit des Kit-Markers behauptet, LOEST DIE UEBERGABE
     AUS
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0012
   type: BUG
   title: Gate 1 liest eine Shell-Funktionsdefinition als Schreibzugriff auf den zugewiesenen
     Wert
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0013
   type: BUG
   title: Kit-Hooks legen ihr eigenes Verzeichnis auf sys.path[0] und koennen damit
     die Standardbibliothek verdecken
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0014
   type: BUG
   title: Die Gate-Suite dieses Repos ist rot, und niemand hat es bemerkt
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0015
   type: BUG
   title: Die Migration empfiehlt ein Flag, das die Verfahrensdokumentation fuer die
     Steuerberatung buchstabenweise fuellt
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0016
   type: BUG
   title: Die Einstiegssitzung sagt die Neustart-Bitte und arbeitet danach weiter,
     wenn der Nutzer weiterredet
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0017
   type: BUG
   title: Der Freigabe-/Mint-Mechanismus funktioniert im Headless-/SDK-Betrieb nicht
     und fuehrt zu Nutzer-Irrefuehrung
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0018
   type: BUG
   title: harness.py capture verstuemmelt Nicht-ASCII auf der Windows-Default-Codepage,
     und die Unveraenderlichkeit treibt daraus Wurzelitem-Drift
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0019
   type: BUG
   title: Der PM der zweiten Sitzung stuetzt den Handover auf das Rohtranskript, nicht
     auf den Sitzungsbrief
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0020
   type: BUG
   title: Gate 1 vertraut der Aufruf-Form, nicht dem laufenden Kernel -- capture mit
     fremdem PYTHONPATH und rm kanonischer Items laufen durch
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0021
   type: BUG
   title: capture verweigert einen stdin-Body mit UTF-8-BOM, obwohl die Fehlermeldung
     selbst utf-8-sig als Abhilfe nennt
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0022
+  type: BUG
+  title: 'Der CR-Typ wird nie erreicht: Aenderungen am schon Gebauten laufen als PR-Ersatz
+    plus TSK'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0023
+  type: BUG
+  title: 'create-task nimmt expected_outputs: [] an -- ein Auftrag ohne erwartete
+    Ausgaben ist kein Auftrag'
   status: OPEN
   revision: 1
   approval_ref: null
@@ -359,6 +373,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0036
+  type: DEC
+  title: Bug backlog triaged into five fix families; batch order E, D, B, A with C
+    gated on the live pilot
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -384,6 +405,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0005
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0006
   type: EVD
   title: null
   status: null
@@ -477,6 +504,13 @@ items:
   type: FR
   title: 'BuyPlugGo-Ziel: Produktpflege ueber die API durch einen Subagenten -- bisher
     von nichts angearbeitet'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0016
+  type: FR
+  title: Der Apparat kann ein Bild nicht in den Chat stellen -- UI-Rueckkopplung verpufft
+    an Dateipfaden
   status: OPEN
   revision: 1
   approval_ref: null
@@ -715,6 +749,30 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0031
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0032
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0033
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0034
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0035
   type: TSK
   title: null
   status: DRAFT

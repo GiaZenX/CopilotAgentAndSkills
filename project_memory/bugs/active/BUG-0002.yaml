@@ -15,7 +15,7 @@ acceptance_criteria:
 - Der Test wird rot, wenn die Erkennung entfernt wird.
 - Die uebrigen robocopy-Schalter, die ebenfalls die Quelle veraendern, werden bei
   der Gelegenheit gemessen statt aufgezaehlt.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:58:13'

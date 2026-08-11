@@ -33,7 +33,7 @@ acceptance_criteria:
 - id: AC-3
   text: Geprueft ist, ob der Handover ohne das Rohtranskript funktional scheitert
     oder ob es nur Zusatzlektuere war -- die beiden Faelle brauchen verschiedene Abhilfen
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T12:54:10'

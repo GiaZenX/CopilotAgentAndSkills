@@ -1,0 +1,35 @@
+id: TSK-0033
+product_requirement: PR-0001
+derives_from: BUG-0015
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-4
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0015: migrate dry-run prints --map PROC.roles=owner filling roles with a SCALAR;
+  office-team process_doc.py:125,129 joins/iterates it letter by letter into docs/verfahrensdokumentation.md
+  (the GoBD document); migrate.py:2350 claims no contract describes the shape while
+  the office kit does; report.py:821-826 _parent_bindings already normalises scalar/list'
+expected_outputs:
+- 'process_doc.py normalises scalar/list like _parent_bindings AND/OR migrate stops
+  filling roles scalar; migrate.py:2350 claim corrected; AC-4: every other --map-filled
+  field checked for shape-assuming readers -- measured, not asserted; red-without-fix
+  test on the letter-by-letter output'
+dependencies:
+- TSK-0032
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-10T23:43:21'

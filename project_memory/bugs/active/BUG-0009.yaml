@@ -27,7 +27,7 @@ acceptance_criteria:
 - Je ein Test wird rot, wenn die Verlinkung fehlt.
 - Die Frage 'welche Entscheidungen gelten noch' ist aus dem Zustand beantwortbar --
   gemessen, nicht behauptet.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T17:52:15'

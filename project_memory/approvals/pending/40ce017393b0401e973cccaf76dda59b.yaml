@@ -1,0 +1,25 @@
+request_id: 40ce017393b0401e973cccaf76dda59b
+kind: scope
+item: BUG-0018
+revision: 1
+subject_manifest:
+  acceptance_criteria:
+  - id: AC-1
+    text: Ein capture mit Umlaut im title erzeugt auf der Windows-Default-Codepage
+      sauberes UTF-8 in der Item-Datei -- gemessen an den Rohbytes, ohne dass der
+      Aufrufer eine Encoding-Umgebungsvariable setzt
+  - id: AC-2
+    text: Ein Test wird ohne den Fix rot und faehrt capture wirklich mit nicht-ASCII-Inhalt,
+      statt den Quelltext zu durchsuchen
+  - id: AC-3
+    text: Geprueft ist, ob weitere kernel-Schreibwege (evidence, transition, freeze)
+      denselben Codepage-Defekt haben
+  - id: AC-4
+    text: 'Die daraus folgende Wurzelitem-Drift ist adressiert: nach dem Fix entsteht
+      bei einem Umlaut-Projekt genau ein -0001, kein supersede-Zyklus'
+  item: BUG-0018
+  revision: 1
+subject_manifest_hash: cf5303c4e9d6cc789f05f3e98c081c8e763ec3998d0ba7643389cd8c3073b106
+created: '2026-08-10T23:33:36'
+expires_at_epoch: 1786484016.6129613
+mint_code: a4248d

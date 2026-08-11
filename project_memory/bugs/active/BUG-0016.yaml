@@ -48,7 +48,7 @@ acceptance_criteria:
   text: 'Geprueft ist, ob dieselbe Schwaeche auch die andere Richtung hat: ob der
     PM der zweiten Sitzung Arbeit der ersten Sitzung uebersieht, die ausserhalb des
     Zustands entstand'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T09:18:55'

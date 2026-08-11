@@ -1657,36 +1657,148 @@ Deckung, und keine Runde darf ihn als solche zitieren.
 
 **Stolperdraht:** keiner in `tools/` — das ist der Kern des Eintrags. BUG-0014 AC-3 verlangt einen.
 
-### L39 — Der Handover-Guard liest den äußeren Verb, nicht den einer gewrappten oder kodierten Zeile (TSK-0031)
+### L39 — Der Handover-Guard folgt nicht in die Verbposition, die eine Substitution oder ein ungelisteter Wrapper besetzt — und sein Marker ist nur beim Namen geschützt (TSK-0031, TSK-0032, eingeengt in Runde 3)
 
-**Mechanismus:** `user/claude/hooks/handover_guard.py::_handle_shell` zerlegt die Kommandozeile seit
-TSK-0031 an `&&`, `||`, `;` und `|` und prüft **je Teilbefehl** den Verb (`_segment_drives_engine`).
-Damit sind die **routinemäßigen** Ketten gedeckt, die ein überlaufender Einstiegsagent wirklich tippt.
-Was das nicht liest, ist der Befehl, den ein **Wrapper mit eigenem Verb** erst intern startet: bei
-`sh -c 'python scripts/harness.py capture'` oder `bash -lc '…'` steht in Verbposition `sh`/`bash`, die
-Ableitung liegt in einer Zeichenkette, die dieser Hook nicht ausführt und darum nicht bewertet.
-Dieselbe Blindheit trifft jede **kodierte/verschleierte** Form (base64 an `python -c`, eine Variable,
-die die Zeile trägt).
+**Mechanismus:** `user/claude/hooks/handover_guard.py::_handle_shell` liest eine Bash-Zeile in
+Schritten, deren **Reihenfolge tragend ist**, und nur diese sind gebaut: (1) **Here-Document-Körper**
+werden auf dem **rohen** Text herausgeschnitten — dort ist der Delimiter noch als quotiert oder
+unquotiert lesbar; (2) Zeilenfortsetzungen werden zusammengezogen (`_CONTINUATION`), (3) erst dann
+läuft `_norm`, das sonst aus jedem `\` ein `/` macht und beides unsichtbar; (4) die Zeile wird an
+**unquotierten** Trennzeichen zerlegt (`_SEPARATORS` = `;`, `&`, `|`, `\n`, `\r`; die Doppelformen
+`&&`/`||`/`|&` brauchen keinen eigenen Eintrag, sie sind zwei Trenner mit einer leeren Spanne
+dazwischen); (5) der Verb eines Teilbefehls ist sein erstes Wort, das ein Kommandoname ist —
+`VAR=value`, ein führendes `(`/`{`, die **POSIX-Schlüsselwörter** eines zusammengesetzten Kommandos
+und eine kleine Wrapper-Menge werden übersprungen, und nach einem `case`-Muster (`a)`) oder einem
+Funktionskopf (`f()`) beginnt eine **zweite Namensposition** (`_name_positions`); (6) als **Lesen**
+gilt ein Hilfs-Flag an beliebiger Stelle (gemessen: `kernel.cli --root project_memory capture
+--help` endet rc 0, es kapturt nichts) und ein Lese-**Unterkommando** nur in Unterkommando-Position
+— `capture doctor` ist damit kein Lesen mehr.
 
-**Kette (gemessen 2026-08-10 unter Marker, isoliertes cwd):** gedeckt und jetzt rc 2 —
-`cd project_memory && python ../scripts/harness.py capture`, `echo hi && python scripts/harness.py
-capture`, `true; python scripts/harness.py dispatch`, `ls && python -m kernel.cli create-task`,
-`cat foo | python scripts/harness.py capture`. Offen und rc 0 — `sh -c 'python scripts/harness.py
-capture'`, `bash -lc 'python -m kernel.cli create-task'`.
+**Ein Here-Document-Körper gilt nur als Daten, wenn seine Delimiter-Zeile im selben Aufruf
+tatsächlich vorkommt.** Das ist die Bedingung, die eine ganze Fehlerfamilie schließt: ohne sie hat
+jedes `<<`, das gar keines ist, den **gesamten Rest ungeprüft** verschluckt — gemessen an einer
+Arithmetik-Verschiebung (`echo $((1<<2))`), an einem `<<` in einem **Kommentar** und an einem
+quotierten `<<EOF`, das der Unbalanciert-Rückfall der Quote-Maske wieder sichtbar machte. Ergänzend
+wird `<<` nur an einer **Umleitungsgrenze** anerkannt (Zeilenanfang, Leerzeichen, Trenner) und ein
+unquotierter Kommentar vorher abgeschnitten; beide tragen je einen eigenen roten Fall, nämlich den,
+in dem das Falsch-Delimiterwort später **doch** als Zeile auftaucht.
 
-**Urteil: Ausnahme, Abnahme offen** — die Restmenge ist **bewusst nicht** geschlossen. Ein
-vollständiger Shell-Parser im globalen Hook wäre genau das Aufzählungs-/Parser-Kaninchenloch, gegen
-das DEC-0029 entschieden hat; und das Bedrohungsmodell (DEC-0032) ist ein **wohlmeinender**
-Einstiegsagent, der weiterarbeitet, kein Gegner, der absichtlich verschleiert — deshalb ist die
-routinemäßige Kette der reale Vektor (gebaut), die verschleiernde der benannte Rest.
+**Was das NICHT liest, ist die Verbposition, die von etwas besetzt ist, dem dieser Leser nicht
+folgt** — eine Klasse, mehrere Schreibweisen: eine Shell, die die Zeichenkette später ausführt
+(`sh -c '…'`, `bash -lc '…'`); eine **Substitution**, die den Befehl erst erzeugt (`$(…)`,
+Backticks, `<(…)` — **auch in doppelten Quotes eingebettet**, denn bash führt eine
+Kommandosubstitution in `"…"` aus, während dieser Leser einer quotierten Spanne nicht folgt;
+gemessen `echo "a $(python … capture) b"` rc 0, „quoted" heißt also **nicht** „sicher"); ein
+**Starterwort außerhalb von `_WRAPPERS`** (`nohup`, `timeout 60`, `uv run`,
+`xargs -I{}`, `eval`); und jede kodierte/verschleierte Form. `_WRAPPERS` ist die eine Aufzählung,
+die hier nicht schließbar ist — jedes künftige Starterwort stellt sich ebenso davor —, und genau
+darum steht sie hier als Rest statt als verlängerte Liste.
+
+**Kette (gemessen 2026-08-10/11 unter Marker, isoliertes cwd außerhalb des Repos, echter Prozess):**
+Vorher rc 0, jetzt rc 2 — die drei Fortsetzungsformen (`python \⏎ -m kernel.cli create-task`,
+`python -m \⏎ kernel.cli …`, `PYTHONPATH=x python -B \⏎ -m kernel.cli … capture PR`) und acht
+zusammengesetzte Kommandos (`for … do`, `while read … do`, `until … do`, `if … then`, `… else …`,
+`(…)`, `{ …; }`, `! …`). Weiterhin rc 2 (Regression): `&&`, `||`, `;`, `|`, `|&`, `&`, `\n`, `\r`,
+sowie eine Ableitung **nach** einem Heredoc-Ende und nach einer unbalancierten Quote.
+Weiterhin rc 0 und **richtig so** — `sh -c '…'`, `bash -lc '…'`, `echo $(python … capture)`,
+`echo \`python … capture\``, `diff <(python … capture) /dev/null`, `nohup/timeout 60/uv run/xargs
+-I{}/eval python … capture`.
+
+**Zwei Über-Verweigerungen sind mit demselben Rework verschwunden** (vorher rc 2, jetzt rc 0):
+ein über eine Fortsetzung umgebrochener **Lesebefehl** (`python scripts/harness.py \⏎ doctor`,
+`python -m kernel.cli \⏎ --help`) und ein Trenner **innerhalb von Quotes**
+(`echo 'a; python … capture'`). Die Vorfassung dieses Eintrags nannte quotierte Trenner als
+Durchlass — das war die falsche Richtung, gemessen war es eine Über-Verweigerung. Ebenso getroffen
+war der **erlaubte Planweg**: `cat > project_memory/product/masterplan.md <<'EOF' … EOF` wurde
+abgelehnt, weil der Heredoc-Körper als Befehl gelesen wurde; er gilt jetzt als Daten.
+
+**Runde 3 hat vier weitere Durchlässe geschlossen, alle am laufenden Hook gemessen** (vorher rc 0,
+jetzt rc 2): die drei Falsch-Heredocs oben; ein **quotierter** Delimiter, dessen Körper mit einem
+Markdown-Zeilenumbruch (`\` am Zeilenende) endete — reales bash terminiert dort an `EOF` und führt
+die Folgezeile aus, der Leser hatte sie durch sein zu frühes Zusammenziehen verloren; ein
+`case`-Muster und ein Funktionskopf in Verbposition (`case x in a) python … capture;; esac`,
+`f() { python … capture; }`); und ein **Lesewort an beliebiger Stelle**
+(`python scripts/harness.py capture doctor`, `… capture --note "doctor"`), das die ganze Zeile
+entwertete.
+
+**Runde 4 hat drei Ränder desselben Reworks geschlossen, alle gemessen.** (R3-1) Endet die
+`<<`-**Umleitungszeile selbst** auf einer Fortsetzung, überbrückte das nachträgliche Zusammenziehen
+den Schnitt, den das Herausschneiden des Körpers gemacht hatte, und klebte die Ableitung ins
+`cat`-Segment (`cat <<'EOF' \⏎ > …masterplan.md⏎…⏎EOF⏎python … capture`, vorher rc 0). Behoben,
+indem der Körper durch **gleich viele Leerzeilen** ersetzt wird statt gelöscht — die Zeilenzahl
+bleibt, der Join überspannt nichts. (R3-2) Ein `)` in der **Prosa eines quotierten Arguments**
+öffnete eine zweite Namensposition, sodass `git commit -m "… (siehe Plan) … python … capture"`
+fälschlich rc 2 war; die Tokenisierung respektiert jetzt Quotes, ein quotiertes Wort endet auf `"`
+statt auf `)`. (R3-3) Ein Hilfs-Flag in einem **quotierten Wert** (`… capture --body "see --help
+…"`) entwertete die Zeile — argparse sieht dort einen Wert, kein Flag; dieselbe quote-respektierende
+Tokenisierung schließt das mit, weil `--help` dann kein eigenes Token mehr ist.
+
+**Eine dritte Klasse kam aus dem RPG-Piloten und war bis dahin unbenannt: Selbstabschaltung über
+die eigene Vorbedingung.** Der Guard prüft zuerst, ob `.claude/HANDOVER_PENDING` existiert; ist die
+Datei weg, ist jeder weitere Aufruf ein No-op. Gemessen am laufenden Hook (Pilot, hier reproduziert):
+`rm`, `rm -f`, `del`, `mv`, `Remove-Item`, `Move-Item`, eine Umleitung auf den Marker und die
+gewrappte Form waren **alle rc 0**, und ein Produktcode-Write und ein Task-Spawn direkt danach
+ebenso. **Gebaut ist jetzt:** ein Segment, das den Marker **beim Namen** nennt, wird verweigert,
+sofern sein Verb nicht in einer kleinen **Lese-Allowlist** steht — die Aufzählung läuft hier
+absichtlich andersherum als sonst in der Datei, ein unbekanntes Verb wird also **verweigert**, damit
+ein nicht gelisteter Leser Reibung kostet und kein nicht gelisteter Entferner den Guard. Alle elf
+Entfernungsformen sind jetzt rc 2; `cat`, `ls`, `Get-Content`, `grep`, `test -f` bleiben rc 0.
+**Nicht gebaut, gemessen und benannt:** der Marker wird erreicht, **ohne dass sein Name als Wort
+vorkommt** — `mv .claude .claude_off`, `rm .claude/HANDOVER*`, `rm -f .claude/*`,
+`find .claude -name 'HANDOVER*' -delete`, oder ein per Substitution zusammengesetzter Pfad (je rc 0,
+gepinnt). Das zu schließen hieße, das Dateisystem zu modellieren statt Wörter zu lesen.
+**Einordnung:** als Angriff **niedrig** — im Piloten hat das Modell die Löschung von sich aus als
+direkten Bypass verweigert; als **Dokumentationslücke mittel**, denn der Docstring versprach
+„NAMED, unclosed gaps, each measured" und nannte genau diese Klasse nicht.
+
+**Die Kehrseite derselben Regel ist eine Über-Verweigerung, und die ist gewollt (R3-4):** weil ein
+unquotiertes Nicht-Lese-Verb mit dem Markerwort verweigert wird, trifft es auch eine Zeile, die den
+Marker nur **sichert** oder **erwähnt** — `cp .claude/HANDOVER_PENDING /tmp/backup` und
+`git commit -m "docs: explain HANDOVER_PENDING"` sind beide rc 2. Das ist die sichere Richtung: die
+Allowlist verweigert im Zweifel, damit kein ungelisteter Entferner durchkommt, und der Preis ist
+Reibung auf einer seltenen, gutartigen Zeile bis zum Neustart.
+
+**Eine neue, benannte Über-Verweigerung ist der Preis der Terminator-Bedingung:** ein
+Here-Document, dessen Delimiter-Zeile **nicht im selben Werkzeugaufruf** steht, bekommt seinen
+Körper als Befehle vorgelegt. Gemessen gegen reales bash: `cat <<EOF⏎python … capture` führt bash
+nicht aus, dieser Leser verweigert es (rc 2); ebenso `<<EOF` (unquotiert) mit `\` am Ende der
+Körperzeile, wo bash über `EOF` hinaus schluckt. Beide sind mit
+`test_handover_guard_over_refuses_an_unterminated_heredoc` festgenagelt, damit der Preis sichtbar
+bleibt. Die umgekehrte Richtung wäre ein Loch, und genau das war sie.
+
+**Urteil: Ausnahme, Abnahme offen** — die verbleibende Restklasse (Substitution, ungelisteter
+Wrapper, gewrappte Shell, kodiert) ist **bewusst nicht** geschlossen. Sie zu schließen hieße zu
+beantworten, was eine Zeichenkette später ausführen wird; das ist das Parser-Kaninchenloch, gegen
+das DEC-0029 entschieden hat. Das Bedrohungsmodell (DEC-0032) ist ein **wohlmeinender**
+Einstiegsagent, der weiterarbeitet, kein Gegner, der absichtlich verschleiert.
 
 **Was stattdessen begrenzt:** die eigentliche Grenze ist der Neustart selbst — nach ihm sind die
 Kit-Gates aktiv und `gate_write_scope`/`gate_dispatch` fangen dieselben Ableitungen strukturell.
 Bis dahin ist der Guard ein Gurt, kein Sandkasten (Docstring). **Sozial** ergänzt: der Einstiegsagent
 folgt seiner Verfassung, die ihm die Ableitung ohnehin untersagt.
 
-**Roter Test ohne den Fix:** `test_hooks.py::test_handover_guard_blocks_compound_engine_forms` — die
-zusammengesetzten Formen kommen gegen den Vor-Fix-Körper (erster Verb) mit rc 0 statt 2 zurück.
+**Rote Tests ohne den Fix.** `test_hooks.py::test_handover_guard_blocks_laundered_engine_calls` —
+11 Fälle kamen gegen den Vor-Rework-Hook mit rc 0 statt 2 zurück (drei Fortsetzungen, acht
+zusammengesetzte Kommandos); `test_handover_guard_allows_benign_multiline_reads_and_heredoc_bodies`
+— 6 Fälle kamen mit rc 2 statt 0. Für Runde 3 ist **jede einzelne Mechanik** in einer Kopie
+außerhalb des Repos zurückgebaut und gemessen worden, statt einer pauschalen Behauptung:
+Terminator-Bedingung → `unterminated_heredoc`; Umleitungsgrenze →
+`false_heredoc_arithmetic_shift_closed`; Kommentar-Abschnitt → `false_heredoc_in_a_comment_closed`;
+Reihenfolge (Heredoc vor dem Zusammenziehen) → der Planweg-Fehlalarm
+`…masterplan.md <<'EOF'⏎python … capture \⏎EOF⏎ls` (rc 0 gebaut, rc 2 mit der alten Reihenfolge);
+zweite Namensposition → `case_pattern`, `function_body`; Lese-Position → `read_word_as_argument`,
+`read_word_as_option_value`; Marker-Regel → alle **11** Fälle von
+`test_handover_guard_refuses_removing_its_own_marker` (gegen den Klon ohne die Regel rc 0 statt 2),
+mit `test_handover_guard_still_lets_the_marker_be_read` als Gegenprobe und
+`test_handover_guard_marker_residue_is_named_not_closed` als Pin des Rests. Dazu misst
+`test_every_separator_character_is_load_bearing` das andere
+Ende der Trenner-Menge über den echten Einstiegspunkt `_handle_shell` (ein eingeschleustes `@` wird
+als toter Eintrag gemeldet), und
+`test_handover_guard_wrapped_engine_forms_are_the_named_residue` pinnt die Restklasse.
+Für Runde 4 ebenso je Mechanik zurückgebaut: Leerzeilen-Ersatz statt Löschung →
+`heredoc_redirect_line_continues`(+`_into_a_pipe`) rc 0 statt 2; quote-respektierende Tokenisierung
+→ `help_flag_in_a_quoted_value`, `dash_h_in_a_quoted_value` rc 0 statt 2 und der Fehlalarm
+`git commit -m "… (…) … python … capture"` rc 2 statt 0.
 
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 

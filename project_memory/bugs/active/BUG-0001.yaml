@@ -26,7 +26,7 @@ acceptance_criteria:
   NICHT beschreibbar sind -- sonst waere update eine Umgehung des Automaten.
 - Alle vier praesentierenden Bloecke nennen die neue Kommandozahl (der bestehende
   Stolperdraht dafuer greift).
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:52:49'

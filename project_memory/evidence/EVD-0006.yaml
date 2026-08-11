@@ -1,0 +1,14 @@
+id: EVD-0006
+kind: review
+related:
+- TSK-0032
+result: pass
+summary: verifier PASS with named residue for diff:e8acb146cdbccd0614fe10e9ab02e61035c70a3e7da052fdc0524d2c2a9d7273
+  (handover-guard separator set as definition; 4 rounds; no hole in covered class,
+  3 named residue classes in L39; acceptance 2432 passed/13 skipped, ruff+validate
+  clean, stamp unchanged)
+artifact_refs:
+- docs/reviews/2026-08-11-tsk0032-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-11T05:02:25'

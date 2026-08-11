@@ -36,7 +36,7 @@ acceptance_criteria:
 - id: AC-3
   text: Es gibt einen Weg, der ein Rot dieser Suite bemerkt, bevor es eine Runde ueberlebt
     -- die Suite laeuft nicht in pytest tools/ mit, und genau daran ist es vorbeigekommen
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-09T19:31:24'

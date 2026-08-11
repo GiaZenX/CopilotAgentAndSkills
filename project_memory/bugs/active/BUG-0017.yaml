@@ -49,7 +49,7 @@ acceptance_criteria:
 - id: AC-3
   text: Geprueft ist, ob derselbe Mint-Weg auch in der interaktiven CLI (nicht nur
     SDK) betroffen ist -- oder ob es eine reine SDK-Grenze ist
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T11:04:25'

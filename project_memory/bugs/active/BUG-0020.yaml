@@ -52,7 +52,7 @@ acceptance_criteria:
 - id: AC-4
   text: Wo die Kette nicht schliessbar ist, steht sie als benannte Ausnahme mit Begrenzung
     in docs/POST_V2_WISHLIST.md -- kein dritter Zustand
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T15:50:52'

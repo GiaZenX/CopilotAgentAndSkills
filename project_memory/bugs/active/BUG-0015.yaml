@@ -48,7 +48,7 @@ acceptance_criteria:
   text: 'Geprueft ist, ob weitere vom --map-Flag gefuellte Felder einen Leser haben,
     der eine Form voraussetzt: roles war der erste gefundene, nicht notwendig der
     einzige'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-09T21:26:01'

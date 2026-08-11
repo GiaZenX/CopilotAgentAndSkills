@@ -18,7 +18,7 @@ acceptance_criteria:
 - Ein Test misst, dass eine frisch angelegte Entscheidung im naechsten erzeugten Brief
   steht.
 - Der Test wird rot, wenn der Abschnitt entfernt wird.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:58:16'

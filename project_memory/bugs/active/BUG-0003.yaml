@@ -15,7 +15,7 @@ acceptance_criteria:
 - Ein Test faehrt eine Umleitung, deren Ziel erst nach dem Aufloesen sichtbar wird,
   und sieht die Verweigerung.
 - Der Test wird rot, wenn die Regel wieder auf rohen Text zurueckfaellt.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:58:14'

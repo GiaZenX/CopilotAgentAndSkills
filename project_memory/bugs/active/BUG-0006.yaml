@@ -17,7 +17,7 @@ acceptance_criteria:
 - Ein Test legt einen Aufruf eine Ebene tiefer und sieht den Zweig weiterhin gefunden.
 - Der Test wird rot, wenn die Ableitung auf direkte Aufrufe zurueckfaellt.
 - Die Rekursion hat einen Schutz gegen Zyklen, und der hat einen eigenen roten Test.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:59:03'

@@ -19,7 +19,7 @@ acceptance_criteria:
   ist und kein Ereignis.
 - Ein Upgrade der gepinnten Version ist ein eigener Vorgang mit sichtbarem Diff der
   Funde.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:59:04'

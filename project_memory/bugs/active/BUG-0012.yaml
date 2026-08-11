@@ -28,7 +28,7 @@ acceptance_criteria:
   Pfad schreibt, wird weiter verweigert.'
 - Die dokumentierte Kernel-Vorsilbe aus CLAUDE.md ist in beiden Schreibweisen ausfuehrbar,
   gemessen.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-05T06:59:37'

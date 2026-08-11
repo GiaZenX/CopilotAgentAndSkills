@@ -26,7 +26,7 @@ acceptance_criteria:
 - Ein Test misst, dass `sweep-leases` ein LEASED-Item ohne Lease nicht stillschweigend
   nach READY zurueckwirft, ohne es zu melden.
 - Was gewaehlt wird, steht als DEC mit Begruendung im Zustand.
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T23:02:56'

@@ -1,0 +1,38 @@
+id: DEC-0036
+title: Bug backlog triaged into five fix families; batch order E, D, B, A with C gated
+  on the live pilot
+source: lead triage 2026-08-10, full read of all 21 open BUG items (Explore digest),
+  session of the TSK-0032 round
+context: 'All 21 open BUGs read in full and transitioned to TRIAGED. Grouping per
+  DEC-0033/0035 (batch by family, blockers immediately): Family A shell-classification
+  of gates (BUG-0002, BUG-0003, BUG-0012, BUG-0020); Family B kernel state surface
+  (BUG-0001, BUG-0004, BUG-0009, BUG-0010, BUG-0021); Family C handover/entry (BUG-0005,
+  BUG-0011, BUG-0017, BUG-0019; BUG-0016 already in flight via TSK-0032); Family D
+  CI/hygiene (BUG-0007, BUG-0008, BUG-0014); Family E kit hardening (BUG-0006, BUG-0013,
+  BUG-0015).'
+decision: 'Fix order for the autonomous rounds: E first (highest product severity:
+  stdlib shadowing in shipped kit hooks, GoBD letter-by-letter roles, non-transitive
+  AST derivation), then D (unpinned ruff makes every later suite number unstable,
+  red gate suite invisible), then B, then A. Family C waits for the live handover
+  pilot: BUG-0017 and BUG-0019 need design decisions that the pilot''s bypassPermissions
+  measurement informs, and BUG-0005 feeds BUG-0019 (the PM falls back to the raw transcript
+  precisely where the brief is incomplete), so C is designed as one coherent round,
+  not piecemeal. One implementer at a time; suite acceptance never shared.'
+consequences: BUG-status walks stop at TRIAGED until the user answers the minted approval
+  questions (the kernel refuses self-approval, measured this session); approvals are
+  queued per family. TSK items are created per bug at the start of its family round,
+  not all upfront, keeping the backlog thin.
+related:
+- BUG-0013
+- BUG-0015
+- BUG-0006
+- BUG-0007
+- BUG-0014
+- BUG-0005
+- BUG-0019
+- DEC-0033
+- DEC-0035
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-10T23:42:36'
