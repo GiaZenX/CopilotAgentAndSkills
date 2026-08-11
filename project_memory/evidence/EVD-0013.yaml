@@ -1,0 +1,15 @@
+id: EVD-0013
+kind: review
+related:
+- TSK-0046
+result: pass
+summary: verifier PASS (Family B round 2a) for diff:5ea1dd2eb360f671fb4db5e801f080e6100bf51508199dc84f1b1b96eaeb7f70
+  -- BUG-0004 premise_rechecks now must name an existing item (measured used, not
+  dead); BUG-0009 FR resulting_item + DEC supersedes as validated links, standing_decisions
+  derives what holds, cycles/self/multi terminate, type-checked; backward-compat 0/0
+  against real project_memory, kits 2026.08.11-9
+artifact_refs:
+- docs/reviews/2026-08-11-family-b-round2a-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-11T21:30:41'

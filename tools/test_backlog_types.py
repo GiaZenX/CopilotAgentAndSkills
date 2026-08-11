@@ -11,6 +11,8 @@ from kernel.backlog_types import (  # noqa: E402
     AUTOMATA,
     _Automaton,
     EVIDENCE_KINDS,
+    FR_DISCARD_TERMINALS,
+    FR_RESULT_TERMINALS,
     INVALIDATION_TARGET,
     TransitionError,
     UnknownV1Status,
@@ -23,6 +25,16 @@ from kernel.backlog_types import (  # noqa: E402
     map_v1_status,
     parse_id,
 )
+
+
+def test_the_fr_result_terminals_partition_the_fr_automaton():
+    """BUG-0009(a): the split "points to a result item" vs "points to nothing" is a fact about what
+    each FR OUTCOME means, so it is written out -- but pinned to the automaton from both ends. Every
+    classified value is a real FR terminal (no dead entry), and together they cover EVERY FR terminal
+    (a fourth terminal added to the automaton fails here until it is placed on one side)."""
+    terminals = AUTOMATA["FR"].terminals
+    assert FR_RESULT_TERMINALS | FR_DISCARD_TERMINALS == terminals
+    assert FR_RESULT_TERMINALS.isdisjoint(FR_DISCARD_TERMINALS)
 
 
 # -- chains and terminals ------------------------------------------------------

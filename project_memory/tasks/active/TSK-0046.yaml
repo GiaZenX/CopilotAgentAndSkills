@@ -1,0 +1,35 @@
+id: TSK-0046
+product_requirement: PR-0003
+derives_from: BUG-0004
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0004: das Feld premise_rechecks existiert im Vertrag, aber kein Kernel-Pfad
+  und keine Rolle schreibt es; von aussen ist unfertige Faehigkeit nicht von Ballast
+  unterscheidbar. Entscheidung ist Teil der Behebung: entweder Schreiber plus messender
+  Test, oder Feld weg und im Vertrag nicht mehr genannt'
+expected_outputs:
+- 'MISS zuerst, ob premise_rechecks irgendwo gelesen/geschrieben/referenziert wird
+  (Kernel, Kits, Tests, Docs). Wenn ungenutzt: aus dem Vertrag entfernen (sauberer,
+  kein toter Ballast) und belegen, dass nichts bricht. Wenn genutzt: einen Schreiber
+  geben plus messenden Test. Ein Test wird ohne den Fix rot bzw. der Validator meldet
+  ein Feld ohne Schreiber. Melde, welchen Weg die Messung erzwang'
+dependencies:
+- TSK-0045
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T19:52:33'

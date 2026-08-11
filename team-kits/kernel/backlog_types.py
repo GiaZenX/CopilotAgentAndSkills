@@ -549,6 +549,37 @@ TASK_TYPES = frozenset((
 UI_TASK_TYPES = frozenset(("ui",))
 
 
+# -- FR terminal outcomes: which of them point to a RESULT item (BUG-0009) -----
+#
+# A triaged feature request ends in one of three terminals, and the split that decides whether the
+# STATE keeps a link is whether the outcome LEFT A TRACE in another item. CONVERTED (the request
+# became a PR/RQ) and MERGED (it was folded into another request) both do -- the FR automaton's own
+# `terminal_from` comment reads "a triage OUTCOME", and the V1 mapping row for `FR ACCEPTED` reads
+# "becomes a PRD"; WHICH item it became was nowhere in the state, which is the defect BUG-0009
+# records. REJECTED points to nothing: a discarded request has no result to name.
+#
+# The two sets are written out because no property of the automaton tells them apart -- it is a fact
+# about what each OUTCOME MEANS -- but they are pinned to it from BOTH ends
+# (`test_backlog_types.test_the_fr_result_terminals_partition_the_fr_automaton`): every value here is
+# a real FR terminal, and together they cover every FR terminal, so a fourth terminal added to the
+# automaton fails the test until it is placed on one side. `FR_RESULT_FIELD` is the field the first
+# two owe -- a status-dependent duty the validator enforces, not a capture field, like `triage_result`.
+FR_RESULT_TERMINALS = frozenset(("CONVERTED", "MERGED"))
+FR_DISCARD_TERMINALS = frozenset(("REJECTED",))
+FR_RESULT_FIELD = "resulting_item"
+
+# -- DEC supersession: the one lifecycle link a decision has (BUG-0009) --------
+#
+# A DEC carries no automaton and no future; the single relation its life HAS is that a newer decision
+# can replace an older one. Before this that relation lived only as prose in `context`, so "which
+# decisions still hold" could not be answered from the state. `DEC_SUPERSEDES_FIELD` makes it a
+# FORWARD link on the NEWER decision -- one source of truth, DERIVED into "which are superseded"
+# (`report.standing_decisions`) rather than double-stored as a back-pointer that could drift.
+# Optional by construction (a decision that replaces nothing carries none), so every DEC captured
+# before this stays valid; the validator only checks that a link, WHEN present, names a real DEC.
+DEC_SUPERSEDES_FIELD = "supersedes"
+
+
 # -- Evidence contract (spec II.2 "Evidence") ----------------------------------
 
 # Evidence carries no project STATUS, and that is exactly why it has to carry a

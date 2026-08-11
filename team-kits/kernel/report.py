@@ -42,7 +42,10 @@ from .approvals import (
 from .backlog_types import (
     ACTIVE_DIRS,
     AUTOMATA,
+    DEC_SUPERSEDES_FIELD,
     DECLARED_REQUIRED_FIELDS,
+    FR_RESULT_FIELD,
+    FR_RESULT_TERMINALS,
     HASHED_FIELDS,
     PARENT_FIELDS,
     QA_EVIDENCE_KINDS,
@@ -423,7 +426,9 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_approval_expiry_agrees(state, active_items))
     findings.extend(_check_task_origins(state, active_items))
     findings.extend(_check_experiment_reports(active_items))
-    findings.extend(_check_premise_recheck(active_items))
+    findings.extend(_check_premise_recheck(state, active_items))
+    findings.extend(_check_fr_result_link(state, active_items))
+    findings.extend(_check_dec_supersedes(state, active_items))
     findings.extend(_check_ui_delivery_sequence(active_items))
     findings.extend(_check_dispatch_approval_presented(state, active_items))
     # staging orphans: neither an active task nor an active root item
@@ -1068,34 +1073,169 @@ def _check_experiment_reports(active_items: dict) -> list:
     return findings
 
 
-def _check_premise_recheck(active_items: dict) -> list:
-    """R8 (parity row 87): a decision carrying premise_invalidation_triggers, and
-    newer scope work that never records a re-check.
+def _check_premise_recheck(state: ProjectState, active_items: dict) -> list:
+    """R8 (parity row 87) plus BUG-0004: a decision carrying premise_invalidation_triggers and newer
+    scope work that never records a re-check -- and, whenever a re-check IS recorded, that it names a
+    real decision.
 
-    A WARNING on purpose: whether a trigger actually fired is a judgement no
-    pattern can make, and the user's "maximal haerten" decision says heuristics
-    warn, never fail closed.
+    THE WARNING is a warning on purpose: whether a trigger actually fired is a judgement no pattern
+    can make, and the user's "maximal haerten" decision says heuristics warn, never fail closed.
+
+    THE EXISTENCE CHECK is what makes `premise_rechecks` a capability and not ballast (BUG-0004). The
+    field is READ here and WRITTEN through the sanctioned `update` command (`state.update_item`),
+    which -- like every kernel edit -- takes the value without knowing what a re-check should name
+    (`state` module note: update_item does not reject unknown extra fields). So an architect could
+    clear this very warning with an id no decision carries, and nothing measured it. The validator
+    closes that: a re-check naming a phantom is a cleared warning resting on nothing, so it is an
+    error, exactly as a phantom `derives_from` is. WHICH decision it names is the writer's judgement
+    (the same boundary the warning keeps); THAT it names a real item is the writer's contract.
     """
-    triggered = [(i, it) for i, (t, it) in sorted(active_items.items())
-                 if t == "DEC" and (it.get("premise_invalidation_triggers") or [])]
-    if not triggered:
-        return []
     findings = []
     for item_id, (item_type, item) in sorted(active_items.items()):
-        if item_type not in ("PR", "RQ", "CR") or item.get("status") == "DRAFT":
+        if item_type not in ("PR", "RQ", "CR"):
             continue
-        checked = {str(ref) for ref in (item.get("premise_rechecks") or [])}
-        missing = [dec for dec, _ in triggered if dec not in checked]
-        if missing:
+        for ref in item.get("premise_rechecks") or []:
+            ref = str(ref)
+            if ref not in active_items and not _in_archive(state, ref):
+                findings.append(_finding(
+                    "error", item_id,
+                    "premise re-check names %s, which no item carries -- a cleared warning "
+                    "resting on a phantom decision" % ref,
+                    "record the re-check against the DEC id that actually carries the "
+                    "invalidation triggers, or drop the entry",
+                ))
+    triggered = [(i, it) for i, (t, it) in sorted(active_items.items())
+                 if t == "DEC" and (it.get("premise_invalidation_triggers") or [])]
+    if triggered:
+        for item_id, (item_type, item) in sorted(active_items.items()):
+            if item_type not in ("PR", "RQ", "CR") or item.get("status") == "DRAFT":
+                continue
+            checked = {str(ref) for ref in (item.get("premise_rechecks") or [])}
+            missing = [dec for dec, _ in triggered if dec not in checked]
+            if missing:
+                findings.append(_finding(
+                    "warning", item_id,
+                    "no premise re-check recorded against %s, which carries invalidation "
+                    "triggers" % ", ".join(missing[:3]),
+                    "the architect re-checks direction-setting decisions on every PR/CR; "
+                    "record the outcome in `premise_rechecks` (naming the DEC) even when "
+                    "nothing changed -- \"not up for renegotiation\" is forbidden",
+                ))
+    return findings
+
+
+def _check_fr_result_link(state: ProjectState, active_items: dict) -> list:
+    """BUG-0009(a): a feature request that CONVERTED or MERGED names the item it became.
+
+    The FR automaton's `terminal_from` comment reads "a triage OUTCOME", and the V1 mapping calls
+    `FR ACCEPTED` "becomes a PRD" -- but WHICH item the request became was nowhere in the state, so
+    the trail ended exactly where the interesting question ("what came of this wish") begins.
+    `FR.triage_result` was a status-dependent duty from TRIAGED, but it never forced NAMING an item.
+    The two outcomes that leave a result (`FR_RESULT_TERMINALS`) now owe `FR_RESULT_FIELD`, and the
+    named item must exist; REJECTED points to nothing and is left alone.
+
+    BACKWARD-COMPATIBLE by construction: the duty binds only in those two terminal states, so every
+    OPEN/TRIAGED request -- which is every FR in the store today -- owes nothing.
+    """
+    findings = []
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        if item_type != "FR" or item.get("status") not in FR_RESULT_TERMINALS:
+            continue
+        result = item.get(FR_RESULT_FIELD)
+        if not result:
             findings.append(_finding(
-                "warning", item_id,
-                "no premise re-check recorded against %s, which carries invalidation "
-                "triggers" % ", ".join(missing[:3]),
-                "the architect re-checks direction-setting decisions on every PR/CR; "
-                "record the outcome in `premise_rechecks` (naming the DEC) even when "
-                "nothing changed -- \"not up for renegotiation\" is forbidden",
+                "error", item_id,
+                "%s without %s -- the request became another item, but the state does not say "
+                "which" % (item.get("status"), FR_RESULT_FIELD),
+                "record the item this request became in `%s`" % FR_RESULT_FIELD,
+            ))
+            continue
+        if str(result) not in active_items and not _in_archive(state, str(result)):
+            findings.append(_finding(
+                "error", item_id,
+                "%s names %s, which no item carries" % (FR_RESULT_FIELD, result),
+                "point `%s` at the id of the item this request became" % FR_RESULT_FIELD,
             ))
     return findings
+
+
+def _superseded_decisions(active_items: dict) -> dict:
+    """{superseded DEC id -> the active DEC id that replaced it}, from the forward `supersedes` links.
+
+    ONE source of truth: the link lives on the NEWER decision and the "is superseded" answer is
+    DERIVED from it, so there is no back-pointer to drift out of step (BUG-0009(b)).
+    """
+    superseded_by = {}
+    for item_id, (item_type, item) in active_items.items():
+        if item_type != "DEC":
+            continue
+        for ref in item.get(DEC_SUPERSEDES_FIELD) or []:
+            superseded_by[str(ref)] = item_id
+    return superseded_by
+
+
+def _check_dec_supersedes(state: ProjectState, active_items: dict) -> list:
+    """BUG-0009(b): a decision that supersedes older ones names them, each named id exists and is a
+    DEC, and a still-active decision that has been superseded is flagged for archival.
+
+    A DEC has no automaton, so nothing else moves a replaced decision out of the active context -- an
+    automaton type gets the "terminal item awaiting archive" warning, and without this a superseded
+    decision would linger indefinitely reading as though it still holds. The existence/type check is
+    the link's contract (a decision supersedes a decision, not a bug or a task); the warning is the
+    DEC analogue of the terminal-awaiting-archive warning the automaton types already get.
+    """
+    findings = []
+    superseded_by = _superseded_decisions(active_items)
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        if item_type != "DEC":
+            continue
+        for ref in item.get(DEC_SUPERSEDES_FIELD) or []:
+            ref = str(ref)
+            entry = active_items.get(ref)
+            if entry is None and not _in_archive(state, ref):
+                findings.append(_finding(
+                    "error", item_id,
+                    "%s names %s, which no item carries" % (DEC_SUPERSEDES_FIELD, ref),
+                    "point `%s` at the id of the decision this one replaces" % DEC_SUPERSEDES_FIELD,
+                ))
+            elif entry is not None and entry[0] != "DEC":
+                findings.append(_finding(
+                    "error", item_id,
+                    "%s names %s, which is a %s, not a decision"
+                    % (DEC_SUPERSEDES_FIELD, ref, entry[0]),
+                    "a decision supersedes another decision; `%s` takes DEC ids only"
+                    % DEC_SUPERSEDES_FIELD,
+                ))
+    for dec_id, replacer in sorted(superseded_by.items()):
+        if active_items.get(dec_id, (None,))[0] == "DEC":
+            findings.append(_finding(
+                "warning", dec_id,
+                "superseded by %s -- a replaced decision awaiting archive" % replacer,
+                "run `python scripts/harness.py archive %s`" % dec_id,
+            ))
+    return findings
+
+
+def standing_decisions(state: ProjectState):
+    """Which active DEC items still hold, and which have been superseded -- answered from the
+    `supersedes` links, not from `context` prose (BUG-0009(b)).
+
+    A decision is superseded when some OTHER active decision names it in `supersedes`; every other
+    active decision still holds. Returns (standing, superseded_by): `standing` is the set of active
+    DEC ids no decision replaces, `superseded_by` maps a superseded active DEC id to the id of the
+    decision that replaced it. Read-only; no lock, like the other report queries.
+    """
+    active_decisions = {}
+    for item_type, _stem, item, _path, exc in _iter_active(state):
+        if exc or not isinstance(item, dict) or item_type != "DEC":
+            continue
+        dec_id = item.get("id")
+        if dec_id:
+            active_decisions[dec_id] = (item_type, item)
+    superseded_by = _superseded_decisions(active_decisions)
+    standing = {d for d in active_decisions if d not in superseded_by}
+    superseded = {d: s for d, s in superseded_by.items() if d in active_decisions}
+    return standing, superseded
 
 
 def _check_ui_delivery_sequence(active_items: dict) -> list:

@@ -402,6 +402,89 @@ def test_recording_the_recheck_clears_it(state):
     assert not [f for f in found if "premise re-check" in f["message"]], found
 
 
+def test_a_premise_recheck_naming_a_phantom_is_flagged(state):
+    """BUG-0004: `premise_rechecks` is written through the generic `update` path, which takes the
+    value blind. A re-check that clears the warning with an id no decision carries is a claim resting
+    on nothing, so the validator makes it an error -- the field's writer contract."""
+    item = state.capture("PR", dict(PR_FIELDS))
+    walk_to_status(state, item, "APPROVED")
+    state.update_item(item["id"], {"premise_rechecks": ["DEC-9999"]})
+    found = errors(report.validate_state(state))
+    assert any(f["item"] == item["id"] and "DEC-9999" in f["message"] for f in found), found
+
+
+def _fr_to(state, target):
+    fr = state.capture("FR", {"title": "wish", "request_text": "please add X"})
+    state.transition(fr["id"], "TRIAGED")
+    if target != "TRIAGED":
+        state.transition(fr["id"], target)
+    return fr
+
+
+def test_a_converted_fr_must_name_its_result(state):
+    """BUG-0009(a): a CONVERTED request became another item; the state has to say WHICH. Without
+    `resulting_item` the trail ends where "what came of this wish" begins."""
+    fr = _fr_to(state, "CONVERTED")
+    found = errors(report.validate_state(state))
+    assert any(f["item"] == fr["id"] and "resulting_item" in f["message"] for f in found), found
+
+
+def test_a_converted_fr_naming_its_result_is_clean(state):
+    """...and naming a real item clears it. A duty with no way to satisfy it is noise."""
+    pr = state.capture("PR", dict(PR_FIELDS))
+    fr = _fr_to(state, "CONVERTED")
+    state.update_item(fr["id"], {"resulting_item": pr["id"]})
+    found = errors(report.validate_state(state))
+    assert not [f for f in found if f["item"] == fr["id"]], found
+
+
+def test_a_converted_fr_naming_a_phantom_result_is_flagged(state):
+    """The named result must EXIST -- a link to a phantom is the same lie as no link."""
+    fr = _fr_to(state, "CONVERTED")
+    state.update_item(fr["id"], {"resulting_item": "PR-9999"})
+    found = errors(report.validate_state(state))
+    assert any(f["item"] == fr["id"] and "PR-9999" in f["message"] for f in found), found
+
+
+DEC_FIELDS = {"title": "d", "context": "c", "decision": "use X", "consequences": "y",
+              "source": "adr"}
+
+
+def test_a_superseding_decision_marks_the_older_one(state):
+    """BUG-0009(b): DEC-A supersedes DEC-B, so "which decisions still hold" is answerable from the
+    state -- B is superseded, A holds -- without anyone reading `context` prose."""
+    old = state.capture("DEC", dict(DEC_FIELDS, title="old", decision="use X"))
+    new = state.capture("DEC", dict(DEC_FIELDS, title="new", decision="use Y instead",
+                                    supersedes=[old["id"]]))
+    standing, superseded = report.standing_decisions(state)
+    assert old["id"] not in standing
+    assert new["id"] in standing
+    assert superseded.get(old["id"]) == new["id"]
+
+
+def test_a_superseded_decision_is_flagged_for_archive(state):
+    """A DEC has no automaton, so nothing else moves a replaced decision out of the active context;
+    the validator warns, the DEC analogue of "terminal item awaiting archive"."""
+    old = state.capture("DEC", dict(DEC_FIELDS, title="old"))
+    state.capture("DEC", dict(DEC_FIELDS, title="new", supersedes=[old["id"]]))
+    found = warnings_of(report.validate_state(state))
+    assert any(f["item"] == old["id"] and "superseded by" in f["message"] for f in found), found
+
+
+def test_a_decision_superseding_a_phantom_is_flagged(state):
+    """The superseded id must resolve to a real decision -- otherwise "which still hold" rests on a
+    phantom. Backward-compatible: the field is optional, so a DEC that supersedes nothing is clean."""
+    state.capture("DEC", dict(DEC_FIELDS, supersedes=["DEC-9999"]))
+    found = errors(report.validate_state(state))
+    assert any("DEC-9999" in f["message"] for f in found), found
+
+
+def test_a_decision_superseding_nothing_stays_valid(state):
+    """Every DEC captured before this field existed carries no `supersedes` and must stay clean."""
+    state.capture("DEC", dict(DEC_FIELDS))
+    assert errors(report.validate_state(state)) == []
+
+
 def test_a_second_user_visible_slice_may_not_enter_delivery(state):
     """R12 / parity row 107, the 4-slices incident. The point of the sequence rule is that the
     user SEES a slice before the next is built on its assumptions."""
