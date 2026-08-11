@@ -613,8 +613,11 @@ def main(argv=None) -> int:
             # `report.record_scan_coverage`), and without it "no finding about that file" and "that
             # file was never read" are the same silence on this surface.
             coverage = report.record_scan_coverage(state)
-            print("V1 record scan: searched %d document(s), did not search %d"
-                  % (len(coverage["searched"]), len(coverage["not_searched"])))
+            # DEPOSIT copies are COUNTED, not listed (BUG-0028): one appears per applied remedy, so a
+            # line each grew this section every time the project followed the report.
+            deposits = coverage.get("deposits") or []
+            print("V1 record scan: searched %d document(s), did not search %d, %d deposit copy(ies)"
+                  % (len(coverage["searched"]), len(coverage["not_searched"]), len(deposits)))
             for entry in coverage["not_searched"]:
                 print("  NOT SEARCHED %s: %s" % (entry["path"], entry["why"]))
             return 1 if errors else 0

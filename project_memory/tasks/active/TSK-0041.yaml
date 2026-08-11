@@ -1,0 +1,30 @@
+id: TSK-0041
+product_requirement: PR-0001
+derives_from: BUG-0028
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0028: jede angewandte NOT-SEARCHED-Abhilfe erzeugt dauerhaft eine weitere NOT-SEARCHED-Zeile
+  (migrate.py:664-671), ohne Rueckweg. Kopie-Pilot TSK-0026 (synaipse 26->62)'
+expected_outputs:
+- Die eigenen Ablagen (staging/v1-deposit--*) werden als eigene Verdikt-Klasse gefuehrt
+  und gezaehlt statt zeilenweise ausgegeben; gemessen an einem Lauf nach Abhilfe-Anwendung
+dependencies:
+- BUG-0026
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T13:09:49'

@@ -1,0 +1,378 @@
+diff -u -r a/.claude/hooks/_harness.py b/.claude/hooks/_harness.py
+--- a/.claude/hooks/_harness.py	2026-08-11 14:46:56.478119600 +0200
++++ b/.claude/hooks/_harness.py	2026-08-11 14:46:56.478119600 +0200
+@@ -922,6 +922,30 @@
+ # The keyword form of a function declaration. A word of the shell's own grammar rather than a
+ # spelling somebody happens to use -- `_declares_a_function` reads both forms the grammar has.
+ _FUNCTION_KEYWORD = "function"
++# The reserved words of the POSIX shell grammar that stand WHERE A COMMAND NAME STANDS and are not
++# one: the words that open a command list and the words that close one. Behind an opening word the
++# shell resolves a command name again, so the verb of the stage is the word BEHIND it; a closing
++# word is a stage that runs nothing at all. Either way the word is syntax, which is the same reading
++# `stage_body` already makes for a declaration header.
++#
++# WHAT IS DELIBERATELY NOT IN HERE, and each for a measured reason rather than for tidiness:
++#   * `for`, `case` and `select` stand in that position too, but what follows them is a WORD list,
++#     so dropping them reveals no command name -- the stage keeps a verb this reader does not know
++#     and a protected path standing in such a HEAD stays refused even where nothing writes it
++#     (`for f in team-kits/* ; do echo $f ; done`);
++#   * `done` closes a list exactly as `fi` does, and it is out because nothing can measure what it
++#     would buy: on gate 1 a `done` stage names no path, and every loop whose commit gate 3 could
++#     then allow either never terminates, needs a `$` the arbiter's shell cannot carry, or contains
++#     a stage the kits' classification refuses anyway. So a commit inside a LOOP stays refused.
++# Both are over-refusals this set does not close; it is what can be measured, not what could be
++# listed.
++#
++# Compared through `_operator` and spelled exactly: a quoted `'do'` is a command named `do` in the
++# shell too, and a shell that folds case (PowerShell) is left over-refusing rather than guessed at.
++# Every entry has a cell in `test_gates.py::RESERVED_WORD_CELLS`, and that cell measures BOTH ends:
++# a real shell really runs the compound, and taking the word back out of this set turns the named
++# gate's answer for that very line from allow into refuse.
++_RESERVED_WORDS = frozenset(("if", "elif", "then", "else", "while", "until", "do", "fi"))
+ # The shell's word for "the directory I came from". It is an OPERAND, not a flag, which is the
+ # whole reason `_destination_word` cannot filter every word that starts with a dash.
+ _PREVIOUS_DIRECTORY = "-"
+@@ -1047,14 +1071,37 @@
+     return len(words) > 1 and "".join(module._operator(t) for t in words[1:]) == "()"
+ 
+ 
++def _behind_the_grammar(module, stage):
++    """`stage` without the reserved words standing in front of its command name.
++
++    Repeated, because they nest in one stage: `for i in 1 ; do if true ; then ...` cuts at the `;`,
++    so `do if true` arrives here as one stage with two of them.
++    """
++    index = 0
++    while index < len(stage) and module._operator(stage[index]) in _RESERVED_WORDS:
++        index += 1
++    return stage[index:]
++
++
+ def stage_body(module, stage):
+-    """The tokens of a stage that a shell RUNS, without the header that only declares a name.
++    """The tokens of a stage that a shell RUNS -- EMPTY when it runs no program at all.
+ 
+     `_stage_verb` reads a declared NAME as the verb, and a verb nothing recognises is not
+     read-only -- so every word of the body became a write candidate and this repo's own documented
+     kernel prefix was refused the moment it was wrapped in a function (BUG-0012, measured rc 2
+     against rc 0 for the same line unwrapped).
+ 
++    THE SAME SENTENCE HOLDS FOR THE SHELL'S OWN GRAMMAR (`_RESERVED_WORDS`), and that is where the
++    rest of that defect class sat: a reserved word stood where the command name is, so
++    `for i in 1 2 ; do <the kernel call> ; done` and `if true ; then echo team-kits ; fi` were
++    rc 2 while the identical command outside the compound was rc 0 (measured 2026-08-11 through the
++    real gate process).
++
++    AND "RUNS NO PROGRAM" IS ANSWERED HERE, ONCE, FOR BOTH READERS OF THIS FUNCTION (BUG-0012,
++    first acceptance criterion): a stage of nothing but `VAR=value` assignments, or of nothing but
++    grammar, runs nothing and therefore writes nothing and moves no working tree. Gate 1 and gate 3
++    each asked that with an expression of their own, which is one rule in two places.
++
+     WHAT STANDS IN FRONT OF A BRACE THAT DECLARES NOTHING KEEPS ITS CANDIDATES: `sed -i s/a/b/
+     <kit file> {` has a brace token too, and cutting at it loses the write in front of it.
+     `_declares_a_function` is the whole of that distinction.
+@@ -1064,13 +1111,14 @@
+     path. Ablated 2026-08-05 through the real gate process, no answer changed, so it is gone rather
+     than kept as a branch no measurement can reach.
+     """
+-    for index, token in enumerate(stage):
++    body = _behind_the_grammar(module, stage)
++    for index, token in enumerate(body):
+         if module._operator(token) != "{":
+             continue
+-        if _declares_a_function(module, stage[:index]):
+-            return stage[index + 1:]
+-        return stage
+-    return stage
++        if _declares_a_function(module, body[:index]):
++            body = body[index + 1:]
++        break
++    return body if module._stage_verb(body) else []
+ 
+ 
+ class Unplaceable(str):
+@@ -1983,8 +2031,9 @@
+         is given -- for an interpreter only the inline program text (`-c`) is read as a write,
+         since its other operands are code to execute, not files to change.
+ 
+-    A stage with no verb at all (`$env:PYTHONPATH="team-kits"`) runs no program and writes
++    A stage that runs no program at all (`$env:PYTHONPATH="team-kits"`, a bare `do`) writes
+     nothing, which is why the PowerShell spelling of this repo's own kernel call survives.
++    `stage_body` is where that is decided, for this reader and for gate 3's alike.
+ 
+     WHERE A RELATIVE WORD IS RESOLVED: the directory the call runs in -- the payload's `cwd`, and
+     when the payload does not say, this process's own, which is the only other thing that could
+@@ -2010,9 +2059,9 @@
+             out.extend(_candidates(compat_module, target, directory))
+         for stage in stages(module, pipeline):
+             body = stage_body(module, stage)
+-            verb = module._stage_verb(body)
+-            if not verb:
++            if not body:
+                 continue
++            verb = module._stage_verb(body)
+             if module._has_write_flag(verb, body[1:]):
+                 words = body
+             elif _runs_a_program(verb):
+diff -u -r a/.claude/hooks/gate_commit_evidence.py b/.claude/hooks/gate_commit_evidence.py
+--- a/.claude/hooks/gate_commit_evidence.py	2026-08-11 14:46:56.481951000 +0200
++++ b/.claude/hooks/gate_commit_evidence.py	2026-08-11 14:46:56.481951000 +0200
+@@ -98,11 +98,12 @@
+     truncated file into the commit. So the committing pipeline is examined for its redirect targets
+     as a whole, and only its VERBS are read stage by stage.
+ 
+-    A STAGE WITH NO VERB RUNS NOTHING, so it moves nothing -- the same reading `written_paths`
+-    already makes one level up. Without it the PowerShell spelling of this repo's own environment
+-    prefix (`$env:PYTHONPATH="team-kits"; git commit ...`) was refused as a line that changes the
+-    tree before it commits (measured rc 2, TSK-0008 R-a), and `_harness.stage_body` is here for
+-    the same reason: a declaration header is not the command.
++    A STAGE THAT RUNS NO PROGRAM MOVES NOTHING, and `_harness.stage_body` is the ONE place that
++    says so -- for this reader and for `written_paths` alike (BUG-0012, first acceptance
++    criterion). Without it the PowerShell spelling of this repo's own environment prefix
++    (`$env:PYTHONPATH="team-kits"; git commit ...`) was refused as a line that changes the tree
++    before it commits (measured rc 2, TSK-0008 R-a). The same function answers for a declaration
++    header and for a reserved word of the shell's grammar: neither is the command.
+     """
+     module = _harness.shell_reader(data)
+     compat = _harness.compat(data)
+@@ -128,8 +129,8 @@
+             targets = module._redirect_targets(pipeline, sinks)
+         else:
+             continue
+-        bodies = [_harness.stage_body(module, stage) for stage in stages]
+-        bodies = [body for body in bodies if module._stage_verb(body)]
++        bodies = [body for body in (_harness.stage_body(module, stage) for stage in stages)
++                  if body]
+         if targets or not all(module._stage_is_read_only(body) for body in bodies):
+             return " ".join(str(token) for token in pipeline)[:120]
+     return ""
+diff -u -r a/.claude/hooks/test_gates.py b/.claude/hooks/test_gates.py
+--- a/.claude/hooks/test_gates.py	2026-08-11 14:46:56.483957000 +0200
++++ b/.claude/hooks/test_gates.py	2026-08-11 14:46:56.483957000 +0200
+@@ -1819,6 +1819,176 @@
+         assert rc == 0, "a real declaration was not recognised: %r (%s)" % (command, err[:200])
+ 
+ 
++# ONE CELL PER WORD OF `_harness._RESERVED_WORDS`: the compound the word really stands in, and the
++# GATE whose answer that word decides. The grammar AROUND a reserved word cannot be derived from the
++# word, so the compound is written down -- and the test below is what keeps the table and the set
++# from drifting: it asserts the keys are exactly the set the reader decides from, so a word added
++# there without a cell fails here and a cell for a word the reader does not know fails too.
++#
++# WHY THE GATE IS PART OF THE CELL. An opening word decides gate 1: the stage it opens is where the
++# protected path stands. A CLOSING word opens nothing and names no path, so gate 1 has nothing to
++# change its mind about -- what it decides is whether that stage counts as a command that could move
++# the working tree, which is gate 3's question. A single column would have made the two closing
++# words look dead.
++GATE1, GATE3 = "gate_lead_write_scope.py", "gate_commit_evidence.py"
++# `%s` is the command the compound carries.
++RESERVED_WORD_CELLS = {
++    "if": ("if %s ; then true ; fi", GATE1),
++    "elif": ("if false ; then true ; elif %s ; then true ; fi", GATE1),
++    "then": ("if true ; then %s ; fi", GATE1),
++    "else": ("if false ; then true ; else %s ; fi", GATE1),
++    "while": ("while %s ; do break ; done", GATE1),
++    "until": ("until %s ; do break ; done", GATE1),
++    # a loop that runs its body exactly once. `while true` never ends, a `for` head keeps a verb
++    # this reader does not drop (see `_harness._RESERVED_WORDS`), and a loop counter is a `$` the
++    # arbiter cannot carry (`_a_shell_that_hands_its_output_back`)
++    "do": ("while test 1 = 1 ; do %s ; break ; done", GATE1),
++    # `test 1 = 1` and not `true`: the kits' read-only classification does not know `true`, so an
++    # `if true` head would refuse this line for a reason that has nothing to do with `fi`
++    "fi": ("if test 1 = 1 ; then %s ; fi", GATE3),
++}
++# What is written into a copy of `_harness.py` to take one word back OUT of the reader's set. An
++# APPENDED rebinding rather than a rewrite of the line in the file: the constant is read when
++# `_behind_the_grammar` runs, so the last binding in the module is the one that decides, and no
++# search for a sentence in a file is needed to make the mutation land.
++_WITHOUT_A_WORD = "\n_RESERVED_WORDS = frozenset(%r)\n"
++
++
++def _hooks_without(tmp_path, project, word):
++    """A copy of the gates whose reader does not know `word` -- the "before" of the fix."""
++    harness = _reader()
++    directory = str(tmp_path / ("no-word-" + word))
++    shutil.copytree(os.path.join(project, ".claude", "hooks"), directory)
++    with open(os.path.join(directory, "_harness.py"), "a", encoding="utf-8") as handle:
++        handle.write(_WITHOUT_A_WORD % (tuple(sorted(set(harness._RESERVED_WORDS) - {word})),))
++    return directory
++
++
++def _cells_for(gate):
++    return sorted((word, template) for word, (template, at) in RESERVED_WORD_CELLS.items()
++                  if at == gate)
++
++
++def _a_shell_that_hands_its_output_back(base):
++    """The first shell on this host that runs a line AND gives THIS process what it printed.
++
++    THE PROPERTY THE ARBITER BELOW NEEDS, and "the process exited 0" is not it. Measured 2026-08-11
++    with the whole suite: from a PATH that puts `C:\\WINDOWS\\system32` first, the shell picked that
++    way is the WSL launcher, and `printf "%s" MARKER` came back returncode 0 with an EMPTY stdout --
++    so every cell of the table would have read "this grammar does not run" and the run would have
++    failed for the launcher instead of for the grammar. Which shell stands first depends on the PATH
++    the suite was started from, which is the root BUG-0014 is about; an earlier draft of this very
++    test carried that defect and this docstring is what it cost.
++    """
++    for candidate in _posix_shells():
++        done = subprocess.run([candidate, "-c", 'printf "%s" MARKER'], cwd=base,
++                              capture_output=True, text=True, timeout=120)
++        if done.returncode == 0 and "MARKER" in done.stdout:
++            return candidate
++    return None
++
++
++def test_every_reserved_word_this_reader_drops_is_measured_and_really_runs(tmp_path):
++    """The table above and the reader's set are one thing, and every cell is a shell that RAN it.
++
++    Two ends, and neither is a sentence: a word the reader drops with no cell is an entry nothing
++    measures, and a cell whose compound a real shell does not run measures a grammar this host does
++    not have. What each word BUYS is measured in the two tests below, one per gate.
++
++    THE ARBITER IS CHOSEN BY WHAT THIS TEST DOES WITH IT (`_a_shell_that_hands_its_output_back`)
++    and not by "it started". The question asked of it -- does this grammar reach the command inside
++    it -- is one every POSIX shell answers the same way, but only a shell whose output comes back
++    can answer it at all. That is a THIRD criterion beside `_can_arbitrate` (does it see this
++    filesystem) and `_reads_the_directory_state_it_is_given` (can this process set its directory
++    state); each test asks for the property it uses, and none of them may be swapped for another.
++    """
++    harness = _reader()
++    assert set(RESERVED_WORD_CELLS) == set(harness._RESERVED_WORDS), (
++        "the reader drops %s and this measurement has cells for %s -- a word on the left that is "
++        "missing on the right is an entry nothing measures, one on the right that is missing on "
++        "the left is a cell measuring nothing"
++        % (sorted(harness._RESERVED_WORDS), sorted(RESERVED_WORD_CELLS)))
++    shell = _a_shell_that_hands_its_output_back(str(tmp_path))
++    assert shell is not None, (
++        "no shell on this host hands this process what it printed, so nothing here could arbitrate "
++        "whether a compound reaches the command inside it: %s" % (_posix_shells(),))
++    for word, (template, _at) in sorted(RESERVED_WORD_CELLS.items()):
++        done = subprocess.run([shell, "-c", template % 'printf "%s" MARKER'],
++                              cwd=str(tmp_path), capture_output=True, text=True, timeout=120)
++        assert "MARKER" in done.stdout, (
++            "%r does not reach the command inside it in a real shell, so the cell for %r measures "
++            "nothing (stderr: %s)" % (template, word, done.stderr[:200]))
++
++
++def test_gate1_reads_the_command_a_reserved_word_opens(project, tmp_path):
++    """BUG-0012, the half the declaration cut left standing: the shell's OWN grammar.
++
++    `_stage_verb` reads the first word of a stage as the verb, and behind `do`, `then`, `else` or
++    `elif` that word is grammar, not a command name. A verb nothing recognises is not read-only, so
++    every word of the stage became a write candidate -- and this repo's documented kernel call
++    names `team-kits` and `project_memory` in every one of its lines. Measured 2026-08-11 through
++    the real gate process: `for i in 1 2 ; do PYTHONPATH=team-kits python -B -m kernel.cli --root
++    project_memory capture DEC ; done` rc 2, `if true ; then echo team-kits ; fi` rc 2, while the
++    identical command outside the compound was rc 0.
++
++    THREE ENDS PER WORD, and the second is the one that makes the set honest:
++      * the gate lets a read-only command that names a protected path through,
++      * with that ONE word taken out of the reader's set the same line is refused again -- so an
++        entry that decides nothing cannot sit in the set unnoticed,
++      * a real write in the same position stays refused, which is what the cut must not buy.
++    """
++    for word, template in _cells_for(GATE1):
++        line = template % ("echo %s" % RELATIVE_TARGET)
++        rc, err = run(project, GATE1, bash_payload(project, line))
++        assert rc == 0, "a read-only command behind %r is refused: %r (%s)" % (word, line, err[:300])
++        rc, _err = run(project, GATE1, bash_payload(project, line),
++                       hooks=_hooks_without(tmp_path, project, word))
++        assert rc == 2, (
++            "%r is in the reader's set and taking it out changes no answer for %r -- the entry is "
++            "dead" % (word, line))
++        writing = template % RELATIVE_WRITE
++        rc, _err = run(project, GATE1, bash_payload(project, writing))
++        assert rc == 2, "a write survived behind %r: %r" % (word, writing)
++
++
++def test_gate3_reads_a_closing_reserved_word_as_the_command_it_is_not(project, tmp_path, open_item):
++    """The same cut at the other reader -- `stage_body` answers for both (BUG-0012, AC-1).
++
++    A stage that is nothing but `fi` or `done` runs no program, but `_stage_verb` read the word as
++    the verb and the kits' classification does not know it, so the shape check called the line one
++    that changes the working tree before the commit records it. Measured 2026-08-11 through the
++    real gate process with a valid verdict recorded: `if true ; then git commit -m wip ; fi` rc 2
++    while the bare commit was rc 0.
++
++    The counter-end is in the same loop: a real write in front of the commit stays refused, so the
++    cut cannot buy one.
++    """
++    work = str(tmp_path / "keyword-commit")
++    shutil.copytree(project, work)
++    payload = bash_payload(work, "git commit -m wip")
++    digest = re.search(r"diff:[0-9a-f]{64}",
++                       run(work, GATE3, payload)[1]).group(0)
++    subprocess.run([sys.executable, "-B", "-m", "kernel.cli", "--root", "project_memory",
++                    "evidence", "--kind", "review", "--result", "pass", "--related", open_item,
++                    "--summary", "verifier PASS for " + digest,
++                    "--artifact-ref", "staging/verdict.md"],
++                   cwd=work, env=dict(os.environ, PYTHONPATH=os.path.join(work, "team-kits")),
++                   check=True, capture_output=True, text=True)
++    assert run(work, GATE3, payload)[0] == 0, "wrong precondition"
++    for word, template in _cells_for(GATE3):
++        line = template % "git commit -m wip"
++        rc, err = run(work, GATE3, bash_payload(work, line))
++        assert rc == 0, "a commit behind %r was refused: %r (%s)" % (word, line, err[:300])
++        rc, _err = run(work, GATE3, bash_payload(work, line),
++                       hooks=_hooks_without(tmp_path, work, word))
++        assert rc == 2, (
++            "%r is in the reader's set and taking it out changes no answer for %r -- the entry is "
++            "dead" % (word, line))
++        moving = template % ('sed -i "s/a/b/" docs/note.md ; git commit -m wip')
++        rc, _err = run(work, GATE3, bash_payload(work, moving))
++        assert rc == 2, "a write in front of the commit survived behind %r: %r" % (word, moving)
++
++
+ # -- what a line writes, measured against the shell itself (TSK-0013 F1, F2) --------------------
+ 
+ # A path inside a protected tree, spelled RELATIVELY, and a write into it. Which tree it lands in is
+@@ -2958,6 +3128,33 @@
+ CARRY_A_TREE = ("OLDPWD", "HOME", "CDPATH")
+ 
+ 
++def _reads_the_directory_state_it_is_given(shell, base):
++    """Does this shell resolve `~` out of the HOME THIS process hands it, in THIS filesystem?
++
++    THE PROPERTY THE MEASUREMENT BELOW NEEDS, AND `true` RETURNING 0 IS NOT IT. On Windows a `bash`
++    on PATH can be the WSL launcher, which starts a shell in another filesystem and another
++    environment: it runs `true` fine, it even sees the working directory, and the `HOME`, `OLDPWD`
++    and `CDPATH` this measurement sets never reach it. Every tilde line then lands in a tree that is
++    neither the sandbox nor the decoy, the control finds the decoy untouched, and the whole test
++    says nothing while looking like a measurement.
++
++    Measured 2026-08-11 on this host (BUG-0014): with `HOME` set to a directory of the measurement,
++    `printf "%s" ~` came back `/home/<user>` from `C:\\WINDOWS\\system32\\bash.exe` and the given
++    directory from `C:\\Program Files\\Git\\usr\\bin\\bash.exe`. WHICH of them was picked depended
++    on the PATH of the shell the suite was started from -- Git Bash first from a Git Bash, the WSL
++    launcher first from PowerShell -- so the same commit was red or green by launcher, and the red
++    survived a whole round without standing anywhere.
++
++    ASKED BY RUNNING IT, not by comparing path spellings: Git's bash answers a `C:/...` HOME with
++    its own `/c/...` reading, so the only thing that settles it is where the byte lands.
++    """
++    home = tempfile.mkdtemp(prefix="home-probe-", dir=base)
++    subprocess.run([shell, "-c", "printf x > ~/reached"], cwd=base, stdin=subprocess.DEVNULL,
++                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120,
++                   env=dict(os.environ, HOME=_sandbox_module().posix(home)))
++    return os.path.isfile(os.path.join(home, "reached"))
++
++
+ def test_the_measurement_sandbox_leaves_a_child_shell_no_directory_word_that_names_another_tree(
+         tmp_path):
+     """`_sandbox.pin` is what stands between a payload and this repo, so it is measured, not trusted.
+@@ -2988,10 +3185,11 @@
+     harness = _reader()
+     module = _sandbox_module()
+     shell = next((candidate for candidate in _posix_shells()
+-                  if subprocess.run([candidate, "-c", "true"], cwd=str(tmp_path),
+-                                    stdout=subprocess.DEVNULL,
+-                                    stderr=subprocess.DEVNULL).returncode == 0), None)
+-    assert shell is not None, "no shell on this host could run these lines: %s" % (_posix_shells(),)
++                  if _reads_the_directory_state_it_is_given(candidate, str(tmp_path))), None)
++    assert shell is not None, (
++        "no shell on this host resolves `~` out of the HOME it is given, so the directory state "
++        "this measurement sets can never reach one and nothing below could measure anything: %s"
++        % (_posix_shells(),))
+     controlled = set(module.POINTED_AT_THE_SANDBOX) | set(module.DROPPED)
+     hostile = controlled | set(CARRY_A_TREE)
+     # short subject names on purpose: each of them becomes a directory below `tmp_path`, and this

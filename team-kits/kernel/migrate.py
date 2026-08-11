@@ -298,9 +298,11 @@ def deposit_of(rel: str) -> str:
         `PROC-0811A` produced TWO instructions landing on ONE file, because names here are compared
         without regard to case while a YAML key is not. The answer is not a third escape but the
         alphabet: nothing that survives into the name is something a fold can change.
-      * the instruction that names it says COPY. The source stays where it is, so no reader who
-        follows it can lose the file, and the only path this name can ever land on is an earlier
-        copy OF THE SAME SOURCE.
+      * the instruction that names it says COPY. Where THIS name is printed -- the coverage note in
+        `_coverage_of` -- the source stays where it is, so no reader who follows it can lose the
+        file, and the only path this name can ever land on is an earlier copy OF THE SAME SOURCE.
+        The one caller whose remedy ALSO changes the source is `record_deposit_of`, and it does not
+        rest on this clause: it feeds a content digest through this encoder for exactly that reason.
 
     THE RESIDUAL, and it is the reason nothing here shortens the name: a source path deep enough to
     push the encoded name past what the filesystem allows produces a name the reader cannot create.
@@ -355,15 +357,42 @@ def overflow_deposit_of(rel: str, digest: str) -> str:
     return "../%s/%s%s" % (OVERFLOW_DIRNAME, _DEPOSIT_MARK, _encoded_name("%s/%s" % (rel, digest)))
 
 
-def record_deposit_of(rel: str, legacy_id: str) -> str:
+def _body_digest(body: dict) -> str:
+    """sha256 over the item body a record would become -- the content half of a record deposit name.
+
+    Through `yaml.safe_dump` rather than `canonical_json`, and that is not a stylistic choice: a V1
+    record inlines dates (`created: 2026-01-06` parses to `datetime.date`), and `canonical_json`
+    fails closed on any non-JSON type. `item_size` already dumps the shape the kernel will write
+    with the same serialiser, so this measures the same bytes; `sort_keys=True` makes the digest a
+    function of the CONTENT and not of a mapping's insertion order.
+    """
+    return hashlib.sha256(
+        yaml.safe_dump(body, sort_keys=True, allow_unicode=True).encode("utf-8")).hexdigest()
+
+
+def record_deposit_of(rel: str, legacy_id: str, digest: str) -> str:
     """The deposit name for ONE RECORD of the document `rel`, rather than for the document.
 
     Same encoder as `deposit_of` on purpose: the property that has to hold is the same one, and two
-    encoders would be two answers to one question. What is encoded is `<document>/<record id>`, and
-    that cannot be given to a document of the same state as well -- a document is a FILE, so no path
-    of that state has it as a directory component, and the record locator is exactly such a path.
+    encoders would be two answers to one question. What is encoded is `<document>/<record id>/
+    <digest>`.
+
+    WHY IT CARRIES THE CONTENT AND NOT ONLY THE LOCATOR, which is the difference to `deposit_of`'s
+    own use and the same measured chain `overflow_deposit_of` carries. In `_coverage_of` the source
+    STAYS, so a name that is taken holds an earlier copy of the same file. Here it does not: the
+    remedy this name is printed in says COPY the record out AND THEN SHORTEN it in the V1 file, so
+    the record at `<document>/<record id>` holds different bytes on a re-run. With the locator alone
+    in the name, a reader who shortens too little re-runs, is handed the SAME name, and the second
+    COPY overwrites the first -- the bulk they moved out of the V1 file is then in neither place.
+    Measured chain (real synaipse ADR-0013): 1604 bytes lost on the second following. With the
+    digest in it, a shortened record earns a DIFFERENT name, so the first copy stands untouched and
+    a name that is taken holds bytes identical to the ones being copied.
+
+    The locator part still cannot be given to a document of the same state -- a document is a FILE,
+    so no path of that state has it as a directory component, and the record locator is exactly such
+    a path -- so this collides neither with a document's deposit nor with another record's.
     """
-    return deposit_of("%s/%s" % (rel, legacy_id))
+    return deposit_of("%s/%s/%s" % (rel, legacy_id, digest))
 
 
 def deposit_note(target: str) -> str:
@@ -442,13 +471,16 @@ def documents(state: ProjectState) -> list:
 # The answers `search_coverage` gives, and every entry it produces carries exactly one of them.
 # `SEARCHED` and `UNSEARCHED` are what a reader is told about; `KERNEL` and `MACHINERY` are the two
 # areas that are not V1 documents at all and are named here so that "not reported" is a decision
-# with a name rather than a branch that fell through. `UNLISTABLE` is the only one that is not about
-# a file: it is a DIRECTORY the walk could not open, and therefore the one verdict that says the
-# other four are incomplete -- see `search_coverage` for why that has to block rather than warn.
+# with a name rather than a branch that fell through. `DEPOSIT` is a copy THIS command's own remedy
+# told a reader to make, counted rather than named one line each (BUG-0028). `UNLISTABLE` is the
+# only one that is not about a file: it is a DIRECTORY the walk could not open, and therefore the
+# one verdict that says the others are incomplete -- see `search_coverage` for why that has to block
+# rather than warn.
 SEARCHED = "searched"
 UNSEARCHED = "unsearched"
 KERNEL = "kernel"
 MACHINERY = "machinery"
+DEPOSIT = "deposit"
 UNLISTABLE = "unlistable"
 
 # THE ONE STEP THIS COMMAND OFFERS FOR AN UNLISTABLE DIRECTORY, and the reason it is one and not two
@@ -537,6 +569,12 @@ def search_coverage(state: ProjectState) -> list:
         proposal and not state, and searching it would report every staged item body as a V1
         record), and SEARCHED otherwise. A file that is BOTH gets both reasons, because a report
         that names one of two conditions describes the file only half.
+      * a project file in the proposal area that carries THIS command's own deposit mark
+        (`in_deposit`) is DEPOSIT, not UNSEARCHED. It is a copy a remedy of this command named, so
+        it needs no remedy of its own and no reader has to act on it -- and one appears per applied
+        remedy, so naming each one a line would grow the "did not search" section without bound as a
+        project follows the report (BUG-0028: synaipse went 26 -> 62). `deposit_notes` COUNTS them
+        instead; `unsearched_notes` no longer carries them.
 
     WHAT AN UNSEARCHED FILE IS OFFERED is a copy into this command's own deposit and nothing else
     (DEC-0024, argued at `deposit_of`). This walk therefore needs no wall list: it names no move,
@@ -664,8 +702,10 @@ def _coverage_of(state: ProjectState, rel: str) -> tuple:
     if in_deposit(rel):
         # A COPY THIS COMMAND'S OWN REMEDY NAMED, so it gets no remedy: pointing at `deposit_of`
         # again would name a deposit of a deposit, one nesting level per run, which is a step that
-        # changes nothing -- the shape this module refuses to print anywhere else.
-        return (UNSEARCHED,
+        # changes nothing -- the shape this module refuses to print anywhere else. Its OWN verdict
+        # (`DEPOSIT`, not `UNSEARCHED`) so it is counted rather than named one line per remedy
+        # applied (BUG-0028); the reason is kept for the count's own wording.
+        return (DEPOSIT,
                 "%s. It carries this command's own deposit mark, so it is a COPY somebody was told "
                 "to make of a file that is out of reach of the record search; the original is the "
                 "one that decides anything, and no step is named for this one." % reasons)
@@ -681,8 +721,25 @@ def _coverage_of(state: ProjectState, rel: str) -> tuple:
 
 
 def unsearched_notes(coverage) -> list:
-    """[(path, why)] for the files a record search cannot look at -- one wording, both readers."""
+    """[(path, why)] for the files a record search cannot look at -- one wording, both readers.
+
+    A DEPOSIT copy is NOT here (BUG-0028): it is a copy this command's own remedy made, so it needs
+    no remedy of its own, and one appears per applied remedy -- listing each would grow this section
+    without bound. `deposit_notes` counts them instead.
+    """
     return [(rel, why) for rel, verdict, why in coverage if verdict == UNSEARCHED]
+
+
+def deposit_notes(coverage) -> list:
+    """[(path, why)] for the deposit copies this command's own remedies made -- COUNTED, not listed.
+
+    Their own accessor so `validate` and `doctor` can report `N deposit copies` in one line instead
+    of one `NOT SEARCHED` line each. Kept apart from `unsearched_notes` for the reason BUG-0028
+    names: a deposit is not a file a reader has to do anything about, and a project that follows the
+    report accumulates one per applied remedy (synaipse: 26 remedies applied -> 62 lines before this
+    was a class of its own).
+    """
+    return [(rel, why) for rel, verdict, why in coverage if verdict == DEPOSIT]
 
 
 def unlistable_notes(coverage) -> list:
@@ -1316,6 +1373,10 @@ def build_plan(state: ProjectState, field_map: dict = None, archive_year=None) -
     walls = walls_of(state)
     coverage = search_coverage(state)
     unscanned = ["%s (%s)" % pair for pair in unsearched_notes(coverage)]
+    # THE DEPOSIT COPIES, CARRIED AS A COUNT AND NOT AS LINES (BUG-0028). One appears per remedy a
+    # reader applies, so naming each in `unscanned` grew that section without bound; the paths are
+    # kept (sorted) so the dry run can say how many and, on demand, which -- one summary line.
+    deposits = sorted(rel for rel, _why in deposit_notes(coverage))
     # A SUBTREE NOBODY COULD LIST IS A READING FAILURE, not a coverage note, so it goes where a
     # reading failure goes: `unreadable` is what `plan_is_executable` refuses on. The alternative --
     # a note beside the plan -- is what the walk already did on its own, and it was measured as
@@ -1635,6 +1696,9 @@ def build_plan(state: ProjectState, field_map: dict = None, archive_year=None) -
             "archive_year": int(archive_year) if archive_year else None,
             "carried_values": {pair: sorted(values) for pair, values in carried_values.items()},
             "unscanned": sorted(unscanned),
+            # THE DEPOSIT COPIES, as their own list so the dry run counts them in one line rather
+            # than one `NOT SEARCHED` per applied remedy (BUG-0028).
+            "deposits": deposits,
             # PAIRS, not sentences: `_unreadable_paths` counts the paths, and a path recovered from
             # a sentence is a path that ends at the first space (see there). Written as LISTS
             # because the plan goes through `canonical_json` on its way to the digest, and a tuple
@@ -2008,15 +2072,20 @@ def _settle_bindings(state: ProjectState, records: list, pending: list) -> None:
             # WHERE THE BULK GOES IS CONSTRUCTED, NOT LEFT TO THE READER (DEC-0024). This line
             # named `staging/` -- a directory, so the reader picked the file name, and a picked
             # name can be taken. `record_deposit_of` is a name no other line of this report can
-            # produce, and the instruction says COPY, so the reader's own V1 document is the only
-            # file the whole remedy asks them to change.
+            # produce. But COPY is not the whole remedy here: the second half SHORTENS the record in
+            # the V1 file, so this instruction's source does not stay put the way `_coverage_of`'s
+            # does. That is why the name carries `_body_digest(body)` -- a reader who shortens too
+            # little and re-runs is handed a DIFFERENT name, so the second copy cannot land on the
+            # first and take the moved-out bulk with it (`record_deposit_of` carries the measured
+            # chain).
             entry["reason"] = (
                 "it does not fit in one item: it %s. An item REFERENCES its detail and this V1 "
                 "record inlines it, so the bulk belongs beside the item rather than in it. "
                 "Remedy: %s Then shorten the record in the V1 file itself so that it points at "
                 "that copy, and re-run the dry run."
                 % (oversized, copy_instruction(
-                    record_deposit_of(entry["source"], entry["legacy_id"]))))
+                    record_deposit_of(entry["source"], entry["legacy_id"],
+                                      _body_digest(body)))))
             continue
         if unsettled:
             # A BINDING TO A RECORD OF THIS RUN IS A PLANNING FACT, NOT A WRITER'S REFUSAL, and
@@ -2268,6 +2337,34 @@ def _suggestion_lines(plan: dict) -> list:
     return lines
 
 
+def _plan_flags(plan: dict) -> list:
+    """The BUILD flags this plan carries, in command-line order -- what a re-run must repeat.
+
+    NOT `_map_flags`. That one prints the `--map` a record STILL needs (a decision the reader has
+    yet to make); this prints the flags the plan was ALREADY built with, which are two of the plan's
+    own inputs. `build_plan` takes `field_map` and `archive_year`, and `plan_digest` covers the
+    whole plan, so a `migrate --plan <digest>` that drops either flag digests to a different value
+    and the run refuses it as a usage error (measured rc 2, no state touched). Read from the plan
+    itself -- `field_map` and `archive_year` -- rather than from the command line, so the READY line
+    the dry run prints and the plan the digest is taken over can never name different flags.
+    """
+    flags = ["--map %s=%s" % (key, value)
+             for key, value in sorted((plan.get("field_map") or {}).items())]
+    if plan.get("archive_year"):
+        flags.append("--archive-year %d" % plan["archive_year"])
+    return flags
+
+
+def _ready_command(plan: dict) -> str:
+    """The command a reader pastes to execute this exact plan -- digest AND the flags that built it.
+
+    The digest alone was wrong the moment any flag was in play (BUG-0027): the copied line digests
+    to a plan with no flags, which is not the plan that was reviewed.
+    """
+    return " ".join(["python scripts/harness.py migrate --plan %s" % plan_digest(plan)]
+                    + _plan_flags(plan))
+
+
 def root_item_warnings(plan: dict, written: bool = False) -> list:
     """The "this project keeps no root item" warning, for BOTH halves of the command.
 
@@ -2425,6 +2522,14 @@ def render(plan: dict, state: ProjectState = None) -> str:
         lines += ["", "UNREADABLE (the run refuses): %s %s" % (path, problem)]
     for note in plan["unscanned"]:
         lines += ["", "NOT SEARCHED: %s" % note]
+    # THE DEPOSIT COPIES, COUNTED IN ONE LINE (BUG-0028). One is created per remedy a reader applies,
+    # so a line each grew the report every time the project followed it; they need no action, so the
+    # count is what a reader wants and the paths follow it once rather than as N headings.
+    deposits = plan.get("deposits") or []
+    if deposits:
+        lines += ["", "DEPOSIT COPIES (%d) -- copies this command's own remedies told a reader to "
+                      "make; not searched as V1 sources and nothing here acts on them: %s"
+                  % (len(deposits), ", ".join(deposits))]
 
     not_items = _by_verdict(plan, "not_an_item")
     if not_items:
@@ -2542,7 +2647,7 @@ def render(plan: dict, state: ProjectState = None) -> str:
                      "`python scripts/harness.py doctor` and the SessionStart briefing report "
                      "it, and this command does not re-derive it.")
 
-    lines += ["", ("READY: `python scripts/harness.py migrate --plan %s`" % plan_digest(plan))
+    lines += ["", ("READY: `%s`" % _ready_command(plan))
               if plan_is_executable(plan) and _importable(plan)
               else ("NOTHING TO DO: no record in this state becomes an item."
                     if plan_is_executable(plan) else

@@ -1,0 +1,30 @@
+id: TSK-0042
+product_requirement: PR-0001
+derives_from: BUG-0029
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0029: doctor eines migrierten Projekts meldet kit unknown bei bekannter kit_version;
+  generate-session-brief verlangt --kit als Pflicht. Kopie-Pilot TSK-0026 (synaipse)'
+expected_outputs:
+- doctor benennt das Kit, wenn kit_version es eindeutig macht, oder begruendet die
+  Luecke; gemessen
+dependencies:
+- BUG-0026
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T13:09:50'

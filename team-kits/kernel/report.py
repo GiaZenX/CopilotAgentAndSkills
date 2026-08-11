@@ -633,15 +633,24 @@ def record_scan_coverage(state: ProjectState) -> dict:
     readers and stops no merge (`L19` in `docs/POST_V2_WISHLIST.md`), and one dropped into a
     kernel-written area is not even named (`L20` there).
 
-    WHAT IS DELIBERATELY NOT IN HERE is the coverage's fifth verdict: a directory the walk could not
-    open is an error finding of `_check_no_v1_records_outside_the_archive`, not coverage, because it
-    says the coverage itself is short.
+    WHAT IS DELIBERATELY NOT IN HERE is the coverage's UNLISTABLE verdict: a directory the walk
+    could not open is an error finding of `_check_no_v1_records_outside_the_archive`, not coverage,
+    because it says the coverage itself is short.
+
+    DEPOSIT COPIES ARE COUNTED, NOT LISTED (BUG-0028). A file this command's own remedy told a reader
+    to make lands under `staging/` with the deposit mark; one appears per applied remedy, so it is
+    reported as a `deposits` count rather than one `not_searched` line each, which grew this section
+    without bound as a project followed the report (synaipse: 26 -> 62).
     """
     from . import migrate                   # lazy: `migrate` imports this module at its own import
     coverage = migrate.search_coverage(state)
     return {"searched": [rel for rel, verdict, _why in coverage if verdict == migrate.SEARCHED],
             "not_searched": [{"path": rel, "why": why}
-                             for rel, why in migrate.unsearched_notes(coverage)]}
+                             for rel, why in migrate.unsearched_notes(coverage)],
+            # THE DEPOSIT COPIES, COUNTED AND NOT LISTED AMONG `not_searched` (BUG-0028). A deposit
+            # is a copy this command's own remedy made; one appears per applied remedy, so counting
+            # them keeps this coverage from growing a line every time a project follows the report.
+            "deposits": [rel for rel, _why in migrate.deposit_notes(coverage)]}
 
 
 def _check_dispatch_approval_presented(state: ProjectState, active_items: dict) -> list:
@@ -1598,7 +1607,7 @@ def installed_identity(state: ProjectState) -> dict:
     honest answer and the one the spec reserves for it.
     """
     claude_dir = os.path.join(os.path.dirname(state.root), ".claude")
-    identity = {"kit": "unknown", "kit_version": "unknown",
+    identity = {"kit": "unknown", "kit_version": "unknown", "kit_reason": "",
                 "lead_role": "unknown", "provider_config": "unknown"}
     try:
         with open(os.path.join(claude_dir, "kit_state.json"), encoding="utf-8") as handle:
@@ -1628,6 +1637,18 @@ def installed_identity(state: ProjectState) -> dict:
     ) if os.path.exists(marker)]
     if providers:
         identity["provider_config"] = "+".join(providers)
+    if identity["kit"] == "unknown":
+        # BUG-0029: WHY it is unknown, so a bare `unknown` beside a known `kit_version` does not read
+        # as a defect. The kit NAME is recorded by the scaffold in `.claude/kit_state.json`;
+        # `kit_version` is a date stamp plus a content hash (`tools/bump_kit_version.py`) and carries
+        # no kit name, so a project that has a version but no `kit_state.json` -- a V1 or freshly
+        # migrated project that has not been re-scaffolded -- cannot have its kit named from what is
+        # on disk here. This is a determinable gap, not a determinable kit reported as unknown.
+        identity["kit_reason"] = (
+            "the kit name is recorded by the scaffold in .claude/kit_state.json and this project "
+            "carries no readable `kit` there; kit_version names a date and a content hash, not a "
+            "kit, so the kit cannot be derived from disk. Re-scaffold the kit, or pass --kit "
+            "explicitly to a command that needs it (generate-session-brief).")
     return identity
 
 
@@ -1641,6 +1662,9 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
         "root": state.root,
         "kit": kit or identity["kit"],
         "kit_version": kit_version or identity["kit_version"],
+        # BUG-0029: when the kit cannot be named, WHY -- a determinable gap, not a determinable kit
+        # left as `unknown`. Empty once the kit IS named (an argument, or a recorded kit_state.json).
+        "kit_reason": "" if (kit or identity["kit"]) != "unknown" else identity["kit_reason"],
         # defects in the INSTALLATION rather than in the project's state -- kept separate from
         # `validator.errors`, which callers gate on, because a damaged kit is no reason to refuse
         # the user's own well-formed items. Always present, so no consumer has to guess whether an

@@ -345,6 +345,33 @@ def test_identical_decisions_collapse_to_one_line_but_different_ones_never_do(v1
     assert len(migrate._group_decisions(split)) == 2
 
 
+def test_the_ready_line_carries_the_flags_the_plan_was_built_with(v1_state):
+    """BUG-0027: the READY line is a paste, and a paste that drops the build flags is a plan the
+    reader never reviewed.
+
+    `plan_digest` is over the WHOLE plan, and `--map`/`--archive-year` are two of `build_plan`'s
+    inputs, so the copied `migrate --plan <digest>` had to carry them or the executing half rebuilds
+    a different plan. This state needs BOTH flags (the sixteen PROCs spell `owner` where the
+    contract asks `roles`, and the archive-bound ones need a year), so the printed line names both.
+
+    RED without `_ready_command`/`_plan_flags`: the line reads `--plan <digest>` and nothing else,
+    and pasting it answers rc 2 with a digest mismatch (measured) -- the run the reader read is not
+    the run they would get.
+    """
+    plan = _planned(v1_state)
+    printed = migrate.render(plan, v1_state)
+    ready = [line for line in printed.splitlines() if line.startswith("READY:")]
+    assert len(ready) == 1, printed
+    command = re.findall(r"`([^`]+)`", ready[0])[0]
+    assert "--map PROC.roles=owner" in command, command
+    assert "--archive-year %d" % _ARCHIVE_YEAR in command, command
+    # ...AND THE PASTE REALLY REPRODUCES THIS PLAN, run through the CLI the reader would use: without
+    # the flags this is a digest mismatch (a usage error, no state touched); with them it executes.
+    parts = command.split()
+    assert parts[:3] == ["python", "scripts/harness.py", "migrate"], command
+    assert _run(v1_state, *parts[2:]) == 0, command
+
+
 # -- the executing half --------------------------------------------------------------------------
 
 
@@ -5757,6 +5784,7 @@ def test_every_verdict_the_run_up_can_produce_is_named_where_it_is_documented(tm
     _seven_placements(state, _v1_records_text())          # searched and unsearched
     _write_document(state, ".audit/hook_events.jsonl", "{}\n")        # machinery
     _write_document(state, "generated/index.yaml", "items: []\n")     # kernel
+    _write_document(state, migrate.deposit_of("gone.yaml"), "x\n")    # deposit (BUG-0028)
     hidden = os.path.join(state.root, "denied")
     _write_document(state, "denied/old_procs.yaml", _v1_records_text())
     with _unlistable(hidden):                             # unlistable
@@ -6249,15 +6277,53 @@ def test_no_instruction_this_command_prints_can_take_a_file_away(tmp_path):
             "file it told them about" % path)
 
     # ...AND THE COPY IS NOT ANSWERED WITH A COPY OF ITSELF. A deposit file is still under
-    # `staging/`, so the run-up names it as unsearched -- and pointing it at a deposit again would
-    # nest one level per run, which is the step-that-changes-nothing this module prints nowhere.
-    again = dict(migrate.unsearched_notes(migrate.search_coverage(state)))
+    # `staging/`, so the run-up still gives it a verdict -- its OWN class now (`DEPOSIT`, BUG-0028),
+    # counted rather than named one `NOT SEARCHED` line each -- and pointing it at a deposit again
+    # would nest one level per run, the step-that-changes-nothing this module prints nowhere.
+    coverage_again = migrate.search_coverage(state)
+    again = dict(migrate.deposit_notes(coverage_again))
+    unsearched_again = dict(migrate.unsearched_notes(coverage_again))
     for _folded_target, (rel, target) in sorted(told.items()):
         assert target in again, (
             "%s is not named at all, so the coverage is no longer total" % target)
+        assert target not in unsearched_again, (
+            "%s is a deposit copy still listed one `NOT SEARCHED` line at a time (BUG-0028)" % target)
         assert _instruction(again[target]) is None, (
             "%s is a deposit copy and the report tells the reader to deposit it again: %r"
             % (target, again[target]))
+
+
+def test_applied_deposit_remedies_are_counted_not_a_not_searched_line_each(tmp_path):
+    """BUG-0028: a deposit is a copy this command's own remedy made, and one appears per remedy a
+    reader applies -- so listing each in the "did not search" section grows it without bound as the
+    project follows the report (synaipse: 26 remedies applied -> 62 NOT SEARCHED lines).
+
+    RED without the DEPOSIT verdict: every deposit is UNSEARCHED, so `unsearched_notes` (and the
+    `NOT SEARCHED` lines the dry run and `validate` print from it) grows by one for each applied
+    remedy, and there is no count to read instead.
+    """
+    state = _plain_state(tmp_path, "deposits")
+    # one genuinely unsearched V1 store -- the baseline the deposits must NOT be added to
+    _write_document(state, "old_store.yaml.bak", _v1_records_text())
+    baseline = len(migrate.unsearched_notes(migrate.search_coverage(state)))
+    assert baseline >= 1, "the baseline reaches no unsearched file, so growth cannot be measured"
+
+    applied = 6
+    for n in range(applied):
+        _write_document(state, migrate.deposit_of("doc%02d.yaml" % n), "x\n")
+
+    coverage = migrate.search_coverage(state)
+    assert len(migrate.unsearched_notes(coverage)) == baseline, (
+        "applying %d deposit remedies grew the `did not search` section, so a project that follows "
+        "the report accumulates a line per remedy (BUG-0028)" % applied)
+    assert len(migrate.deposit_notes(coverage)) == applied, (
+        "the deposit copies are not counted as their own class: %s"
+        % migrate.deposit_notes(coverage))
+
+    # the two readers of the coverage carry the count, not the lines
+    scan = report_module().record_scan_coverage(state)
+    assert len(scan["deposits"]) == applied, scan
+    assert not any(migrate.in_deposit(one["path"]) for one in scan["not_searched"]), scan["not_searched"]
 
 
 def _staging_keys_of(state):
@@ -6439,7 +6505,16 @@ def test_the_place_an_oversized_record_is_sent_to_is_constructed_and_costs_nothi
     assert migrate.in_deposit(target), (
         "the bulk is sent somewhere this command did not construct, so the reader picks the name: "
         "%s" % target)
-    assert target == migrate.record_deposit_of("bulky.yaml", "PROC-0811"), target
+    # THE LOCATOR HALF OF THE NAME IS THE DOCUMENT AND THE RECORD, and the tail is the body digest
+    # (BUG-0026). Decoded rather than rebuilt with a hand-computed digest, so this asserts the shape
+    # the reader is handed without re-deriving the content hash the code takes.
+    prefix = "%s/%s" % (migrate.layout.STAGING_DIRNAME, migrate._DEPOSIT_MARK)
+    assert target.startswith(prefix), target
+    decoded = urllib.parse.unquote(target[len(prefix):])
+    assert decoded.startswith("bulky.yaml/PROC-0811/"), decoded
+    assert len(decoded.rsplit("/", 1)[1]) == 64, (
+        "the record deposit name carries no body digest, so a re-run with a shortened record would "
+        "overwrite this copy (BUG-0026): %s" % decoded)
     # ...AND IT COLLIDES WITH NO DOCUMENT'S OWN DEPOSIT, which is the argument in
     # `record_deposit_of`'s docstring: a document is a file, so no path of this state has it as a
     # directory component. Asked of every document this state really holds, not of the one.
@@ -6514,6 +6589,67 @@ def test_two_records_of_one_document_that_differ_only_in_case_get_two_deposits(v
         "one report printed %d instructions and this filesystem holds %d file(s) afterwards, so a "
         "reader who follows both keeps one record's bulk and loses the other's: %s -> %s"
         % (len(told), len(landed), told, landed))
+
+
+def _oversized_record_document(state, steps):
+    """One oversized V1 procedure whose bulk is `steps` list-items -- the reader's own shorten knob."""
+    io.open(os.path.join(state.root, "bulky.yaml"), "w", encoding="utf-8", newline="\n").write(
+        "processes:\n"
+        "  PROC-0811:\n"
+        "    title: \"a record that inlines its own detail\"\n"
+        "    owner: bookkeeper\n"
+        "    steps:\n%s"
+        "    status: PROPOSED\n"
+        "    created: 2026-01-06\n"
+        % "".join('      - "%s"\n' % ("x" * 300) for _ in range(steps)))
+
+
+def _oversized_target(state):
+    """The single COPY place the dry run names for PROC-0811, as the reader is handed it."""
+    entry = next(one for one in _planned(state)["records"] if one["legacy_id"] == "PROC-0811")
+    assert entry["verdict"] == "blocked", entry
+    named = _instruction(entry["reason"])
+    assert named and len(named) == 1, entry["reason"]
+    return named[0]
+
+
+def test_an_oversized_record_shortened_too_little_earns_a_second_deposit_not_an_overwrite(v1_state):
+    """BUG-0026: the remedy for an oversized RECORD changes its own source, so the deposit name has
+    to move with the content or a re-run destroys the first copy.
+
+    THE CHAIN, CARRIED OUT (real synaipse ADR-0013 in shape): the dry run blocks PROC-0811 and says
+    "COPY it to <deposit>. Then shorten the record in the V1 file." A reader copies it, shortens the
+    record TOO LITTLE -- it is still oversized -- and re-runs. The message states the ITEM size, not
+    the record-text size, so shortening iteratively is the normal case, not a mistake. If the second
+    dry run hands back the SAME deposit name, the reader's second COPY lands on the first, and the
+    bulk they took out of the V1 file (1604 bytes on the real record) is then in NEITHER place.
+
+    RED without `_body_digest` in `record_deposit_of`: the two contents earn one name, `_carry_out`
+    overwrites, and one deposit file stands where two records' bulk was -- exactly the loss DEC-0024
+    forbids, reached through a source that does not stay put rather than through a picked name.
+    """
+    from kernel import layout
+    _oversized_record_document(v1_state, steps=140)
+    first = _oversized_target(v1_state)
+    _carry_out(v1_state, "bulky.yaml", first)
+    first_bytes = os.path.getsize(os.path.join(v1_state.root, *first.split("/")))
+
+    # the reader shortens the record -- but not enough; it still does not fit in one item
+    _oversized_record_document(v1_state, steps=90)
+    second = _oversized_target(v1_state)
+    assert second != first, (
+        "a shortened-but-still-oversized record is handed the same deposit name as its longer self, "
+        "so the reader's second copy overwrites the first and the removed bulk is lost: %s" % second)
+
+    _carry_out(v1_state, "bulky.yaml", second)
+    landed = sorted(one for one in os.listdir(v1_state.staging_root())
+                    if migrate.in_deposit("%s/%s" % (layout.STAGING_DIRNAME, one)))
+    assert len(landed) == 2, (
+        "the two contents left %d deposit file(s), so following the two instructions overwrote one: "
+        "%s" % (len(landed), landed))
+    # the FIRST copy still holds its own bytes -- nothing the second run did reached back to it
+    assert os.path.getsize(os.path.join(v1_state.root, *first.split("/"))) == first_bytes, (
+        "the first deposit's size changed, so the second copy landed on it after all")
 
 
 def test_no_remedy_the_validator_prints_names_a_place_inside_the_state_directory(tmp_path):
@@ -7182,6 +7318,34 @@ def test_a_wall_that_is_prose_is_not_reported_as_a_document_that_failed_to_parse
     walls = _wall_lines(migrate.render(migrate.build_plan(v1_state), v1_state))
     broken = [line for line in walls if line.startswith("compliance_register.yaml")]
     assert len(broken) == 1 and "NOT READ" in broken[0], walls
+
+
+def test_doctor_says_why_it_cannot_name_the_kit_of_a_project_with_only_a_version(tmp_path):
+    """BUG-0029: a migrated/V1 project carries a kit_version but no kit_state.json, so doctor cannot
+    name the kit -- and a bare `unknown` beside a known version reads as a defect rather than a
+    determinable gap. The kit NAME lives in `.claude/kit_state.json` (the scaffold writes it);
+    `kit_version` is a date plus a content hash and carries no kit name, so doctor states the gap.
+
+    RED without `kit_reason`: doctor reports `kit: unknown` with no reason, and a reader cannot tell a
+    determinable gap from a determinable kit reported wrong.
+    """
+    report = report_module()
+    state = _plain_state(tmp_path, "only_version")
+    claude = os.path.join(os.path.dirname(state.root), ".claude")
+    os.makedirs(claude)
+    io.open(os.path.join(claude, "kit_version"), "w", encoding="utf-8", newline="\n").write(
+        "version: 2026.07.18-3\ncontent: abc\n")
+    result = report.doctor(state)
+    assert result["kit"] == "unknown", result["kit"]
+    assert result["kit_version"] == "2026.07.18-3", result["kit_version"]
+    assert result["kit_reason"], "doctor names no reason the kit is unknown (BUG-0029)"
+    assert "kit_state.json" in result["kit_reason"], result["kit_reason"]
+    # ...AND ONCE THE KIT IS RECORDED THE REASON IS EMPTY, so this is not a constant that is always on
+    io.open(os.path.join(claude, "kit_state.json"), "w", encoding="utf-8").write(
+        '{"kit": "dev-team", "state": "active"}')
+    named = report.doctor(state)
+    assert named["kit"] == "dev-team", named["kit"]
+    assert named["kit_reason"] == "", named["kit_reason"]
 
 
 # -- the holes this round NAMES and does not close --------------------------------------------

@@ -1,0 +1,44 @@
+diff -u -r a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml	2026-08-11 11:57:57.461986800 +0200
++++ b/.github/workflows/ci.yml	2026-08-11 11:57:57.463981300 +0200
+@@ -26,9 +26,38 @@
+         # run inherits whatever set the latest release ships, and two runs of the same CI drift.
+         # This version is the one the repo's explicit `select` (ruff.toml) was validated green against.
+         run: python -m pip install --upgrade pip "ruff==0.15.20" pyyaml pytest
+-      - name: Lint shipped Python (hooks + scripts + tools)
+-        run: ruff check team-kits tools
++      - name: Lint shipped Python (hooks + scripts + tools + this repo's own gates)
++        # `.claude/hooks` stood outside this line while it holds the four gates that decide
++        # every tool call in this repo -- the same blind spot BUG-0014 is about, one level
++        # cheaper. Measured green locally with the pinned ruff of the line above.
++        run: ruff check team-kits tools .claude/hooks
+       - name: Structural self-check
+         run: python tools/validate.py
+       - name: Hook + quality.py behaviour tests
+         run: python -m pytest tools/ -q
++
++  gates:
++    # The four PreToolUse gates of THIS repo. `python -m pytest tools/ -q` does not collect that
++    # file -- it lives beside the gates, not in the kits' suite -- and that is exactly how a red
++    # run survived a whole round without standing anywhere (BUG-0014). A job of its own, so a
++    # measurement of this length does not hold up the lint and validate feedback above.
++    #
++    # WINDOWS ONLY, and that is a measured boundary rather than a preference: every measurement
++    # in that file was taken on Windows and the shells it arbitrates with are the ones a Windows
++    # host has. Whether it is green on a Linux runner is UNMEASURED and is not claimed here.
++    # UNMEASURED as well: this job on a GitHub runner at all -- the suite has only ever run on a
++    # developer host, where it takes about half an hour. The first run is the measurement; a red
++    # one is a finding about the suite, not a defect of this step.
++    runs-on: windows-latest
++    timeout-minutes: 90
++    env:
++      PYTHONUTF8: "0"
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-python@v5
++        with:
++          python-version: "3.x"
++      - name: Install tooling
++        run: python -m pip install --upgrade pip pyyaml pytest
++      - name: Gate behaviour tests (not collected by `pytest tools/`)
++        run: python -B -m pytest .claude/hooks/test_gates.py -q

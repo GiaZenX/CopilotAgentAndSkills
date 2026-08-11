@@ -1282,11 +1282,15 @@ sind `%2f` und 64 Hex-Zeichen, gemessen 2026-08-09 als Differenz der beiden Name
 (`deposit_of` 37 Zeichen, `overflow_deposit_of` 104). Die Kette oben („248 ASCII → 262") liegt für
 diesen Namen also 67 Zeichen früher; die blockierende Bedingung ist ein **belegter** Landeplatz unter
 `legacy/`, dessen Pfad plus 67 über `_NAME_MAX_CHARS` geht. Was den Unterschied ausmacht, ist nicht
-die Länge, sondern der Preis: ein unanlegbarer `deposit_of`-Name kostet den Bulk **eines
+die Länge, sondern der Preis: ein unanlegbarer Datensatz-Ablagename kostet den Bulk **eines
 Datensatzes**, ein unanlegbarer Overflow-Name hängt an `occupied_landings` — und solange der
 Landeplatz belegt ist, ist `plan_is_executable` **falsch**, die Migration also durch keine der
-gedruckten Routen mehr abschließbar. Rest und nicht Blocker, weil die Ausfallrichtung dieselbe
-harmlose ist wie oben (die Anweisung ist nicht ausführbar, sie verliert nichts) und `deposit_note`
+gedruckten Routen mehr abschließbar. Seit BUG-0026 trägt auch `migrate.record_deposit_of` den
+sha256 des Datensatz-Körpers im Namen (aus demselben Grund wie der Overflow-Name: die zugehörige
+Abhilfe kürzt die Quelle, ein belegter Name muss also byte-gleiche Bytes tragen), liegt seine
+Längengrenze also dieselben 67 Zeichen früher. Rest und nicht Blocker, weil die Ausfallrichtung
+dieselbe harmlose ist wie oben (die Anweisung ist nicht ausführbar, sie verliert nichts) und
+`deposit_note`
 auch hier an der Druckstelle steht — `copy_instruction` ist der eine Komponist für beide Namen, der
 Satz erscheint also für den Overflow-Namen genauso (gemessen: „That name is 40 character(s) longer
 than the 255 …" für einen 200-Zeichen-Landeplatz).

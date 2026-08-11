@@ -1,0 +1,32 @@
+id: TSK-0040
+product_requirement: PR-0001
+derives_from: BUG-0027
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0027: die gedruckte READY-Zeile (migrate.py:2545) baut nur aus plan_digest,
+  laesst die Flags (--archive-year, --map) weg, mit denen build_plan gerufen wurde
+  -> woertlich ausgefuehrt rc 2. Kopie-Pilot TSK-0026 (portfolio)'
+expected_outputs:
+- Die READY-Zeile laeuft wie kopiert, auch mit Flags -- sie nennt die Bauflags oder
+  wird aus derselben Quelle gebaut wie die --map-Remedy; Test sichert ihren Inhalt
+  gegen die Plan-Bauflags, rot ohne Fix
+dependencies:
+- BUG-0026
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T13:09:47'
