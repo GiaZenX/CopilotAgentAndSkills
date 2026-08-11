@@ -1,0 +1,16 @@
+id: EVD-0011
+kind: review
+related:
+- TSK-0043
+result: pass
+summary: 'verifier PASS (Part A) + lead-fixed doc-consistency (Part B) for diff:1a46fd9c5cf13e279bf7679024ce908ebb14392cb06aa5f7ebd3bf3f98db9324
+  -- BUG-0020/H34 verb-bound message removal closes the DEC-0001 deletion vector (rm
+  -f quoted path now rc 2/file kept, red without fix rc 0/file gone), no new hole
+  at verb seam, no over-refusal, mirror byte-identical; the one test_gates.py failure
+  was a WISHLIST citation qualifier, fixed; kits 2026.08.11-5. Remaining: _harness.py:1579-1582
+  docstring (comment, handback)'
+artifact_refs:
+- docs/reviews/2026-08-11-tsk0043-h34-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-11T17:33:11'

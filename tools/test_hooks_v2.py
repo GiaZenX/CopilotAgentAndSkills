@@ -4594,6 +4594,56 @@ def test_a_commit_message_with_a_write_verb_is_still_prose(tmp_path):
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0
 
 
+@pytest.mark.parametrize("command,what", [
+    # the measured BUG-0020/H34 chain: a write verb whose flag COLLIDES with a message spelling
+    # under the removal's IGNORECASE (`-F` folds onto `-f`, `-b` is `cp`'s backup), so the quoted
+    # PATH behind it used to be deleted as prose before any gate read the line.
+    ('rm -f "project_memory/decisions/active/DEC-0001.yaml"', "canonical state directory"),
+    ("rm -f 'project_memory/decisions/active/DEC-0001.yaml'", "canonical state directory"),
+    ('rm -F "project_memory/decisions/active/DEC-0001.yaml"', "canonical state directory"),
+    ('rm -rf "project_memory/decisions/active/DEC-0001.yaml"', "canonical state directory"),
+    ('mv "project_memory/decisions/active/DEC-0001.yaml" x', "canonical state directory"),
+    ('cp x -b "team-kits/kernel/hashing.py"', "enforcement layer"),
+])
+def test_a_write_verbs_quoted_operand_is_a_path_not_a_removable_message(tmp_path, command, what):
+    """BUG-0020/H34 — the message removal was bound to the FLAG spelling and blanked the quoted span
+    behind it whatever the verb, so `rm -f "…"`/`cp -b "…"` lost their PATH operand and the gate saw
+    a line that named nothing. It deleted a canonical item (DEC-0001) in a real session.
+
+    RED without the fix: point `_MESSAGE_ARG_RX` back at the line-wide `_MESSAGE_FLAG_RX` and each of
+    these is rc 0, and a real bash deletes/overwrites the guarded file (measured out of repo)."""
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, command))
+    assert result.returncode == 2, command
+    assert what in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("command", [
+    # a message-bearing verb keeps its prose exemption, so a refusal's own remedy ("report the
+    # defect and quote the command") does not fall through the gate it reports.
+    'git commit -m "docs: purge the project_memory workaround"',
+    "git commit --message='delete project_memory/old and move on'",
+    'gh issue create --title x --body "the refused line named .claude and team-kits"',
+])
+def test_a_message_bearing_verb_keeps_its_prose_exemption(tmp_path, command):
+    """The other end of the tripwire: binding to the verb must not start refusing the commit/issue
+    messages the removal exists for. RED if the message-bearing verb set were emptied — these name
+    protected trees inside prose and would then read as writes into them."""
+    dispatched_repo(tmp_path)
+    assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0, command
+
+
+def test_remove_item_names_the_state_dir_through_powershell(tmp_path):
+    """The PowerShell spelling of the same deletion, refused on the NAME with no flag involved — the
+    counterpart that shows the fix did not shrink to Bash `rm`."""
+    dispatched_repo(tmp_path)
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "PowerShell", "cwd": str(tmp_path),
+               "tool_input": {"command": 'Remove-Item "project_memory/approvals/APR-0001.yaml"'}}
+    result = run_scope(tmp_path, payload)
+    assert result.returncode == 2
+    assert "canonical state directory" in result.stderr
+
+
 def test_relocating_the_enforcement_layer_is_refused(tmp_path):
     """The shortest measured route to a forged approval was `cp -r .claude/hooks kk && python
     kk/gate_approval.py < forged.json` — no path check on the SECOND command can see it, so the

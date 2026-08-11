@@ -1855,7 +1855,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H13, H14, H15, H18, H19, H23 | **Rest**, keine Angriffskette | jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht |
 | H36 | **Rest**, keine Angriffskette auf diesem Host | die Grenze ist gemessen und liegt außerhalb des Gates: die Zeilenlänge, ab der die nicht unterbrechbare Stelle die Frist reißt, kann auf diesem Host keine Shell mehr gestartet bekommen. Der Eintrag nennt, was das ändern würde |
 | H32 | **Ausnahme, Abnahme offen** | geschlossen bis auf eine Hälfte, und die ist ein Sonderfall von H34: was die Kits als Prosa entfernen, liest davor niemand. **Sozial** — Rollentrennung und Item; die Reparaturstelle liegt im Kit |
-| H34 | **Ausnahme, Abnahme offen** | **nichts Technisches**, dieselbe Begrenzung wie H11 und H22 — die Prosa-Entfernung ist die der Kits (`gate_write_scope._MESSAGE_ARG_RX`), und eine zweite Antwort auf „was ist Prosa" wäre die Drift, die H15 beschreibt. **Sozial** — Rollentrennung und Item |
+| H34 | **GESCHLOSSEN** (TSK-0043), mit benannter Resthälfte | die Prosa-Entfernung der Kits ist an das **Verb** gebunden (`gate_write_scope._VerbBoundMessageRemoval`/`_stage_takes_a_message`) statt an die Flagschreibweise; der Datenverlust-Kern (`rm -f "geschützt"`, `cp -b "geschützt"`) ist zu, und weil `_harness._prose_removed` dasselbe Objekt importiert, auch das Repo-Gate, das DEC-0001 löschte. Rest: die Ersetzung IN einer echten Nachricht bleibt H32; sie zu lesen wäre die Drift H15 |
 | H3 | **GESCHLOSSEN**, mit benannter Resthälfte | die Hälfte, die bleibt, ist der Fixpunkt der Konstruktion und im Eintrag beschrieben: der Digest schließt `project_memory/` aus, weil ein Urteil sonst den Baum decken müsste, in den es geschrieben wird |
 | H9 | **kein Urteil möglich** | nichts, und das ist der Befund: ohne den Mechanismus aus dem Prüfbericht zu TSK-0003 gibt es keine Kette, die man einordnen könnte. Der Eintrag wartet auf diese Eingabe, nicht auf eine Entscheidung |
 | H10 | **Rest**, offen ist nur die Vollständigkeit | die beiden gefundenen Hälften sind geschlossen und je durch einen roten Test gedeckt; für die dritte gibt es keinen Ersatz, sondern eine ungestellte Frage — ein erschöpfender Mutationslauf über `.claude/hooks/` |
@@ -3002,15 +3002,37 @@ dahinter ist die **Datei**; die Prosa-Entfernung nimmt beides zusammen weg, und 
 Zeile ohne Pfad. Dieselbe Zeile ohne das Flag ist rc 2. Die Hälfte, die H32 offenließ, ist derselbe
 Mechanismus mit einem Verb, das die Schreibweise wirklich als Nachricht nimmt.
 
-**Urteil: blockierend — benannte Ausnahme, Abnahme des Nutzers offen.** **Warum nicht hier
-schließbar:** die Reparaturstelle liegt in `gate_write_scope._MESSAGE_ARG_RX`, also im **Kit**, und
-`team-kits/**` ist für TSK-0021 verbotener Bereich. Eine zweite Antwort auf „was ist Prosa" in
-`.claude/hooks/` wäre genau die Drift, die H15 beschreibt: die Kits entfernen die Spanne, weil sonst
-die Abhilfe, die eine Verweigerung selbst empfiehlt („melde den Defekt und zitiere die Zeile"),
-durch das Gate fällt, das sie melden soll. **Was stattdessen begrenzt: nichts Technisches** —
-dieselbe Lage wie H11 und H22, also Rollentrennung und Item. **Vorschlag:** die Spanne im Kit an das
-**Verb** binden statt an die Flagschreibweise (eine Nachricht ist ein Operand eines Befehls, der
-Nachrichten nimmt), zusammen mit H21, H22 und H24 als Kit-Item.
+**Urteil: GESCHLOSSEN (TSK-0043, BUG-0020), mit benannter Resthälfte.** Der Datenverlust-Kern ist
+zu: die Prosa-Entfernung der Kits ist an das **Verb** gebunden statt an die Flagschreibweise. Aus
+`gate_write_scope._MESSAGE_ARG_RX` (einer line-weiten `re.compile`) wurde `_VerbBoundMessageRemoval`,
+ein Objekt mit derselben `.sub(" ", text)`-Fläche, das die quotierte Spanne nur dann leert, wenn das
+Verb des Segments, in dem die Flagschreibweise steht, wirklich eine Nachricht nimmt
+(`_stage_takes_a_message`: die Forge-CLIs `gh`/`hub`/`glab` und `git` in den Unterbefehlen, die ein
+`-m` tragen — `commit`/`tag`/`merge`/`notes`/`stash`). Nach `rm`/`cp`/`mv`/`Remove-Item`/`git rm`
+bleibt der quotierte Operand die **Datei** und wird verweigert. Weil `.claude/hooks/_harness._prose_removed`
+genau dieses Objekt **importiert und `.sub(" ", …)` darauf ruft**, schließt derselbe Fix auch das
+Repo-Gate, das DEC-0001 gelöscht hat — ohne eine zweite Antwort auf „was ist Prosa" in `.claude/`
+(H15). Gemessen (`bash`-Schiedsrichter über den Dateieffekt, Kopie außerhalb des Repos): defekt
+`rm -f "project_memory/.../DEC-0001.yaml"` rc 0 → Datei WEG und `cp x -b "team-kits/kernel/hashing.py"`
+rc 0 → Datei überschrieben; nach dem Fix beide rc 2, Datei unangetastet, während `git commit -m`,
+`git commit --message='…'` und `gh issue create --body "…"` mit geschütztem Pfad in der Prosa rc 0
+bleiben. Rote Tests ohne den Fix:
+`tools/test_hooks_v2.py::test_a_write_verbs_quoted_operand_is_a_path_not_a_removable_message`
+(die Fälle `rm -f`/`rm -F`/`cp -b` fallen von rc 2 auf rc 0) und, als Gegenende des Stolperdrahts,
+`tools/test_hooks_v2.py::test_a_message_bearing_verb_keeps_its_prose_exemption`.
+
+**Resthälfte, benannt statt geschlossen — H32 (Ersetzung IN einem Nachrichtenargument):** eine
+**Kommandoersetzung** innerhalb der quotierten Nachricht eines message-tragenden Verbs
+(`git commit -m "wip $(sed -i s/a/b/ team-kits/kernel/state.py)"`) wird von dieser Prosa-Entfernung
+weiterhin ganz weggenommen, bevor irgendein Leser sie sieht — das ist gewollt (die Nachricht IST
+Prosa), aber die Ersetzung darin ist ein Befehl, den der Kit-Gate nicht mehr sieht. **Warum nicht
+hier geschlossen:** die Ersetzung innerhalb einer echten Nachricht von einer innerhalb eines
+verkleideten `rm -f`-Operanden zu trennen, hieße den Ersetzungs-Inhalt zu lesen — die zweite Antwort
+auf „was ist Prosa", die H15 verbietet. Auf der Repo-Seite ist genau diese Hälfte über
+`_harness.command_line` (die die Ersetzung als eigenen Befehl platziert) schon erfasst und als **H32**
+geführt; für den **Kit**-Gate allein bleibt sie offen. **Was stattdessen begrenzt: sozial** —
+Rollentrennung und Item, wie bei H11 und H22. Der zweite bekannte Rest ist H38 (Hier-Dokument-Rumpf
+über `_HEREDOC_RX`), unverändert.
 
 ### H35 — Was das Lesen einer Zeile kostet, war durch keine Frist begrenzt (neu, TSK-0021)
 

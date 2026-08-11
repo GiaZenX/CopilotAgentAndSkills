@@ -106,6 +106,7 @@ except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must no
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
+import bisect  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402 — everything after GATE_PREAMBLE, which must stay verbatim
 
@@ -126,13 +127,82 @@ _INLINE_KERNEL_RX = re.compile(
     _INTERPRETER + r"\s+(?:-[^\s]+\s+)*-c\b[^\n]*"
     r"(?:\b(?:from|import)\s+kernel\b|\bkernel\.(?:approvals|state|dispatch|staging)\b)",
     re.IGNORECASE)
-# A commit/tag/issue MESSAGE is prose, and prose naming a protected path is not a write into it.
-# `--body`/`-F` included: the remedy text asks the agent to REPORT a gate defect, and an issue body
-# quoting the command would otherwise be refused by the gate it is reporting.
-_MESSAGE_ARG_RX = re.compile(
+# A commit/tag/issue MESSAGE is prose, and prose naming a protected path is not a write into it —
+# but ONLY where the VERB in front of the flag actually takes a message. Binding the removal to the
+# flag spelling alone was BUG-0020/H34: under `re.IGNORECASE` the `-F` alternative folds onto `rm`'s
+# `-f`, `-b` is `cp`'s backup, and the removal deleted the quoted PATH behind them from EVERY reader
+# at once — measured as the loss of a canonical item (DEC-0001, `rm -f "project_memory/.../DEC-0001.yaml"`
+# rc 0, the file gone). `_MESSAGE_FLAG_RX` still finds the flag+span; `_VerbBoundMessageRemoval.sub`
+# is what decides, per segment, whether the verb is one that takes a message before it blanks.
+# `--body`/`-F`/`--description` stay for the forge CLIs (`gh`/`hub`/`glab`): a refusal's own remedy
+# asks the agent to REPORT the defect, and an issue body quoting the command would otherwise be
+# refused by the gate it is reporting.
+_MESSAGE_FLAG_RX = re.compile(
     r"(?:-m|--message|-Message|--description|--body|-b|--notes|-F)\s*=?\s*"
     r"""(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')""",
     re.IGNORECASE)
+# What ends a command SEGMENT on a shell line, so the verb in front of a flag can be read off the
+# segment the flag sits in. `&&`/`||` are covered by the single characters; a `cd` movement is not
+# a segment break (it does not change WHICH verb owns the following flag).
+_SEGMENT_BREAK = "|&;\n\r"
+
+
+def _segment_break_positions(text):
+    """Indices where a command segment BEGINS: 0, and just after every UNQUOTED separator.
+
+    Quote-aware, so a separator inside a message does not split the segment it belongs to
+    (`git commit --author "a;b" -m "…"` is one segment, not three) — the same reason the tokeniser
+    masks quoted spans before it splits. A backslash escapes the next character only inside a
+    double-quoted span, which is where the POSIX shell keeps its escaping meaning.
+    """
+    starts = [0]
+    quote = None
+    index, length = 0, len(text)
+    while index < length:
+        char = text[index]
+        if quote:
+            if char == quote:
+                quote = None
+            elif char == "\\" and quote == '"':
+                index += 1  # skip the escaped character
+        elif char in "'\"":
+            quote = char
+        elif char in _SEGMENT_BREAK:
+            starts.append(index + 1)
+        index += 1
+    return starts
+
+
+class _VerbBoundMessageRemoval:
+    """The kits' message-argument prose removal, bound to the VERB and not to the flag spelling.
+
+    Quacks like a compiled pattern for the ONE method its two callers use — `.sub(repl, text)`, so
+    it drops in where `re.compile(...)` stood without either caller changing. `handle_shell` below
+    calls it, and so does the repo's `_harness._prose_removed`, which IMPORTS this object: that gate
+    is the one BUG-0020 walked through when it deleted DEC-0001, so binding the removal here closes
+    the hole for it too, without a second answer to "what is prose" living in `.claude/` (H15).
+
+    The verb test lives INSIDE `.sub` rather than in a lookbehind the regex engine cannot express
+    (a verb is variable-width): the span is blanked, the verb and flag around it are LEFT for the
+    readers (so `gate_commit_evidence` still locates the commit and orders the tree writes around
+    it), and after a non-message verb the quoted operand stays visible and is refused.
+    """
+
+    def sub(self, repl, text):
+        text = text or ""
+        if not _MESSAGE_FLAG_RX.search(text):
+            return text
+        starts = _segment_break_positions(text)
+
+        def _blank(match):
+            begin = starts[bisect.bisect_right(starts, match.start()) - 1]
+            stage = _compat.shell_words(text[begin:match.start()], _lex)
+            return repl if _stage_takes_a_message(stage) else match.group(0)
+
+        return _MESSAGE_FLAG_RX.sub(_blank, text)
+
+
+_MESSAGE_ARG_RX = _VerbBoundMessageRemoval()
 
 
 def _norm(path):
@@ -592,6 +662,37 @@ def _stage_verb(stage):
     return ""
 
 
+# The verbs whose FLAGGED argument can be a free-text message rather than a path this line touches —
+# the pivot of BUG-0020/H34. The forge CLIs carry an issue/PR/release body a refusal's own remedy
+# asks the agent to quote; `git` carries a message only in the subcommands that actually take one.
+# Everything NOT here — `rm`, `cp`, `mv`, `Remove-Item`, `git rm`, `git clean` — treats the quoted
+# operand behind a `-f`/`-b`/`-F` as the FILE it is, which is what the removal must not erase.
+_PROSE_MESSAGE_VERBS = frozenset(("gh", "hub", "glab"))
+_GIT_MESSAGE_SUBCOMMANDS = frozenset(("commit", "tag", "merge", "notes", "stash"))
+
+
+def _stage_takes_a_message(stage):
+    """Does this stage's verb take a free-text message as a flagged argument? (see the sets above)
+
+    This is the whole of what BUG-0020 got wrong: a quoted span is prose only where a message-
+    bearing command stands in front of it. `git rm -f "project_memory/x"` is NOT here — its
+    subcommand is `rm`, not `commit`, so the quoted path behind `-f` stays visible and is refused.
+    """
+    verb = _stage_verb(stage)
+    if verb in _PROSE_MESSAGE_VERBS:
+        return True
+    if verb != "git":
+        return False
+    # the subcommand is the first positional after git's own value-consuming options (`git -C x
+    # commit …`), the same skip `_stage_is_read_only` makes for the read-only-git question
+    rest = [str(token) for token in stage[1:]]
+    while rest and rest[0].startswith("-"):
+        option = rest.pop(0)
+        if option in _GIT_OPTS_WITH_ARG and rest:
+            rest.pop(0)
+    return bool(rest) and rest[0].lower() in _GIT_MESSAGE_SUBCOMMANDS
+
+
 def _stage_is_read_only(stage):
     verb = _stage_verb(stage)
     if _has_write_flag(verb, stage[1:]):
@@ -873,7 +974,9 @@ def handle_shell(data):
         sys.exit(0)
     # message ARGUMENTS and heredoc BODIES removed: both are prose. Stripping ALL quoted spans
     # would remove the target path of every real write (`echo x > "project_memory/a.yaml"`), and
-    # leaving heredoc bodies in made each of their LINES look like a command.
+    # leaving heredoc bodies in made each of their LINES look like a command. The message removal is
+    # bound to the VERB (`_MESSAGE_ARG_RX` is `_VerbBoundMessageRemoval`): a quoted span behind a
+    # `-f`/`-b`/`-F` is prose after `git commit`/`gh`, but the FILE after `rm`/`cp`/`mv` (BUG-0020).
     code_view = _HEREDOC_RX.sub(" ", _MESSAGE_ARG_RX.sub(" ", command))
     # a continued line is ONE command; every other newline is a command separator that shlex
     # would otherwise swallow as whitespace. The continuation is removed, not spaced — this hook

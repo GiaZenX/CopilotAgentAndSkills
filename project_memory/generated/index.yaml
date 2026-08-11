@@ -1,4 +1,4 @@
-generated_at: '2026-08-11T14:53:50'
+generated_at: '2026-08-11T17:33:12'
 items:
 - id: BUG-0001
   type: BUG
@@ -415,6 +415,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0037
+  type: DEC
+  title: 'Trennung der Abnahme: die Systemseite schliesst das Team selbst, die Produktseite
+    braucht das OK des Nutzers'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -470,6 +477,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0010
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0011
   type: EVD
   title: null
   status: null
@@ -874,6 +887,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0042
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0043
   type: TSK
   title: null
   status: DRAFT

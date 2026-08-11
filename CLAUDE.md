@@ -17,6 +17,33 @@ stilllegen.
 Was dennoch gilt, steht hier. Alles darin ist aus Schaden gelernt; jede Regel hat einen Fall
 hinter sich.
 
+## Berichte an den Nutzer: einfache Sprache, kein Fachjargon
+
+Der Nutzer ist kein Entwickler. **Jeder Bericht an ihn ist in einfacher, alltäglicher Sprache** —
+so, dass jemand ohne Technikwissen versteht, was passiert ist, warum es wichtig ist, und was als
+Nächstes kommt. Das gilt für den Sitzungsagenten gegenüber dem Nutzer; **zwischen den Rollen
+(Umsetzer/Prüfer) bleibt die Sprache so präzise und fachlich wie nötig** — dort ist Genauigkeit
+wichtiger als Verständlichkeit.
+
+Konkret:
+
+- **Kein Fachjargon ohne Erklärung.** Sätze wie „ein aktives Datenverlust-Loch (H34), quotierte
+  Pfade hinter `rm -f` werden als Prosa entfernt und der Operand verschwindet" sind für den Nutzer
+  wertlos. Erklär stattdessen das *Was* und *Warum* in Bildern des Alltags („eine Schutzregel hatte
+  ein Loch, durch das eine wichtige Datei gelöscht werden konnte — sie ist wiederherstellbar").
+- **Item-Nummern bleiben.** `DEC-`, `SR-`, `BUG-`, `TSK-`, `EVD-` usw. darf und soll der Bericht
+  nennen — der Nutzer will nachschlagen und mitreden können. Sie sind ein Verweis, kein Ersatz für
+  die Erklärung.
+- **Erklär, was Werkzeuge und Befehle tun**, wenn du sie erwähnst (was ein „Patch" ist, was ein
+  gestoppter Agent war, was ein Befehl bewirkt). Lass den Nutzer nie mit einem Wort zurück, das er
+  nicht einordnen kann.
+- **Sag klar, was IHN blockiert oder was auf IHN wartet**, in seiner Sprache — Entscheidungen,
+  Freigaben, Handbacks —, nicht nur, was den Apparat blockiert.
+
+Der Fall dahinter: Bis 2026-08-11 kamen die Berichte voll technischer Kürzel beim Nutzer an, der sie
+nicht verstand und darum nicht mitentscheiden konnte. Verständlichkeit für den Nutzer ist kein
+Beiwerk, sondern Voraussetzung dafür, dass er das Projekt lenkt statt nur bezahlt.
+
 ## Die drei Rollen
 
 Es gibt genau drei, und sie werden nicht vermischt:

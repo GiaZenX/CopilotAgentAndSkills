@@ -1,0 +1,38 @@
+id: DEC-0037
+title: 'Trennung der Abnahme: die Systemseite schliesst das Team selbst, die Produktseite
+  braucht das OK des Nutzers'
+source: 'Nutzerentscheidung 2026-08-11, woertlich: ''die systemseite gehoert dem projektteam,
+  die abnahme der Produktseite mir/dem user'''
+context: 'Heute verlangt der Freigabe-/Abschluss-Mechanismus fuer JEDEN Item-Uebergang
+  jenseits von TRIAGED/DRAFT eine Nutzer-Freigabe (der Kernel laesst sich nicht selbst
+  freigeben, gemessen diese Sitzung). Folge: auch rein interne Technik-Fixes (Gate-/Kernel-/Hook-Reparaturen)
+  stauen sich auf gesichtet/gebaut und koennen nicht vom Team selbst abgeschlossen
+  werden. Das vermischt zwei Dinge, die der Nutzer getrennt haben will: WAS am Apparat/an
+  den Werkzeugen gebaut wird (Systemseite, gehoert dem Projektteam) und WAS als Produkt-Ergebnis
+  an den Nutzer geliefert wird (Produktseite, gehoert dem Nutzer). Die Rollen-Trennung
+  Umsetzer/Pruefer/Sitzungsagent + Evidence deckt die Qualitaetssicherung der Systemseite
+  bereits ab; ein zusaetzliches Nutzer-OK je Technik-Item ist Reibung ohne Gewinn.'
+decision: 'Kuenftig unterscheidet der Abschluss zwei Klassen. SYSTEMSEITE (Fixes/Aenderungen
+  an Kit, Kernel, Hooks, Tools, Migration, interner Infrastruktur): das Projektteam
+  schliesst selbst ab, sobald der Pruefer PASS gibt und Evidence vorliegt -- kein
+  Nutzer-OK noetig. PRODUKTSEITE (was das installierte Kit dem Nutzer als Ergebnis
+  liefert -- Masterplan, gelieferte Artefakte, produktbezogene Anforderungen, die
+  Wurzel-PRs): braucht die Abnahme des Nutzers. Der Nutzer nimmt am Ende weiterhin
+  die Produktseite und die nicht-schliessbaren Ausnahmen ab; die Systemseite laeuft
+  ohne ihn durch.'
+consequences: 'Verbesserung am System, noch nicht gebaut -- heute sammelt der Sitzungsagent
+  weiterhin ALLE Abschluss-Haekchen fuer die Schlussrunde, weil der Mechanismus die
+  Klassen noch nicht trennt. Umzusetzen ist: (1) eine Klassifikation Systemseite/Produktseite
+  je Item-Typ bzw. Wurzel-PR, (2) ein Abschlussweg, der Systemseiten-Items nach Pruefer-PASS+Evidence
+  ohne Nutzer-Mint in den Endzustand bringt, (3) die Produktseiten-Freigabe bleibt
+  wie sie ist. Bis dahin ist dies die Leitlinie, an der die Schlussrunde ausgerichtet
+  wird: Technik-Haekchen sind Formsache, Produkt-Haekchen sind echte Nutzerentscheidungen.'
+related:
+- BUG-0017
+- PR-0001
+- PR-0002
+- PR-0003
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-11T15:34:11'
