@@ -1,0 +1,34 @@
+id: TSK-0044
+product_requirement: PR-0001
+derives_from: BUG-0021
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0021: team-kits/kernel/cli.py:505 liest den capture-stdin-Body mit decode(utf-8)
+  und streift kein BOM; ein BOM-vorangestellter Produzent (PowerShell-Here-String
+  ueber Native-Pipe) fuehrt zu exit 2 (Unexpected UTF-8 BOM), die Meldung nennt die
+  Abhilfe (utf-8-sig), der Code wendet sie nicht an. Praezedenz: test_e2e_memory_complete_accepts_bom_config
+  liest Config als utf-8-sig. Kein Regress durch BUG-0018'
+expected_outputs:
+- capture akzeptiert UTF-8 mit ODER ohne BOM und speichert korrekt; ein Body mit vorangestelltem
+  BOM wird auf Byte-Ebene korrekt gespeichert -- gemessen an einem echten Aufruf.
+  Ein Test wird ohne den Fix rot
+dependencies:
+- TSK-0043
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T17:35:01'

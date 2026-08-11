@@ -1,0 +1,15 @@
+id: EVD-0012
+kind: review
+related:
+- TSK-0044
+result: pass
+summary: verifier PASS (Family B round 1) for diff:f2564f5de5cb04a830bf6d65dce6c8eeb4a39257c30fc18760809ea8c301431c
+  -- BUG-0021 capture accepts utf-8-sig BOM (leading stripped, mid-body kept, invalid
+  bytes still rc2, BUG-0018 intact); BUG-0001 update command refuses all 5 kernel-set
+  fields (item byte-identical, no covert invalidation), invalidates approval only
+  on a real hashed change; surface/sizes/pins re-derived, kits 2026.08.11-7
+artifact_refs:
+- docs/reviews/2026-08-11-family-b-round1-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-11T19:51:06'

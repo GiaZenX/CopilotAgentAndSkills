@@ -45,7 +45,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "8962c1e881670cd7",
+        "digest": "a4e6b0b7586974b8",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -277,7 +277,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "d4e55f088f96dae8",
+        "digest": "6e916d4d58ebc16d",
         "hooks": [
           "gate_write_scope"
         ]
@@ -472,7 +472,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "1abdbf7599244672",
+        "digest": "c872189d70ba1fa2",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"

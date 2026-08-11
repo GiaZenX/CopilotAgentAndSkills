@@ -328,8 +328,8 @@ entry point asks the shipped parser rather than matching text).
 
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
-`request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `archive`,
-`sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `migrate`. Of the twelve
+`request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
+`archive`, `sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `migrate`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also

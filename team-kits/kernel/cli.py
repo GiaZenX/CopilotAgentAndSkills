@@ -404,6 +404,19 @@ def build_parser() -> argparse.ArgumentParser:
     transition.add_argument("item_id")
     transition.add_argument("to_status")
     transition.add_argument("--approved-retry", action="store_true")
+    # THE SANCTIONED EDIT PATH (BUG-0001). `state.update_item` existed with its approval
+    # invalidation (spec II.2) but had no CLI surface, so a typo in a captured field could only be
+    # fixed by cancelling the item and recapturing it (measured 2026-08-04). The body is on STDIN
+    # for the same two reasons `capture`'s is -- a change can carry lists and mappings no flag
+    # expresses, and a `--from project_memory/...` cannot be typed past `gate_write_scope`. The
+    # KERNEL-SET fields (`id`, `status`, `revision`, `approval_ref`, `created`) are NOT accepted:
+    # they change only through their own operations (capture/transition/approve), and this surface
+    # names no flag for them precisely because it does not decide them -- `update_item` refuses any
+    # such key in the body, so the automaton cannot be side-stepped by writing `status` here.
+    update = sub.add_parser(
+        "update", help="edit an item's fields through the kernel (JSON object of changes on "
+                       "stdin); invalidates a current approval when a hashed field changes")
+    update.add_argument("item_id")
     # THE PROMOTION COMMANDS (see FREEZE_OPERATIONS for what they unblock). Generated from that
     # mapping, so the surface cannot fall behind the kernel; the body is on STDIN for the same two
     # reasons `capture`'s is -- `derives_from`, `assets` and `packaging` are a list and two mappings
@@ -497,12 +510,21 @@ def _json_body(command: str = "capture") -> dict:
     # (state/report/schemas/layout all pass encoding="utf-8"). `buffer` is absent only when a
     # caller replaced stdin with an in-memory text stream (the in-process CLI tests), which already
     # holds decoded text -- there is nothing to decode.
+    #
+    # `utf-8-sig` AND NOT `utf-8` (BUG-0021): a producer that prepends a byte-order mark -- a
+    # PowerShell here-string over a native pipe is the measured one -- sent `EF BB BF` ahead of the
+    # JSON, and a strict `utf-8` decode kept those bytes as U+FEFF at the front, so `json.loads`
+    # refused with "Unexpected UTF-8 BOM" (exit 2) while its own remedy already named `utf-8-sig`.
+    # `utf-8-sig` STRIPS a single leading BOM and otherwise decodes exactly like `utf-8` -- it does
+    # not undo BUG-0018: the byte stream is still the kernel's to decode, the codepage still has no
+    # say, and a BOM in the MIDDLE of the body (not a real producer, but a well-formed U+FEFF) is
+    # left untouched. So the stored item carries no BOM, and its hash is the hash of the JSON.
     stdin_buffer = getattr(sys.stdin, "buffer", None)
     if stdin_buffer is None:
         raw = sys.stdin.read()
     else:
         try:
-            raw = stdin_buffer.read().decode("utf-8")
+            raw = stdin_buffer.read().decode("utf-8-sig")
         except UnicodeDecodeError as exc:
             raise UsageError(
                 "the %s body on stdin is not valid UTF-8 (%s). Remedy: send the body as UTF-8 -- "
@@ -726,6 +748,21 @@ def main(argv=None) -> int:
         if args.command == "transition":
             item = state.transition(args.item_id, args.to_status, approved_retry=args.approved_retry)
             print("%s -> %s" % (item["id"], item["status"]))
+            return 0
+        if args.command == "update":
+            # The body carries only the fields that CHANGE. Every guard lives in `update_item`
+            # (kernel-set fields refused, immutable types refused, frozen work-order fields refused,
+            # closed vocabularies and origins asserted, approval invalidated atomically when a
+            # hashed field moves) -- the CLI adds no second copy of any of those rules, so the one
+            # that runs is the one the state layer states.
+            body = _json_body("update %s" % args.item_id)
+            item = state.update_item(args.item_id, body)
+            # `revision` and `approval_ref` are printed because they are exactly what an
+            # invalidating edit moves: a caller sees the approval gone (`approval_ref: -`) and the
+            # revision bumped without re-reading the file.
+            print("%s %s rev %s approval_ref: %s" % (
+                item["id"], item.get("status") or "-", item.get("revision", 1),
+                item.get("approval_ref") or "-"))
             return 0
         if args.command == "archive":
             print(state.archive(args.item_id))

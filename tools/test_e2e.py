@@ -275,6 +275,36 @@ def test_e2e_capture_refuses_a_body_that_is_not_utf8_instead_of_crashing(tmp_pat
     assert "Traceback" not in err
 
 
+def test_e2e_capture_accepts_a_bom_prefixed_body_and_stores_it_without_bom(tmp_path):
+    """A `capture` body that a producer prepended a UTF-8 BOM to (`EF BB BF`, the shape a
+    PowerShell here-string over a native pipe emits) must be accepted and stored WITHOUT the mark
+    (BUG-0021), measured on the RAW BYTES of the written item.
+
+    Without the fix the strict `utf-8` decode kept the BOM as U+FEFF at the front of the string and
+    `json.loads` refused with "Unexpected UTF-8 BOM" — the kernel reported the body as not-JSON
+    (rc 2) while the error's own remedy already named `utf-8-sig`. The fix decodes the byte stream
+    with `utf-8-sig`, which strips a single leading BOM and otherwise decodes like `utf-8`, so
+    BUG-0018 (the byte stream is the kernel's to decode, not the console's) is untouched: the umlaut
+    below still has to land as real UTF-8.
+    """
+    os.makedirs(str(tmp_path / "project_memory"))
+    body = b"\xef\xbb\xbf" + json.dumps({
+        "title": "BOM-behafteter Body wird angenommen",
+        "context": "ein Produzent stellt der JSON ein BOM voran",
+        "decision": "der Kernel dekodiert den Body mit utf-8-sig",
+        "consequences": "kein exit 2 mehr für Müller, kein BOM im Item",
+        "source": "docs/reviews/2026-08-11-tsk0044-measurements.md",
+    }, ensure_ascii=False).encode("utf-8")
+    r = _capture_cli(tmp_path, "DEC", body)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+    written = sorted((tmp_path / "project_memory" / "decisions" / "active").glob("DEC-*.yaml"))
+    assert len(written) == 1, [p.name for p in written]
+    data = written[0].read_bytes()
+    assert b"\xef\xbb\xbf" not in data       # the BOM never reaches the stored item / its hash
+    assert b"\xef\xbb\xbf" != data[:3]       # in particular not at the front of the file
+    assert b"M\xc3\xbcller" in data          # ü still stored as real UTF-8 (BUG-0018 not undone)
+
+
 # ---------------- scenario: the V2 chain itself — draft PR, approval, SR, task, spawn ----------
 sys.path.insert(0, os.path.join(ROOT, "team-kits"))
 from kernel import approvals, dispatch  # noqa: E402
@@ -495,3 +525,97 @@ def test_e2e_the_merge_gate_opens_on_evidence_a_role_produced_and_shuts_on_a_fre
         merge, tool_input={"command": "git push --force origin main"}), tmp_path)
     assert forced.returncode == 2
     assert "force-push" in forced.stderr.decode("utf-8", "replace")
+
+
+# ---------------- scenario: the sanctioned edit path (BUG-0001), through the real CLI ----------
+def _update_cli(root, item_id, changes):
+    """Run `python -B -m kernel.cli update <item_id>` as a REAL process, JSON changes on stdin.
+
+    The command reads its changes as a JSON object on stdin, exactly like `capture`; the guards
+    that decide which changes are legal live in `state.update_item`, so this drives the running
+    surface rather than the function under it.
+    """
+    env = dict(os.environ, PYTHONPATH=os.path.join(ROOT, "team-kits"))
+    return subprocess.run(
+        [sys.executable, "-B", "-m", "kernel.cli", "--root", "project_memory",
+         "update", item_id],
+        input=json.dumps(changes, ensure_ascii=False).encode("utf-8"),
+        capture_output=True, env=env, cwd=str(root), timeout=120)
+
+
+def _approved_pr(repo):
+    """Capture a PR and take it to APPROVED through a REAL approval mint, returning (state, pr_id).
+
+    The mint is the one step a test cannot shortcut (`approvals.mint` refuses every caller but
+    `gate_approval.py`), so after this the PR carries a LIVE `approval_ref` — the thing an
+    invalidating edit has to clear.
+    """
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    pr = state.capture("PR", {
+        "title": "Rechnungsübersicht für Käufer", "class": "normal",
+        "problem": "der Käufer sieht seine Rechnungen nicht",
+        "goal": "Rechnungsliste im Konto",
+        "acceptance_criteria": [{"id": "AC-1", "text": "Käufer sieht seine Rechnungen"}],
+        "invariants": [], "out_of_scope": [], "priority": "high",
+        "user_story": "Als Käufer sehe ich meine Rechnungen",
+    })
+    request = approvals.create_pending_request(state, "scope", pr["id"])
+    question = approvals.build_question(request)
+    approved = launched_hook("gate_approval.py", {
+        "hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "cwd": str(repo),
+        "tool_input": {"questions": [question]},
+        "tool_response": {"questions": [question], "answers": {
+            question["question"]: approvals.approve_label(request["mint_code"])}},
+    }, repo)
+    assert approved.returncode == 0, approved.stderr.decode("utf-8", "replace")
+    assert state.read_item(pr["id"])["status"] == "APPROVED"
+    return state, pr["id"]
+
+
+def test_e2e_update_changes_a_field_and_invalidates_a_current_approval(tmp_path):
+    """The `update` command exists (BUG-0001: `state.update_item` had no CLI surface) and a change
+    to a HASHED field of an approved item invalidates the approval ATOMICALLY (spec II.2).
+
+    Measured on the item BEFORE and AFTER through the real CLI process: `goal` is in
+    `HASHED_FIELDS['PR']`, so editing it drops the live `approval_ref`, resets the status to the
+    invalidation target (DRAFT for a PR) and bumps the revision — the whole reason the edit path is
+    the kernel's and not a file write.
+    """
+    state, pr_id = _approved_pr(tmp_path)
+    before = state.read_item(pr_id)
+    assert before.get("approval_ref"), before          # a live approval exists to invalidate
+
+    r = _update_cli(tmp_path, pr_id, {"goal": "Rechnungsliste UND Summen im Konto"})
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")
+
+    after = state.read_item(pr_id)
+    assert after["goal"] == "Rechnungsliste UND Summen im Konto"   # the edit landed
+    assert not after.get("approval_ref")               # approval invalidated
+    assert after["status"] == "DRAFT"                  # invalidation_target('PR')
+    assert after["revision"] == before["revision"] + 1
+
+
+@pytest.mark.parametrize("field,value", [
+    ("status", "APPROVED"),
+    ("id", "PR-9999"),
+    ("revision", 99),
+    ("approval_ref", "APR-9999"),
+    ("created", "1999-01-01T00:00:00"),
+])
+def test_e2e_update_refuses_a_kernel_set_field_and_leaves_the_item_untouched(tmp_path, field, value):
+    """The kernel-set fields (`id`, `status`, `revision`, `approval_ref`, `created`) are NOT
+    writable through `update` — otherwise `update` would be a way past the automaton (set `status`
+    freely) and past the approval (clear `approval_ref` without a re-mint).
+
+    Refused with rc 1 (a StateError, the command was attempted and the kernel said no), and the
+    item on disk is byte-for-byte what it was — in particular the live approval is still there, so
+    a refused edit cannot double as a covert invalidation.
+    """
+    state, pr_id = _approved_pr(tmp_path)
+    before = state.read_item(pr_id)
+
+    r = _update_cli(tmp_path, pr_id, {field: value})
+    assert r.returncode == 1, r.stderr.decode("utf-8", "replace")
+    assert field in r.stderr.decode("utf-8", "replace")
+    assert state.read_item(pr_id) == before            # nothing moved, approval intact
