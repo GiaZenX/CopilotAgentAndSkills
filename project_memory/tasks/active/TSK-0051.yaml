@@ -1,0 +1,37 @@
+id: TSK-0051
+product_requirement: PR-0003
+derives_from: BUG-0005
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0005: generated/session_brief.yaml (generate-session-brief, kernel/report.py)
+  rollt den Zustand auf, traegt aber die zuletzt getroffene Nutzerentscheidung NICHT.
+  Der Brief ist die Zusammenfassung, mit der ein PM in die naechste Sitzung geht --
+  ohne die letzte Entscheidung beginnt die Sitzung mit einer Luecke. Speist BUG-0019
+  (PM weicht aufs Rohtranskript aus, weil der Brief unvollstaendig ist)'
+expected_outputs:
+- Der Sitzungsbrief traegt die juengsten DEC-Items mit Titel UND Entscheidung (decision).
+  Ein Test misst, dass eine frisch angelegte Entscheidung im naechsten erzeugten Brief
+  steht; der Test wird rot, wenn der Abschnitt entfernt wird. Miss, wie viele/welche
+  DEC der Brief traegt (juengste N? alle aktiven? die seit dem letzten Brief?) und
+  begruende die Wahl. Kein Ueberlauf des Brief-Budgets (falls der Brief ein Groessenlimit
+  hat)
+dependencies:
+- TSK-0049
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-12T03:52:29'

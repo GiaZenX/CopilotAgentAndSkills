@@ -12,7 +12,8 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
 
 ## Work loop (every cycle)
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,
-   enforcement mode, active items with their next step, open approvals, staging pointers) — then the items it
+   enforcement mode, active items with their next step, open approvals, staging pointers, the newest
+   standing decisions) — then the items it
    names; on Claude also read role-specific
    `.claude/agent-memory/office-manager/MEMORY.md`. Generated Codex config disables host/task memory;
    use checked-in `project_memory/` only. Then handle nags.

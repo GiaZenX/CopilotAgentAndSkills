@@ -485,6 +485,69 @@ def test_a_decision_superseding_nothing_stays_valid(state):
     assert errors(report.validate_state(state)) == []
 
 
+# -- BUG-0005: the last decision rides into the next session via the brief ------
+
+def test_session_brief_carries_the_newest_standing_decision(state):
+    """BUG-0005: the last call the previous session made rides into the next one WITH ITS CONTENT
+    (title + decision, not just the id), so a PM does not begin blind -- and does not reach for the
+    raw transcript to recover it (BUG-0019). Measured on a real generate-session-brief run."""
+    state.capture("PR", dict(PR_FIELDS))
+    dec = state.capture("DEC", dict(DEC_FIELDS, title="Local-only storage",
+                                    decision="Ship with SQLite, no cloud sync"))
+    path = report.generate_session_brief(state, "dev-team", "v", "audited")
+    brief = yaml.safe_load(open(path, encoding="utf-8"))
+    rows = {d["id"]: d for d in brief["standing_decisions"]}
+    assert dec["id"] in rows, brief["standing_decisions"]
+    assert rows[dec["id"]]["title"] == "Local-only storage"
+    assert rows[dec["id"]]["decision"] == "Ship with SQLite, no cloud sync"
+
+
+def test_a_superseded_decision_is_absent_from_the_brief(state):
+    """The Gegenprobe for the link mechanism: a decision another one replaced does not ride along --
+    the brief carries what HOLDS, not the whole history."""
+    old = state.capture("DEC", dict(DEC_FIELDS, title="old", decision="use X"))
+    new = state.capture("DEC", dict(DEC_FIELDS, title="new", decision="use Y instead",
+                                    supersedes=[old["id"]]))
+    path = report.generate_session_brief(state, "dev-team", "v", "audited")
+    brief = yaml.safe_load(open(path, encoding="utf-8"))
+    ids = {d["id"] for d in brief["standing_decisions"]}
+    assert old["id"] not in ids, ids
+    assert new["id"] in ids, ids
+
+
+def test_a_status_superseded_decision_neither_holds_nor_rides_the_brief(state):
+    """The Gegenprobe for the OTHER retirement mechanism: a DEC whose own status is SUPERSEDED (a
+    migrated ADR) does not hold and must not appear -- the supersedes link is not the only way a
+    decision is retired. Written by hand past the kernel, the only way a SUPERSEDED DEC exists
+    (transition refuses a type with no automaton)."""
+    dec = state.capture("DEC", dict(DEC_FIELDS, title="retired", decision="old call"))
+    p = state.active_path(dec["id"])
+    item = state._read_yaml(p)
+    item["status"] = "SUPERSEDED"
+    state._write_yaml_atomic(p, item)
+    standing, _superseded = report.standing_decisions(state)
+    assert dec["id"] not in standing
+    path = report.generate_session_brief(state, "dev-team", "v", "audited")
+    brief = yaml.safe_load(open(path, encoding="utf-8"))
+    assert dec["id"] not in {d["id"] for d in brief["standing_decisions"]}
+
+
+def test_the_brief_decision_section_is_bounded_in_count_and_bytes(state):
+    """The section may not grow without bound: a decision log longer than the limit yields only the
+    newest few, clipped, so the brief never breaks its own byte budget -- which would make
+    generate_session_brief raise. The newest are the ones kept (created, then id number)."""
+    ids = []
+    for n in range(report._BRIEF_MAX_DECISIONS + 4):
+        d = state.capture("DEC", dict(DEC_FIELDS, title="t%d" % n, decision="x" * 5000))
+        ids.append(d["id"])
+    path = report.generate_session_brief(state, "dev-team", "v", "audited")  # must not raise
+    brief = yaml.safe_load(open(path, encoding="utf-8"))
+    rows = brief["standing_decisions"]
+    assert len(rows) == report._BRIEF_MAX_DECISIONS
+    assert {r["id"] for r in rows} == set(ids[-report._BRIEF_MAX_DECISIONS:])
+    assert all(len(r["decision"]) <= report._BRIEF_DECISION_MAX_CHARS for r in rows)
+
+
 def test_a_second_user_visible_slice_may_not_enter_delivery(state):
     """R12 / parity row 107, the 4-slices incident. The point of the sequence rule is that the
     user SEES a slice before the next is built on its assumptions."""

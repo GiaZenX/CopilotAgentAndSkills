@@ -21,8 +21,8 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
 ## Work loop (every cycle — every "capture"/"transition" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)
 
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,
-   enforcement mode, active RQs with their next step, active TSKs, open approvals, staging pointers, budget
-   status) — then the active items it names (incl. any DRAFT plan). On Claude also read the role-specific
+   enforcement mode, active RQs with their next step, active TSKs, open approvals, staging pointers, the
+   newest standing decisions, budget status) — then the active items it names (incl. any DRAFT plan). On Claude also read the role-specific
    `.claude/agent-memory/project-manager/MEMORY.md`. Generated Codex config disables host/task memory;
    use checked-in `project_memory/` only.
 2. **ASK** research-goal questions only, prose first. Claude uses `AskUserQuestion`; Codex uses

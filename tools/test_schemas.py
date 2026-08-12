@@ -36,6 +36,7 @@ def make_brief(**overrides):
         "active_tasks": [{"id": "TSK-0042", "status": "IN_PROGRESS", "assigned_role": "backend-developer"}],
         "open_approvals": [{"request_id": "req-1", "kind": "scope", "item": "PR-0002"}],
         "staging_pointers": ["staging/PR-0002/"],
+        "standing_decisions": [{"id": "DEC-0001", "title": "Local-only", "decision": "SQLite, no cloud"}],
         "budget_status": {"memory_md": "ok"},
     }
     brief.update(overrides)
@@ -109,6 +110,16 @@ def test_brief_size_budget():
     with pytest.raises(SchemaError, match="budget 25600"):
         validate(
             make_brief(staging_pointers=["p" * 100] * 300),
+            "session_brief",
+        )
+
+
+def test_brief_decision_item_required_keys():
+    """A standing-decision row owes id, title AND decision -- an id alone is the loss BUG-0005 is
+    about (the PM would read a pointer with no content)."""
+    with pytest.raises(SchemaError, match="decision"):
+        validate(
+            make_brief(standing_decisions=[{"id": "DEC-0001", "title": "x"}]),
             "session_brief",
         )
 

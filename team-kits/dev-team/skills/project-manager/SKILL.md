@@ -30,8 +30,8 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
 ## Work loop (every cycle — every "capture"/"transition" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)
 
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,
-   enforcement mode, active PRs with their next step, active TSKs, open approvals, staging pointers, budget
-   status) — then the active items it names (incl. any DRAFT plan). On Claude also read the role-specific
+   enforcement mode, active PRs with their next step, active TSKs, open approvals, staging pointers, the
+   newest standing decisions, budget status) — then the active items it names (incl. any DRAFT plan). On Claude also read the role-specific
    `.claude/agent-memory/project-manager/MEMORY.md`; generated Codex config disables host/task memory.
 2. **ASK** product questions only, prose first. Claude uses `AskUserQuestion`; Codex uses
    `request_user_input` when exposed, otherwise a direct prose question. Never technical ones → architect.

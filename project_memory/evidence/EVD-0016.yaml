@@ -1,0 +1,15 @@
+id: EVD-0016
+kind: review
+related:
+- TSK-0051
+result: pass
+summary: verifier PASS (Family C round 1, BUG-0005) for diff:8a9554302b8dde8d22afea6149c3999b9f0f551be1e9120bcb892a866137ff67
+  -- session brief now carries the 5 newest STANDING decisions (title+decision), superseded
+  excluded both ways (link + status) via one _holding_decisions source, budget-safe
+  (6726<25600), red-without-fix proven, SKILL work-loops updated + re-pinned; clean
+  full suite 2494 passed against the frozen tree, backward-compat 0/0
+artifact_refs:
+- docs/reviews/2026-08-12-tsk0051-bug0005-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T05:57:16'

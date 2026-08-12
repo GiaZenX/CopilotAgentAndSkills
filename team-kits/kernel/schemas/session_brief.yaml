@@ -1,7 +1,7 @@
 # generated/session_brief.yaml content contract (HARNESS_V2_SPEC.md II.5):
 # a new session works from THIS + active items alone -- never from transcripts.
 schema: session_brief
-version: 1
+version: 2
 strict: true
 max_serialized_bytes: 25600
 fields:
@@ -38,6 +38,15 @@ fields:
     type: list
     item_type: str
     required: true
+  standing_decisions:
+    # ADDITIVE beyond the II.5 list (BUG-0005): the newest decisions that still HOLD, so a new
+    # session is not blind to the last call the previous one made and does not reach for the raw
+    # transcript (BUG-0019). Count- and text-bounded in report.py (`_brief_decision_rows`) so it
+    # cannot push the brief past max_serialized_bytes; the full decision text stays in the DEC item.
+    type: list
+    item_type: dict
+    required: true
+    item_required: [id, title, decision]
   budget_status:
     type: dict
     required: true

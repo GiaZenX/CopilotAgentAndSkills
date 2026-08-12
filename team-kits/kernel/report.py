@@ -47,6 +47,7 @@ from .backlog_types import (
     FR_RESULT_FIELD,
     FR_RESULT_TERMINALS,
     HASHED_FIELDS,
+    NON_AUTOMATON_STATUSES,
     PARENT_FIELDS,
     QA_EVIDENCE_KINDS,
     parse_id,
@@ -137,11 +138,60 @@ def _iter_active(state: ProjectState):
 
 # -- session brief -------------------------------------------------------------
 
+# The newest STANDING decisions ride into the next session with the brief (BUG-0005). Without them a
+# new session begins blind to the last call the previous one made, and the PM reaches for the raw
+# transcript to recover it (BUG-0019) -- the exact loss the brief exists to prevent. "Standing" is
+# `_holding_decisions`' answer (in force AND not superseded), so a replaced decision never rides
+# along. Count- and text-bounded rather than unbounded, because the brief carries a byte budget
+# (`kernel/schemas/session_brief.yaml` max_serialized_bytes) that a growing decision log would break;
+# the full text stays in the DEC item, this is a pointer with a summary.
+_BRIEF_MAX_DECISIONS = 5
+_BRIEF_DECISION_MAX_CHARS = 400
+
+
+def _clip(text: object, limit: int) -> str:
+    """`text` as a string, never longer than `limit` characters (a trailing ellipsis marks a cut)."""
+    text = str(text or "")
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 1)].rstrip() + "…"
+
+
+def _id_number(item_id: object) -> int:
+    """The numeric part of an item id, 0 when it is not a parseable id (for a stable tiebreak)."""
+    try:
+        _type, number = parse_id(str(item_id))
+    except ValueError:
+        return 0
+    return number
+
+
+def _brief_decision_rows(dec_items: dict) -> list:
+    """The newest STANDING decisions as {id, title, decision}, newest first, count- and text-bounded.
+
+    `dec_items` is {id: DEC item} for the active DEC items. WHICH of them hold is `_holding_decisions`
+    (the one definition, shared with `standing_decisions`); WHICH come first is `created` then the id
+    number (the same monotonic tiebreak `_delivery_evidence` uses, so same-second captures still
+    order); HOW MANY and HOW LONG is bounded so the section cannot push the brief past its byte
+    budget -- the DEC item keeps the full text, this carries a clipped summary.
+    """
+    holding = _holding_decisions(dec_items)
+    ordered = sorted(
+        (dec_items[dec_id] for dec_id in holding),
+        key=lambda it: (str(it.get("created") or ""), _id_number(it.get("id"))),
+        reverse=True,
+    )
+    return [{"id": it.get("id"),
+             "title": _clip(it.get("title"), _BRIEF_DECISION_MAX_CHARS),
+             "decision": _clip(it.get("decision"), _BRIEF_DECISION_MAX_CHARS)}
+            for it in ordered[:_BRIEF_MAX_DECISIONS]]
+
+
 def generate_session_brief(
     state: ProjectState, kit: str, kit_version: str, enforcement_mode: str
 ) -> str:
     with state.lock:
-        roots, tasks = [], []
+        roots, tasks, decs = [], [], {}
         for item_type, stem, item, _path, exc in _iter_active(state):
             if exc or not isinstance(item, dict):
                 continue
@@ -161,6 +211,8 @@ def generate_session_brief(
                 if item.get("blocked_by"):
                     row["blocked_by"] = item["blocked_by"]
                 tasks.append(row)
+            elif item_type == "DEC":
+                decs[item.get("id", stem)] = item
         pending, expired_requests = [], 0
         pending_dir = os.path.join(state.root, "approvals", "pending")
         if os.path.isdir(ext_path(pending_dir)):
@@ -202,6 +254,7 @@ def generate_session_brief(
             "active_tasks": tasks,
             "open_approvals": pending,
             "staging_pointers": staging,
+            "standing_decisions": _brief_decision_rows(decs),
             "budget_status": {
                 "validator_errors": sum(1 for f in findings if f["severity"] == "error"),
                 "validator_warnings": sum(1 for f in findings if f["severity"] == "warning"),
@@ -1159,6 +1212,13 @@ def _check_fr_result_link(state: ProjectState, active_items: dict) -> list:
     return findings
 
 
+# The DEC status that means "in force". DEC has no automaton, so its vocabulary is the map's, whose
+# FIRST value is the initial/holding one (backlog_types names that ordering); anything else -- today
+# only `SUPERSEDED`, e.g. a migrated ADR -- means the decision has been retired. Derived rather than
+# spelled `"VALID"` here so a renamed status moves the meaning with it.
+_DEC_IN_FORCE_STATUS = NON_AUTOMATON_STATUSES["DEC"][0]
+
+
 def _superseded_decisions(active_items: dict) -> dict:
     """{superseded DEC id -> the active DEC id that replaced it}, from the forward `supersedes` links.
 
@@ -1172,6 +1232,20 @@ def _superseded_decisions(active_items: dict) -> dict:
         for ref in item.get(DEC_SUPERSEDES_FIELD) or []:
             superseded_by[str(ref)] = item_id
     return superseded_by
+
+
+def _holding_decisions(dec_items: dict) -> set:
+    """The ids in `dec_items` ({id: DEC item}) whose decision still HOLDS.
+
+    The ONE definition of "holds", read by `standing_decisions` and by the session brief. A decision
+    holds when it is IN FORCE (`_DEC_IN_FORCE_STATUS`; a `SUPERSEDED` one -- a migrated ADR, say --
+    does NOT, and the link is not the only way a decision is retired) AND no other active decision
+    names it in `supersedes`. The link half is `_superseded_decisions`, so the forward link stays the
+    single source it is everywhere else rather than being re-derived here.
+    """
+    superseded = _superseded_decisions({d: ("DEC", it) for d, it in dec_items.items()})
+    return {d for d, it in dec_items.items()
+            if d not in superseded and it.get("status") == _DEC_IN_FORCE_STATUS}
 
 
 def _check_dec_supersedes(state: ProjectState, active_items: dict) -> list:
@@ -1220,9 +1294,10 @@ def standing_decisions(state: ProjectState):
     """Which active DEC items still hold, and which have been superseded -- answered from the
     `supersedes` links, not from `context` prose (BUG-0009(b)).
 
-    A decision is superseded when some OTHER active decision names it in `supersedes`; every other
-    active decision still holds. Returns (standing, superseded_by): `standing` is the set of active
-    DEC ids no decision replaces, `superseded_by` maps a superseded active DEC id to the id of the
+    A decision holds when it is IN FORCE and no OTHER active decision names it in `supersedes`; a
+    decision another one replaced, or one whose own status is SUPERSEDED (a migrated ADR), does not.
+    Returns (standing, superseded_by): `standing` is the set of active DEC ids that still hold
+    (`_holding_decisions`), `superseded_by` maps a LINK-superseded active DEC id to the id of the
     decision that replaced it. Read-only; no lock, like the other report queries.
     """
     active_decisions = {}
@@ -1231,9 +1306,9 @@ def standing_decisions(state: ProjectState):
             continue
         dec_id = item.get("id")
         if dec_id:
-            active_decisions[dec_id] = (item_type, item)
-    superseded_by = _superseded_decisions(active_decisions)
-    standing = {d for d in active_decisions if d not in superseded_by}
+            active_decisions[dec_id] = item
+    superseded_by = _superseded_decisions({d: ("DEC", it) for d, it in active_decisions.items()})
+    standing = _holding_decisions(active_decisions)
     superseded = {d: s for d, s in superseded_by.items() if d in active_decisions}
     return standing, superseded
 
