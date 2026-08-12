@@ -1,0 +1,42 @@
+id: TSK-0052
+product_requirement: PR-0003
+derives_from: BUG-0011
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- user/**
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- 'BUG-0011 + DEC-0039 (Entscheidung: strukturelle Marker-Erkennung). Die globale
+  Einstiegsdatei (user/claude/CLAUDE.md -> ~/.claude/CLAUDE.md) entscheidet die Uebergabe
+  daran, ob ./CLAUDE.md die Marker-Zeichenkette ENTHAELT -- ein Satz, der die Abwesenheit
+  behauptet, loest sie aus. Kits liefern ./CLAUDE.md als 2-Zeilen-Shim (Marker + @AGENTS.md),
+  Marker an fester Position'
+expected_outputs:
+- 'MISS die tatsaechliche Shim-Form (scaffold_team, was genau in ./CLAUDE.md geschrieben
+  wird). Die Uebergabe-Regel in user/claude/CLAUDE.md wird strukturell: der Marker
+  zaehlt nur an der festen Shim-Position (erste nicht-leere Zeile / Marker-Zeile),
+  eine Erwaehnung in Prosa loest NICHT aus. Echte Kit-Shims werden weiter korrekt
+  uebernommen (gemessen). Ein Test (tools/): kein ausgeliefertes CLAUDE.md (Repo +
+  Kit-Templates) traegt den Marker ausserhalb der strukturellen Position; und eine
+  Erwaehnung zaehlt nicht. AC-3: gemessen, wo sonst im Harness auf blosses Vorkommen
+  einer Zeichenkette geprueft wird (grep, benannt). Test rot ohne Fix. Vorsicht: die
+  Einstiegsdatei muss den Marker erklaeren koennen ohne selbst auszuloesen -- das
+  ermoeglicht genau die strukturelle Regel. Falls ein .claude/test_gates.py-Bezug
+  angepasst werden muesste, NICHT anfassen (Handback), sondern benennen'
+dependencies:
+- TSK-0051
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-12T06:01:08'

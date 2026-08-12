@@ -308,8 +308,11 @@ if (Test-Path -LiteralPath $rolesManifest) {
     foreach ($entryFile in @((Join-Path $repo "AGENTS.md"), (Join-Path $repo "CLAUDE.md"))) {
         if (-not $legacyTeam -and (Test-Path -LiteralPath $entryFile)) {
             $firstLine = Get-Content -LiteralPath $entryFile -TotalCount 1
+            # DEC-0039: the same shim/constitution FORM every marker reader uses (session_status,
+            # validate.py) -- the marker only counts anchored on line 1 as `<!-- ... -->` with
+            # nothing after it, never as a bare occurrence a quote/prose/negation could carry.
             $marker = [regex]::Match([string]$firstLine,
-                'agents-and-skills:team-kit\s+([A-Za-z0-9_-]+)')
+                '^\s*<!--\s*agents-and-skills:team-kit\s+([A-Za-z0-9_-]+)\s*-->\s*$')
             if ($marker.Success) { $legacyTeam = $marker.Groups[1].Value }
         }
     }

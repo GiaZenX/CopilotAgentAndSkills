@@ -9,6 +9,7 @@ registry role has an agent file. Exit 1 on any failure. Run locally or in CI: py
 import glob
 import json
 import os
+import re
 import sys
 
 import yaml
@@ -214,9 +215,15 @@ for kit in discover_kits(ROOT):
                      "carries the vendor-neutral name it ships under)" % kit)
     else:
         lines = open(cpath, encoding="utf-8", errors="ignore").read().splitlines()
-        if not lines or "agents-and-skills:team-kit" not in lines[0]:
-            fails.append("%s: constitution marker not on LINE 1 — session_status kit-update detection "
-                         "reads only the first line" % kit)
+        first = lines[0].lstrip("\ufeff") if lines else ""
+        # DEC-0039: session_status reads the marker only in the SHIM FORM on line 1
+        # (`<!-- agents-and-skills:team-kit <team> -->`), not as a bare occurrence anywhere on it.
+        # The constitution's line 1 IS the shim source scaffold_team copies, so it must match that
+        # exact form — otherwise a real install detects no kit and update detection goes blind.
+        if not re.match(r"\s*<!--\s*agents-and-skills:team-kit\s+[\w-]+\s*-->\s*$", first):
+            fails.append("%s: constitution line 1 is not the kit shim marker "
+                         "`<!-- agents-and-skills:team-kit <team> -->` — session_status reads only "
+                         "that shim form on line 1 (DEC-0039)" % kit)
         # THE ONE SIZE STATEMENT ABOUT A CONSTITUTION — through the package it is part of, and in
         # BYTES. What stood here was a 220-LINE ceiling on the constitution and a second one on the
         # lead SKILL, and measured they said nothing about size: all three constitutions held the

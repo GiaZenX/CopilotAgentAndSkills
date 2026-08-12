@@ -251,7 +251,13 @@ def main():
         cpath = os.path.join(cwd, "CLAUDE.md")
         if os.path.isfile(cpath):
             with open(cpath, encoding="utf-8", errors="ignore") as fh:
-                m = re.search(r"agents-and-skills:team-kit\s+([\w-]+)", fh.readline())
+                first_line = fh.readline().lstrip("\ufeff")
+            # DEC-0039 / BUG-0011: the marker counts only as the shim line scaffold_team writes on
+            # line 1 (`<!-- agents-and-skills:team-kit <team> -->`), not as a bare occurrence
+            # anywhere on it — a quote, prose, a negation or a `#` comment that names the marker must
+            # NOT read as an install, nor a line that carries anything after the `-->`. BOM/CRLF/
+            # leading-space tolerant so real installs keep matching.
+            m = re.match(r"\s*<!--\s*agents-and-skills:team-kit\s+([\w-]+)\s*-->\s*$", first_line)
             kit = m.group(1) if m else ""
         if kit:
             staged_p = os.path.join(os.path.expanduser("~"), ".claude", "team-kits", kit, "VERSION")

@@ -1,0 +1,42 @@
+id: DEC-0039
+title: 'BUG-0011: die Kit-Marker-Erkennung der Uebergabe wird strukturell (feste Position),
+  nicht ein blosses Vorkommen der Zeichenkette'
+source: Lead-Entscheidung 2026-08-12 zu BUG-0011 (system-seitig, DEC-0037); Wahl der
+  AC-1-Variante
+context: 'Die globale Einstiegsdatei entscheidet ueber die Uebergabe an einen Projektmanager
+  allein daran, ob ./CLAUDE.md die Zeichenkette agents-and-skills:team-kit ENTHAELT
+  -- Anfuehrungszeichen und Verneinung sieht die Regel nicht. Ein Satz, der die ABWESENHEIT
+  des Markers behauptet, loest damit die Uebergabe aus (2026-08-04 in der CLAUDE.md
+  dieses Repos passiert, ein Umsetzer entfernte den Satz). Allgemeine Form: eine Regel,
+  die auf VORKOMMEN einer Zeichenkette prueft, wird von jedem Text ausgeloest, der
+  ueber die Zeichenkette SPRICHT -- Doku, Fehlermeldungen, Tests. Die Kits liefern
+  ./CLAUDE.md als 2-Zeilen-Import-Shim (Marker + @AGENTS.md), der Marker steht dort
+  also an einer FESTEN, strukturellen Position.'
+decision: 'Die Uebergabe-Erkennung wird strukturell: der Marker zaehlt NUR, wenn er
+  an der festen Position des Kit-Shims steht (die erste nicht-leere Zeile / die Marker-Zeile
+  des ausgelieferten Import-Shims), nicht als blosses Vorkommen irgendwo im Text.
+  Ein Satz, der den Marker ERWAEHNT (Prosa, Anfuehrungszeichen, Verneinung), loest
+  die Uebergabe damit NICHT aus. Die genaue strukturelle Form misst der Umsetzer am
+  tatsaechlich ausgelieferten Shim (scaffold_team) und richtet die Regel daran aus,
+  damit echte Kits weiter korrekt uebernommen werden. AC-1-Variante eins (Vorkommen
+  von Erwaehnung unterscheiden), nicht die reine Verbots-Variante.'
+consequences: 'Ein Repo ohne Kit wird nicht mehr als Kit-Projekt gelesen, auch wenn
+  es den Marker in Prosa erwaehnt -- die bisher noetige Selbstzensur (die Zeichenkette
+  darf in dieser Repo-CLAUDE.md nirgends stehen) wird damit unnoetig, bleibt aber
+  als Guertel erlaubt. Umzusetzen: (1) die strukturelle Regel in user/claude/CLAUDE.md
+  (die globale Einstiegsdatei, die zu ~/.claude/CLAUDE.md wird), (2) ein Test, der
+  die ausgelieferten CLAUDE.md-Dateien (Repo + Kit-Templates/Shims) prueft: der Marker
+  steht nur an der strukturellen Position oder gar nicht, sodass kein ausgeliefertes
+  Dokument faelschlich ausloest, (3) AC-3: eine Messung, wo sonst im Harness auf blosses
+  Vorkommen einer Zeichenkette geprueft wird. Vorsicht beim Bau: die Einstiegsdatei
+  muss den Marker erklaeren koennen, ohne selbst auszuloesen -- genau das macht die
+  strukturelle Regel moeglich. Ein etwaiger Bezug in .claude/hooks/test_gates.py (Marker-Abwesenheit
+  dieses Repos) bleibt als Guertel und wird nur bei Bedarf im Handback angefasst.'
+related:
+- BUG-0011
+- DEC-0037
+- PR-0003
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-12T06:01:07'

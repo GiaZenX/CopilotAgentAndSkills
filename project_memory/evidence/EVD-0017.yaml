@@ -1,0 +1,20 @@
+id: EVD-0017
+kind: review
+related:
+- TSK-0052
+result: pass
+summary: verifier PASS (BUG-0011/DEC-0039, two rounds) for diff:6cacd8aec4dd0aab0c6f7934836f77afada20dd2a3bb9dafb9aaa1395aa6175f
+  -- the handover marker now reads ONLY the shim form on line 1, end-anchored so nothing
+  may follow the closing bracket; occurrence-vs-mention fixed at all five read sites
+  (session_status x3 byte-identical, validate.py, scaffold_team sh+ps1). 11 real shim
+  forms detected True (plain/CRLF/BOM/lead-space/lead-tab/trailing-ws/inner-spacing),
+  6 mention/trailing forms False, red-without-fix hits exactly trailing_text; mirror
+  byte-identical, stamps dev/research 2026.08.12-3 office -6, clean suite artefacts
+  classified. Two named residues remain (user/codex analogue = follow-up BUG, test_gates.py
+  stale comment = handback).
+artifact_refs:
+- docs/reviews/2026-08-12-tsk0052-end-anchor-verdict.md
+- docs/reviews/2026-08-12-tsk0052-marker-audit.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T10:58:04'

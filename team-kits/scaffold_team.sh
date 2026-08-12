@@ -329,7 +329,11 @@ else
     [ -z "$legacy_team" ] || break
     [ -f "$entry_file" ] || continue
     IFS= read -r first_line < "$entry_file" || true
-    if [[ "$first_line" =~ agents-and-skills:team-kit[[:space:]]+([A-Za-z0-9_-]+) ]]; then
+    # DEC-0039: the same shim/constitution FORM every marker reader uses (session_status,
+    # validate.py) -- the marker only counts anchored on line 1 as `<!-- ... -->` with nothing
+    # after it, never as a bare occurrence a quote/prose/negation could carry. [[:space:]]*$
+    # swallows a trailing CR on a CRLF entry file (read leaves it on the line).
+    if [[ "$first_line" =~ ^[[:space:]]*\<!--[[:space:]]*agents-and-skills:team-kit[[:space:]]+([A-Za-z0-9_-]+)[[:space:]]*--\>[[:space:]]*$ ]]; then
       legacy_team="${BASH_REMATCH[1]}"
     fi
   done

@@ -1,4 +1,4 @@
-generated_at: '2026-08-12T05:57:17'
+generated_at: '2026-08-12T10:58:05'
 items:
 - id: BUG-0001
   type: BUG
@@ -429,6 +429,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0039
+  type: DEC
+  title: 'BUG-0011: die Kit-Marker-Erkennung der Uebergabe wird strukturell (feste
+    Position), nicht ein blosses Vorkommen der Zeichenkette'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -520,6 +527,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0016
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0017
   type: EVD
   title: null
   status: null
@@ -620,6 +633,19 @@ items:
   type: FR
   title: Der Apparat kann ein Bild nicht in den Chat stellen -- UI-Rueckkopplung verpufft
     an Dateipfaden
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0017
+  type: FR
+  title: Backlog-Gliederung durch inhaltslose Ordnungsknoten (Heading = Parent von
+    Requirements, Document = Parent von Headings)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0018
+  type: FR
+  title: Weicher Dubletten-Hinweis beim Anlegen eines PR/SR -- ohne Fehlalarm-Flut
   status: OPEN
   revision: 1
   approval_ref: null
@@ -978,6 +1004,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0051
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0052
   type: TSK
   title: null
   status: DRAFT

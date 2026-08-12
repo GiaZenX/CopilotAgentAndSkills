@@ -1,0 +1,20 @@
+id: FR-0018
+title: Weicher Dubletten-Hinweis beim Anlegen eines PR/SR -- ohne Fehlalarm-Flut
+source: docs/backlog-structure-and-dedup.md, Abschnitt 2; Nutzerwunsch 2026-08-12
+request_text: 'Heute gibt es KEINEN inhaltlichen Dubletten-Schutz -- nur die Id-Dublette
+  wird erkannt (duplicate-id), nicht ob ein neues Requirement inhaltlich schon existiert.
+  Risiko: laeuft der Kontext eines Agenten ueber und wird ein schon existierendes
+  Requirement erneut angefragt, entsteht eine Dublette + doppelte Implementierung.
+  Gewuenscht: ein WEICHER Hinweis auf die naechsten Treffer beim Anlegen eines PR/SR
+  (''aehnliche gefunden: ..., trotzdem anlegen?''), KEIN harter Block. Wichtige Nuance
+  des Nutzers: ein harter Riegel wuerde zu oft fehlfeuern (Requirements aehneln sich
+  oft), und die Rollenkette (PM -> Architekt -> Umsetzer/Designer/Backend) erkennt
+  eine echte Dublette ohnehin meist -- wir sind also schon ziemlich sicher. Nur bauen,
+  wenn der Mechanismus gut greift, ohne bei jedem Anlegen zu nerven (Top-N-Vorschlag
+  statt Warnung bei jedem, Schwelle, nur beim Anlegen zeigen). Prioritaet: hoeher
+  als die Gliederung, weil echte Korrektheits-Gefahr -- aber als Hilfe, nicht als
+  Zwang.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-12T06:23:54'

@@ -1,0 +1,19 @@
+id: FR-0017
+title: Backlog-Gliederung durch inhaltslose Ordnungsknoten (Heading = Parent von Requirements,
+  Document = Parent von Headings)
+source: docs/backlog-structure-and-dedup.md, Abschnitt 1; Nutzerwunsch 2026-08-12
+request_text: 'Reine Gliederungsebenen OHNE Inhalt (kein Titel-Body, keine Beschreibung),
+  nur zur thematischen Blockbildung (Frontend/Backend/...). Ein Heading ist Parent
+  von Requirements, ein Document ist Parent von Headings; beide inhaltslos. Gilt auf
+  BEIDEN Backlogs (Produkt PR und System SR). Zwingend: Schutz gegen Ueber-Fragmentierung
+  -- kein Wildwuchs (nicht 1000 Headings/300 Documents), ein neues Heading nur, wenn
+  ein Requirement thematisch wirklich nicht in ein bestehendes passt. Keine Vorlage
+  vorgeben. Offene Design-Frage (Recherche laeuft): echter inhaltsloser Heading-Knoten
+  als Parent vs. ein Area-Path-artiges Attribut/Tag am Requirement. Gemessen: heute
+  existiert nur die Eltern-Hierarchie PR->SR->TSK und ein class-Feld, keine reine
+  Gliederungsebene. Prioritaet: nice, sobald Backlogs groesser werden -- unter dem
+  Dubletten-Schutz.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-12T06:23:53'

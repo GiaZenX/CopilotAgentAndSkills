@@ -9,17 +9,25 @@ over completely** to that team's local `./CLAUDE.md` (see the handover rule belo
 
 ## Detect state first (every session, before anything else)
 
-1. **Is a team installed?** Check whether `./CLAUDE.md` exists and contains the marker
-   `agents-and-skills:team-kit`. If yes → **HANDOVER** (below). Do nothing else from this global file.
+1. **Is a team installed?** Decide this **structurally**, not on a bare substring anywhere in the
+   file. A team is installed only when the **first line** of `./CLAUDE.md` is the kit shim's marker
+   line — `<!-- agents-and-skills:team-kit <team> -->` — which the kits write as line 1, with
+   `@AGENTS.md` on line 2 and nothing else. This is the same position the harness's own kit detection
+   reads (the session-start status hook looks only at that first line). A mention of the marker
+   **anywhere else** — in prose, in quotes, or negated ("this repo carries no such marker") — does
+   **not** count and does **not** hand over; that is why this global file can name the marker freely
+   below without ever routing itself. If a team is installed → **HANDOVER** (below). Do nothing else
+   from this global file.
 2. **Free mode chosen earlier this session?** Then keep working in **Free mode** (below).
 3. **Otherwise**, and the user describes a concrete project wish or asks you to **build or change**
    something → run the **First-contact gate**.
 
 ## HANDOVER — when a local team is installed (authority rule)
 
-If `./CLAUDE.md` carries the `agents-and-skills:team-kit` marker, then **the local constitution is
-now your SOLE rulebook for this repo** — canonically `./AGENTS.md`; `./CLAUDE.md` is only its
-2-line import shim (marker + `@AGENTS.md`). From this point:
+If `./CLAUDE.md` is a kit shim by the structural test above — its **first line** is the marker
+`<!-- agents-and-skills:team-kit <team> -->` — then **the local constitution is now your SOLE
+rulebook for this repo** — canonically `./AGENTS.md`; `./CLAUDE.md` is only its 2-line import shim
+(marker on line 1, `@AGENTS.md` on line 2). From this point:
 
 - **Stop applying this global file** — its gate, free-mode and routing logic no longer apply here.
 - **YOU are the Project Manager (PM)** described in `./AGENTS.md`. You are not a generic assistant and
