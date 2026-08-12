@@ -48,15 +48,32 @@ ARCHIVE = "archive"
 # One invocation: everything up to the next command separator. Splitting first is what lets the
 # destination — and the working directory a preceding `cd` left behind — be read per command
 # instead of per line.
-INVOCATION_RX = re.compile(r"[^\n;|&]+")
+#
+# A `|` that immediately follows a `>` is bash's noclobber-override REDIRECT (`>|`, `>>|`), NOT a
+# pipe, so it stays inside the invocation — without the lookbehind the split stripped the target off
+# `echo x >| ledger.csv` and the whole redirect went unseen (measured rc 0, file written). Real
+# pipes, `;` and `&` still separate. The write-scope gate reads `>|` as a redirect too
+# (`gate_write_scope._REDIRECT_RX`, `>>?\|?`), and this keeps the two rules from disagreeing on it.
+INVOCATION_RX = re.compile(r"(?:[^\n;|&]|(?<=>)\|)+")
 # Tokens, with quoted spans kept whole. Plain `.split()` was the first version and it fails on the
 # ONE filename shape a business archive is full of: `mv inbox/a.pdf "archive/2026/Müller GmbH.pdf"`
 # would have ended in the token `GmbH.pdf"`, which is not under archive/ — a silent pass.
 TOKEN_RX = re.compile(r'"[^"]*"|\'[^\']*\'|\S+')
-# A redirection target IS the file the shell creates, whatever produced the bytes — so this is a
-# rule about syntax, not about a command's meaning, and it catches the forms no verb list can
-# (`cat inbox/a.pdf > archive/…`).
-REDIRECT_RX = re.compile(r'(?:>>?\s*|\btee\b(?:\s+-\S+)*\s+)("[^"]*"|\'[^\']*\'|[^\s;|&<>]+)')
+# One word of a MASKED invocation: a run of shell metacharacters, or a run of ordinary characters.
+# Keeping the metacharacter run WHOLE is what lets `>|` and `>>|` be one token `REDIRECT_OP_RX` can
+# recognise, instead of a `>` a later split would strip the target from. Quoting is already masked
+# out when this runs (via `_compat.shell_words`), so every bare metacharacter here is real syntax
+# and never a character inside a filename.
+_SHELL_WORD_RX = re.compile(r"[<>|&;]+|[^\s<>|&;]+")
+# An OUTPUT redirect operator, the shape `gate_write_scope._REDIRECT_RX` fixes: an optional file
+# descriptor or `&` (both streams), then `>`/`>>`, then bash's optional noclobber `|`. `>&`
+# (descriptor duplication, `2>&1`) is deliberately OUTSIDE it — its right-hand side is a stream
+# number, not a file anything lands in. Read with the same shape so the two rules cannot drift on
+# what counts as a redirect.
+REDIRECT_OP_RX = re.compile(r"^(?:[0-9]*|&)>>?\|?$")
+# A token that is ALL shell metacharacters — a separator or an operator, never a filename. Used to
+# keep a `tee` operand reader from mistaking an input redirect `<` for a file `tee` writes.
+_METACHAR_RX = re.compile(r"^[<>|&;]+$")
 # Copy/move commands, grouped by WHERE their calling convention puts the destination. `robocopy`
 # and `xcopy` take two directories and the destination is the SECOND token; the POSIX/PowerShell
 # family takes N sources and one destination, so it is the LAST. `install` is a copy that does not
@@ -67,12 +84,30 @@ REDIRECT_RX = re.compile(r'(?:>>?\s*|\btee\b(?:\s+-\S+)*\s+)("[^"]*"|\'[^\']*\'|
 # The trailing-destination family is split by what happens to the SOURCE, because one caller needs
 # that distinction and the other does not: filing INTO the archive is the same event however the
 # bytes got there (`gate_filing` reads every family), while taking a document OUT of the archive is
-# about the original CEASING to be there (`guard_fs_tripwire` reads the relocating half only, which
-# is the set its string rule matched before this module existed).
+# about the original CEASING to be there (`guard_fs_tripwire` reads the RELOCATING ones — the
+# always-relocating family here, plus a DUPLICATING verb carrying a source-deleting flag; see
+# `SOURCE_DELETING_FLAGS` and `relocating`).
 RELOCATING = ("mv", "move", "move-item", "mi", "ren", "rename", "rename-item")
 DUPLICATING = ("cp", "copy", "copy-item", "install", "rsync")
 DEST_IS_LAST = RELOCATING + DUPLICATING
 DEST_IS_SECOND = ("robocopy", "xcopy")
+# A DUPLICATING verb told to DELETE ITS SOURCE is a relocation, not a copy: the original ceases to
+# be where it was, which is the whole of what `guard_fs_tripwire.moved_out_of_the_archive` asks —
+# `robocopy src dst /MOVE` empties `src` exactly as `mv` does (BUG-0002). Which flag means "remove
+# the source" is a fact about each command that cannot be derived from the line, so this is an
+# unavoidable enumeration; it is kept honest by a tripwire that measures BOTH ends of every entry
+# (`test_fs_tripwire_reads_a_source_deleting_copier_as_a_move_out_of_the_archive`): the flag turns a copy into a
+# refused relocation, and without it the same command is read as a copy and left alone.
+#   robocopy: /MOV moves files (deletes them from the source), /MOVE moves files AND directories.
+#             /MIR and /PURGE delete in the DESTINATION, not the source, so they are NOT here — a
+#             /MIR out of the archive leaves the archive in place and is no move-out (measured).
+#   rsync:    --remove-source-files deletes each source file once it has been transferred, and
+#             --remove-sent-files is its deprecated-but-still-honoured alias for the SAME behaviour
+#             (measured rc 0 before it was listed) — the enumeration "one spelling too short".
+SOURCE_DELETING_FLAGS = {
+    "robocopy": ("/mov", "/move"),
+    "rsync": ("--remove-source-files", "--remove-sent-files"),
+}
 # The commands for which `-t` means "target directory". Scoped, NOT global: it is coreutils'
 # spelling, and the same letter means something else next door — `rsync -t` preserves timestamps,
 # so reading it as a destination would aim the reader at a source and let the real target through.
@@ -93,7 +128,7 @@ EXPANSION_RX = re.compile(r"[$`*?\[~]|%[^%\s]+%|![A-Za-z_][A-Za-z0-9_]*!")
 # One relocation or copy performed by one invocation. `bases` is the working directory that
 # invocation runs in, as far as this module could follow it — see `_bases_after`.
 Move = collections.namedtuple(
-    "Move", "family sources destination destination_is_directory bases")
+    "Move", "family sources destination destination_is_directory bases deletes_source")
 
 
 # ---------------------------------------------------------------- positions inside the repo
@@ -220,11 +255,6 @@ def named_destination(tokens, gnu_target_dir=False):
     return None, False
 
 
-def _word(text):
-    """One raw path token, read as the shell would hand it over — see `_tokens`."""
-    return _compat.shell_words(text, lambda masked: [masked])[0]
-
-
 def _tokens(invocation):
     """The invocation's words, with the shell's QUOTING resolved (`_compat.shell_words`).
 
@@ -285,6 +315,18 @@ def _bases_after(tokens, current, initial):
     return moved + [base for base in initial if base not in moved]
 
 
+def _deletes_source(family, tokens):
+    """Does this invocation carry a flag that removes its SOURCE after copying? (see the map)
+
+    A flag is matched as the SHELL hands it over — case-folded and quoting resolved, so
+    `robocopy … /MOVE`, `/move` and a spliced `/MO'VE'` all read as the one switch."""
+    flags = SOURCE_DELETING_FLAGS.get(family)
+    if not flags:
+        return False
+    return any(any(str(reading).lower() in flags for reading in _compat.shell_readings(token))
+               for token in tokens)
+
+
 def _move(tokens, bases):
     """The relocation/copy this invocation performs, or None."""
     family = next((command_name(t) for t in tokens
@@ -292,16 +334,28 @@ def _move(tokens, bases):
     if family is None:
         return None
     rest = _arguments(tokens, (family,))
+    deletes = _deletes_source(family, rest)
     named, names_a_directory = named_destination(rest, family in GNU_TARGET_DIR)
     operands = _operands(rest)
     if named is not None:
-        return Move(family, [t for t in operands if t != named], named, names_a_directory, bases)
+        return Move(family, [t for t in operands if t != named], named, names_a_directory,
+                    bases, deletes)
     if len(operands) < 2:
         return None       # a single token is a source with no destination: nothing is created
     if family in DEST_IS_SECOND:
         # these copy DIRECTORY to DIRECTORY and the trailing tokens are filename filters
-        return Move(family, operands[:1], operands[1], True, bases)
-    return Move(family, operands[:-1], operands[-1], False, bases)
+        return Move(family, operands[:1], operands[1], True, bases, deletes)
+    return Move(family, operands[:-1], operands[-1], False, bases, deletes)
+
+
+def relocating(move):
+    """Does this move take its source AWAY — does the original cease to exist where it was?
+
+    True for the RELOCATING family (`mv`/`move`/`ren`, which always do) and for a DUPLICATING verb
+    told to delete its source (`SOURCE_DELETING_FLAGS`: `robocopy /MOVE`, `rsync
+    --remove-source-files`). A plain copy leaves the original in place and answers False, so reading
+    a protected source is not mistaken for emptying it."""
+    return move.family in RELOCATING or move.deletes_source
 
 
 def _walk(command, bases):
@@ -309,14 +363,18 @@ def _walk(command, bases):
 
     A wrapper payload is lifted first, so `bash -lc "mv … archive/…"` is read as the `mv` it is;
     the unwrapping is `_compat`'s, the same one the git gates use. An audit already recorded `-lc`
-    walking past every gate that tokenised the outer line.
+    walking past every gate that tokenised the outer line. LINE CONTINUATIONS are joined BEFORE the
+    unwrap, the same order `_compat._shell_normalised` uses — a backslash+newline is one command to
+    the shell, and without the join `echo x >> led\\<newline>ger/x.csv` split at the newline and its
+    target was lost (measured rc 0).
 
     This is also the ONE place a working-directory change is applied, which is what makes the
     position of a later token in the same command line readable at all.
     """
     walked = []
     current = list(bases)
-    for invocation in INVOCATION_RX.findall(_compat.unwrap_shell_payload(command)):
+    normalised = _compat.unwrap_shell_payload(_compat.join_line_continuations(command))
+    for invocation in INVOCATION_RX.findall(normalised):
         tokens = _tokens(invocation)
         walked.append((invocation, tokens, list(current)))
         current = _bases_after(tokens, current, bases)
@@ -345,13 +403,38 @@ def moves(command, bases):
     return found
 
 
+def _redirect_targets_in(invocation):
+    """[ShellWord] — the files an output redirect in THIS ONE invocation writes to.
+
+    Three forms, all read the way the shell hands them over (`_compat.shell_words`, quoting
+    resolved): a `>`/`>>` redirect, its noclobber-override `>|`/`>>|` (with an optional fd or `&`),
+    and a `tee` operand. The operator is recognised by `REDIRECT_OP_RX`, the same shape the
+    write-scope gate uses, so a splice anywhere in the target — `led'g'er/x`, `"ledger"/x` — reads as
+    the file it names, and `>|` is a redirect rather than a pipe the invocation split on.
+    """
+    words = _compat.shell_words(invocation, _SHELL_WORD_RX.findall)
+    is_tee = bool(words) and command_name(words[0]) == "tee"
+    out = []
+    for index, word in enumerate(words):
+        token = "" if getattr(word, "spliced", False) else str(word)
+        if REDIRECT_OP_RX.match(token):
+            if index + 1 < len(words):
+                out.append(words[index + 1])
+        elif is_tee and index and not str(word).startswith("-") \
+                and not (token and _METACHAR_RX.match(token)):
+            out.append(word)   # a positional operand of `tee` is a file it writes
+    return out
+
+
 def created(command, bases):
     """[(path token, bases)] — every path the command names as a file it CREATES.
 
     Two syntactic forms, each read on its own terms: the destination of a copy/move (positional or
-    flag-named), and a redirection target — the shell creates that one whatever produced the bytes.
-    It does NOT see a write performed INSIDE another program; that residual is named in the module
-    docstring and, for the filing gate, in its own.
+    flag-named), and a redirection target — the shell creates that one whatever produced the bytes,
+    read through `_redirect_targets_in` (the SAME reader the ledger guard uses, so the two cannot
+    disagree about what a redirect is or where its target lands). It does NOT see a write performed
+    INSIDE another program; that residual is named in the module docstring and, for the filing gate,
+    in its own.
     """
     out = []
     for invocation, tokens, current in _walk(command, bases):
@@ -364,11 +447,24 @@ def created(command, bases):
                 # check would run against its parent, a directory nobody is filing into
                 token = token.replace("\\", "/").rstrip("/") + "/"
             out.append((token, current))
-        for match in REDIRECT_RX.finditer(invocation):
-            # through `_word` for the reason `_tokens` states: `cat a.pdf > arch'i've/x.pdf`
-            # creates a file in the archive, and the marks have to be gone before it is compared
-            out.append((_word(match.group(1)), current))
+        for target in _redirect_targets_in(invocation):
+            out.append((target, current))
     return out
+
+
+def redirect_targets(command):
+    """Every file a shell OUTPUT REDIRECT writes to — `>`, `>>`, `>|`/`>>|` and a `tee` operand —
+    with quoting resolved, line continuations joined and wrapper payloads lifted (via `_walk`).
+
+    Offered on its own, without the move destinations `created` also returns, for the one caller that
+    watches redirects and not moves: the ledger guard, whose concern is a BLIND redirect into
+    `ledger/*.csv`. A scan of the RAW command text saw a redirect only where its target was spelled
+    contiguously, unquoted, on one line and behind a `>`/`>>` that was not `>|` — so `led'g'er/x.csv`,
+    `"ledger"/x.csv`, a target past a `\\`+newline, `>| ledger.csv` and a target inside a `bash -lc`
+    payload all named the same file and all slipped past it (BUG-0003).
+    """
+    return [target for invocation, _tokens, _current in _walk(command, [""])
+            for target in _redirect_targets_in(invocation)]
 
 
 def named_by(command, bases, verbs):

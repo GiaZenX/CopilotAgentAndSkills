@@ -1,0 +1,35 @@
+id: TSK-0050
+product_requirement: PR-0003
+derives_from: BUG-0003
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0003: die Ledger-Redirect-Regel prueft rohen Text statt der aufgeloesten Zeichenkette;
+  die Luecke, die fuer den Schreibbereich ueber _compat.shell_words / shell_readings
+  bereits geschlossen wurde, besteht hier fort. Ort im Code nicht nachgemessen. Erwartet:
+  dieselbe Aufloesung wie beim Schreibbereich'
+expected_outputs:
+- MISS ZUERST den Ort. Die Ledger-Redirect-Regel liest die aufgeloeste Zeichenkette
+  (ueber _compat.shell_words/shell_readings, wie der Schreibbereich), nicht den rohen
+  Text -- eine Umgehung, die beim Schreibbereich schon zu ist (z. B. quotiert/verkettet/substituiert),
+  ist dann auch hier zu. Der Test wird rot, wenn die Regel wieder auf rohen Text zurueckfaellt.
+  Gespiegelt byte-identisch, gemessen mit Schiedsrichter
+dependencies:
+- BUG-0002
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-11T23:48:43'

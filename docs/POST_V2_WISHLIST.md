@@ -642,6 +642,16 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   (`{}` → Verweigerung), gehalten von einem AST-Test über jeden ausgelieferten Hook.
 - **Unter der Grössen-Ratsche prüft nichts, ob verschobener Text laden musste** — der Rekord schützt
   Bytes, nicht Semantik. Eine ableitbare Regel dafür ist nicht in Sicht.
+- **`tar --remove-files` leert das Archiv, ohne ein Kopierer-Verb zu sein** (Rest von BUG-0002).
+  `tar --remove-files -cf /tmp/a.tar archive/fin` archiviert die Quelle und **löscht sie danach** —
+  eine Verschiebung aus dem Archiv, gemessen **rc 0** am `guard_fs_tripwire`-Prozess. `_filing` liest
+  Kopie/Verschiebung an der Aufrufkonvention (Ziel als zweites bzw. letztes Token); `tar` hat keine,
+  steht darum in keiner `DEST_IS_*`-Familie und erreicht `moved_out_of_the_archive` nie.
+  `SOURCE_DELETING_FLAGS` greift erst, NACHDEM `_move` eine Familie erkannt hat — für tar gibt es
+  keine. Nicht geschlossen: ein Fangen hiesse einen zweiten, nicht-kopierenden Löschpfad zu bauen
+  (tar mit quell-löschendem Schalter als Löschung der genannten Operanden), was über den
+  Bug-Auftrag hinausgeht. Begrenzung bis dahin: Löschen unter `archive/` per `rm`/`del` fängt die
+  Delete-Regel bereits; nur der tar-interne Löschweg ist offen.
 
 ### L10 — Was ohne einen Provider unprüfbar bleibt
 

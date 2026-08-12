@@ -1,0 +1,17 @@
+id: EVD-0015
+kind: review
+related:
+- TSK-0049
+result: pass
+summary: verifier PASS (Family A rest) for diff:b20a8b023e0ba0a0822c1d2d56ba4221427fc1f7d3a980086c459377886ea5e5
+  -- BUG-0002 source-deleting copiers (robocopy /MOVE, rsync --remove-source/sent-files)
+  read as a move-out and refused; BUG-0003 one shared resolved-target reader closes
+  >|/continuation for the ledger AND filing rules (write-scope parity), real file
+  effect measured; clean full suite 2489 passed against the frozen office 2026.08.12-3
+  (hash 34266b16); the self-referential tripwire fixed with an independent KNOWN_SOURCE_DELETERS
+  literal (red-without-fix proven), runtime byte-identical to the verified state
+artifact_refs:
+- docs/reviews/2026-08-12-family-a-rest-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T03:50:38'

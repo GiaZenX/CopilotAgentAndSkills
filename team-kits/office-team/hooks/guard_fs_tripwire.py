@@ -36,11 +36,18 @@ WHAT THIS DOES NOT SEE, so each stays a decision rather than a discovery:
   * a token, or a `cd` argument, the shell rewrites before use — a variable, a glob, `~`. `_filing`
     resolves none of them and this guard blocks on none; uncertainty -> exit 0 is this guard's
     contract, and a guess about an unresolvable name would break it;
-  * a COPIER told to relocate: `robocopy /MOVE`, `rsync --remove-source-files`. They are read as
-    copies (`_filing.DUPLICATING`), so emptying the archive with one is not refused here. That was
-    equally true of the regex this replaced, and it is the one gap the new reading did not close;
-  * the ledger rule below reads the RAW command text, as it always did, so a redirect hidden in a
-    `bash -lc` payload still passes it. The move and delete rules ARE unwrapped; that one is not.
+  * a COPIER told to relocate IS now read as one: a source-deleting flag (`robocopy /MOVE`, `rsync
+    --remove-source-files` and its alias `--remove-sent-files`) makes `_filing.relocating` true, so
+    emptying the archive with it is refused (BUG-0002, `SOURCE_DELETING_FLAGS`). What stays open is
+    the neighbouring case that deletes in the DESTINATION rather than the source — `robocopy inbox
+    archive/… /MIR` (which /PURGEs the archive) is not a move OUT of it and this rule does not see it;
+    that is a delete INSIDE the archive, and the delete rule keys on verbs (`DELETE_VERBS`), not on a
+    robocopy flag;
+  * `tar --remove-files` archives the source and then DELETES it, emptying the archive as surely as a
+    move — but `tar` is not a copy verb (`_filing` reads copy/move by calling convention and tar has
+    none), so `moved_out_of_the_archive` never sees it. Named as a residual in
+    docs/POST_V2_WISHLIST.md rather than bolted on here, because catching it means a second,
+    non-copier deletion path this guard does not have.
 """
 import os
 import re
@@ -66,12 +73,24 @@ PROTECTED_TRAYS = (_filing.ARCHIVE, INBOX)
 DELETE_VERBS = ("rm", "rmdir", "del", "erase", "rd", "remove-item", "ri")
 DELETE_RX = re.compile(r"\b(%s)\b[^\n;|&]*\b(%s)(\b|[/\\])"
                        % ("|".join(DELETE_VERBS), "|".join(PROTECTED_TRAYS)), re.I)
-# shell redirects into the ledger bypass the Edit/Write guard (audit finding: `echo >> ledger/x.csv`)
-LEDGER_REDIRECT_RX = re.compile(
-    r"(?:[>|]\s*|\btee\b(?:\s+-\S+)*\s+)\"?[^\s\"|;&]*\bledger[/\\][^\s\"|;&]*\.csv", re.I)
+# shell redirects into the ledger bypass the Edit/Write guard (audit finding: `echo >> ledger/x.csv`).
+# The TARGET is read through `_filing.redirect_targets`, which resolves quoting and lifts wrapper
+# payloads the same way the write-scope gate reads a state path — a raw scan of the command text saw
+# neither `led'g'er/x.csv` nor `"ledger"/x.csv`, both of which name this file (BUG-0003). This
+# pattern therefore runs against an already-resolved single word, not the raw line.
+LEDGER_CSV_RX = re.compile(r"\bledger[/\\][^\s]*\.csv", re.I)
 # The exemption is for INVOKING the script, not for MENTIONING it. A substring test let
 # `echo garbage >> ledger/2026.csv # via ledger_add.py` through -- a comment disabled the rule.
 LEDGER_ADD_RX = re.compile(r"(?:^|[;&|(]|\bpython[0-9.]*\s+|\bpy\s+)\s*\S*ledger_add\.py\b", re.I)
+
+
+def writes_the_ledger(command):
+    """Does any output redirect in `command` write to a `ledger/*.csv`? — reading every value a
+    shell could hand the target (`_compat.shell_readings`), so the POSIX backslash spelling resolves
+    too, exactly as the write-scope gate answers the same question for a state path."""
+    return any(LEDGER_CSV_RX.search(reading)
+               for target in _filing.redirect_targets(command)
+               for reading in _compat.shell_readings(target))
 
 
 def in_a_protected_tray(root, base, token):
@@ -100,7 +119,7 @@ def moved_out_of_the_archive(root, command, bases):
     archive/ is filing or reorganisation and is left alone.
     """
     for move in _filing.moves(command, bases):
-        if move.family not in _filing.RELOCATING or not move.destination:
+        if not _filing.relocating(move) or not move.destination:
             continue          # a copy leaves the original in place: nothing left the archive
         for base in move.bases:
             destination = _filing.position(root, base, move.destination)
@@ -125,7 +144,7 @@ def main():
     cwd = str(data.get("cwd") or "")
     root = _root.find_repo_root(cwd)
     bases = _filing.reading_bases(root, cwd)
-    if LEDGER_REDIRECT_RX.search(cmd) and not LEDGER_ADD_RX.search(cmd):
+    if writes_the_ledger(cmd) and not LEDGER_ADD_RX.search(cmd):
         _audit.record("guard_fs_tripwire", "shell redirect into ledger: %s" % cmd[:120])
         _compat.stop(
             "[team-kit guard] A blind shell redirect into ledger/*.csv is BLOCKED — `>>` writes "

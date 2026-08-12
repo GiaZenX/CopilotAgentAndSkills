@@ -7896,6 +7896,19 @@ def test_gate_filing_sees_a_redirect_into_the_archive(tmp_path):
         assert result.returncode == 2, command
 
 
+def test_gate_filing_sees_a_noclobber_and_continued_redirect_into_the_archive(tmp_path):
+    """Same root as the ledger's BUG-0003, on the OTHER wall: `created` shares `redirect_targets`, so
+    a noclobber-override `>|` (the `|` is not a pipe the invocation splits on) and a target whose
+    `archive` word is broken by a `\\`+newline LINE CONTINUATION both file into the archive and must
+    be seen. Each was rc 0 before the shared reader — the `>|` because the `|` split the target off,
+    the continuation because the split left `arch\\` outside the archive — and each is rc 2 now."""
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    for command in ("cat inbox/a.pdf >| archive/invented/a.pdf",
+                    "cat inbox/a.pdf >> arch\\\nive/invented/a.pdf"):
+        result = _run_filing(_filing_move(tmp_path, command), tmp_path)
+        assert result.returncode == 2, command
+
+
 def test_gate_filing_still_sees_the_destination_past_a_redirect(tmp_path):
     """...and adding the redirect rule must not cost the positional one: with `mv a b > log` the
     last token of the line is the log file, so the argument list has to end at the redirect."""
@@ -7957,6 +7970,88 @@ def test_fs_tripwire_blocks_move_out_of_archive(tmp_path):
     payload = {"tool_name": "Bash",
                "tool_input": {"command": "mv archive/fin/a.pdf /tmp/gone.pdf"}, "cwd": str(tmp_path)}
     assert run_hook("guard_fs_tripwire.py", payload, tmp_path, hooks_dir=OFFICE_HOOKS) == 2
+
+
+def _office_filing_module():
+    """The office `_filing` module, imported for the ONE thing a test reads off it that the running
+    hook cannot spell back: the `SOURCE_DELETING_FLAGS` enumeration. `_filing` puts its own
+    directory on `sys.path` and imports `_compat` from there, so no path juggling is needed."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "filing_under_test", os.path.join(OFFICE_HOOKS, "_filing.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_fs_tripwire_reads_a_source_deleting_copier_as_a_move_out_of_the_archive(tmp_path):
+    """BUG-0002: `robocopy src dst /MOVE` DELETES the source, so a robocopy out of the archive with
+    a source-deleting flag empties it exactly as `mv` does — and was read as a copy and ALLOWED.
+
+    The tripwire guards `_filing.SOURCE_DELETING_FLAGS` from BOTH directions, against the REAL hook
+    process. UNDER-inclusion (a measured deleter dropped from the map) is caught by an INDEPENDENT
+    enumeration of the flags each copier is known to empty the source with (`KNOWN_SOURCE_DELETERS`,
+    a SECOND source that is NOT read off the map): every one MUST be present in the map AND turn the
+    copy into a refused relocation, so dropping one from `SOURCE_DELETING_FLAGS` makes both its
+    membership assertion and its rc-2 block-check go red here. A loop that iterated the map itself
+    could NOT catch this — a dropped flag simply stops being iterated and its case vanishes with it,
+    which is the self-referential gap this test was rebuilt to close. OVER-inclusion is caught at the
+    other end: the same verbs WITHOUT a flag are copies and stay allowed, and a destination-purging
+    `/MIR` (which touches the destination, not the source) is no move OUT of the archive — so
+    widening the map to a non-source-deleting flag turns an allow-case rc-0-to-rc-2. A family listed
+    in the map with no sample here raises KeyError, which keeps the samples honest as the map grows.
+    """
+    filing = _office_filing_module()
+    sample = {"robocopy": "robocopy archive/fin dest %s",
+              "rsync": "rsync -a %s archive/fin/ dest/"}
+    # The INDEPENDENT second source: the flags MEASURED to delete the source (BUG-0002), spelled out
+    # on their own here and deliberately NOT derived from `SOURCE_DELETING_FLAGS`. Each must be in
+    # the map; removing one from the map makes the assertion below go red.
+    KNOWN_SOURCE_DELETERS = {"robocopy": ("/MOV", "/MOVE"),
+                             "rsync": ("--remove-source-files", "--remove-sent-files")}
+    map_flags = {family: {str(flag).lower() for flag in flags}
+                 for family, flags in filing.SOURCE_DELETING_FLAGS.items()}
+    for family, flags in KNOWN_SOURCE_DELETERS.items():
+        for flag in flags:
+            assert flag.lower() in map_flags[family], (family, flag)  # a measured deleter dropped from the map
+            assert _tripwire(tmp_path, sample[family] % flag) == 2, (family, flag)
+    # the other direction stays honest: every family the map carries owes a sample here (KeyError)
+    for family in filing.SOURCE_DELETING_FLAGS:
+        assert sample[family]
+    assert _tripwire(tmp_path, "robocopy archive/fin dest") == 0        # a real copy: source stays
+    assert _tripwire(tmp_path, "rsync -a archive/fin/ dest/") == 0
+    assert _tripwire(tmp_path, "robocopy archive/fin dest /MIR") == 0   # /MIR purges the DEST
+
+
+def test_fs_tripwire_blocks_a_disguised_ledger_redirect(tmp_path):
+    """BUG-0003: the ledger rule read the RAW command text, so a redirect whose target was not spelled
+    plainly, contiguously and on one line slipped past it. It now reads the target through
+    `_filing.redirect_targets` — quoting resolved, line continuations joined, wrapper payloads lifted,
+    and `>|`/`>>|` recognised as redirects — the same reading the write-scope gate gives a state path.
+
+    Each case below is rc 2 now and was rc 0 before the resolution (measured against the reverted hook
+    in a clone outside the repo):
+      * a QUOTE SPLICE anywhere in the target — `led'g'er/x`, `"ledger"/x`;
+      * the noclobber-override `>|`, its fd form `1>|`, and `>>|` — the `|` there is not a pipe, and
+        the raw scan split on it and lost the target;
+      * a target reached past a `\\`+newline LINE CONTINUATION;
+      * a spliced `tee` operand.
+    """
+    for command in ("echo x >> led'g'er/2026.csv",
+                    'echo x >> "ledger"/2026.csv',
+                    "echo x >| ledger/2026.csv",
+                    "echo x 1>| ledger/2026.csv",
+                    "echo x >>| ledger/2026.csv",
+                    "echo x >> led\\\nger/2026.csv",
+                    "tee -a led'g'er/2026.csv"):
+        assert _tripwire(tmp_path, command) == 2, command
+    # the other end stays allowed: reading the ledger, an input redirect FROM it, a stream
+    # duplication that names no file, and the sanctioned add script
+    assert _tripwire(tmp_path, "cat ledger/2026.csv") == 0
+    assert _tripwire(tmp_path, "grep x < ledger/2026.csv") == 0
+    assert _tripwire(tmp_path, "python scripts/report.py 2>&1") == 0
+    assert _tripwire(
+        tmp_path, "python scripts/ledger_add.py --year 2026 --net 1 > /tmp/log") == 0
 
 
 # ---------------- the Aktenplan: ONE schema, and both of its readers ----------------
