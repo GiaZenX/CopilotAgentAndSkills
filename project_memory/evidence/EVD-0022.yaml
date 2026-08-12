@@ -1,0 +1,18 @@
+id: EVD-0022
+kind: review
+related:
+- TSK-0054
+result: pass
+summary: 'verifier STATIC PASS (TSK-0054, structural BUG-0017 guard fix) for diff:0155b3877878073ca523f1b924d6f1f63a7f81c0ecc6dc94bc5d739766e6a1ce
+  -- re-stamped digest after a commit-split shuffle (CRLF->LF staging normalisation
+  moved it from the EVD-0021 value; same package, same verdict). The global handover_guard
+  now refuses the scope-approval AskUserQuestion carrying the real [APR-REQ: marker
+  under the handover marker, honest ''approval after restart; no /hooks'' message,
+  registration real (settings.json +AskUserQuestion). Marker matches the real kernel
+  emitter byte-exact; no over-refusal; existing refusals intact; red-without-fix;
+  residue named POST_V2_WISHLIST L39. Behaviour still needs a live phase-1 pilot.'
+artifact_refs:
+- docs/reviews/2026-08-12-tsk0054-verdict.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T22:54:43'

@@ -1,4 +1,4 @@
-generated_at: '2026-08-12T19:19:42'
+generated_at: '2026-08-12T22:54:43'
 items:
 - id: BUG-0001
   type: BUG
@@ -564,6 +564,24 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0020
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0021
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0022
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0001
   type: FR
   title: 'Ein Gate auf die Aufgabenliste: hoechstens ein Eintrag ohne Item-Id'
@@ -1042,6 +1060,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0053
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0054
   type: TSK
   title: null
   status: DRAFT

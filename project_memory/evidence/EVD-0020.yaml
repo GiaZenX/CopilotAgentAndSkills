@@ -1,0 +1,23 @@
+id: EVD-0020
+kind: acceptance
+related:
+- BUG-0017
+result: fail
+summary: 'Live phase-1 confirmation with the committed TSK-0053 fix deployed (~/.claude/CLAUDE.md
+  swapped, backed up + byte-restored; store restored to 2026.08.10-1). RESULT: /hooks
+  ceremony REDUCED but NOT GONE. At the restart message itself (the exact spot the
+  fix governs) it is GONE -- the say-line is honest, 0 ceremony words. BUT the entry
+  session does NOT stop after install (BUG-0016 not enforced); on ''weiter'' the agent
+  requests scope approval in the entry session (which the fix forbids), the mint fails
+  (entry hooks inactive), and it RE-INVENTS /hooks from the real restart_required
+  diagnosis (Turn 2, quoted). Verdict: prose cannot close BUG-0017 -- it needs a STRUCTURAL
+  fix coupled to BUG-0016: (a) enforce the stop after install, and/or (b) make the
+  entry session unable to request/mint approval (clean refuse ''not until restart''),
+  and/or (c) rewrite the /hooks-suggesting restart_required diagnosis path. TSK-0053
+  wording stays correct and committed; BUG-0017 BEHAVIOUR stays OPEN. Runner method
+  documented in the review doc.'
+artifact_refs:
+- docs/reviews/2026-08-12-bug0017-live-confirm.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T21:47:11'

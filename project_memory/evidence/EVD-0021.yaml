@@ -1,0 +1,23 @@
+id: EVD-0021
+kind: review
+related:
+- TSK-0054
+result: pass
+summary: 'verifier STATIC PASS (TSK-0054, structural BUG-0017 fix) for diff:91d8a2efa2609571830cb09370a982de76a0300d224f7381a52aaa0d21c60a4e
+  -- the always-active global handover_guard now REFUSES the scope-approval AskUserQuestion
+  under the handover marker (rc 0->rc 2), so the entry session cannot START the flow
+  whose failed mint produced the invented /hooks. MAKE-OR-BREAK confirmed: the guard
+  marker [APR-REQ: matches the REAL kernel emitter byte-exact (approvals.py writes
+  it, gate_approval.py reads it), NOT inert. No over-refusal (first-contact question
+  rc 0), existing refusals intact, red-without-fix, registration real (settings.json
+  matcher +AskUserQuestion wired to the guard). Residue L39 round5: only a byte-faithful
+  case-exact marker relay is caught (DEC-0029 class, narrow by design). user/claude
+  not a kit-hash input (no bump). BEHAVIOUR still OPEN: needs a live phase-1 pilot
+  (deploys 3 user-scope files, backup+restore) to confirm the real AskUserQuestion
+  carries the marker in tool_input and the agent no longer invents /hooks.'
+artifact_refs:
+- docs/reviews/2026-08-12-tsk0054-verdict.md
+- docs/reviews/2026-08-12-bug0017-live-confirm.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T22:51:21'

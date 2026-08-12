@@ -1814,6 +1814,20 @@ Für Runde 4 ebenso je Mechanik zurückgebaut: Leerzeilen-Ersatz statt Löschung
 → `help_flag_in_a_quoted_value`, `dash_h_in_a_quoted_value` rc 0 statt 2 und der Fehlalarm
 `git commit -m "… (…) … python … capture"` rc 2 statt 0.
 
+**Runde 5 (TSK-0054, BUG-0017) — die Approval-Frage-Verweigerung fängt nur den TREUEN Marker-Relay.**
+Der Guard verweigert jetzt zusätzlich eine `AskUserQuestion`, deren `tool_input` den Approval-Marker
+trägt (`_APR_REQUEST_MARKER = \[APR-REQ:`), damit die Einstiegssitzung den Scope-Approval-Weg nicht
+STARTET (der Mint scheiterte dort und der Agent erfand daraus `/hooks` — EVD-0020,
+`docs/reviews/2026-08-12-bug0017-live-confirm.md`). Der Marker ist **byte-genau** der des echten
+Emitters (`team-kits/kernel/approvals.py` schreibt `[APR-REQ:<id>]`, `gate_approval.py` liest
+`\[APR-REQ:<32 hex>\]`), also nicht inert. **Der Rest — dieselbe DEC-0029-Klasse:** gefangen wird nur
+ein **byte-treuer, case-exakter** Relay. Eine Halluzination, die den Marker WEGLÄSST oder verstümmelt/
+kleinschreibt, ist von einer normalen Frage nicht unterscheidbar und entkommt; die Alternative wäre,
+Absicht aus Freitext zu modellieren (gegen die DEC-0029 entschied) und dabei die Einstiegs-Gate-Fragen
+mitzuverweigern. Narrow by design; in der Guard-Docstring benannt. Der gemessene Live-Vektor relayte
+den echten Marker, ist also gedeckt; die Verhaltensbestätigung (Agent erfindet auf dem
+Fortsetzungspfad kein `/hooks` mehr) steht als Live-Phase-1-Pilot noch aus.
+
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier

@@ -218,7 +218,8 @@ def test_the_shipped_user_settings_register_the_handover_guard(tmp_path):
     matcher = guard[0]["matcher"]
     sys.path.insert(0, TEAM_KITS)
     from kernel.report import _matches_tool  # noqa: E402
-    for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "PowerShell", "Task", "Agent"):
+    for tool in ("Write", "Edit", "MultiEdit", "NotebookEdit", "Bash", "PowerShell", "Task", "Agent",
+                 "AskUserQuestion"):
         assert _matches_tool(matcher, (tool,)), (
             "the guard classifies %s but its matcher %r never fires for it" % (tool, matcher))
 
@@ -282,6 +283,77 @@ def test_handover_guard_blocks_spawns_and_engine_shell_but_not_reading(tmp_path)
         dict(base, tool_name="Read", tool_input={"file_path": str(tmp_path / "src" / "app.py")}),
     ):
         assert _run_handover(allowed).returncode == 0, allowed["tool_input"]
+
+
+# A well-formed approval-request marker, the kernel's own shape (gate_approval MARKER_RX).
+_APR_MARKER = "[APR-REQ:%s]" % ("a" * 32)
+
+
+def _scope_approval_question(marker):
+    """An AskUserQuestion shaped like the scope-approval request, carrying `marker` in its text."""
+    return {"questions": [{"question": "Freigabe fuer den Arbeitsbereich (Scope)? %s" % marker,
+                           "header": "Scope",
+                           "options": [{"label": "Freigeben [5acc16]", "description": "ja"},
+                                       {"label": "Aendern", "description": "nein"}]}]}
+
+
+def test_handover_guard_blocks_the_scope_approval_askuserquestion_under_marker(tmp_path):
+    """BUG-0017 / TSK-0054: with the handover marker present, the AskUserQuestion that INITIATES the
+    scope-approval flow (carries `[APR-REQ:<id>]`) is refused — the measured continuation-path gap
+    where the entry agent requested approval, the mint failed, and it re-invented `/hooks`.
+
+    RED without the new rule: AskUserQuestion is none of FILE/SHELL/SPAWN tools, so `main` fell
+    through to `_allow()` and this was rc 0 (measured on the pre-fix guard, 2026-08-12)."""
+    base = _handover_repo(tmp_path)
+    result = _run_handover(dict(base, tool_name="AskUserQuestion",
+                                tool_input=_scope_approval_question(_APR_MARKER)))
+    assert result.returncode == 2, result.stdout + result.stderr
+    # (a) the message must point at scope approval minted by the restarted PM, and (b) must EXPLICITLY
+    # say do not run /hooks — those are the two things the honest signal owes (TSK-0054 step 2).
+    assert "scope approval" in result.stderr.lower()
+    assert "/hooks" in result.stderr and "restart" in result.stderr.lower()
+
+
+def test_handover_guard_blocks_the_approval_marker_in_any_field(tmp_path):
+    """The scan is over the whole tool_input, so the marker is caught wherever the model puts it
+    (option label here, not the question text). A narrower question-text-only check would miss this."""
+    base = _handover_repo(tmp_path)
+    payload = {"questions": [{"question": "Bitte bestaetigen?", "header": "Scope",
+                              "options": [{"label": "Freigeben %s" % _APR_MARKER}]}]}
+    result = _run_handover(dict(base, tool_name="AskUserQuestion", tool_input=payload))
+    assert result.returncode == 2, result.stdout + result.stderr
+
+
+def test_handover_guard_allows_the_approval_question_without_the_marker(tmp_path):
+    """Fail-open direction: the SAME question WITHOUT the marker is allowed. The refusal is keyed on
+    the marker, not on the words of the question — a markerless approval-looking question is the
+    named residue (module docstring), not a refusal."""
+    base = _handover_repo(tmp_path)
+    result = _run_handover(dict(base, tool_name="AskUserQuestion",
+                                tool_input=_scope_approval_question("")))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("marker_present", [True, False])
+def test_handover_guard_allows_a_normal_askuserquestion(tmp_path, marker_present):
+    """No over-refusal: an ORDINARY question — the entry gate's own "structured PM?" prompt — stays
+    allowed whether or not the handover marker is set. The soft variant must keep talking open."""
+    base = _handover_repo(tmp_path, marker=marker_present)
+    payload = {"questions": [{"question": "Strukturiert ueber einen Project Manager arbeiten?",
+                              "header": "Modus",
+                              "options": [{"label": "Ja - strukturiert (PM)"},
+                                          {"label": "Nein - frei"}]}]}
+    result = _run_handover(dict(base, tool_name="AskUserQuestion", tool_input=payload))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_handover_guard_ignores_the_approval_question_without_the_handover_marker(tmp_path):
+    """Invisible outside a handover: with NO `.claude/HANDOVER_PENDING`, even the marked approval
+    question is allowed — the guard only acts inside the handover window."""
+    base = _handover_repo(tmp_path, marker=False)
+    result = _run_handover(dict(base, tool_name="AskUserQuestion",
+                                tool_input=_scope_approval_question(_APR_MARKER)))
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_handover_guard_blocks_compound_engine_forms(tmp_path):

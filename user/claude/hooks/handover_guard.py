@@ -21,9 +21,14 @@ SOFT VARIANT, what it refuses and what it never touches (DEC-0032):
     `project_memory/product/masterplan.md`, `project_memory/project_config.yaml`, and the root item
     `project_memory/product/active/PR-0001*`.
   * REFUSED with the marker: product-code writes/edits (any file write that is not a plan artefact),
-    specialist SPAWNS (Task/Agent), and DERIVATION through the work engine on the shell
+    specialist SPAWNS (Task/Agent), DERIVATION through the work engine on the shell
     (`scripts/harness.py` / `kernel.cli` for anything other than a read like `doctor`/`--help`):
-    creating items, dispatching, running the lifecycle. These are the post-handover PM's acts.
+    creating items, dispatching, running the lifecycle, and — BUG-0017 / TSK-0054 — an
+    AskUserQuestion that INITIATES the scope-approval flow, recognised by the kernel's
+    approval-request marker `[APR-REQ:<id>]` in its input. These are the post-handover PM's acts:
+    the scope approval is requested and minted by the restarted Project Manager AFTER the restart,
+    once the kit hooks are live; here the mint would fail, and the entry agent has been measured to
+    re-invent a nonexistent `/hooks` step from that failure (docs/reviews/2026-08-12-bug0017-live-confirm.md).
 
 WHAT THE SHELL READING DOES, exactly — no more (`_handle_shell` and the helpers it names):
   * line continuations are JOINED first, on the raw text, because the shell joins across them;
@@ -42,8 +47,10 @@ WHAT THE SHELL READING DOES, exactly — no more (`_handle_shell` and the helper
   * THE MARKER ITSELF is refused: a segment that names it with anything other than a known read
     verb, and a file-tool write onto it. Without that, the cheapest way past this hook was to
     switch it off — `rm .claude/HANDOVER_PENDING` and every later call is a no-op (measured).
-  * NEVER touched: reading, asking, answering, explaining. This hook refuses individual TOOL calls
-    only; it never ends the session (AskUserQuestion, Read, Grep, ... are not in scope here).
+  * NEVER touched: reading, and NORMAL asking/answering/explaining/plan-refinement. The ONLY
+    AskUserQuestion this hook refuses is the one carrying the approval-request marker above; every
+    ordinary question (including the entry gate's own "structured PM?" prompt) stays allowed. This
+    hook refuses individual TOOL calls only; it never ends the session (Read, Grep, ... stay open).
 
 FAIL-OPEN BY DESIGN, and deliberately so — this is a belt on a WELL-INTENTIONED entry agent that
 merely keeps working, not an adversarial sandbox (the true boundary is the restart). Anything it
@@ -67,6 +74,12 @@ measured (TSK-0031/0032, chains in docs/POST_V2_WISHLIST.md L39):
     -delete`, or a path assembled by a substitution. A rule that saw those would have to model the
     file system rather than read words. Measured and pinned by
     `test_handover_guard_marker_residue_is_named_not_closed`; L39 carries the severity.
+  * A HALLUCINATED approval question that OMITS the marker (BUG-0017 / TSK-0054): the approval-flow
+    refusal is keyed on the `[APR-REQ:<id>]` marker, so an approval-looking question that carries no
+    marker cannot be told apart from an ordinary question and is allowed. Narrow BY DESIGN — the
+    alternative is to model intent from free text, which would refuse the entry gate's own questions.
+    The measured live vector relayed the marker (docs/reviews/2026-08-12-bug0019-bug0017-pilot.md);
+    a markerless variant is named residue, not built protection.
 """
 import json
 import os
@@ -78,6 +91,15 @@ MARKER = os.path.join(".claude", "HANDOVER_PENDING")
 FILE_TOOLS = ("Write", "Edit", "MultiEdit", "NotebookEdit")
 SHELL_TOOLS = ("Bash", "PowerShell")
 SPAWN_TOOLS = ("Task", "Agent")
+ASK_TOOLS = ("AskUserQuestion",)
+
+# The approval-request marker of the kernel's two-phase approval protocol; `gate_approval.py` is its
+# authority (`MARKER_RX = \[APR-REQ:<32 hex>\]`). Recognised here by its literal TOKEN, not the exact
+# id shape: the entry session has no live kernel to mint a real id, so an approval question it raises
+# here carries an invented or malformed one — refusing the flow is the point, not validating the id.
+# Whole-input scan (not just the question text) because the marker may sit in any field the model
+# fills. A normal question never carries this protocol token, so this stays narrow (BUG-0017).
+_APR_REQUEST_MARKER = re.compile(r"\[APR-REQ:")
 
 # The plan artefacts the entry gate writes by hand (global CLAUDE.md Auto-Init step 3; DEC-0032).
 # Exact matches for the two singletons; a prefix for the root item so PR-0001.yaml (and any sidecar
@@ -166,6 +188,27 @@ def _refuse(reason):
         "project hooks are not active yet (settings-watcher gap, BUG-0016). Report what is still "
         "needed and let the restarted Project Manager do it. Reading, asking and answering are not "
         "affected; the marker clears itself on the next real restart.\n" % reason)
+    sys.exit(2)
+
+
+def _refuse_approval_request():
+    """Refuse an AskUserQuestion that initiates the scope-approval flow (BUG-0017 / TSK-0054).
+
+    Its own message, not `_refuse`'s: the reader must be told (a) that scope approval is requested and
+    minted by the restarted PM AFTER the restart, and (b) EXPLICITLY that there is no `/hooks` step to
+    run — only the restart. The live pilot measured the entry agent inventing `/hooks` from the failed
+    mint (docs/reviews/2026-08-12-bug0017-live-confirm.md), so naming it here is the structural answer.
+    """
+    sys.stderr.write(
+        "[handover] refused: this AskUserQuestion initiates the scope-approval flow while a team "
+        "kit was just installed and the session is waiting to be restarted (.claude/HANDOVER_PENDING "
+        "is set). Scope approval is NOT requested or minted in THIS session: the freshly installed "
+        "project hooks are not active yet (settings-watcher gap, BUG-0016), so the mint cannot run "
+        "here. The restarted Project Manager requests the scope approval and the kernel mints it "
+        "AFTER the restart, once the hooks are live. Do NOT run /hooks — there is no /hooks step and "
+        "no hook-bundle, trust or permission ceremony to perform; the ONLY thing to ask of the user "
+        "is to restart the session. Normal questions and plan refinement stay allowed; the marker "
+        "clears itself on the next real restart.\n")
     sys.exit(2)
 
 
@@ -472,6 +515,22 @@ def _segment_touches_the_marker(segment):
     return False
 
 
+def _handle_ask(tool_input):
+    """Refuse only the AskUserQuestion that INITIATES the scope-approval flow (marker present).
+
+    NARROW: keyed on the approval-request marker, so normal asking/answering/plan-refinement — the
+    whole point of the soft variant — stays allowed. The residue is named in the module docstring: a
+    hallucinated approval question that OMITS the marker cannot be told apart from an ordinary one.
+    Fail-open: a payload that will not serialise is not classified.
+    """
+    try:
+        blob = json.dumps(tool_input, default=str)
+    except (TypeError, ValueError):
+        return  # unserialisable: not judged (fail-open, module docstring)
+    if _APR_REQUEST_MARKER.search(blob):
+        _refuse_approval_request()
+
+
 def _handle_shell(tool_input):
     raw = str(tool_input.get("command") or "")
     if not raw.strip():
@@ -513,6 +572,8 @@ def main():
         _refuse("spawning a specialist derives work — that is the restarted PM's act")
     elif tool in SHELL_TOOLS:
         _handle_shell(tool_input)
+    elif tool in ASK_TOOLS:
+        _handle_ask(tool_input)
     _allow()
 
 
