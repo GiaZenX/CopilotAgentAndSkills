@@ -1,0 +1,22 @@
+id: EVD-0019
+kind: review
+related:
+- TSK-0053
+result: pass
+summary: 'verifier STATIC PASS (TSK-0053, BUG-0017 wording + DEC-0040) for diff:65f00f49b197bc2e0a91cd5403492f0b4779099e87428fa681088b0bbd7b4fde
+  -- PM-skill ''never reads transcript'' overclaim corrected to honest fallback wording
+  in dev+research (office lacked it), entry file forbids inventing any /hooks/trust/approval
+  ceremony and states approval is minted by the PM after restart; two structural tests
+  measure the running text with red-without-fix, both verifier-found leniencies (V1
+  read-synonyms, V2 factual-sentence-vs-ban) hardened + lead-confirmed. Stamps dev/research
+  2026.08.12-4, office unchanged; re-pin exact 2 sections; implementer full suite
+  2510 passed. EXPLICITLY OPEN: BUG-0017 BEHAVIOUR unconfirmed -- the live phase-1
+  pilot could not run this round (runner swept, auth isolation breaks live config);
+  prose cannot provably heal a hallucination, needs a follow-up live pilot. AC-3 (interactive
+  CLI) open.'
+artifact_refs:
+- docs/reviews/2026-08-12-tsk0053-verdict.md
+- docs/reviews/2026-08-12-bug0019-bug0017-pilot.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T19:19:42'

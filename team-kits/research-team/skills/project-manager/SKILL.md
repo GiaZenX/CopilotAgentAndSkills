@@ -78,8 +78,10 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
    item short: a typed item's `status` is an enum the kernel sets on a transition, so the prose status blob
    has nowhere left to grow — do not recreate it in an item body. **After each RQ
    merge, propose a FRESH session** (long sessions degrade beyond ~800k context: tool-call glitches, lossy
-   compaction; a normal restart works from `generated/session_brief.yaml` + the active items and never reads
-   the transcript). The rollup under `project_memory/generated/` is kernel output, written with every state
+   compaction; a clean restart works from `generated/session_brief.yaml` + the active items and does not NEED
+   the transcript — which stays available as an explicit diagnosis/recovery fallback, e.g. after a crash or an
+   unclean session end where the kernel had not yet written all state). The rollup under
+   `project_memory/generated/` is kernel output, written with every state
    write — no hook regenerates it, and this kit renders no dashboard from it.
 9. **REPORT + ASK** — findings + the team's ideas, then "what next?" (options + free text, include IDs).
    **Always name a recommended option with a reason** — never a neutral menu. Surface only **1–3 high-value

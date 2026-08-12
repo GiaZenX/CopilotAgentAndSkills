@@ -1,4 +1,4 @@
-generated_at: '2026-08-12T10:58:05'
+generated_at: '2026-08-12T19:19:42'
 items:
 - id: BUG-0001
   type: BUG
@@ -120,7 +120,7 @@ items:
   type: BUG
   title: Der PM der zweiten Sitzung stuetzt den Handover auf das Rohtranskript, nicht
     auf den Sitzungsbrief
-  status: TRIAGED
+  status: REJECTED
   revision: 1
   approval_ref: null
 - id: BUG-0020
@@ -190,6 +190,13 @@ items:
   type: BUG
   title: Zwei literale Backspace-Zeichen (0x08) im Quelltext von gate_ledger_valid.py
   status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0031
+  type: BUG
+  title: The Codex entry file routes handover on a bare mention of the marker (BUG-0011
+    analogue)
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: DEC-0002
@@ -436,6 +443,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0040
+  type: DEC
+  title: 'BUG-0019 is not a defect: reading the old session transcript is a legitimate
+    diagnosis/recovery fallback, not a forbidden dependency'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -533,6 +547,18 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0017
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0018
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0019
   type: EVD
   title: null
   status: null
@@ -1010,6 +1036,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0052
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0053
   type: TSK
   title: null
   status: DRAFT

@@ -132,7 +132,9 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    tool-call parse failures) has nowhere left to grow — do not recreate it in an item body.
    **After each PR merge, propose a FRESH session** — beyond ~800k context, real runs showed tool-call glitches
    and lossy mid-gate compaction; `generated/session_brief.yaml` plus the active items make resuming lossless,
-   and a normal restart never reads the transcript.
+   so a clean restart does not NEED the transcript. The transcript stays available as an explicit
+   diagnosis/recovery fallback — e.g. after a crash or an unclean session end where the kernel had not yet
+   written all state — and consulting it then is legitimate.
 9. **REPORT + ASK** — what was done + ideas, then use the provider-native question mechanism for “what next?”
    (options + free text, include IDs). **Always name a recommended option with a reason** — never neutral.
    Surface only **1–3 high-value ideas** here (bundled, never a constant stream, no generic filler — §14); an

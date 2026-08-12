@@ -238,7 +238,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "234af44cbfb1b6de",
+        "digest": "31d03e0fde8c2e0b",
         "hooks": [
           "gate_dispatch",
           "gate_git"
@@ -667,7 +667,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "30fe2096384d5165",
+        "digest": "6feeda6d2979662c",
         "hooks": [
           "guard_yaml_valid"
         ]

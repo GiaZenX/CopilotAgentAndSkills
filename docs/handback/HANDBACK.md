@@ -69,3 +69,34 @@ Reparaturen sind trotzdem richtig, nur die ursprüngliche Vermutung stimmte nich
 
 Fehler-Beschreibungen sind fest gespeichert und können nicht nachträglich geändert werden — deshalb
 steht die Korrektur hier statt in den Fehlern selbst.
+
+---
+
+## Noch zur Info: die Erkennung „ist hier ein Team installiert?" ist besser geworden (DEC-0039 / BUG-0011)
+
+Es gibt eine Regel, die beim Sitzungsstart entscheidet, ob ein Ordner einem „Projektmanager"
+übergeben wird. Sie schaut auf die erste Zeile einer Datei. **Bisher** reichte, dass ein bestimmtes
+Stichwort **irgendwo** in dieser Zeile stand — sogar in einem Zitat oder in einem Satz, der das
+Gegenteil behauptet. Das ist jetzt repariert: es zählt nur noch die **exakte Einbau-Zeile**, und
+nichts, was dahinter angehängt ist.
+
+**Zwei Dinge dazu, die nur du von außen erledigen kannst:**
+
+1. **Damit die verbesserte Regel auch bei dir wirkt, muss die neue Fassung ausgerollt werden.** Die
+   Reparatur liegt in der Repo-Quelle (`user/claude/CLAUDE.md`). Deine tatsächlich laufende globale
+   Datei (`C:\Users\zenti\.claude\CLAUDE.md`) benutzt bis dahin weiter die alte „enthält-das-Stichwort"-
+   Regel. Solange du nicht kopierst, bleibt die alte Regel aktiv — deshalb ist es weiter richtig, dass
+   dieses Repo das Stichwort in seiner `CLAUDE.md` **nirgends** stehen hat. Ob und wann du die neue
+   Fassung übernimmst, entscheidest du.
+
+2. **Ein Kommentar in einer Schutzregel-Datei ist nach dem Ausrollen veraltet** (nur ein erklärender
+   Text, keine Funktion): `.claude\hooks\test_gates.py`, Zeilen 469–473, beschreibt die alte
+   „enthält-das-Stichwort"-Logik. Solange die alte globale Datei live ist, stimmt er noch; sobald du
+   die neue Fassung ausrollst, sollte dort ein Verweis auf DEC-0039 hin. Die eigentliche Prüfung in
+   der Datei bleibt bewusst streng (Stichwort ganz raus) — das ist der sichere Gürtel, unabhängig von
+   der Regelform. **Nichts Dringendes**; nur, damit es nicht vergessen wird.
+
+3. **Das Codex-Gegenstück ist noch offen** (Fehler **BUG-0031**). Dieselbe „enthält-das-Stichwort"-
+   Schwäche steckt noch in der Codex-Einstiegsdatei (`user\codex\AGENTS.md`, Zeilen 22–25). DEC-0039
+   hat den Fix bewusst nur auf die Claude-Seite begrenzt, weil die Codex-Seite eine eigene Messung
+   braucht. Das repariert der Harness später selbst — hier nur genannt, damit es auf dem Schirm ist.

@@ -140,12 +140,21 @@ You **first interview the user and draft a plan, then install** the kit, then ha
    `agent: project-manager` setting only become active at the **next** session start. So do not delegate or
    derive anything now. From that session on the kit's `gate_write_scope` refuses every tool write under
    `project_memory/`: the kernel is the state's only writer, so the PM captures through it — and where that
-   path is not yet walkable it reports the gap instead of editing a state file. Tell the user clearly and
-   **STOP**, naming the follow-up prompt:
+   path is not yet walkable it reports the gap instead of editing a state file.
+   **The ONLY action you ask of the user is to restart the session.** Do **NOT** invent, request, or push any
+   trust, permission, `/hooks`, approval, or security ceremony — there is none to run now, and inventing one
+   pushes a non-technical user through a step that does not exist. The freshly installed kit hooks are **not
+   active in this session**; they activate only at the next start. Because of exactly that, **scope approval is
+   neither requested nor minted here** — the Project Manager requests it and the kernel mints it in the session
+   AFTER the restart, once the hooks are live (measured: the mint runs cleanly there, not here). Any "confirm
+   the hook bundle / run `/hooks` / grant permission first" step is a hallucination; do not produce it. Tell
+   the user clearly and **STOP**, with exactly this message and no invented security step:
    "✅ Team installiert und dein Plan liegt als Entwurf bereit. **Bitte starte die Session neu** (Fenster
    schließen/öffnen oder neue Session im selben Ordner). Schreib dann einfach irgendwas (z. B. »weiter«) —
    es wird nichts automatisch abgeschickt, die erste Nachricht gehört dir; ich melde mich als Project
-   Manager (Opus) mit dem Plan und verfeinere ihn mit dir."
+   Manager (Opus) mit dem Plan und verfeinere ihn mit dir. Die Freigabe für den Arbeitsbereich (Scope) frage
+   ich dann dort; sie wird erst nach dem Neustart erteilt und protokolliert, weil die Schutzregeln des Teams
+   erst dann aktiv sind. Du musst jetzt nichts freigeben, bestätigen oder eintippen — nur neu starten."
 
 From the next session the repo starts directly as the `project-manager` agent (opus, persistent memory,
 preloaded playbook). On the user's first message — whatever it says — it **reads `product/masterplan.md` and

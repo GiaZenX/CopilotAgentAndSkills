@@ -4875,6 +4875,120 @@ def test_the_enforcement_reference_names_the_file_that_switches_a_gate_off():
                 "depends on." % (kit, name, "/".join(sorted(candidates))))
 
 
+# ---------------- TSK-0053 / DEC-0040 + BUG-0017: honest handover text ----------------
+# The entry file the global initializer runs, deployed to ~/.claude/CLAUDE.md. Not a kit-hash input,
+# so it carries no VERSION; measured here because BUG-0017 lived in exactly this restart step.
+ENTRY_FILE = os.path.join(ROOT, "user", "claude", "CLAUDE.md")
+
+# A negated CONSUME verb next to the transcript: "never reads/consults/opens/accesses/looks at/
+# inspects". The negator sits within two words of the verb, so a negation that targets NEED/written
+# ("does not NEED the transcript", "had not yet written") does not match — only a claim that the
+# transcript itself is not consumed. The verb set is the synonyms of "read it", not the literal word,
+# so a reworded guarantee ("never consults the transcript") is caught as well: DEC-0040 forbids the
+# never-consult GUARANTEE in any spelling, while keeping the read a legitimate diagnosis/recovery
+# fallback. "consulting/reading" (the gerund the honest text uses) is deliberately NOT in the set —
+# it is the positive fallback form, and no `\b`-terminated verb here matches it.
+_CONSUME_VERB = (r"(?:read(?:s)?|consult(?:s|ed)?|open(?:s|ed)?|access(?:es|ed)?|"
+                 r"look(?:s|ed)?\s+at|inspect(?:s|ed)?)")
+_NEGATED_READ = re.compile(
+    r"\b(?:never|not|no|n't)\b(?:\W+\w+){0,2}?\W+" + _CONSUME_VERB + r"\b", re.IGNORECASE)
+
+
+def _statements(text):
+    """Whitespace-flattened, terminator-split fragments — so a claim that wraps across lines (the
+    research SKILL split 'never reads' / 'the transcript' over two lines) is read as ONE statement,
+    which a naive line scan would miss."""
+    flat = re.sub(r"\s+", " ", text)
+    return [frag for frag in re.split(r"[.;!?]", flat) if frag.strip()]
+
+
+def _shipped_skills():
+    for path in sorted(glob.glob(os.path.join(ROOT, "team-kits", "*", "skills", "**", "SKILL.md"),
+                                 recursive=True)):
+        yield path, open(path, encoding="utf-8", errors="ignore").read()
+
+
+def test_no_shipped_skill_claims_the_transcript_is_never_read():
+    """DEC-0040: reading the old transcript on restart is a legitimate diagnosis/recovery fallback,
+    NOT a defect and NOT to be forbidden. The dev + research PM SKILLs falsely guaranteed 'a normal
+    restart never reads the transcript' — a property the code does not build (the model DOES read it)
+    that would also wrongly exclude the crash-recovery case.
+
+    Superset by design: every shipped SKILL is scanned, not a hand-listed set of manager roles — a
+    role that GAINS this claim is caught the day it ships. Only statements that mention the transcript
+    are inspected, so the architect/methodologist 'the validator never reads for this' rows (about an
+    item, not the transcript) are out of scope. Reworded false forms ('is not read', 'does not read
+    it') are caught too, because the check is the negated-read property, not one sentence."""
+    offenders = []
+    for path, text in _shipped_skills():
+        for frag in _statements(text):
+            if "transcript" not in frag.lower():
+                continue
+            if _NEGATED_READ.search(frag):
+                offenders.append("%s :: %s" % (os.path.relpath(path, ROOT), frag.strip()))
+    assert not offenders, (
+        "a shipped SKILL guarantees the transcript is never read (false — the model reads it, and "
+        "DEC-0040 keeps that read a legitimate diagnosis/recovery fallback):\n" + "\n".join(offenders))
+
+
+def _restart_step(text):
+    """The Auto-Init ordered-list item that tells the user to restart — the step that RUNS at the
+    handover boundary. Located by structure (the ordered-list item opening the restart instruction)
+    and sliced to the next top-level block, so the assertion reads only that step, not the file."""
+    lines = text.splitlines()
+    start = next((i for i, ln in enumerate(lines)
+                  if re.match(r"\s*\d+\.\s+\*\*Stop and ask for a restart", ln)), None)
+    if start is None:
+        return None
+    body = [lines[start]]
+    for ln in lines[start + 1:]:
+        # A new ordered item, a new section, or any non-indented non-empty paragraph ends the step.
+        if re.match(r"\s*\d+\.\s", ln) or ln.startswith("## ") or (ln and not ln[0].isspace()):
+            break
+        body.append(ln)
+    return "\n".join(body)
+
+
+def test_entry_restart_step_forbids_an_invented_trust_ceremony():
+    """BUG-0017: in a live phase-1 pilot the entry agent INVENTED a '/hooks trust' ceremony and pushed
+    a non-technical user to run it. The fix is an explicit negative instruction in the restart step —
+    the only user action is to restart; no invented trust/permission/hooks/approval ceremony.
+
+    Parses the restart STEP out of the file and asserts one statement in it both forbids inventing a
+    ceremony (a negator adjacent to invent/request/push...) AND names the ceremony it forbids
+    (/hooks / approval / permission / trust). A stray 'requires nothing' elsewhere cannot satisfy it,
+    because both properties must hold in the SAME statement. The pre-fix step named NEITHER /hooks nor
+    approval and carried no prohibition, so it fails this.
+
+    Behavioural confirmation that the fixed entry agent no longer invents /hooks needs a LIVE phase-1
+    pilot with the deployed entry file — that is the verifier's job, not reachable by a static test."""
+    block = _restart_step(open(ENTRY_FILE, encoding="utf-8", errors="ignore").read())
+    assert block, "the entry file has no identifiable restart step to check"
+    norm = re.sub(r"\s+", " ", re.sub(r"[*`]", "", block))
+    # A real PROHIBITION, not a merely descriptive sentence: either an imperative "do not <act>", or a
+    # negated INVENT-class verb (invent/produce/introduce/fabricate/make up...). A factual line such as
+    # "No trust or approval request happens in this session" carries a negator + a ceremony noun but
+    # neither shape, so it no longer passes — the step must actually TELL the agent not to invent one.
+    invent_class = (r"(?:invent(?:s|ed)?|produce(?:s|d)?|introduce(?:s|d)?|fabricate(?:s|d)?|"
+                    r"conjure(?:s|d)?|manufacture(?:s|d)?|make\s+up|made\s+up)")
+    forbid_imperative = re.compile(
+        r"\bdo\s+not\b(?:\W+\w+){0,3}?\W+"
+        r"(?:invent|request|push|produce|introduce|fabricate|demand|require|ask|run|perform)s?\b",
+        re.IGNORECASE)
+    forbid_invent = re.compile(
+        r"\b(?:not|never|no|n't)\b(?:\W+\w+){0,3}?\W+" + invent_class + r"\b", re.IGNORECASE)
+
+    def forbids(statement):
+        return bool(forbid_imperative.search(statement) or forbid_invent.search(statement))
+
+    ceremony = re.compile(r"/?hooks|approval|permission|trust|ceremony", re.IGNORECASE)
+    named = [s for s in re.split(r"[.;!?]", norm) if forbids(s) and ceremony.search(s)]
+    assert named, (
+        "the restart step no longer forbids inventing a trust/permission/hooks/approval ceremony — "
+        "BUG-0017 was exactly the entry agent inventing a /hooks step and pushing the user through it; "
+        "the explicit negative instruction, naming the ceremony, must stay in this step")
+
+
 # Where an exemption below is allowed to be used. ANY = the file genuinely has no template in V2, so
 # naming it is a true statement wherever it is written. KIT_ONLY = a DELETED V1 monolith that only
 # ONE kit's own text still has reason to name: inside that kit the name says what a store used to be

@@ -1,0 +1,44 @@
+id: DEC-0040
+title: 'BUG-0019 is not a defect: reading the old session transcript is a legitimate
+  diagnosis/recovery fallback, not a forbidden dependency'
+source: Lead+user decision 2026-08-12 after the BUG-0019/BUG-0017 measurement pilot
+  (EVD-0018); system-side per DEC-0037
+context: 'The two-session SDK pilot measured the phase-2 PM reading the raw transcript
+  (~/.claude/projects/*.jsonl) 3x AFTER reading session_brief + masterplan + PR-0001.
+  The handover did NOT depend on the transcript (it worked from brief+items; the read
+  was supplementary). The acceptance criterion (HARNESS_V2_SPEC.md:1073) is ''0 active
+  transcript DEPENDENCIES'', not ''0 reads''. The verifier and lead first mis-called
+  any read as a violation. The user raised two decisive objections: (a) forbidding
+  the read via constitution PROSE would be exactly the fragile prose-workaround this
+  repo distrusts (the spec itself lists prose process-rules as a V1 failure); (b)
+  when session 1 crashes, aborts, or a new chat is opened without ending the old one
+  cleanly, the canonical state (brief/items) may be incomplete because the kernel
+  writes state incrementally -- and then the transcript is the ONLY recovery source.
+  The spec already frames transcripts as ''reine Diagnose/Audit'' (HARNESS_V2_SPEC.md:583),
+  which covers exactly that abnormal case.'
+decision: 'BUG-0019 is REJECTED (not a defect). Transcript reading on restart stays
+  ALLOWED as a diagnosis/recovery fallback and is NOT enforced against by any prohibition.
+  The only meaningful, enforceable property is the DEPENDENCY one: a clean handover
+  must WORK without the transcript -- which the pilot measured as satisfied. We do
+  not touch the PM''s transcript-reading behaviour and we add no prose forbidding
+  or discouraging it.'
+consequences: '(1) Correct one FALSE claim in the kit: the dev-team project-manager
+  SKILL (project-manager/SKILL.md:135) states ''a normal restart never reads the transcript''
+  -- that is untrue (the model does read it) and it would wrongly exclude the user''s
+  crash-recovery case. It is rewritten to the honest form: the clean path does not
+  NEED the transcript, but it remains an explicit diagnosis/recovery fallback. This
+  is a kit change via the implementer. (2) BUG-0017 (the entry session invents a non-existent
+  /hooks ceremony and pushes the user) stays a real, separate defect and is fixed
+  independently: the entry session honestly states the approval is minted after restart,
+  no invented ceremony. (3) The optional ''carry the pending-approval state into an
+  item'' improvement is deliberately NOT done (user decision: avoid over-building),
+  since it is not needed once (1)+(2) hold and the transcript remains a fallback.'
+related:
+- BUG-0019
+- BUG-0017
+- EVD-0018
+- DEC-0037
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-12T16:22:23'

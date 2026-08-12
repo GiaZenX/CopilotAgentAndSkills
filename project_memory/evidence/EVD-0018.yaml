@@ -1,0 +1,23 @@
+id: EVD-0018
+kind: acceptance
+related:
+- BUG-0019
+- BUG-0017
+result: fail
+summary: 'Two-session SDK auto-init pilot (fresh ''Gartentagebuch''), kit 2026.08.12-3,
+  store restored to 2026.08.10-1 after. BUG-0019 FAIL: phase-2 PM still reaches the
+  raw transcript (~/.claude/projects/*.jsonl) AFTER reading brief+masterplan+PR-0001
+  -- 3 accesses (was 6), supplementary not functional (AC-1 met, AC-3 = extra reading),
+  the brief lacks the LAST-TURN/pending-approval state (AC-2 measured); honest confound:
+  standing_decisions empty in a fresh init so TSK-0051 could not carry here. BUG-0017
+  FAIL-phase1 only: entry session invents the /hooks ceremony (AC-2 violated), but
+  phase-2 PM MINTS CLEANLY over the SDK (APR-0001, mint_code 5acc16, PR-0001 APPROVED)
+  -- the ''SDK cannot mint'' hypothesis is REFUTED; root = entry-session hooks-inactive
+  (same as BUG-0016). Convergence: one fix -- record pending-approval/handover context
+  into canonical state at the restart boundary -- closes both. BUG-0018 umlauts look
+  fixed; exactly one PR-0001, no drift.'
+artifact_refs:
+- docs/reviews/2026-08-12-bug0019-bug0017-pilot.md
+revision: 1
+approval_ref: null
+created: '2026-08-12T13:53:55'
