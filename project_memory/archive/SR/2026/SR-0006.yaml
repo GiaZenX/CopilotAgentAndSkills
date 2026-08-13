@@ -16,7 +16,8 @@ affected_components:
 - .claude/hooks/
 - .claude/agents/harness-lead.md
 - CLAUDE.md
-status: PROPOSED
+status: SUPERSEDED
 revision: 1
 approval_ref: null
 created: '2026-08-04T17:30:27'
+closed_at: '2026-08-13T11:21:37'

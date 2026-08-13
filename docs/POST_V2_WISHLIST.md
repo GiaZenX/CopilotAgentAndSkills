@@ -1891,7 +1891,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 
 | # | Zustand | Was an die Stelle des Schutzes tritt |
 |---|---|---|
-| H2 | **Ausnahme, Abnahme offen** | nur `commit` ist gesperrt; jede andere historyschreibende Form braucht erst eine Vertragsänderung an `SR-0006` |
+| H2 | **GESCHLOSSEN** (TSK-0056), mit benannten Resten | Gate 3 urteilt über die Eigenschaft „autoriert/installiert einen Commit" statt über das Wort `commit`; Vertrag zuerst (`SR-0006`→`SR-0009`, DEC-0042); Aufzählung mit Stolperdraht gegen das installierte git; Reste: Import-Objekt (mehrschrittig, kein Ein-Aufruf-Loch), Über-Verweigerungen mit Weg durch, H11-Interpreterklasse |
 | H7 | **Ausnahme, Abnahme offen** | Gate 4 prüft Form, nicht Deckung; die Reparaturstelle liegt im Kernel (`AUTOMATA` ohne `done_states`) |
 | H11 | **Ausnahme, Abnahme offen** | **nichts Technisches.** Gemessen 2026-08-05: `.claude/settings.json` `permissions` trägt genau `deny: ["Agent(harness-lead)"]` und begrenzt die Shell nicht. Die Begrenzung ist **sozial** — Rollentrennung und Item. Eine wirksame Berechtigungshaltung wäre der Schnitt, ist aber eine Nutzerentscheidung und heute nicht gebaut |
 | H12 | **Ausnahme, Abnahme offen** | nichts liest heute einen `allowed_scope`; wer `.claude/` schreiben darf, schreibt auch die Gates — ebenfalls **sozial** |
@@ -1979,35 +1979,60 @@ Digest es darum gar nicht liest. Gemessen mit gültigem Urteil im Baum:
 für jedes Umleitungsziel entscheidet, ob es im Baum liegt, den der Digest deckt — machbar, aber
 heute nicht gebaut; die verweigernde Richtung ist die sichere. **Reibung, kein Loch.**
 
-### H2 — Nur das Literal `commit` — OFFEN, und das ist die wichtigste offene Lücke
+### H2 — Nur das Literal `commit` — GESCHLOSSEN (TSK-0056, BUG-0034), mit benannten Resten
 
-**Mechanismus:** Gate 3 fragt `Invocation.runs("commit")`. Die Eigenschaft, um die es geht, ist aber
-„**dieses Unterkommando kann einen Commit aufzeichnen**", und die trifft auch `merge`, `revert`,
-`cherry-pick`, `am`, `rebase --continue` und `stash`.
+**Mechanismus (war):** Gate 3 fragte `Invocation.runs("commit")`. Die Eigenschaft, um die es geht,
+ist aber „**diese Zeile kann einen Commit in die Branch-History autorieren oder installieren**", und
+die trifft auch `merge`, `revert`, `cherry-pick`, `am`, `rebase`, `pull`, `stash`, die Klempnerei
+(`commit-tree`, `hash-object -t commit`, `fast-import`) und jede Kette, die eines davon per
+Kommandoersetzung mit einem Ref-Move verbindet.
 
-**Kette (gemessen):** `git merge --no-ff other` **rc 0**, `git revert --no-edit HEAD` **rc 0** — mit
-gültigem Urteil im Baum wie ohne. Ein Commit entsteht, ohne dass ein Beweismittel gefragt wurde.
+**Kette (gemessen, vor dem Fix):** `git merge --no-ff other` **rc 0**, `git revert --no-edit HEAD`
+**rc 0** — mit gültigem Urteil im Baum wie ohne. Ein Commit entstand, ohne dass ein Beweismittel
+gefragt wurde.
 
-**Urteil: blockierend nach der Regel — in dieser Runde NICHT geschlossen.** Der Grund ist keine
-Bequemlichkeit, sondern dass beide möglichen Formen falsch sind:
+**Vertrag zuerst:** `SR-0006` sagte wörtlich „Kein **Commit**"; die Erweiterung war damit eine
+**Vertragsänderung**. `SR-0006` ist durch **`SR-0009`** abgelöst (DEC-0042, DEC-0007), das die
+Eigenschaft als „keine Aufzeichnung von Historie ohne Urteil" definiert: gelesen am **Autor-Ende**
+(nicht am Ref-Move, weil beide eine Zeile sein können), inklusive der Klempnerei, die ein
+Commit-Objekt schreibt; eine Produce-First-Form (`--no-commit`) ist **nur** ausgenommen, wo sie das
+Aufzeichnen für **jede** Schreibweise und Konfiguration derselben Invocation unterdrückt.
 
-- eine **Aufzählung** der historyschreibenden Unterkommandos ist genau die Form, die dieses Repo
-  wiederholt eine Runde später bezahlt hat (Hausregel 1), und weder Kernel noch `_compat` leiten
-  eine ab;
-- die **Umkehrung** („alles verweigern, was nicht beweisbar lesend ist") verweigert `git branch`,
-  `git checkout -b`, `git fetch` — den normalen Weg, auf dem man überhaupt erst zu einem Commit
-  kommt. Ein Gate, das die eigene Arbeit stilllegt, ist kein Fortschritt.
+**Wie geschlossen (TSK-0056):** `gate_commit_evidence.py` verweigert jedes historyschreibende Verb
+außer `commit` mit einer Abhilfe, die den Produce-First-Weg nennt (erst ohne Aufzeichnen erzeugen,
+Urteil holen, über `git commit` festschreiben); der Commit-Pfad bleibt exakt so beweisgebunden wie
+zuvor. Die Menge ist eine Aufzählung **mit Stolperdraht gegen das installierte git** (git benennt
+sie selbst nicht treu — `--list-cmds=list-history` über- und unterzählt, gemessen): jeder Eintrag
+autoriert nachweislich Historie, und ein fehlender Autor macht einen Test rot. Der normale Weg zum
+Commit (`branch`, `checkout -b`, `switch`, `fetch`, `status`, `diff`, `add`) bleibt offen. Zwei
+Prüferrunden: F1 (Klempner-Autor `hash-object`) und F2 (`pull --no-commit --rebase` schaltete das
+Aufzeichnen wieder ein) waren im ersten Bau noch offen und sind geschlossen; die Ketten sind rc 2,
+jeder Fix durch einen ohne ihn roten Test gedeckt (F1: 4 rot, F2: 8 rot).
 
-Dazu kommt: `SR-0006` sagt wörtlich „Kein **Commit**". Die Erweiterung ist damit eine
-**Vertragsänderung**, keine Hook-Änderung. **Vorschlag:** `SR-0006` auf „keine Aufzeichnung von
-Historie ohne Beweismittel" umformulieren und die Eigenschaft dort definieren; erst dann bauen.
+**Urteil: GESCHLOSSEN mit benannten Resten.** Die gemessenen Ketten sind rc 2, jeder Fix durch
+einen ohne ihn roten Test gedeckt, der Vertrag zuerst geändert; offen bleiben nur die unten
+benannten Reste, keiner davon ein Ein-Aufruf-Fälschungsweg.
 
-**Urteil nach der vollen Regel: benannte Ausnahme, Abnahme des Nutzers offen.** Was stattdessen
-begrenzt: `git commit` selbst ist gesperrt, und das ist die Form, in der in diesem Repo Historie
-entsteht — `merge`, `revert`, `cherry-pick` und `rebase` kommen hier praktisch nicht vor, weil auf
-einem Zweig gearbeitet wird. Die Begrenzung ist damit eine **Gewohnheit**, keine Durchsetzung, und
-genau das ist der Satz, über den der Nutzer entscheidet: entweder `SR-0006` wird umformuliert und
-die Eigenschaft gebaut, oder die Ausnahme bleibt bewusst stehen.
+**Benannte Reste (keiner ein Ein-Aufruf-Loch):**
+
+- **Import/Fremdautor-Objekt:** `unpack-objects`, `index-pack`, `clone`, `bundle` installieren ein
+  **anderswo** autoriertes Commit-Objekt; `update-ref`/`branch -f`/`reset --hard`/`checkout -B`
+  (offen per AC-2) machen daraus Branch-History. **Begrenzung:** das Objekt muss vorher existieren,
+  und es in einem zweiten Repo per Werkzeugaufruf zu autorieren verweigert dasselbe Gate (jedes
+  autorierende Verb ist verweigert, egal welches `-C`) — kein Ein-Aufruf-Fälschungsweg. Dieselbe
+  Klasse wie `fetch`; Einfalten wäre fail-closed möglich, über-verweigert aber legitimen
+  Pack-Empfang. Design-Note §8.1.
+- **Über-Verweigerungen (fail-closed, Reibung statt Loch):** `merge --ff-only`, `merge --squash`,
+  `merge/rebase/cherry-pick/am --abort`, `pull --no-commit --no-rebase`, `hash-object -w <blob>`,
+  `stash list|show|pop`, `notes list`, sowie die Reader-Übertriggerklasse (`ls git*`,
+  `echo git$VERSION`, unquotierte Prosa `echo run git merge later`). Jede trägt einen begehbaren
+  Weg durch (z. B. `git merge --no-commit --ff-only …`, `git reset --hard` statt `--abort`,
+  Quotierung der Prosa). Design-Note §8.2.
+- **Interpreter-Klasse (H11):** `submodule foreach '<git …>'`, `bisect run <script>`, ein
+  handgebautes Packfile für `index-pack` — Code, den kein Gate liest; unverändert benannt.
+- **Zeitmessungstest unter Last:** `test_gate3_answers_before_its_registration_however_costly…`
+  wurde in Runde 1 knapp lastabhängig; jetzt auf die volle Registrierung dimensioniert mit einem
+  `BUG-0033`-Zeiger an der Assertion.
 
 ### H3 — `project_memory/` war für Werkzeuge offen — GESCHLOSSEN, mit einer benannten Resthälfte
 

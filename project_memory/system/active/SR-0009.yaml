@@ -1,0 +1,53 @@
+id: SR-0009
+title: 'This repo''s enforcement: four gates, a bound session agent, and no history
+  record without a verdict'
+derives_from: PR-0002
+contract: 'Four PreToolUse gates in .claude/, plus a settings.json binding `agent:
+  harness-lead` and its definition. THE TRIGGER IS A PROPERTY, NOT A TOOL LIST: every
+  gate is registered on every tool surface through which its subject can be reached
+  -- the write tools AND the shells (Bash|PowerShell) -- and a new write-capable surface
+  belongs to the registration the day it appears. THE PROTECTED AREA IS WHAT THE RUNNING
+  DERIVATION NAMES (_harness.ProtectedArea, executed, not quoted): everything that
+  enters a kit content hash; .claude/ as a whole; every file the derivation itself
+  reads, the producer included; and the canonical part of project_memory/ (everything
+  but staging/) for EVERY caller. Clause 1: the session agent writes nothing in the
+  protected area -- implementer subagents carry such changes, ordered by an item.
+  Clause 2: a spawn in the change circle names an open item, unless the spawned role''s
+  definition declares harness_item: none. Clause 3: NO RECORDING OF HISTORY WITHOUT
+  A VERDICT. A command line whose git subcommand can record a new commit into branch
+  history -- a new commit object that HEAD or a ref under refs/heads comes to point
+  at -- runs only when an active Evidence item with result: pass names the digest
+  of the tree that commit records. The property is ''this line can author or install
+  a commit into branch history'', and it is read at the AUTHORING end, not the ref-moving
+  end, because the two can be one line (update-ref $(commit-tree ...)); it covers
+  the plumbing that writes a commit object (commit-tree, hash-object -t commit, fast-import
+  and import kin) as much as the porcelain that does. Where that digest cannot exist
+  before the command runs (merge, revert, cherry-pick, am, rebase and kin author their
+  result in the same step), the line is refused with the remedy to produce the state
+  first without recording (--no-commit and kin), obtain the verdict, and record through
+  the one certifiable form. A produce-first form is exempt ONLY where the option suppresses
+  recording for EVERY further spelling and EVERY configuration of the SAME invocation;
+  where a subcommand re-enables recording by another option or a config of the same
+  line (pull --rebase, -c pull.rebase=true), no exemption exists -- its remedy routes
+  through the produce-first form of a subcommand that does suppress (fetch then merge
+  --no-commit). The set of history-recording subcommands is DERIVED from the running
+  git where git names it; git does NOT name it faithfully (measured: --list-cmds=list-history
+  both over- and under-counts), so an enumeration is unavoidable and carries a tripwire
+  measuring both ends: every entry demonstrably records or authors history on the
+  installed git, and a history-recorder absent from the set turns a test red. The
+  ordinary path TO a commit -- branch, checkout, switch, fetch, status, diff, add
+  -- stays open: a gate that halts the work it certifies is not enforcement. Clause
+  4: the task list carries at most ONE entry without an item id; every other entry
+  names an open item that can carry work and is not terminal. All four gates bind
+  at session start; the hook FILES are read fresh per call, and every registration
+  names a timeout the deadline reader enforces.'
+affected_components:
+- .claude/settings.json
+- .claude/hooks/
+- .claude/agents/harness-lead.md
+- CLAUDE.md
+- tools/bump_kit_version.py
+status: ACCEPTED
+revision: 1
+approval_ref: null
+created: '2026-08-13T11:21:35'

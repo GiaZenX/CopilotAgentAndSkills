@@ -764,12 +764,33 @@ def test_gate3_ignores_a_command_that_does_not_commit(project):
 @pytest.mark.parametrize("command", [
     'git commit -m "wip"',
     'bash -lc "git commit -m wip"',      # the payload is code one level down
-    'git $V -m wip',                     # a verb the text does not fix: could be any subcommand
 ])
 def test_gate3_refuses_a_commit_without_evidence(project, command):
     rc, err = run(project, "gate_commit_evidence.py", bash_payload(project, command))
     assert rc == 2, "allowed %r" % command
     assert "diff:" in err, "the refusal names no subject digest"
+
+
+def test_gate3_refuses_a_verb_it_cannot_read_without_asking_about_evidence(project):
+    """A verb the text does not fix is refused OUTRIGHT, and no longer routed past the digest.
+
+    `git $V -m wip` used to be refused here for the missing Evidence, which reads as "record a
+    verdict and this line is fine" -- and it was: with a verdict in the tree the same line was
+    measured rc 0, whatever `$V` would have expanded to. Since SR-0009 clause 3 the answer is that
+    an unreadable verb could be one that authors a commit, so the refusal is unconditional and its
+    remedy is to spell the subcommand out.
+    """
+    rc, err = run(project, "gate_commit_evidence.py", bash_payload(project, "git $V -m wip"))
+    assert rc == 2, "allowed a line whose git subcommand the text does not fix"
+    assert "spell the subcommand literally" in err, (
+        "the refusal does not say how to comply: %s" % err[:400])
+    # THE HALF THAT MAKES THIS A MEASUREMENT AND NOT A PIN: the old gate refused this line too,
+    # for the missing Evidence, and printed the digest of the tree with the command that records a
+    # verdict for it -- i.e. it told the caller how to make the line RUN. A digest in this refusal
+    # means the line is still on the evidence route.
+    assert "diff:" not in err, (
+        "the line was routed past the working tree's digest, so recording a verdict would open "
+        "it -- whatever the verb turns out to be: %s" % err[:400])
 
 
 def test_gate3_remedy_is_executable_and_opens_the_commit(project, tmp_path, open_item):
@@ -4327,3 +4348,746 @@ def test_the_kit_these_gates_read_is_the_one_the_kernel_calls_a_kit(project, tmp
     assert done.stdout.strip() == os.path.join(planted, "hooks"), (
         "the gates read %r as the kit while the kernel calls only %r one"
         % (done.stdout.strip(), os.path.join(planted, "hooks")))
+
+
+# -- no recording of history without a verdict (TSK-0056 / BUG-0034, SR-0009 clause 3) ----------
+#
+# Gate 3's subject stopped being the WORD `commit` this round. Two things are measured below and
+# they are different subjects: the CLASSIFICATION, against the installed git in real repositories
+# (this is the tripwire the gate's enumeration owes -- see
+# `docs/reviews/2026-08-13-tsk0056-history-recording-design.md`, section 7), and the REFUSALS, as
+# real hook processes against a stand-in project whose tree already carries a passing verdict.
+#
+# THE VERDICT IN THE TREE IS WHAT MAKES THE REFUSAL TESTS MEASURE THIS ROUND AT ALL. Without one,
+# every line below is rc 2 for the OLD reason ("this working tree carries no passing Evidence") and
+# the whole block would be green against the very defect it exists for.
+
+
+def _gate3():
+    """Gate 3 as a MODULE, so every table below is the one the running gate decides with.
+
+    Imported rather than read as text: a test that searches the file for a subcommand name is
+    satisfied by a comment, and what this round is about is what the gate DOES with a verb.
+    """
+    sys.path.insert(0, HOOKS)
+    import gate_commit_evidence
+    return gate_commit_evidence
+
+
+def _git_in(work, *arguments, **keywords):
+    """git in `work`, with the identity a fresh repo has to be given, and with stdin CLOSED.
+
+    Closed stdin is not tidiness. `git fast-import` and `git quiltimport` READ it, and a scenario
+    that inherits this process's stdin waits for input instead of measuring anything -- measured
+    while this table was built, the first run of it hung past 120 s.
+    """
+    return subprocess.run(
+        ["git", "-c", "commit.gpgsign=false", "-c", "user.email=t@t.t", "-c", "user.name=t",
+         "-c", "protocol.file.allow=always"] + list(arguments),
+        cwd=work, capture_output=True, text=True, stdin=subprocess.DEVNULL, timeout=120,
+        **keywords)
+
+
+def _commit_objects(work):
+    """Every commit OBJECT in this repo -- not the reachable ones, and that is the whole point.
+
+    `git stash`, `git commit-tree` and `git replay` author commits no branch reaches, and telling
+    those apart from the commands that author nothing at all is exactly what the gate's two halves
+    rest on.
+    """
+    done = subprocess.run(["git", "cat-file", "--batch-all-objects",
+                           "--batch-check=%(objectname) %(objecttype)"],
+                          cwd=work, capture_output=True, text=True, stdin=subprocess.DEVNULL,
+                          timeout=120)
+    return {line.split()[0] for line in done.stdout.splitlines()
+            if line.split()[1:2] == ["commit"]}
+
+
+def _two_sided_repo(base, name):
+    """A fresh repo where `main` and `other` have diverged by one commit each."""
+    work = os.path.join(base, name)
+    os.makedirs(work)
+    _git_in(work, "init", "-q", "-b", "main", ".")
+    with open(os.path.join(work, "a.txt"), "w", encoding="utf-8") as handle:
+        handle.write("base\n")
+    _git_in(work, "add", "-A")
+    _git_in(work, "commit", "-qm", "base")
+    _git_in(work, "branch", "other")
+    with open(os.path.join(work, "b.txt"), "w", encoding="utf-8") as handle:
+        handle.write("main side\n")
+    _git_in(work, "add", "-A")
+    _git_in(work, "commit", "-qm", "main side")
+    _git_in(work, "checkout", "-q", "other")
+    with open(os.path.join(work, "c.txt"), "w", encoding="utf-8") as handle:
+        handle.write("other side\n")
+    _git_in(work, "add", "-A")
+    _git_in(work, "commit", "-qm", "other side")
+    _git_in(work, "checkout", "-q", "main")
+    return work
+
+
+def _dirtied(work):
+    with open(os.path.join(work, "a.txt"), "a", encoding="utf-8") as handle:
+        handle.write("dirty\n")
+    return work
+
+
+def _plain(*arguments):
+    return lambda work: _git_in(work, *arguments)
+
+
+def _staged_commit(work):
+    _git_in(_dirtied(work), "add", "-A")
+    return _git_in(work, "commit", "-qm", "next")
+
+
+def _stashed(work):
+    return _git_in(_dirtied(work), "stash")
+
+
+def _mailbox(work):
+    with open(os.path.join(work, "patch.mbox"), "w", encoding="utf-8") as handle:
+        handle.write(_git_in(work, "format-patch", "-1", "other", "--stdout").stdout)
+    return work
+
+
+def _am(work):
+    return _git_in(_mailbox(work), "am", "patch.mbox")
+
+
+def _am_suppressed(work):
+    return _git_in(_mailbox(work), "am", _gate3().SUPPRESSOR, "patch.mbox")
+
+
+def _applied(work):
+    return _git_in(_mailbox(work), "apply", "patch.mbox")
+
+
+def _with_a_remote(work):
+    """A second repository as `origin`, with a history of its own."""
+    remote = work + "-remote"
+    os.makedirs(remote)
+    _git_in(remote, "init", "-q", "-b", "main", ".")
+    with open(os.path.join(remote, "r.txt"), "w", encoding="utf-8") as handle:
+        handle.write("remote\n")
+    _git_in(remote, "add", "-A")
+    _git_in(remote, "commit", "-qm", "remote base")
+    _git_in(work, "remote", "add", "origin", remote.replace("\\", "/"))
+    return work
+
+
+def _pulled(*extra):
+    def scenario(work):
+        return _git_in(_with_a_remote(work), "pull", "--no-edit", "--no-rebase",
+                       "--allow-unrelated-histories", *(list(extra) + ["origin", "main"]))
+    return scenario
+
+
+def _remote_sharing_base(work):
+    """A remote at `work + "-remote"` that shares `work`'s history and then advances by one commit.
+
+    A SHARED ANCESTOR is what a rebase pull needs -- an unrelated remote makes `--rebase` fail
+    (measured rc 128), so `_pulled` above uses `--no-rebase --allow-unrelated-histories`, which is
+    exactly why it could never exercise the case F2 is about. This one can.
+    """
+    remote = work + "-remote"
+    os.makedirs(remote)
+    _git_in(remote, "init", "-q", "-b", "main", ".")
+    _git_in(remote, "fetch", work.replace("\\", "/"), "main")
+    _git_in(remote, "reset", "--hard", "FETCH_HEAD")
+    with open(os.path.join(remote, "r.txt"), "w", encoding="utf-8") as handle:
+        handle.write("remote advance\n")
+    _git_in(remote, "add", "-A")
+    _git_in(remote, "commit", "-qm", "remote advance")
+    with open(os.path.join(work, "w.txt"), "w", encoding="utf-8") as handle:
+        handle.write("local advance\n")
+    _git_in(work, "add", "-A")
+    _git_in(work, "commit", "-qm", "local advance")
+    _git_in(work, "remote", "add", "origin", remote.replace("\\", "/"))
+    _git_in(work, "fetch", "-q", "origin")
+    return work
+
+
+def _pulled_rebase(*extra):
+    """`git pull --no-commit <rebase-spelling> origin main` against a diverged shared-base remote.
+
+    The rebase mode of pull authors a commit even WITH `--no-commit` -- measured, and the reason
+    `pull` is no longer a produce-first form (F2). The spelling is a parameter so the several ways
+    to ask for a rebase (`--rebase`, `-r`, `-c pull.rebase=true`) are each a real invocation and
+    not a comment.
+    """
+    def scenario(work):
+        return _git_in(_remote_sharing_base(work), "pull", "--no-commit",
+                       *(list(extra) + ["origin", "main"]))
+    return scenario
+
+
+def _pulled_rebase_config(work):
+    return _git_in(_remote_sharing_base(work), "-c", "pull.rebase=true", "pull", "--no-commit",
+                   "origin", "main")
+
+
+def _hash_object_commit(work):
+    """`git hash-object -t commit -w --stdin` -- the plumbing author F1 exposed.
+
+    BYTE stdin, not text: a commit object's header is parsed strictly, and this host's text mode
+    turns each `\\n` into `\\r\\n`, which git rejects as `bad sha1` on the tree line. Measured while
+    building this: the text form was rc 128, the byte form authors the object.
+    """
+    tree = _git_in(work, "rev-parse", "HEAD^{tree}").stdout.strip()
+    body = ("tree %s\nauthor a <a@a> 1 +0000\ncommitter a <a@a> 1 +0000\n\nfabricated\n"
+            % tree).encode("ascii")
+    done = subprocess.run(["git", "hash-object", "-t", "commit", "-w", "--stdin"], cwd=work,
+                          input=body, capture_output=True, timeout=120)
+    return subprocess.CompletedProcess(done.args, done.returncode, "",
+                                       done.stderr.decode("utf-8", "replace"))
+
+
+def _fetched(work):
+    return _git_in(_with_a_remote(work), "fetch", "origin")
+
+
+def _imported(work):
+    """`git fast-import`, whose stream is BYTES on purpose: written as text, this host rewrites
+    every newline as CRLF and git answers `Branch name doesn't conform to GIT standards`."""
+    head = _git_in(work, "rev-parse", "HEAD").stdout.strip()
+    stream = ("commit refs/heads/main\ncommitter t <t@t.t> 1700000000 +0000\n"
+              "data 8\nimported\nfrom %s\nM 100644 inline i.txt\ndata 6\nhello\n\n" % head)
+    done = subprocess.run(["git", "fast-import", "--quiet"], cwd=work,
+                          input=stream.encode("utf-8"), capture_output=True, timeout=120)
+    return subprocess.CompletedProcess(done.args, done.returncode, "",
+                                       done.stderr.decode("utf-8", "replace"))
+
+
+# One scenario per subcommand the gate calls an author. THE KEYS ARE THE VERBS, so the comparison
+# with `AUTHORS_A_COMMIT` below is an equality and not a reading.
+RECORDS_HISTORY = {
+    "commit": _staged_commit,
+    "merge": _plain("merge", "--no-ff", "--no-edit", "other"),
+    "pull": _pulled(),
+    "rebase": _plain("rebase", "other"),
+    "revert": _plain("revert", "--no-edit", "HEAD"),
+    "cherry-pick": _plain("cherry-pick", "other"),
+    "am": _am,
+    "filter-branch": _plain("filter-branch", "-f", "--msg-filter", "sed s/^/x/", "HEAD~1..HEAD"),
+    "subtree": _plain("subtree", "add", "--prefix=sub", ".", "other"),
+    "fast-import": _imported,
+    "stash": _stashed,
+    "commit-tree": _plain("commit-tree", "-m", "x", "HEAD^{tree}"),
+    "hash-object": _hash_object_commit,
+    "notes": _plain("notes", "add", "-m", "x"),
+    "replay": _plain("replay", "--onto", "main", "main..other"),
+}
+
+# The other end of the same tripwire: commands that must author NOTHING. Two families, and both
+# belong here -- the ordinary path to a commit that AC-2 of BUG-0034 keeps open, and the
+# near-misses that move a ref or the working tree without authoring anything.
+AUTHORS_NOTHING = {
+    "branch": _plain("branch", "newbranch"),
+    "checkout": _plain("checkout", "-b", "fresh"),
+    "switch": _plain("switch", "-c", "fresh2"),
+    "fetch": _fetched,
+    "status": _plain("status"),
+    "diff": _plain("diff"),
+    "add": lambda work: _git_in(_dirtied(work), "add", "-A"),
+    "reset": _plain("reset", "--hard", "HEAD~1"),
+    "tag": _plain("tag", "-a", "v1", "-m", "x"),
+    "backfill": _plain("backfill"),
+    "update-ref": _plain("update-ref", "refs/heads/side", "other"),
+    "replace": _plain("replace", "HEAD", "HEAD~1"),
+    "worktree": _plain("worktree", "add", "../wt", "-b", "wtb"),
+    "restore": _plain("restore", "."),
+    "apply": _applied,
+}
+
+# The produce-first option crossed with the authors it is asked of. Both ends in ONE assertion:
+# `rebase`, `am` and `pull` accept the option and record anyway (measured), so an exemption that
+# grew to cover them turns this red -- and an exempt verb whose git stopped honouring it turns it
+# red too. For `pull` the spelling here is a REBASE pull, which is the F2 case: `--no-commit`
+# suppresses pull's merge mode but not its rebase mode, so pull is not a produce-first form and a
+# gate that treated it as one would let this line record history.
+SUPPRESSED = {
+    "merge": _plain("merge", "--no-commit", "--no-ff", "--no-edit", "other"),
+    "revert": _plain("revert", "--no-commit", "HEAD"),
+    "cherry-pick": _plain("cherry-pick", "--no-commit", "other"),
+    "pull": _pulled_rebase("--rebase"),
+    "rebase": _plain("rebase", "--no-commit", "other"),
+    "am": _am_suppressed,
+}
+
+# The rebase pull crossed with the SPELLINGS of "rebase" the option cannot survive. Every one is a
+# real invocation measured to author a commit with `--no-commit` present -- so the gate must refuse
+# all of them (pull is not in HONOURS_THE_SUPPRESSOR), and a check that only looked at `--no-commit`
+# being first would pass them. F2's measured chain.
+PULL_REBASE_SPELLINGS = {
+    "--rebase": _pulled_rebase("--rebase"),
+    "-r": _pulled_rebase("-r"),
+    "--rebase=true": _pulled_rebase("--rebase=true"),
+    "-c pull.rebase=true": _pulled_rebase_config,
+}
+
+
+def _authored_by(tmp_path, label, scenario):
+    """(the finished process, the commit objects the scenario AUTHORED) for one scenario.
+
+    AUTHORED, not merely NEW HERE, and the difference is not pedantry: `git fetch` and `git pull`
+    carry objects into this repository that were authored in another one, and the property the gate
+    decides on is about the commit a command BUILDS out of the state at hand. Measured with the
+    difference ignored, `git fetch origin` counted the remote's own base commit as something it had
+    authored -- a scenario that would have put `fetch` into the refused set, i.e. exactly the
+    over-refusal AC-2 forbids. So whatever the remote already holds is subtracted; a merge commit
+    `git pull` builds is in neither of those sets and still counts.
+    """
+    work = _two_sided_repo(str(tmp_path), re.sub(r"[^a-z0-9]+", "-", label.lower()))
+    before = _commit_objects(work)
+    done = scenario(work)
+    imported = _commit_objects(work + "-remote") if os.path.isdir(work + "-remote") else set()
+    return done, sorted(_commit_objects(work) - before - imported)
+
+
+@pytest.mark.parametrize("verb", sorted(RECORDS_HISTORY))
+def test_every_subcommand_the_gate_calls_an_author_authors_one(tmp_path, verb):
+    """The dead-entry end of the tripwire: an entry that stops recording says so.
+
+    Driven against the INSTALLED git, in a real repository, because that is the only thing that can
+    know. A name kept in the set out of caution, or one git has repurposed, turns this red instead
+    of quietly refusing lines for a property it no longer has.
+    """
+    done, authored = _authored_by(tmp_path, verb, RECORDS_HISTORY[verb])
+    assert done.returncode == 0, "the scenario for `git %s` did not run: %s" % (
+        verb, (done.stderr or "")[-400:])
+    assert authored, (
+        "`git %s` is in gate 3's AUTHORS_A_COMMIT and this git authored no commit object for it"
+        % verb)
+    assert verb in _gate3().AUTHORS_A_COMMIT, (
+        "`git %s` is measured to author a commit and the gate does not count it" % verb)
+
+
+@pytest.mark.parametrize("verb", sorted(AUTHORS_NOTHING))
+def test_the_commands_the_gate_leaves_open_author_nothing(tmp_path, verb):
+    """The missing-recorder end: a command outside the set that starts authoring says so.
+
+    The invocation has to SUCCEED, or this would measure a command that did nothing at all -- the
+    shape of a test that cannot fail.
+    """
+    done, authored = _authored_by(tmp_path, verb, AUTHORS_NOTHING[verb])
+    assert done.returncode == 0, "the scenario for `git %s` did not run: %s" % (
+        verb, (done.stderr or "")[-400:])
+    assert not authored, (
+        "`git %s` authored %s here and gate 3 does not refuse it -- a commit object can be made "
+        "without a verdict" % (verb, authored))
+    assert verb not in _gate3().AUTHORS_A_COMMIT, (
+        "`git %s` is measured to author nothing and is refused as an author anyway" % verb)
+
+
+@pytest.mark.parametrize("verb", sorted(SUPPRESSED))
+def test_the_produce_first_option_is_exempted_exactly_where_it_works(tmp_path, verb):
+    """`--no-commit` is honoured by some authors and IGNORED by others, and the gate has to match.
+
+    Measured: `git rebase --no-commit other`, `git am --no-commit patch.mbox` and
+    `git pull --no-commit --rebase origin main` all exit 0 and record a commit anyway. An exemption
+    that grew to cover them would let a line through that records history, and this cell is what
+    says so.
+    """
+    gate = _gate3()
+    done, authored = _authored_by(tmp_path, "suppressed-" + verb, SUPPRESSED[verb])
+    assert done.returncode == 0, "the scenario for the `%s` produce-first cell did not run: %s" % (
+        verb, (done.stderr or "")[-400:])
+    assert (not authored) == (verb in gate.HONOURS_THE_SUPPRESSOR), (
+        "the `%s` produce-first cell authored %s, and the gate %s it as a produce-first form"
+        % (verb, authored,
+           "exempts" if verb in gate.HONOURS_THE_SUPPRESSOR else "does not exempt"))
+
+
+@pytest.mark.parametrize("spelling", sorted(PULL_REBASE_SPELLINGS))
+def test_no_spelling_of_a_rebase_pull_survives_the_suppressor(tmp_path, spelling):
+    """F2: `git pull --no-commit` records under every way of asking for a rebase.
+
+    The refined SR-0009 exempts a produce-first form ONLY where the option suppresses recording for
+    EVERY spelling and configuration of the same invocation. This measures that pull fails that
+    bar -- and it is the tripwire the old `_pulled` (hard-wired to `--no-rebase`) could not be: a
+    test that only ever passed `--no-rebase` cannot fail on the case that authors.
+    """
+    done, authored = _authored_by(tmp_path, "pull-rebase-" + re.sub(r"\W+", "-", spelling),
+                                  PULL_REBASE_SPELLINGS[spelling])
+    assert done.returncode == 0, "the `pull --no-commit %s` scenario did not run: %s" % (
+        spelling, (done.stderr or "")[-400:])
+    assert authored, (
+        "`git pull --no-commit %s` authored nothing here, so this host cannot show the case F2 is "
+        "about" % spelling)
+    assert "pull" not in _gate3().HONOURS_THE_SUPPRESSOR, (
+        "pull is exempted as a produce-first form while its --no-commit records under %s" % spelling)
+
+
+def test_every_author_is_either_demonstrated_or_says_why_it_cannot_be():
+    """No entry of the set may be there without one of the two, and none may be there twice.
+
+    THE EXCUSED BUCKET IS PINNED, which is what keeps it from becoming the place entries go to
+    avoid measurement: an author added without a scenario has to state what stops it being driven
+    here, and the equality below is what asks for it.
+    """
+    gate = _gate3()
+    demonstrated, excused = set(RECORDS_HISTORY), set(gate.NOT_DEMONSTRABLE)
+    assert not demonstrated & excused, (
+        "these entries are both driven and excused: %s" % sorted(demonstrated & excused))
+    assert demonstrated | excused == set(gate.AUTHORS_A_COMMIT), (
+        "the set the gate refuses on and the tables that measure it have drifted apart: "
+        "unmeasured %s, measured but no longer refused %s"
+        % (sorted(set(gate.AUTHORS_A_COMMIT) - demonstrated - excused),
+           sorted((demonstrated | excused) - set(gate.AUTHORS_A_COMMIT))))
+    for verb, reason in sorted(gate.NOT_DEMONSTRABLE.items()):
+        assert len(str(reason).split()) >= 5, (
+            "%r stands in the set without a scenario and says only %r about why" % (verb, reason))
+
+
+def _git_names():
+    """The command names the running git answers to, and the group IT calls history."""
+    harness = _reader()
+    return (harness.git_command_names(ROOT),
+            {word.decode("utf-8", "replace").strip().lower()
+             for word in harness._git(ROOT, ["--list-cmds=list-history"]).split()})
+
+
+def test_every_name_the_gate_refuses_is_a_command_this_git_has():
+    """A typo, or a command git has dropped, would refuse lines for a name nothing can run."""
+    known, _history = _git_names()
+    unknown = sorted(name for name in _gate3().AUTHORS_A_COMMIT if name not in known)
+    assert not unknown, (
+        "gate 3 refuses these as history-recording and this git does not name them among its own "
+        "commands: %s" % unknown)
+
+
+def test_every_command_git_itself_calls_history_is_classified():
+    """The DERIVED end: git names a history group, and every member of it has to be judged.
+
+    Git does not name the property SR-0009 asks about -- measured, `--list-cmds=list-history`
+    carries `branch`, `switch`, `reset` and `tag` (which author nothing here) and misses `revert`,
+    `cherry-pick`, `am` and `pull` (which do). What it IS good for is this: a command git ADDS to
+    that group is one nobody has classified, and it turns this red until somebody does.
+    """
+    known, history = _git_names()
+    assert history, "this git names no history group, so nothing was derived here"
+    assert history <= known, (
+        "git's own history group holds names it does not list as commands: %s"
+        % sorted(history - known))
+    classified = set(_gate3().AUTHORS_A_COMMIT) | set(AUTHORS_NOTHING)
+    assert history <= classified, (
+        "git counts these in its own history group and neither table here judges them: %s"
+        % sorted(history - classified))
+
+
+@pytest.fixture(scope="session")
+def certified_project(outside_the_home_directory, project, open_item):
+    """A stand-in project whose CURRENT working tree carries a passing verdict.
+
+    WITHOUT THIS FIXTURE THE REFUSAL TESTS BELOW MEASURE NOTHING. Every line they drive would be
+    rc 2 anyway, for the reason gate 3 has always had ("this working tree carries no passing
+    Evidence"), and the whole block would stay green with this round's change taken out again --
+    measured before the change, with a verdict recorded exactly like this: `git merge --no-ff
+    other`, `git revert --no-edit HEAD`, `git cherry-pick`, `git am`, `git rebase --continue`,
+    `git pull` and `git update-ref refs/heads/main $(git commit-tree ...)` were all rc 0.
+
+    A COPY, and one that is not written to afterwards: the digest is the identity of this tree, so
+    a test that changes it takes the verdict away from every test that runs later.
+    """
+    work = os.path.join(outside_the_home_directory, "certified")
+    shutil.copytree(project, work)
+    payload = bash_payload(work, "git commit -m wip")
+    rc, err = run(work, "gate_commit_evidence.py", payload)
+    assert rc == 2, "the copy already carried a verdict, so nothing here measures one"
+    digest = re.search(r"diff:[0-9a-f]{64}", err).group(0)
+    done = subprocess.run(
+        [sys.executable, "-B", "-m", "kernel.cli", "--root", "project_memory", "evidence",
+         "--kind", "review", "--result", "pass", "--related", open_item,
+         "--summary", "verifier PASS for " + digest, "--artifact-ref", "staging/verdict.md"],
+        cwd=work, env=dict(os.environ, PYTHONPATH=os.path.join(work, "team-kits")),
+        capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-600:]
+    assert run(work, "gate_commit_evidence.py", payload)[0] == 0, (
+        "the verdict did not open the commit, so nothing below is measured against one")
+    return work
+
+
+# The lines this round turns from rc 0 into rc 2, each with the verb whose remedy the refusal owes.
+# Every one of them was measured rc 0 through the real gate process with a valid verdict in the
+# tree on 2026-08-13, which is what makes each of these a red-without-the-fix case rather than a
+# pin.
+RECORDS_HISTORY_LINES = {
+    "git merge --no-ff other": "merge",
+    "git revert --no-edit HEAD": "revert",
+    "git cherry-pick 1234abc": "cherry-pick",
+    "git am patch.mbox": "am",
+    "git rebase --continue": "rebase",
+    "git pull origin main": "pull",
+    "git stash": "stash",
+    "git commit-tree -m x HEAD^{tree}": "commit-tree",
+    "git notes add -m x": "notes",
+    # F1: the PLUMBING author, and the one-call chain the verifier measured rc 0 before this round.
+    # `hash-object` writes a commit object out of a tree and stdin, and update-ref (open) installs
+    # it onto refs/heads/main
+    "git hash-object -t commit -w --stdin": "hash-object",
+    "git update-ref refs/heads/main "
+    "$(printf 'tree %s\\n...\\n' $(git rev-parse HEAD^{tree}) "
+    "| git hash-object -t commit -w --stdin)": "hash-object",
+    # the chain SR-0009's parenthesis alone does not reach: an author whose object lands under no
+    # branch, and an open ref move that makes it branch history -- in ONE tool call
+    "git update-ref refs/heads/main $(git commit-tree -m x HEAD^{tree})": "commit-tree",
+    # F2: a rebase pull records under --no-commit, so pull is not a produce-first form -- every
+    # spelling of the rebase is refused
+    "git pull --no-commit --rebase origin main": "pull",
+    "git pull --no-commit -r origin main": "pull",
+    "git -c pull.rebase=true pull --no-commit origin main": "pull",
+    # a wrapper payload is the code it carries
+    'bash -lc "git merge --no-ff other"': "merge",
+    # the produce-first option is only a produce-first form in the shape that was MEASURED to
+    # suppress the commit -- these three spellings all record one
+    'git merge -m "--no-commit" other': "merge",
+    "git merge --no-commit --commit --no-ff other": "merge",
+    "git merge --no-ff --no-commit other": "merge",
+    # ...and a word the text does not fix is not the option either, whatever it would expand to
+    "git merge $FLAG --no-ff other": "merge",
+}
+
+# What must NOT become a refusal. AC-2 of BUG-0034 names the first seven; the rest are this repo's
+# own documented command lines and the produce-first forms the remedy sends people to -- a gate
+# that halts the work it certifies is not enforcement.
+LEAVES_OPEN_LINES = [
+    "git branch feature",
+    "git checkout -b feature",
+    "git switch -c feature",
+    "git fetch origin",
+    "git status",
+    "git diff",
+    "git add -A",
+    "git log --oneline",
+    "git reset --hard HEAD",
+    "git update-ref refs/heads/side other",
+    "git merge --no-commit --no-ff other",
+    "git revert --no-commit HEAD",
+    "git cherry-pick --no-commit 1234abc",
+    "git merge --no-commit --ff-only origin/main",
+    # the kits' reader resolves quoting the way a shell does, so these reach git as the same
+    # option and are the same produce-first form
+    'git merge "--no-commit" --no-ff other',
+    "git merge --no-com\"mit\" --no-ff other",
+    "PYTHONPATH=team-kits python -B -m kernel.cli --root project_memory generate-index",
+    "python -B -m pytest .claude/hooks/test_gates.py -q",
+    "python tools/bump_kit_version.py",
+    "ls docs",
+]
+
+
+@pytest.mark.parametrize("line", sorted(RECORDS_HISTORY_LINES))
+def test_gate3_refuses_a_line_that_records_history_even_with_a_verdict(certified_project, line):
+    """SR-0009 clause 3, against the running hook: an author other than `commit` is refused.
+
+    AND THE REFUSAL HAS TO CARRY THE ROUTE OUT, which is why the remedy is compared with the gate's
+    own `_remedy` rather than with a sentence typed here: a refusal that cannot be complied with is
+    the failure mode this layer is least allowed to have, and the route it names has to be the one
+    the gate would let through.
+    """
+    verb = RECORDS_HISTORY_LINES[line]
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, line))
+    assert rc == 2, "a line that can record history ran under a verdict about the tree BEFORE it"
+    assert _gate3()._remedy(verb).strip() in err, (
+        "the refusal does not name the produce-first route for `git %s`: %s" % (verb, err[:600]))
+    assert "git commit" in err, "the refusal names no certifiable way to record the state"
+
+
+def test_gate3_refuses_a_recording_line_on_the_other_shell_too(certified_project):
+    """The trigger is a PROPERTY, not one shell: gate 3 is registered on Bash AND PowerShell.
+
+    The registration test asks whether every registered tool NAME reaches a refusal, with a
+    `git commit` payload. This asks it of the rule this round added, because a rule that only ever
+    fires on one of the two tools is a rule half the surface does not have.
+    """
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, "git merge --no-ff other", tool="PowerShell"))
+    assert rc == 2, "the same line was refused on Bash and allowed on PowerShell"
+    assert _gate3()._remedy("merge").strip() in err, err[:400]
+
+
+@pytest.mark.parametrize("line", LEAVES_OPEN_LINES)
+def test_gate3_leaves_the_ordinary_path_to_a_commit_open(certified_project, line):
+    """The counter-end, under the same gate: no over-refusal of the work this gate certifies."""
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, line))
+    assert rc == 0, "refused a line that records no history: %s" % err[:500]
+
+
+@pytest.mark.parametrize("line", ["git status", "git branch feature", "git checkout -b feature",
+                                  "git switch -c feature", "git fetch origin", "git add -A"])
+def test_gate3_asks_for_no_verdict_on_the_way_to_a_commit(project, line):
+    """The same lines against a tree that carries NO verdict: they may not need one either."""
+    rc, err = run(project, "gate_commit_evidence.py", bash_payload(project, line))
+    assert rc == 0, "a line on the way to a commit was made to wait for a verdict: %s" % err[:400]
+
+
+def test_gate3_reads_a_message_that_mentions_a_subcommand_as_a_message(certified_project):
+    """`git commit -m "merge later"` is a commit, and the widening must not make it a merge.
+
+    The kits' reader already answers this (the whole quoted span is one word), and it is pinned
+    here because the new rule is the first thing in this gate that acts on a verb OTHER than
+    `commit` -- so the false positive it could produce is a refusal of the repo's own commits.
+    """
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, 'git commit -m "merge later"'))
+    assert rc == 0, "a commit whose MESSAGE names a subcommand was read as that subcommand: %s" % (
+        err[:400])
+
+
+def test_gate3_refuses_a_verb_the_running_git_does_not_know(certified_project):
+    """An ALIAS hides the command it runs from every reader of the line.
+
+    Measured through the kits' reader: `git -c alias.z='!git merge --no-ff other' z` comes back as
+    the single subcommand `z`, and the inner merge is invisible. Defining the alias in one call
+    (`git config alias.z ...`, which authors nothing and stays open) and using it in the next is
+    the same chain in two steps. What answers is the running git's own command list.
+    """
+    for line in ("git z", "git -c alias.z='!git merge --no-ff other' z"):
+        rc, err = run(certified_project, "gate_commit_evidence.py",
+                      bash_payload(certified_project, line))
+        assert rc == 2, "a subcommand this git does not have was judged harmless: %r" % line
+        assert "--list-cmds" in err, (
+            "refused, but not for being unknown to git -- so the derivation was not what "
+            "answered: %s" % err[:400])
+
+
+def test_gate3_refuses_a_verb_the_text_does_not_fix(certified_project):
+    """An unresolved verb could be any subcommand, an authoring one included.
+
+    Measured before this round, with a valid verdict in the tree: `git ${VERB} --no-ff other` was
+    rc 0, because an unresolved verb took the evidence route and the evidence was there. It is
+    refused now, and the refusal carries the kits' own note that says to spell the verb out.
+    """
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, "git ${VERB} --no-ff other"))
+    assert rc == 2, "a line whose git verb the text does not fix ran under a verdict"
+    assert "spell the subcommand literally" in err, (
+        "the refusal does not say how to comply: %s" % err[:400])
+
+
+def test_gate3_says_what_to_do_with_a_line_it_cannot_read_at_all(certified_project):
+    """Past the kits' reading limit EVERY verb is unresolved, and no spelling can help.
+
+    The refusal for an unreadable verb says "spell the subcommand literally", and over
+    `_compat.GIT_READ_LIMIT` that is advice nobody can follow: the reader hands back one unresolved
+    invocation for the LENGTH of the line, and the kits' own note stays silent there for exactly
+    that reason. So the refusal names the other remedy too, and this is what keeps the two in step.
+    """
+    harness = _reader()
+    limit = harness.compat({"cwd": ROOT}).GIT_READ_LIMIT
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, "git status " + "x" * limit))
+    assert rc == 2, "a line too long for the reader to judge was waved through"
+    assert "split the call" in err, (
+        "the refusal for an unreadable verb offers only a remedy this line cannot follow: %s"
+        % err[:500])
+
+
+def test_gate3_still_refuses_a_produce_first_form_in_front_of_a_commit(certified_project):
+    """The one line the exemption makes reachable in front of a commit, and it stays refused.
+
+    A PIN, not a red-without-the-fix case: `_moves_the_tree_first` already answered this before the
+    exemption existed, because the kits' classification calls `git merge` a stage that is not
+    read-only (measured: `_stage_is_read_only` is False for it and True for `git add -A`). It is
+    pinned because the exemption is what makes the line reachable at all -- without the pin, a
+    later widening of that classification would open a commit over a tree no verdict has seen.
+    """
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project,
+                               "git merge --no-commit --no-ff other && git commit -m wip"))
+    assert rc == 2, "a merge produced the tree and the commit recorded it under the OLD digest"
+    assert "changes the working tree before the commit records it" in err, (
+        "refused for the wrong reason: %s" % err[:400])
+
+
+def _a_git_line_too_costly_to_judge_in(seconds):
+    """A git line whose EXEMPTION reading alone costs more than `seconds`, sized by measuring it.
+
+    NOT A TYPED SIZE, for the same reason as `_a_line_too_long_to_read_in`: two samples through the
+    code that runs, the exponent between them read off, the size computed from it.
+
+    THE SHAPE IS THE ONE THAT COSTS: k invocations inside ONE segment. `Invocation.arguments`
+    rescans to the end of the segment per invocation, so a segment with k `git` words costs
+    O(k * n) -- the shape `_compat.GIT_READ_LIMIT` documents for `gate_push_token`, and the one
+    this round's exemption reading walks into. Every invocation here is exempt, which is what makes
+    the gate read all of them instead of refusing at the first.
+    """
+    gate, harness = _gate3(), _reader()
+    compat = harness.compat({"cwd": ROOT})
+
+    def line(count):
+        return " ".join(["git merge --no-commit --no-ff x"] * count)
+
+    def cost(count):
+        started = time.monotonic()
+        for call in compat.git_invocations(line(count)):
+            gate._produces_without_recording(call)
+        return max(time.monotonic() - started, 1e-6)
+
+    base = 500
+    small, large = cost(base), cost(2 * base)
+    growth = math.log(large / small, 2) if large > small else 0.0
+    assert growth > 1.0, (
+        "reading %d invocations costs %.4fs here and %d costs %.4fs, so the cost does not grow "
+        "with the line and no length reaches a deadline" % (base, small, 2 * base, large))
+    text = line(int(2 * base * (2.0 * seconds / large) ** (1.0 / growth)) + 1)
+    assert len(text) < compat.GIT_READ_LIMIT, (
+        "the line this host needs to spend %ss (%d characters) is longer than the reader's own "
+        "limit, so it would be refused for its LENGTH and the budget would not be measured"
+        % (seconds, len(text)))
+    return text
+
+
+def test_gate3_answers_before_its_registration_however_costly_the_line_is_to_judge(project,
+                                                                                    tmp_path):
+    """The cost this round adds must not become a way past the gate.
+
+    A hook still deciding when the provider's timeout expires is killed, and a killed hook is an
+    ALLOW. The reading `_produces_without_recording` does is per-invocation and rescans the
+    segment, so a line can be built that costs more than the budget -- measured on this host
+    through the real gate process under a 6 s registration: 2000 invocations rc 0 in 2.66 s, 4000
+    rc 2 in 4.75 s with the budget's own refusal, 8000 rc 2 in 4.73 s. What answers is
+    `_harness._the_budget_is_spent`, beside the decision (H35 in docs/POST_V2_WISHLIST.md).
+
+    BOTH ENDS UNDER THE SAME REGISTRATION: a gate that answered "too slow" to everything would
+    pass the first half, so an ordinary line still has to be judged.
+    """
+    ordinary, measured = _registrations(project, tmp_path)
+    assert ordinary, ("no registration on this host leaves room for an ordinary verdict: %s"
+                      % measured)
+    # THE REGISTRATION IS THE ORDINARY ONE PLUS THE RESERVE, and both numbers are read out of
+    # `_harness`. The line is sized to cost the WHOLE registration to read, not just the budget --
+    # exactly as the sister gate-1 test does -- so the budget guard interrupts it MID-read at
+    # `seconds - reserve` and the process ends a full `reserve` below `seconds`, rather than the
+    # read finishing right as the guard fires (a race the first cut of this test lost under load).
+    # THE MARGIN IS `reserve` (the floor, ~1.5 s here) MINUS this suite's own vantage cost -- the
+    # interpreter start and 100+ KB of payload down a pipe, which the provider's own clock does not
+    # see. Under heavy PARALLEL load that vantage cost can spike and eat the margin; that is
+    # BUG-0033's timing class, not a defect in the gate (the rc-2 "registration allows" assertion
+    # above already proves the guard fired inside the budget). If this line reddens, re-run it as
+    # the only load before treating it as real.
+    share, floor = _reserve_numbers()
+    seconds = ordinary + floor
+    reserve = max(seconds * (1.0 - share), floor)
+    work = str(tmp_path / "gate3-deadline")
+    shutil.copytree(project, work)
+    _set_registered_timeout(work, seconds)
+    started = time.monotonic()
+    rc, err = run(work, "gate_commit_evidence.py",
+                  bash_payload(work, _a_git_line_too_costly_to_judge_in(seconds)))
+    elapsed = time.monotonic() - started
+    assert rc == 2, (
+        "a line this gate could not judge inside its budget was waved through: rc=%d after %.2fs"
+        % (rc, elapsed))
+    assert "registration allows" in err, (
+        "refused after %.2fs, but not for the deadline -- so the line was cheap enough to judge "
+        "and nothing about the budget was measured: %s" % (elapsed, err[:300]))
+    assert elapsed < seconds, (
+        "the gate answered after %.2fs while its registration gives it %.2fs (budget guard should "
+        "have fired ~%.2fs earlier) -- if this is a solo run it is a real regression, under "
+        "parallel load it is BUG-0033 (%s)" % (elapsed, seconds, reserve, measured))
+    assert run(work, "gate_commit_evidence.py", bash_payload(work, "git status"))[0] == 0, (
+        "under the same registration the gate turned into one that refuses everything")

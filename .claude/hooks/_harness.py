@@ -2146,6 +2146,36 @@ def _git(root, arguments):
     return done.stdout
 
 
+def git_command_names(root):
+    """Every command name the RUNNING git answers to, lower-cased.
+
+    THE ONE THING GIT DOES NAME. It does not name its history-recording subcommands (measured:
+    `docs/reviews/2026-08-13-tsk0056-history-recording-design.md`, section 1), but it names its own
+    command set, and that is what tells an alias from a command: a resolved verb git does not list
+    here is an alias, an external `git-<name>` on PATH, or a typo -- and the first of those runs a
+    command no reader of the LINE can see (`git -c alias.z='!git merge --no-ff other' z` reads as
+    the subcommand `z`, measured through the kits' reader).
+
+    ASKED OF THE RUNNING GIT, so a git that gains or loses a command is followed on the day it is
+    installed. A failure to answer raises, and `guarded()` turns that into a refusal -- on a host
+    whose git does not answer `--list-cmds`, every git line with a verb outside the author set is
+    refused rather than waved through.
+
+    COST, measured on this host: 0.042 s for the first call and ~0.05 s for each further one,
+    against a registered 120 s. It is asked at most once per gate PROCESS and only for a line that
+    invokes git, and a gate process answers one call and exits -- so the memo below has no
+    invalidation story to get wrong, it lives exactly as long as the question.
+    """
+    if root not in _GIT_COMMAND_NAMES:
+        _GIT_COMMAND_NAMES[root] = frozenset(
+            word.decode("utf-8", "replace").strip().lower()
+            for word in _git(root, ["--list-cmds=main"]).split())
+    return _GIT_COMMAND_NAMES[root]
+
+
+_GIT_COMMAND_NAMES = {}
+
+
 DIFF_PREFIX = "diff:"
 
 

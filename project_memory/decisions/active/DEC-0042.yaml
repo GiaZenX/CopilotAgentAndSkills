@@ -1,0 +1,45 @@
+id: DEC-0042
+title: 'H2 closes as a contract change first: SR-0006 is superseded by SR-0009, and
+  gate 3''s subject becomes ''recording history'', not the word commit'
+context: 'H2''s measured chains: `git merge --no-ff other` rc 0 and `git revert --no-edit
+  HEAD` rc 0 -- with a valid verdict in the tree or without one; a commit is recorded
+  and no evidence was asked. SR-0006 literally says ''Kein Commit'', so the widening
+  is a CONTRACT change, not a hook change (H2 entry). DEC-0007 announced SR-0006''s
+  supersession once the TSK-0007 verification chain delivered -- it has (TSK-0022
+  accepted; noted as due follow-up in the TSK-0055 round, verifier F10). Independently,
+  two recorded contract deviations make the rewrite due: the trigger is written as
+  a four-tool list while gate 1 is also registered on Bash|PowerShell, and the built
+  protected area is wider than the written one (docs/POST_V2_WISHLIST.md, ''Zwei Vertragsabweichungen'').
+  The user approved the H2 round on 2026-08-13 (''bau weiter'' -- the previously approved
+  order).'
+decision: 'Capture SR-0009 with the property-based contract: the trigger as a property
+  (every tool surface through which the subject is reachable, shells included); the
+  protected area as the running derivation names it (_harness.ProtectedArea), not
+  as a path list; clause 3 as NO RECORDING OF HISTORY WITHOUT A VERDICT -- a git subcommand
+  that can record a new commit into branch history (a new commit object HEAD or a
+  refs/heads ref comes to point at) runs only under an active passing Evidence naming
+  the digest of the tree that commit records; where that digest cannot exist before
+  the command runs (merge, revert, cherry-pick, am, rebase author their result in
+  the same step) the line is refused with the remedy to produce the state first WITHOUT
+  recording (--no-commit and kin), obtain the verdict, and record through the one
+  certifiable form (git commit). The subcommand set is derived from the running git
+  where git names it; an unavoidable enumeration carries a tripwire measuring both
+  ends. Supersede and archive SR-0006. Build under a TSK derived from the H2 bug item;
+  the wishlist H2 entry closes only with the chains measured rc 2 and the table row
+  moved per the closed-hole cell-naming convention. SR-0009 stays PROPOSED until the
+  verifier passes the build against it, then ACCEPTED.'
+consequences: merge/revert/cherry-pick/am/rebase lines are REFUSED in this repo until
+  their result state carries a verdict; the remedy routes through the produce-first
+  forms plus the ordinary evidence->commit path. branch/checkout/switch/fetch/status/diff/add
+  stay open -- a gate that halts the work it certifies is not enforcement. The cost
+  is friction on flows this repo rarely uses (it works on one branch); the gain is
+  that the gate's subject matches its purpose. Fast-forward moves and stash need an
+  explicit, measured classification in the build (they touch refs without authoring
+  a tree state the same way) -- the design step decides and justifies both against
+  the SR-0009 property, it does not inherit them silently.
+source: docs/POST_V2_WISHLIST.md H2 + 'Zwei Vertragsabweichungen'; DEC-0007; TSK-0055
+  round verification F10; session 2026-08-13
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-13T11:21:34'

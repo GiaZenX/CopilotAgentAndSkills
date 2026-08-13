@@ -1,4 +1,4 @@
-generated_at: '2026-08-13T11:05:32'
+generated_at: '2026-08-13T17:46:46'
 items:
 - id: BUG-0001
   type: BUG
@@ -204,6 +204,13 @@ items:
   title: test_gate1_answers_before_its_registration_gives_up fails under host load
     and passes idle -- 'host too noisy' and 'gate too slow' are indistinguishable
   status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0034
+  type: BUG
+  title: Gate 3 asks Invocation.runs('commit') -- every other history-recording git
+    subcommand passes without a verdict
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: DEC-0002
@@ -464,6 +471,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0042
+  type: DEC
+  title: 'H2 closes as a contract change first: SR-0006 is superseded by SR-0009,
+    and gate 3''s subject becomes ''recording history'', not the word commit'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -603,6 +617,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0024
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0025
   type: EVD
   title: null
   status: null
@@ -761,12 +781,6 @@ items:
   status: PROPOSED
   revision: 1
   approval_ref: null
-- id: SR-0006
-  type: SR
-  title: 'Die Durchsetzung dieses Repos: vier Hooks und ein gebundener Sitzungsagent'
-  status: PROPOSED
-  revision: 1
-  approval_ref: null
 - id: SR-0007
   type: SR
   title: Feldzuordnungen kommen als Vorschlag, nicht als leere Frage
@@ -777,6 +791,13 @@ items:
   type: SR
   title: Was ein Kommentar tragen darf
   status: PROPOSED
+  revision: 1
+  approval_ref: null
+- id: SR-0009
+  type: SR
+  title: 'This repo''s enforcement: four gates, a bound session agent, and no history
+    record without a verdict'
+  status: ACCEPTED
   revision: 1
   approval_ref: null
 - id: TSK-0009
@@ -792,6 +813,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0033
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0056
   type: TSK
   title: null
   status: DRAFT

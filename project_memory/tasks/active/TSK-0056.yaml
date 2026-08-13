@@ -1,0 +1,72 @@
+id: TSK-0056
+product_requirement: PR-0002
+derives_from: BUG-0034
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+- AC-5
+allowed_scope:
+- .claude/hooks/**
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- project_memory/**
+- tools/**
+- user/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- .claude/settings.json
+- .claude/agents/**
+required_inputs:
+- 'BUG-0034 (the H2 defect: gate 3 matches the literal word commit; measured chains
+  git merge --no-ff rc 0, git revert --no-edit HEAD rc 0)'
+- 'SR-0009 (the contract this build must meet, clause 3: no recording of history without
+  a verdict; produce-first remedy; derived set or both-ends-tripwired enumeration;
+  the ordinary path to a commit stays open)'
+- DEC-0042 (why contract-first; fast-forward and stash need an explicit measured classification,
+  not silence)
+- 'docs/POST_V2_WISHLIST.md H2 entry: BOTH naive forms are wrong -- a bare enumeration
+  (house rule 1) and the inversion that refuses git branch/checkout -b/fetch (a gate
+  that halts the work it certifies)'
+- '.claude/hooks/gate_commit_evidence.py + _harness.py: the current mechanism (Invocation.runs,
+  _moves_the_tree_first, the kits'' read-only classification H22, prose-removal limits
+  H34/H38, Deadline/timeout discipline H35/H36)'
+expected_outputs:
+- 'STEP 1 MEASURE then DESIGN (docs/reviews/ note BEFORE building): does the installed
+  git NAME its history-recording subcommands (git --list-cmds=... categories, command-list
+  groups) -- measure, do not assume; measure the classification candidates against
+  SR-0009''s property: merge --no-ff vs --ff-only (new commit object vs ref move to
+  an existing one), revert/cherry-pick/am/rebase (--continue), commit --amend, stash
+  (refs/stash, not refs/heads), reset, checkout -B, tag, replace-like forms; write
+  the chosen form (derivation vs tripwired enumeration) and the classification of
+  every candidate WITH its measurement into the note'
+- 'STEP 2 BUILD in .claude/hooks/ only: gate 3 implements SR-0009 clause 3 -- history-recording
+  subcommands other than commit are refused with a remedy that names the produce-first
+  route (--no-commit and kin -> verdict -> git commit); the commit path itself stays
+  exactly as evidence-gated as today; docstring honest, residues named, no claimed
+  protection the code does not build'
+- 'STEP 3 TESTS in .claude/hooks/test_gates.py: red-without-fix for every new refusal
+  edge (measured against the RUNNING hook as a process, defect restored in a clone
+  OUTSIDE the repo); AC-2 non-refusals pinned (branch, checkout -b, switch, fetch,
+  status, diff, add, the evidence->commit flow); the both-ends tripwire if an enumeration
+  exists; deadline/budget behavior unchanged on an overlong line; then ONE full gate-suite
+  run at the end and report its numbers (the suite takes ~70 min on this host; iterate
+  on subsets first; BUG-0033 names the timing test''s load flakiness -- run the full
+  suite as the only load)'
+- 'STEP 4 REPORT: file:line for every change; the measured classification table; suite
+  numbers (subset + full); every residue named for the wishlist -- the LEAD updates
+  the H2 entry and the section-12 table (closed-hole cell-naming convention), NOT
+  you; no VERSION bump (.claude/ is not a kit-hash input -- state it)'
+dependencies:
+- BUG-0034
+- SR-0009
+- DEC-0042
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-13T11:22:19'

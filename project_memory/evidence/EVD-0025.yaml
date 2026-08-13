@@ -1,0 +1,16 @@
+id: EVD-0025
+kind: review
+related:
+- TSK-0056
+result: pass
+summary: verifier PASS (round 2) for diff:da09d209234f24a3dbbc27a6bab4a828349905cb56dfcb53f20498770746bc69
+  -- gate 3 now judges 'authors/installs a commit into branch history' not the word
+  commit (SR-0009 clause 3, DEC-0042); enumeration with a tripwire against the installed
+  git; F1 (hash-object plumbing author) and F2 (pull --no-commit --rebase re-enable)
+  both closed and re-attacked, chains rc 2, red-without-fix 4/8; residues named (import-object
+  multi-step, over-refusals with a route through, H11); full gate suite 239 passed
+artifact_refs:
+- ../docs/reviews/2026-08-13-tsk0056-history-recording-design.md
+revision: 1
+approval_ref: null
+created: '2026-08-13T17:46:46'
