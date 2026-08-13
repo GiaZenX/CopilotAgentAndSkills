@@ -1,0 +1,43 @@
+id: DEC-0041
+title: 'Closure policy for historical items: only reachable terminals, no fabricated
+  lifecycles'
+context: 'About 150 items sit in active/ although most of their work shipped long
+  ago; ''what is open'' has to be reconstructed instead of read (PR-0003 criterion).
+  The cause is structural: this repo drives the kernel directly without a kit (DEC-0003),
+  so two lifecycle mechanisms never run here. (1) No dispatch and no leases -- state.py
+  _transition_locked refuses a direct transition INTO the lease-backed statuses LEASED/IN_PROGRESS
+  (dispatch.assert_lease_backed_transition_locked), so a TSK can never honestly walk
+  its chain to DONE/VALIDATED. (2) No approval mint -- approvals.APPROVAL_TRANSITIONS
+  commits (''BUG'',''scope'') to the TRIAGED->APPROVED edge, and the mint happens
+  in a kit PostToolUse hook on the AskUserQuestion answer, which this repo''s settings
+  deliberately do not register; request-approval would open a question nobody can
+  mint into force. So a BUG can never honestly reach APPROVED, FIXED or VERIFIED here.'
+decision: 'Close what has a reachable, honest terminal; name what has none, and do
+  not fake it. (a) TSK items whose ordered work is delivered (proven by related EVD
+  items and commits) or that were superseded by later rounds: transition to CANCELLED,
+  then archive. CANCELLED here means ''work order closed without the dispatch lifecycle
+  this repo never runs'' -- the delivery verdict lives in the related EVDs and commits,
+  never in this status word. TSK items with genuinely undelivered, still-wanted work
+  stay DRAFT-active. (b) FR items: triage every OPEN one (triage_result duty). Built
+  ones -> CONVERTED with triage_result naming what they became; obsolete/withdrawn
+  -> REJECTED; still wanted -> stay TRIAGED with triage_result saying what they wait
+  on. Terminal FRs are archived. (c) DEC items superseded by a later decision: archive
+  (DEC has no automaton; state.archive takes automaton-less types unconditionally).
+  (d) BUG items that are fixed but unverifiable stay ACTIVE at TRIAGED: walking them
+  to VERIFIED is unreachable here by measurement, REJECTED/DUPLICATE would be lies,
+  and the unreachability itself goes into the hole list in docs/POST_V2_WISHLIST.md
+  instead of being papered over. (e) SR, PR, INV, EVD, active DEC: untouched -- standing
+  requirements, live roots and evidence are not backlog.'
+consequences: 'The active tree shrinks to genuinely open work plus standing items,
+  and the index answers ''what is open'' at a glance. The price is a status word:
+  CANCELLED does not say ''delivered'', and this DEC plus each item''s EVD linkage
+  carry that meaning instead. Fixed BUG items remain as a known active overhang until
+  a mint path exists in this repo -- visible, named, not resolved. Every transition
+  of this round runs through the kernel; nothing is hand-edited.'
+source: session 2026-08-13, measured against team-kits/kernel/state.py (_transition_locked
+  lease/approval/evidence guards), team-kits/kernel/approvals.py (APPROVAL_TRANSITIONS),
+  team-kits/kernel/backlog_types.py (AUTOMATA terminals)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-13T08:50:33'

@@ -50,7 +50,9 @@ request_text: 'GEMESSENER ANLASS, 2026-08-09, zweimal an einem Tag, beide Male v
   -- dieselbe offene Frage, die FR-0005 am Ende stellt, und vermutlich dieselbe Antwort.
   Und ehrlich: der Nutzer hat es zweimal gefangen und das kostete nichts; eine gebaute
   Vorrichtung muss besser sein als das, sonst ist sie Zierde.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-09T09:35:01'
+triage_result: 'wanted: no decision-in-prose catcher exists; guard_no_adhoc is name-based
+  and reads no content (assessment TSK-0055)'

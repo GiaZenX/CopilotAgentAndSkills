@@ -1,0 +1,37 @@
+id: TSK-0049
+product_requirement: PR-0003
+derives_from: BUG-0002
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0002: der Shell-Waechter liest robocopy <quelle> <ziel> /MOVE als Kopie statt
+  als Verschiebung aus einem geschuetzten Baum. /MOVE loescht die Quelle, ist also
+  eine Verschiebung und muss so behandelt werden. Der genaue Ort im Code ist NICHT
+  nachgemessen -- wer ihn schliesst, misst zuerst nach, statt der Item-Zeile zu glauben'
+expected_outputs:
+- 'MISS ZUERST den Ort und das heutige Verhalten (bash/PowerShell-Schiedsrichter,
+  echter Hook-Prozess): robocopy mit /MOVE (und /MOV) aus einem geschuetzten Baum
+  wird als Verschiebung erkannt und verweigert; die uebrigen quellveraendernden robocopy-Schalter
+  werden bei der Gelegenheit GEMESSEN statt aufgezaehlt (welche loeschen/veraendern
+  die Quelle?). Ein reines robocopy ohne solche Schalter (echte Kopie) bleibt erlaubt.
+  Test rot ohne Fix, gespiegelt byte-identisch ueber die Kits'
+dependencies:
+- TSK-0048
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-11T23:48:42'
+closed_at: '2026-08-13T09:08:51'

@@ -1,0 +1,49 @@
+id: TSK-0022
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefverdikt zu TSK-0021: F1 bis F3 blockierend, F4 als Rest (project_memory/staging/TSK-0021/verdict-2026-08-07.md)'
+- docs/reviews/2026-08-07-tsk0021-measurements.md -- das Messprotokoll, dessen Zusicherungen
+  F2 widerlegt
+- DEC-0020 -- eine delegierte Antwort wird gegen das Gepruefte gemessen; die Fehlerrichtung
+  dreht um, wo sie falsch antwortet statt zu schweigen
+expected_outputs:
+- Ein Wort, dessen Tilde-Praefix eine Shell erweitert, wird verweigert, unabhaengig
+  davon, wo im Wort quotierte Spannen stehen -- nur ein Praefix, in dem selbst Quotierung
+  steht, bleibt literal
+- Jede Prosa-Stelle ueber dieses Verhalten behauptet genau das, was gebaut ist --
+  Hook-Kommentar, H31 und H33 der Loecherliste, CLAUDE.md
+- Die Pruefmenge kreuzt die Achse Quotierung-im-Zielwort ueber die Tilde-Subjekte
+  und RELATIVE_WRITE, und die alte Fassung wird unter ihr rot
+- Der Mechanismus von F4 steht als benannter Rest in der Loecherliste, mit dem zweiten
+  Messschaden vom 2026-08-07 als gemessener Kette -- oder der Riegel ist so erweitert,
+  dass er ihn deckt, mit rotem Test
+- Jedes Messskript dieses Pakets prueft sein Arbeitsverzeichnis gegen die Sandbox,
+  bevor eine Nutzlast laeuft, und die geschuetzten Dateien des echten Repos sind vor
+  und nach jedem Messlauf gehasht
+- Die PowerShell-Haelfte und die Gate-3-Kette der F1-Schreibweise sind gemessen, und
+  der Vorbehalt des Pruefers (bash -c gegen den Bash-Tool-Pfad des Providers) ist
+  beantwortet
+- Jede Zusicherung dieses Pakets ist gegen das Verhalten unter ihr gemessen, und diese
+  Messung ist selbst ein Test
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-07T20:10:12'
+closed_at: '2026-08-13T09:07:33'

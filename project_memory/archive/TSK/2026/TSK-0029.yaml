@@ -1,0 +1,41 @@
+id: TSK-0029
+product_requirement: PR-0001
+derives_from: PR-0001
+type: test
+assigned_role: harness-verifier
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- docs/reviews/**
+- docs/pilot/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- DEC-0031 -- die Persona ist ein kritischer, fordernder, ideengetriebener Nutzer
+- DEC-0030 -- Screenshot-Faehigkeit messen, nicht annehmen
+- Der Persona-Laeufer liegt in der Kopie des Pruefers (C:/verifier-box/_runner/persona_run.py);
+  Messinstrument, kein Repo-Produktcode
+expected_outputs:
+- 'Die Charakterbeschreibung des Persona-Laeufers macht die Persona zu einem fordernden
+  Nutzer nach DEC-0031: schiebt Ideen nach, kritisiert, laesst aendern, sagt nie cool-danke-Ende,
+  hoert nicht nach drei Punkten auf'
+- Ein Lauf mit der neuen Persona loest gemessen mindestens einen Change Request UND
+  einen nachgereichten Feature Request UND eine Bug-Meldung im Kit-Backlog aus --
+  belegt an den erzeugten CR/FR/BUG-Items des Piloten-Projekts
+- 'Feasibility der Screenshot-Eingabe ist gemessen: kann die SDK-Persona ein Bild
+  des laufenden Ergebnisses empfangen und beurteilen? Wenn ja, ist der Weg gebaut
+  und an einem UI-Vorhaben belegt; wenn nein, ist die Grenze benannt und die UI-Kritik
+  laeuft textuell'
+- 'Der Laeufer bleibt Messinstrument: Persona ohne Werkzeuge, ohne setting_sources,
+  ausserhalb des Projektverzeichnisses; kein Zugang zum Repo oder zur globalen Ablage'
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-10T15:28:58'
+closed_at: '2026-08-13T09:07:43'

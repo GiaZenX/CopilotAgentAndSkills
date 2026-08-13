@@ -1,0 +1,46 @@
+id: TSK-0055
+product_requirement: PR-0003
+derives_from: PR-0003
+type: ops
+assigned_role: harness-lead
+acceptance_refs:
+- AC-1
+- AC-2
+allowed_scope:
+- project_memory/** (kernel writes and staging proposals only)
+- docs/**
+forbidden_scope:
+- team-kits/**
+- .claude/**
+- tools/**
+- user/**
+- CLAUDE.md
+required_inputs:
+- 'DEC-0041 (closure policy: only reachable terminals, no fabricated lifecycles)'
+- project_memory/generated/index.yaml (the active-item inventory)
+- git log of feat/harness-v2 (the delivery record the assessment measures against)
+expected_outputs:
+- 'STEP 1 ASSESS (read-only, no state change): for EVERY active TSK, FR and DEC item
+  one verdict row in project_memory/staging/<this-TSK-id>/assessment.yaml -- delivered/superseded/open
+  (TSK), built/obsolete/wanted (FR), superseded-by/active (DEC) -- each row carrying
+  its proof: EVD ids, commit hashes or file:line. No item skipped; state the counts
+  per type and total.'
+- 'STEP 2 EXECUTE per DEC-0041, kernel only: delivered or superseded TSK -> transition
+  CANCELLED then archive; every OPEN FR -> triage (triage_result duty), built -> CONVERTED,
+  obsolete -> REJECTED, wanted -> stays TRIAGED; terminal FRs archived; DEC superseded
+  by a later decision -> archive. BUG items untouched (DEC-0041d).'
+- 'STEP 3 NAME the measured unreachability (TSK DONE/VALIDATED and BUG VERIFIED are
+  unreachable in this kit-less repo: lease-backed statuses and an unmintable approval)
+  as a hole-list entry in docs/POST_V2_WISHLIST.md section 12 style, with mechanism
+  and file:line.'
+- 'STEP 4 REPORT: before/after active counts per type; the full list of items LEFT
+  active each with its reason; regenerated index; every claim measured, not asserted.'
+dependencies:
+- DEC-0041
+- PR-0003
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-13T08:51:13'
+closed_at: '2026-08-13T11:05:32'

@@ -36,7 +36,9 @@ request_text: 'NUTZERZIEL (2026-08-10), fuer den konkreten BuyPlugGo-Fall im Off
 
   REIHENFOLGE: erst muss office-team als Workflow ueberhaupt tragen (FR-0014), dann
   diese API-Faehigkeit. Heute ist es ein benanntes Ziel im Zustand, kein Bauauftrag.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T17:18:09'
+triage_result: 'wanted: no step toward API product care exists in the office kit;
+  explicitly ordered behind FR-0014 (assessment TSK-0055)'

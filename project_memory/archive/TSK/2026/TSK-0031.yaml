@@ -1,0 +1,53 @@
+id: TSK-0031
+product_requirement: PR-0001
+derives_from: BUG-0016
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- user/**
+- team-kits/**
+- install.sh
+- install.ps1
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- 'Pruefverdikt TSK-0030 (FAIL): B1 POSIX-Auslieferung brickt global, B2 Ableitungs-Sperre
+  von zusammengesetzten Shell-Formen umgangen'
+- DEC-0032 (weiche Variante) und DEC-0029 (Shell-Routen als gemessene Menge benennen,
+  nicht auf Vollstaendigkeit treiben)
+- 'Was HAELT und nicht angefasst wird: Fail-Open des Hook-Koerpers, Marker/Cleanup,
+  merge_settings-Union, Mirror, -h-Loch geschlossen, cat-harness erlaubt'
+expected_outputs:
+- 'B1: install.sh kopiert den globalen Hook nach ~/.claude/hooks VOR dem Merge, genau
+  wie install.ps1 -- gemessen, dass die Registrierung nie auf eine fehlende Datei
+  zeigt. Ein Test wird ohne den Fix rot (POSIX-Installpfad hinterlaesst eine Registrierung
+  ohne Skript). Kein install darf je einen Hook registrieren, dessen Datei fehlt'
+- 'B1: die benannte Grenze im Messprotokoll und ueberall sonst nennt die WAHRE Schwere
+  -- exit 2 auf fehlende Datei blockiert jeden Werkzeugaufruf, nicht harmlos installiert-sich-nicht'
+- 'B2: zusammengesetzte Shell-Formen werden an &&, ||, ; und | in Teilbefehle zerlegt
+  und je der Verb geprueft -- cd x && harness.py capture, echo hi && ..., true; ...
+  dispatch, ls && kernel.cli create-task, cat foo | harness.py capture werden alle
+  abgelehnt. Rot ohne den Fix'
+- 'B2: was auch die Zerlegung NICHT deckt (gewrappte Formen sh -c / bash -lc, kodierte
+  Formen) wird als gemessene Route mit Kette in docs/POST_V2_WISHLIST.md benannt (DEC-0029-Form),
+  und der Docstring/DEC-Text wird auf das eingeengt, was gebaut ist -- kein versprochener
+  Schutz ohne Code. Bedrohungsmodell: der Einstiegsagent ist kein Gegner, sondern
+  arbeitet nur weiter; die routinemaessigen Formen sind gedeckt, die absichtlich verschleiernden
+  benannt'
+- volle Suite gruen in einem Lauf, ruff sauber, validate sauber, Kits gestempelt,
+  Mirror byte-identisch
+dependencies:
+- TSK-0030
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-10T19:35:17'
+closed_at: '2026-08-13T09:07:58'

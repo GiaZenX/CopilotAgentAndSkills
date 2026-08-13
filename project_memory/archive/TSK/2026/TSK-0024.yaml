@@ -1,0 +1,41 @@
+id: TSK-0024
+product_requirement: PR-0001
+derives_from: SR-0001
+type: analysis
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- project_memory/**
+required_inputs:
+- docs/HARNESS_V2_SPEC.md Abschnitt II.11 -- die sechs Umsetzungsschritte 0 bis 5
+- docs/HARNESS_V2_SPEC.md Abschnitt II.12 -- was Verifikation heisst
+- docs/HARNESS_V2_SPEC.md Abschnitt II.14 -- was ausdruecklich Folgearbeit ist und
+  NICHT zaehlt
+- docs/reviews/phase0-disposition.md -- der Dispositionsbericht aus Schritt 0
+- der laufende Code in team-kits/ und tools/, read-only
+expected_outputs:
+- Fuer jeden der sechs Schritte aus II.11 ein Verdikt fertig, teilweise oder nicht
+  begonnen -- begruendet am laufenden Code oder an einem Lauf, nicht an einer Zeichenkettensuche
+  und nicht an einer Erinnerung
+- 'Wo teilweise: was genau fehlt, als Liste von Dateien oder Eigenschaften, jede einzeln
+  belegt'
+- Die Lockstep-Umstellung aus Schritt 2 wird gegen die Zahl der Monolith-Abhaengigen
+  gemessen, die der Plan nennt, und die heutige Zahl wird selbst ermittelt statt uebernommen
+- Eine Aussage darueber, was zwischen dem heutigen Stand und einem lauffaehigen Piloten
+  aus Schritt 5 noch liegt
+- Jede genannte Zahl ist im Bericht mit dem Befehl belegt, der sie erzeugt hat
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-08T14:33:40'
+closed_at: '2026-08-13T09:07:37'

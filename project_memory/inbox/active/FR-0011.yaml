@@ -26,7 +26,14 @@ request_text: 'Gemessen 2026-08-07: .claude/hooks/test_gates.py laeuft 358 s fue
   dass die Wandzeit wirklich faellt, und dass kein Timing-Test unter der neuen Nebenlast
   sein Urteil aendert. test_gates.py liegt in .claude/hooks/ und ist geschuetzter
   Bereich -- die Aenderung ist ein Item fuer den Umsetzer, nicht fuer den Sitzungsagenten.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-07T21:48:18'
+triage_result: 'wanted: the cut the FR asks for -- a concurrent cell phase against
+  a serial deadline phase -- is unbuilt; the suite already runs its cells through
+  a ThreadPoolExecutor (test_gates.py AT_ONCE=10), yet a full run took 4101.94 s for
+  143 tests on this host, measured 2026-08-13 -- against 358 s when this FR was opened
+  2026-08-07, a factor-11 rise; DEC-0023 reduces how often it runs, not how long,
+  and says itself it does not replace this FR (assessment TSK-0055, corrected per
+  round verification F4/N2)'

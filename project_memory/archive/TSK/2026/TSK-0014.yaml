@@ -1,0 +1,34 @@
+id: TSK-0014
+product_requirement: PR-0001
+derives_from: SR-0001
+type: ops
+assigned_role: harness-lead
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- c:/Offline Repos/v2-pilot/**
+forbidden_scope:
+- c:/Offline Repos/synaipse/**
+- c:/Offline Repos/portfoliomanaigement/**
+- C:/Users/zenti/OneDrive/4-BuyPlugGo/**
+required_inputs:
+- DEC-0006 -- die Reihenfolge und ihr Grund
+- DEC-0013 -- was nach dem Lauf mit dem Wurzelitem geschieht
+- das abgenommene Migrationspaket, committet
+expected_outputs:
+- Die Originale sind nach dem Lauf unveraendert -- gemessen, nicht angenommen
+- Das erste Projekt, das laeuft, ist das mit den Elternketten und den fehlenden Feldern;
+  das mit einem Typ und ohne Ketten kommt danach
+- Was ein Mensch entscheiden musste, ist vorher gefragt und nicht waehrend des Laufs
+- Nach dem Lauf traegt das Projekt wieder ein Wurzelitem, bevor irgendjemand damit
+  arbeitet
+- Jede Abweichung zwischen dem, was der Trockenlauf angekuendigt hat, und dem, was
+  der Lauf getan hat, ist benannt
+- Was der Pilot lehrt, steht als Item im Zustand und nicht in einem Bericht
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-05T13:49:45'
+closed_at: '2026-08-13T09:07:09'

@@ -1,0 +1,57 @@
+id: TSK-0006
+product_requirement: PR-0001
+derives_from: SR-0002
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/kernel/**
+- tools/**
+- README.md
+- docs/HARNESS_V2_SPEC.md
+- team-kits/*/VERSION
+forbidden_scope:
+- project_memory/**
+- .claude/**
+- CLAUDE.md
+- team-kits/*/hooks/**
+- docs/POST_V2_WISHLIST.md
+required_inputs:
+- 'Pruefbericht Runde 4: B1, B2, R-a bis R-l'
+- SR-0002 und SR-0004 -- der Vertrag, dessen zweiten Riegel der Code nicht mehr baut
+expected_outputs:
+- state.py:711-720 und test_state.py:233 sagen, was sie PRUEFEN; die Abweichung von
+  SR-0002s zweitem Riegel (Endzustand) ist als Vertragsabweichung GEMELDET, nicht
+  stillschweigend umgedeutet -- die SRs liegen in forbidden_scope
+- migrate.py:169 V1_ID_RE -- kein id-foermiger Datensatz wird still uebersprungen;
+  TSK-0017b/0031b/0055b/0058b und PRD-0006b/0014b aus portfoliomanaigement erscheinen
+  unter einem Verdikt, und die Verweigerung 'free text binds to nothing' nennt keinen
+  Datensatz mehr so
+- 'archive_candidate ist eine REGEL, keine Zeilenliste: jede True-Zeile traegt ihre
+  Begruendung, und EXP DONE steht nicht ohne Wort daneben (R-b)'
+- Der Archivpfad praegt keinen Status, fuer den in APPROVAL_TRANSITIONS nur ZUFAELLIG
+  keine Kante steht -- SR ACCEPTED ist heute genau dieser Fall (R-a); entweder gebaut
+  oder als Loch mit Mechanismus benannt
+- test_approvals_dispatch.py _STORE_CALLS sieht auch async def, und die Praemisse
+  prueft die EIGENSCHAFT (schreibt in den Speicher) statt den Namen safe_dump (R-d)
+- '_certainly_evaluated: Assert, BoolOp und comprehension fallen nicht mehr durch
+  den Sweep; ein Waechter in einer assert-Message zaehlt NICHT als laufend (R-e)'
+- _carries_status unterscheidet 'kein Status' von 'Status ist kein String' und behauptet
+  nicht das erste (R-h)
+- Die gedruckte Abhilfe der planweiten Kollision ist begehbar -- 'split the document'
+  widerlegt der Kommentar 25 Zeilen darueber selbst, und 'distinct ids' importiert
+  die FZulG-Doku still als zweiten RQ-Backlog (R-g)
+- 'ERTRAG AUF DEN ECHTEN DATEN gemessen (c:/Offline Repos/v2-pilot/*, NUR LESEN):
+  Datensaetze je Verdikt vorher/nachher, jede Verdiktaenderung benannt, und ein Vollstaendigkeitsnachweis
+  -- jeder id-foermige Datensatz der drei Kopien ist einem Verdikt zugeordnet'
+- 'R-i, R-k, R-l: Schreibmenge liest alle vier Kantenwaechter oder sagt welche nicht;
+  toter Funktionsname raus; git-Index vor dem Commit nachgezogen'
+- volle Suite gruen, ruff sauber, validate sauber, Kits gestempelt
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-04T23:30:10'
+closed_at: '2026-08-13T09:06:45'

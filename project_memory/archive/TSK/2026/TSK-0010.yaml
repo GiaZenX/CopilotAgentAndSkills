@@ -1,0 +1,47 @@
+id: TSK-0010
+product_requirement: PR-0001
+derives_from: SR-0007
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/kernel/**
+- team-kits/*/templates/**
+- tools/**
+- README.md
+- team-kits/*/VERSION
+forbidden_scope:
+- project_memory/**
+- .claude/**
+- CLAUDE.md
+required_inputs:
+- DEC-0009 -- keine weitere Haertung; Unaufloesbares ins Archiv statt Blockade
+- SR-0007 (Feldvorschlaege), SR-0001 (Abschlusskriterium), SR-0005 (legacy/)
+- die drei Kopien unter c:/Offline Repos/v2-pilot -- NUR LESEN, Geschaeftsdaten
+expected_outputs:
+- 'SR-0007: Feldvorschlaege aus den ausgelieferten V1-Vorlagen abgeleitet, mit Grund
+  gedruckt, unbestaetigt nicht ausfuehrbar. Sie raeumen den mechanischen Topf leer'
+- 'DEC-0009: ein BACKLOG-Datensatz, der nach den Vorschlaegen weder uebersetzbar noch
+  entscheidbar ist, wandert mit Begruendung ins Archiv statt zu blockieren. Was KEIN
+  Backlog-Typ ist, bleibt not_an_item und Dokument'
+- 'SR-0001: validate setzt durch, dass ausserhalb archive/ und legacy/ keine Datei
+  mehr einen Id-Datensatz traegt; der Trockenlauf meldet dieselbe Bedingung vorab'
+- 'SR-0005: eine vollstaendig aufgegangene V1-Datei wandert nach legacy/, mit Pruefsumme
+  im Beleg'
+- 'ERTRAG AUF DEN ECHTEN DATEN: fuer jede der drei Kopien ein ausfuehrbarer Plan.
+  Datensaetze je Verdikt, jede Verdiktaenderung benannt, und die Liste der Datensaetze,
+  die einen MENSCHEN brauchen -- namentlich, mit dem fehlenden Feld'
+- Der Vollstaendigkeitsnachweis wird mit einer Erkennungsregel gefuehrt, die die geprueften
+  Regel ECHT enthaelt (Gross/Klein, _ als Trenner, 1-2 Ziffern, laengere Praefixe),
+  und jede Differenz zwischen beiden Zaehlungen wird einzeln benannt und beurteilt
+- 'Kommentare nach SR-0008: keine Eigenschaftsbehauptung ohne Test, keine Zahl zweimal,
+  das Warum als Verweis aufs Item'
+- volle Suite gruen, ruff sauber, validate sauber, Kits gestempelt
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-05T07:00:51'
+closed_at: '2026-08-13T09:06:51'

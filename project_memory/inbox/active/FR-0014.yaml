@@ -43,7 +43,9 @@ request_text: 'STAND 2026-08-10: Alle bisherigen Piloten (TSK-0025/0027) waren d
 
   OFFEN: ob die kritische Persona fuer den dokumentzentrierten Fluss angepasst werden
   muss (sie fuettert Dokumente statt Bauwuensche); das ist Teil des Aufbaus.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T17:17:43'
+triage_result: 'wanted: docs/pilot/ holds no office pilot; deferred behind dev-team
+  by DEC-0033 (assessment TSK-0055)'

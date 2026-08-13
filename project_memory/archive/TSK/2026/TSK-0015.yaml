@@ -1,0 +1,42 @@
+id: TSK-0015
+product_requirement: PR-0002
+derives_from: SR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- 'Pruefbericht zu TSK-0013: F1 bis F4 blockierend, F5 bis F11 als Reste'
+- DEC-0014 -- warum die Achsen abgeleitet und nicht gewaehlt werden
+expected_outputs:
+- Die Basis bewegt sich nur, wenn die Shell den Aufruf annimmt -- eine Operandenliste,
+  die sie zurueckweist, laesst sie stehen
+- Ob ein Prozess in ein Verzeichnis hineinkommt, wird von der Frage beantwortet, die
+  ein Prozess dafuer stellt
+- Jede Bedingung, die ein Docstring dieses Apparats fuer sich behauptet, ist eine
+  Achse der Pruefmenge oder ein Eintrag der Loecherliste
+- Ein Test, der seine Eigenschaft nicht misst, meldet das als Fehlschlag und nicht
+  als Auslassung; und die gemeldete Zahl ist auf diesem Rechner wiederholbar
+- Ein Stolperdraht misst beide Richtungen der Aufzaehlung, die er bewacht, und sein
+  Praedikat deckt sich mit dem, was er behauptet
+- Ein Urteil der Loecherliste, das dem gemessenen Zustand widerspricht, macht einen
+  Test rot
+- Keine Zusicherung dieses Apparats haengt am Quelltext eines Bereichs, den ein anderer
+  Auftrag gerade aendert
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen und wiederholbar
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-05T15:10:50'
+closed_at: '2026-08-13T09:07:10'

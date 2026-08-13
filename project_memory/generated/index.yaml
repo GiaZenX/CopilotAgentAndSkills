@@ -1,4 +1,4 @@
-generated_at: '2026-08-13T08:35:00'
+generated_at: '2026-08-13T11:05:32'
 items:
 - id: BUG-0001
   type: BUG
@@ -116,13 +116,6 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: BUG-0019
-  type: BUG
-  title: Der PM der zweiten Sitzung stuetzt den Handover auf das Rohtranskript, nicht
-    auf den Sitzungsbrief
-  status: REJECTED
-  revision: 1
-  approval_ref: null
 - id: BUG-0020
   type: BUG
   title: Gate 1 vertraut der Aufruf-Form, nicht dem laufenden Kernel -- capture mit
@@ -197,6 +190,20 @@ items:
   title: The Codex entry file routes handover on a bare mention of the marker (BUG-0011
     analogue)
   status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0032
+  type: BUG
+  title: validate's orphan heuristic reads staging dirs against active item NAMES
+    only -- a dir referenced by active EVD artifact_refs is reported as orphaned
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0033
+  type: BUG
+  title: test_gate1_answers_before_its_registration_gives_up fails under host load
+    and passes idle -- 'host too noisy' and 'gate too slow' are indistinguishable
+  status: OPEN
   revision: 1
   approval_ref: null
 - id: DEC-0002
@@ -450,6 +457,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0041
+  type: DEC
+  title: 'Closure policy for historical items: only reachable terminals, no fabricated
+    lifecycles'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -588,115 +602,115 @@ items:
   status: null
   revision: 1
   approval_ref: null
-- id: FR-0001
-  type: FR
-  title: 'Ein Gate auf die Aufgabenliste: hoechstens ein Eintrag ohne Item-Id'
-  status: OPEN
+- id: EVD-0024
+  type: EVD
+  title: null
+  status: null
   revision: 1
   approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0003
   type: FR
   title: 'Die Wunschliste bekommt Stand: je Wunsch ein duennes FR, die Loecherliste
     triagiert'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0004
   type: FR
   title: 'Stufe 5: Spec II.12 gegen das Gebaute abgleichen, seitliche V2-RC'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0005
   type: FR
   title: Ein Zuschnitt-Kritiker vor dem Arbeitsauftrag, der einen KLEINEREN Plan vorlegen
     muss
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0006
   type: FR
   title: harness.py update-kit -- der PM spielt Kit-Updates selbst ein
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0007
   type: FR
   title: 'Die Kommentardisziplin in die Kits: Verfassung und Rollendefinitionen'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0009
   type: FR
   title: Fuenf Rollenberichte in docs/research tragen den falschen Rollennamen
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0010
   type: FR
   title: Die fuenf Fehlformen einer Auftragszeile gehoeren in die Rolle des Projektmanagers
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0011
   type: FR
   title: Die Gate-Suite kostet sechs Minuten Wandzeit je Lauf auf einem Host mit 16
     logischen Kernen
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0012
   type: FR
   title: Eine Entscheidung, die in Prosa landet statt in einem Item, hat heute keinen
     Faenger
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0013
   type: FR
   title: guard_pm_scope der Kits deckt die Schreibwerkzeuge, aber nicht die Shell
     -- eine Bash-Zeile umgeht ihn
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0014
   type: FR
   title: Das Office-Kit ist als Workflow nie getestet -- ein Pilot gegen die gemessenen
     V1-Schmerzen fehlt
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0015
   type: FR
   title: 'BuyPlugGo-Ziel: Produktpflege ueber die API durch einen Subagenten -- bisher
     von nichts angearbeitet'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0016
   type: FR
   title: Der Apparat kann ein Bild nicht in den Chat stellen -- UI-Rueckkopplung verpufft
     an Dateipfaden
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0017
   type: FR
   title: Backlog-Gliederung durch inhaltslose Ordnungsknoten (Heading = Parent von
     Requirements, Document = Parent von Headings)
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0018
   type: FR
   title: Weicher Dubletten-Hinweis beim Anlegen eines PR/SR -- ohne Fehlalarm-Flut
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: PR-0001
@@ -765,145 +779,7 @@ items:
   status: PROPOSED
   revision: 1
   approval_ref: null
-- id: TSK-0002
-  type: TSK
-  title: null
-  status: FAILED
-  revision: 1
-  approval_ref: null
-- id: TSK-0003
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0004
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0006
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0007
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0008
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
 - id: TSK-0009
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0010
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0011
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0012
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0013
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0014
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0015
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0016
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0017
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0018
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0019
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0020
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0021
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0022
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0023
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0024
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0025
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0026
   type: TSK
   title: null
   status: DRAFT
@@ -915,163 +791,7 @@ items:
   status: DRAFT
   revision: 1
   approval_ref: null
-- id: TSK-0028
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0029
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0030
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0031
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0032
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
 - id: TSK-0033
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0034
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0035
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0036
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0037
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0038
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0039
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0040
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0041
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0042
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0043
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0044
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0045
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0046
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0047
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0048
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0049
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0050
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0051
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0052
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0053
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0054
   type: TSK
   title: null
   status: DRAFT

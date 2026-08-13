@@ -1,0 +1,40 @@
+id: BUG-0019
+title: Der PM der zweiten Sitzung stuetzt den Handover auf das Rohtranskript, nicht
+  auf den Sitzungsbrief
+related_pr: PR-0002
+observed: 'Gemessen vom Pruefer 2026-08-10 in beiden frischen Piloten (Cafe-Schichtplaner,
+  Lesezeichen), Phase 2, hohe Sicherheit. Das intendierte Handover-Artefakt generated/session_brief.yaml
+  wird gelesen, genuegt dem PM aber nicht -- er greift aktiv auf die Roh-*.jsonl unter
+  ~/.claude/projects/ zurueck: Cafe p2 ''wc -l'' + ''tail -c 8000'' des Transkripts;
+  Lesezeichen p2 intensiv -- ''wc -l'', ''tail -n 150 | python'', zwei Read, PowerShell
+  Get-Content -Tail, VIER Grep ueber das Transkript.
+
+
+  docs/HARNESS_V2_SPEC.md fuehrt ''0 aktive Transkript-Abhaengigkeiten'' als modusunabhaengiges
+  Abnahmekriterium. Das ist damit unter zwei frischen Ideen verletzt. In der allerersten
+  Vorrunde (vokabeltrainer-phase2) war es schon einmal aufgefallen; jetzt ist es unter
+  Persona und frischen Vorhaben doppelt bestaetigt.'
+expected: Der PM der zweiten Sitzung kommt mit dem kanonischen Handover-Artefakt (session_brief.yaml
+  plus die Items) aus und liest kein Rohtranskript. Entweder traegt der Sitzungsbrief,
+  was der PM braucht, oder es wird gemessen und benannt, was ihm fehlt -- aber die
+  Uebergabe haengt nicht an einer Datei, die die Spec ausdruecklich ausschliesst.
+repro: Einstiegssitzung eines Vorhabens durchfahren bis zur Neustart-Bitte, dann frische
+  zweite SDK-Sitzung im selben Verzeichnis starten und 'weiter' sagen. Die use-Events
+  der zweiten Sitzung auf Zugriffe auf ~/.claude/projects/*.jsonl pruefen.
+severity: high
+acceptance_criteria:
+- id: AC-1
+  text: Eine zweite Sitzung uebernimmt korrekt (liest Masterplan + Wurzelitem, beginnt
+    nicht bei null) OHNE das Rohtranskript zu lesen -- gemessen an den use-Events
+    eines echten Laufs
+- id: AC-2
+  text: Falls der session_brief.yaml dem PM heute nicht genuegt, ist gemessen und
+    benannt, WAS ihm fehlt -- statt es aus dem Transkript nachzuholen
+- id: AC-3
+  text: Geprueft ist, ob der Handover ohne das Rohtranskript funktional scheitert
+    oder ob es nur Zusatzlektuere war -- die beiden Faelle brauchen verschiedene Abhilfen
+status: REJECTED
+revision: 1
+approval_ref: null
+created: '2026-08-10T12:54:10'
+closed_at: '2026-08-13T09:11:50'

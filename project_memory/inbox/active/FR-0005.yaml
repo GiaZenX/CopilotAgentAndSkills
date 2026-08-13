@@ -55,7 +55,9 @@ request_text: 'LUECKE: Der Pruefer misst, ob das GEBAUTE stimmt. Niemand prueft,
 
   OFFEN: ob der Kritiker eine eigene Rolle ist oder eine Pflicht des bestehenden Pruefers
   VOR dem Bauen. Zweiteres waere billiger und haette denselben frischen Kontext.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T23:10:54'
+triage_result: 'wanted: no cut-critic role exists in any kit; DEC-0012 explicitly
+  widened its mandate to the five order-line failure forms (assessment TSK-0055)'

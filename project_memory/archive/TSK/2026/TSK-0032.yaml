@@ -1,0 +1,45 @@
+id: TSK-0032
+product_requirement: PR-0001
+derives_from: BUG-0016
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- user/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- 'Pruefverdikt Live-Handover-Pilot (FAIL): F2 Zeilenumbruch-Bypass in _SEGMENT_SPLIT,
+  gemessen am laufenden Hook (cd x <NL> python harness.py capture -> ALLOW(0), gleiche
+  Ableitung mit && -> BLOCK(2)); Minimalfix \n|\r am Rig verifiziert, keine Fehlalarme'
+- 'Verdaechtige weitere Luecke derselben Klasse: einzelnes & (Hintergrund) wird vom
+  Splitter (nur &&) nicht erfasst -- messen, nicht annehmen'
+- DEC-0029 (Shell-Routen als gemessene Menge; wrapped sh -c/bash -lc und kodierte
+  Formen bleiben benannter Rest) und Hausregel 1 (Definition der Trenner-Menge statt
+  um-eins-kurzer Aufzaehlung, Stolperdraht an beiden Enden)
+expected_outputs:
+- '_SEGMENT_SPLIT deckt die vollstaendige Menge unquotierter Top-Level-Kommandotrenner
+  als DEFINITION: Zeilenumbruch \n und \r, einzelnes & (Hintergrund) -- je gemessen
+  -- neben &&/||/;/|. Jeder Trenner bekommt einen Test, der OHNE den Fix rot wird
+  (heute fehlt \n in test_hooks.py:287)'
+- Docstring (handover_guard.py:27-30,73-74) und docs/POST_V2_WISHLIST.md L39 auf die
+  gedeckte Menge eingeengt/praezisiert -- nur gewrappte (sh -c/bash -lc) und kodierte
+  Formen bleiben benannter Rest; kein behaupteter Schutz ohne Code (Hausregel 3)
+- 'Kein Fehlalarm: benigne Mehrzeiler (cd x <NL> ls) und Lese-Mehrzeiler (harness.py
+  doctor) bleiben ALLOW; && /;/| -Regression bleibt geschlossen'
+- volle Suite gruen in einem Lauf, ruff sauber, validate sauber, Kits gestempelt,
+  Mirror byte-identisch
+dependencies:
+- TSK-0031
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-10T22:17:49'
+closed_at: '2026-08-13T09:08:00'

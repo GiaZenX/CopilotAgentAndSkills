@@ -1,0 +1,36 @@
+id: TSK-0034
+product_requirement: PR-0003
+derives_from: BUG-0013
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'BUG-0013: kit hooks put their own dir on sys.path[0] BEFORE importing re/shlex
+  (team-kits/dev-team/hooks/gate_write_scope.py:100, tools/bump_kit_version.py:32);
+  measured 2026-08-05: silent stubs in three dirs switched two gates off each, plus
+  exit(0) stub via kit _root.py. StandardLibraryWins protection exists in .claude/hooks
+  but NOT in the kits'
+expected_outputs:
+- no hook importing via team-kits/ resolves a stdlib name from an agent-writable dir
+  -- as a PROPERTY, not a name list; mirrored byte-identical across the three kits
+  or KIT_SPECIFIC_HOOKS names why; tripwire test that no kit module shadows a stdlib
+  name; red-without-fix proven in an external clone
+dependencies:
+- TSK-0032
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-10T23:43:52'
+closed_at: '2026-08-13T09:08:02'

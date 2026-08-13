@@ -1,0 +1,48 @@
+id: TSK-0030
+product_requirement: PR-0001
+derives_from: BUG-0016
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- user/**
+- team-kits/**
+- tools/**
+- install.ps1
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+required_inputs:
+- BUG-0016 -- Ueberlauf nach der Neustart-Bitte
+- DEC-0032 -- globaler Marker-Hook, weiche Variante (Plan-Artefakte erlaubt, Produktcode
+  und Ableitung blockiert)
+- staging/BUG-0016/fix-design-2026-08-10.md und messung-2026-08-10.md
+- DEC-0030 -- die vier Punkte VOR dem Bau messen, nicht annehmen
+expected_outputs:
+- 'ZUERST gemessen, dann gebaut: (a) feuert ein User-Scope-PreToolUse-Hook unter bypassPermissions
+  wie ein Projekt-Hook; (b) ueberspringt merge_settings.py bei vorhandenem Ziel-hooks-Key;
+  (c) feuert der SessionStart(startup)-Cleanup nur bei echtem Neustart; (d) spuerbare
+  Latenz des globalen No-op-Hooks. Je mit gemessener Zeile und Sicherheitsgrad'
+- Ein globaler PreToolUse-Hook wird ueber user/claude/settings.json ausgerollt; ohne
+  Marker .claude/HANDOVER_PENDING im cwd ein sofortiges exit-0-No-op
+- 'Mit Marker gilt die weiche Variante aus DEC-0032: Schreibungen an product/masterplan.md,
+  project_config.yaml und product/active/PR-0001 erlaubt; Produktcode-Writes/Edits
+  und Item-Ableitung/Spawns verweigert; Reden nie betroffen -- gemessen an einer echten
+  SDK-Einstiegssitzung, die nach der Neustart-Bitte weiterredet'
+- user/merge_settings.py bekommt fuer hooks eine Array-Union-Sonderbehandlung wie
+  fuer permissions.allow/deny; ein Test wird ohne den Fix rot und faehrt merge_settings
+  mit einer Ziel-settings, die schon einen fremden hooks-Key traegt
+- Das Scaffold setzt den Marker, ein projekteigener SessionStart(startup)-Cleanup-Hook
+  loescht ihn; beide byte-identisch ueber dev/office/research gespiegelt
+- volle Suite gruen in einem Lauf, ruff sauber, validate sauber, Kits gestempelt
+dependencies:
+- TSK-0029
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-10T16:36:00'
+closed_at: '2026-08-13T09:07:56'

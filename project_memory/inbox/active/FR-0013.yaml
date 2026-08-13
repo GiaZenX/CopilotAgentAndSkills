@@ -37,7 +37,10 @@ request_text: 'GEMESSEN am laufenden Code, 2026-08-10: team-kits/dev-team/settin
   -- vielleicht ist die 95%-Grenze mit einem ehrlichen Loecherlisten-Eintrag im Kit
   die guenstigere Antwort als eine zweite Kopie des Bash-Apparats. Das ist eine Nutzen-gegen-Wartungslast-Frage
   und keine reine Baufrage.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-10T10:12:03'
+triage_result: 'wanted: team-kits/dev-team/settings/settings.json still registers
+  guard_pm_scope only on Edit|Write|MultiEdit|NotebookEdit, not on Bash|PowerShell
+  -- the docstring''s own named gap (assessment TSK-0055)'

@@ -13,7 +13,10 @@ request_text: 'Reine Gliederungsebenen OHNE Inhalt (kein Titel-Body, keine Besch
   existiert nur die Eltern-Hierarchie PR->SR->TSK und ein class-Feld, keine reine
   Gliederungsebene. Prioritaet: nice, sobald Backlogs groesser werden -- unter dem
   Dubletten-Schutz.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-12T06:23:53'
+triage_result: 'wanted: the kernel knows no grouping/heading node type (backlog_types.py:
+  only PR->SR->TSK parents and class); explicitly deferred until backlogs grow (assessment
+  TSK-0055)'

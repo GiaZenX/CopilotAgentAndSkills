@@ -31,7 +31,9 @@ request_text: 'DEC-0010, DEC-0011 und DEC-0012 halten fuenf Formen fest, in dene
   keinen. Was trÃ¤gt, ist FR-0005 -- der Zuschnitt-Kritiker soll nicht nur fragen,
   ob ein Plan zu gross ist, sondern ob seine Zeilen eine der fuenf Formen tragen.
   Das ist ein Leser mit frischem Kontext gegen einen Text, keine Regex.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-05T12:45:48'
+triage_result: 'wanted: the five order-line failure forms live only in repo decisions
+  (DEC-0010/0011/0012), in no kit constitution or PM role (assessment TSK-0055)'

@@ -1,0 +1,30 @@
+id: FR-0001
+title: 'Ein Gate auf die Aufgabenliste: hoechstens ein Eintrag ohne Item-Id'
+related_pr: PR-0003
+request_text: 'Die Aufgabenliste einer Sitzung wird zur Halde fuer Befunde, die eigentlich
+  Items brauchen -- gemessen am 2026-08-04: acht gemessene Defekte lagen in EINER
+  Zeile einer Aufgabenliste und wurden nur angelegt, weil der Nutzer danach fragte.
+  Der Grund ist keine Wissensluecke, sondern die Anordnung: die Aufgabenliste steht
+  im Kontext, project_memory/ ist ein Verzeichnis, an das man denken muss. Der Weg
+  des geringsten Widerstands zeigt immer auf das, was schon vor einem liegt.
+
+
+  Ein Hook kann das fangen, denn TodoWrite IST ein Werkzeugaufruf -- anders als ''mir
+  ist etwas aufgefallen''. Die Regel braucht keine Inhaltsheuristik (Prosa auf Absicht
+  zu pruefen bauen wir nicht): die Aufgabenliste darf HOECHSTENS EINEN Eintrag ohne
+  Item-Id tragen, naemlich den gerade laufenden; jeder andere nennt eine <TYP>-nnnn,
+  die sich unter project_memory/ aufloest. Das ist eine Aufloesung, keine Deutung,
+  und faellt fail-closed aus.
+
+
+  Grenze, die dazugesagt gehoert: es faengt, was in die Liste geschrieben wird --
+  nicht, was jemand denkt und gar nicht aufschreibt. Dagegen hilft nichts. Gemessen
+  ist aber, dass die Aufgabenliste der Ort ist, an dem es tatsaechlich landet.'
+status: CONVERTED
+revision: 1
+approval_ref: null
+created: '2026-08-04T16:59:06'
+triage_result: 'built: .claude/hooks/gate_todo_items.py exists and is registered on
+  TodoWrite in .claude/settings.json -- the wished gate runs in this repo exactly
+  as requested (assessment TSK-0055)'
+closed_at: '2026-08-13T09:09:34'

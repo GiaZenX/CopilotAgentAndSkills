@@ -14,7 +14,9 @@ request_text: 'Heute gibt es KEINEN inhaltlichen Dubletten-Schutz -- nur die Id-
   statt Warnung bei jedem, Schwelle, nur beim Anlegen zeigen). Prioritaet: hoeher
   als die Gliederung, weil echte Korrektheits-Gefahr -- aber als Hilfe, nicht als
   Zwang.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-12T06:23:54'
+triage_result: 'wanted: capture still detects only duplicate ids, no similarity hint;
+  wished as help, not enforcement (assessment TSK-0055)'

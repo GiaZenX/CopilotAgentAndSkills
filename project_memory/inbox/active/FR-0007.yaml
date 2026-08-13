@@ -21,7 +21,10 @@ request_text: 'SR-0008 gilt fuer dieses Repo. In den Kits muss dieselbe Vorgabe 
   der Kommentare auf ''behauptet eine Eigenschaft'' prueft, waere eine Heuristik ueber
   Prosa -- genau das, was wir nicht bauen. Wahrscheinlich traegt hier nur die Rollendefinition
   plus die Pruefrunde.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-05T07:00:07'
+triage_result: 'wanted: no kit constitution carries the SR-0008 comment discipline
+  (grep over team-kits/dev-team/constitution/AGENTS.md: only the language note) (assessment
+  TSK-0055)'

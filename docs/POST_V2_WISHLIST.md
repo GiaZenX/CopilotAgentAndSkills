@@ -1878,7 +1878,7 @@ ist eine Behauptung wie jede andere — `test_gates.py::test_every_reference_to_
 prüft ihn jetzt.
 H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
-H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37 mit TSK-0022.
+H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -1908,6 +1908,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H10 | **Rest**, offen ist nur die Vollständigkeit | die beiden gefundenen Hälften sind geschlossen und je durch einen roten Test gedeckt; für die dritte gibt es keinen Ersatz, sondern eine ungestellte Frage — ein erschöpfender Mutationslauf über `.claude/hooks/` |
 | H37 | **GESCHLOSSEN**, mit benannten Resten (Rest 1–5 im Eintrag) | für den Mechanismus des Eintrags steht Code (`.claude/hooks/_sandbox.py`, drei Tests). Die Reste liegen sämtlich in der **Messvorrichtung**, nicht im Schutz der Gates, und jeder nennt seine Begrenzung: Rest 1 (nicht importiert = unbewacht), Rest 2 (`_audit.record_event` der Kits schreibt `project_memory/.audit/` dieses Repos — Reparaturstelle im Kit, Begrenzung **sozial**), Rest 3 (die Namensliste bleibt eine Aufzählung; `BASH_ENV` gemessen offen), Rest 4 (`watch` sieht keine Neuanlage), Rest 5 (`_inside` kanonisiert die Win32-Namensräume nicht — Gate 1 selbst ist nicht betroffen) |
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
+| H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -3381,6 +3382,45 @@ Fällen wächst die Blindstelle beider Gates, ohne dass hier oder im Docstring e
 also eine eigene Änderung mit eigener Rotmessung, und sie liegt in der Vorrichtung, nicht im
 Schutz. **Was stattdessen begrenzt:** die Entfernung selbst steht im **Kit**, und jede Änderung
 daran geht durch den Spiegel-, Versions- und Suite-Lauf der Kits; sie entsteht nicht nebenbei.
+
+### H39 — Endzustände, die dieses Repo nicht ehrlich erreichen kann: TSK `DONE`, BUG `VERIFIED` (neu, TSK-0055)
+
+**Mechanismus:** zwei Kernel-Wächter setzen Bedingungen voraus, die nur ein installiertes Kit
+erfüllt, und dieses Repo betreibt bewusst keins (DEC-0003). Erstens verweigert
+`state.py::_transition_locked` jeden direkten Übergang IN einen lease-gestützten Zustand
+(`dispatch.assert_lease_backed_transition_locked`); die TSK-Kette führt über `LEASED` und
+`IN_PROGRESS`, also sind `DONE` und `VALIDATED` ohne echtes Dispatch unerreichbar. Zweitens bindet
+`approvals.APPROVAL_TRANSITIONS` die Kante `BUG TRIAGED→APPROVED` an eine Freigabe in Kraft;
+gemünzt wird die über den PostToolUse-Haken der Kits auf der AskUserQuestion-Antwort, und die
+Registrierung dieses Repos führt nur die vier Gates — die gedruckte Abhilfe der Verweigerung
+(„Frage weiterreichen, die Antwort münzt") hat hier keinen Zuhörer. `VERIFIED` ist damit für jeden
+Bug unerreichbar, solange kein Münzweg existiert.
+
+**Kette (gemessen 2026-08-13, Runde TSK-0055):** `transition BUG-0031 APPROVED` → rc 1, „…is the
+transition a scope approval commits, and none is in force for BUG-0031 at revision 1 -- refused
+(fail-closed)". Die TSK-Hälfte ist aus dem Quelltext belegt (Lease-Wächter in
+`_transition_locked` plus Kettenform in `backlog_types.AUTOMATA`), nicht aus einem Lauf — die
+Messung hätte einen echten Zustandswechsel gekostet (`DRAFT→READY` ist frei und wäre unwahr), und
+ein Beleg, der den Zustand belügt, wäre teurer als die Aussage.
+
+**Folge für die Buchführung, entschieden in DEC-0041:** erledigte Arbeitsaufträge schließen hier
+als `CANCELLED` — der Lieferbeleg liegt in den EVDs und Commits, nicht im Statuswort —, und
+reparierte Bugs bleiben aktiv auf `TRIAGED` stehen, statt mit `REJECTED`/`DUPLICATE` belogen zu
+werden. Dieser Bestand ist sichtbar und wächst mit jedem weiteren reparierten Bug.
+
+**Urteil: kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung — benannte Ausnahme
+(DEC-0041).** **Warum nicht hier schließbar:** der Münzweg wäre entweder eine Registrierung in
+`.claude/settings.json` oder ein Kernel-Münzkommando in `team-kits/**` — beides dem
+**Sitzungsagenten** verwehrt (Gate 1 führt beide Bereiche als session-beschränkt; ein
+Umsetzer-Subagent dürfte dort schreiben, der Änderungskreis existiert genau dafür). Es fehlt also
+keine Schreibbarkeit, sondern eine eigene Runde mit eigener Sicherheitsabwägung — denn ein
+Kommando, das ohne Nutzerantwort münzt, wäre genau das selbst ausgestellte Ja, das die
+Verweigerung wörtlich verbietet. **Was stattdessen begrenzt:** DEC-0041 trägt die Bedeutung von
+`CANCELLED`, und die Bugliste bleibt ehrlich sichtbar statt leergelogen.
+
+**Wodurch es auffiele:** entsteht ein Münzweg (Kit-Installation in diesem Repo oder ein
+Kernel-Kommando), widerlegt der nächste `transition BUG-nnnn APPROVED`-Lauf die gemessene Kette —
+dann ist dieser Eintrag mit der neuen Messung zu schließen und DEC-0041 abzulösen.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss
 

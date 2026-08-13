@@ -1,0 +1,137 @@
+task: TSK-0055
+assessed_at: "2026-08-13"
+policy: DEC-0041
+scope_note: >-
+  Every yaml in tasks/active (53 files) minus TSK-0055 itself = 52 TSK rows; all 17
+  inbox/active FR files; all 39 decisions/active DEC files. BUG items not assessed
+  (DEC-0041d). TSK-0001/TSK-0005 and FR-0008, DEC-0016 already live in archive/ and
+  are outside this assessment.
+counts: {tsk_total: 52, tsk_delivered: 30, tsk_superseded: 19, tsk_open: 3, tsk_unclear: 0, fr_total: 17, fr_built: 1, fr_obsolete: 0, fr_wanted: 16, dec_total: 39, dec_superseded: 0, dec_active: 39}
+tsks:
+  - {id: TSK-0002, verdict: superseded, proof: "status FAILED in item; successor chain TSK-0004 (input 'Pruefbericht Runde 3') .. TSK-0023; final acceptance EVD-0003; commits b32ec98, 7d8532b", reason: "round-2 migrate order failed and was replaced by the round-3..10 chain that ended in the TSK-0023 acceptance"}
+  - {id: TSK-0003, verdict: superseded, proof: "TSK-0007 required_inputs name the TSK-0003 FAIL report (F1-F5); the four gates shipped in commit b32ec98 (.claude/hooks/gate_*.py, .claude/settings.json, harness-lead.md)", reason: "gate order replaced by the TSK-0007..TSK-0022 rework chain; the ordered artifacts exist and are committed"}
+  - {id: TSK-0004, verdict: superseded, proof: "TSK-0006 required_inputs name 'Pruefbericht Runde 4'; chain ends EVD-0003; docs/reviews/2026-08-04-migrate-round2.md; commit b32ec98", reason: "round-3 migrate order replaced by round 4 (TSK-0006)"}
+  - {id: TSK-0006, verdict: superseded, proof: "DEC-0009 (no further hardening, cites TSK-0006 review F7) redirected the work to TSK-0010; final acceptance EVD-0003", reason: "round-4 order replaced by the DEC-0009 course change into TSK-0010"}
+  - {id: TSK-0007, verdict: superseded, proof: "TSK-0008 required_inputs name the TSK-0007 report (B1,B2,B4); docs/reviews/2026-08-05-tsk0007-measurements.md; commit b32ec98", reason: "gate round replaced by TSK-0008"}
+  - {id: TSK-0008, verdict: superseded, proof: "TSK-0011 required_inputs name the TSK-0008 report (F1-F4) and DEC-0010; commit b32ec98", reason: "gate round replaced by TSK-0011"}
+  - {id: TSK-0009, verdict: open, proof: "grep SR-0008|DEC-0008 over .claude/agents/*.md: no match (harness-implementer.md, harness-verifier.md exist); BUG-0012 still status TRIAGED (project_memory/bugs/active/BUG-0012.yaml:31); no docs/reviews/*tsk0009* exists", reason: "ordered outputs undelivered: role definitions carry no SR-0008 rule and BUG-0012 is unfixed; only the CLAUDE.md half exists via other rounds"}
+  - {id: TSK-0010, verdict: superseded, proof: "TSK-0012 required_inputs name the TSK-0010 report (B1-B7) and DEC-0011; final acceptance EVD-0003", reason: "field-proposal round replaced by TSK-0012"}
+  - {id: TSK-0011, verdict: superseded, proof: "TSK-0013 required_inputs name the TSK-0011 report (F1-F3) and DEC-0012; docs/reviews/2026-08-05-tsk0011-measurements.md", reason: "gate round replaced by TSK-0013"}
+  - {id: TSK-0012, verdict: superseded, proof: "TSK-0016 required_inputs name the TSK-0012 report (B2-B5) and DEC-0015; final acceptance EVD-0003", reason: "migrate round replaced by TSK-0016"}
+  - {id: TSK-0013, verdict: superseded, proof: "TSK-0015 required_inputs name the TSK-0013 report (F1-F4) and DEC-0014; docs/reviews/2026-08-05-tsk0013-measurements.md", reason: "gate round replaced by TSK-0015"}
+  - {id: TSK-0014, verdict: superseded, proof: "DEC-0025 point 3 (copies re-copied per run) redefined the pilot arrangement; the copy migration ran as TSK-0026 (docs/pilot/2026-08-11-copy-migration-tsk0026.md)", reason: "the ordered v2-pilot migration run was replaced by the TSK-0026 copy pilot under DEC-0025"}
+  - {id: TSK-0015, verdict: superseded, proof: "TSK-0017 required_inputs name the TSK-0015 report (F1-F4) and DEC-0016; docs/reviews/2026-08-05-tsk0015-measurements.md", reason: "gate round replaced by TSK-0017"}
+  - {id: TSK-0016, verdict: superseded, proof: "TSK-0018 required_inputs name the TSK-0016 report (F1,F2) and DEC-0017; final acceptance EVD-0003", reason: "migrate round replaced by TSK-0018"}
+  - {id: TSK-0017, verdict: superseded, proof: "TSK-0019 required_inputs name the TSK-0017 report (F1-F3) and DEC-0018; docs/reviews/2026-08-07-tsk0017-measurements.md", reason: "gate round replaced by TSK-0019"}
+  - {id: TSK-0018, verdict: superseded, proof: "TSK-0020 required_inputs name the TSK-0018 report (F1,F2) and DEC-0019; docs/reviews/2026-08-07-tsk0018-measurements.md", reason: "migrate round replaced by TSK-0020"}
+  - {id: TSK-0019, verdict: superseded, proof: "TSK-0021 required_inputs name the TSK-0019 report (F1-F3) and DEC-0020; docs/reviews/2026-08-07-tsk0019-measurements.md", reason: "gate round replaced by TSK-0021"}
+  - {id: TSK-0020, verdict: superseded, proof: "TSK-0023 required_inputs name the TSK-0020 FAIL report (F1-F3, R1-R5); docs/reviews/2026-08-07-tsk0020-measurements.md", reason: "migrate round FAILED and was replaced by TSK-0023"}
+  - {id: TSK-0021, verdict: superseded, proof: "TSK-0022 required_inputs name the TSK-0021 verdict (F1-F3); docs/reviews/2026-08-07-tsk0021-measurements.md", reason: "gate round replaced by TSK-0022"}
+  - {id: TSK-0022, verdict: delivered, proof: "EVD-0001 (acceptance pass), EVD-0002 (review pass, diff ed66919b...); commit b32ec98; DEC-0022 closed the round after verdict 3", reason: "final gate round accepted by the verifier and committed"}
+  - {id: TSK-0023, verdict: delivered, proof: "EVD-0003 (pass after ten rounds, diff 13ba2527...); commit 7d8532b; docs/reviews/2026-08-08-tsk0023-measurements.md", reason: "migration acceptance round passed and committed"}
+  - {id: TSK-0024, verdict: delivered, proof: "docs/reviews/2026-08-08-v2-plan-status.md verdicts each of the six II.11 steps (e.g. line 207 'Schritt 5 ... teilweise')", reason: "the ordered plan-status analysis exists as the review document"}
+  - {id: TSK-0025, verdict: delivered, proof: "docs/pilot/2026-08-09-pilot-1-vokabeltrainer.md and docs/pilot/2026-08-10-auswertung.md; pilot findings became items (BUG-0016 et al.)", reason: "pilot 1 ran from an empty directory and was evaluated as ordered"}
+  - {id: TSK-0026, verdict: delivered, proof: "docs/pilot/2026-08-11-copy-migration-tsk0026.md; BUG-0026..BUG-0029 each cite 'Kopie-Pilot TSK-0026' as their source", reason: "copy migration ran against real-project copies; defects were noted, not fixed, as ordered"}
+  - {id: TSK-0027, verdict: open, proof: "game pilot ran (docs/pilot/2026-08-11-runde4-rpg-auswertung.md, titled 'TSK-0027'); no invoice-tool pilot doc exists under docs/pilot/ and no three-pilot comparison", reason: "pilot 2 (game) delivered; pilot 3 (invoice tool, the domain-requirement measurement) and the three-way comparison are still undelivered and still wanted (DEC-0035 loop-until-dry)"}
+  - {id: TSK-0028, verdict: delivered, proof: "EVD-0004 (pass, diff d81dc31a...); commit 24792f0", reason: "capture stdin utf-8 fix (BUG-0018) verified and committed"}
+  - {id: TSK-0029, verdict: delivered, proof: "docs/pilot/2026-08-11-runde4-rpg-auswertung.md ('Screenshot-Loop aus TSK-0029', stages A-D PASS, stage E torn); DEC-0031 persona; FR-0016 carries the display limit", reason: "persona rebuilt and the run measured as ordered; the CR-trigger criterion measurably failed and lives on as a noted finding, which is what this test-type order produces"}
+  - {id: TSK-0030, verdict: superseded, proof: "TSK-0031 required_inputs name the TSK-0030 FAIL verdict (B1 POSIX brick, B2 composite forms); docs/reviews/2026-08-10-tsk0030-measurements.md", reason: "handover-hook round failed and was replaced by TSK-0031; the reworked package shipped in 41dd8f4"}
+  - {id: TSK-0031, verdict: delivered, proof: "EVD-0005 (pass, diff e37642a7...); docs/reviews/2026-08-10-tsk0031-verdict.md; commit 41dd8f4", reason: "handover-hook rework verified and committed"}
+  - {id: TSK-0032, verdict: delivered, proof: "EVD-0006 (pass, diff e8acb146...); docs/reviews/2026-08-11-tsk0032-verdict.md; commit 394ba2b", reason: "separator-set definition verified and committed"}
+  - {id: TSK-0033, verdict: open, proof: "git log on team-kits/office-team/templates/repo/scripts/process_doc.py: last change ae9d37d 2026-08-04, before the item existed (created 2026-08-10); roles join at process_doc.py:125-130 still iterates whatever roles holds; BUG-0015 status TRIAGED; no verdict doc, no EVD", reason: "BUG-0015 scalar-roles fix never ran; Family E round 1 covered only TSK-0034/0035 (docs/reviews/2026-08-11-family-e-verdict.md:1)"}
+  - {id: TSK-0034, verdict: delivered, proof: "EVD-0007 (pass); docs/reviews/2026-08-11-family-e-verdict.md (PASS round 2); commit 06da6f1 (_stdlib_guard.py in all three kits)", reason: "stdlib-shadow guard verified and committed"}
+  - {id: TSK-0035, verdict: delivered, proof: "docs/reviews/2026-08-11-family-e-verdict.md ('TSK-0035 / BUG-0006 -- PASS round 1'); EVD-0007; commit 06da6f1", reason: "transitive ordering-branch derivation verified in the same family round"}
+  - {id: TSK-0036, verdict: delivered, proof: "EVD-0008 (pass); docs/reviews/2026-08-11-family-d-quick-verdict.md; commit c188d5f (.gitattributes '* text=auto eol=lf')", reason: "CRLF inflation closed as a definition and verified"}
+  - {id: TSK-0037, verdict: delivered, proof: "docs/reviews/2026-08-11-family-d-quick-verdict.md (TSK-0037 PASS); commit c188d5f (.gitignore + Microsoft/ModuleAnalysisCache removed from index)", reason: "tool trace untracked and tripwired; residue named as H37 Rest 2"}
+  - {id: TSK-0038, verdict: delivered, proof: "EVD-0009 (pass, diff 6b24ab85...); docs/reviews/2026-08-11-tsk0038-verdict.md; commit 86b144f", reason: "ruff pinned and rule set explicit, verified"}
+  - {id: TSK-0039, verdict: delivered, proof: "EVD-0010 (pass); docs/reviews/2026-08-11-migration-family-verdict.md (BUG-0026 closed); commit 569fb34", reason: "deposit digest closes the data-loss chain, verified"}
+  - {id: TSK-0040, verdict: delivered, proof: "docs/reviews/2026-08-11-migration-family-verdict.md:23 (BUG-0027 READY line carries build flags, red without fix); commit 569fb34", reason: "verified in the migration family round"}
+  - {id: TSK-0041, verdict: delivered, proof: "docs/reviews/2026-08-11-migration-family-verdict.md:23 (BUG-0028 deposits counted as own class, red without fix); commit 569fb34", reason: "verified in the migration family round"}
+  - {id: TSK-0042, verdict: delivered, proof: "docs/reviews/2026-08-11-migration-family-verdict.md:23 (BUG-0029 honest reasoned gap; kit named when kit_state.json present); commit 569fb34", reason: "verified in the migration family round with the gap honestly reasoned"}
+  - {id: TSK-0043, verdict: delivered, proof: "EVD-0011 (pass, diff 1a46fd9c...); docs/reviews/2026-08-11-tsk0043-h34-verdict.md; commit 2dde226", reason: "H34 verb-bound message removal closes the DEC-0001 deletion vector, verified"}
+  - {id: TSK-0044, verdict: delivered, proof: "EVD-0012 (pass, Family B round 1, BOM accepted); docs/reviews/2026-08-11-family-b-round1-verdict.md; commit 02247e4", reason: "capture BOM fix verified and committed"}
+  - {id: TSK-0045, verdict: delivered, proof: "EVD-0012 names 'BUG-0001 update command refuses all 5 kernel-set fields'; commit 02247e4 ('the command surface had no update')", reason: "kernel update command shipped in the same Family B round 1 package"}
+  - {id: TSK-0046, verdict: delivered, proof: "EVD-0013 (pass, Family B round 2a, premise_rechecks); docs/reviews/2026-08-11-family-b-round2a-verdict.md; commit c6f9782", reason: "BUG-0004 field decision measured and verified"}
+  - {id: TSK-0047, verdict: delivered, proof: "EVD-0013 names 'BUG-0009 FR resulting_item + DEC supersedes as validated links'; commit c6f9782 ('a decision that replaced another said so only in prose')", reason: "state-link fields shipped in the same Family B round 2a package"}
+  - {id: TSK-0048, verdict: delivered, proof: "EVD-0014 (pass, diff 95ab4610...); docs/reviews/2026-08-11-tsk0048-bug0010-verdict.md; commit 230b817", reason: "lease-backed status honesty (DEC-0038 AC-1) verified and committed"}
+  - {id: TSK-0049, verdict: delivered, proof: "EVD-0015 (pass, Family A rest); docs/reviews/2026-08-12-family-a-rest-verdict.md; commit 2f7ca98", reason: "source-deleting copiers refused as move-out, verified"}
+  - {id: TSK-0050, verdict: delivered, proof: "EVD-0015 names 'BUG-0003 one shared resolved-target reader closes >|/continuation for the ledger AND filing rules'; commit 2f7ca98", reason: "ledger redirect reads the resolved string, shipped in the same Family A rest package"}
+  - {id: TSK-0051, verdict: delivered, proof: "EVD-0016 (pass, diff 8a955430...); docs/reviews/2026-08-12-tsk0051-bug0005-verdict.md; commit c784e9d", reason: "session brief carries the newest standing decisions, verified"}
+  - {id: TSK-0052, verdict: delivered, proof: "EVD-0017 (pass, two rounds, diff 6cacd8ae...); docs/reviews/2026-08-12-tsk0052-marker-audit.md and -end-anchor-verdict.md; commit 426d7cd", reason: "structural shim-line marker rule verified and committed"}
+  - {id: TSK-0053, verdict: delivered, proof: "EVD-0019 (static pass, diff 65f00f49...); docs/reviews/2026-08-12-tsk0053-verdict.md; commit 29bc987; residual behaviour gap measured by EVD-0020 spawned TSK-0054", reason: "wording fix delivered as ordered; the live-pilot residue became its own item"}
+  - {id: TSK-0054, verdict: delivered, proof: "EVD-0021, EVD-0022 (static pass), EVD-0023 (live pilot pass); docs/reviews/2026-08-12-tsk0054-verdict.md and 2026-08-13-tsk0054-live-confirm.md; commits e4b0aaa, 8ffadf0", reason: "structural handover-guard refusal verified statically and confirmed live"}
+frs:
+  - {id: FR-0001, verdict: built, proof: ".claude/hooks/gate_todo_items.py exists; registered on TodoWrite in .claude/settings.json:51", reason: "the todo-list gate runs in this repo exactly as wished", successor: ".claude/hooks/gate_todo_items.py + .claude/settings.json TodoWrite registration"}
+  - {id: FR-0002, verdict: wanted, proof: "team-kits/office-team/templates/project_memory/filing_plan.yaml:24 still ships 'rules: []'; F1 only mitigated by an entry-file instruction (user/claude/CLAUDE.md Auto-Init step 3)", reason: "F1 blocking kit defect unbuilt in the kit itself; F2-F8 untouched; deferred by DEC-0033 (dev-team first)"}
+  - {id: FR-0003, verdict: wanted, proof: "docs/POST_V2_WISHLIST.md sections 1-10 have no FR items in inbox/active (only FR-0016/0017/0018 carry source: pointing at other docs); section-11 hole triage partially happened via the 21-BUG triage (DEC-0036)", reason: "the per-wish thin-FR conversion and the full section-11 BUG/DEC split remain undone"}
+  - {id: FR-0004, verdict: wanted, proof: "docs/reviews/2026-08-08-v2-plan-status.md:219 'RC-Haelfte: nicht begonnen', :268 and :273 name FR-0004 for both remaining halves", reason: "II.12 comparison and the side-install both still open, measured by the plan-status round itself"}
+  - {id: FR-0005, verdict: wanted, proof: "no critic role exists (.claude/agents/ holds only lead/implementer/verifier/watchers); no kit mechanism references a plan-size critic", reason: "the cut critic is unbuilt; DEC-0012 explicitly extends its mandate (five forms), raising the wish's weight"}
+  - {id: FR-0006, verdict: wanted, proof: "grep 'update-kit|update_kit' over team-kits/kernel: no match", reason: "the kernel update-kit command from DEC-0001 is not built"}
+  - {id: FR-0007, verdict: wanted, proof: "grep Kommentar/comment over team-kits/dev-team/constitution/AGENTS.md: only the language note at line 4; no comment-discipline rule in any kit constitution", reason: "SR-0008 comment discipline never mirrored into the kits"}
+  - {id: FR-0009, verdict: wanted, proof: "git log docs/research: last change 8773fd9 2026-08-03, before the FR (2026-08-05); the five role reports still carry their 2026-07-27 names", reason: "the rename never happened"}
+  - {id: FR-0010, verdict: wanted, proof: "grep Fehlform/'five forms' over team-kits: no match", reason: "the five order-line failure forms exist only as repo DECs (DEC-0010/0011/0012), not in any kit constitution or PM role"}
+  - {id: FR-0011, verdict: wanted, proof: ".claude/hooks/test_gates.py unchanged as a single serial suite; DEC-0023 (acceptance-run cadence) explicitly says it does not replace FR-0011", reason: "wall time reduced in practice by cadence, the suite itself never parallelised"}
+  - {id: FR-0012, verdict: wanted, proof: "no number-in-docs trigger exists; guard_no_adhoc (name-based) is the kits' only related device and reads no content", reason: "the decision-in-prose catcher is unbuilt"}
+  - {id: FR-0013, verdict: wanted, proof: "team-kits/dev-team/settings/settings.json:52 registers guard_pm_scope only on 'Edit|Write|MultiEdit|NotebookEdit', not on Bash|PowerShell", reason: "the shell half of the PM scope guard remains the docstring's own named 95% gap"}
+  - {id: FR-0014, verdict: wanted, proof: "docs/pilot/ holds no office pilot; DEC-0033 defers office-team behind dev-team", reason: "office workflow still never piloted"}
+  - {id: FR-0015, verdict: wanted, proof: "item itself records 'darauf hat bisher KEIN Schritt hingearbeitet'; nothing in team-kits/office-team implements API product care; ordered behind FR-0014", reason: "named goal, no work started, sequence unchanged"}
+  - {id: FR-0016, verdict: wanted, proof: "docs/pilot/2026-08-11-runde4-rpg-auswertung.md, Stelle 4: image cannot be shown IN the chat; no fix shipped since", reason: "provider-capability gap still open"}
+  - {id: FR-0017, verdict: wanted, proof: "kernel knows only PR->SR->TSK parents and a class field (item's own measurement); no heading/document node type in team-kits/kernel/backlog_types.py", reason: "grouping nodes not built; explicitly 'nice, sobald Backlogs groesser werden'"}
+  - {id: FR-0018, verdict: wanted, proof: "only duplicate-id detection exists (item's own measurement, unchanged); no similarity hint in kernel capture path", reason: "soft duplicate hint not built; user wants it as help, not enforcement"}
+decs:
+  - {id: DEC-0002, verdict: active}
+  - {id: DEC-0003, verdict: active}
+  - {id: DEC-0004, verdict: active}
+  - {id: DEC-0005, verdict: active}
+  - {id: DEC-0006, verdict: active}
+  - {id: DEC-0007, verdict: active}
+  - {id: DEC-0008, verdict: active}
+  - {id: DEC-0009, verdict: active}
+  - {id: DEC-0010, verdict: active}
+  - {id: DEC-0011, verdict: active}
+  - {id: DEC-0012, verdict: active}
+  - {id: DEC-0013, verdict: active}
+  - {id: DEC-0014, verdict: active}
+  - {id: DEC-0015, verdict: active}
+  - {id: DEC-0017, verdict: active}
+  - {id: DEC-0018, verdict: active}
+  - {id: DEC-0019, verdict: active}
+  - {id: DEC-0020, verdict: active}
+  - {id: DEC-0021, verdict: active}
+  - {id: DEC-0022, verdict: active}
+  - {id: DEC-0023, verdict: active}
+  - {id: DEC-0024, verdict: active}
+  - {id: DEC-0025, verdict: active}
+  - {id: DEC-0026, verdict: active}
+  - {id: DEC-0027, verdict: active}
+  - {id: DEC-0028, verdict: active}
+  - {id: DEC-0029, verdict: active}
+  - {id: DEC-0030, verdict: active}
+  - {id: DEC-0031, verdict: active}
+  - {id: DEC-0032, verdict: active}
+  - {id: DEC-0033, verdict: active}
+  - {id: DEC-0034, verdict: active}
+  - {id: DEC-0035, verdict: active}
+  - {id: DEC-0036, verdict: active}
+  - {id: DEC-0037, verdict: active}
+  - {id: DEC-0038, verdict: active}
+  - {id: DEC-0039, verdict: active}
+  - {id: DEC-0040, verdict: active}
+  - {id: DEC-0041, verdict: active}
+dec_note: >-
+  The only supersession found anywhere (explicit prose 'DEC-0016 wandert ins Archiv'
+  in DEC-0018) is already executed: DEC-0016 lives in archive/DEC/2026/. No active DEC
+  is replaced by a later one. Refinement chains that do NOT supersede, checked in prose:
+  DEC-0019 keeps DEC-0017 ('bleibt richtig und reicht nicht'), DEC-0020 keeps DEC-0018
+  ('bleibt in Kraft und wird nicht abgeloest'), DEC-0009 corrects a number in DEC-0004
+  without replacing it, DEC-0034 refines wishlist point 4 'loest ihn aber nicht ab'.
+  No active DEC carries a supersedes/superseded_by field (the fields exist since
+  TSK-0047/commit c6f9782 but are unused in this repo's decisions).
+completeness_check:
+  tasks_active_yaml_files: 53
+  tsk_rows: 52
+  tsk_excluded: [TSK-0055]
+  inbox_active_yaml_files: 17
+  fr_rows: 17
+  decisions_active_yaml_files: 39
+  dec_rows: 39
