@@ -78,8 +78,14 @@ measured (TSK-0031/0032, chains in docs/POST_V2_WISHLIST.md L39):
     refusal is keyed on the `[APR-REQ:<id>]` marker, so an approval-looking question that carries no
     marker cannot be told apart from an ordinary question and is allowed. Narrow BY DESIGN — the
     alternative is to model intent from free text, which would refuse the entry gate's own questions.
-    The measured live vector relayed the marker (docs/reviews/2026-08-12-bug0019-bug0017-pilot.md);
-    a markerless variant is named residue, not built protection.
+    ONE live entry session has been measured relaying the kernel's approval question into
+    `tool_input` with the `[APR-REQ:<id>]` marker byte-faithful, and this hook refused it
+    (2026-08-13, docs/reviews/2026-08-13-tsk0054-live-confirm.md). That is one measured relay, not a
+    property of relaying, and the older pilot adds nothing here: the entry-session run behind
+    EVD-0020 (docs/reviews/2026-08-12-bug0017-live-confirm.md) records only that the approval was
+    REQUESTED and that the mint FAILED — whether ITS question carried the marker is recorded
+    nowhere, and that run's raw log is gone. So a markerless or mangled relay stays named residue,
+    not built protection.
 """
 import json
 import os

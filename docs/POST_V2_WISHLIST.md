@@ -1824,9 +1824,32 @@ Emitters (`team-kits/kernel/approvals.py` schreibt `[APR-REQ:<id>]`, `gate_appro
 ein **byte-treuer, case-exakter** Relay. Eine Halluzination, die den Marker WEGLÄSST oder verstümmelt/
 kleinschreibt, ist von einer normalen Frage nicht unterscheidbar und entkommt; die Alternative wäre,
 Absicht aus Freitext zu modellieren (gegen die DEC-0029 entschied) und dabei die Einstiegs-Gate-Fragen
-mitzuverweigern. Narrow by design; in der Guard-Docstring benannt. Der gemessene Live-Vektor relayte
-den echten Marker, ist also gedeckt; die Verhaltensbestätigung (Agent erfindet auf dem
-Fortsetzungspfad kein `/hooks` mehr) steht als Live-Phase-1-Pilot noch aus.
+mitzuverweigern. Narrow by design; in der Guard-Docstring benannt.
+
+**Live gemessen 2026-08-13** (`docs/reviews/2026-08-13-tsk0054-live-confirm.md`, Rohprotokolle in
+`docs/reviews/2026-08-13-tsk0054-live-logs/`): EINE echte Einstiegssitzung reichte die Kernel-Frage
+mit byte-treuem `[APR-REQ:<id>]` in `tool_input` durch, der Guard verweigerte sie (rc 2,
+`apr-live2.jsonl` Sätze 10/11) — **eine** gemessene Weitergabe, keine Eigenschaft des Weiterreichens;
+ob die EVD-0020-Frage der Einstiegssitzung den Marker trug, ist nirgends aufgezeichnet (Rohprotokoll
+gelöscht — die frühere Fassung dieses Absatzes behauptete Deckung mit einem Zitat, das nur Phase 2
+belegt; korrigiert). Die Verhaltensbestätigung ist im selben Lauf erbracht: der Einstiegsagent erfand
+auf dem Fortsetzungspfad kein `/hooks` und keinen Ersatz, sondern bat um den Neustart — auch mit der
+`restart_required`-Diagnose vor Augen (ein Modell, ein Lauf; modellabhängige Aussage). Präzisierung
+aus dem Lauf: tragend war auf dem natürlichen Pfad die ältere BUG-0016-Shell-Regel
+(`request-approval` rc 2); der Marker entsteht ausschließlich im stdout der CLI (die Pending-Datei
+trägt ihn nicht, gemessen), der Ask-Zweig wurde darum in vier von fünf Sitzungen gar nicht erreicht.
+Er ist der Riegel für Marker-Ankunft auf anderem Weg (Datei, Paste, ungelisteter Wrapper) — zweiter
+Riegel, nicht erster.
+
+**Rest desselben Laufs (F2): der `/hooks`-vorschlagende Diagnosepfad ist im Einstiegsfenster
+absichtlich erreichbar.** `doctor` ist als Read-Subcommand vom Guard erlaubt, und sein
+`hook_trust`-Grund (`team-kits/kernel/report.py:1769-1771`) beschreibt wörtlich „needs /hooks
+confirmation" — die Quelle der Rationalisierung bleibt damit im Kontext des Einstiegsagenten
+(`pilot-rezepte.jsonl` Sätze 116/117); ob er sie weiterreicht, ist modellabhängig, heute einmal
+negativ gemessen. Außerhalb des TSK-0054-Scopes (`team-kits/**` verboten); minimaler Fix einer
+späteren Runde: den Text auf „restart — /hooks is not part of this flow" umstellen oder `doctor` im
+Handover-Fenster den `hook_trust`-Grund unterdrücken lassen (Fix-Option (c) aus
+`docs/reviews/2026-08-12-bug0017-live-confirm.md`).
 
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
