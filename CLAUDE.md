@@ -135,7 +135,9 @@ Prüfung muss den Teil lesen, der läuft.
 
 ## Die vier Gates dieses Repos
 
-Seit `SR-0006` steht die Regel nicht mehr allein auf Disziplin. `.claude/settings.json` registriert
+Seit `SR-0006` (2026-08-04; heute abgelöst durch **`SR-0009`**, das den Auslöser als Eigenschaft
+und den Bereich als Ableitung fasst) steht die Regel nicht mehr allein auf Disziplin.
+`.claude/settings.json` registriert
 vier eigene `PreToolUse`-Hooks aus `.claude/hooks/` — kein Kit, keine Kit-Hooks.
 
 **Was beim Sitzungsstart bindet, ist die Registrierung** — welches Skript auf welchem Ereignis

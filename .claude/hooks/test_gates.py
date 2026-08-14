@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-The measurement for this repo's four PreToolUse gates (SR-0006, TSK-0003).
+The measurement for this repo's four PreToolUse gates (SR-0009, TSK-0003).
 
 HOW IT MEASURES. Every gate is started as a REAL PROCESS with a JSON payload on stdin, against a
 project built OUTSIDE this repo, and the verdict read off the exit code -- 2 is a refusal, 0 is an
@@ -348,22 +348,27 @@ def _registered_tools(settings_path):
     return out
 
 
-# The contract's own table, transcribed from SR-0006 -- {gate script: the tool names it must see}.
-# AN ENUMERATION, and the only one in this file, because nothing in the repo derives it: SR-0006
-# states the trigger as a set of tool names and not as a property, which is the contract deviation
-# this round reports rather than papers over. So it carries a tripwire at BOTH ends
+# SR-0009's trigger, spelled onto the tool names this provider has -- {gate script: the names it
+# must see}. AN ENUMERATION, and the only one in this file, because nothing in the repo derives a
+# provider's tool names: the contract states the trigger as a PROPERTY (every surface through which
+# a gate's subject can be reached), and a property cannot be compared with a registration until
+# somebody writes down which surfaces exist. So it carries a tripwire at BOTH ends
 # (`test_the_registration_is_the_one_the_contract_asks_for`): every gate that is registered must
 # appear here, and every gate here must be registered on exactly these tools -- and a second test
 # drives each of those names through the real process, so a name that is registered and does
 # nothing is not the same as one that decides.
 #
+# WHAT NEITHER END REACHES, named rather than implied: a NEW write-capable surface the provider
+# gains. Both ends compare this table with the registration, and neither of them knows the
+# provider's inventory; SR-0009 puts a new surface into the registration the day it appears, and
+# nothing here notices if it does not.
+#
 # WHERE EACH LINE COMES FROM:
-#   gate 1  -- "der Hauptagent darf nichts schreiben, was in eine Kit-Version eingeht". A write is
-#              a write whichever tool makes it, so both the write tools and the two shells; the
-#              shell half is the deviation SR-0006's four-name trigger did not cover.
-#   gate 2  -- "ein Spawn im Aenderungskreis braucht ein Item": the spawn tools.
-#   gate 3  -- "kein Commit ohne ein Beweismittel-Item": a commit is a shell act.
-#   gate 4  -- "die Aufgabenliste traegt hoechstens EINEN Eintrag ohne Item-Id": the list tool.
+#   gate 1  -- clause 1: a write is a write whichever tool makes it, so both the write tools and
+#              the two shells.
+#   gate 2  -- clause 2: the spawn tools.
+#   gate 3  -- clause 3: recording history is a shell act.
+#   gate 4  -- clause 4: the list tool.
 EXPECTED_TOOLS = {
     "gate_lead_write_scope.py": {"Write", "Edit", "MultiEdit", "NotebookEdit",
                                  "Bash", "PowerShell"},
@@ -418,7 +423,7 @@ def test_the_registration_is_the_one_the_contract_asks_for():
         % (sorted(actual), sorted(EXPECTED_TOOLS)))
     for script, tools in sorted(EXPECTED_TOOLS.items()):
         assert actual[script] == tools, (
-            "%s is registered on %s but SR-0006 asks for %s"
+            "%s is registered on %s but SR-0009's trigger asks for %s"
             % (script, sorted(actual[script]), sorted(tools)))
 
 
@@ -1042,24 +1047,25 @@ def test_gate2_refuses_an_archived_item_whose_type_declares_no_terminals(project
     assert rc == 2, "an ARCHIVED %s still counted as open work: %s" % (item_type, err[:400])
 
 
-def test_the_types_the_contract_names_are_the_ones_the_derivation_accepts():
+def test_the_types_a_task_list_carries_work_in_are_the_ones_the_derivation_accepts():
     """The tripwire on the widened predicate, at BOTH ends.
 
-    `_harness.Reference.carries_work` asks the kernel whether a type has a LIFECYCLE, which is the
-    reason SR-0006 gives, rather than repeating the three type names its parenthesis illustrates it
-    with. That reading is only defensible while the two ends hold: every type the contract names
-    must pass, and the type its justification names (`DEC`, "keinen Lebenszyklus") must fail. A
-    rename kills the first, a `DEC` that grew an automaton kills the second, and either turns this
-    red instead of quietly changing what gate 4 means.
+    `_harness.Reference.carries_work` asks the kernel whether a type has a LIFECYCLE. SR-0009
+    clause 4 states that as a property and names no type at all, so the derivation cannot be
+    compared with a list -- what keeps it honest are the two ends it must not move: the three types
+    a task list here is written with must pass, and `DEC`, which has no automaton and can therefore
+    lead nothing, must fail. A rename kills the first, a `DEC` that grew an automaton kills the
+    second, and either turns this red instead of quietly changing what gate 4 means.
     """
     sys.path.insert(0, TEAM_KITS)
     from kernel.backlog_types import ACTIVE_DIRS, AUTOMATA
     for named in ("TSK", "BUG", "FR"):
         assert named in ACTIVE_DIRS, "%s is no longer a kernel type" % named
         assert named in AUTOMATA, (
-            "%s has no automaton, so gate 4 would refuse an item SR-0006 names as work" % named)
+            "%s has no automaton, so gate 4 would refuse an item type this repo's task lists "
+            "carry work in" % named)
     assert "DEC" in ACTIVE_DIRS and "DEC" not in AUTOMATA, (
-        "DEC now has a lifecycle -- SR-0006's justification for the rule no longer holds and "
+        "DEC now has a lifecycle -- the reason a decision cannot lead work no longer holds and "
         "gate 4's derivation has to be revisited")
 
 
@@ -3808,6 +3814,111 @@ def test_every_reference_to_a_measurement_leads_to_one(project):
                     assert sections & set(re.findall(r"section (\d+)", said)), (
                         "%s cites %s without naming a section of it, so nothing says what the "
                         "reference is for: %r" % (entry, relative, said[:200]))
+
+
+# -- a citation names the record that is IN FORCE (BUG-0035) -------------------
+
+
+def _contract_types():
+    """The item types whose record states a RULE, asked of the kernel's own field contract.
+
+    THE QUESTION THAT SEPARATES A RULE FROM AN EVENT: which types does `REQUIRED_FIELDS` oblige to
+    carry a `contract`? A task, a bug, a measurement record something that HAPPENED, and that stays
+    true after the item is archived; a contract states what holds NOW, and archiving it is how this
+    repo replaces it.
+
+    WHAT IT DOES NOT REACH, named rather than implied: `DEC` states a decision, and an archived
+    decision is replaced in the same way -- `DEC-0016` is archived and cited in this directory. A
+    second field name here would be the enumeration this repo keeps paying for, and whether an
+    archived decision may be cited plainly is undecided, so that half is reported rather than
+    quietly answered.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.backlog_types import REQUIRED_FIELDS
+    return {name for name, fields in REQUIRED_FIELDS.items() if "contract" in fields}
+
+
+def _contract_items(types):
+    """(replaced, in force) contract ids -- proposed by the store, CLASSIFIED by the reader.
+
+    The walk only proposes names. Whether an id is archived is answered by
+    `_harness.resolve_references`, the same reader gates 2 and 4 decide with; deciding it from the
+    directory a file sits in would measure the layout instead of the store.
+    """
+    import _harness
+    proposed = set()
+    for _base, _dirs, names in os.walk(os.path.join(ROOT, "project_memory")):
+        for name in names:
+            stem, extension = os.path.splitext(name)
+            if extension == ".yaml" and stem.split("-")[0] in types:
+                proposed.add(stem)
+    replaced, in_force = [], []
+    for ref in _harness.resolve_references(ROOT, " ".join(sorted(proposed))):
+        if ref.found:
+            (replaced if ref.archived else in_force).append(ref.text)
+    return sorted(replaced), sorted(in_force)
+
+
+def _cited_but_replaced(said, types):
+    """The contract ids a statement names that are archived, when it names none that is in force.
+
+    THE RULE: a replaced contract may be discussed, but not alone -- the record that took its place
+    stands in the SAME statement, so a reader who follows the citation lands on the rule that binds.
+    What "the same statement" means is `_said_in`: one string, or one unbroken block of comment
+    lines.
+
+    WHAT IT DOES NOT ASK is whether the prose around the citation leans on the old record as
+    authority; a statement that names the one in force passes whatever it then says about the old
+    one. The bare citation is what this catches, and that is the shape BUG-0035 was made of.
+    """
+    import _harness
+    cited = [ref for ref in _harness.resolve_references(ROOT, said)
+             if ref.found and ref.item_type in types]
+    if any(not ref.archived for ref in cited):
+        return []
+    return sorted({ref.text for ref in cited if ref.archived})
+
+
+def test_no_statement_here_cites_a_replaced_contract_on_its_own():
+    """A comment citing a replaced contract sends its reader to a rule that does not bind.
+
+    THE OCCASION IS MEASURED (BUG-0035): SR-0006 was replaced by SR-0009 and archived, and fourteen
+    statements in this directory went on naming the archived one as the contract -- three of them
+    the opening line of a gate, two more the opening line of the shared body and of this file.
+    Nothing noticed, because nothing ever asked the store what it says about an id a comment names.
+
+    BOTH ENDS, AND NEITHER OF THEM IS THIS DIRECTORY'S OWN TEXT: the predicate is driven with a
+    statement built out of ids the store hands over -- a replaced contract alone must be reported,
+    the same statement with the one in force beside it must not. A check whose only subject is the
+    tree it runs over cannot tell "nothing is wrong" from "nothing was looked at".
+
+    HOW FAR IT REACHES: the `.py` sources of this directory, because those are what `_said_in` can
+    parse. A citation in the registration beside them (`.claude/settings.json` carries prose in a
+    `_comment`) is not read here, and neither is one in `CLAUDE.md` or under `docs/`.
+    """
+    types = _contract_types()
+    assert types, "no type is obliged to carry a contract, so this test asks about nothing"
+    replaced, in_force = _contract_items(types)
+    assert replaced, "no replaced contract is in this store, so the rule could not be broken"
+    assert in_force, "no contract is in force in this store, so the exemption could not be shown"
+    alone = "a statement that names %s and nothing else" % replaced[0]
+    assert _cited_but_replaced(alone, types) == [replaced[0]], (
+        "the predicate does not report %s standing alone, so what follows measures nothing"
+        % replaced[0])
+    assert not _cited_but_replaced("%s, replaced by %s" % (alone, in_force[0]), types), (
+        "the predicate reports %s even beside %s, so it refuses the honest form of a historical "
+        "mention" % (replaced[0], in_force[0]))
+    stale = []
+    for entry in sorted(os.listdir(HOOKS)):
+        if not entry.endswith(".py"):
+            continue
+        with open(os.path.join(HOOKS, entry), encoding="utf-8") as handle:
+            source = handle.read()
+        for said in _said_in(source):
+            for cited in _cited_but_replaced(said, types):
+                stale.append("%s cites %s, which the store reports archived, without naming the "
+                             "contract that replaced it: %r" % (entry, cited, said[:160]))
+    assert not stale, "\n".join(sorted(set(stale)))
 
 
 # -- the deadline the registration sets (TSK-0011 F4) --------------------------

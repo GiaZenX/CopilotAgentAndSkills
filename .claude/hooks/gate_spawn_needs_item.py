@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gate 2 (SR-0006): a spawn in the change circle needs an item.
+Gate 2 (SR-0009 clause 2): a spawn in the change circle needs an item.
 
 WHY. DEC-0003 records what this replaces: the order to the implementer used to be written freely in
 a chat message, so an outdated item produced no visible error and a summarised session lost the
@@ -19,7 +19,8 @@ WHAT COUNTS AS NAMING AN ITEM: an id that RESOLVES under `project_memory/` (acti
 is NOT terminal. A finished item is no order for work now.
 
 DELIBERATELY WEAKER THAN GATE 4 IN ONE RESPECT: gate 4 additionally demands that the type can carry
-work, because SR-0006 says so for the task list and only for the task list. A spawn that says "read
+work, because SR-0009 asks that of a task list entry (clause 4) and not of a spawn (clause 2, which
+requires an open item and nothing further about its type). A spawn that says "read
 DEC-0003 and report" names a decision, which is a legitimate thing to send an agent to do, so this
 gate does not refuse it.
 """

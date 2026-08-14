@@ -1869,7 +1869,8 @@ legitimierte Träger (verändertes Bundle). Nachbarreste derselben Runde: das `k
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier
-`PreToolUse`-Gates, die *dieses* Repo statt eines Kits durchsetzen (`SR-0006`, `DEC-0003`).
+`PreToolUse`-Gates, die *dieses* Repo statt eines Kits durchsetzen (`SR-0009` — bis 2026-08-13
+`SR-0006` —, `DEC-0003`).
 
 Die Trennlinie, nach der hier entschieden wird, ist **eine Regel und keine Abwägung**:
 
@@ -1893,7 +1894,8 @@ ist eine Behauptung wie jede andere — `test_gates.py::test_every_reference_to_
 prüft ihn jetzt.
 H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
-H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055.
+H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
+TSK-0058.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -1924,6 +1926,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H37 | **GESCHLOSSEN**, mit benannten Resten (Rest 1–5 im Eintrag) | für den Mechanismus des Eintrags steht Code (`.claude/hooks/_sandbox.py`, drei Tests). Die Reste liegen sämtlich in der **Messvorrichtung**, nicht im Schutz der Gates, und jeder nennt seine Begrenzung: Rest 1 (nicht importiert = unbewacht), Rest 2 (`_audit.record_event` der Kits schreibt `project_memory/.audit/` dieses Repos — Reparaturstelle im Kit, Begrenzung **sozial**), Rest 3 (die Namensliste bleibt eine Aufzählung; `BASH_ENV` gemessen offen), Rest 4 (`watch` sieht keine Neuanlage), Rest 5 (`_inside` kanonisiert die Win32-Namensräume nicht — Gate 1 selbst ist nicht betroffen) |
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
+| H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -2124,9 +2127,11 @@ einen Automaten) und **nicht terminal** ist. `SR` hat die Kette `PROPOSED → AC
 einzigen Endzustand `SUPERSEDED`. Das natürliche Lebensende eines `SR` ist damit `ACCEPTED` — und
 das ist kein Endzustand, also trägt ein angenommenes `SR` für Gate 4 für immer „offene Arbeit".
 
-**Kette (gemessen):** eine Aufgabenliste, in der **jeder** Eintrag mit `SR-0006:` beginnt, ist
-rc 0 — mit `status: PROPOSED` und ebenso mit `status: ACCEPTED`. Die Regel ist mit einem Präfix
-dauerhaft erfüllbar, ohne dass ein Eintrag Arbeit bindet.
+**Kette (neu gemessen 2026-08-14, TSK-0058-Prüfung — das frühere Literal `SR-0006:` ist seit der
+Ablösung entwertet, es liefert heute rc 2 als terminales Item):** eine Aufgabenliste, in der
+**jeder** Eintrag mit `SR-0009:` beginnt (`status: ACCEPTED`), ist **rc 0**, ebenso mit `SR-0001:`
+(`status: PROPOSED`). Die Regel ist mit einem Präfix dauerhaft erfüllbar, ohne dass ein Eintrag
+Arbeit bindet.
 
 **Urteil: benannt, NICHT geschlossen — der Grund ist strukturell.** Was fehlt, liegt im **Kernel**:
 `AUTOMATA` kennt `chain` und `terminals`, aber keinen Begriff „in diesem Zustand ist ein Item dieses
@@ -2150,8 +2155,8 @@ Gate — jede Reparatur im Gate wäre entweder geraten (letzter Kettenzustand = 
 `FR`, `PROC`, `HYP`) oder die Aufzählung zurück, gegen die `carries_work` geschrieben wurde. Was
 stattdessen begrenzt: Gate 4 hält weiterhin die **Zahl** der ungebundenen Einträge auf eins, und
 `_harness.Reference.terminal` benennt die Lücke an der Stelle, an der sie entsteht. Was sie kostet,
-ist gemessen: eine Aufgabenliste, deren Einträge alle mit `SR-0006:` beginnen, ist rc 0 — die Regel
-ist mit einem Präfix dauerhaft erfüllbar, ohne dass ein Eintrag Arbeit bindet.
+ist gemessen (2026-08-14): eine Aufgabenliste, deren Einträge alle mit `SR-0009:` beginnen, ist
+rc 0 — die Regel ist mit einem Präfix dauerhaft erfüllbar, ohne dass ein Eintrag Arbeit bindet.
 
 ### H8 — Acht Tests hingen am Status *eines* Items — GESCHLOSSEN
 
@@ -2277,7 +2282,8 @@ einem Zweig lazy importiert, den dieses Gate nie betritt.
 
 **Urteil: Rest.** Ein neues File schaltet nichts ab, solange der Stempler es nicht importiert; und
 `tools/` als Ganzes ist aus nichts ableitbar, was dieses Gate liest — es wäre wieder eine
-Aufzählung. Wenn `tools/` als Ganzes geschützt gehört, gehört das in `SR-0006`, nicht in einen Hook.
+Aufzählung. Wenn `tools/` als Ganzes geschützt gehört, gehört das in den geltenden Vertrag
+(`SR-0009`), nicht in einen Hook.
 
 ### H14 — Gate 3 druckt den Befehl, der es aufhebt
 
@@ -2608,7 +2614,7 @@ der Datei, Aufruf für Aufruf — registrierte 6 s → Antwort nach 4,92 s, regi
 60 s → das volle Budget. `.claude/` ist dem Sitzungsagenten verweigert und einem **Subagenten**
 offen (H12, dort gemessen), und der Umsetzer arbeitet als Subagent. **Nicht gemessen und auch nicht
 messbar von hier aus:** dass der Provider seine Frist beim Sitzungsstart bindet. Das ist die Zusage,
-auf der dieses Repo ohnehin steht (`SR-0006`: „Alle vier binden beim Sitzungsstart"), keine Messung
+auf der dieses Repo ohnehin steht (`SR-0009`: „All four gates bind at session start"), keine Messung
 dieser Runde.
 
 **Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht
@@ -3462,7 +3468,42 @@ Verweigerung wörtlich verbietet. **Was stattdessen begrenzt:** DEC-0041 trägt 
 Kernel-Kommando), widerlegt der nächste `transition BUG-nnnn APPROVED`-Lauf die gemessene Kette —
 dann ist dieser Eintrag mit der neuen Messung zu schließen und DEC-0041 abzulösen.
 
-### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss
+### H40 — Vertragszitationen außerhalb der `.py`-Quellen von `.claude/hooks/` liest kein Stolperdraht (neu, TSK-0058)
+
+**Mechanismus:** Der TSK-0058-Stolperdraht (`test_no_statement_here_cites_a_replaced_contract_on_its_own`)
+findet die Zitation eines abgelösten Vertrags in den literalen Strings und Kommentarblöcken der
+`.py`-Dateien von `.claude/hooks/` — und nur dort. Vertragsprosa lebt aber auch in der
+Registrierung (`.claude/settings.json`, `_comment`), in den Rollendefinitionen
+(`.claude/agents/*.md`), in `CLAUDE.md` und in `docs/`. Keine dieser Flächen liest ein Draht:
+eine dort stehende Lebendzitation eines archivierten Vertrags altert unbemerkt. Zweite,
+schmalere Grenze im selben Draht (gemessen, TSK-0058-Prüfung F4): eine Zitation, die erst zur
+**Laufzeit** aus Teilen zusammengesetzt wird (f-String, `%`-Formatierung), ist auch in den
+`.py`-Quellen unsichtbar — nur die implizite Literal-Konkatenation wird gefaltet und gefangen.
+
+**Kette (gemessen 2026-08-14):** `.claude/settings.json:2` trägt „These four PreToolUse gates are
+the replacement SR-0006 specifies" — eine Lebendzitation des seit 2026-08-13 abgelösten Vertrags in
+genau der Datei, aus der der Provider liest. Mutation im Klon: `SR-0006 is the contract.` in den
+`_comment` eingesetzt → der Stolperdraht bleibt **grün** (1 passed). Die Datei liegt im
+`forbidden_scope` von TSK-0058 (Registrierung wird in einer Zitatrunde nicht angefasst); die
+Behebung des einen Satzes ist eine eigene kleine Runde.
+
+**Urteil: benannte Ausnahme, Abnahme offen.** **Warum nicht hier schließbar:** die Reichweite des
+Drahts auf Nicht-Python-Prosa auszudehnen hieße, Markdown und JSON-Kommentare als Vertragssprache
+zu parsen — eine eigene Vorrichtung mit eigenen Fehlformen; und die eine bekannte Instanz liegt im
+verbotenen Bereich der Runde, die den Draht gebaut hat. **Was stattdessen begrenzt:** die bekannte
+Instanz steht hier mit Fundstelle; der Draht deckt die Fläche, auf der die 14 gemessenen
+Statements der Fehlerklasse lagen (alle in `.py`); die Rollendefinitionen und `CLAUDE.md` zitieren
+heute keinen abgelösten Vertrag als geltend (gemessen: repo-weites grep, nur ehrliche Historie).
+Dazu benannt (TSK-0058-Prüfung F5): die Zehner-Aufzählung der Automaten-Typen in
+`_harness.py:2076-2078` ist heute wahr und von keinem Draht auf Vollständigkeit gepinnt — ein
+elfter Typ machte den Satz still falsch.
+
+### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
+
+**(Nachtrag 2026-08-14, TSK-0058):** Beide Abweichungen sind in den geltenden Vertrag eingeflossen —
+`SR-0009` fasst den Auslöser als Eigenschaft (jede Oberfläche, über die das Subjekt erreichbar ist)
+und den geschützten Bereich als das, was die laufende Ableitung nennt. Der Abschnitt bleibt als
+Geschichte des Befunds stehen; sein Wortlaut unten beschreibt den Stand unter `SR-0006`.
 
 1. **Der Auslöser ist als Werkzeugliste formuliert, nicht als Eigenschaft.** `SR-0006` beschreibt
    den geschützten *Bereich* als Ableitung, den *Anlass* aber als vier Werkzeugnamen. Gate 1 folgte

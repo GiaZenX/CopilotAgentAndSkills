@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """
-Gate 1 (SR-0006): the session agent writes no versioned kit code, does not rewrite the rules it is
-running under, and nobody writes canonical state through a tool.
+Gate 1 (SR-0009 clause 1, over the protected area the contract leaves to the running derivation):
+the session agent writes no versioned kit code, does not rewrite the rules it is running under, and
+nobody writes canonical state through a tool -- the last of those is not clause 1 but the area
+itself, which SR-0009 refuses to EVERY caller for the canonical part of `project_memory/`.
 
 WHO IT APPLIES TO -- THREE AUDIENCES, because there are three questions. Kit content, the provider
 tree and the producer of the protected area are refused to the SESSION INSTANCE only: a subagent

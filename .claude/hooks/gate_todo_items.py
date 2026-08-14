@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gate 4 (SR-0006): the task list is not a place to keep work.
+Gate 4 (SR-0009 clause 4): the task list is not a place to keep work.
 
 THIS ONE EXISTS NOWHERE ELSE. No kit registers a hook on `TodoWrite`, and that claim is kept true
 rather than merely written down: `test_todowrite_is_gated_here_and_by_no_kit` parses every kit's
@@ -12,9 +12,8 @@ is summarised.
 
 THE RULE, and it carries no content heuristic -- prose is not inspected for intent:
 
-    The list holds AT MOST ONE entry without an item id: the one being worked on. Every other entry
-    names a `<TYPE>-nnnn` that resolves under `project_memory/`, whose type can carry work, and
-    which is not terminal.
+    The list holds AT MOST ONE entry without an item id. Every other entry names a `<TYPE>-nnnn`
+    that resolves under `project_memory/`, whose type can carry work, and which is not terminal.
 
 THREE CLASSES OF ENTRY, so the refusal can say which rule was broken:
   * BOUND    -- names at least one id that resolves, carries work and is open.
@@ -24,13 +23,13 @@ THREE CLASSES OF ENTRY, so the refusal can say which rule was broken:
                 "no reference at all" gets.
 
 WHAT "CAN CARRY WORK" MEANS is the kernel's `AUTOMATA` -- see `_harness.Reference.carries_work` for
-why the property is "has a lifecycle" rather than the three type names SR-0006 illustrates it with,
-and for the tripwire that keeps that reading honest at both ends.
+why the property is "has a lifecycle", and for the tripwire that keeps that reading honest at both
+ends.
 
-WHAT IS DELIBERATELY NOT ENFORCED: that the one bare entry is the RUNNING one. SR-0006's apposition
-("den laufenden") describes which entry it will be in practice, and a `status`-test would refuse the
-ordinary case of a list written before anything is in progress -- every entry `pending`. The COUNT
-is what the rule turns on, and the count is what is enforced.
+WHAT IS DELIBERATELY NOT ENFORCED: that the one bare entry is the RUNNING one. A `status`-test would
+refuse the ordinary case of a list written before anything is in progress -- every entry `pending`.
+SR-0009 clause 4 turns on the COUNT, and the count is what is enforced; a reader who expects more
+here is expecting something neither the clause nor this gate says.
 """
 import os
 import sys

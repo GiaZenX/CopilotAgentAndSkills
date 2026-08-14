@@ -1,0 +1,47 @@
+id: TSK-0058
+product_requirement: PR-0002
+derives_from: BUG-0035
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+allowed_scope:
+- .claude/hooks/**
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- project_memory/**
+- tools/**
+- user/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- .claude/settings.json
+- .claude/agents/**
+required_inputs:
+- BUG-0035 (stale SR-0006 citations in .claude/hooks/ after the SR-0009 supersession)
+- SR-0009 (the contract in force -- its clause numbering is the citation target)
+- grep -rn SR-0006 .claude/hooks/ (the measured surface; the implementer of TSK-0056
+  named _harness.py's header and test_gates.py EXPECTED_TOOLS)
+expected_outputs:
+- 'STEP 1 MEASURE: the full list of SR-0006 mentions in .claude/hooks/ with file:line
+  and each one''s role (live-contract citation vs historical narrative)'
+- 'STEP 2 FIX: every live-contract citation points at SR-0009 (the specific clause
+  where one applies); a historical mention, if kept, says the contract is superseded;
+  comments still carry only the why, per the house comment rule'
+- 'STEP 3 MEASURE: grep -rn SR-0006 .claude/hooks/ shows only declared historical
+  mentions (or none); the gate-suite subsets that read the touched files pass; ONE
+  full gate-suite run at the end with numbers (~55 min on this host, run as the only
+  load)'
+- 'STEP 4 REPORT: file:line per change; no VERSION bump (.claude/ is not a kit-hash
+  input -- state it); any residue named'
+dependencies:
+- BUG-0035
+- SR-0009
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-14T08:05:13'
+closed_at: '2026-08-14T09:43:21'

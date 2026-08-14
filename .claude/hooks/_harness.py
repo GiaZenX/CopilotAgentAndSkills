@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Shared body of this repo's four PreToolUse gates (SR-0006, DEC-0003).
+Shared body of this repo's four PreToolUse gates (SR-0009, DEC-0003).
 
 WHY THIS REPO HAS ITS OWN GATES AT ALL. It builds the team kits, so it cannot install one:
 `gate_write_scope` refuses every write-capable command line that names `team-kits`, and here every
@@ -72,10 +72,11 @@ STAGING = "staging"
 
 # The directory a provider reads to decide WHAT runs, WHO runs it and WHAT IT MAY DO -- hooks,
 # their registration, the bound session role and its definition, the permission overlay. Named as
-# that PROPERTY rather than as the three files SR-0006 lists, because the list was already a file
-# short twice: `.claude/agents/**` (gate 2 reads a spawned role's own frontmatter out of it, and
-# reads it FRESH on every call) and `.claude/settings.local.json` (a permission overlay the
-# provider merges) both decide what these gates do and neither is in the contract's enumeration.
+# that PROPERTY, which is the whole directory and is what SR-0009 puts in the protected area. The
+# enumeration of provider files that stood in its place was a file short twice: `.claude/agents/**`
+# (gate 2 reads a spawned role's own frontmatter out of it, and reads it FRESH on every call) and
+# `.claude/settings.local.json` (a permission overlay the provider merges) both decide what these
+# gates do and neither was in it.
 PROVIDER_DIR = ".claude"
 
 # Where a provider looks up the definition of an agent it is asked to spawn. A convention of the
@@ -693,12 +694,12 @@ def guarded(decide):
 def _bump_tool(root):
     """`tools/bump_kit_version.py`, imported from its file.
 
-    THE SAME TOOL, not a second answer. SR-0006 defines gate 1's protected area as "what goes into
-    a kit version", and that set already has exactly one producer: this script stamps
-    `<kit>/VERSION` from it and `tools/validate.py` re-computes it. Loading it by path rather than
-    copying `discover_kits` means a change to WHICH directories are kits is followed here on the
-    day it is made; if the script is moved or renamed, this raises and `guarded()` turns that into
-    a refusal rather than into a silently unprotected tree.
+    THE SAME TOOL, not a second answer. SR-0009 puts everything that enters a kit content hash
+    inside gate 1's protected area, and that set already has exactly one producer: this script
+    stamps `<kit>/VERSION` from it and `tools/validate.py` re-computes it. Loading it by path
+    rather than copying `discover_kits` means a change to WHICH directories are kits is followed
+    here on the day it is made; if the script is moved or renamed, this raises and `guarded()`
+    turns that into a refusal rather than into a silently unprotected tree.
     """
     path = os.path.join(root, "tools", "bump_kit_version.py")
     spec = importlib.util.spec_from_file_location("_harness_bump_kit_version", path)
@@ -794,8 +795,9 @@ NOWHERE_KNOWN = "everyone, and for a subject this gate cannot place"
 class ProtectedArea(object):
     """What may not be written here, and by whom.
 
-    FOUR AREAS, THREE OF THEM DERIVED, and the fourth (`.claude/`) is a definition rather than the
-    three paths SR-0006 enumerates -- see `PROVIDER_DIR`.
+    FOUR AREAS, THREE OF THEM DERIVED, and the fourth (`.claude/`) is a definition -- the whole
+    directory, which is what SR-0009 names; see `PROVIDER_DIR` for what an enumeration of provider
+    files kept missing.
 
     THE AUDIENCE IS PART OF THE ANSWER. Kit content, the provider tree and the producer are
     refused to the SESSION INSTANCE only: a subagent writing kit code is the point of the change
@@ -2065,17 +2067,17 @@ class Reference(object):
     def carries_work(self, automata):
         """Can this type LEAD work at all?
 
-        THE PROPERTY IS "HAS A LIFECYCLE", i.e. membership in the kernel's `AUTOMATA`, and that is
-        the reason SR-0006 gives for the rule rather than the three type names its parenthesis
-        illustrates it with: "eine Entscheidung hat keinen Lebenszyklus, sie kann keine Arbeit
-        fuehren". A `DEC` has no automaton, so it has no state to move and nothing to be
-        non-terminal about -- pointing a task list entry at one names a decision, not work.
+        THE PROPERTY IS "HAS A LIFECYCLE", i.e. membership in the kernel's `AUTOMATA`. SR-0009
+        clause 4 asks two things of an entry's item, and only the first is a question about its
+        TYPE: that it CAN CARRY WORK. (Whether the item is terminal is the second, and `terminal()`
+        answers it.) A `DEC` has no automaton, so it has no state to move and nothing to be
+        non-terminal about: pointing a task list entry at one names a decision, not work.
 
-        WHAT THAT WIDENS, said plainly because it differs from the contract's parenthesis
-        (TSK/BUG/FR): every type with an automaton passes, so `PR`, `RQ`, `SR`, `CR`, `PROC`,
-        `HYP` and `EXP` do too. `test_gates.py` pins both ends of that -- the three the contract
-        names must pass, `DEC` must fail -- so a rename or a `DEC` that grew a lifecycle turns it
-        red instead of quietly changing what this gate means.
+        WHAT THAT ADMITS, said plainly because the clause names no type at all: every type with an
+        automaton passes, so `PR`, `RQ`, `SR`, `CR`, `PROC`, `HYP` and `EXP` do besides `TSK`,
+        `BUG` and `FR`. `test_gates.py` pins both ends of that -- the three types a task list here
+        is written with must pass, `DEC` must fail -- so a rename or a `DEC` that grew a lifecycle
+        turns it red instead of quietly changing what this gate means.
         """
         return self.item_type in automata
 

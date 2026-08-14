@@ -1,0 +1,20 @@
+id: EVD-0028
+kind: review
+related:
+- TSK-0058
+result: pass
+summary: 'verifier PASS for diff:b2669a89a918a352d9b1953df25c20b6bf89fbc9600d461a50da40f86fb07df9
+  -- all 19 SR-0006 mentions (14 statements) in .claude/hooks rewired to SR-0009 clauses,
+  three quote-rewrites where SR-0009 no longer carries the cited text; new derivation-based
+  tripwire against citing a replaced contract (both ends red-measured, store-read
+  not directory-read); production files AST-identical to HEAD; full gate suite 240
+  passed (runtime anomaly investigated: genuine full run, post-reboot host); lead
+  re-anchored the H7 measured chain (rc numbers re-measured after the supersession
+  devalued the old literal) and captured H40 (contract citations outside .py sources
+  read by no wire, measured incl. planted-citation full run 240 green); F1/F2 blockers
+  closed with the verifier''s own numbers, pointer-prefix residue fixed per its measurement'
+artifact_refs:
+- ../docs/POST_V2_WISHLIST.md
+revision: 1
+approval_ref: null
+created: '2026-08-14T09:43:20'
