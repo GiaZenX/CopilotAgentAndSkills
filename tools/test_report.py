@@ -597,6 +597,41 @@ def test_validate_names_design_refs_that_resolve_to_nothing(state):
     assert not [f for f in errors(report.validate_state(state)) if "design_refs" in f["message"]]
 
 
+def test_validate_names_an_inv_scope_spelled_as_several_things(state):
+    """H42's other half: the item the capture refusal came too late for (DEC-0043).
+
+    THE FIXTURE IS WRITTEN PAST THE KERNEL ON PURPOSE, and that is not a shortcut: since
+    `state._assert_single_value_fields` no door into the active store takes this body any more, so
+    the only way a project HAS such an item is that it was written before the fix -- which is
+    exactly the case under test. `_write_yaml_atomic` is the same call the neighbouring approval
+    tests use to stage a state no current command produces.
+
+    AN ERROR AND NOT A WARNING, unlike the reference-list shape beside it: a gate DECIDES
+    DIFFERENTLY here (`gate_test_coverage` refuses an untested governed area under the scalar and
+    allows it under the list -- measured in
+    `test_hooks.test_the_shipped_readers_of_a_single_value_field_still_read_one_value`), so the
+    project's own rule is off while the item stands.
+
+    RED without `report._check_single_value_fields`: `validate` over exactly this state was
+    "0 error(s), 0 warning(s)".
+    """
+    inv = state.capture("INV", {"scope": "compounder/", "source": "PR-0001",
+                                "check": {"kind": "test", "ref": "t.py::t"},
+                                "text": "pure, no I/O"})
+    with state.lock:
+        raw = state.read_item(inv["id"])
+        raw["scope"] = ["compounder/", "engine/"]
+        state._write_yaml_atomic(state.active_path(inv["id"]), raw)
+    found = errors(report.validate_state(state))
+    named = [f for f in found if f["item"] == inv["id"] and "scope" in f["message"]]
+    assert named, found
+    assert "ONE value" in named[0]["message"], named[0]["message"]
+    assert "TWO INV items" in named[0]["remedy"] and "update %s" % inv["id"] in named[0]["remedy"]
+    # ...and the one-area spelling is clean, or this would be a finding nobody can satisfy
+    state.update_item(inv["id"], {"scope": "compounder/"})
+    assert not [f for f in report.validate_state(state) if "ONE value" in f["message"]]
+
+
 # -- BUG-0005: the last decision rides into the next session via the brief ------
 
 def test_session_brief_carries_the_newest_standing_decision(state):

@@ -2614,6 +2614,65 @@ def test_no_shipped_template_declares_a_knob_the_scripts_read_somewhere_else():
         "a shipped template offers a key nothing behind it honours:\n  " + "\n  ".join(offences))
 
 
+def test_the_shipped_readers_of_a_single_value_field_still_read_one_value(tmp_path):
+    """The end of `backlog_types.SINGLE_VALUE_FIELDS` where the entry would be one nobody needed --
+    and H42's chain, measured at the processes a session actually meets (DEC-0043).
+
+    THE CONTRACT IS ONLY WORTH ITS REFUSAL WHILE THE READERS CANNOT TAKE A CONTAINER APART. The
+    day one of them learns `field_elements`, the several-areas branch is back on the table and that
+    is DEC-0043's call to re-make, not this tuple's to keep -- so this test goes red instead of the
+    contract quietly outliving its reason. Its other end (the field left its type's contract) is
+    `test_backlog_types.test_the_single_value_fields_are_contract_fields_nothing_resolves_elementwise`.
+
+    BOTH DIRECTIONS OF THE DAMAGE ARE IN HERE, because H42 was written up as a lost refusal only:
+    the coverage rule stops refusing an untested governed area, AND the guidelines guard starts
+    refusing a write it used to allow. One field spelling, two gates deciding differently.
+
+    The state is written past the kernel deliberately: since `state._assert_single_value_fields` no
+    door into the active store produces it, so this is the project that predates the fix -- which is
+    the only project that can still have one.
+    """
+    pytest.importorskip("yaml")
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+
+    capture_root_item(tmp_path)
+    write(str(tmp_path / "api" / "service.py"), "def f():\n    return 1\n")
+    area = capture_invariant(tmp_path, "api/", text="pure, no I/O")
+    knob = capture_invariant(tmp_path, "max_file_lines", value=400)
+    mod = _kit_checks_mod()
+    push = {"tool_name": "Bash", "cwd": str(tmp_path),
+            "tool_input": {"command": "git push origin main"}}
+    writing = {"tool_name": "Write", "cwd": str(tmp_path),
+               "tool_input": {"file_path": str(tmp_path / "api" / "service.py"),
+                              "content": "x = 1\n"}}
+
+    assert mod.governed_source_areas(str(tmp_path)) == ["api"]
+    assert mod.invariant_knob(str(tmp_path), "max_file_lines") == 400
+    assert run_hook("gate_test_coverage.py", push, tmp_path) == 2
+    assert run_hook("guard_guidelines.py", writing, tmp_path) == 0
+    assert run_hook("gate_memory_complete.py", _merge_payload(tmp_path), tmp_path) == 0
+
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    for item_id in (area["id"], knob["id"]):
+        with state.lock:
+            raw = state.read_item(item_id)
+            # THE DAMAGED VALUE IS DERIVED FROM THE ITEM, never re-typed here. A repeated literal
+            # is how this test was first written and it went silently green: a stale area name put
+            # a scope into the item that matched no directory, so the "readers still read one
+            # value" end held for the wrong reason and a reader taught to read several went
+            # unnoticed. Wrapping the item's OWN scope cannot go stale.
+            raw["scope"] = [raw["scope"]]
+            state._write_yaml_atomic(state.active_path(item_id), raw)
+
+    assert mod.governed_source_areas(str(tmp_path)) == []
+    assert mod.invariant_knob(str(tmp_path), "max_file_lines", default="unset") == "unset"
+    assert run_hook("gate_test_coverage.py", push, tmp_path) == 0      # the refusal that is lost
+    assert run_hook("guard_guidelines.py", writing, tmp_path) == 2     # ...and the one invented
+    blocked = run_hook_process("gate_memory_complete.py", _merge_payload(tmp_path), tmp_path)
+    assert blocked.returncode == 2 and "ONE value" in blocked.stderr, blocked.stderr
+
+
 def test_the_two_readers_of_a_governed_source_area_agree(tmp_path):
     """One definition, two processes: the merge gate and the file budget must see the same areas.
 

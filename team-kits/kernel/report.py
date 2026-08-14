@@ -53,6 +53,7 @@ from .backlog_types import (
     REFERENCE_LIST_FIELDS,
     field_elements,
     parse_id,
+    single_value_offences,
 )
 from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
 from .lock import LOCK_SCHEMA_VERSION, ext_path
@@ -485,6 +486,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_fr_result_link(state, active_items))
     findings.extend(_check_dec_supersedes(state, active_items))
     findings.extend(_check_reference_list_shape(active_items))
+    findings.extend(_check_single_value_fields(active_items))
     findings.extend(_check_design_refs_resolve(state, active_items))
     findings.extend(_check_ui_delivery_sequence(active_items))
     findings.extend(_check_dispatch_approval_presented(state, active_items))
@@ -1309,7 +1311,7 @@ def _check_reference_list_shape(active_items: dict) -> list:
     of these fields A DERIVATION OVER THE KERNEL SOURCES CAN SEE goes through `field_elements`, so a
     scalar resolves as the one reference it spells and no gate decides differently because of it.
     That qualifier is the honest width of the claim, not modesty: what the derivation reaches, and
-    the four things it does not, are in
+    what it does not, are in
     `test_backlog_types._item_fields_read_as_sequences`, and the wire itself is
     `test_backlog_types.test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements`.
 
@@ -1335,6 +1337,39 @@ def _check_reference_list_shape(active_items: dict) -> list:
                 % (field, type(value).__name__),
                 "write it as a list through the kernel edit path "
                 "(`python scripts/harness.py update %s`)" % item_id,
+            ))
+    return findings
+
+
+def _check_single_value_fields(active_items: dict) -> list:
+    """A `SINGLE_VALUE_FIELDS` field written as several things -- the items the door came too late
+    for (DEC-0043).
+
+    AN ERROR, WHILE THE NEIGHBOURING SHAPE CHECK IS A WARNING, and the difference is measured
+    rather than felt: a scalar in a reference-list field resolves as the one reference it spells
+    and no gate decides differently, whereas H42's chain is a gate that DECIDES DIFFERENTLY --
+    `dev-team/hooks/gate_test_coverage.py` refuses a push over an untested governed area under
+    `scope: compounder/` and allows the same push under `scope: ["compounder/"]`. An error is also
+    what a dev/research project's `gate_memory_complete` reads, so such a project cannot merge
+    until the item is corrected: friction in the honest direction, since the rule the item states
+    is guarding nothing meanwhile. Both halves of that -- the gate that goes quiet and the merge
+    this finding then stops -- are measured as hook processes in
+    `test_hooks.test_the_shipped_readers_of_a_single_value_field_still_read_one_value`.
+
+    NAMING IT IS ALL THIS CAN DO, for the reason `_check_reference_list_shape` gives: the state has
+    one writer and it is not this function. The remedy is the kernel edit path, which refuses the
+    same spelling (`state._assert_single_value_fields`), so the two cannot drift.
+    `test_report.test_validate_names_an_inv_scope_spelled_as_several_things`.
+    """
+    findings = []
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        for field, why, remedy in single_value_offences(item_type, item):
+            findings.append(_finding(
+                "error", item_id,
+                "%s is a %s where the contract is ONE value -- %s, so this rule reaches no reader"
+                % (field, type(item[field]).__name__, why),
+                "%s. Rewrite it through the kernel edit path "
+                "(`python scripts/harness.py update %s`)" % (remedy, item_id),
             ))
     return findings
 

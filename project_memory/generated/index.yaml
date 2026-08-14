@@ -1,4 +1,4 @@
-generated_at: '2026-08-14T17:50:32'
+generated_at: '2026-08-14T19:33:39'
 items:
 - id: BUG-0001
   type: BUG
@@ -699,6 +699,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0032
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -872,12 +878,6 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0027
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0060
   type: TSK
   title: null
   status: DRAFT

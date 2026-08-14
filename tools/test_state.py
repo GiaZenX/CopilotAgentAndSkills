@@ -9,7 +9,12 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
 
 from conftest import drive_task_to, walk_to_status  # noqa: E402 -- the sanctioned chain walkers
-from kernel.backlog_types import PARENT_FIELDS, REQUIRED_FIELDS, TransitionError  # noqa: E402
+from kernel.backlog_types import (  # noqa: E402
+    PARENT_FIELDS,
+    REQUIRED_FIELDS,
+    V1_STATUS_MAPPING,
+    TransitionError,
+)
 from kernel.state import _CLOSED_VOCABULARY, ProjectState, StateError  # noqa: E402
 
 
@@ -183,6 +188,75 @@ def test_inv_capture_starts_unverified(state):
         "value": ["CPU", "GPU", "RAM", "STORAGE"],
     })
     assert inv["status"] == "unverified"
+
+
+def _inv_fields(scope):
+    return {"scope": scope, "source": "PR-0001",
+            "check": {"kind": "test", "ref": "tests/test_it.py::test_it"},
+            "text": "the rule this invariant states"}
+
+
+@pytest.mark.parametrize("several", [["frontend/", "backend/"], ["frontend/"],
+                                     ("frontend/",), {"area": "frontend/"}, b"frontend/"])
+def test_a_several_things_inv_scope_is_refused_at_capture_and_on_the_edit_path(state, several):
+    """DEC-0043: `INV.scope` governs ONE area, and everything that is not one value is refused LOUDLY.
+
+    BOTH DOORS INTO THE ACTIVE STORE, because a refusal at capture that the edit path undoes is no
+    refusal: the same body arrives through `update` (H42's own note is that `capture` was the only
+    productive writer, which is what made the silence total).
+
+    THE ONE-ELEMENT LIST IS IN HERE ON PURPOSE and it is the case a count-based check would wave
+    through: the readers cannot take a container apart at all, so `['frontend/']` reaches them as
+    the text `"['frontend/']"` exactly like a two-element list does.
+
+    SO IS `bytes`, AND IT IS THE CASE THE FIRST CUT OF THIS CONTRACT EXEMPTED beside `str`. Measured
+    through the shipped edit path: the value was taken, the readers saw `b'frontend/'`,
+    `gate_test_coverage` went rc 2 -> rc 0 and the validator said nothing -- worse than the list
+    spelling, which at least the merge gate catches. `holds_one_thing` carries the reason no reader
+    of such a field has a byte meaning.
+
+    RED without `state._assert_single_value_fields`: every spelling captures with rc 0 and the
+    project's own rule then guards nothing (H42's measured chain, `gate_test_coverage` rc 2 -> rc 0).
+    """
+    with pytest.raises(StateError, match="holds ONE thing"):
+        state.capture("INV", _inv_fields(several))
+    inv = state.capture("INV", _inv_fields("frontend/"))
+    with pytest.raises(StateError, match="TWO INV items"):
+        state.update_item(inv["id"], {"scope": several})
+    assert state.read_item(inv["id"])["scope"] == "frontend/"
+
+
+def test_the_archive_door_still_takes_a_record_the_active_door_refuses(state):
+    """The boundary the refusal above deliberately stops at, measured instead of asserted in prose.
+
+    NOT A CASE ANY SHIPPED COMMAND REACHES TODAY, and saying otherwise was this test's own first
+    docstring: `V1_STATUS_MAPPING` produces eleven V2 types and `INV` is not one of them
+    (`test_the_migration_can_produce_no_inv_so_the_archive_boundary_is_for_the_next_entry`), so no
+    migration writes an `INV` anywhere. What this pins is the PLACEMENT for the next
+    `SINGLE_VALUE_FIELDS` entry, whose type migration may produce: an archive-bound record is a
+    protocol of what happened (DEC-0004), the unresolved ones are archived WITH THEIR REASON rather
+    than stopping the run (DEC-0009), and a shape refusal there would stop the run while guarding
+    nothing -- no reader of these fields scans the archive.
+    """
+    body = dict(_inv_fields(["frontend/", "backend/"]))
+    body["legacy_fields"] = {"legacy_id": "INV-9", "unresolved": "V1 kept a list of areas here"}
+    item = state.capture_migrated_unresolved("INV", body, 2026)
+    assert item["scope"] == ["frontend/", "backend/"]
+    assert not os.path.exists(state.active_path(item["id"]))
+
+
+def test_the_migration_can_produce_no_inv_so_the_archive_boundary_is_for_the_next_entry():
+    """The half of the placement argument that is a claim about the running tables, not about taste.
+
+    The archive doors are exempt from the shape refusal, and the first version of that argument said
+    a migrated `INV` would otherwise die there. No such record exists: a migration writes what
+    `V1_STATUS_MAPPING` maps a V1 record to, and no row of it yields `INV`. Asserted from the table
+    so the argument turns red the day a V1 row starts producing one -- which is exactly the day the
+    exemption stops being theory.
+    """
+    produced = {v2_type for v2_type, _status, _archive in V1_STATUS_MAPPING.values()}
+    assert produced, "the mapping table is empty -- this assertion would then mean nothing"
+    assert "INV" not in produced, sorted(produced)
 
 
 def test_update_rejects_created(state):

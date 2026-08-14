@@ -1928,7 +1928,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
 | H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute sieben Vorkommen aus dem H43-Eintrag, alle von Hand aufgelöst |
-| H42 | **Rest**, Vertragsentscheidung des Nutzers offen | die Listenschreibweise von `INV.scope` verliert eine Verweigerung, erteilt aber nichts; wer schließt, entscheidet zuerst den Vertrag (ein Bereich oder mehrere) und zieht alle vier Leser gemeinsam nach — Details im Eintrag |
+| H42 | **GESCHLOSSEN** (TSK-0060, `DEC-0043`), mit benannten Resten | der Vertrag ist entschieden statt normalisiert: `INV.scope` regiert genau einen Bereich, `backlog_types.SINGLE_VALUE_FIELDS` deklariert das, `state._assert_single_value_fields` verweigert die Mehrere-Dinge-Form an beiden Türen in den aktiven Zustand und `report._check_single_value_fields` meldet sie als Fehler (gemessen: capture/update verweigert, `validate` 0 → 1 Fehler, `gate_memory_complete` rc 0 → rc 2). Die vier Leser sind unverändert. Reste: ein schon geschriebenes Item wird gemeldet statt geheilt, die Archiv-Tür nimmt die Form weiter an (DEC-0009), die Deklaration ist nicht abgeleitet, und im `office-team` schützt sie keinen Leser |
 | H43 | **GESCHLOSSEN** (TSK-0059, `BUG-0038`), mit benannten Resten | die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS` nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde). Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt — je im Eintrag |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
@@ -3552,7 +3552,7 @@ fehlt (a: Tabellen-Vollständigkeit gegen eine zweite Quelle; b: ein Nicht-Bezei
 `test_`-Präfix wird beschrieben statt geklebt; c: Paarung, die einen unpaarigen Auftakt überspringt;
 d: ein Zeiger `<datei>::<test>` wird in JENER Datei aufgelöst statt übersprungen).
 
-### H42 — `INV.scope` als Liste geschrieben schaltet die Testabdeckungs-Regel still ab (neu, TSK-0033)
+### H42 — `INV.scope` als Liste geschrieben schaltete die Testabdeckungs-Regel still ab — GESCHLOSSEN (TSK-0060)
 
 **Mechanismus:** der Vertrag der Typen, die `capture` erzeugt (`REQUIRED_FIELDS`/`OPTIONAL_FIELDS`),
 nennt Feld**namen** und keine Formen — jedes dieser Felder kann also als Skalar **und** als Liste
@@ -3565,35 +3565,113 @@ als **einen** Pfad bzw. **einen** Namen: `dev-team/hooks/gate_test_coverage.py:1
 `dev-team/templates/repo/scripts/kit_checks.py:171` (dort als Konfigurationsschlüssel) sowie `:189`.
 Eine Liste ergibt dort die Zeichenkette `"['compounder/']"`, die auf keinen Pfad passt.
 
-**Kette (gemessen 2026-08-14, `dev-team`-Hooks als Prozesse, Projekt außerhalb des Repos):** ein
-`INV` mit `scope: compounder/` und Code ohne Tests darunter → `gate_test_coverage.py` verweigert
+**Kette (gefunden in der Prüfung zu TSK-0033, `dev-team`-Hooks als Prozesse, Projekt außerhalb des
+Repos; die Verhaltensangaben in diesem Absatz sind der Stand VOR dem Fix und bleiben als
+Fundprotokoll stehen — die vier Leser-Zeilennummern oben gelten unverändert weiter, denn an den
+Lesern hat die Behebung nichts geändert):** ein `INV` mit
+`scope: compounder/` und Code ohne Tests darunter → `gate_test_coverage.py` verweigert
 `git push origin main` mit rc 2 („source area 'compounder/' has code but no tests"). Dasselbe
-Projekt, dasselbe `INV`, nur `scope: ["compounder/"]` → **rc 0**. `kernel.capture` nimmt beide
-Schreibweisen an, und `migrate --map INV.scope=<v1-feld>` trägt die V1-Form unverändert hinüber.
+Projekt, dasselbe `INV`, nur `scope: ["compounder/"]` → **rc 0**, und `validate` sagte über genau
+diesen Zustand **0 Befunde**. `kernel.capture` nahm beide Schreibweisen an. (Der Eintrag nannte hier
+zusätzlich `migrate --map INV.scope=<v1-feld>` als zweiten Weg. Das ist **eine Flagge, die die
+Oberfläche annimmt und die kein Lauf benutzt**: `parse_field_map` lässt den Ausdruck zu, aber keine
+Zeile von `V1_STATUS_MAPPING` erzeugt den Typ `INV`, gemessen — elf V2-Typen, `INV` nicht darunter.)
 
-**Urteil: gemessener Rest, hier bewusst NICHT geschlossen — und zwar nicht als „kommt später",
-sondern weil die Antwort keine Normalisierung ist, sondern eine Vertragsentscheidung.**
-`backlog_types.field_elements` (die Definition, die `BUG-0015` geschlossen hat) würde bedeuten:
-ein `INV` regiert MEHRERE Bereiche. Für `gate_test_coverage` ist das sinnvoll, für
-`kit_checks.py:171` nicht — dort ist `scope` der **Name eines Konfigurationsknopfes**, und „mehrere
-Namen" hat dort keine Bedeutung. Das Feld ist also überladen, und ein Fix in einem der vier Leser
-stellt genau den Doppelleser-Defekt wieder her, den der Kopfkommentar von
-`office-team/.../scripts/process_doc.py` protokolliert (zwei Leser eines Dokuments, jeder in die
-Richtung des anderen still falsch). Wer das schließt, entscheidet zuerst den Vertrag von
-`INV.scope` (ein Bereich oder mehrere) und zieht dann alle vier Leser gemeinsam nach.
+**Die zweite Richtung, in der Behebungsrunde nachgemessen und im Eintrag vorher nicht enthalten:**
+dieselbe Schreibweise **erfindet** anderswo eine Verweigerung. `guard_guidelines.py` ließ das
+Schreiben von `api/service.py` unter `scope: api/` durch (rc 0) und verweigert es unter
+`scope: ["api/"]` (rc 2, „no INV item of this project governs it"). Eine Feldschreibweise, zwei
+Gates, die verschieden entscheiden — die verlorene Verweigerung war nur die eine Hälfte.
 
-**Was stattdessen begrenzt — und was ausdrücklich NICHT begrenzt:** die Richtung ist eine
-**verlorene Verweigerung**, keine erteilte Erlaubnis — die Listenschreibweise schaltet eine Regel
-ab, sie gewährt nichts, was ein Projekt ohne dieses `INV` nicht ohnehin dürfte. Der Schreibweg
-begrenzt **nicht**: es gibt genau einen produktiven (`harness.py capture INV`, also `state.capture`),
-und der nimmt beide Formen unverändert an — gemessen. Was die Skalarform nahelegt, ist die
-**Anleitung**, nicht der Apparat: `kit_checks._knob_hint:203` sagt „declare it as an INV item —
-`scope: <knob>`", und die Beispiele im Kopf desselben Skripts (`:66`, `:469`) zeigen dieselbe Form.
-Ein Nutzer, der stattdessen `scope: [belege/]` tippt, wird von nichts korrigiert. Die drei Kits
-liefern **kein** `INV` mit aus (`templates/project_memory/invariants/active/` enthält nur
-`.gitkeep`), es gibt hier also auch keine Vorlage, die die Form vormacht. **Wodurch es auffiele:**
-ein Projekt, dessen `gate_test_coverage` nichts mehr verweigert, obwohl ein `INV` einen Bereich
-benennt.
+**Urteil: GESCHLOSSEN (TSK-0060, `DEC-0043`), mit benannten Resten.** Entschieden hat der Nutzer,
+und die Entscheidung ist ein **Vertrag**, keine Normalisierung: ein `INV` regiert **genau einen**
+Bereich (oder nennt genau einen Knopf), wer zwei will, schreibt zwei `INV`. `field_elements` gilt
+hier ausdrücklich **nicht** — das wäre der verworfene Mehrere-Bereiche-Zweig, und für
+`kit_checks.invariant_knob` („mehrere Namen") ohne Bedeutung. Gebaut ist das als eine Deklaration
+(`backlog_types.SINGLE_VALUE_FIELDS` mit `holds_one_thing`/`single_value_offences`), die zwei
+Stellen lesen: `state._assert_single_value_fields`, aufgerufen aus `capture_preflight` und aus dem
+Editierpfad `_update_item_locked`, und `report._check_single_value_fields` als **Fehler** im
+Validator. „Nicht ein Wert" ist dabei als Eigenschaft geprüft (alles Iterierbare außer der
+Zeichenkette), nicht als Formenliste — die Einelement-Liste fällt darum genauso durch wie ein `dict`,
+denn die Leser können einen Behälter überhaupt nicht auseinandernehmen.
+
+**Die Ausnahme, die diese Eigenschaft in der ersten Fassung noch trug, ist gemessen und
+geschlossen:** `bytes` stand neben `str` in der Ausnahme, und der Prüfer hat sie durchgemessen —
+`update` nahm `scope: b'api/'` an, die Leser sahen `b'api/'`, `gate_test_coverage` ging von rc 2 auf
+**rc 0**, und anders als bei der Listenform sagte auch der **Validator nichts**, es gab also nicht
+einmal das Auffangnetz des Merge-Gates. Über ein ausgeliefertes Kommando war das nicht erreichbar
+(`harness.py update` nimmt JSON, das keine Bytes kennt, und die Migration erzeugt keinen `INV`), es
+war also keine Sitzungskette, aber es war eine Eigenschaft, die dieser Absatz behauptete und der Code
+nicht baute. `holds_one_thing` nimmt heute nur noch die Zeichenkette aus.
+
+**Gemessen nach dem Fix, gegen dasselbe Projekt außerhalb des Repos:** `capture` verweigert
+`["compounder/"]`, `["compounder/", "engine/"]`, `("compounder/",)`, `{"area": "compounder/"}` und
+die `bytes`-Formen (`b"compounder/"`, `bytearray`, `memoryview` — Prüfrunde 2) mit der
+Zwei-Item-Abhilfe im Text; `capture_preflight` — die Funktion, die `migrate` beim **Planen**
+fragt (`migrate.py:2143`) — verweigert dieselbe Form, der Import stirbt also nicht mitten im Lauf;
+`update` verweigert sie ebenfalls. Für ein Projekt, das ein solches Item **schon trägt**, geht
+`validate` von **0 auf 1 Fehler** („scope is a list where the contract is ONE value … one area per
+rule — an invariant meant to govern two areas is TWO INV items"), und `gate_memory_complete`
+verweigert damit sowohl `git push origin main` als auch `git merge` mit **rc 2** (vorher rc 0).
+
+**Die vier Leser sind unverändert — Datei wie Verhalten**, und das ist der Punkt des Vertrags: sie
+bleiben Ein-Bereich-Leser und sind jetzt durch den Vertrag richtig statt durch Zufall.
+Nachgemessen an den laufenden Lesern: `kit_checks.governed_source_areas` liefert `['api']` unter der
+Ein-Bereich-Form und `[]` unter der Listenform, `invariant_knob` den Wert bzw. den Vorgabewert,
+`gate_test_coverage` rc 2 bzw. rc 0, `guard_guidelines` rc 0 bzw. rc 2.
+
+**Rote Tests ohne den Fix** (je im Klon außerhalb des Repos, Defekt wiederhergestellt, rot gesehen):
+ohne die beiden Aufrufe in `state.py`
+`tools/test_state.py::test_a_several_things_inv_scope_is_refused_at_capture_and_on_the_edit_path`
+(alle fünf Schreibweisen, `bytes` eingeschlossen — gemessen: 5 failed mit beiden entfernten
+Aufrufen); ohne den Validator-Aufruf
+`tools/test_report.py::test_validate_names_an_inv_scope_spelled_as_several_things` (die
+Ausgangsmessung steht wörtlich im Fehlschlag: `found == []`) und
+`tools/test_hooks.py::test_the_shipped_readers_of_a_single_value_field_still_read_one_value` (an der
+Merge-Gate-Zeile). Beide Enden der Deklaration sind ebenfalls rot gesehen: ein Eintrag auf ein Feld,
+das kein Vertrag des Typs führt, und einer auf ein Feld aus `REFERENCE_LIST_FIELDS`, gegen
+`tools/test_backlog_types.py::test_the_single_value_fields_are_contract_fields_nothing_resolves_elementwise`;
+und ein Leser, dem man die Listenform beibringt, gegen den Leser-Test oben.
+
+**Rest 1 — ein bereits geschriebenes Item wird gemeldet, nicht geheilt, und seine Regel bleibt
+solange aus.** Gemessen: mit dem Listen-Item verweigert `gate_test_coverage` weiterhin **nichts**
+(rc 0) — was an die Stelle tritt, ist die Merge-Gate-Verweigerung derselben Zeile (rc 2), das
+Projekt kommt also nicht an dem Item vorbei, statt still ungeschützt zu arbeiten. Repariert wird
+über den Kernel-Editierpfad; `project_memory/**` hat einen Schreiber, und der ist kein Validator.
+
+**Rest 2 — die Archiv-Türen nehmen die Form weiter an, und zwar absichtlich; für `INV` ist das heute
+allerdings kein Fall, den ein Kommando erreicht.** Gemessen: `V1_STATUS_MAPPING` erzeugt elf V2-Typen,
+`INV` ist keiner davon, ein migriertes `INV` gibt es also nicht — die Archiv-Türen sind für dieses
+Feld eine reine Kernel-Oberfläche. Die Platzierung (außerhalb der gemeinsamen
+`_assert_capture_shape`) ist deshalb **Disziplin für den nächsten Eintrag**, dessen Typ die Migration
+sehr wohl erzeugen kann: ein archivierter Datensatz ist ein **Protokoll** dessen, was war (`DEC-0004`
+nimmt ihn darum vom Feldvertrag aus), `DEC-0009` lässt den unübersetzbaren **mit seiner Begründung**
+archivieren statt den Lauf anzuhalten, und eine Formprüfung dort hielte den Lauf an, ohne irgendetwas
+zu schützen — kein Leser dieser Felder scannt das Archiv. Beide Hälften sind gemessen und nicht
+behauptet: `tools/test_state.py::test_the_archive_door_still_takes_a_record_the_active_door_refuses`
+wird rot, sobald die Prüfung in `_assert_capture_shape` wandert, und
+`tools/test_state.py::test_the_migration_can_produce_no_inv_so_the_archive_boundary_is_for_the_next_entry`
+wird rot an dem Tag, an dem eine V1-Zeile ein `INV` erzeugt.
+
+**Rest 3 — der Vertrag ist eine Deklaration, keine Ableitung.** Beide Enden des einen Eintrags sind
+verdrahtet (Feld aus dem Vertrag des Typs gefallen bzw. Leser, der mehrere liest), aber **nichts
+leitet ab, welches WEITERE Feld ein solcher Eintrag sein müsste**: ein künftiger Leser, der ein
+anderes Feld als einen Wert liest, fällt keinem Draht auf. Das ist dieselbe Klasse wie `H41`/`H40` —
+was außerhalb der Reichweite eines Wächters entsteht, sammelt sich an.
+
+**Rest 4 — im `office-team` ist die Verweigerung Reibung ohne örtlichen Leser.** Die vier Leser
+sitzen in `dev-team` und `research-team` (`guard_guidelines.py`, `scripts/kit_checks.py` gespiegelt,
+`gate_test_coverage.py` nur im `dev-team`); das Office-Kit hat keinen. Ein Office-Projekt, das
+`scope: [belege/]` tippt, wird trotzdem verwiesen — der Vertrag sitzt im Kernel, der allen drei Kits
+gemeinsam ist. Das ist die ehrliche Richtung (dieselbe Bedeutung des Feldes in allen Kits), aber es
+ist Reibung, die dort heute keinen Leser schützt.
+
+**Rest 5 — zwei gezählte Zahlen in Kernel-Kommentaren, die kein Draht pinnt** (Prüfrunde 2, N2/N3):
+`state.py:1254` und `tools/test_state.py:233` sagen „elf V2-Typen" — heute wahr (gemessen), aber der
+Test daneben pinnt nur `"INV" not in produced`, nicht die Elf; eine zwölfte Mapping-Zeile macht die
+Prosa still falsch. `backlog_types.py:683` zählt „all three readers" für die `bytes`-Messung, ohne
+zu sagen welche. Beides dieselbe SR-0008-Klasse (eine Zahl an einem zweiten Ort); Korrektur bei der
+nächsten Berührung dieser Dateien — die Zahl streichen, nicht nachführen.
 
 ### H43 — Was der Kernel selbst schreibt, lag außerhalb der Feldmenge, die der Sweep abgeleitet hat — GESCHLOSSEN (TSK-0059)
 
@@ -3717,8 +3795,8 @@ folgt jetzt **einer** Bindung (`_key_read_aliases`), womit die Einspritzung rot 
 Bindung, oder ein Weg durch einen Aufruf — dort wäre der nächste Schritt eine Datenflussanalyse,
 und was sie brächte, ist ungemessen. Der Sprung ist zudem ohne Gültigkeitsbereichs-Analyse, was
 Kandidaten **hinzufügt** statt sie zu verschlucken (rote Gleichheit, kein stiller Verlust).
-`INV.scope` bleibt als **H42** offen: dort ist die Antwort keine Normalisierung, sondern eine
-Vertragsentscheidung.
+`INV.scope` war als **H42** offen: dort ist die Antwort keine Normalisierung, sondern eine
+Vertragsentscheidung — sie ist mit `DEC-0043` gefallen und in TSK-0060 gebaut.
 
 **Die Lehre über das Instrument, die hier das eigentliche Ergebnis ist:** eine Sweep-Menge, die aus
 der Oberfläche eines Kommandos abgeleitet wird, misst die Leser dieses Kommandos — nicht die

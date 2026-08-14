@@ -19,6 +19,7 @@ flag (`blocked_by`), never a status.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 
 # -- status automata -----------------------------------------------------------
@@ -635,6 +636,67 @@ DEC_SUPERSEDES_FIELD = "supersedes"
 # then holds every derived read site to the one definition. What that derivation cannot see is
 # named in its own docstring rather than promised away here.
 REFERENCE_LIST_FIELDS = ("design_refs", DEC_SUPERSEDES_FIELD, "premise_rechecks")
+
+
+# -- the item fields that hold exactly ONE thing, by contract -------------------------------------
+#
+# THE OTHER DIRECTION OF THE SAME PROBLEM `field_elements` ANSWERS, and the answer here is a
+# DECISION rather than a normalisation (DEC-0043). `REQUIRED_FIELDS` names fields and not shapes,
+# so every field can also arrive as a list -- and where a field's readers each read ONE value, the
+# list spelling is not "several", it is a value that reaches nobody: it arrives as the text
+# `"['a']"` and matches nothing. H42 is what that cost. Normalising it the other way
+# (`field_elements` at the readers) would mean one INV governs SEVERAL areas, which is the branch
+# the user rejected -- for `kit_checks.invariant_knob` a `scope` is the NAME of a configuration
+# knob, where "several names" means nothing at all.
+#
+# WHAT PUTS A FIELD IN HERE: every shipped reader of it reads ONE value, so the field's contract is
+# that it HOLDS one. The consequence is `state.capture_preflight`/`_update_item_locked` refusing the
+# several-things spelling on the way into the ACTIVE store, and `report._check_single_value_fields`
+# naming an item already written that way.
+#
+# AN ENUMERATION -- a contract is decided, not derived -- SO BOTH ENDS ARE MEASURED:
+# `test_backlog_types.test_the_single_value_fields_are_contract_fields_nothing_resolves_elementwise`
+# is the end where the entry has gone dead (the field left its type's contract, or turned into one
+# whose elements the kernel resolves), and
+# `test_hooks.test_the_shipped_readers_of_a_single_value_field_still_read_one_value` is the end
+# where it was never needed (the readers learned to read several, at which point the contract is
+# DEC-0043's to re-decide and not this tuple's to keep).
+SINGLE_VALUE_FIELDS = {
+    ("INV", "scope"): (
+        "every shipped reader reads it as ONE path or ONE knob name",
+        "one area per rule -- an invariant meant to govern two areas is TWO INV items, one each",
+    ),
+}
+
+
+def holds_one_thing(value) -> bool:
+    """Is this value ONE thing a reader of such a field can read? -- asked as a property, so no
+    spelling of "several" gets past it.
+
+    ITERABLE IS SEVERAL, and the single exception is the string: it is the one iterable whose
+    printed form IS its value, which is what every reader of a `SINGLE_VALUE_FIELDS` field does with
+    it. That is the reading `field_elements` gives a value, seen from the other side, and it is why
+    a `dict` and a one-element list are refused too -- what those readers cannot do is take a
+    container apart, so `['a']` reaches them as `"['a']"` exactly like `['a', 'b']` does.
+
+    `bytes` IS NOT THE STRING'S TWIN HERE, and it was exempted with it for one round. Measured
+    2026-08-14 through the shipped edit path: a `bytes` scope was taken, all three readers saw
+    `b'api/'`, `gate_test_coverage` went from rc 2 to rc 0 and -- unlike the list spelling -- the
+    validator stayed silent, so no merge gate caught it either. Nothing about the exemption was
+    earned: no reader of such a field has a byte meaning, and its printed form carries a wrapper
+    the value never had. `test_state.test_a_several_things_inv_scope_is_refused_at_capture_and_on
+    _the_edit_path` carries the case.
+    """
+    return isinstance(value, str) or not isinstance(value, Iterable)
+
+
+def single_value_offences(item_type: str, fields: dict) -> list:
+    """[(field, why, remedy)] for every `SINGLE_VALUE_FIELDS` field of `item_type` that `fields`
+    spells as several things -- the ONE reading, so the write path's refusal and the validator's
+    finding can never disagree about what the contract is."""
+    return [(field, why, remedy)
+            for (owner, field), (why, remedy) in sorted(SINGLE_VALUE_FIELDS.items())
+            if owner == item_type and field in fields and not holds_one_thing(fields[field])]
 
 
 # -- Evidence contract (spec II.2 "Evidence") ----------------------------------

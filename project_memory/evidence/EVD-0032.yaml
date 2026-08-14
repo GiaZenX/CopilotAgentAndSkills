@@ -1,0 +1,18 @@
+id: EVD-0032
+kind: review
+related:
+- TSK-0060
+result: pass
+summary: 'verifier PASS for diff:7e88cc0dd64adac14aa9d917370cf0307e5944e639b4ddfbec996fe5f4368355
+  -- DEC-0043 built: INV.scope is ONE value by contract, refused loudly at capture,
+  update and plan time with the two-items remedy (all five spellings incl. bytes/bytearray/memoryview
+  after the verifier''s find), validator errors on pre-existing damage and gate_memory_complete
+  catches the push/merge line; four readers byte-untouched, both tripwire ends red-seen
+  at all four readers; archive-door placement justified by a TEST derived from the
+  running migration table; H42 closed in wishlist with N1 count fixed and N2/N3 named
+  as Rest 5; kits 2026.08.14-9, tools/ suite 2554 green'
+artifact_refs:
+- ../docs/POST_V2_WISHLIST.md
+revision: 1
+approval_ref: null
+created: '2026-08-14T19:33:38'

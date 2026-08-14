@@ -58,6 +58,7 @@ from .backlog_types import (
     is_terminal,
     map_v1_status,
     parse_id,
+    single_value_offences,
 )
 from .lock import KernelLock, ext_path
 
@@ -733,6 +734,7 @@ class ProjectState:
                 "same claim as leaving the field out. Remedy: %s"
                 % (item_type, ", ".join(hollow), _NONEMPTY_REMEDY[item_type])
             )
+        _assert_single_value_fields(item_type, fields)
         self._assert_origins_resolve(item_type, fields, also_existing)
 
     def capture(self, item_type: str, fields: dict) -> dict:
@@ -969,6 +971,7 @@ class ProjectState:
         # binding -- `derives_from` rewritten to a phantom id makes the task's
         # acceptance criteria resolve against nothing, exactly as it would at capture.
         _assert_closed_vocabularies(item_type, changes)
+        _assert_single_value_fields(item_type, changes)
         self._assert_origins_resolve(item_type, changes)
         if item_type == "TSK" and item.get("status") != "DRAFT":
             # ... and closing the vocabulary is not enough on its own: a
@@ -1234,6 +1237,39 @@ def _assert_closed_vocabularies(item_type: str, fields: dict) -> None:
                 % (item_type, field, fields.get(field),
                    ", ".join(sorted(allowed)), why)
             )
+
+
+def _assert_single_value_fields(item_type: str, fields: dict) -> None:
+    """Refuse a `backlog_types.SINGLE_VALUE_FIELDS` field spelled as several things (DEC-0043).
+
+    LOUD RATHER THAN NORMALISED, which is a decision and not a preference about strictness: every
+    shipped reader of such a field reads ONE value, so the several-things spelling is taken happily
+    and then reaches nobody. H42 measured what that costs -- the same project's coverage rule went
+    from refusing an untested push to allowing it, and nothing anywhere said a word. Normalising
+    instead would mean one INV governs SEVERAL areas, and that is the branch DEC-0043 rejected.
+
+    ON THE TWO DOORS INTO THE **ACTIVE** STORE ONLY, `capture_preflight` and the edit path, and not
+    in `_assert_capture_shape` where the neighbouring vocabulary check sits. For today's one entry
+    that placement changes nothing either way and the honest reason says so: no shipped command
+    reaches an archive door with an `INV` at all -- `V1_STATUS_MAPPING` produces eleven V2 types and
+    `INV` is not among them, so the doors are a kernel surface only. The placement is DISCIPLINE FOR
+    THE NEXT ENTRY, whose type migration may well produce: an archive-bound record is a PROTOCOL of
+    what happened, DEC-0004 exempts it from the field contract for that reason, and DEC-0009 has the
+    unresolved ones archived WITH THEIR REASON rather than stopping a run -- a shape refusal there
+    would stop it, and it would guard nothing, because no reader of these fields scans
+    `archive/<TYPE>/<year>/`. That the archive door still takes such a body is
+    `test_state.test_the_archive_door_still_takes_a_record_the_active_door_refuses`.
+
+    The remedy the refusal carries is the one `report._check_single_value_fields` gives an item
+    already written that way; both read `single_value_offences`.
+    `test_state.test_a_several_things_inv_scope_is_refused_at_capture_and_on_the_edit_path`.
+    """
+    for field, why, remedy in single_value_offences(item_type, fields):
+        raise StateError(
+            "%s %s holds ONE thing and this body's value is not one (a %s): %s, and anything "
+            "else reaches them as its own PRINTED form, which matches nothing -- the item would "
+            "be written and the rule it states would guard nothing (DEC-0043, H42). Remedy: %s."
+            % (item_type, field, type(fields[field]).__name__, why, remedy))
 
 
 def _now_iso() -> str:

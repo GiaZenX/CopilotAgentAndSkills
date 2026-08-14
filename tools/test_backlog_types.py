@@ -17,6 +17,7 @@ from kernel.backlog_types import (  # noqa: E402
     FR_RESULT_TERMINALS,
     INVALIDATION_TARGET,
     REFERENCE_LIST_FIELDS,
+    SINGLE_VALUE_FIELDS,
     TransitionError,
     UnknownV1Status,
     assert_transition,
@@ -438,9 +439,12 @@ def _item_fields_read_as_sequences():
         prints the `design_refs` of `result["root"]` that way, and that site is measured by
         `test_staging_cli.test_a_scalar_design_ref_survives_the_freeze_as_one_reference` instead;
       * a field name that is neither a literal nor a package-level string constant;
-      * a value that travels MORE THAN ONE binding, or through a call or an attribute, before it is
-        iterated -- the second hop is where this stops being a reader and becomes a dataflow
-        analysis, and what it would buy here is unmeasured;
+      * a value whose way from the read to the sequence context is anything MORE than the one local
+        binding `_key_read_aliases` follows. The hop is the property and the spelling is not: past
+        that single hop the trace ends, and by what the value travelled makes no difference. One hop
+        is followed because the two-step idiom is what this code is written in; the second is where
+        this stops being a reader and becomes a dataflow analysis, and what that would buy here is
+        unmeasured;
       * any reader outside `team-kits/kernel/` -- the kits' hooks and scripts were the TSK-0033
         sweep's subject and are measured there.
     """
@@ -505,6 +509,32 @@ def test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements
         for field, sites in _item_fields_read_as_sequences().items()
         for where, consumer in sites if consumer != "field_elements")
     assert not offenders, offenders
+
+
+def test_the_single_value_fields_are_contract_fields_nothing_resolves_elementwise():
+    """One end of the `SINGLE_VALUE_FIELDS` enumeration: the entry that has gone DEAD (DEC-0043).
+
+    An entry is a claim about a field of a type, so it dies in two ways and both are checked here:
+    the field leaves that type's contract (the refusal then guards a field no item can carry), or
+    the same field turns up in `REFERENCE_LIST_FIELDS`, whose whole property is that the kernel
+    resolves its ELEMENTS -- one field cannot both hold one thing and be taken apart.
+
+    The OTHER end -- the entry that was never needed, because the shipped readers learned to read
+    several -- is `test_hooks.test_the_shipped_readers_of_a_single_value_field_still_read_one_value`;
+    it needs the readers themselves and lives with them.
+    """
+    contracts = backlog_types._contract_fields()
+    assert SINGLE_VALUE_FIELDS, "an empty contract would make both ends of this vacuous"
+    for (item_type, field), (why, remedy) in sorted(SINGLE_VALUE_FIELDS.items()):
+        # the contradiction is asked FIRST, or it could never be the answer: a
+        # `REFERENCE_LIST_FIELDS` name is one NO contract declares by construction, so the
+        # membership check below would always fire first and diagnose the wrong thing.
+        assert field not in REFERENCE_LIST_FIELDS, (
+            "%s is declared as holding ONE thing and as a field whose elements the kernel resolves"
+            % field)
+        assert field in contracts.get(item_type, ()), (
+            "%s.%s: no contract of that type declares the field" % (item_type, field))
+        assert why and remedy, "%s.%s: an entry owes a why and a remedy" % (item_type, field)
 
 
 def test_the_evidence_rule_names_only_edges_the_automaton_has():
