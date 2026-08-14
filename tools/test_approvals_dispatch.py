@@ -497,6 +497,22 @@ def test_revoked_approval_blocks_dispatch_even_with_a_live_lease(state):
         dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
 
 
+def test_a_scalar_dependency_is_one_dependency(state):
+    """BUG-0015 on `dependencies`: `_assert_dependencies_met_locked` iterated the field itself.
+
+    A task whose one dependency is written as a bare string — which `capture` accepts and which
+    `--map TSK.dependencies=<v1 field>` writes from any V1 scalar — became one dependency per
+    LETTER, and every letter resolved to no item, so a SATISFIED dependency blocked the lease with
+    `T (missing), S (missing), K (missing), ...`. The finished dependency is walked to DONE first,
+    so what this measures is the shape and not the status."""
+    _pr, first = make_ready_task(state)
+    drive_task_to(state, first["id"], "DONE")
+    second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
+                                              dependencies=first["id"]))
+    state.transition(second["id"], "READY")
+    assert dispatch.create_lease(state, second["id"])["task_id"] == second["id"]
+
+
 def test_dependency_that_opens_after_the_lease_blocks_dispatch(state):
     _pr, first = make_ready_task(state)
     second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
@@ -657,6 +673,35 @@ def test_plain_string_criteria_resolve_too(state):
     approve_scope(state, pr["id"])
     header = _dispatchable(state, pr["id"], acceptance_refs=["AC-PLAIN"])
     assert dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+
+
+@pytest.mark.parametrize("criteria,refs,dispatchable", [
+    ("AC-1", ["AC-1"], True),
+    ([{"id": "AC-1", "text": "order completes"}], "AC-1", True),
+    ("AC-1", "AC-1", True),
+    ("AC-1", "1-CA", False),
+])
+def test_a_scalar_acceptance_ref_is_one_ref_not_four_letters(state, criteria, refs, dispatchable):
+    """BUG-0015 on the pair this gate is built from: both fields were iterated directly.
+
+    A scalar `acceptance_criteria: AC-1` became the criterion ids {A, C, -, 1} and a scalar
+    `acceptance_refs: AC-1` the references [A, C, -, 1]. Two consequences, and the last row is the
+    one that matters: the two letter sets MATCH, so "a task nobody can check against the approved
+    criteria is not dispatchable" passed on criteria nobody wrote — measured as SPAWN ALLOWED for
+    `1-CA`, an anagram that resolves against nothing. The first two rows are the same defect in
+    its loud direction: one field spelled as a list and the other as a string refused a reference
+    the root really declares (`exist nowhere: A, C, -, 1`).
+
+    `kernel.capture` takes either spelling and `migrate`'s `--map` carries the V1 one over
+    verbatim, so both reach this gate exactly as the item holds them."""
+    pr = state.capture("PR", dict(PR_FIELDS, acceptance_criteria=criteria))
+    approve_scope(state, pr["id"])
+    header = _dispatchable(state, pr["id"], acceptance_refs=refs)
+    if dispatchable:
+        assert dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    else:
+        with pytest.raises(DispatchError, match="exist nowhere"):
+            dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
 
 
 def test_acceptance_refs_must_point_at_criteria_that_exist(state):

@@ -4430,6 +4430,37 @@ def test_forbidden_entries_mean_what_a_pm_would_expect(tmp_path, entry):
     assert "forbidden_scope" in result.stderr
 
 
+@pytest.mark.parametrize("field,entry,target", [
+    ("forbidden_scope", "secrets", "secrets/keys"),
+    ("allowed_scope", "src", "src/a.py"),
+])
+def test_a_scalar_scope_decides_like_a_one_element_list(tmp_path, field, entry, target):
+    """BUG-0015: `_scope_entries` iterated the field itself, so a scope written as a bare string
+    became one entry per LETTER.
+
+    None of those letters matches a path, so `forbidden_scope: secrets` was a silent no-op and the
+    bound specialist wrote `secrets/keys` at rc 0 — measured against rc 2 for the same task with
+    `[secrets]`. `kernel.capture` accepts the scalar and nothing between it and this gate converts
+    it, so the spelling reaches the gate exactly as written.
+
+    THE ENTRIES CARRY NO `/` AND NO `*` ON PURPOSE, and that is the measurement rather than a
+    simplification: in `secrets/**` the letters `/` and `*` are themselves unusable entries, so
+    the blank-entry guard below refuses the call for the wrong reason and the silent no-op is
+    hidden. Measured — with `secrets/**` this test stays GREEN against the restored defect.
+
+    The two spellings are COMPARED rather than pinned to an expected code: what an entry MEANS is
+    the two tests above, and this one is only about how many entries the field holds."""
+    verdicts = []
+    for index, value in enumerate((entry, [entry])):
+        scopes = {"allowed_scope": ["**"], "forbidden_scope": []}
+        scopes[field] = value
+        repo = tmp_path / ("spelling-%d" % index)
+        bound_repo(repo, **scopes)
+        payload = write_payload(repo, repo / target, agent_id="child-1")
+        verdicts.append(run_scope(repo, payload).returncode)
+    assert verdicts[0] == verdicts[1], verdicts
+
+
 @pytest.mark.parametrize("entry", ["", ".", "  "])
 def test_a_blank_scope_entry_is_refused_not_read_as_everything(tmp_path, entry):
     """`allowed_scope: [""]` used to grant the whole repo while the empty LIST correctly blocked —

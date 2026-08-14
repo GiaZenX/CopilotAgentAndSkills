@@ -1,4 +1,4 @@
-generated_at: '2026-08-14T11:54:55'
+generated_at: '2026-08-14T14:30:44'
 items:
 - id: BUG-0001
   type: BUG
@@ -230,6 +230,14 @@ items:
   type: BUG
   title: kit_trust_state.py prose claims 'nothing here leads OUT of hooks_trust_required'
     -- the running code exits it on a re-matching hash
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0038
+  type: BUG
+  title: Kernel-written fields outside the contract universe (design_refs, premise_rechecks,
+    supersedes) are read shape-assumingly -- freeze-design letter-splits a scalar
+    design_refs INTO CANONICAL STATE and validate stays silent
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -672,6 +680,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0030
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -845,12 +859,6 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0027
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0033
   type: TSK
   title: null
   status: DRAFT

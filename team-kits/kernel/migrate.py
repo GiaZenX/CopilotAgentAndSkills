@@ -2442,13 +2442,30 @@ def render(plan: dict, state: ProjectState = None) -> str:
     else:
         lines.append("  (none)")
 
-    # THE VALUES A `--map` WOULD ACTUALLY CARRY, and this section exists because of a shape the
-    # tool must NOT fix: `--map PROC.roles=owner` puts a V1 SCALAR into a V2 field whose name is
-    # plural. No contract in this kernel declares the shape of `roles` -- `REQUIRED_FIELDS` names
-    # fields, not types -- so inventing one here would be the kernel deciding something nobody
-    # wrote down. What it can do instead is show the human every distinct value the mapping would
-    # carry, before it carries it. Distinct values, so the section is bounded by the VARIETY of
-    # the data rather than by its size.
+    # THE VALUES A `--map` WOULD ACTUALLY CARRY, and this section exists because of a shape this
+    # command does not convert: `--map PROC.roles=owner` puts a V1 SCALAR into a V2 field whose
+    # name is plural. The contract of the types THIS COMMAND CREATES names fields and not their
+    # shapes: `_item_fields` copies whatever `REQUIRED_FIELDS`/`OPTIONAL_FIELDS` list, and those
+    # tuples are field NAMES. The other half of the kernel's field contract does declare shapes --
+    # `kernel/schemas/arc_companion.yaml` gives `derives_from` `type: list` with an `item_type`,
+    # and `schemas.item_field_contracts` calls it a field contract in those words -- but that half
+    # covers ARC/WFR/DSN, which `staging.freeze_*` promotes and no import ever creates. So there
+    # is nothing HERE to convert against; there is elsewhere, for types this command cannot reach.
+    #
+    # WHAT IS NOT TRUE IS THAT NOBODY WROTE THE SHAPE DOWN, which is what this comment claimed
+    # until BUG-0015. A kit's READER is a shape contract of its own: the office kit renders
+    # `roles` into the Steuerberatung's Verfahrensdokumentation, and it iterated the scalar --
+    # `records-clerk` reached that document as `r, e, c, o, r, d, s, -, c, l, e, r, k`. The
+    # normalisation belongs at the reader, because `kernel.capture` accepts the same scalar and
+    # this command is not on that path at all: it is `backlog_types.field_elements`, which the
+    # office renderer now asks instead of iterating the value
+    # (`test_hooks.test_process_doc_renders_a_scalar_field_as_one_element`).
+    # WHICH OTHER READERS ASSUME A SHAPE is a per-reader question; the sweep BUG-0015 asked for
+    # named the ones it could reach, and no claim beyond those is made here.
+    #
+    # What this section does is show the human every distinct value the mapping would carry,
+    # before it carries it. Distinct values, so the section is bounded by the VARIETY of the data
+    # rather than by its size.
     if plan["carried_values"]:
         lines += ["", "FIELD MAPPING IN EFFECT -- values carried VERBATIM, in the shape the V1 "
                       "record holds them (nothing here converts a scalar into a list):"]

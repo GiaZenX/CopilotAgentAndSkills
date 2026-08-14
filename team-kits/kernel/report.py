@@ -50,6 +50,7 @@ from .backlog_types import (
     NON_AUTOMATON_STATUSES,
     PARENT_FIELDS,
     QA_EVIDENCE_KINDS,
+    field_elements,
     parse_id,
 )
 from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
@@ -435,7 +436,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                     "%s -> %s exists neither active nor archived" % (field, ref),
                     "fix the reference or restore the item",
                 ))
-        for dep in item.get("dependencies") or []:
+        for dep in field_elements(item.get("dependencies")):
             if dep not in active_items and not _in_archive(state, dep):
                 findings.append(_finding(
                     "error", item_id, "dependency %s does not exist" % dep,
@@ -876,19 +877,17 @@ def _parent_bindings(item_type: str, item: dict):
     work". `ARC`, `WFR` and `DSN` then repeated it for the architect and the designer, whose
     contracts live in `kernel/schemas/` rather than in `REQUIRED_FIELDS`.
 
-    A binding field holds one id or a list of them; both spellings are normalised here, so a
-    type whose contract lets it hang from several items needs no second code path. A TSK is
-    that type today: `product_requirement` is the root it serves and `derives_from` the item
-    whose criteria it was cut from (a BUG or CR under that root), and both are legitimate
-    ways for the work to belong to the root.
+    A binding field holds one id or a list of them; both spellings are normalised through
+    `backlog_types.field_elements`, so a type whose contract lets it hang from several items
+    needs no second code path. A TSK is that type today: `product_requirement` is the root it
+    serves and `derives_from` the item whose criteria it was cut from (a BUG or CR under that
+    root), and both are legitimate ways for the work to belong to the root.
 
     The FIELD is yielded alongside the id because the validator's message names it and one
     binding is judged more strictly than the rest -- see `validate_state`.
     """
     for field in PARENT_FIELDS.get(item_type, ()):
-        value = item.get(field)
-        values = value if isinstance(value, (list, tuple)) else [value]
-        for one in values:
+        for one in field_elements(item.get(field)):
             if one:
                 yield field, str(one)
 
@@ -943,6 +942,11 @@ def evidence_covers(state: ProjectState, evidence: dict, target_id: str) -> bool
     narrower: V1 accepted any passing entry in a file whose TEXT mentioned the target
     anywhere, including in a comment.
     """
+    # NOT `field_elements`, and left that way on purpose (BUG-0015 round): `or []` drops a FALSY
+    # non-empty value where `field_elements` would keep it (`0` -> `[]` here, `[0]` there). No id
+    # is falsy, so the two agree on every value this field can hold; folding it would be a
+    # behaviour change made for tidiness in a round that was fixing a defect. Same two lines below
+    # in `qa_verdicts_by_subject`.
     related = evidence.get("related") or []
     related = list(related) if isinstance(related, (list, tuple)) else [related]
     return any(_hangs_from(state, str(ref), target_id, set()) for ref in related)
@@ -1046,6 +1050,8 @@ def qa_verdicts_by_subject(state: ProjectState) -> dict:
     """
     groups = {}
     for evidence, order in _delivery_evidence(state):
+        # the second of the two `or []` spellings -- see `evidence_covers` for why neither is
+        # folded into `backlog_types.field_elements`
         related = evidence.get("related") or []
         related = list(related) if isinstance(related, (list, tuple)) else [related]
         for subject in [str(ref) for ref in related] or [str(evidence.get("id"))]:
@@ -1068,9 +1074,7 @@ def _check_task_origins(state: ProjectState, active_items: dict) -> list:
         if item_type != "TSK":
             continue
         root = item.get("product_requirement")
-        origins = item.get("derives_from") or []
-        origins = origins if isinstance(origins, (list, tuple)) else [origins]
-        for origin in origins:
+        for origin in field_elements(item.get("derives_from")):
             origin = str(origin)
             if origin == root:
                 continue

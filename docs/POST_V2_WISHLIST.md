@@ -1895,7 +1895,7 @@ prüft ihn jetzt.
 H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
-TSK-0058, H41 mit TSK-0009.
+TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -1928,6 +1928,8 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
 | H41 | **Rest**, keine Angriffskette | drei gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung, der lebende Bestand ist in allen drei Richtungen leer |
+| H42 | **Rest**, Vertragsentscheidung des Nutzers offen | die Listenschreibweise von `INV.scope` verliert eine Verweigerung, erteilt aber nichts; wer schließt, entscheidet zuerst den Vertrag (ein Bereich oder mehrere) und zieht alle vier Leser gemeinsam nach — Details im Eintrag |
+| H43 | **Ausnahme, Abnahme offen** — Behebung liegt bei `BUG-0038` | vom Kernel selbst geschriebene Felder liegen außerhalb der `--map`-Feldmenge, die der TSK-0033-Sweep abgeleitet hat, und waren ihm damit unsichtbar; die Kette `capture` → `freeze-design` läuft in einer Sitzung durch und schreibt 35 Einträge statt einem in den aktiven PR, die Richtung ist aber Über-Verweigerung und falscher Bericht, keine erteilte Erlaubnis |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -3527,6 +3529,106 @@ einem Testnamen dahinter.
 berührt eine Gate-Entscheidung. Wer eine der drei schließt, misst zuerst die Richtung, die heute
 fehlt (a: Tabellen-Vollständigkeit gegen eine zweite Quelle; b: ein Nicht-Bezeichner-Span mit
 `test_`-Präfix wird beschrieben statt geklebt; c: Paarung, die einen unpaarigen Auftakt überspringt).
+
+### H42 — `INV.scope` als Liste geschrieben schaltet die Testabdeckungs-Regel still ab (neu, TSK-0033)
+
+**Mechanismus:** der Vertrag der Typen, die `capture` erzeugt (`REQUIRED_FIELDS`/`OPTIONAL_FIELDS`),
+nennt Feld**namen** und keine Formen — jedes dieser Felder kann also als Skalar **und** als Liste
+ankommen. (Die andere Vertragshälfte, `kernel/schemas/*.yaml`, deklariert sehr wohl `type:` je Feld;
+sie gilt für die eingefrorenen ARC/WFR/DSN, nicht für `INV`.) `BUG-0015` war die eine Richtung (ein
+Skalar, das ein Leser buchstabenweise iteriert); dies ist die andere. Vier Leser lesen `INV.scope`
+als **einen** Pfad bzw. **einen** Namen: `dev-team/hooks/gate_test_coverage.py:177`
+(`str(item.get("scope") or "")`), `dev-team/hooks/guard_guidelines.py:128-129` sammelt den Wert
+**roh** ein und `:154` (`_governs`) macht daraus `str(scope or "").strip()`, und
+`dev-team/templates/repo/scripts/kit_checks.py:171` (dort als Konfigurationsschlüssel) sowie `:189`.
+Eine Liste ergibt dort die Zeichenkette `"['compounder/']"`, die auf keinen Pfad passt.
+
+**Kette (gemessen 2026-08-14, `dev-team`-Hooks als Prozesse, Projekt außerhalb des Repos):** ein
+`INV` mit `scope: compounder/` und Code ohne Tests darunter → `gate_test_coverage.py` verweigert
+`git push origin main` mit rc 2 („source area 'compounder/' has code but no tests"). Dasselbe
+Projekt, dasselbe `INV`, nur `scope: ["compounder/"]` → **rc 0**. `kernel.capture` nimmt beide
+Schreibweisen an, und `migrate --map INV.scope=<v1-feld>` trägt die V1-Form unverändert hinüber.
+
+**Urteil: gemessener Rest, hier bewusst NICHT geschlossen — und zwar nicht als „kommt später",
+sondern weil die Antwort keine Normalisierung ist, sondern eine Vertragsentscheidung.**
+`backlog_types.field_elements` (die Definition, die `BUG-0015` geschlossen hat) würde bedeuten:
+ein `INV` regiert MEHRERE Bereiche. Für `gate_test_coverage` ist das sinnvoll, für
+`kit_checks.py:171` nicht — dort ist `scope` der **Name eines Konfigurationsknopfes**, und „mehrere
+Namen" hat dort keine Bedeutung. Das Feld ist also überladen, und ein Fix in einem der vier Leser
+stellt genau den Doppelleser-Defekt wieder her, den der Kopfkommentar von
+`office-team/.../scripts/process_doc.py` protokolliert (zwei Leser eines Dokuments, jeder in die
+Richtung des anderen still falsch). Wer das schließt, entscheidet zuerst den Vertrag von
+`INV.scope` (ein Bereich oder mehrere) und zieht dann alle vier Leser gemeinsam nach.
+
+**Was stattdessen begrenzt — und was ausdrücklich NICHT begrenzt:** die Richtung ist eine
+**verlorene Verweigerung**, keine erteilte Erlaubnis — die Listenschreibweise schaltet eine Regel
+ab, sie gewährt nichts, was ein Projekt ohne dieses `INV` nicht ohnehin dürfte. Der Schreibweg
+begrenzt **nicht**: es gibt genau einen produktiven (`harness.py capture INV`, also `state.capture`),
+und der nimmt beide Formen unverändert an — gemessen. Was die Skalarform nahelegt, ist die
+**Anleitung**, nicht der Apparat: `kit_checks._knob_hint:203` sagt „declare it as an INV item —
+`scope: <knob>`", und die Beispiele im Kopf desselben Skripts (`:66`, `:469`) zeigen dieselbe Form.
+Ein Nutzer, der stattdessen `scope: [belege/]` tippt, wird von nichts korrigiert. Die drei Kits
+liefern **kein** `INV` mit aus (`templates/project_memory/invariants/active/` enthält nur
+`.gitkeep`), es gibt hier also auch keine Vorlage, die die Form vormacht. **Wodurch es auffiele:**
+ein Projekt, dessen `gate_test_coverage` nichts mehr verweigert, obwohl ein `INV` einen Bereich
+benennt.
+
+### H43 — Was der Kernel selbst schreibt, lag außerhalb der Feldmenge, die der Sweep abgeleitet hat (neu, TSK-0033)
+
+**Mechanismus, als Eigenschaft und nicht als Liste:** der AC-4-Sweep dieser Runde leitet seine
+Feldmenge aus der Oberfläche **eines Kommandos** ab — `migrate.parse_field_map:1145-1153` lässt nur
+Felder aus `REQUIRED_FIELDS ∪ OPTIONAL_FIELDS` zu, und `_item_fields:1177` kopiert über dieselbe
+Vereinigung. Das ist die Menge der Felder, die ein **Aufrufer** an `capture` übergibt. Der Zustand
+hat aber einen zweiten Schreiber: den Kernel selbst (`state._update_item_locked`,
+`staging.freeze_*`), und die Felder, die nur der setzt, stehen in keinem der beiden Tupel. Für das
+Instrument waren sie damit nicht existent — nicht „sicher", sondern **ungemessen**. Dieselbe
+Buchstaben-Iteration kann dort also stehen, und sie steht dort.
+
+**Kette (gemessen 2026-08-14, Prüfung zu TSK-0033):**
+
+* `design_refs` (auf PR/RQ) — der Erzeuger ist `kernel/staging.py:319`:
+  `refs = list(root.get("design_refs") or [])`, gefolgt von
+  `state._update_item_locked(root_id, {"design_refs": refs})`. Ein skalares `design_refs` wird
+  damit buchstabenweise zerlegt **und in den kanonischen Zustand zurückgeschrieben** — der einzige
+  Fall dieser Klasse, der den Zustand selbst beschädigt statt nur eine Antwort zu verfälschen.
+  **Ganz durchgemessen 2026-08-14, ohne jede Bearbeitung am Kernel vorbei:** `capture PR` nimmt
+  `design_refs: design/revisions/DSN-0001.r01.html` als Skalar an (das Feld steht in keinem
+  Vertragstupel, und `capture` weist unbekannte Felder nicht ab — `dispatch.py:492` beschreibt
+  denselben Weg für eine Liste); anschließend schreibt `freeze_design` **35 Einträge** in den
+  aktiven PR: 34 Buchstaben plus die neue Referenz. Die Revision blieb dabei `1 → 1`, es gab also
+  auch keine Hash-Invalidierung, die es auffällig gemacht hätte. Die beiden Leser dahinter:
+  `kernel/cli.py:675` druckt die Bestätigungszeile als
+  `design_refs: d, e, s, i, g, n, /, r, e, …`, und `kernel/dispatch.py:479`
+  (`[str(ref) for ref in (root.get("design_refs") or [])]`) verweigert damit einen UI-Task gegen
+  ein Design, das es sehr wohl gibt.
+* `supersedes` (DEC) — `kernel/report.py:1236` und `:1270`, beide
+  `for ref in item.get(DEC_SUPERSEDES_FIELD) or []`.
+* `premise_rechecks` (PR/RQ/CR) — `kernel/report.py:1154` und `:1170`.
+
+**Urteil: benannte Ausnahme, Abnahme durch den Nutzer offen — Behebung ist eigene Arbeit und liegt
+bei `BUG-0038`.** Die Kette läuft **innerhalb einer Sitzung** durch (`capture` → `freeze-design`),
+ist also nach der Hausregel blockierend; geschlossen wird sie nicht in dieser Runde, weil sie
+außerhalb des entschiedenen Umfangs von TSK-0033 liegt und der Ort der Behebung
+(`staging.freeze_design` plus die zwei Leser) eine eigene Messung mit eigenen Rot-Tests braucht.
+
+**Die Richtung, und sie ist in allen drei Fällen dieselbe:** **Über-Verweigerung bzw. ein falscher
+Bericht**, keine erteilte Erlaubnis. Ein UI-Spawn wird zu Unrecht abgelehnt, eine abgelöste
+Entscheidung zu Unrecht als offen geführt, eine Bestätigungszeile falsch gedruckt. Kein Gate öffnet
+sich dadurch.
+
+**Was stattdessen begrenzt — knapp, und ausdrücklich weniger, als man annehmen möchte:** der
+verfälschte Wert ist **laut sichtbar**, sowohl in der Item-Datei als auch in der Zeile, die
+`cli.py:675` unmittelbar nach dem Einfrieren druckt. Was **nicht** begrenzt: `capture` weist das
+Feld nicht ab, `--map` ist dafür nicht nötig, und die Hash-Invalidierung greift hier nicht — die
+Revision blieb im Messlauf unverändert. Wer das für tragbar hält, entscheidet das bewusst; ein
+dritter Zustand ist es nicht.
+
+**Die Lehre über das Instrument, die hier das eigentliche Ergebnis ist:** eine Sweep-Menge, die aus
+der Oberfläche eines Kommandos abgeleitet wird, misst die Leser dieses Kommandos — nicht die
+Eigenschaft „ein Leser setzt eine Form voraus". Wer den Sweep wiederholt, leitet die Menge aus den
+**Schreibern** des Zustands ab (`capture`, `_update_item_locked`, `staging.freeze_*`) statt aus
+`parse_field_map`. Die volle Messung samt Tabelle steht in
+`docs/reviews/2026-08-14-tsk0033-map-field-reader-sweep.md`, Abschnitt 5.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

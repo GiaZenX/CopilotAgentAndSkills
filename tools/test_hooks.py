@@ -3995,6 +3995,57 @@ def test_process_doc_renders_the_verfahrensdokumentation_from_the_proc_items(tmp
     assert "retention: 10y" in rendered
 
 
+def _proc_block(rendered, pid):
+    """The rendered lines of ONE procedure, minus its heading — the heading carries id and title,
+    which is exactly what two otherwise identical procedures must be allowed to differ in.
+
+    Trailing blanks go too: the LAST section of the document ends at the end of the file, so a
+    separator line the others carry is simply not there and every comparison would fail on it."""
+    block, taking = [], False
+    for line in rendered.splitlines():
+        if line.startswith("### "):
+            taking = line.startswith("### %s " % pid)
+            continue
+        if taking:
+            block.append(line)
+    while block and not block[-1].strip():
+        block.pop()
+    return block
+
+
+def test_process_doc_renders_a_scalar_field_as_one_element(tmp_path):
+    """BUG-0015 AC-1: a bare string in `roles`/`steps` renders like the one-element list.
+
+    Not a source search: the script is RUN and the two procedures are compared in the document it
+    wrote. Both spellings reach a real project — `kernel.capture` takes either, and the remedy the
+    migration's dry run prints (`--map PROC.roles=owner`, `migrate.render`) carries the V1 scalar
+    over verbatim. The renderer iterated it, so `records-clerk` arrived in
+    docs/verfahrensdokumentation.md as `r, e, c, o, r, d, s, -, c, l, e, r, k` — measured
+    2026-08-09 on 12 of 12 PROC items of a real office project (BUG-0015), and that document is
+    the GoBD Verfahrensdokumentation the Steuerberatung is handed.
+
+    The role name is asserted whole as well as compared: equality alone stays green if BOTH
+    spellings break the same way.
+    """
+    pytest.importorskip("yaml")
+    repo = _office_project(tmp_path)
+    state = _office_state(repo)
+    scalar = state.capture("PROC", {"title": "scalar spelling", "steps": "scan and file it",
+                                    "roles": "records-clerk"})
+    listed = state.capture("PROC", {"title": "list spelling", "steps": ["scan and file it"],
+                                    "roles": ["records-clerk"]})
+    write(str(repo / "project_memory" / "filing_plan.yaml"),
+          "rules:\n  - id: FP-001\n    path_template: \"archive/belege/<year>/\"\n"
+          "    document_types: [beleg]\n    retention: 10y\n")
+    result = _run_office_script(repo, "process_doc.py")
+    assert result.returncode == 0, result.stdout + result.stderr
+    rendered = open(str(repo / "docs" / "verfahrensdokumentation.md"), encoding="utf-8").read()
+    block = _proc_block(rendered, scalar["id"])
+    assert block == _proc_block(rendered, listed["id"]), rendered
+    assert any(line.endswith(" records-clerk") for line in block), rendered
+    assert any(line.endswith(" scan and file it") for line in block), rendered
+
+
 def test_gate_pipeline_green_tree_cache(tmp_path):
     repo = tmp_path / "repo"
     runs = tmp_path / "runs.txt"           # OUTSIDE the repo: the counter must not dirty the tree

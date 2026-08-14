@@ -31,7 +31,7 @@ from .approvals import (
     proven_expiry,
     read_apr,
 )
-from .backlog_types import UI_TASK_TYPES, parse_id
+from .backlog_types import UI_TASK_TYPES, field_elements, parse_id
 from .schemas import validate
 from .state import ProjectState, StateError, _now_iso
 
@@ -122,9 +122,7 @@ def _assert_origins_belong_to_root_locked(state: ProjectState, root: dict, field
     # import rather than a cycle -- and by the time a task is created, both halves are loaded
     from .report import _root_of
 
-    origins = fields.get("derives_from")
-    origins = origins if isinstance(origins, (list, tuple)) else [origins]
-    for origin in origins:
+    for origin in field_elements(fields.get("derives_from")):
         origin = str(origin or "")
         if not origin or origin == root["id"]:
             continue
@@ -464,7 +462,7 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
         # success_criteria, and `derives_from` names which of them a task serves.
         # Resolving AC against the root alone made every bugfix, CR and EXP task
         # undispatchable while passing only the WRONG reference.
-        refs = [str(ref) for ref in (task.get("acceptance_refs") or [])]
+        refs = [str(ref) for ref in field_elements(task.get("acceptance_refs"))]
         known_ac = _known_acceptance_ids_locked(state, root, task)
         unknown = [ref for ref in refs if ref not in known_ac]
         if not refs or unknown:
@@ -906,10 +904,15 @@ def _criteria_ids(item: dict) -> set:
     """The criterion ids an item offers: `acceptance_criteria` (PR/RQ/CR/BUG) or
     `success_criteria` (EXP, spec II.2). Entries may be `{id, text}` mappings or
     plain strings -- both shapes appear in real items, and a strict resolution
-    check that only understood one of them would block the other."""
+    check that only understood one of them would block the other.
+
+    The FIELD itself is normalised through `backlog_types.field_elements` for the same reason
+    (BUG-0015): a scalar `acceptance_criteria: AC-1` split into four one-letter criterion ids,
+    and against a scalar `acceptance_refs` that split the same way the dispatch check passed on
+    criteria nobody wrote."""
     ids = set()
     for field in ("acceptance_criteria", "success_criteria"):
-        for entry in item.get(field) or []:
+        for entry in field_elements(item.get(field)):
             if isinstance(entry, dict) and entry.get("id"):
                 ids.add(str(entry["id"]))
             elif isinstance(entry, str) and entry.strip():
@@ -925,9 +928,7 @@ def _known_acceptance_ids_locked(state: ProjectState, root: dict, task: dict) ->
     Fix-Kriterien would be referencing the wrong contract entirely.
     """
     known = _criteria_ids(root)
-    origins = task.get("derives_from")
-    origins = origins if isinstance(origins, (list, tuple)) else [origins]
-    for origin in origins:
+    for origin in field_elements(task.get("derives_from")):
         if not origin or str(origin) == root["id"]:
             continue
         try:
@@ -944,7 +945,7 @@ def _assert_dependencies_met_locked(state: ProjectState, task: dict) -> None:
     """spec II.4 gate 2 / II.12 "offene Abhaengigkeit -> Block". A dependency is
     satisfied once its work was accepted (DONE) or QA'd (VALIDATED)."""
     open_deps = []
-    for dep_id in task.get("dependencies") or []:
+    for dep_id in field_elements(task.get("dependencies")):
         dep, _archived = _read_item_any(state, dep_id)
         if dep is None:
             open_deps.append("%s (missing)" % dep_id)

@@ -47,7 +47,7 @@ def _fail(message, remedy):
 
 
 def _plain(value):
-    """One rule field as one line of prose, whatever YAML shape it arrived in."""
+    """One field as one line of prose, whatever YAML shape it arrived in."""
     if isinstance(value, (list, tuple)):
         return ", ".join(_plain(item) for item in value)
     if isinstance(value, dict):
@@ -97,6 +97,10 @@ def main(argv=None):
 
     procs = _procedures(state)
     rules, reason = gate_filing.rules(REPO_ROOT)
+    # HOW MANY THINGS A FIELD HOLDS, taken from the kernel that owns the field contracts rather
+    # than answered again here: a bare string is ONE role and one step, and iterating it wrote
+    # `r, e, c, o, r, d, s, -, c, l, e, r, k` into the Steuerberatung's document (BUG-0015).
+    _elements = _kernel.kernel_module("backlog_types", REPO_ROOT).field_elements
 
     lines = ["# Verfahrensdokumentation (ENTWURF — generiert aus den Prozessdefinitionen)", "",
              "> Entwurf zur Prüfung durch die Steuerberatung — keine Steuer- oder Rechtsberatung.",
@@ -122,17 +126,15 @@ def main(argv=None):
     lines += ["", "## Prozesse", ""]
     for pid in sorted(procs):
         body = procs.get(pid) or {}
-        roles = body.get("roles") or []
         lines += ["### %s — %s (%s)" % (pid, body.get("title") or "", body.get("status") or "?"),
                   "",
-                  "- Auslöser: %s" % (body.get("trigger") or "—"),
-                  "- Ausführende Rollen: %s" % (", ".join(str(r) for r in roles) or "—"),
+                  "- Auslöser: %s" % (_plain(_elements(body.get("trigger"))) or "—"),
+                  "- Ausführende Rollen: %s" % (_plain(_elements(body.get("roles"))) or "—"),
                   "- Schritte:"]
-        for step in (body.get("steps") or []):
-            lines.append("  1. %s" % step)
-        lines += ["- Ergebnisse: %s" % ", ".join(str(o) for o in (body.get("outputs") or [])),
-                  "- Rückfragepunkte: %s" % ", ".join(str(a) for a in (body.get("approval_points")
-                                                                       or [])),
+        for step in _elements(body.get("steps")):
+            lines.append("  1. %s" % _plain(step))
+        lines += ["- Ergebnisse: %s" % _plain(_elements(body.get("outputs"))),
+                  "- Rückfragepunkte: %s" % _plain(_elements(body.get("approval_points"))),
                   ""]
     out_dir = os.path.join(REPO_ROOT, "docs")
     os.makedirs(out_dir, exist_ok=True)

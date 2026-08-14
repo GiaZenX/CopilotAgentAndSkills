@@ -437,6 +437,37 @@ _BINDING_FIELD_NAMES = ("product_requirement", "derives_from", "related_pr",
                         "target_pr", "related", "root")
 
 
+def field_elements(value) -> list:
+    """How many things one item field holds -- a string is ONE of them, never len(value).
+
+    THE TUPLES ABOVE NAME FIELDS AND NOT THEIR SHAPES -- `REQUIRED_FIELDS`/`OPTIONAL_FIELDS` are
+    the contract of the types `capture` creates, and they are names. (The other half of the field
+    contract, `kernel/schemas/*.yaml` for the frozen ARC/WFR/DSN, DOES declare `type:` per field;
+    `_contract_fields` below reads both. This function is about the capture-time half.) So every
+    field that reads as a sequence can arrive as a bare scalar: `capture` takes it, `migrate`'s
+    `--map` carries the V1 spelling over verbatim, and a hand-written YAML list with one entry and
+    no `-` is the same file. A reader that iterates the value directly then reads a WORD as its
+    letters.
+
+    BUG-0015 is what that costs, and it is why this lives here rather than in each reader: the
+    sweep that BUG asked for found the same assumption across unrelated reader CLASSES at once --
+    a kit rendering script, a hook reading a work order, the dispatch gate resolving references,
+    and the state validator. `report._parent_bindings` had carried the normalisation inline for
+    the reference graph since long before, which is what made this a pattern rather than a single
+    fix. The call sites are measured by
+    `test_hooks.test_process_doc_renders_a_scalar_field_as_one_element`,
+    `test_hooks_v2.test_a_scalar_scope_decides_like_a_one_element_list`,
+    `test_approvals_dispatch.test_a_scalar_acceptance_ref_is_one_ref_not_four_letters`,
+    `test_approvals_dispatch.test_a_scalar_dependency_is_one_dependency` and
+    `test_report.test_a_scalar_dependency_is_reported_once_not_once_per_letter`.
+    """
+    if isinstance(value, (list, tuple)):
+        return list(value)
+    if value is None or value == "":
+        return []
+    return [value]
+
+
 def _contract_fields() -> dict:
     """{item type -> set of field names its contracts declare}, over BOTH sources, in full."""
     from .schemas import item_field_contracts

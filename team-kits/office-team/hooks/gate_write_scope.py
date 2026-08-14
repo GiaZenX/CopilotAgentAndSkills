@@ -253,9 +253,26 @@ def _scope_entries(task, field):
     `allowed_scope: [""]` (or `"."`, or `"/"`) used to grant the whole repo, while the
     empty-LIST case correctly blocked -- one stray `- ""` in a YAML list silently switched gate
     layer 3 off for that task, which is the opposite of the author's intent two lines away.
+
+    HOW MANY ENTRIES THE FIELD HOLDS is `backlog_types.field_elements` and not `for raw in value`
+    (BUG-0015): a scope written as a bare string became one entry per LETTER, and a letter matches
+    no path -- so `forbidden_scope: secrets` forbade nothing while the task kept writing, measured
+    `secrets/keys` rc 0 against rc 2 for the same task with `[secrets]`. A word carrying `/` or
+    `*` hid that: those letters are themselves unusable entries, so the refusal below fired for
+    the wrong reason. Both directions are in
+    `test_hooks_v2.test_a_scalar_scope_decides_like_a_one_element_list`.
+
+    The kernel is asked for the answer rather than a fourth copy of it. Every caller resolves its
+    task through the kernel, so it is loaded here. Where it is NOT, `kernel_module` raises
+    `KernelUnavailable` and the direction is refusal, from two arms that are both live by the time
+    this runs: `_kernel.fail_closed()` wraps the handler and answers `internal error
+    (KernelUnavailable: ...)` with exit 2, and for anything raised outside that guard the
+    `sys.excepthook` installed by `import _kernel` does the same. Measured with
+    `$HARNESS_KERNEL_PATH` pointed at an empty directory: rc 2 on every write payload.
     """
     entries = []
-    for raw in task.get(field) or []:
+    field_elements = _kernel.kernel_module("backlog_types").field_elements
+    for raw in field_elements(task.get(field)):
         entry = str(raw).replace("\\", "/")
         # strip a literal "./" prefix -- `lstrip("./")` strips a character SET, which turned
         # ".env" into "env" and ".github/workflows/" into "github/workflows/"

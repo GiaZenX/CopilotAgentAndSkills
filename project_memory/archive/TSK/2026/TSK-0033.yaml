@@ -29,7 +29,8 @@ expected_outputs:
 dependencies:
 - TSK-0032
 root_revision: 1
-status: DRAFT
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-08-10T23:43:21'
+closed_at: '2026-08-14T14:30:44'

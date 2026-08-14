@@ -122,6 +122,27 @@ def test_dangling_reference_flagged(state):
     assert any("TSK-1234" in f["message"] for f in found)
 
 
+def test_a_scalar_dependency_is_reported_once_not_once_per_letter(state):
+    """BUG-0015 on the validator's half of `dependencies`: the field itself was iterated.
+
+    A missing dependency written as a bare string became ONE FINDING PER LETTER — `dependency T
+    does not exist`, `dependency S does not exist`, and so on for every character — which buries
+    the one real finding under a wall and makes the count meaningless. Counted rather than
+    matched: `any("TSK-1234" in ...)` stays green while eight bogus findings stand beside it."""
+    pr = state.capture("PR", dict(PR_FIELDS))
+    dispatch.create_task(state, {
+        "product_requirement": pr["id"], "derives_from": pr["id"],
+        "type": "implementation", "assigned_role": "backend-developer",
+        "acceptance_refs": ["AC-1"], "required_inputs": [],
+        "allowed_scope": ["src/"], "forbidden_scope": [],
+        "expected_outputs": [], "dependencies": "TSK-1234",
+    })
+    about_dependencies = [f for f in errors(report.validate_state(state))
+                          if "dependency" in f["message"]]
+    assert len(about_dependencies) == 1, about_dependencies
+    assert "TSK-1234" in about_dependencies[0]["message"]
+
+
 def test_staging_dir_keyed_by_active_root_not_flagged(state):
     pr = state.capture("PR", dict(PR_FIELDS))
     os.makedirs(os.path.join(state.root, "staging", pr["id"]))
