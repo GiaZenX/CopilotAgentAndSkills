@@ -1748,13 +1748,159 @@ def bundle_measurement(repo_root: str):
     return recorded, _hook_bundle_hash(repo_root)
 
 
+# The state names spec II.8 gives the update machine (docs/HARNESS_V2_SPEC.md, section II.8 — the
+# chain plus the failure state). They are used for ONE thing: telling a name this harness knows
+# from a name it does not. What a state COSTS is deliberately not read off this tuple — see
+# `_kit_trust_reason`. Both ends of the tuple are measured in tools/test_report.py against the
+# spec's own text: a name here that section II.8 does not carry, and a name it carries that is
+# missing here. An enumeration whose completeness nothing measured is the defect this repo keeps
+# meeting; the only thing that hangs off this one is one clarifying sentence, never the verdict.
+SPEC_II8_STATES = ("update_available", "approved", "applying", "hooks_trust_required",
+                   "restart_required", "active", "failed_rolled_back")
+
+
+# WHAT A RECORD MAY PUT INTO THIS REPORT'S PROSE, as two shapes rather than as a filter against
+# anything in particular. `.claude/kit_state.json` is data an agent can write with one ordinary
+# command (see `_kernel.bundle_trust` on the re-blessing class), and every value echoed from it
+# below lands in text a session READS AS INSTRUCTION. A value that does not have the shape its
+# field promises is therefore described, never quoted: a name is an identifier, a hash is hex long
+# enough for a 12-character prefix to identify it. Anything else — a space, a slash, a backtick, a
+# newline, a novel — cannot reach the reader as words. Not a denylist: nothing here knows which
+# tokens are dangerous, only which shapes are legitimate.
+_NAME_SHAPE = re.compile(r"[A-Za-z0-9_]{1,40}\Z")
+_HASH_SHAPE = re.compile(r"[0-9a-fA-F]{12,128}\Z")
+
+
+def _short_hash(digest) -> str:
+    """The first 12 characters of a hex digest — or a description of what was there instead."""
+    if digest is None or digest == "":
+        return "none"
+    text = str(digest)
+    if _HASH_SHAPE.match(text):
+        return text[:12]
+    return "a value that is not a hash (%d characters, not quoted)" % len(text)
+
+
+def _state_label(state) -> str:
+    """The record's `state` field, spelled so a reader can act on it — including when it is junk."""
+    if isinstance(state, str) and _NAME_SHAPE.match(state):
+        return "state %r" % state
+    if state is None:
+        return "no `state` field"
+    if isinstance(state, str):
+        return ("a `state` field that is not a name (%d characters, not quoted)" % len(state))
+    return "a `state` field that is not a name (%s)" % type(state).__name__
+
+
+def _trust_hook_registered(repo_root: str) -> bool:
+    """Does THIS project's settings actually start the kits' SessionStart trust hook?
+
+    The flip out of a bare-restart state has a runner or it does not, and the runner is named in
+    `settings.json` — which lives OUTSIDE the hashed bundle, so a matching bundle hash says nothing
+    about it. Without this, the reason below promised a flip that no session could perform: the
+    user restarts, the record does not move, and the report gives no way to see why.
+
+    `_wired_hooks` has already dropped every registration that could not fire (a non-`command`
+    type, a missing file, a mention that is not an invocation, a swallowed exit code); SessionStart
+    carries no tool matcher, so what is left to ask is whether one exists at all. A kit that
+    renamed the hook file would read as "not registered" here and be sent to the scaffold — the
+    conservative direction, and the one that ends a restart loop rather than starting one.
+    """
+    return bool(_wired_hooks(repo_root).get("kit_trust_state.py", {}).get("SessionStart"))
+
+
+def _kit_trust_reason(data: dict, recorded, actual, registered: bool) -> str:
+    """Why `hook_trust` is not verified for this record — with exactly ONE next action.
+
+    Called only where the green condition in `_hook_bundle_trust` did NOT hold, so at least one of
+    "the record says `active`" and "the two hashes are present and equal" is false here.
+    `registered` is `_trust_hook_registered`'s answer and decides only the bare-restart branch,
+    which is the one whose advice depends on a runner existing.
+
+    THE NAME RECORDS A PAST FINDING; THE HASH COMPARISON IS THE FINDING NOW, and this answers from
+    the comparison wherever the comparison can answer. Not a preference: the kits'
+    `hooks/kit_trust_state.py` decides on the same comparison, so its `transition()` returns
+    `active` for ANY non-active state whose recorded hash equals the measured one — `restart_required`
+    and `failed_rolled_back` and a name nobody ever defined alike — and `hooks_trust_required` for any
+    state whose hash differs (writing nothing where the record already says that). A reason keyed on
+    the NAME therefore describes a machine that is not running, and BUG-0036 is what that costs: one
+    sentence keyed on `!= "active"` told every such
+    project that "a changed bundle needs /hooks confirmation and exactly one new session (spec II.8)",
+    including the `restart_required` every fresh scaffold sits in, whose exit is one new session and
+    nothing else. That is the `/hooks` rationalization the BUG-0017 arc removed from the entry window.
+
+    `hooks_trust_required` is the one name that keeps its spec-II.8 `/hooks` wording whatever the
+    comparison says, and for a reason the comparison cannot supply: the name records that a bundle
+    this project never vouched for WAS measured. Putting the changed file back makes the hashes agree
+    again; it does not make the change reviewed.
+    """
+    state = data.get("state")
+    label = _state_label(state)
+    if not recorded or actual is None:
+        # Measured against the shipped hook: with no recorded hash `transition()` returns without
+        # writing, so a new session is exactly the advice that changes nothing here.
+        return ("the kit trust record carries %s and there is nothing to compare (recorded=%s, "
+                "computed=%s). A record without a usable hash is one the SessionStart trust hook "
+                "leaves untouched, so no number of new sessions moves it. ONE next action: re-run "
+                "the kit's scaffold from the project root — its recorder (write_kit_state.py, "
+                "beside the kits) is what writes that field. Nothing was compared here, so this "
+                "verdict says nothing about whether the bundle changed."
+                % (label, _short_hash(recorded), _short_hash(actual)))
+    if recorded != actual:
+        return ("the installed hooks hash to %s but the project recorded %s, and the record carries "
+                "%s — the bundle changed since it was trusted, so what runs is not what this "
+                "project vouched for. Spec II.8: a changed hook hash needs /hooks confirmation and "
+                "then exactly one new session. ONE next action: open /hooks and review what changed "
+                "in .claude/hooks and .claude/kernel; re-installing the kit is what records a "
+                "reviewed bundle."
+                % (_short_hash(actual), _short_hash(recorded), label))
+    if state == "hooks_trust_required":
+        seen = data.get("hook_bundle_hash_seen")
+        return ("the installed bundle matches the recorded hash again (%s), but the record still "
+                "carries %s: a bundle this project never vouched for was measured (%s) and was "
+                "never reviewed. Spec II.8 asks for the /hooks confirmation for that change. ONE "
+                "next action: open /hooks and review what had changed — the next session flips this "
+                "record to `active` on the matching hash alone, so the review is the only step left "
+                "that waits on a person."
+                % (_short_hash(actual), label,
+                   "seen: %s" % _short_hash(seen) if seen
+                   else "the seen hash is not in the record"))
+    unknown = ("" if isinstance(state, str) and state in SPEC_II8_STATES else
+               " On top of that, the record's state is not one spec II.8 names, so the record "
+               "itself is suspect; this verdict rests on the comparison above, not on the name.")
+    # THE SENTENCE THIS BRANCH WRITES DOES NOT SPELL THE SLASH-COMMAND, not even to deny it: a
+    # reader — human or agent — matches on the token, and the harness repo's own CLAUDE.md records
+    # what a marker standing inside a sentence that denied it cost there. That is a property of the
+    # LITERAL below and of nothing else; what a record can inject through the values interpolated
+    # into it is bounded by `_NAME_SHAPE`/`_HASH_SHAPE` above, which is where that half is measured.
+    if not registered:
+        # An unregistered trust hook makes "start a new session" advice that cannot work: the flip
+        # has no runner, and the record stays where it is however often the user restarts.
+        return ("the installed bundle matches the hash the project recorded (%s), and the record "
+                "carries %s — but this project's settings register no SessionStart run of the "
+                "kits' trust hook, so no new session can move the record and restarting is a loop "
+                "with no end. ONE next action: re-run the kit's scaffold from the project root — "
+                "it installs the hooks together with the registration that starts them.%s"
+                % (_short_hash(actual), label, unknown))
+    return ("the installed bundle matches the hash the project recorded (%s), and the record "
+            "carries %s — the bundle is the vouched-for one, and the record does not yet say these "
+            "hooks RUN. ONE next action, and the whole exit: start ONE new session; the kits' "
+            "SessionStart trust hook is registered here and flips the record to `active` by "
+            "running, and a hook cannot run unless hooks run — which is the evidence this record "
+            "is still missing. Nothing here waits on a review or a confirmation: no changed bundle "
+            "was measured.%s"
+            % (_short_hash(actual), label, unknown))
+
+
 def _hook_bundle_trust(repo_root: str):
     """(bool, reason) — does the installed bundle match the hash the project recorded?
 
     A first cut returned True whenever `kit_state.json` said `active` and carried ANY hash, so a
     project with no hooks directory at all read "the installed hook bundle matches the trusted
     hash". Nothing was matched. Spec II.8 wants a CHANGED hash to force `/hooks` confirmation, so
-    the hash has to be recomputed and compared.
+    the hash has to be recomputed and compared — and since BUG-0036 the same comparison, not the
+    state name, is what the REASON is built from as well (`_kit_trust_reason`). The green verdict is
+    untouched by that: it still needs `active` plus two present, equal hashes, exactly as before.
     """
     # With the global kill switch on, the bundle's hash may well match — and saying "verified"
     # beside "no hook runs" invites exactly the wrong reading. A capability describes what is in
@@ -1765,19 +1911,17 @@ def _hook_bundle_trust(repo_root: str):
     data = _kit_state_record(repo_root)
     if data is None:
         return False, "no readable .claude/kit_state.json, so there is no recorded hash to compare"
-    if data.get("state") != "active":
-        return False, ("the kit update is in state %r — a changed bundle needs /hooks "
-                       "confirmation and exactly one new session (spec II.8)"
-                       % data.get("state"))
+    # ONE condition for the green verdict, and the reason for every way of missing it comes from
+    # one place. The four cases used to be four branches, and the state branch answered for three
+    # of them at once (BUG-0036); a mismatch under `active` still answered without naming a next
+    # action at all. Spec II.8 demands the single next action for the error state; the general form
+    # — a kit update shows exactly one next step at any time — is an acceptance criterion of the
+    # spec's E2E block ("E2E pro Kit"), not of II.8.
     recorded, actual = bundle_measurement(repo_root)
-    if not recorded or actual is None:
-        return False, "no hook-bundle hash to compare (recorded=%r, computed=%r)" % (
-            bool(recorded), actual is not None)
-    if recorded != actual:
-        return False, ("the installed hooks hash to %s but the project recorded %s — the bundle "
-                       "changed since it was trusted" % (actual[:12], recorded[:12]))
-    return True, "the installed hook bundle hashes to the value the project recorded (%s)" % (
-        actual[:12])
+    if data.get("state") == "active" and recorded and actual and recorded == actual:
+        return True, "the installed hook bundle hashes to the value the project recorded (%s)" % (
+            _short_hash(actual))
+    return False, _kit_trust_reason(data, recorded, actual, _trust_hook_registered(repo_root))
 
 
 def _hook_bundle_hash(repo_root: str):

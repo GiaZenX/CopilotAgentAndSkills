@@ -1,4 +1,4 @@
-generated_at: '2026-08-13T17:48:24'
+generated_at: '2026-08-14T08:04:24'
 items:
 - id: BUG-0001
   type: BUG
@@ -210,6 +210,26 @@ items:
   type: BUG
   title: Gate 3 asks Invocation.runs('commit') -- every other history-recording git
     subcommand passes without a verdict
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0035
+  type: BUG
+  title: Stale SR-0006 references in .claude/hooks/ after the SR-0009 supersession
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0036
+  type: BUG
+  title: doctor's hook_trust reason claims '/hooks confirmation' for every non-active
+    state -- including restart_required, whose only exit is a bare restart
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0037
+  type: BUG
+  title: kit_trust_state.py prose claims 'nothing here leads OUT of hooks_trust_required'
+    -- the running code exits it on a re-matching hash
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -629,6 +649,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0026
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0027
   type: EVD
   title: null
   status: null

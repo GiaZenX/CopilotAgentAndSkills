@@ -1,0 +1,18 @@
+id: EVD-0027
+kind: review
+related:
+- TSK-0057
+result: pass
+summary: 'verifier PASS for diff:dd168a2b0c107c6124244638cc2259f9811df92eac9e6c1b22d3596a44433d8c
+  -- the doctor''s hook_trust reason is state-accurate (fresh install: ONE restart,
+  only when the flip hook is registered; changed bundle keeps the spec-II.8 wording),
+  record content can no longer smuggle words into the reason (shape property, both
+  echoes closed), green verdict proven unchanged over 1008 synthetic rows, 11 tests
+  red without the fix across four ablations; kits stamped 2026.08.14-1; full tools/
+  suite 2528 passed 13 skipped; residues named (F3 class carriers, O1 kit-field echo,
+  BUG-0037)'
+artifact_refs:
+- ../docs/reviews/2026-08-13-tsk0057-kit-state-measurements.md
+revision: 1
+approval_ref: null
+created: '2026-08-14T08:04:22'

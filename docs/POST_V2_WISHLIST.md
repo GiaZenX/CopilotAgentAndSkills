@@ -1841,15 +1841,30 @@ trägt ihn nicht, gemessen), der Ask-Zweig wurde darum in vier von fünf Sitzung
 Er ist der Riegel für Marker-Ankunft auf anderem Weg (Datei, Paste, ungelisteter Wrapper) — zweiter
 Riegel, nicht erster.
 
-**Rest desselben Laufs (F2): der `/hooks`-vorschlagende Diagnosepfad ist im Einstiegsfenster
-absichtlich erreichbar.** `doctor` ist als Read-Subcommand vom Guard erlaubt, und sein
-`hook_trust`-Grund (`team-kits/kernel/report.py:1769-1771`) beschreibt wörtlich „needs /hooks
-confirmation" — die Quelle der Rationalisierung bleibt damit im Kontext des Einstiegsagenten
-(`pilot-rezepte.jsonl` Sätze 116/117); ob er sie weiterreicht, ist modellabhängig, heute einmal
-negativ gemessen. Außerhalb des TSK-0054-Scopes (`team-kits/**` verboten); minimaler Fix einer
-späteren Runde: den Text auf „restart — /hooks is not part of this flow" umstellen oder `doctor` im
-Handover-Fenster den `hook_trust`-Grund unterdrücken lassen (Fix-Option (c) aus
-`docs/reviews/2026-08-12-bug0017-live-confirm.md`).
+**Rest desselben Laufs (F2): der `/hooks`-vorschlagende Diagnosepfad — das `hook_trust`-Feld ist
+GESCHLOSSEN (TSK-0057/BUG-0036, 2026-08-14), die KLASSE nicht.** Der alte Pauschalsatz („the kit
+update is in state %r — a changed bundle needs /hooks confirmation…", für JEDEN Nicht-aktiv-Zustand)
+ist ersetzt: der Grund ist zustandsgenau (frische Installation → genau EIN neuer Sessionstart, und
+NUR wenn der einlösende SessionStart-Hook wirklich registriert ist — sonst Scaffold-Rat statt
+Endlosschleife; verändertes Bundle → die Spec-II.8-Formulierung, die dort korrekt ist), und
+Record-Inhalt kann keine eigenen Wörter mehr in den Grund schmuggeln (Form-Eigenschaft: zitiert wird
+nur, was wie Name/Hash geformt ist; alles andere wird beschrieben). Elf Tests rot ohne den Fix,
+Prüfer-PASS mit 1008-Zeilen-Nachweis, dass das grüne Urteil unverändert blieb; Messtabelle in
+`docs/reviews/2026-08-13-tsk0057-kit-state-measurements.md`. **Bewusst NICHT übernommen** wurde der
+hier früher vorgeschlagene Wortlaut „restart — /hooks is not part of this flow": eine Verneinung
+trägt den Token selbst hinein; der Neustart-Zweig nennt ihn gar nicht (derselbe Präzedenzfall wie
+die Marker-Zeichenkette in `CLAUDE.md`).
+
+**Was von der Klasse offen bleibt — „ein ausgelieferter Text reicht dem Einstiegsfenster einen
+`/hooks`-Schritt", Träger gemessen 2026-08-14:** die Codex-Hinweiszeile in `environment_notes`
+(`team-kits/kernel/report.py:2245-2248`; ob `/hooks` für die Codex-Fläche überhaupt der richtige
+Schritt ist, ist UNGEMESSEN — auf Verdacht umschreiben hieße eine vielleicht wahre gegen eine sicher
+ungemessene Aussage tauschen) und die Codex-Abschlusszeile des Scaffolds
+(`team-kits/gen_provider_artifacts.py:1313`); dazu `report.py:2118` als der von Spec II.8
+legitimierte Träger (verändertes Bundle). Nachbarreste derselben Runde: das `kit`-Feld aus
+`kit_state.json` ist das letzte wörtliche Record-Echo der doctor-Fläche (O1,
+`report.py:1974-1975`), und `kit_trust_state.py:23-27` behauptet einen fehlenden Ausgang, den
+`transition()` hat — als **BUG-0037** erfasst. Beide mit Messung im Review-Dokument.
 
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 

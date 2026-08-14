@@ -1,0 +1,61 @@
+id: TSK-0057
+product_requirement: PR-0003
+derives_from: BUG-0036
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/kernel/**
+- team-kits/*/VERSION
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- user/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- team-kits/*-team/hooks/**
+- team-kits/*-team/constitution/**
+- team-kits/*-team/skills/**
+required_inputs:
+- 'BUG-0036 (the defect: one blanket /hooks reason for every non-active state; measured
+  F2 chain from the TSK-0054 live pilot)'
+- 'docs/HARNESS_V2_SPEC.md:675-686 (II.8: the update state machine update_available->approved->applying->hooks_trust_required->restart_required->active;
+  changed hook hash -> /hooks confirmation -> exactly one new session)'
+- 'team-kits/kernel/hashing.py:348 (restart_required -> active on the following start:
+  no user, no /hooks, no confirmation)'
+- team-kits/kernel/report.py:1755-1780 (the current blanket reason and its docstring
+  citing spec II.8)
+expected_outputs:
+- 'STEP 1 MEASURE: enumerate every state the machine knows (spec II.8 + write_kit_state.py
+  + kernel readers) and each state''s actual exit path, from the running code -- a
+  table state -> exit -> honest one next action; confirm restart_required''s exit
+  is the bare restart (hashing.py + the state writer)'
+- 'STEP 2 FIX team-kits/kernel/report.py: the hook_trust reason becomes state-accurate
+  -- restart_required (and any bare-restart state) says restart is the only step and
+  /hooks is NOT part of this flow; hooks_trust_required keeps the spec-II.8 /hooks
+  wording; unknown/other states name their own single next action; the docstring stops
+  citing spec II.8 for states the spec routes differently'
+- 'STEP 3 TESTS in tools/: call the RUNNING report function with synthetic kit_state
+  records for EVERY state in the STEP-1 table; assert the restart_required reason
+  carries no /hooks and names the restart; assert hooks_trust_required keeps /hooks;
+  red without the fix (defect restored in a clone OUTSIDE the repo, red SEEN, reset);
+  no string-search-over-file tests'
+- 'STEP 4 SHIP: python tools/bump_kit_version.py (kernel is a kit-hash input -- expect
+  stamps to move; state which); full tools/ suite green with numbers; ruff; report
+  file:line for every change, the state table, and every residue named for the lead
+  (wishlist L39 F2 closure is the lead''s edit)'
+dependencies:
+- BUG-0036
+- DEC-0042
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-13T23:22:14'
+closed_at: '2026-08-14T08:04:24'
