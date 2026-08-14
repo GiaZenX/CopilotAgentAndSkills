@@ -126,11 +126,13 @@ except BaseException as error:  # noqa: BLE001 -- a gate that cannot load must n
 # commit that already exists in some real repository, which is the `fetch` class the contract keeps
 # open. That is the "authored-elsewhere / imported object" residue, carried with its measured chain.
 #
-# SO THIS CARRIES A TRIPWIRE THAT MEASURES BOTH ENDS, in `test_gates.py`, against the installed git:
-# every entry here must author a commit object in a real repo (a dead entry says so), every entry
-# of the near-miss table must author none (a recorder that slipped out of this set says so), and
-# every name git DOES put in its own history group has to be classified on one side or the other (a
-# newcomer says so).
+# SO THIS CARRIES A TRIPWIRE THAT MEASURES BOTH ENDS against the installed git, and each end is a
+# test rather than a sentence here (SR-0008): every entry here must author a commit object in a real
+# repo (`test_every_subcommand_the_gate_calls_an_author_authors_one` -- a dead entry says so), every
+# entry of the near-miss table must author none
+# (`test_the_commands_the_gate_leaves_open_author_nothing` -- a recorder that slipped out of this set
+# says so), and every name git DOES put in its own history group has to be classified on one side or
+# the other (`test_every_command_git_itself_calls_history_is_classified` -- a newcomer says so).
 AUTHORS_A_COMMIT = frozenset((
     # authors the commit AND makes it branch history in the same step
     "commit", "merge", "pull", "rebase", "revert", "cherry-pick", "am", "filter-branch",
@@ -148,8 +150,9 @@ AUTHORS_A_COMMIT = frozenset((
 CERTIFIABLE = "commit"
 
 # Why five entries of the set above have no scenario in the tripwire. A dict and not a comment,
-# because the test pins these keys: an entry that joins this bucket has to say what stops it being
-# demonstrated, and one that joins the set without either a scenario or a reason turns the test red.
+# because `test_every_author_is_either_demonstrated_or_says_why_it_cannot_be` pins these keys: an
+# entry that joins this bucket has to say what stops it being demonstrated, and one that joins the
+# set without either a scenario or a reason turns that test red.
 NOT_DEMONSTRABLE = {
     "quiltimport": "applies a quilt series and commits each patch; the harness could not build a "
                    "series it accepted (rc 0, nothing authored)",
@@ -179,8 +182,10 @@ COUNTERPART = "--" + SUPPRESSOR[len("--no-"):]
 # recording only in its MERGE mode, so it does not suppress for every configuration -- and an
 # option that suppresses only sometimes is no exemption. The produce-first route for pull is a
 # subcommand that DOES suppress unconditionally: `git fetch` then `git merge --no-commit` (`_remedy`
-# says so). This is a tripwire cell -- `SUPPRESSED` in `test_gates.py` exercises the rebase
-# spellings, so an exemption that grew back to cover pull turns it red.
+# says so). This is a tripwire cell -- `test_gates.SUPPRESSED` crosses the option with every verb it
+# is asked of (`test_the_produce_first_option_is_exempted_exactly_where_it_works`) and
+# `test_no_spelling_of_a_rebase_pull_survives_the_suppressor` drives the rebase spellings, so an
+# exemption that grew back to cover pull turns them red.
 HONOURS_THE_SUPPRESSOR = frozenset(("merge", "revert", "cherry-pick"))
 
 
@@ -280,8 +285,12 @@ def _moves_the_tree_first(data, command):
     A STAGE WITH NO VERB RUNS NOTHING, so it moves nothing -- the same reading `written_paths`
     already makes one level up. Without it the PowerShell spelling of this repo's own environment
     prefix (`$env:PYTHONPATH="team-kits"; git commit ...`) was refused as a line that changes the
-    tree before it commits (measured rc 2, TSK-0008 R-a), and `_harness.stage_body` is here for
-    the same reason: a declaration header is not the command.
+    tree before it commits (measured rc 2, TSK-0008 R-a, and
+    `test_gate3_leaves_an_environment_prefix_in_front_of_a_commit` is what keeps it open), and
+    `_harness.stage_body` is here for the same reason: a declaration header is not the command
+    (BUG-0012, and this gate's own use of that cut is measured by
+    `test_gate3_reads_a_declaration_head_with_the_same_cut_as_gate1` -- ablated 2026-08-14 in a
+    clone outside this repo, every other gate-3 test stayed green without it).
     """
     module = _harness.shell_reader(data)
     compat = _harness.compat(data)

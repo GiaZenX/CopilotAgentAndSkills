@@ -57,8 +57,8 @@ def build_project(base):
     """A stand-in for this repo at `base`, with a real git history and a real diff.
 
     A function and not only a fixture, because one test needs the SAME project under a directory
-    whose name contains a space (see `test_gate1_refuses_a_protected_path_however_the_line_spells
-    _it`) -- and a project whose path has no space cannot measure that.
+    whose name contains a space (`test_gate1_refuses_a_protected_path_spelled_absolutely_through_a
+    _space`) -- and a project whose path has no space cannot measure that.
     """
     sys.path.insert(0, TEAM_KITS)
     from kernel.hashing import transient_ignore_globs
@@ -1737,6 +1737,43 @@ def test_gate3_leaves_an_environment_prefix_in_front_of_a_commit(project, tmp_pa
     assert run(work, "gate_commit_evidence.py",
                bash_payload(work, "echo more >> docs/note.md && git commit -m wip"))[0] == 2, (
         "a line that writes before it commits was allowed")
+
+
+def test_gate3_reads_a_declaration_head_with_the_same_cut_as_gate1(certified_project):
+    """BUG-0012 asks for ONE definition of "what a shell runs" and TWO readers of it.
+
+    `_harness.stage_body` is that definition: the head of a function declaration is not a command,
+    so the declared NAME is not the verb of what stands behind the brace. Gate 1's use of it is
+    measured (`test_gate1_reads_a_function_definition_as_the_command_inside_it`); gate 3 reads the
+    same cut to decide whether a line changes the tree before it commits, and THAT use was measured
+    by nothing -- ablated 2026-08-14 in a clone outside this repo (`_moves_the_tree_first` reading
+    the raw stages), every other gate-3 test stayed green, while the two shapes below flipped from
+    rc 0 to rc 2.
+
+    Without the cut a declared name is a verb nothing recognises, a verb nothing recognises is not
+    read-only, and a helper declared in front of a commit reads as a line that changed the tree.
+    Both forms the grammar has are driven, because they are two branches of `_declares_a_function`.
+
+    THE COUNTER-END WRITES THROUGH AN OPERAND AND NOT THROUGH A REDIRECT, and that is what makes it
+    a counter-end of THIS cut: a redirect target is read off the whole pipeline, one level above
+    the stages, so `dec () { echo x >> docs/note.md ; }` is refused whatever the cut does with the
+    body -- measured 2026-08-14, with the cut widened to swallow the body it stays rc 2 while
+    `sed -i` in the same position comes out rc 0. An operand is only ever seen inside the body, so
+    it is the shape that says whether the cut is still narrow.
+    """
+    for command in ("dec () { echo hi ; } ; git commit -m wip",
+                    "function dec { echo hi ; } ; git commit -m wip"):
+        rc, err = run(certified_project, "gate_commit_evidence.py",
+                      bash_payload(certified_project, command))
+        assert rc == 0, (
+            "a declaration head was read as the command it declares, so the commit behind it was "
+            "refused: %r (%s)" % (command, err[:300]))
+    writing = 'dec () { sed -i "s/a/b/" docs/note.md ; } ; git commit -m wip'
+    rc, err = run(certified_project, "gate_commit_evidence.py",
+                  bash_payload(certified_project, writing))
+    assert rc == 2, (
+        "a declaration whose body writes the tree through an OPERAND was allowed in front of a "
+        "commit -- the cut swallowed the body: %s" % err[:300])
 
 
 # A module that leaves a trace when it is EXECUTED, and nothing else. The trace is the measurement:
@@ -3814,6 +3851,193 @@ def test_every_reference_to_a_measurement_leads_to_one(project):
                     assert sections & set(re.findall(r"section (\d+)", said)), (
                         "%s cites %s without naming a section of it, so nothing says what the "
                         "reference is for: %r" % (entry, relative, said[:200]))
+
+
+# -- a claim that says "this is a test" names the test (SR-0008 case b, TSK-0009) ---------------
+
+# This file, under the two spellings a statement beside it points INTO it with: the pytest node
+# prefix, and the module prefix a name of this file is qualified by. Both are read off the file's
+# own name, so a rename cannot leave a prefix behind that matches nothing.
+THIS_FILE = os.path.basename(__file__)
+POINTER_PREFIXES = (THIS_FILE + "::", os.path.splitext(THIS_FILE)[0] + ".")
+# ...and the two spellings that name the FILE rather than anything in it -- with and without the
+# extension, because a statement says both. Derived from the same name for the same reason.
+THIS_FILE_ITSELF = (THIS_FILE, os.path.splitext(THIS_FILE)[0])
+# What pytest appends to a name to identify ONE case of a parametrised test. The name is what
+# stands in front of it, which is a fact of the tool's node ids rather than a spelling somebody
+# happens to use.
+PARAMETERS = "["
+
+
+def _defined_here():
+    """Every name this file defines at module level -- tests, helpers and the tables they cross."""
+    with open(os.path.join(HOOKS, THIS_FILE), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    names = {node.name for node in tree.body
+             if isinstance(node, (ast.FunctionDef, ast.ClassDef))}
+    names |= {target.id for node in tree.body if isinstance(node, ast.Assign)
+              for target in node.targets if isinstance(target, ast.Name)}
+    return names
+
+
+def _can_stand_in_a_name(character):
+    """Could this character occur ANYWHERE inside an identifier?
+
+    Asked of the language rather than of a set of punctuation: a digit cannot START an identifier
+    but can stand in one, so the question is put with a letter in front of it. That is the whole
+    difference between a definition and the list of separators somebody remembers.
+    """
+    return ("a" + character).isidentifier()
+
+
+def _undecorated(text):
+    """`text` without what cannot be part of a name: the ends, and a parameter id.
+
+    A character an identifier cannot carry at all is decoration wherever it stands at an END --
+    a bracket, a comma, a colon, a full stop, the asterisks of a bold span -- so a run of them is
+    taken off both sides. What a parametrised case appends is cut instead of stripped, because it
+    is not at the end of anything: `name[case]` is pytest's node id and the NAME stands in front of
+    the bracket.
+
+    THE INTERIOR IS LEFT ALONE, and that is what makes the qualified spellings survive this: the
+    dot of `test_gates.<name>` and the `::` of a node id stand in the middle, so the prefixes are
+    stripped by the caller afterwards rather than eaten here.
+    """
+    head = text.split(PARAMETERS, 1)[0]
+    while head and not _can_stand_in_a_name(head[0]):
+        head = head[1:]
+    while head and not _can_stand_in_a_name(head[-1]):
+        head = head[:-1]
+    return head
+
+
+def _points_into_this_file(said):
+    """Every name of this file a statement points at -- read out of its backtick spans.
+
+    GLUED BEFORE IT IS READ, and the whitespace is not the only thing taken out: a long test name
+    wraps across lines, and a comment continues the next line with its own marker. A name read as
+    two halves resolves to nothing, which would make this check depend on where an editor happened
+    to break the line rather than on what the statement claims.
+
+    THE DECORATION AROUND A NAME IS NOT PART OF IT, and taking it off is a definition rather than a
+    list of the spellings somebody tried: a character that cannot occur in an identifier at all
+    cannot be part of the name, so a run of them at either end is stripped, and a parameter id is
+    cut at the bracket pytest opens it with. Without that the reader was silent on seven spellings
+    at once -- `name()`, a trailing comma, dot or colon inside the span, `**name**`, `name[case]`
+    and the node id of a parametrised case -- and silence here is what makes the whole check look
+    green while a pointer rots (measured 2026-08-14, the verifier's list).
+
+    WHAT COUNTS AS POINTING AT A NAME, rather than at this file: a span carrying one of the
+    prefixes above, or one that is a bare test name (the prefix pytest collects by). This file's
+    own name is no pointer into it -- with or without the extension -- because it is a reference
+    the reader can follow either way, and demanding a name for it would refuse the honest form of
+    "this lives next to the suite".
+
+    WHAT STAYS UNREAD, named rather than implied: a node path through a CLASS
+    (`test_gates.py::SomeClass::name`), and anything else that is not an identifier once the
+    decoration is off. Nothing in this suite is written that way today -- it collects no test
+    classes -- and reading it would mean this reader deciding which half of a path is the name.
+    """
+    out = set()
+    for span in re.findall(r"`([^`]+)`", said, re.DOTALL):
+        glued = _undecorated(re.sub(r"[\s#]+", "", span))
+        if glued in THIS_FILE_ITSELF:
+            continue
+        qualified = False
+        for prefix in POINTER_PREFIXES:
+            if glued.startswith(prefix):
+                glued, qualified = glued[len(prefix):], True
+                break
+        if not qualified and not glued.startswith("test_"):
+            continue
+        if glued.isidentifier():
+            out.add(glued)
+    return out
+
+
+# HOW A HUMAN WRITES A POINTER, as the shapes a reviewer found this reader silent on (2026-08-14)
+# plus the two the prefixes above are for. An enumeration on purpose and with a tripwire at both
+# ends: every shape has to READ (a decoration the reader stopped taking off says so) and has to be
+# REPORTED when the name is invented (a shape that quietly resolves to nothing says so). The
+# reader itself is a definition, so a shape that joins this table needs no change there.
+SPELLINGS_OF_A_POINTER = {
+    "plainly": "a statement naming `%s`",
+    "with the parentheses of a call": "`%s()`",
+    "with a comma inside the span": "`%s,`",
+    "with a full stop inside the span": "`%s.`",
+    "with a colon inside the span": "`%s:`",
+    "inside a bold span": "`**%s**`",
+    "as the node id of one parametrised case": "`%s[Bash]`",
+    "as a pytest node id": "`" + THIS_FILE + "::%s`",
+    "as a pytest node id with parameters": "`" + THIS_FILE + "::%s[Bash]`",
+    "qualified with this module": "`" + POINTER_PREFIXES[1] + "%s`",
+}
+
+
+def test_every_check_this_apparatus_claims_in_its_own_prose_is_one_that_exists():
+    """SR-0008 case (b): a property claim in this directory becomes a TEST, and the pointer says
+    WHICH -- so the claim can be followed, and rots visibly instead of quietly.
+
+    THE OCCASION IS MEASURED, in this directory and not borrowed from another: `build_project`
+    pointed at `…however_the_line_spells_it` for the reason it is a function rather than a fixture,
+    and no test of that name has existed for rounds -- the one that needs a path with a space is
+    `test_gate1_refuses_a_protected_path_spelled_absolutely_through_a_space`. Nothing noticed,
+    because the hole list's pointers were checked (`test_every_test_the_hole_list_names_is_one_that
+    _exists`) and the apparatus's own were not.
+
+    BOTH ENDS, AND NEITHER OF THEM IS THIS DIRECTORY'S OWN TEXT: the reader is driven with
+    statements built out of names this file really defines and one it cannot define, so a reader
+    that stopped finding anything fails here rather than passing an empty sweep.
+
+    HOW FAR IT REACHES: the `.py` sources of this directory, because those are what `_said_in` can
+    parse, and only a pointer spelled in backticks. A test named in `CLAUDE.md`, in a role
+    definition under `.claude/agents/` or in the `_comment` of the registration is NOT read here --
+    the constitution's pointers into this layer are checked by
+    `test_the_constitution_names_only_code_that_exists`, and that check knows modules, not tests.
+    """
+    defined = _defined_here()
+    tests = sorted(name for name in defined if name.startswith("test_"))
+    assert tests, "this file defines no tests at all, so there is nothing a pointer could resolve to"
+    real, table = tests[0], "LINE_SHAPES"
+    absent = max(tests, key=len) + "_and_nothing_of_that_name"
+    assert table in defined and _points_into_this_file(
+        "`%s%s`" % (POINTER_PREFIXES[1], table)) == {table}, (
+        "the reader does not see a qualified pointer at a table, which is how the axes this "
+        "apparatus decides from are cited")
+    for spelling in THIS_FILE_ITSELF:
+        assert not _points_into_this_file("this lives next to `%s`" % spelling), (
+            "naming the FILE (%r) is read as a pointer at a name in it -- which is a false alarm "
+            "against an honest reference nobody can follow any further" % spelling)
+    for label, shape in sorted(SPELLINGS_OF_A_POINTER.items()):
+        assert _points_into_this_file(shape % real) == {real}, (
+            "the reader does not see a pointer written %s, so a name spelled that way could rot "
+            "unnoticed" % label)
+        assert _points_into_this_file(shape % absent) == {absent}, (
+            "a name this file does not define, written %s, is not reported -- then the sweep "
+            "below cannot fail for it" % label)
+    assert absent not in defined, (
+        "the name built to stand for one that does not exist is defined after all")
+    stale, carriers = [], set()
+    for entry in sorted(os.listdir(HOOKS)):
+        if not entry.endswith(".py"):
+            continue
+        with open(os.path.join(HOOKS, entry), encoding="utf-8") as handle:
+            source = handle.read()
+        for said in _said_in(source):
+            for cited in sorted(_points_into_this_file(said)):
+                carriers.add(entry)
+                if cited not in defined:
+                    stale.append("%s points at `%s`, and %s defines nothing of that name: %r"
+                                 % (entry, cited, THIS_FILE, said[:160]))
+    assert not stale, (
+        "these statements claim a check that is not there any more:\n%s" % "\n".join(stale))
+    # THE SUITE'S OWN PROSE CANNOT ANSWER FOR THE SWEEP, which is what a bare count would have let
+    # it do: this file cites tests constantly, so a run in which every gate had stopped naming its
+    # checks would still have counted them and looked measured.
+    assert carriers - {THIS_FILE}, (
+        "no file under %s except %s points at a check any more, so the gates' own prose claims "
+        "nothing this run could follow -- and case (b) is exactly what that prose owes"
+        % (HOOKS, THIS_FILE))
 
 
 # -- a citation names the record that is IN FORCE (BUG-0035) -------------------

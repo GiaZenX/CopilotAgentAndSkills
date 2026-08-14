@@ -31,7 +31,12 @@ own shell reader.
 WHAT IT PROTECTS -- see `_harness.ProtectedArea`; every area there is derived or defined, none is
 listed. WHAT STAYS FREE falls out of that rather than out of an allowlist, so nothing here names it:
 a path that goes into no kit hash, is outside `.claude/`, is not a file this gate's own answer was
-computed from and is not canonical state is free.
+computed from and is not canonical state is free. That half is a claim like any other and is held to
+a measurement rather than to this sentence (SR-0008): `test_gate1_leaves_prose_and_bookkeeping_free`
+for a subject that reaches this gate as a path, and
+`test_gate1_leaves_the_sessions_own_commands_runnable` for one that reaches it as a command line --
+the two halves of the registration above, and a gate that refuses either is a broken one, not a
+stricter one.
 """
 import os
 import sys

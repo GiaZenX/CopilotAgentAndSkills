@@ -78,16 +78,27 @@ der **beide** Enden misst: der Eintrag ist tot, und der Eintrag wäre gar nicht 
 über eine Datei. Ein Test, der eine Datei nach einem Satz durchsucht, misst die Datei, nicht das
 Verhalten.
 
-**Kein Kommentar darf Schutz behaupten, den der Code nicht baut.** Wenn eine Lücke bleibt, wird die
-Lücke hingeschrieben — nicht der Satz gerettet.
+**Kein Kommentar darf Schutz behaupten, den der Code nicht baut — und der Satz soll gar nicht erst
+entstehen.** Die reaktive Hälfte: bleibt eine Lücke, wird die Lücke hingeschrieben, nicht der Satz
+gerettet. Die präventive Hälfte ist die, die hier Runden gekostet hat: eine Behauptung über eine
+**Eigenschaft** wird ein **Test**, und der Kommentar nennt ihn — damit steht sie erst gar nicht als
+Prosa da, die jemand später einfangen muss. Was ein Kommentar tragen darf, in welcher Reihenfolge
+die drei Fälle geprüft werden und warum eine Zahl an genau einem Ort steht, führt `SR-0008`
+(Anlass und Messung: `DEC-0008`) — hier steht es absichtlich **nicht** noch einmal: eine zweite
+Fassung überlebt die erste, und genau das ist der Defekt, den die Regel meint.
+
+Unter `.claude/hooks/` ist die eine Hälfte davon gebaut statt versprochen: ein **Testname**, den
+eine Aussage dort in Backticks nennt, muss auflösen — sonst wird `test_gates.py` rot. Was als
+Nennung zählt, entscheidet dort `test_gates._points_into_this_file` und nicht dieser Satz; der
+Leser nimmt die Verzierung ab (Klammern, Satzzeichen, Fettung, die Fall-Id eines parametrisierten
+Tests) und sagt in seinem eigenen Docstring, welche Schreibweise er **nicht** liest. Nicht gebaut
+ist die andere Hälfte: dass eine Eigenschaftsbehauptung überhaupt einen Test nennt, und ein Name,
+der ohne Backticks dasteht — beides bleibt Sache des Umsetzers und des Prüfers. Für `CLAUDE.md`
+selbst gilt nur der Zeiger auf Code (`test_gates.py` misst auch den), nicht der auf einen Test.
 
 **Jeder Fix braucht einen Test, der ohne ihn rot wird.** Nicht behauptet: den Defekt in einem Klon
 **außerhalb** des Repos wiederherstellen, den Test fahren, rot **sehen**, zurücksetzen. Ein Test,
 der nicht scheitern kann, ist teurer als kein Test — er behauptet Deckung.
-
-**Ein Kommentar trägt nur das Warum, und zwar als Verweis** (`SR-0008`, `DEC-0008`). Sagt er, *was*
-der Code tut, fällt er weg. Behauptet er eine **Eigenschaft**, wird er ein Test. Eine **Zahl** steht
-an genau einem Ort; wird sie im Code gebraucht, steht sie in einem Item und der Kommentar verweist.
 
 **Eine Lücke, deren Angriffskette innerhalb einer Sitzung durchläuft, ist blockierend — und
 blockierend heißt geschlossen ODER mit einer benannten, vom Nutzer abzunehmenden Ausnahme.** Die

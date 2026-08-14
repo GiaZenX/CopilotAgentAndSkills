@@ -8,7 +8,10 @@ runs it. `team-kits/kernel/state.py` of this repo has been destroyed that way re
 (`docs/POST_V2_WISHLIST.md` H37 carries the damages). The discipline that keeps a measurement off
 this tree was written
 as a promise in a work order twice and was wrong both times, so it lives here, next to the suite,
-where `test_gates.py` measures it.
+which measures it rather than trusting it (SR-0008): `test_gates.the_repo_is_not_a_sandbox` hashes
+this repo around every run and fails the run that moved it, and
+`test_the_measurement_watch_list_is_the_area_the_gate_protects` is what stops that watch list
+drifting away from what the gate protects.
 
 WHAT IT ANSWERS, AND WHY EACH OF THE THREE IS A DIFFERENT QUESTION:
 

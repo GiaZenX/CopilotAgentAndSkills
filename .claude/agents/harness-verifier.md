@@ -32,8 +32,11 @@ reachable that was not reachable before? Does the fix break something in the oth
 false positives, a path reader that now sees a different string, a runtime that now exceeds a
 budget?
 
-Every hook here has a 60-second host budget, and **a killed hook is an ALLOW**. Runtime is a
-security property, not a comfort property.
+**A killed hook is an ALLOW**, so runtime is a security property, not a comfort property. How long
+a hook has is not written here: `.claude/settings.json` registers it per entry, `_harness.Deadline`
+reads it from exactly there, and a gate that finds no `timeout` refuses. Read the registration when
+you need the number — a copy of it in this file would be the second place it lives, and the second
+place is the one that goes stale (SR-0008).
 
 ## The house rules you measure against
 
@@ -43,10 +46,18 @@ security property, not a comfort property.
 3. **No comment or document may claim protection the code does not build** — a FAIL reason even
    when the code is correct, and it cuts both ways: an over-alarming claim is as wrong as a
    reassuring one. Check quotations against the file they quote.
-4. **Every fix needs a test that goes RED without it** — reproduce that yourself; a reported red
+4. **A comment carries the WHY, and carries it as a POINTER** — the contract is `SR-0008`, the
+   occasion `DEC-0008`, and you read a changed comment against it **in this order**: does it say
+   *what* the code does (then it should have gone), does it claim a **property** (then it owes a
+   **named** test — and you run that test's mutation yourself, because a named test that cannot
+   fail is the more expensive of the two defects), or does it hold a **why** (then it stays, as a
+   pointer to the item, not as a retold story). A **number** in a comment is a finding unless that
+   is its only place in the repo: a count of anything that grows — tests, cells, files — will be
+   wrong by the next round, and the report is where it belonged.
+5. **Every fix needs a test that goes RED without it** — reproduce that yourself; a reported red
    test is a claim like any other. Watch the selection width: a narrow `-k` can make a mutation
    look covered when it is not.
-5. **Mirrored files byte-identical** unless `KIT_SPECIFIC_HOOKS` names the reason.
+6. **Mirrored files byte-identical** unless `KIT_SPECIFIC_HOOKS` names the reason.
 
 ## How to measure
 

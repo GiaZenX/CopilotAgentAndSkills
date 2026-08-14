@@ -1,0 +1,51 @@
+id: TSK-0009
+product_requirement: PR-0003
+derives_from: SR-0008
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- .claude/agents/**
+- .claude/hooks/**
+- CLAUDE.md
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+required_inputs:
+- SR-0008 (der Vertrag), DEC-0008 (die Begruendung und die Messung dahinter)
+- 'BUG-0012 -- RE-MEASURED 2026-08-14 (lead probe, running gate_lead_write_scope.py
+  as a process): the repro (function definition wrapping the documented kernel prefix)
+  now passes rc 0, the counter-direction (function body really writing team-kits/kernel/state.py)
+  still refuses rc 2. The defect was fixed by one of the intermediate gate rounds
+  (TSK-0011..TSK-0021 reworked the shell reader) and never booked. The item''s job
+  for BUG-0012 is now PINNING, not fixing.'
+- The .claude/hooks docstrings were heavily reworked since this item was created (TSK-0056/0057/0058)
+  -- measure the CURRENT state against SR-0008, do not assume the 2026-08-05 state.
+expected_outputs:
+- 'harness-implementer.md und harness-verifier.md tragen SR-0008 als Vorgabe: was
+  ein Kommentar tragen darf, in welcher Reihenfolge geprueft wird, und dass eine Zahl
+  an genau einem Ort steht'
+- 'CLAUDE.md: die Hausregel ''kein Kommentar darf Schutz behaupten'' wird um die praeventive
+  Haelfte ergaenzt und verweist auf SR-0008 statt sie nachzuerzaehlen'
+- '.claude/hooks/**: die eigenen Docstrings auf SR-0008 zugeschnitten -- ein Beleg
+  am eigenen Bestand, nicht nur eine Vorgabe fuer andere. Jede Eigenschaftsbehauptung
+  ist entweder ein Test oder faellt weg. MEASURE FIRST: wie viele Behauptungen der
+  heutige Bestand traegt und welche davon schon getestet sind (der Bestand von 2026-08-05
+  existiert nicht mehr)'
+- 'BUG-0012 PINNED (not fixed -- it no longer reproduces): if no existing test covers
+  the edge, add both directions to test_gates.py -- a function definition wrapping
+  the documented kernel prefix is rc 0, a function body that really writes a protected
+  path is rc 2 (the lead''s 2026-08-14 probe payloads are the fixtures); if a test
+  already covers it, name it with file:line and prove it can fail'
+- 'Gemessen und berichtet: wie viele Zeilen Kommentar unter .claude/hooks/ vorher
+  und nachher, und welche Behauptung zu welchem Test wurde'
+- python -B -m pytest .claude/hooks/test_gates.py -q gruen (voller Lauf, Zahlen)
+dependencies: []
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-05T07:00:29'
+closed_at: '2026-08-14T11:54:54'

@@ -36,12 +36,25 @@ stop — that is the user's call, not yours.
    even when the code is correct, and it cuts **both ways** — an over-alarming claim is as wrong
    as a reassuring one. Prefer naming a location over quoting text from another file: a quotation
    nothing checks is a claim that rots.
-4. **Every fix needs a test that goes RED without it.** Restore the original defect in a copy
+4. **A comment carries the WHY, and carries it as a POINTER** — the contract is `SR-0008`, the
+   occasion `DEC-0008`. Three cases, and you decide them **in this order**: (a) it says *what* the
+   code does → it goes; the code says that itself, after a better name if need be. (b) It claims a
+   **property** ("X cannot happen", "only Y reaches Z") → it becomes a **test**, and the comment
+   **names** that test, so the claim rots visibly instead of quietly. (c) It holds a **why** — a
+   measurement, a discarded alternative, the defect that produced the line → it stays, cut down to
+   the item it points at. A **number** lives in exactly one place: needed in the code it is one
+   constant with an item beside it; measured for a round it belongs in your report, never copied
+   into a second comment. Under `.claude/hooks/` half of (b) is enforced rather than trusted — a
+   test name a statement there cites **in backticks** has to resolve, and what counts as citing one
+   is decided by the reader (`test_gates._points_into_this_file`), which also names the spelling it
+   does not read. A claim that names *no* test, and a name written without backticks, are caught by
+   nothing — which is why (b) is your job and not the suite's.
+5. **Every fix needs a test that goes RED without it.** Restore the original defect in a copy
    *outside the repo*, watch the test fail, put it back. Name the red tests in your report. "It is
    covered" without that measurement is not an answer.
-5. **Mirrored files stay byte-identical** across `team-kits/{dev,office,research}-team/` unless
+6. **Mirrored files stay byte-identical** across `team-kits/{dev,office,research}-team/` unless
    `KIT_SPECIFIC_HOOKS` (in `tools/test_hooks.py`) states the reason. Copy, then compare hashes.
-6. **A changed kit file makes `tools/validate.py` fail with "VERSION not bumped"** and drags ~10
+7. **A changed kit file makes `tools/validate.py` fail with "VERSION not bumped"** and drags ~10
    unrelated tests down with it. Run `python tools/bump_kit_version.py` before you judge anything.
 
 ## How to measure

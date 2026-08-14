@@ -1,0 +1,19 @@
+id: EVD-0029
+kind: review
+related:
+- TSK-0009
+result: pass
+summary: verifier PASS for diff:d99944cae5efbf52f22f93667e68a572ce25cb99a174fcaa2f815154a01987ba
+  -- SR-0008 mirrored into both role definitions and CLAUDE.md's preventive half (pointing
+  at the contract, not retelling it); .claude/hooks docstrings audited, 52 resolving
+  suite pointers (0 stale, one rotten pointer found and fixed), new pointer-resolution
+  guard with definition-based decoration stripping; BUG-0012 pinned (function-definition
+  edge red-proven both directions) and gate 3's use of the same cut newly tested (red-capable
+  counter-end measured by ablation after the verifier killed a test that could not
+  fail); production hook files AST-identical to HEAD; full gate suite 242 passed;
+  verifier residues R1-R3 captured as H41
+artifact_refs:
+- ../docs/POST_V2_WISHLIST.md
+revision: 1
+approval_ref: null
+created: '2026-08-14T11:54:53'

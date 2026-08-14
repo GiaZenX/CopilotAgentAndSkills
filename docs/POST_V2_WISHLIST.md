@@ -1895,7 +1895,7 @@ prüft ihn jetzt.
 H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
-TSK-0058.
+TSK-0058, H41 mit TSK-0009.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -1927,6 +1927,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
+| H41 | **Rest**, keine Angriffskette | drei gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung, der lebende Bestand ist in allen drei Richtungen leer |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -3497,6 +3498,35 @@ heute keinen abgelösten Vertrag als geltend (gemessen: repo-weites grep, nur eh
 Dazu benannt (TSK-0058-Prüfung F5): die Zehner-Aufzählung der Automaten-Typen in
 `_harness.py:2076-2078` ist heute wahr und von keinem Draht auf Vollständigkeit gepinnt — ein
 elfter Typ machte den Satz still falsch.
+
+### H41 — Drei gemessene Grenzen des Zeiger-Wächters (neu, TSK-0009)
+
+Der Wächter (`test_every_check_this_apparatus_claims_in_its_own_prose_is_one_that_exists`, Leser
+`_points_into_this_file`) macht seit TSK-0009 einen in Backticks genannten Testnamen prüfbar:
+er muss in `test_gates.py` auflösen, sonst rot. Drei Grenzen sind gemessen (Prüfung 2026-08-14),
+keine hat eine Angriffskette, und der lebende Bestand ist in allen drei Richtungen leer:
+
+**(a) Beide-Enden-Tabellen treiben ihren eigenen Wächter.** `SPELLINGS_OF_A_POINTER` und
+`THIS_FILE_ITSELF` werden von Tests iteriert, die über genau diese Tabellen laufen — schrumpft die
+Tabelle (ein Eintrag gelöscht, die Ableitung auf eine Schreibweise verengt), schrumpft der Wächter
+mit und bleibt grün, während der Defekt erst beim nächsten echten Vorkommen im Sweep auffällt.
+Die Prosa daneben behauptet keine Vollständigkeit — der Rest ist die fehlende zweite Messrichtung,
+nicht ein falscher Satz.
+
+**(b) Leerraum-Verklebung erzeugt aus Prosa einen erfundenen Zeiger.** Der Leser klebt Leerraum
+aus einem Span (nötig für Zeilenumbrüche); ein Span der Form `` `test_wort weitere wörter` `` klebt
+zu einem nie definierten Bezeichner zusammen und wird als fauler Zeiger GEMELDET — eine
+Fehlalarm-Klasse, keine Lücke. Bestand: 0 Vorkommen.
+
+**(c) Unpaarige Backticks verschieben die Span-Paarung.** `re.findall` paart von links; ein
+einzelner Backtick vor einem echten Zeiger macht den Namen unsichtbar — weder gelesen noch
+gemeldet. Bestand: 15 Aussagen mit ungerader Backtick-Zahl, alle Code-Stringliterale, keine mit
+einem Testnamen dahinter.
+
+**Urteil: Rest, keine Angriffskette** — die Produktionsdateien sind AST-identisch, keine Grenze
+berührt eine Gate-Entscheidung. Wer eine der drei schließt, misst zuerst die Richtung, die heute
+fehlt (a: Tabellen-Vollständigkeit gegen eine zweite Quelle; b: ein Nicht-Bezeichner-Span mit
+`test_`-Präfix wird beschrieben statt geklebt; c: Paarung, die einen unpaarigen Auftakt überspringt).
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 
