@@ -1,4 +1,5 @@
 """Tests for the status automata + V1 mapping (HARNESS_V2_SPEC.md II.2 / II.10 / II.12)."""
+import ast
 import os
 import sys
 
@@ -6,7 +7,8 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
 
-from kernel.state import CONFIRMING_EVIDENCE  # noqa: E402
+from kernel.state import CONFIRMING_EVIDENCE, _KERNEL_SET  # noqa: E402
+from kernel import backlog_types  # noqa: E402
 from kernel.backlog_types import (  # noqa: E402
     AUTOMATA,
     _Automaton,
@@ -14,6 +16,7 @@ from kernel.backlog_types import (  # noqa: E402
     FR_DISCARD_TERMINALS,
     FR_RESULT_TERMINALS,
     INVALIDATION_TARGET,
+    REFERENCE_LIST_FIELDS,
     TransitionError,
     UnknownV1Status,
     assert_transition,
@@ -25,6 +28,9 @@ from kernel.backlog_types import (  # noqa: E402
     map_v1_status,
     parse_id,
 )
+
+KERNEL_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits", "kernel")
 
 
 def test_the_fr_result_terminals_partition_the_fr_automaton():
@@ -291,6 +297,214 @@ def test_a_final_status_reachable_without_the_chain_is_not_a_confirmation(monkey
     assert confirming_edge("XX") is None
     monkeypatch.setitem(AUTOMATA, "XX", one_way)
     assert confirming_edge("XX") == ("FIXING", "CLOSED")
+
+
+# -- the fields outside the contract universe (BUG-0038 / H43) -----------------------------------
+
+# Where a read of an item field ENDS UP counts as reading it as a sequence. `field_elements` is in
+# here on purpose: it is the fix, and a site that goes through it must stay VISIBLE to the
+# derivation -- otherwise repairing the last reader of a field would delete that field from the
+# derived set and red the tuple from the other end.
+_SEQUENCE_CALLS = frozenset(("list", "tuple", "set", "sorted", "len", "join", "enumerate",
+                             "reversed", "any", "all", "field_elements"))
+
+# How a name comes to hold an ITEM: a kernel call that hands back stored item content, or
+# `active_items`, the mapping the state validator passes between its own checks. Both are matched
+# as NAMES, so renaming one narrows the derivation silently -- the limit is named in
+# `_item_fields_read_as_sequences`, and the equality test's floor is what would notice a reader
+# that had gone completely blind.
+_ITEM_SOURCES = ("read_item", "read_anywhere", "iter_active_items", "_iter_active", "active_items")
+
+
+def _kernel_trees():
+    trees = {}
+    for name in sorted(os.listdir(KERNEL_DIR)):
+        if name.endswith(".py"):
+            with open(os.path.join(KERNEL_DIR, name), encoding="utf-8") as handle:
+                trees[name] = ast.parse(handle.read(), name)
+    return trees
+
+
+def _module_string_constants(trees):
+    """Every package-level `NAME = "literal"`, across all modules.
+
+    `DEC_SUPERSEDES_FIELD` is read as a NAME at all four of its read sites, so a reader that only
+    understood string literals would have found `design_refs` and `premise_rechecks` and reported
+    the third field as absent -- i.e. it would have argued for deleting a live entry.
+    """
+    constants = {}
+    for tree in trees.values():
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) \
+                    and isinstance(node.value.value, str):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        constants[target.id] = node.value.value
+    return constants
+
+
+def _item_bound_names(tree):
+    """The names this module binds from an item source -- plus aliases, to a fixed point."""
+    names = set()
+    for _pass in range(4):
+        before = set(names)
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign):
+                value = node.value
+                from_item = (isinstance(value, ast.Call)
+                             and getattr(value.func, "attr", "") in _ITEM_SOURCES)
+                if from_item or (isinstance(value, ast.Name) and value.id in names):
+                    for target in node.targets:
+                        names.update(n.id for n in ast.walk(target) if isinstance(n, ast.Name))
+            if isinstance(node, (ast.For, ast.comprehension)):
+                source = ast.dump(node.iter)
+                if any(name in source for name in _ITEM_SOURCES):
+                    names.update(n.id for n in ast.walk(node.target) if isinstance(n, ast.Name))
+        if names == before:
+            break
+    return names
+
+
+def _key_read(node, names, constants, aliases=()):
+    """The field `node` reads off an item -- `<item>.get("f")`, `<item>["f"]`, or a local name that
+    was bound to one of those. None if it is neither.
+
+    THE ALIAS HOP IS THE COMMON IDIOM AND WAS THE FOURTH BLIND SPOT. Measured: an injected direct
+    read turned both tripwires red, while the same read written in two steps
+    (`risky = item.get("f") or []` / `for ref in risky`) passed both -- any binding to a local name
+    broke the chain, and `dispatch.py:1084` shows the two-step shape is lived kernel style. ONE hop
+    is followed, deliberately: two would be a dataflow analysis, and what the second hop would buy
+    is unmeasured. The hop is followed WITHOUT SCOPE ANALYSIS, so a name bound in one function and
+    iterated in another links across -- that direction ADDS a candidate and shows up as a red
+    equality, never as a quiet miss.
+    """
+    if isinstance(node, ast.Name) and node.id in aliases:
+        return aliases[node.id]
+    while isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or):
+        node = node.values[0]      # the `... or []` tail is the shape this class was written in
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
+            and node.func.attr in ("get", "pop") and node.args:
+        receiver, key = node.func.value, node.args[0]
+    elif isinstance(node, ast.Subscript):
+        receiver, key = node.value, node.slice
+    else:
+        return None
+    if not (isinstance(receiver, ast.Name) and receiver.id in names):
+        return None
+    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+        return key.value
+    if isinstance(key, ast.Name) and key.id in constants:
+        return constants[key.id]
+    if isinstance(key, ast.Attribute) and key.attr in constants:
+        return constants[key.attr]
+    return None
+
+
+def _key_read_aliases(tree, names, constants):
+    """{local name -> the field it was bound to} for every `X = <item read>` in this module.
+
+    A read wrapped in a call (`X = field_elements(item.get("f"))`) is NOT an alias: the value has
+    already been through the one definition, so following it would report the fix as an offender.
+    """
+    aliases = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        field = _key_read(node.value, names, constants)
+        if not field:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                aliases[target.id] = field
+    return aliases
+
+
+def _item_fields_read_as_sequences():
+    """{field -> {(where, what consumes it)}} for every item field the kernel reads ELEMENT-WISE
+    and no contract declares -- derived from the kernel's own sources, not from the tuple.
+
+    THE DERIVATION `REFERENCE_LIST_FIELDS` IS MEASURED AGAINST (BUG-0038 / H43). Per module: the
+    names bound from an ITEM source (`_item_bound_names`), then every mapping read off such a name
+    that lands in a sequence context -- a `for`, a comprehension, or one of `_SEQUENCE_CALLS`.
+    Fields any contract declares drop out (`backlog_types._contract_fields`, both sources, plus the
+    kernel-set ones), because those are the universe `migrate.parse_field_map` already bounds and
+    the TSK-0033 sweep already measured. What remains is the class that fell between the two.
+
+    ONE LOCAL BINDING IS FOLLOWED between the read and the sequence context (`_key_read_aliases`),
+    because the two-step spelling is the idiom this code is written in and it was invisible here.
+
+    WHAT THIS DOES NOT SEE, named rather than promised away:
+      * a value that reaches its reader through a RETURN dict rather than an item read. `cli.py`
+        prints the `design_refs` of `result["root"]` that way, and that site is measured by
+        `test_staging_cli.test_a_scalar_design_ref_survives_the_freeze_as_one_reference` instead;
+      * a field name that is neither a literal nor a package-level string constant;
+      * a value that travels MORE THAN ONE binding, or through a call or an attribute, before it is
+        iterated -- the second hop is where this stops being a reader and becomes a dataflow
+        analysis, and what it would buy here is unmeasured;
+      * any reader outside `team-kits/kernel/` -- the kits' hooks and scripts were the TSK-0033
+        sweep's subject and are measured there.
+    """
+    trees = _kernel_trees()
+    constants = _module_string_constants(trees)
+    declared = set(_KERNEL_SET)
+    for fields in backlog_types._contract_fields().values():
+        declared |= set(fields)
+    found = {}
+    for module, tree in trees.items():
+        names = _item_bound_names(tree)
+        aliases = _key_read_aliases(tree, names, constants)
+        for node in ast.walk(tree):
+            places = []
+            if isinstance(node, (ast.For, ast.comprehension)):
+                places.append((node.iter, "for" if isinstance(node, ast.For) else "comprehension"))
+            elif isinstance(node, ast.Call):
+                called = (node.func.id if isinstance(node.func, ast.Name)
+                          else getattr(node.func, "attr", ""))
+                if called in _SEQUENCE_CALLS:
+                    places.extend((argument, called) for argument in node.args)
+            for place, consumer in places:
+                field = _key_read(place, names, constants, aliases)
+                if field and field not in declared:
+                    found.setdefault(field, set()).add(
+                        ("%s:%d" % (module, place.lineno), consumer))
+    return found
+
+
+def test_the_reference_list_fields_are_what_the_kernel_reads_elementwise():
+    """Both ends of the one enumeration BUG-0038 left behind.
+
+    `REFERENCE_LIST_FIELDS` names item fields NO capture contract declares, so no property of
+    `REQUIRED_FIELDS`/`OPTIONAL_FIELDS` can produce them -- which is exactly how the TSK-0033 sweep
+    walked past all three. The tuple is therefore held against a derivation over the running kernel
+    sources, in BOTH directions: a name the kernel no longer reads element-wise is a dead entry, and
+    a field the kernel reads that way without being declared is the next H43.
+
+    The derivation's own blind spots are in `_item_fields_read_as_sequences`, not glossed here.
+    """
+    derived = _item_fields_read_as_sequences()
+    assert set(REFERENCE_LIST_FIELDS) == set(derived), (
+        "declared but not read element-wise anywhere: %s; read element-wise but not declared: %s"
+        % (sorted(set(REFERENCE_LIST_FIELDS) - set(derived)),
+           sorted(set(derived) - set(REFERENCE_LIST_FIELDS))))
+    # ...and the derivation has to have teeth: an instrument that finds nothing would satisfy the
+    # equality above only for an empty tuple, and pass silently the day it stops parsing.
+    assert derived, "the reader found no element-wise item-field read at all in team-kits/kernel/"
+
+
+def test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements():
+    """The fix, measured at every site the derivation finds rather than at the ones someone recalled.
+
+    A bare `for ref in item.get(f) or []` reads a WORD as its letters, and BUG-0038 is what that
+    cost in the one case that WRITES the value back (`staging.freeze_design`: 35 entries in the
+    canonical item, validator silent). `backlog_types.field_elements` is the single definition of
+    "how many things does this field hold"; a site that does not go through it is a reader that
+    decided the shape for itself.
+    """
+    offenders = sorted(
+        "%s (consumed by %s, not field_elements)" % (where, consumer)
+        for field, sites in _item_fields_read_as_sequences().items()
+        for where, consumer in sites if consumer != "field_elements")
+    assert not offenders, offenders
 
 
 def test_the_evidence_rule_names_only_edges_the_automaton_has():

@@ -33,7 +33,7 @@ import shutil
 import time
 import xml.etree.ElementTree as ET
 
-from .backlog_types import ACTIVE_DIRS, parse_id
+from .backlog_types import ACTIVE_DIRS, field_elements, parse_id
 from .lock import ext_path
 from .schemas import validate
 from .state import (
@@ -316,7 +316,14 @@ def freeze_design(
         clear_staging(state, staging_key, mode="promoted", _locked=True)
         # hashed design_refs change through the kernel edit path -- invalidates
         # an existing approval atomically (spec II.6a scope-manifest semantics)
-        refs = list(root.get("design_refs") or [])
+        #
+        # THROUGH `field_elements`, because this line WRITES what it read: `list()` over a scalar
+        # is that scalar's letters, and `_update_item_locked` then put them in the canonical item
+        # (BUG-0038). It is the one site of its class that damages the STATE instead of only
+        # mis-answering a question, which is why the normalisation is here and not only in the
+        # readers -- `backlog_types.REFERENCE_LIST_FIELDS` carries the class.
+        # `test_staging_cli.test_a_scalar_design_ref_survives_the_freeze_as_one_reference`.
+        refs = field_elements(root.get("design_refs"))
         refs.append("%s/%s" % (ACTIVE_DIRS[DESIGN_REF_TYPE],
                                revision_name(dsn_id, revision, ".html")))
         updated_root = state._update_item_locked(root_id, {"design_refs": refs})

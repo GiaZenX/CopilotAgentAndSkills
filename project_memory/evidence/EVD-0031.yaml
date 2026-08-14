@@ -1,0 +1,19 @@
+id: EVD-0031
+kind: review
+related:
+- TSK-0059
+result: pass
+summary: 'verifier PASS for diff:3375e7c769c2625499f3c9605470eb8300f93e2de1ae1a5cd6759f90ebac3f89
+  -- BUG-0038 chain closed: freeze-design no longer letter-splits (2 entries not 35,
+  dispatch ALLOWED on the legitimate ref, garbage still refused both ways), supersedes/premise_rechecks
+  readers normalised via field_elements, validate warns on scalar shape and errors
+  on unresolvable design_refs via the gate''s own resolver; derivation of at-risk
+  fields is an AST reader with both-ends tripwire incl. one-binding alias hop (the
+  verifier''s 4th blind spot CLOSED, not named); H43 closed in wishlist, H41(d)+H19
+  way-through added with measurements; kits 2026.08.14-7, tools/ suite 2544 green;
+  N1/N2 micro-precisions deferred to the next touch (folded into TSK-0060''s order)'
+artifact_refs:
+- ../docs/POST_V2_WISHLIST.md
+revision: 1
+approval_ref: null
+created: '2026-08-14T17:50:31'

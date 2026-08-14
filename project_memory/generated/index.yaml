@@ -1,4 +1,4 @@
-generated_at: '2026-08-14T14:30:44'
+generated_at: '2026-08-14T17:50:32'
 items:
 - id: BUG-0001
   type: BUG
@@ -506,6 +506,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0043
+  type: DEC
+  title: 'INV.scope governs exactly ONE area: the list spelling is refused loudly,
+    never silently ignored'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -686,6 +693,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0031
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -859,6 +872,12 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0027
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0060
   type: TSK
   title: null
   status: DRAFT

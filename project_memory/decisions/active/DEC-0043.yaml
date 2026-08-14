@@ -1,0 +1,30 @@
+id: DEC-0043
+title: 'INV.scope governs exactly ONE area: the list spelling is refused loudly, never
+  silently ignored'
+context: 'H42 (docs/POST_V2_WISHLIST.md, TSK-0033): the kernel''s capture accepts
+  INV.scope as scalar or list, but all four shipped readers (gate_test_coverage.py:177,
+  guard_guidelines.py:128-129/:154, kit_checks.py:171/:189) read ONE path or ONE knob
+  name -- a list spelling turns into the string "[''...'']", matches nothing, and
+  the project''s own rule silently stops guarding (measured: push with untested code
+  rc 2 under scalar, rc 0 under list). The field is overloaded: in kit_checks it names
+  a configuration knob, where ''several'' has no meaning. The alternative (allow several
+  areas) would need all four readers rebuilt together plus a special case for the
+  knob use.'
+decision: 'One INV governs exactly one area (or names exactly one knob): INV.scope
+  is a SCALAR by contract. A project wanting two areas writes two INV items. The list
+  spelling is refused LOUDLY at the earliest honest point (capture and/or validate
+  names it; the exact site is the fix round''s measured choice) -- never accepted
+  and silently inert. The four readers stay single-area readers, now correct by contract.
+  User decision 2026-08-14 (''Ein Bereich je Regel'').'
+consequences: 'The silent-off chain closes as a contract, not a normalisation: field_elements
+  does NOT apply to INV.scope (applying it would mean several areas -- the rejected
+  branch). H42 closes once the refusal is built and red-tested; the closure round
+  follows TSK-0059 (single writer). Cost: a project author who writes the list form
+  gets a refusal with a remedy (two items) instead of silence -- friction in the honest
+  direction.'
+source: user decision 2026-08-14 via AskUserQuestion; H42 measured chains (TSK-0033
+  round, docs/POST_V2_WISHLIST.md)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-14T14:39:45'

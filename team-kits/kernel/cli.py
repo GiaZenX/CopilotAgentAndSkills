@@ -56,6 +56,7 @@ from .backlog_types import (
     REQUIRED_FIELDS,
     TASK_TYPES,
     TransitionError,
+    field_elements,
 )
 from .schemas import load_schema
 from .state import ProjectState, StateError
@@ -672,7 +673,9 @@ def main(argv=None) -> int:
             root_item = result.get("root")
             if root_item is not None:
                 print("%s design_refs: %s" % (
-                    root_item["id"], ", ".join(root_item.get("design_refs") or []) or "-"))
+                    root_item["id"],
+                    ", ".join(str(ref) for ref in
+                              field_elements(root_item.get("design_refs"))) or "-"))
             return 0
         if args.command == "capture":
             body = _json_body("capture %s" % args.item_type)

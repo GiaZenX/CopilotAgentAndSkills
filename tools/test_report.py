@@ -510,6 +510,93 @@ def test_a_decision_superseding_nothing_stays_valid(state):
     assert errors(report.validate_state(state)) == []
 
 
+# -- BUG-0038 / H43: the fields no capture contract declares --------------------
+
+def test_a_scalar_supersedes_retires_the_decision_it_names(state):
+    """`supersedes` written as a bare id, which is what "point it at the decision this one
+    replaces" invites and what `capture`/`update` both take unchanged.
+
+    MEASURED BEFORE THE FIX: `_superseded_decisions` iterated the value directly, so the eight
+    LETTERS of `DEC-0001` became the superseded ids -- the replaced decision kept counting as
+    holding in `standing_decisions` and in every session brief built on it, and
+    `_check_dec_supersedes` filed eight errors naming `D`, `E`, `C`, `-`, `0`, `0`, `0`, `1`
+    instead of resolving the one link.
+    """
+    old = state.capture("DEC", dict(DEC_FIELDS, title="old"))
+    new = state.capture("DEC", dict(DEC_FIELDS, title="new", supersedes=old["id"]))
+    standing, superseded = report.standing_decisions(state)
+    assert superseded.get(old["id"]) == new["id"]
+    assert old["id"] not in standing and new["id"] in standing
+    assert errors(report.validate_state(state)) == []
+
+
+def test_a_scalar_premise_recheck_is_one_recheck_not_its_letters(state):
+    """The same class on `premise_rechecks`, and both of its readers.
+
+    MEASURED BEFORE THE FIX: the existence check reported eight phantom errors (one per letter of
+    the id), and the trigger check -- which asks whether the DEC is among the ids the item names --
+    still warned "no premise re-check recorded", so recording the outcome did not clear the warning
+    it exists to clear. Both halves are asserted here because they read the field separately.
+    """
+    dec = state.capture("DEC", dict(DEC_FIELDS,
+                                    premise_invalidation_triggers=["throughput above 1k/s"]))
+    item = state.capture("PR", dict(PR_FIELDS))
+    walk_to_status(state, item, "APPROVED")
+    state.update_item(item["id"], {"premise_rechecks": dec["id"]})
+    found = report.validate_state(state)
+    assert errors(found) == []
+    assert not [f for f in warnings_of(found) if "premise re-check" in f["message"]], found
+
+
+def test_validate_names_a_scalar_reference_list_field(state):
+    """AC-4 of BUG-0038: the shape is named instead of passing silently.
+
+    A WARNING and not an error, and that is the measurement rather than timidity: every kernel
+    reader of these fields goes through `field_elements` now, so a scalar resolves as the one
+    reference it spells and no gate decides differently. What it still is, is a shape the store
+    should not carry -- so the validator names it and the remedy is the kernel's own edit path,
+    because `project_memory/**` has no other writer.
+    """
+    dec = state.capture("DEC", dict(DEC_FIELDS))
+    item = state.capture("PR", dict(PR_FIELDS))
+    state.update_item(item["id"], {"premise_rechecks": dec["id"]})
+    found = report.validate_state(state)
+    named = [f for f in warnings_of(found)
+             if f["item"] == item["id"] and "premise_rechecks is a single str" in f["message"]]
+    assert named, found
+    assert "update %s" % item["id"] in named[0]["remedy"]
+    # ...and the list spelling of the SAME content is clean, or the check would be a warning
+    # nobody can satisfy
+    state.update_item(item["id"], {"premise_rechecks": [dec["id"]]})
+    assert not [f for f in warnings_of(report.validate_state(state))
+                if "is a single" in f["message"]]
+
+
+def test_validate_names_design_refs_that_resolve_to_nothing(state):
+    """The half the reader fix cannot reach: an item ALREADY written by the BUG-0038 chain.
+
+    Its `design_refs` is a LIST -- of 34 one-letter entries -- so the shape check above passes it,
+    and before this nothing else in `validate_state` looked at the field at all: the measured chain
+    ended in "0 error(s), 0 warning(s)" over exactly that item while `dispatch` refused every UI
+    task under it. The resolver is `dispatch._design_ref_resolves`, the one the II.6a tooth uses,
+    so the validator and the gate cannot disagree about what resolves.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    state.update_item(pr["id"], {"design_refs": list("design/revisions/DSN-0001.r01.html")})
+    found = errors(report.validate_state(state))
+    named = [f for f in found if f["item"] == pr["id"] and "design_refs" in f["message"]]
+    assert named, found
+    assert "34 reference(s)" in named[0]["message"], named[0]["message"]
+    # a really frozen reference resolves, so the check is not "any design_refs is an error"
+    stage = staging.staging_dir(state, pr["id"])
+    os.makedirs(stage, exist_ok=True)
+    with open(os.path.join(stage, "preview.html"), "w", encoding="utf-8") as handle:
+        handle.write("<html><body>x</body></html>")
+    state.update_item(pr["id"], {"design_refs": []})
+    staging.freeze_design(state, pr["id"], "DSN-0001", pr["id"], "preview.html")
+    assert not [f for f in errors(report.validate_state(state)) if "design_refs" in f["message"]]
+
+
 # -- BUG-0005: the last decision rides into the next session via the brief ------
 
 def test_session_brief_carries_the_newest_standing_decision(state):

@@ -981,6 +981,52 @@ def test_freeze_design_is_the_only_thing_that_can_fill_design_refs(state, capsys
     assert dispatch.validate_dispatch(state, header, order["assigned_role"])
 
 
+def test_a_scalar_design_ref_survives_the_freeze_as_one_reference(state, capsys):
+    """BUG-0038 / H43: the one reader of this class that WRITES its misreading into the state.
+
+    MEASURED BEFORE THE FIX, over the shipped commands and nothing else: `capture PR` with
+    `design_refs` as a bare string is accepted (no contract declares the field, and `capture` takes
+    a body's extra keys unchanged), and `freeze-design` then ran `list(root.get("design_refs") or [])`
+    and handed the result to `_update_item_locked` -- 35 entries in the ACTIVE PR, 34 letters plus
+    the new reference, revision unchanged at 1, and `validate` said "0 error(s), 0 warning(s)". The
+    confirmation line read `PR-0001 design_refs: d, e, s, i, g, n, /, ...` and the II.6a tooth then
+    refused a UI task against the design that had just been frozen ("references that exist nowhere:
+    d, e, s, ...").
+
+    All three ends are here, because they are three different readers: the CANONICAL item
+    (`staging.py`), the printed line (`cli.py`, which the field-read derivation in
+    `test_backlog_types` deliberately cannot see -- it reads the freeze's RETURN value) and the
+    spawn (`dispatch.py`). The captured scalar names the revision this freeze produces, so the
+    repaired list carries that path TWICE; two entries and thirty-five are the measurement, the
+    duplicate is not de-duplicated by anything and is not claimed to be.
+    """
+    reference = "design/revisions/DSN-0001.r01.html"
+    pr = state.capture("PR", dict(PR_FIELDS, design_refs=reference))
+    assert state.read_item(pr["id"])["design_refs"] == reference, "capture no longer takes the scalar"
+    stage_file(state, pr["id"], "preview.html", content="<html><body>x</body></html>")
+    assert run_cli_with_body(state, json.dumps({
+        "staging_key": pr["id"], "dsn_id": "DSN-0001", "root_id": pr["id"],
+        "source_name": "preview.html"}), "freeze-design") == 0
+
+    refs = state.read_item(pr["id"])["design_refs"]
+    assert refs == [reference, reference], refs
+    assert run_cli(state, "validate") == 0
+    printed = capsys.readouterr().out
+    assert "PR-0001 design_refs: %s, %s" % (reference, reference) in printed
+    assert "design_refs: d, e, s" not in printed
+
+    walk_to_status(state, state.read_item(pr["id"]), "IN_DELIVERY")
+    task = dispatch.create_task(state, {
+        "product_requirement": pr["id"], "derives_from": pr["id"], "type": "ui",
+        "assigned_role": "frontend-developer", "acceptance_refs": ["AC-1"],
+        "allowed_scope": ["frontend/"], "forbidden_scope": [], "required_inputs": [],
+        "expected_outputs": [], "dependencies": [], "design_ref": reference})
+    state.transition(task["id"], "READY")
+    header = json.loads(dispatch.dispatch_header(
+        dispatch.create_lease(state, task["id"])).split(" ", 1)[1])
+    assert dispatch.validate_dispatch(state, header, "frontend-developer")
+
+
 def test_a_bug_cannot_be_verified_without_the_regression_evidence(state, capsys):
     """Minimum-keep 8. The constitution says the regression test's Evidence is what moves a bug
     from FIXED to VERIFIED; measured before this, `transition BUG-0001 VERIFIED` ran with no

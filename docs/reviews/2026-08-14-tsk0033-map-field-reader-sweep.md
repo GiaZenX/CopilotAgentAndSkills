@@ -126,7 +126,8 @@ dort weitergesucht und drei Stellen derselben Klasse gefunden, alle nicht `--map
 * `premise_rechecks` (PR/RQ/CR): `report.py:1154` und `:1170`.
 
 Das ist als `H43` in `docs/POST_V2_WISHLIST.md` mit Mechanismus, Kette und Urteil eingetragen; die
-Behebung trägt `BUG-0038`. **Die Lehre über das Instrument, nicht über die Felder:** eine Sweep-Menge,
+Behebung trägt `BUG-0038` und ist mit **TSK-0059** erfolgt — dort steht auch, was von der Lücke als
+benannter Rest übrig bleibt. **Die Lehre über das Instrument, nicht über die Felder:** eine Sweep-Menge,
 die aus der Oberfläche EINES Kommandos abgeleitet ist, misst die Leser dieses Kommandos — nicht die
 Eigenschaft „ein Leser setzt eine Form voraus". Wer den Sweep wiederholt, leitet die Menge aus den
 **Schreibern** des Zustands ab (`capture`, `_update_item_locked`, `staging.freeze_*`), nicht aus
@@ -141,5 +142,7 @@ Eigenschaft „ein Leser setzt eine Form voraus". Wer den Sweep wiederholt, leit
   `test_approvals_dispatch.test_a_scalar_acceptance_ref_is_one_ref_not_four_letters`,
   `test_approvals_dispatch.test_a_scalar_dependency_is_one_dependency`,
   `test_report.test_a_scalar_dependency_is_reported_once_not_once_per_letter`.
-* Offene Reste: `H42` (`INV.scope`, Vertragsentscheidung offen), `H43` / `BUG-0038` (Felder
-  außerhalb der Sweep-Menge).
+* Offene Reste: `H42` (`INV.scope`, Vertragsentscheidung offen). `H43` / `BUG-0038` ist mit
+  TSK-0059 geschlossen: die Grenze aus Abschnitt 5 ist jetzt selbst abgeleitet
+  (`team-kits/kernel/backlog_types.py::REFERENCE_LIST_FIELDS` plus der Stolperdraht in
+  `tools/test_backlog_types.py`), und die dort genannten Reste stehen im H43-Eintrag.

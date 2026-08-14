@@ -611,6 +611,32 @@ FR_RESULT_FIELD = "resulting_item"
 DEC_SUPERSEDES_FIELD = "supersedes"
 
 
+# -- the item fields NO capture contract declares, whose ELEMENTS the kernel resolves -----------
+#
+# THE BOUNDARY THIS CROSSES. `REQUIRED_FIELDS` and `OPTIONAL_FIELDS` are the contract of what a
+# CALLER hands `capture`, and `migrate.parse_field_map` derives the whole `--map` surface from that
+# union. But the state has a SECOND author -- the kernel itself (`staging.freeze_design`) -- and a
+# second way in, because `capture` takes a body's extra keys unchanged. A field that arrives either
+# way is declared in neither tuple, so a sweep whose field set comes from the capture contract
+# cannot see it at all. BUG-0038 is what that cost: a scalar `design_refs` was letter-split by
+# `freeze_design` INTO THE CANONICAL ITEM, and the state validator reported nothing.
+#
+# WHAT PUTS A FIELD IN HERE is one property: the kernel resolves its ELEMENTS -- each is an item id
+# or a state-relative path to a frozen revision -- so an element is something that has to exist
+# somewhere, which is why these are read through `field_elements` and why `report.validate_state`
+# resolves their entries one by one.
+#
+# AN ENUMERATION, WITH BOTH ENDS MEASURED, because nothing in the running code names these three on
+# its own. `test_backlog_types.test_the_reference_list_fields_are_what_the_kernel_reads_elementwise`
+# derives the set from the kernel's own sources -- every sequence-context read off a value bound
+# from an item source -- and compares it BOTH ways, so a name that no longer occurs and a field
+# nobody declared each turn it red;
+# `test_backlog_types.test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements`
+# then holds every derived read site to the one definition. What that derivation cannot see is
+# named in its own docstring rather than promised away here.
+REFERENCE_LIST_FIELDS = ("design_refs", DEC_SUPERSEDES_FIELD, "premise_rechecks")
+
+
 # -- Evidence contract (spec II.2 "Evidence") ----------------------------------
 
 # Evidence carries no project STATUS, and that is exactly why it has to carry a

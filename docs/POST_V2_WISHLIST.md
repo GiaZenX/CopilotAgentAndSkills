@@ -1927,9 +1927,9 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
-| H41 | **Rest**, keine Angriffskette | drei gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung, der lebende Bestand ist in allen drei Richtungen leer |
+| H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute sieben Vorkommen aus dem H43-Eintrag, alle von Hand aufgelöst |
 | H42 | **Rest**, Vertragsentscheidung des Nutzers offen | die Listenschreibweise von `INV.scope` verliert eine Verweigerung, erteilt aber nichts; wer schließt, entscheidet zuerst den Vertrag (ein Bereich oder mehrere) und zieht alle vier Leser gemeinsam nach — Details im Eintrag |
-| H43 | **Ausnahme, Abnahme offen** — Behebung liegt bei `BUG-0038` | vom Kernel selbst geschriebene Felder liegen außerhalb der `--map`-Feldmenge, die der TSK-0033-Sweep abgeleitet hat, und waren ihm damit unsichtbar; die Kette `capture` → `freeze-design` läuft in einer Sitzung durch und schreibt 35 Einträge statt einem in den aktiven PR, die Richtung ist aber Über-Verweigerung und falscher Bericht, keine erteilte Erlaubnis |
+| H43 | **GESCHLOSSEN** (TSK-0059, `BUG-0038`), mit benannten Resten | die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS` nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde). Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt — je im Eintrag |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -2414,6 +2414,18 @@ wird. Ein `_PATHISH`-Treffer, der nur aus `/` oder `\` besteht, reicht dafür au
 
 **Kette (gemessen):** `cp -r docs ..` → **rc 2**, `cp -r docs C:/` → **rc 2**. Der Prüfer ist damit
 dreimal auf rein lesenden Sonden aufgelaufen.
+
+**Der Weg-durch daneben, und er gehört hierher, weil er die Kosten dieser Über-Verweigerung
+einordnet (gemessen 2026-08-14, `gate_lead_write_scope.py` als Prozess, Zustellung des Payloads
+gegen eine Kopie des Baums außerhalb des Repos):** dasselbe Kopierwerk, dessen **Befehlszeile**
+keinen geschützten Pfad nennt, geht durch. `robocopy "<repo>\docs" "<repo>\team-kits\kernel" /E` ist
+**rc 2** und `python -c "…copyfile('a','team-kits/kernel/state.py')"` ebenfalls **rc 2**; dieselbe
+Kopie in einer Skriptdatei außerhalb des Repos, aufgerufen als `python "<außerhalb>\job.py"`, ist
+**rc 0** — und das Skript schreibt dann wirklich (gegen die Kopie gemessen: `kernel/state.py`
+71900 → 280470 Bytes). Der Grund ist keine Lücke dieses Eintrags, sondern die Bauart: das Gate liest
+**Befehlszeilen**, nie Dateiinhalte. Damit ist die Über-Verweigerung oben Reibung für den, der
+ehrlich arbeitet, und kein Schutz gegen den, der es nicht tut — begrenzt wird das wie bei H11, H12
+und H16 **sozial** (Rollentrennung und Item), nicht technisch.
 
 **Urteil: Rest, keine Angriffskette — Über-Verweigerung.** Was mit TSK-0011 geschlossen ist, ist
 nicht die Verweigerung, sondern die **Behauptung** darin: bis dahin bekam ein Laufwerksbuchstabe
@@ -3501,12 +3513,13 @@ Dazu benannt (TSK-0058-Prüfung F5): die Zehner-Aufzählung der Automaten-Typen 
 `_harness.py:2076-2078` ist heute wahr und von keinem Draht auf Vollständigkeit gepinnt — ein
 elfter Typ machte den Satz still falsch.
 
-### H41 — Drei gemessene Grenzen des Zeiger-Wächters (neu, TSK-0009)
+### H41 — Vier gemessene Grenzen des Zeiger-Wächters (neu, TSK-0009)
 
 Der Wächter (`test_every_check_this_apparatus_claims_in_its_own_prose_is_one_that_exists`, Leser
 `_points_into_this_file`) macht seit TSK-0009 einen in Backticks genannten Testnamen prüfbar:
-er muss in `test_gates.py` auflösen, sonst rot. Drei Grenzen sind gemessen (Prüfung 2026-08-14),
-keine hat eine Angriffskette, und der lebende Bestand ist in allen drei Richtungen leer:
+er muss in `test_gates.py` auflösen, sonst rot. Vier Grenzen sind gemessen — drei bei der Prüfung
+2026-08-14, die vierte mit TSK-0059 —, keine hat eine Angriffskette, und der lebende Bestand ist
+in den ersten drei Richtungen leer; in der vierten ist er nicht leer, aber vollständig aufgelöst:
 
 **(a) Beide-Enden-Tabellen treiben ihren eigenen Wächter.** `SPELLINGS_OF_A_POINTER` und
 `THIS_FILE_ITSELF` werden von Tests iteriert, die über genau diese Tabellen laufen — schrumpft die
@@ -3525,10 +3538,19 @@ einzelner Backtick vor einem echten Zeiger macht den Namen unsichtbar — weder 
 gemeldet. Bestand: 15 Aussagen mit ungerader Backtick-Zahl, alle Code-Stringliterale, keine mit
 einem Testnamen dahinter.
 
+**(d) Zeiger auf Tests ANDERER Dateien liegen außerhalb der Reichweite, und der Bestand wächst.**
+Der Leser überspringt jeden Span mit einem Punkt, weil das ein Dateiname sein kann; ein Zeiger der
+Form `` `tools/test_report.py::test_x` `` wird damit von niemandem nachgeschlagen. Gemessen
+2026-08-14 über den H43-Eintrag: er trägt **sieben** solcher Zeiger, und der Leser gibt über diesen
+Text `set()` zurück — er sucht keinen davon. Alle sieben lösen heute auf (einzeln im AST der
+genannten Datei nachgeschlagen), das ist aber Handarbeit und kein Draht. Dieselbe Klasse wie (a)
+und wie **H40**: was außerhalb der Reichweite eines Wächters zitiert wird, sammelt sich an.
+
 **Urteil: Rest, keine Angriffskette** — die Produktionsdateien sind AST-identisch, keine Grenze
-berührt eine Gate-Entscheidung. Wer eine der drei schließt, misst zuerst die Richtung, die heute
+berührt eine Gate-Entscheidung. Wer eine der vier schließt, misst zuerst die Richtung, die heute
 fehlt (a: Tabellen-Vollständigkeit gegen eine zweite Quelle; b: ein Nicht-Bezeichner-Span mit
-`test_`-Präfix wird beschrieben statt geklebt; c: Paarung, die einen unpaarigen Auftakt überspringt).
+`test_`-Präfix wird beschrieben statt geklebt; c: Paarung, die einen unpaarigen Auftakt überspringt;
+d: ein Zeiger `<datei>::<test>` wird in JENER Datei aufgelöst statt übersprungen).
 
 ### H42 — `INV.scope` als Liste geschrieben schaltet die Testabdeckungs-Regel still ab (neu, TSK-0033)
 
@@ -3573,7 +3595,7 @@ liefern **kein** `INV` mit aus (`templates/project_memory/invariants/active/` en
 ein Projekt, dessen `gate_test_coverage` nichts mehr verweigert, obwohl ein `INV` einen Bereich
 benennt.
 
-### H43 — Was der Kernel selbst schreibt, lag außerhalb der Feldmenge, die der Sweep abgeleitet hat (neu, TSK-0033)
+### H43 — Was der Kernel selbst schreibt, lag außerhalb der Feldmenge, die der Sweep abgeleitet hat — GESCHLOSSEN (TSK-0059)
 
 **Mechanismus, als Eigenschaft und nicht als Liste:** der AC-4-Sweep dieser Runde leitet seine
 Feldmenge aus der Oberfläche **eines Kommandos** ab — `migrate.parse_field_map:1145-1153` lässt nur
@@ -3584,7 +3606,9 @@ hat aber einen zweiten Schreiber: den Kernel selbst (`state._update_item_locked`
 Instrument waren sie damit nicht existent — nicht „sicher", sondern **ungemessen**. Dieselbe
 Buchstaben-Iteration kann dort also stehen, und sie steht dort.
 
-**Kette (gemessen 2026-08-14, Prüfung zu TSK-0033):**
+**Kette (gemessen 2026-08-14, Prüfung zu TSK-0033 — der Eintrag stammt aus jener Runde, die
+Behebung aus TSK-0059). Alle Zeilennummern in dieser Kette sind der Stand VOR dem Fix und bleiben
+als Fundprotokoll stehen; wo der Code heute steht, sagt das Urteil weiter unten:**
 
 * `design_refs` (auf PR/RQ) — der Erzeuger ist `kernel/staging.py:319`:
   `refs = list(root.get("design_refs") or [])`, gefolgt von
@@ -3605,23 +3629,96 @@ Buchstaben-Iteration kann dort also stehen, und sie steht dort.
   `for ref in item.get(DEC_SUPERSEDES_FIELD) or []`.
 * `premise_rechecks` (PR/RQ/CR) — `kernel/report.py:1154` und `:1170`.
 
-**Urteil: benannte Ausnahme, Abnahme durch den Nutzer offen — Behebung ist eigene Arbeit und liegt
-bei `BUG-0038`.** Die Kette läuft **innerhalb einer Sitzung** durch (`capture` → `freeze-design`),
-ist also nach der Hausregel blockierend; geschlossen wird sie nicht in dieser Runde, weil sie
-außerhalb des entschiedenen Umfangs von TSK-0033 liegt und der Ort der Behebung
-(`staging.freeze_design` plus die zwei Leser) eine eigene Messung mit eigenen Rot-Tests braucht.
-
 **Die Richtung, und sie ist in allen drei Fällen dieselbe:** **Über-Verweigerung bzw. ein falscher
 Bericht**, keine erteilte Erlaubnis. Ein UI-Spawn wird zu Unrecht abgelehnt, eine abgelöste
 Entscheidung zu Unrecht als offen geführt, eine Bestätigungszeile falsch gedruckt. Kein Gate öffnet
-sich dadurch.
+sich dadurch. Bis TSK-0059 stand hier als Urteil eine **benannte Ausnahme mit offener Abnahme**;
+die Kette läuft innerhalb einer Sitzung durch und war damit blockierend.
 
-**Was stattdessen begrenzt — knapp, und ausdrücklich weniger, als man annehmen möchte:** der
-verfälschte Wert ist **laut sichtbar**, sowohl in der Item-Datei als auch in der Zeile, die
-`cli.py:675` unmittelbar nach dem Einfrieren druckt. Was **nicht** begrenzt: `capture` weist das
-Feld nicht ab, `--map` ist dafür nicht nötig, und die Hash-Invalidierung greift hier nicht — die
-Revision blieb im Messlauf unverändert. Wer das für tragbar hält, entscheidet das bewusst; ein
-dritter Zustand ist es nicht.
+**Urteil: GESCHLOSSEN (TSK-0059, `BUG-0038`), mit benannten Resten.** Der Fix sitzt an den
+**Lesern**, nicht an der Tür: `backlog_types.field_elements` — die eine Definition von „wie viele
+Dinge hält dieses Feld", die `BUG-0015` eingeführt hat — steht jetzt an allen sieben Stellen, im
+ausgelieferten Baum nachgemessen: `kernel/staging.py:326`, `kernel/dispatch.py:479`,
+`kernel/cli.py:678`, `kernel/report.py:1157`/`:1173`/`:1239`/`:1278`.
+Gemessen gegen ein Projekt außerhalb des Repos, über die ausgelieferten Kommandos: `freeze-design`
+schreibt nach `capture PR` mit skalarem `design_refs` **2 statt 35 Einträge** in den aktiven PR und
+druckt den Pfad statt `d, e, s, i, g, n, …`; derselbe UI-Task geht von *DISPATCH REFUSED
+(„references that exist nowhere: d, e, s, …")* auf **DISPATCH ALLOWED**; ein skalares `supersedes`
+lässt die abgelöste Entscheidung von *„zählt weiter als geltend"* auf **abgelöst** umschlagen, und
+`validate` fällt über denselben Zustand von **17 auf 3 Befunde** (16 Phantom-Fehler, je einer pro
+Buchstabe, verschwinden).
+
+**Warum Normalisieren am Leser und nicht Abweisen an `capture` — gemessen, nicht abgewogen:** eine
+Abweisung an der Tür hilft dem Item nicht, das den Skalar schon trägt (der Weg dorthin ist auch
+`update`, und die Archiv-Route der Migration ist vom Feldvertrag ohnehin ausgenommen), und sie
+verlangt am `capture` einen Begriff für „unbekanntes Feld", den es dort bewusst nicht gibt. Der
+Leserfix deckt beide Richtungen; was er nicht kann, steht unten als Rest.
+
+**Die Grenze selbst ist jetzt abgeleitet (AC-3):** `backlog_types.REFERENCE_LIST_FIELDS` nennt die
+Item-Felder, die **kein** Capture-Vertrag deklariert und deren **Elemente** der Kernel auflöst. Weil
+keine Eigenschaft von `REQUIRED_FIELDS`/`OPTIONAL_FIELDS` sie erzeugen kann, ist es eine Aufzählung
+— mit einem Stolperdraht, der **beide** Enden misst:
+`tools/test_backlog_types.py::test_the_reference_list_fields_are_what_the_kernel_reads_elementwise`
+leitet die Menge aus den laufenden Kernel-Quellen ab (jede Lesestelle in Sequenz-Kontext auf einem
+Namen, den das Modul aus einer Item-Quelle gebunden hat, minus der Vertragsuniversum-Felder) und
+vergleicht in beide Richtungen; gemessen: ein vierter Name in der Aufzählung → rot („declared but
+not read element-wise anywhere: ['risk_refs']"), ein entfernter Name → rot („read element-wise but
+not declared: ['premise_rechecks']").
+`tools/test_backlog_types.py::test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements`
+hält danach jede abgeleitete Lesestelle an die eine Definition.
+
+**Rote Tests ohne den Fix** (je im Klon außerhalb des Repos, Defekt wiederhergestellt, rot
+gesehen). **Sieben Stellen, aber sechs zurückgedrehte Leser, und beides stimmt:** `cli.py:678`
+liest sein Item aus dem **Rückgabe-Objekt** des Freeze und ist für den Stolperdraht damit
+unsichtbar (Rest 3) — es hängt am Test der Freeze-Kette, nicht am Draht. Mit den sechs
+zurückgedrehten Lesern
+`tools/test_staging_cli.py::test_a_scalar_design_ref_survives_the_freeze_as_one_reference`,
+`tools/test_report.py::test_a_scalar_supersedes_retires_the_decision_it_names`,
+`tools/test_report.py::test_a_scalar_premise_recheck_is_one_recheck_not_its_letters` und der
+Stolperdraht oben; mit den entfernten Validator-Prüfungen
+`tools/test_report.py::test_validate_names_a_scalar_reference_list_field` und
+`tools/test_report.py::test_validate_names_design_refs_that_resolve_to_nothing` (dort steht die
+Ausgangsmessung wörtlich im Fehlschlag: `found == []`).
+
+**Rest 1 — der Skalar wird benannt, nicht abgewiesen.** `capture` und `update` nehmen ihn
+unverändert; `report._check_reference_list_shape` meldet ihn als **Warnung**, und das ist gemessen
+und nicht vorsichtig: nach dem Leserfix löst ein Skalar als die **eine** Referenz auf, die er
+buchstabiert, und kein Gate entscheidet deswegen anders. Eine stille Reparatur der Datei kommt
+nicht in Frage — `project_memory/**` hat genau einen Schreiber.
+
+**Rest 2 — ein bereits beschädigtes Item wird gemeldet, nicht geheilt.** Es trägt eine **Liste**
+(von Buchstaben), fällt also durch die Formprüfung durch; dafür löst
+`report._check_design_refs_resolve` jeden Eintrag mit demselben Resolver auf, den das II.6a-Gate
+benutzt (`dispatch._design_ref_resolves`) — der Fall, der vorher „0 error(s), 0 warning(s)" ergab,
+nennt jetzt 34 nicht auflösbare Referenzen. `supersedes` und `premise_rechecks` hatten ihre
+Existenzprüfungen schon; die melden weiterhin **einen Befund pro Buchstabe**, was laut, aber
+unschön ist. Repariert wird in allen drei Fällen von Hand über den Kernel-Editierpfad.
+**Diese neue Fehlerklasse ist in einem Kit-Projekt ein Merge-Block, und das gehört hingeschrieben:**
+`dev-team/hooks/gate_memory_complete.py:159-178` sammelt jeden `validate_state`-Befund der Stufe
+`error` und `:270` verweigert damit `git push`/Merge — gemessen als echter Hook-Prozess gegen ein
+Projekt außerhalb des Repos: derselbe Push ist **rc 0** mit sauberem PR und **rc 2**, sobald das
+Item die buchstabenweise Liste trägt („1 finding(s): PR-0001: design_refs names 34 reference(s)…").
+Ein Projekt mit einem so beschädigten Item kann nach dem Kit-Update also erst wieder mergen, wenn
+das Item über den Kernel-Editierpfad korrigiert ist. Fail-closed in die ehrliche Richtung — der
+Zustand war schon vorher kaputt, nur unsichtbar.
+
+**Rest 3 — was die Ableitung nicht sieht, und das ist ihre Grenze, keine Zusicherung.** Ein Wert,
+der seinen Leser über ein **Rückgabe-Objekt** statt über eine Item-Lesung erreicht, taucht in ihr
+nicht auf — `kernel/cli.py:678` ist genau so eine Stelle (`result["root"]`) und hängt deshalb am
+Test der Freeze-Kette statt am Stolperdraht; ebenso ein Feldname, der weder Literal noch modulweite
+String-Konstante ist, und jeder Leser **außerhalb** von `team-kits/kernel/` (die Hooks und Skripte
+der Kits waren der TSK-0033-Sweep). **Eine vierte Blindstelle war die verbreitetste und ist
+geschlossen statt benannt:** ein Wert, der vor dem Sequenz-Kontext an einen lokalen Namen gebunden
+wird (`risky = item.get(f) or []` / `for ref in risky`) — die Zwei-Schritt-Schreibweise, in der
+`kernel/dispatch.py:1084` geschrieben ist. Gemessen: dieselbe eingespritzte Lesung war als
+Ein-Schritt-Form an beiden Drähten rot und als Zwei-Schritt-Form an beiden **grün**; der Leser
+folgt jetzt **einer** Bindung (`_key_read_aliases`), womit die Einspritzung rot wird
+(`report.py:1158 (consumed by for, not field_elements)`). Was danach bleibt: **mehr als eine**
+Bindung, oder ein Weg durch einen Aufruf — dort wäre der nächste Schritt eine Datenflussanalyse,
+und was sie brächte, ist ungemessen. Der Sprung ist zudem ohne Gültigkeitsbereichs-Analyse, was
+Kandidaten **hinzufügt** statt sie zu verschlucken (rote Gleichheit, kein stiller Verlust).
+`INV.scope` bleibt als **H42** offen: dort ist die Antwort keine Normalisierung, sondern eine
+Vertragsentscheidung.
 
 **Die Lehre über das Instrument, die hier das eigentliche Ergebnis ist:** eine Sweep-Menge, die aus
 der Oberfläche eines Kommandos abgeleitet wird, misst die Leser dieses Kommandos — nicht die

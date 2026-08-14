@@ -476,7 +476,7 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
                    root["id"], ", ".join(sorted(known_ac)) or "none defined")
             )
         if str(task.get("type", "")).lower() in UI_TASK_TYPES:
-            confirmed = [str(ref) for ref in (root.get("design_refs") or [])]
+            confirmed = [str(ref) for ref in field_elements(root.get("design_refs"))]
             if confirmed and str(task.get("design_ref") or "") not in confirmed:
                 raise DispatchError(
                     "%s is a UI task under %s, which has a confirmed design, but "

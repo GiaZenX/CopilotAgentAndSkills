@@ -50,6 +50,7 @@ from .backlog_types import (
     NON_AUTOMATON_STATUSES,
     PARENT_FIELDS,
     QA_EVIDENCE_KINDS,
+    REFERENCE_LIST_FIELDS,
     field_elements,
     parse_id,
 )
@@ -483,6 +484,8 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_premise_recheck(state, active_items))
     findings.extend(_check_fr_result_link(state, active_items))
     findings.extend(_check_dec_supersedes(state, active_items))
+    findings.extend(_check_reference_list_shape(active_items))
+    findings.extend(_check_design_refs_resolve(state, active_items))
     findings.extend(_check_ui_delivery_sequence(active_items))
     findings.extend(_check_dispatch_approval_presented(state, active_items))
     # staging orphans: neither an active task nor an active root item
@@ -1151,7 +1154,7 @@ def _check_premise_recheck(state: ProjectState, active_items: dict) -> list:
     for item_id, (item_type, item) in sorted(active_items.items()):
         if item_type not in ("PR", "RQ", "CR"):
             continue
-        for ref in item.get("premise_rechecks") or []:
+        for ref in field_elements(item.get("premise_rechecks")):
             ref = str(ref)
             if ref not in active_items and not _in_archive(state, ref):
                 findings.append(_finding(
@@ -1167,7 +1170,7 @@ def _check_premise_recheck(state: ProjectState, active_items: dict) -> list:
         for item_id, (item_type, item) in sorted(active_items.items()):
             if item_type not in ("PR", "RQ", "CR") or item.get("status") == "DRAFT":
                 continue
-            checked = {str(ref) for ref in (item.get("premise_rechecks") or [])}
+            checked = {str(ref) for ref in field_elements(item.get("premise_rechecks"))}
             missing = [dec for dec, _ in triggered if dec not in checked]
             if missing:
                 findings.append(_finding(
@@ -1233,7 +1236,7 @@ def _superseded_decisions(active_items: dict) -> dict:
     for item_id, (item_type, item) in active_items.items():
         if item_type != "DEC":
             continue
-        for ref in item.get(DEC_SUPERSEDES_FIELD) or []:
+        for ref in field_elements(item.get(DEC_SUPERSEDES_FIELD)):
             superseded_by[str(ref)] = item_id
     return superseded_by
 
@@ -1246,6 +1249,11 @@ def _holding_decisions(dec_items: dict) -> set:
     does NOT, and the link is not the only way a decision is retired) AND no other active decision
     names it in `supersedes`. The link half is `_superseded_decisions`, so the forward link stays the
     single source it is everywhere else rather than being re-derived here.
+
+    "NAMES IT IN `supersedes`" is a claim about a FIELD SHAPE too, and it is why `supersedes` is one
+    of `backlog_types.REFERENCE_LIST_FIELDS`: written as a bare id it was read as its letters, none
+    of which is an item id, so the replaced decision kept counting as holding -- measured, and
+    pinned by `test_report.test_a_scalar_supersedes_retires_the_decision_it_names`.
     """
     superseded = _superseded_decisions({d: ("DEC", it) for d, it in dec_items.items()})
     return {d for d, it in dec_items.items()
@@ -1267,7 +1275,7 @@ def _check_dec_supersedes(state: ProjectState, active_items: dict) -> list:
     for item_id, (item_type, item) in sorted(active_items.items()):
         if item_type != "DEC":
             continue
-        for ref in item.get(DEC_SUPERSEDES_FIELD) or []:
+        for ref in field_elements(item.get(DEC_SUPERSEDES_FIELD)):
             ref = str(ref)
             entry = active_items.get(ref)
             if entry is None and not _in_archive(state, ref):
@@ -1290,6 +1298,77 @@ def _check_dec_supersedes(state: ProjectState, active_items: dict) -> list:
                 "warning", dec_id,
                 "superseded by %s -- a replaced decision awaiting archive" % replacer,
                 "run `python scripts/harness.py archive %s`" % dec_id,
+            ))
+    return findings
+
+
+def _check_reference_list_shape(active_items: dict) -> list:
+    """A `REFERENCE_LIST_FIELDS` field written as a bare value where the state carries a list.
+
+    A WARNING, and the severity is the measurement rather than caution: since BUG-0038 every read
+    of these fields A DERIVATION OVER THE KERNEL SOURCES CAN SEE goes through `field_elements`, so a
+    scalar resolves as the one reference it spells and no gate decides differently because of it.
+    That qualifier is the honest width of the claim, not modesty: what the derivation reaches, and
+    the four things it does not, are in
+    `test_backlog_types._item_fields_read_as_sequences`, and the wire itself is
+    `test_backlog_types.test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements`.
+
+    NAMING IT IS ALSO ALL THIS CAN DO. `design_refs` is a hashed field (`HASHED_FIELDS`), so
+    correcting the shape moves the item's revision through `_update_item_locked`; a validator that
+    quietly rewrote the value would be doing that behind whatever approval the item carries -- and
+    `project_memory/**` has one writer, which is not this function.
+
+    THE CHECK IS THE SHAPE ONLY. An item already damaged by the BUG-0038 chain carries a LIST -- of
+    letters -- and passes here; that half is `_check_design_refs_resolve` and the two existence
+    checks the other two fields already had.
+    `test_report.test_validate_names_a_scalar_reference_list_field`.
+    """
+    findings = []
+    for item_id, (_item_type, item) in sorted(active_items.items()):
+        for field in REFERENCE_LIST_FIELDS:
+            value = item.get(field)
+            if value is None or value == "" or isinstance(value, (list, tuple)):
+                continue
+            findings.append(_finding(
+                "warning", item_id,
+                "%s is a single %s, not a list -- the kernel reads it as ONE reference"
+                % (field, type(value).__name__),
+                "write it as a list through the kernel edit path "
+                "(`python scripts/harness.py update %s`)" % item_id,
+            ))
+    return findings
+
+
+def _check_design_refs_resolve(state: ProjectState, active_items: dict) -> list:
+    """Every `design_refs` entry names a frozen design that EXISTS -- the II.6a question, asked
+    where the state is judged rather than only where a spawn is refused.
+
+    THE ONE FIELD OF `REFERENCE_LIST_FIELDS` NOTHING RESOLVED HERE. `supersedes` and
+    `premise_rechecks` have carried existence checks since BUG-0009(b)/BUG-0004, so a letter-split
+    value at least surfaces as findings naming letters; `design_refs` had none, which is why the
+    measured BUG-0038 chain ended in "0 error(s), 0 warning(s)" over an item holding 34 one-letter
+    entries. Normalising the readers stops the damage being CREATED; an item written that way
+    before is reachable only through a check, and this is it.
+
+    Through `dispatch._design_ref_resolves`, the resolver the dispatch gate itself uses, so a
+    validator that says "fine" and a gate that refuses the spawn cannot come apart.
+    `test_report.test_validate_names_design_refs_that_resolve_to_nothing`.
+    """
+    from .dispatch import _design_ref_resolves   # lazy: keeps the package's import graph a tree
+
+    findings = []
+    for item_id, (_item_type, item) in sorted(active_items.items()):
+        missing = [str(ref) for ref in field_elements(item.get("design_refs"))
+                   if not _design_ref_resolves(state, str(ref))]
+        if missing:
+            shown = ", ".join(missing[:3]) + (" ..." if len(missing) > 3 else "")
+            findings.append(_finding(
+                "error", item_id,
+                "design_refs names %d reference(s) that resolve to no frozen design: %s"
+                % (len(missing), shown),
+                "freeze the design through the promotion path, or correct the entry -- this is the "
+                "list the II.6a dispatch tooth resolves on a ROOT item, and a reference to nothing "
+                "binds nothing",
             ))
     return findings
 

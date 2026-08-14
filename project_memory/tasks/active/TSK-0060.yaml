@@ -1,0 +1,39 @@
+id: TSK-0060
+product_requirement: PR-0001
+derives_from: BUG-0015
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+required_inputs:
+- 'DEC-0043 (the user''s contract decision: INV.scope is exactly one area, list spelling
+  refused loudly)'
+- H42 entry in docs/POST_V2_WISHLIST.md with its measured chains and the four readers
+expected_outputs:
+- 'STEP 1: the refusal built at the measured earliest honest point (capture and/or
+  validate) with the two-items remedy in its message; red-without-fix on the H42 chain
+  (list spelling -> loud refusal instead of rc 0 silence)'
+- 'STEP 2: the four readers unchanged in behavior, measured; a pre-existing list-spelled
+  INV in a project is caught by validate with the remedy'
+- 'STEP 3: H42 closed in the wishlist per the closed-hole conventions (entry framing
+  + table row verdict in the SAME edit; run the hole-list subset and report the number)'
+- 'STEP 4: bump_kit_version (state stamps); ruff; validate; ONE full tools/ run with
+  numbers; report file:line, residues named'
+dependencies:
+- DEC-0043
+- BUG-0015
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-14T14:40:00'

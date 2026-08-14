@@ -1,0 +1,53 @@
+id: TSK-0059
+product_requirement: PR-0003
+derives_from: BUG-0038
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/kernel/**
+- team-kits/*/VERSION
+- tools/**
+- docs/reviews/**
+- docs/POST_V2_WISHLIST.md
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+- team-kits/*-team/**
+required_inputs:
+- 'BUG-0038 (the measured chain: capture PR with scalar design_refs -> freeze-design
+  letter-splits into canonical state via staging.py:319; validate 0 errors; readers
+  report.py:1236/:1270 supersedes, :1154/:1170 premise_rechecks; boundary migrate._item_fields:1177)'
+- docs/reviews/2026-08-14-tsk0033-map-field-reader-sweep.md section 5 (the sweep boundary
+  this class fell through)
+- backlog_types.field_elements (the definition BUG-0015 introduced -- reuse it, do
+  not write a second one)
+expected_outputs:
+- 'STEP 1 MEASURE: derive in ONE place the set of kernel-written list fields outside
+  the contract universe (AC-3) -- from the running code (writers under kernel/), not
+  a hand list; measure each field''s write and read sites for the scalar shape'
+- 'STEP 2 FIX: the freeze-design chain no longer letter-splits (normalise via field_elements
+  at the write site or refuse at capture -- justify the choice; AC-1 red-without-fix
+  on the canonical item content); supersedes and premise_rechecks readers measured
+  and fixed the same way or named (AC-2)'
+- 'STEP 3: validate names a scalar in a kernel-written list field instead of 0 errors,
+  OR the write site refuses it (AC-4) -- red-without-fix'
+- 'STEP 4 SHIP: update the H43 wishlist entry to the closed state per the closed-hole
+  conventions (table row verdict, cell naming if applicable, provenance stays); bump_kit_version
+  (state stamps); ruff; validate; ONE full tools/ run with numbers; report file:line,
+  the derived field set, residues named'
+dependencies:
+- BUG-0038
+- DEC-0042
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-14T14:35:36'
+closed_at: '2026-08-14T17:50:32'
