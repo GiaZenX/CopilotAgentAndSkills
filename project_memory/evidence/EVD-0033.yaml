@@ -1,0 +1,21 @@
+id: EVD-0033
+kind: review
+related:
+- TSK-0027
+result: pass
+summary: 'verifier PASS for diff:3507146ca8b4927b84e3d7b1ab50d15246a7c68eda81b925aa8f98377ca29e86
+  -- pilot 3 (invoice tool, DEC-0031 persona, kit 2026.08.14-9): 90.41 USD logged
+  (rig turn-limit stop, 9.59 under the DEC-0027 rail), 101 inputs / 66 to first shown
+  PDF, no user-runnable tool at stop (core+PDF+persistence done, 232 tests green independently
+  re-run), domain verdict CARRIED not shortened (first paragraph-mention is the apparatus''s,
+  measured), zero /hooks ceremony full-transcript-swept, 15 findings B1-B15 noted
+  none fixed (5 from the 61-block enforcement audit the verifier opened); evaluation
+  FAILed twice on numbers/claims, all 13 findings closed by re-measurement incl. one
+  verifier retraction (quote existed verbatim; its filter read a derived artifact),
+  final four one-line edits pre-approved as PASS; three-pilot comparison with same-metric
+  autonomy numbers (P1 wall at 8, P2 38 total/15-to-UI, P3 no wall)'
+artifact_refs:
+- ../docs/pilot/2026-08-14-pilot-3-rechnungswerkzeug.md
+revision: 1
+approval_ref: null
+created: '2026-08-14T23:42:54'

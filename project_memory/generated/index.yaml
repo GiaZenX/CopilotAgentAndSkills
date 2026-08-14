@@ -1,4 +1,4 @@
-generated_at: '2026-08-14T19:33:39'
+generated_at: '2026-08-14T23:42:55'
 items:
 - id: BUG-0001
   type: BUG
@@ -705,6 +705,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0033
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -875,11 +881,5 @@ items:
   title: 'This repo''s enforcement: four gates, a bound session agent, and no history
     record without a verdict'
   status: ACCEPTED
-  revision: 1
-  approval_ref: null
-- id: TSK-0027
-  type: TSK
-  title: null
-  status: DRAFT
   revision: 1
   approval_ref: null
