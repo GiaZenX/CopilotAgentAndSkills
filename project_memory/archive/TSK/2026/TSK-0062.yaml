@@ -1,0 +1,49 @@
+id: TSK-0062
+product_requirement: PR-0003
+derives_from: BUG-0040
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+- docs/POST_V2_WISHLIST.md
+required_inputs:
+- 'BUG-0040 (pilot 3 B12: gate_dispatch refused TSK-0005 for referencing AC-11/15/17/20/22
+  -- criteria minted by APPROVED CRs; the gate knew only the root''s AC-1..AC-10;
+  audit chain 21:54:37)'
+- 'the criteria producers: where do approved CRs record the ACs they mint (kernel/approvals?
+  the CR item body? measure the store shape the pilot project actually carries)'
+- gate_dispatch's current criteria check (the kit hook) and whatever kernel reader
+  feeds it
+expected_outputs:
+- 'STEP 1 MEASURE: in the pilot project''s copy or a fresh scaffold, how an APPROVED
+  CR''s criteria are stored today and how gate_dispatch resolves acceptance_refs;
+  the exact refusal path'
+- 'STEP 2 FIX: the criteria universe is DERIVED in ONE kernel place -- root ACs plus
+  ACs of APPROVED CRs targeting that root (approved revisions included; unapproved/rejected
+  CRs excluded) -- and gate_dispatch reads that derivation; no second list'
+- 'STEP 3 TESTS: a task referencing an approved-CR criterion dispatches (red-without-fix,
+  the pilot chain replayed); a nonexistent criterion still refuses listing the derived
+  universe honestly; an unapproved CR''s criteria do NOT count (measured); mirrors
+  identical'
+- 'STEP 4 SHIP: bump_kit_version (state stamps); ruff; validate; ONE full tools/ run
+  with numbers; report file:line, the derivation, residues named'
+dependencies:
+- BUG-0040
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:49:55'
+closed_at: '2026-08-15T12:45:41'

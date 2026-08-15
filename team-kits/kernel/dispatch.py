@@ -26,12 +26,20 @@ from .approvals import (
     ROOT_DISPATCH_KINDS,
     ROUTINE_ROLE_FIELD,
     ApprovalError,
+    approved_statuses,
     assert_apr_in_force,
     consumed_request,
+    item_subject_manifest,
     proven_expiry,
     read_apr,
 )
-from .backlog_types import UI_TASK_TYPES, field_elements, parse_id
+from .backlog_types import (
+    AMENDMENT_TYPES,
+    PARENT_FIELDS,
+    UI_TASK_TYPES,
+    field_elements,
+    parse_id,
+)
 from .schemas import validate
 from .state import ProjectState, StateError, _now_iso
 
@@ -52,6 +60,13 @@ BIND_WINDOW = 120.0
 # Analyse-Tasks decken"). Named here because the manifest is otherwise free-form
 # for analysis, and a gate cannot check a key nobody agreed on.
 ANALYSIS_TASKS_KEY = "tasks"
+# The item fields that OFFER criterion ids (spec II.2: PR/RQ/CR/BUG carry
+# `acceptance_criteria`, EXP carries `success_criteria`). One tuple, because two
+# readers ask about it in opposite directions -- `_criteria_ids` collects the ids
+# out of them, `_approval_covers_criteria` asks whether an approval's manifest
+# signed them -- and a second spelling would let the second reader vouch for a
+# field the first one reads.
+CRITERIA_FIELDS = ("acceptance_criteria", "success_criteria")
 
 
 class DispatchError(StateError):
@@ -462,18 +477,26 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
         # success_criteria, and `derives_from` names which of them a task serves.
         # Resolving AC against the root alone made every bugfix, CR and EXP task
         # undispatchable while passing only the WRONG reference.
+        #
+        # AND ONE HOP AWAY IS NOT THE WHOLE UNIVERSE EITHER -- BUG-0040. An
+        # APPROVED AMENDMENT changes the ROOT's contract, so its criteria reach a
+        # task that derives from the root and names no CR at all. The universe is
+        # therefore derived rather than walked; `_known_acceptance_ids_locked` is
+        # the one place it is built, and `excluded` is what it could not admit.
         refs = [str(ref) for ref in field_elements(task.get("acceptance_refs"))]
-        known_ac = _known_acceptance_ids_locked(state, root, task)
+        known_ac, excluded = _known_acceptance_ids_locked(state, root, task)
         unknown = [ref for ref in refs if ref not in known_ac]
         if not refs or unknown:
             raise DispatchError(
                 "%s %s -- a task nobody can check against the approved criteria "
                 "is not dispatchable (spec II.4). Remedy: reference criteria that "
-                "exist on %s or on its derives_from item (known: %s)."
+                "exist on %s, on its derives_from item, or on an approved amendment "
+                "of %s (known: %s).%s"
                 % (task_id,
                    "carries no acceptance_refs" if not refs
                    else "references criteria that exist nowhere: %s" % ", ".join(unknown),
-                   root["id"], ", ".join(sorted(known_ac)) or "none defined")
+                   root["id"], root["id"], ", ".join(sorted(known_ac)) or "none defined",
+                   _amendment_hint(unknown, excluded))
             )
         if str(task.get("type", "")).lower() in UI_TASK_TYPES:
             confirmed = [str(ref) for ref in field_elements(root.get("design_refs"))]
@@ -911,7 +934,7 @@ def _criteria_ids(item: dict) -> set:
     and against a scalar `acceptance_refs` that split the same way the dispatch check passed on
     criteria nobody wrote."""
     ids = set()
-    for field in ("acceptance_criteria", "success_criteria"):
+    for field in CRITERIA_FIELDS:
         for entry in field_elements(item.get(field)):
             if isinstance(entry, dict) and entry.get("id"):
                 ids.add(str(entry["id"]))
@@ -920,25 +943,214 @@ def _criteria_ids(item: dict) -> set:
     return ids
 
 
-def _known_acceptance_ids_locked(state: ProjectState, root: dict, task: dict) -> set:
-    """Criterion ids a task may reference: the root's, plus its derives_from item's.
+def _binds_to(item_type: str, item: dict, target_id: str) -> bool:
+    """Does this item hang DIRECTLY from `target_id`, through a field its own contract binds with?
 
-    `derives_from` is a required TSK field and is what names the contract the task
-    actually serves -- a bugfix task referencing the PR's AC instead of the BUG's
-    Fix-Kriterien would be referencing the wrong contract entirely.
+    A predicate over `backlog_types.PARENT_FIELDS`, which is where the fact "these field names
+    carry a binding" is decided; `report._parent_bindings` is the other reader of that same map,
+    for the walk that needs the pairs rather than a yes/no. Direct rather than transitive on
+    purpose -- an amendment names its target itself, and the narrower question is the safe one for
+    a check that WIDENS what dispatches.
+    """
+    return any(str(one) == target_id
+               for field in PARENT_FIELDS.get(item_type, ())
+               for one in field_elements(item.get(field)))
+
+
+def _approval_covers_criteria(item: dict, kind: str) -> bool:
+    """Does an approval of this KIND hash the very criteria we are about to trust?
+
+    THE QUESTION THIS ANSWERS, and why it is not "is the kind `scope`": `assert_apr_in_force`
+    verifies a content hash only for the item-derived kinds, and even among those only the SCOPE
+    manifest carries `acceptance_criteria` (`approvals._SCOPE_FIELDS`; the acceptance and delivery
+    manifests name delivered commits and task lists instead). An `analysis` or `routine` approval
+    is not item-derived at all and `item_subject_manifest` refuses to build one.
+
+    So the reachable hole this closes is a real interaction and not a hypothetical: `mint` writes
+    `approval_ref` for EVERY item-bound approval (see `_covering_routine_apr`, which documents the
+    same overwrite for roots), so a routine approval minted on an already-APPROVED amendment leaves
+    `status: APPROVED` standing beside an `approval_ref` whose kind hashes nothing -- and an
+    out-of-band edit of the criteria would then widen the universe unchallenged. Asking the
+    MANIFEST instead of naming a kind means a kind added to `APPROVAL_TRANSITIONS` later is judged
+    by what it actually covers.
+
+    THE RETURN LINE IS THE WHOLE PROTECTION FOR ONE FIELD, so it is named rather than left to be
+    inferred: `success_criteria` is read by `_criteria_ids` and is NOT in `approvals._SCOPE_FIELDS`.
+    Measured 2026-08-15 -- an out-of-band `success_criteria: [{id: AC-77}]` added to an APPROVED CR
+    leaves the scope hash MATCHING (so `assert_apr_in_force` says nothing), and this comparison is
+    the only thing between that and a dispatchable criterion nobody signed. It is per FIELD and not
+    per item for exactly that reason. `test_approvals_dispatch
+    .test_a_criterion_smuggled_into_a_field_the_approval_does_not_sign_does_not_widen` is its red
+    test; the line has no other one.
+    """
+    try:
+        manifest = item_subject_manifest(item, kind)
+    except ApprovalError:
+        return False  # not item-derived -- it signs no content of this item at all
+    return all(field in manifest for field in CRITERIA_FIELDS if field in item)
+
+
+def _amendment_criteria_locked(state: ProjectState, root: dict):
+    """(criterion ids, {amendment id: why it does not count}) for the amendments of one root.
+
+    THE DERIVATION: an amendment's criteria are part of the root's contract when the USER approved
+    that amendment's content -- the same authority the root's own criteria rest on, which
+    `_assert_dispatch_authorised_locked` has already demanded one frame up. Four terms, each read
+    from the store that owns it:
+      * it IS an amendment -- `backlog_types.AMENDMENT_TYPES`, the types that name the revision
+        they amend;
+      * it amends THIS root -- `_binds_to`, over the reference graph's own binding fields;
+      * it still STANDS in a status a user's approval put it in -- `approvals.approved_statuses`,
+        derived from the type's automaton, which is what keeps a REJECTED amendment out (its
+        `approval_ref` survives the rejection) and an APPLIED one too;
+      * its approval is IN FORCE and SIGNS THE CRITERIA -- `assert_apr_in_force` plus
+        `_approval_covers_criteria`.
+    Nothing here enumerates a type, a status or a kind, so the day a kit ships a second amendment
+    type it arrives already resolved -- the property is held from both ends by
+    `test_backlog_types.test_an_amendment_is_the_type_that_names_the_revision_it_amends`.
+
+    WHAT THE SIGNATURE COVERS, AND WHAT IT DOES NOT -- said plainly, because "the user approved it"
+    is true of the CONTENT and not of the MEMBERSHIP. The scope manifest hashes the criteria
+    (`approvals._SCOPE_FIELDS`, which concedes the same narrowness at its own definition), and it
+    does NOT hash `target_pr` -- so which root an amendment belongs to is not part of what anybody
+    signed. Through the kernel that is closed: an edit of `target_pr` is a `HASHED_FIELDS` change,
+    which bumps the revision and drops the approval. PAST the kernel it is open: a hand-edited
+    `target_pr` re-aims a still-valid approval's criteria into another root's universe, and this
+    reader cannot tell. Widening the manifest would kill every live approval, so it is a spec
+    decision with a migration and not something to slip in here. Authorisation is untouched either
+    way -- that comes from the ROOT's own approval, one frame up.
+
+    WHERE THIS DERIVATION STOPS, and it is a residue rather than a safe edge: an amendment that
+    reached its terminal `APPLIED` contributes nothing, and once archived it is not even read --
+    so a LATER task against a criterion that CR minted is refused again, BUG-0040 one lifecycle
+    step further on. Not widened here because `approved_statuses` answers `{APPROVED}` for CR by
+    the same argument that keeps `RETIRED` out for PROC, and overriding a derivation with a special
+    case is the shape this whole item is fixing. The behaviour is asserted, not promised, by
+    `test_approvals_dispatch.test_an_applied_amendments_criteria_stop_counting`, so widening it
+    later is a decision somebody has to take rather than a silent drift.
+
+    The second element is what makes the refusal honest: an amendment whose criteria do NOT count
+    is invisible in the item files (they read `AC-11` plainly), so the reason travels with the
+    refusal instead of leaving the user to compare hashes by hand -- the failure BUG-0039 is about.
+    """
+    known, excluded = set(), {}
+    for item_type in sorted(AMENDMENT_TYPES):
+        for _stem, path in state.iter_active_items(item_type):
+            try:
+                item = state._read_yaml(path)
+            except Exception as exc:  # noqa: BLE001 -- an unreadable amendment approves nothing
+                # criteria None: unreadable means we cannot say WHICH criteria were lost, so this
+                # one is named in every refusal rather than only in the ones it could explain
+                excluded[os.path.basename(path)] = (None, "unreadable (%r)" % (exc,))
+                continue
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            if not _binds_to(item_type, item, root["id"]):
+                continue
+            reason = _amendment_refusal(state, item, item_type)
+            if reason is None:
+                known |= _criteria_ids(item)
+            else:
+                excluded[str(item["id"])] = (_criteria_ids(item), reason)
+    return known, excluded
+
+
+def _amendment_hint(unknown, excluded: dict) -> str:
+    """The half of the refusal that names WHY a criterion the user can READ is not in the universe.
+
+    Only the amendments that could explain THIS refusal -- one that offers an unrecognised
+    reference, or one nobody could read. Naming every excluded amendment would bury the one that
+    matters under the rest of the backlog, and a reference no amendment offers is exactly the
+    "exists nowhere" case this must not dress up as an approval problem.
+
+    Without it the user meets the pilot's own confusion one level deeper: `CR-0001.yaml` says
+    `AC-11` in plain sight while the gate says it exists nowhere, and the difference is a hash
+    nobody can see. BUG-0039 is that failure mode in the approval texts.
+    """
+    if not unknown:
+        return ""   # the refusal is "no acceptance_refs at all" -- no amendment explains that
+    named = []
+    for item_id, (criteria, reason) in sorted(excluded.items()):
+        if criteria is None or criteria & set(unknown):
+            named.append("%s (%s)" % (item_id, reason))
+    if not named:
+        return ""
+    return (" Amendments of the root that could hold a missing reference, and why their criteria "
+            "do not count: %s." % "; ".join(named))
+
+
+def _amendment_refusal(state: ProjectState, item: dict, item_type: str):
+    """Why this amendment of the root contributes no criteria, or None when it does."""
+    status = item.get("status")
+    if status not in approved_statuses(item_type):
+        return "status %r is not a status a user's approval put it in" % status
+    apr_ref = item.get("approval_ref")
+    if not apr_ref:
+        return "it carries no approval_ref"
+    try:
+        apr = read_apr(state, apr_ref)
+        assert_apr_in_force(state, apr, item)
+    except Exception as exc:  # noqa: BLE001 -- see below
+        # BROAD ON PURPOSE, and the direction is what makes it safe: every answer this branch can
+        # give NARROWS the universe, so an unforeseen failure costs a refusal a reader can see and
+        # never a criterion a reader cannot. `read_apr` translates a missing file, but a corrupt
+        # approval YAML or an unreadable consumed request arrives as neither StateError nor
+        # ApprovalError -- and reaching the hook as an internal error would report "the harness is
+        # broken" about an amendment that simply does not vouch for anything.
+        return str(exc) or repr(exc)
+    if not _approval_covers_criteria(item, apr.get("kind")):
+        return ("its approval %s is of kind %r, whose subject manifest does not carry the "
+                "criteria -- nothing signed them" % (apr_ref, apr.get("kind")))
+    return None
+
+
+def _known_acceptance_ids_locked(state: ProjectState, root: dict, task: dict):
+    """(criterion ids a task may reference, why an amendment's were left out).
+
+    Two hops, and they are strict in DIFFERENT ways because the items behind them differ:
+
+    1. `derives_from`, a required TSK field naming the contract the task actually serves -- a
+       bugfix task referencing the PR's AC instead of the BUG's Fix-Kriterien would be referencing
+       the wrong contract entirely. This hop asks only that the origin RESOLVES. It carries no
+       status and no approval term, and that is a DESIGN CHOICE with a measured reason rather than
+       an oversight: a `BUG` cannot reach `APPROVED` in a repo whose approval mint is unreachable
+       (H39), while the kits' own bugfix flow cuts tasks against a TRIAGED bug's Fix-Kriterien. A
+       status term here would make that flow undispatchable. So the looseness is real and it is
+       bounded by what it lends: the criteria of an item the PLANNER named, under a root whose own
+       approval already authorised the dispatch one frame up.
+       `test_approvals_dispatch.test_a_bugfix_task_may_reference_a_triaged_bugs_fix_criteria`
+       holds that direction open.
+    2. THE AMENDMENT HOP, which needs no `derives_from` at all, because an approved amendment
+       changes the ROOT's contract rather than offering one of its own. BUG-0040 carries the field
+       observation and names the audit chain it was measured on: a live project's approved change
+       requests minted criteria that this gate then called nonexistent, and the task was cancelled
+       for it. Re-cutting that task against ONE of the change requests would have bought its
+       criteria and lost the rest, which is why the fix is a derivation over the root rather than a
+       second hop.
+
+    AND AN AMENDMENT MAY ONLY ENTER THROUGH HOP 2 -- the `continue` below. Without it hop 1 was the
+    way around hop 2's whole point: `derives_from: CR-0001` on a DRAFT, never-approved CR lent
+    `AC-11` and the spawn PASSED (measured 2026-08-15), so the amendment path's approval term could
+    be walked past by naming the same item one field over. The exclusion reads `AMENDMENT_TYPES`,
+    the same derivation hop 2 selects with, so the two halves cannot come apart.
+    `test_approvals_dispatch.test_an_unapproved_amendment_named_in_derives_from_lends_nothing`
+    is the red side of it.
     """
     known = _criteria_ids(root)
     for origin in field_elements(task.get("derives_from")):
         if not origin or str(origin) == root["id"]:
             continue
         try:
-            parse_id(str(origin))
+            origin_type, _number = parse_id(str(origin))
         except ValueError:
             continue  # free-text provenance note, not an item reference
+        if origin_type in AMENDMENT_TYPES:
+            continue  # an amendment's criteria are approval-gated -- hop 2 or nothing
         item, _archived = _read_item_any(state, str(origin))
         if item:
             known |= _criteria_ids(item)
-    return known
+    amended, excluded = _amendment_criteria_locked(state, root)
+    return known | amended, excluded
 
 
 def _assert_dependencies_met_locked(state: ProjectState, task: dict) -> None:

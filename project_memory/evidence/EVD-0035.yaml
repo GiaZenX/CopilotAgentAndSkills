@@ -1,0 +1,16 @@
+id: EVD-0035
+kind: review
+related:
+- TSK-0062
+- BUG-0040
+result: pass
+summary: 'verifier PASS for diff:f4165875fca0d225c2cc516e7c82b998e05c61aaceeb8a19c251180126dab251
+  -- TSK-0062: approved-amendment criteria dispatchable, derivation in dispatch._amendment_criteria_locked,
+  derives_from hole closed for amendments, comment justification re-measured against
+  the pilot store, kits 2026.08.15-7; residues carried as H44; unrelated gate-suite
+  red booked as BUG-0051'
+artifact_refs:
+- staging/TSK-0062/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-15T12:45:21'

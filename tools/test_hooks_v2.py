@@ -2253,6 +2253,51 @@ def test_dispatch_gate_allows_a_valid_spawn(tmp_path):
     assert lease.get("awaiting_bind_until")  # the child may now claim it
 
 
+def amended_repo(tmp_path, approve_the_amendment=True):
+    """A repo whose root carries an amendment minting AC-11 -- the pilot-3 shape (BUG-0040).
+
+    The amendment's approval is MINTED through the real approval hook, like every other approval
+    in this file: a hand-written `status: APPROVED` would let the criteria check pass on a state
+    no user ever signed, which is the very thing the derivation under test is built to require.
+    """
+    state = ProjectState(str(tmp_path / "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    pr = state.capture("PR", dict(PR_FIELDS))
+    mint_via_hook(state, approvals.create_pending_request(state, "scope", pr["id"]))
+    cr = state.capture("CR", {"title": "loyalty discount", "target_pr": pr["id"],
+                              "target_revision": 1, "change_description": "a discount line",
+                              "acceptance_criteria": [{"id": "AC-11", "text": "discount"}]})
+    if approve_the_amendment:
+        mint_via_hook(state, approvals.create_pending_request(state, "scope", cr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            acceptance_refs=["AC-11"]))
+    state.transition(task["id"], "READY")
+    return state, cr, dispatch.dispatch_header(dispatch.create_lease(state, task["id"]))
+
+
+def test_the_shipped_gate_authorises_a_spawn_against_an_approved_amendments_criterion(tmp_path):
+    """BUG-0040 through the PROCESS the provider starts, not through a library call.
+
+    Pilot 3 measured the refusal at exactly this layer (audit log 21:54:37, `gate_dispatch` block),
+    so the fix has to be measured there too -- the kernel derivation is only reachable from a spawn
+    because this hook calls `validate_dispatch`, and a test that stopped at the kernel would not
+    say whether the shipped hook still gets there.
+    """
+    state, _cr, header = amended_repo(tmp_path)
+    result = run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_shipped_gate_still_refuses_an_unapproved_amendments_criterion(tmp_path):
+    """The counter-direction at the same layer: a DRAFT amendment authorises nothing, and the
+    refusal that reaches the operator names the item and the reason -- the criterion is plainly
+    readable in `CR-0001.yaml`, so a bare "exists nowhere" is the pilot's confusion again."""
+    state, cr, header = amended_repo(tmp_path, approve_the_amendment=False)
+    result = run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    assert result.returncode == 2
+    assert "AC-11" in result.stderr and cr["id"] in result.stderr, result.stderr
+
+
 AUDIT_TSK_FIELDS = dict(TSK_FIELDS, type="review", assigned_role="project-auditor",
                         allowed_scope=[], forbidden_scope=[], expected_outputs=["findings"])
 

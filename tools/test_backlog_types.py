@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
 
 from kernel.state import CONFIRMING_EVIDENCE, _KERNEL_SET  # noqa: E402
-from kernel import backlog_types  # noqa: E402
+from kernel import approvals, backlog_types  # noqa: E402
 from kernel.backlog_types import (  # noqa: E402
     AUTOMATA,
     _Automaton,
@@ -548,3 +548,46 @@ def test_the_evidence_rule_names_only_edges_the_automaton_has():
     for item_type, kind in CONFIRMING_EVIDENCE.items():
         assert confirming_edge(item_type) is not None, item_type
         assert kind in EVIDENCE_KINDS, (item_type, kind)
+
+
+def test_an_amendment_is_the_type_that_names_the_revision_it_amends():
+    """Both ends of the ONE field name BUG-0040's derivation rests on.
+
+    `AMENDMENT_TYPES` decides whose `acceptance_criteria` an approval may add to a root's
+    contract (`dispatch._amendment_criteria_locked`), so a derivation that silently answered
+    "nobody" would put the pilot-3 refusal straight back, and one that answered "everybody" would
+    let any approved item under the root lend its criteria to any task.
+
+    THE PROPERTY, stated over every type the contracts declare rather than over CR: an amendment is
+    the type whose own contract makes it name the REVISION of the item it amends. The dead end is
+    the field name -- rename `target_revision` and the set empties. The needless end is the
+    counter-direction: `BUG` binds to a root and carries `acceptance_criteria`, and is NOT an
+    amendment, so the field really discriminates instead of merely selecting everything.
+
+    The two duties that make the derivation SAFE are asserted for every member, because they are
+    what the dispatch reader assumes and neither is guaranteed by the field name: an amendment must
+    be able to NAME its target (a binding field), and its criteria must be inside what a scope
+    approval hashes -- otherwise `dispatch._approval_covers_criteria` would vouch for content no
+    user ever signed.
+    """
+    declared = backlog_types.DECLARED_REQUIRED_FIELDS
+    derived = backlog_types.AMENDMENT_TYPES
+    assert derived, (
+        "no type declares %r -- the amendment derivation is dead and every approved amendment's "
+        "criteria are unreachable again (BUG-0040)" % backlog_types.AMENDMENT_REVISION_FIELD)
+    for item_type, fields in declared.items():
+        assert (item_type in derived) == (backlog_types.AMENDMENT_REVISION_FIELD in fields), item_type
+    assert "BUG" not in derived, (
+        "BUG binds to a root and carries acceptance_criteria -- if it is an amendment, the field "
+        "no longer discriminates and the criteria of every approved bug widen the root's universe")
+    for item_type in sorted(derived):
+        assert backlog_types.PARENT_FIELDS.get(item_type), (
+            "%s is an amendment with no binding field -- it can never name the root it amends"
+            % item_type)
+        assert "acceptance_criteria" in backlog_types.HASHED_FIELDS.get(item_type, ()), (
+            "%s is an amendment whose criteria are not approval-relevant content" % item_type)
+        signed = approvals.item_subject_manifest(
+            {"id": "%s-0001" % item_type, "revision": 1, "acceptance_criteria": []}, "scope")
+        assert "acceptance_criteria" in signed, (
+            "%s: a scope approval does not sign its criteria, so nothing backs the widening"
+            % item_type)

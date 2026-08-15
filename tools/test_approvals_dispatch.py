@@ -641,12 +641,19 @@ def test_a_bugfix_task_may_reference_the_bugs_own_fix_criteria(state):
 
 
 def test_a_cr_derived_task_may_reference_the_crs_own_criteria(state):
-    """A CR exists precisely because its AC differ from the PR revision it changes."""
+    """A CR exists precisely because its AC differ from the PR revision it changes.
+
+    NAMING THE CR IN `derives_from` IS STILL THE RIGHT SHAPE and still dispatches -- what changed
+    with BUG-0040 is WHICH HOP carries it: an amendment's criteria now arrive through the
+    approval-gated amendment path, so this shape works once the user has approved the CR and not
+    before. The task below is otherwise the one this test always ran.
+    """
     pr = state.capture("PR", dict(PR_FIELDS))
     approve_scope(state, pr["id"])
     cr = state.capture("CR", {"title": "add express checkout", "target_pr": pr["id"],
                               "target_revision": 1, "change_description": "express lane",
                               "acceptance_criteria": [{"id": "AC-CR-1", "text": "one click"}]})
+    approve_scope(state, cr["id"])
     header = _dispatchable(state, pr["id"], derives_from=cr["id"], acceptance_refs=["AC-CR-1"])
     assert dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
 
@@ -2778,3 +2785,275 @@ def test_no_direct_status_write_can_produce_a_status_an_approval_commits():
     # source had seven, and pinning the number here would only re-create that lie one layer down.
     assert {where.split(":")[0] for where in writers} >= {"state.py", "dispatch.py"}, writers
     assert not offenders, offenders
+
+
+# -- BUG-0040: the criteria an APPROVED AMENDMENT of the root mints -------------
+
+CR_FIELDS = {
+    "title": "automatic loyalty discount",
+    "target_revision": 1,
+    "change_description": "a percentage discount line on every invoice",
+    "acceptance_criteria": [{"id": "AC-11", "text": "a discount may be entered per invoice"}],
+}
+
+
+def _root_with_amendment(state, approved=True, target=None, **cr_overrides):
+    """A root, and a CR amending it -- the pilot-3 shape (PR-0001 with six approved CRs)."""
+    pr = state.capture("PR", dict(PR_FIELDS))
+    approve_scope(state, pr["id"])
+    cr = state.capture("CR", dict(CR_FIELDS, target_pr=target or pr["id"], **cr_overrides))
+    if approved:
+        approve_scope(state, cr["id"])          # (CR, scope) walks DRAFT -> APPROVED
+    return pr, state.read_item(cr["id"])
+
+
+def test_a_task_may_reference_the_criteria_an_approved_amendment_of_its_root_minted(state):
+    """THE FIELD CHAIN OF BUG-0040, replayed in the shape the pilot project actually had.
+
+    That item carries the observation and names the audit chain: approved change requests minted
+    criteria, and the dispatch gate called them nonexistent. `derives_from` is the ROOT here, as
+    the pilot's task had it, and that is the point -- an approved amendment changes the ROOT's
+    contract, so a task serving it derives from the root and names no change request at all.
+    """
+    pr, cr = _root_with_amendment(state)
+    assert cr["status"] == "APPROVED" and cr["approval_ref"]
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    assert dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+
+
+def test_an_unapproved_amendments_criteria_do_not_count(state):
+    """The direction that must NOT widen through the amendment hop: a DRAFT amendment is a
+    proposal, and the refusal names the item and the reason, because the criterion is plainly
+    readable in the CR file and the difference is otherwise invisible.
+
+    This test alone does NOT establish that an unapproved amendment lends nothing -- the task here
+    derives from the root. The way round it is the neighbouring test, which names the CR in
+    `derives_from`."""
+    pr, cr = _root_with_amendment(state, approved=False)
+    assert cr["status"] == "DRAFT"
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "exist nowhere: AC-11" in str(exc.value)
+    assert cr["id"] in str(exc.value) and "DRAFT" in str(exc.value)
+
+
+def test_an_unapproved_amendment_named_in_derives_from_lends_nothing(state):
+    """THE WAY AROUND THE APPROVAL TERM, measured 2026-08-15 and closed.
+
+    The amendment hop refuses a DRAFT CR. The `derives_from` hop beside it asked only that the
+    origin RESOLVE -- no status, no approval -- so naming the very same CR one field over lent
+    `AC-11` and the spawn PASSED. Two hops into one universe are only as strict as the looser one,
+    and this is what makes the amendment path's whole approval term reachable rather than
+    decorative: an amendment's criteria now enter through hop 2 or not at all.
+    """
+    pr, cr = _root_with_amendment(state, approved=False)
+    assert cr["status"] == "DRAFT"
+    header = _dispatchable(state, pr["id"], derives_from=cr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "exist nowhere: AC-11" in str(exc.value)
+
+
+def test_a_bugfix_task_may_reference_a_triaged_bugs_fix_criteria(state):
+    """THE COUNTER-DIRECTION TO THAT EXCLUSION, and the reason it is per-type and not blanket.
+
+    A `BUG` is not an amendment: it names no revision of the root, its Fix-Kriterien are its own,
+    and it reaches its `APPROVED` status only through a mint that a kit-less repo cannot run at all
+    (H39). The kits' bugfix flow cuts tasks against a TRIAGED bug's criteria, so a status or
+    approval term on the `derives_from` hop would make that flow undispatchable -- which is why the
+    exclusion reads `AMENDMENT_TYPES` rather than "anything with an approvable status".
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    approve_scope(state, pr["id"])
+    bug = state.capture("BUG", {"title": "checkout 500s", "related_pr": pr["id"],
+                                "observed": "500", "expected": "200", "repro": "click",
+                                "severity": "high",
+                                "acceptance_criteria": [{"id": "AC-FIX-1", "text": "no 500"}]})
+    state.transition(bug["id"], "TRIAGED")
+    triaged = state.read_item(bug["id"])
+    assert triaged["status"] == "TRIAGED" and not triaged["approval_ref"], (
+        "premise: the bug carries no approval at all, and must still lend its criteria")
+    header = _dispatchable(state, pr["id"], type="bugfix", derives_from=bug["id"],
+                           acceptance_refs=["AC-FIX-1"])
+    assert dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+
+
+def test_a_criterion_smuggled_into_a_field_the_approval_does_not_sign_does_not_widen(state):
+    """THE ONE LINE THAT STOPS AN UNSIGNED CRITERIA CHANNEL, given its own red test.
+
+    `_criteria_ids` reads TWO fields; `approvals._SCOPE_FIELDS` signs only one of them. Measured
+    2026-08-15 on an APPROVED CR: adding `success_criteria: [{id: AC-77}]` out of band leaves the
+    scope manifest hash MATCHING, so `assert_apr_in_force` raises nothing and the criterion is
+    visible to the collector. `_approval_covers_criteria`'s per-FIELD comparison is the only thing
+    between that and a dispatchable criterion nobody signed -- replaced by a per-item truthiness
+    test it passes, and every other test of this round stays green.
+
+    The signed criterion of the same item keeps working, which is what tells a refusal of the
+    channel apart from a refusal of the whole amendment.
+    """
+    pr, cr = _root_with_amendment(state)
+    edited = state.read_item(cr["id"])
+    edited["success_criteria"] = [{"id": "AC-77", "text": "through an unsigned field"}]
+    state._write_yaml_atomic(state.active_path(cr["id"]), edited)
+    live = approvals.subject_manifest_hash(
+        approvals.item_subject_manifest(state.read_item(cr["id"]), "scope"))
+    apr = approvals.read_apr(state, cr["approval_ref"])
+    assert live == apr["subject_manifest_hash"], (
+        "premise of this test: the smuggled field is OUTSIDE what the scope approval hashes, so "
+        "the content check cannot be what refuses it")
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-77"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "does not carry the criteria" in str(exc.value), str(exc.value)
+    assert cr["id"] in str(exc.value)
+
+
+def test_a_rejected_amendments_criteria_do_not_count(state):
+    """A rejection does not clear `approval_ref`, so "it once had an approval" is not the question.
+
+    `approvals.approved_statuses` is -- the statuses an item stands in BECAUSE a user approved it
+    and HAS NOT LEFT AGAIN. Without that term a CR the user turned down would keep lending its
+    criteria to tasks for as long as it sat in the active directory.
+    """
+    pr, cr = _root_with_amendment(state)
+    state.transition(cr["id"], "REJECTED")
+    rejected = state.read_item(cr["id"])
+    assert rejected["status"] == "REJECTED" and rejected["approval_ref"], (
+        "premise of this test: the approval reference survives the rejection")
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "REJECTED" in str(exc.value)
+
+
+def test_an_applied_amendments_criteria_stop_counting(state):
+    """THE RESIDUE OF BUG-0040, asserted as behaviour instead of promised in a comment.
+
+    `APPLIED` is a terminal no approval targets, so `approved_statuses` leaves it out for the same
+    reason it leaves `RETIRED` out for PROC -- and once the item is archived nothing reads it at
+    all. The consequence is real and named: a task cut LATER against a criterion an applied CR
+    minted meets the pilot's refusal again. Widening the derivation to cover it is a decision, and
+    this test is what makes that decision visible instead of letting the edge drift.
+    """
+    pr, cr = _root_with_amendment(state)
+    state.transition(cr["id"], "APPLIED")
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "exist nowhere: AC-11" in str(exc.value) and "APPLIED" in str(exc.value)
+    state.archive(cr["id"])
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert cr["id"] not in str(exc.value), (
+        "an archived amendment is not read at all, so it cannot be named as the reason")
+
+
+def test_an_amendment_edited_past_the_kernel_stops_widening(state):
+    """WHAT MAKES THE WIDENING SAFE, measured rather than argued: the approval is the authority.
+
+    A criterion added to an APPROVED amendment out of band -- revision not bumped, so no status
+    machinery sees it -- breaks the scope manifest's content hash, and `assert_apr_in_force` then
+    answers for this reader exactly as it answers for the root's own approval.
+
+    WHAT THAT ESTABLISHES IS THE CONTENT, and only the content: `acceptance_criteria` is inside
+    what a scope approval signs, so no criterion can be added to a live approval's item. It says
+    nothing about MEMBERSHIP -- `target_pr` is not hashed, so a hand-edited binding re-aims signed
+    criteria at another root and this check cannot see it (named where the derivation lives). Two
+    neighbours cover the rest of the field surface: the criteria field the manifest does NOT sign,
+    and the approval kind that signs nothing at all.
+    """
+    pr, cr = _root_with_amendment(state)
+    edited = state.read_item(cr["id"])
+    edited["acceptance_criteria"] = list(edited["acceptance_criteria"]) + [
+        {"id": "AC-99", "text": "smuggled in past the kernel"}]
+    state._write_yaml_atomic(state.active_path(cr["id"]), edited)
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-99"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "content hash" in str(exc.value) and cr["id"] in str(exc.value)
+
+
+def test_an_approval_that_does_not_sign_the_criteria_does_not_widen(state):
+    """The reachable interaction, not a hypothetical: `mint` writes `approval_ref` for EVERY
+    item-bound approval, so a later `routine` approval on an already-APPROVED amendment leaves
+    `status: APPROVED` beside a reference whose kind hashes nothing at all. Reading the KIND's own
+    subject manifest -- rather than trusting the status, or naming `scope` -- is what keeps that
+    from switching the content check off for this amendment.
+    """
+    pr, cr = _root_with_amendment(state)
+    routine = approvals.create_pending_request(
+        state, "routine", cr["id"],
+        manifest={"item": cr["id"], approvals.ROUTINE_ROLE_FIELD: "backend-developer",
+                  "scope": ["src/**"], "trigger": "weekly", "cadence": "weekly"},
+        approval_expires=time.time() + 3600)
+    mint_via_hook(state, routine)
+    assert state.read_item(cr["id"])["approval_ref"] != cr["approval_ref"], (
+        "premise of this test: the routine mint takes the approval_ref with it")
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "does not carry the criteria" in str(exc.value)
+
+
+def test_an_approved_amendment_of_another_root_does_not_widen_this_one(state):
+    """The universe is derived PER ROOT. A CR approved against a different requirement is as
+    approved as any other, and its criteria still belong to that other contract -- so the binding
+    field, not the approval, is what decides which universe it joins."""
+    other = state.capture("PR", dict(PR_FIELDS, title="unrelated"))
+    approve_scope(state, other["id"])
+    pr, cr = _root_with_amendment(state, target=other["id"])
+    assert cr["status"] == "APPROVED"
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    assert "exist nowhere: AC-11" in str(exc.value)
+    assert cr["id"] not in str(exc.value), (
+        "an amendment of another root explains nothing about this refusal and must not be named")
+
+
+def test_a_criterion_that_exists_nowhere_still_refuses_and_the_universe_is_listed_honestly(state):
+    """The counter-direction to the whole item: widening what dispatches must not empty the check.
+
+    The message has to be TRUE in three ways -- the criteria the approved amendment really added
+    are listed as known; nothing is blamed for a reference no amendment ever offered; and the
+    excluded amendment that IS in the store stays unnamed, because its criteria could not have been
+    the missing one. That last part is the filter, and it needs its own excluded item to measure:
+    with only an approved CR present, a reader that named every exclusion and a reader that named
+    the relevant ones agree, and the difference this assertion is about is invisible.
+    """
+    pr, cr = _root_with_amendment(state)
+    unrelated = state.capture("CR", dict(CR_FIELDS, target_pr=pr["id"], title="unrelated draft",
+                                         acceptance_criteria=[{"id": "AC-55", "text": "elsewhere"}]))
+    assert unrelated["status"] == "DRAFT"        # excluded, and offers no reference asked for here
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"],
+                           acceptance_refs=["AC-1", "AC-nowhere"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    message = str(exc.value)
+    assert "exist nowhere: AC-nowhere" in message and "AC-nowhere" not in message.split("known:")[1]
+    assert "known: AC-1, AC-11" in message, message
+    assert unrelated["id"] not in message, (
+        "%s offers AC-55, which nobody asked for -- naming it buries the reason under the backlog"
+        % unrelated["id"])
+    assert "do not count" not in message, (
+        "no amendment offers AC-nowhere, so naming one would dress a typo up as an approval problem")
+
+
+def test_the_refusal_names_the_excluded_amendment_that_could_explain_it(state):
+    """...and the same filter from its other side, so it cannot be satisfied by naming NOBODY.
+
+    Two excluded amendments in one store, one of which offers the reference the task actually
+    names. The refusal has to name that one and leave the other out; a filter that always answered
+    "none" would pass the neighbouring test and fail here.
+    """
+    pr, cr = _root_with_amendment(state, approved=False)          # offers AC-11, DRAFT
+    unrelated = state.capture("CR", dict(CR_FIELDS, target_pr=pr["id"], title="unrelated draft",
+                                         acceptance_criteria=[{"id": "AC-55", "text": "elsewhere"}]))
+    header = _dispatchable(state, pr["id"], derives_from=pr["id"], acceptance_refs=["AC-11"])
+    with pytest.raises(DispatchError) as exc:
+        dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+    message = str(exc.value)
+    assert cr["id"] in message and "DRAFT" in message, message
+    assert unrelated["id"] not in message, message

@@ -504,6 +504,48 @@ def _parent_fields() -> dict:
     }
 
 
+# -- which types AMEND another item's contract (BUG-0040) ----------------------
+#
+# An amendment is a delta on ONE REVISION of another item's contract, and that is
+# what this field name means: the revision of the target the delta was written
+# against. It is the property that decides whose contract the amendment's
+# `acceptance_criteria` belong to -- they extend the TARGET's criteria, which is
+# why an approved amendment widens the universe the dispatch gate resolves
+# `acceptance_refs` in (`dispatch._known_acceptance_ids_locked`).
+#
+# A BUG is the counter-example that makes this a property rather than a synonym
+# for "CR": it binds to a root through `related_pr` and carries its own
+# `acceptance_criteria`, but names NO revision of that root -- its Fix-Kriterien
+# are criteria of the bug, not of the root's contract, so they reach a task
+# through `derives_from` and never through this derivation.
+#
+# DERIVED from the field contracts for the reason `PARENT_FIELDS` is: a type joins
+# the day some contract of its own gives it the field. Both ends are measured by
+# `test_backlog_types.test_an_amendment_is_the_type_that_names_the_revision_it_amends`.
+#
+# ONLY THE FIELD'S NAME IS READ, NEVER ITS VALUE, and that is the honest limit of
+# this constant: it discriminates the TYPE, and no reader compares the recorded
+# revision with the root's current one. So an amendment written against revision 1
+# keeps widening after the root has moved on -- measured 2026-08-15 with a root
+# re-approved at revision 2 whose criteria had been replaced.
+#
+# WHY THE EQUALITY TERM STAYS OUT, re-measured against the pilot store rather than
+# assumed -- an earlier version of this paragraph claimed it would have refused the
+# BUG-0040 chain, and that was false. Under a root at revision 2, the five change
+# requests carrying that chain all sit at target_revision 2: an equality term would
+# have PASSED every one of them. The one it would have dropped is the SIXTH, written
+# against revision 3 -- a later, still planned revision of the same root, approved by
+# the user in that form. That shape is the reason: an amendment may legitimately be
+# signed for a revision the root has not reached yet, so an equality term would
+# refuse real, user-approved work rather than catch a mistake.
+AMENDMENT_REVISION_FIELD = "target_revision"
+
+
+def _amendment_types() -> frozenset:
+    return frozenset(item_type for item_type, fields in _declared_required_fields().items()
+                     if AMENDMENT_REVISION_FIELD in fields)
+
+
 # `PARENT_FIELDS` (the reference graph) and `DECLARED_REQUIRED_FIELDS` (what the state VALIDATOR
 # holds a stored item to -- see `_declared_required_fields`) are DERIVED, and both derivations
 # read `kernel/schemas/*.yaml`, which needs PyYAML. Computing them at module scope would make
@@ -514,7 +556,8 @@ def _parent_fields() -> dict:
 # PyYAML import load on the hot path. So the values are computed on FIRST ACCESS instead. The
 # consumers inside the kernel (`state`, `report`) bind them with a normal `from ... import` and
 # pay the cost once at their own import, where PyYAML is already loaded anyway.
-_DERIVED = {"PARENT_FIELDS": _parent_fields, "DECLARED_REQUIRED_FIELDS": _declared_required_fields}
+_DERIVED = {"PARENT_FIELDS": _parent_fields, "DECLARED_REQUIRED_FIELDS": _declared_required_fields,
+            "AMENDMENT_TYPES": _amendment_types}
 _derived_cache: dict = {}
 
 

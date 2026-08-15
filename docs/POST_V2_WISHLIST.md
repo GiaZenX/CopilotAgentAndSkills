@@ -1895,7 +1895,7 @@ prüft ihn jetzt.
 H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
-TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033.
+TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -1927,9 +1927,10 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
-| H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute sieben Vorkommen aus dem H43-Eintrag, alle von Hand aufgelöst |
+| H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute zehn Vorkommen — sieben aus dem H43-, drei aus dem H44-Eintrag —, alle von Hand aufgelöst |
 | H42 | **GESCHLOSSEN** (TSK-0060, `DEC-0043`), mit benannten Resten | der Vertrag ist entschieden statt normalisiert: `INV.scope` regiert genau einen Bereich, `backlog_types.SINGLE_VALUE_FIELDS` deklariert das, `state._assert_single_value_fields` verweigert die Mehrere-Dinge-Form an beiden Türen in den aktiven Zustand und `report._check_single_value_fields` meldet sie als Fehler (gemessen: capture/update verweigert, `validate` 0 → 1 Fehler, `gate_memory_complete` rc 0 → rc 2). Die vier Leser sind unverändert. Reste: ein schon geschriebenes Item wird gemeldet statt geheilt, die Archiv-Tür nimmt die Form weiter an (DEC-0009), die Deklaration ist nicht abgeleitet, und im `office-team` schützt sie keinen Leser |
 | H43 | **GESCHLOSSEN** (TSK-0059, `BUG-0038`), mit benannten Resten | die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS` nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde). Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt — je im Eintrag |
+| H44 | **Rest**, keine Angriffskette | vier gemessene Grenzen der Amendment-Ableitung aus TSK-0062, je im Eintrag: die Kriterien eines ANGEWENDETEN Änderungsantrags zählen nicht mehr (Über-Verweigerung, per Test festgehalten); die Zugehörigkeit (`target_pr`) ist nicht signiert (durch den Kernel geschlossen, offen nur vorbei an ihm — und diese Sitzungstür hält Gate 1 zu); `target_revision` wird nie als Wert verglichen (leiht ausschließlich nutzersignierten Inhalt); Hop 1 bleibt für Nicht-Amendments ohne Freigabeterm (Design, H39 — die Amendment-Hälfte ist seit dieser Runde zu) |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -3543,8 +3544,10 @@ Der Leser überspringt jeden Span mit einem Punkt, weil das ein Dateiname sein k
 Form `` `tools/test_report.py::test_x` `` wird damit von niemandem nachgeschlagen. Gemessen
 2026-08-14 über den H43-Eintrag: er trägt **sieben** solcher Zeiger, und der Leser gibt über diesen
 Text `set()` zurück — er sucht keinen davon. Alle sieben lösen heute auf (einzeln im AST der
-genannten Datei nachgeschlagen), das ist aber Handarbeit und kein Draht. Dieselbe Klasse wie (a)
-und wie **H40**: was außerhalb der Reichweite eines Wächters zitiert wird, sammelt sich an.
+genannten Datei nachgeschlagen), das ist aber Handarbeit und kein Draht. Mit dem H44-Eintrag kamen
+2026-08-15 **drei** dazu, alle in `tools/test_approvals_dispatch.py`, von Hand aufgelöst (Zeilen
+2841, 2858, 2930) — Bestand damit **zehn**, alle aufgelöst, weiter Handarbeit. Dieselbe Klasse wie
+(a) und wie **H40**: was außerhalb der Reichweite eines Wächters zitiert wird, sammelt sich an.
 
 **Urteil: Rest, keine Angriffskette** — die Produktionsdateien sind AST-identisch, keine Grenze
 berührt eine Gate-Entscheidung. Wer eine der vier schließt, misst zuerst die Richtung, die heute
@@ -3804,6 +3807,74 @@ Eigenschaft „ein Leser setzt eine Form voraus". Wer den Sweep wiederholt, leit
 **Schreibern** des Zustands ab (`capture`, `_update_item_locked`, `staging.freeze_*`) statt aus
 `parse_field_map`. Die volle Messung samt Tabelle steht in
 `docs/reviews/2026-08-14-tsk0033-map-field-reader-sweep.md`, Abschnitt 5.
+
+### H44 — Vier gemessene Grenzen der Amendment-Ableitung (neu, TSK-0062)
+
+TSK-0062 (`BUG-0040`) hat die Kriterien freigegebener Änderungsanträge in das Dispatch-Universum
+ihrer Wurzel geholt — als Ableitung über vier Terme (`dispatch._amendment_criteria_locked`), nicht
+als Sonderfall. Die Prüfung hat den Fix angegriffen und vier Grenzen vermessen; keine ist eine
+Angriffskette innerhalb einer Sitzung, und jede steht als benannte Grenze in dem Code, der sie hat
+— dieser Eintrag ist die Sammelstelle, damit sie ein Urteil tragen statt nur ein Kommentar zu sein.
+Alle Zeilennummern sind der Stand 2026-08-15 (Kits `2026.08.15-7`) und bleiben als Fundprotokoll
+stehen.
+
+**(a) Die Kriterien eines ANGEWENDETEN Änderungsantrags zählen nicht mehr.** Die Ableitung
+verlangt einen Status, „in den eine Nutzer-Freigabe das Item gestellt hat"
+(`approvals.approved_statuses`); für CR ist das genau `APPROVED`. Erreicht ein CR sein Terminal
+`APPLIED` — oder wird archiviert —, fallen seine Kriterien wieder aus dem Universum, und ein
+SPÄTER geschnittener Task gegen eines davon wird verweigert: BUG-0040, einen
+Lebenszyklus-Schritt weiter. Gemessen in der Prüfung zu TSK-0062: derselbe Spawn, der unter
+`APPROVED` rc 0 war, ist nach der Überführung auf `APPLIED` rc 2. Richtung: Über-Verweigerung,
+fail-closed — kein Gate öffnet sich. Nicht aufgeweitet, weil ein Sonderfall über einer Ableitung
+genau die Form ist, die diese Runde beseitigt hat (`dispatch.py:1023-1030` sagt es an der Stelle);
+festgehalten von `tools/test_approvals_dispatch.py::test_an_applied_amendments_criteria_stop_counting`
+— eine spätere Aufweitung ist damit eine Entscheidung, kein Drift.
+
+**(b) Die ZUGEHÖRIGKEIT eines Änderungsantrags ist nicht signiert, nur sein Inhalt.** Das
+Scope-Manifest hasht die Kriterien (`approvals._SCOPE_FIELDS`), nicht `target_pr` — WELCHER
+Wurzel ein Antrag gehört, hat niemand unterschrieben. Durch den Kernel ist das geschlossen: eine
+`update`-Änderung an `target_pr` ist eine `HASHED_FIELDS`-Änderung, hebt die Revision und lässt
+die Freigabe fallen. VORBEI am Kernel ist es offen: ein von Hand umgezieltes `target_pr` trägt
+die noch gültige Freigabe samt Kriterien in das Universum einer fremden Wurzel, und der Leser
+kann es nicht sehen (`dispatch.py:1012-1021`). Innerhalb einer Sitzung ist der Weg nicht gangbar
+— Gate 1 verweigert jedem Aufrufer den Werkzeug- wie den Shell-Schreibzugriff auf
+`project_memory/` außer `staging/`; er existiert nur aus einer Shell außerhalb von Claude Code.
+Die Reparaturstelle wäre eine Manifest-Erweiterung, die jede lebende Freigabe ungültig macht —
+eine Spec-Entscheidung mit Migration, keine Zeile, die man hier einschiebt.
+
+**(c) `target_revision` wird als NAME gelesen, nie als WERT verglichen.**
+`backlog_types.AMENDMENT_TYPES` leitet aus dem Feldnamen ab, WER ein Amendment ist; kein Leser
+vergleicht die eingetragene Revision mit der aktuellen der Wurzel. Ein gegen Revision 1
+geschriebener Antrag weitet also weiter auf, nachdem die Wurzel auf Revision 2 neu freigegeben
+wurde — gemessen 2026-08-15 mit einer neu freigegebenen Wurzel, deren Kriterien ersetzt waren.
+Richtung: eine Aufweitung, aber jede Zeile darin ist vom Nutzer signierter Inhalt — die Freigabe
+des CR selbst bleibt in Kraft, und die Autorisierung des Dispatch kommt weiterhin aus der
+Wurzel-Freigabe einen Rahmen höher. Der Gleichheitsterm bleibt gemessen draußen, nicht aus
+Vorsicht: gegen die Pilotkopie hätte er die fünf tragenden Anträge (alle `target_revision` 2
+unter Wurzel-Revision 2) passieren lassen und genau den einen legitimen verworfen, der vom
+Nutzer gegen die geplante Revision 3 freigegeben war (`backlog_types.py:526-540` trägt die
+Messung). Rest: semantische Veraltung signierten Inhalts, kein unsignierter Weg.
+
+**(d) Hop 1 (`derives_from`) leiht Kriterien ohne Status- und Freigabeterm — für
+Nicht-Amendments, absichtlich.** `dispatch._known_acceptance_ids_locked` fragt an Hop 1 nur, dass
+die Quelle auflöst; ein Status-Term dort würde den Bugfix-Fluss der Kits (Task gegen die
+Fix-Kriterien eines TRIAGED-BUG) undispatchbar machen, denn ein BUG erreicht in diesem Repo kein
+`APPROVED` (H39). Die Amendment-Hälfte dieser Lockerheit war das Loch dieser Runde und ist ZU:
+`derives_from: CR-…` auf einem DRAFT-CR lieh vor dem Fix dessen Kriterien, und der Spawn passierte
+(gemessen 2026-08-15) — jetzt betritt ein Amendment das Universum nur noch über Hop 2 mit vollem
+Freigabeterm (`dispatch.py:1147-1148`, rote Seite
+`tools/test_approvals_dispatch.py::test_an_unapproved_amendment_named_in_derives_from_lends_nothing`).
+Was bleibt, ist die Nicht-Amendment-Hälfte, begrenzt durch das, was sie leiht: Kriterien eines
+Items, das der PLANER im Task benannt hat, unter einer Wurzel, deren eigene Freigabe den Dispatch
+schon autorisiert hat.
+`tools/test_approvals_dispatch.py::test_a_bugfix_task_may_reference_a_triaged_bugs_fix_criteria`
+hält die offene Richtung fest.
+
+**Urteil: Rest, keine Angriffskette innerhalb einer Sitzung.** (a) ist Über-Verweigerung, (b)
+braucht eine Shell außerhalb von Claude Code, (c) leiht nur nutzersignierten Inhalt unter einer
+autorisierten Wurzel, (d) ist eine entschiedene, beidseitig getestete Design-Richtung, deren
+gefährliche Hälfte diese Runde geschlossen hat. Die drei Test-Zeiger dieses Eintrags sind von
+Hand aufgelöst und in H41(d) mitgezählt.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 
