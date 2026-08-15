@@ -1,0 +1,48 @@
+id: TSK-0063
+product_requirement: PR-0001
+derives_from: BUG-0051
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+allowed_scope:
+- .claude/hooks/**
+- docs/reviews/**
+forbidden_scope:
+- team-kits/**
+- tools/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+required_inputs:
+- 'BUG-0051 (the defect record: WSL launcher answers -c true since the host grew a
+  distro, stands first on PATH, sees another filesystem; control at test_gates.py:3104
+  cannot damage the decoy)'
+- .claude/hooks/test_gates.py -- _posix_shells (its docstring assigns the sees-this-filesystem
+  measurement to the caller), the failing test's arbitration (next(candidate ... returncode
+  == 0)), and every other _posix_shells caller
+- .claude/hooks/_sandbox.py (POINTED_AT_THE_SANDBOX, DROPPED, NOT_MEASURED_TO_CARRY_A_TREE
+  -- the module under test)
+expected_outputs:
+- 'STEP 1 MEASURE: which callers of _posix_shells arbitrate and how; show on this
+  host that the WSL launcher wins the failing test''s arbitration and that Git Bash
+  still damages the decoy when chosen directly'
+- 'STEP 2 FIX: arbitration selects only a shell measured to SEE this repo''s filesystem
+  -- a probe against a file the test writes itself, a property at selection time,
+  not a path list and not ''runs true''; every _posix_shells caller either uses it
+  or is named unaffected with the measured reason'
+- 'STEP 3 TESTS: the sandbox test green on this host with the WSL launcher first on
+  PATH; red-capable shown in a clone by restoring the old selection (control fails
+  again); no new enumeration without a both-ends tripwire'
+- 'STEP 4 SHIP: full explicit gate-suite run green (python -B -m pytest .claude/hooks/test_gates.py
+  -q) with numbers; NO kit change, NO bump; report file:line and residues named'
+dependencies:
+- BUG-0051
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-15T12:46:40'
+closed_at: '2026-08-15T14:51:33'

@@ -1,0 +1,16 @@
+id: EVD-0036
+kind: review
+related:
+- TSK-0063
+- BUG-0051
+result: pass
+summary: 'verifier PASS (no conditions) for diff:1ff4f85ee94c5b29b629c996298abb099819542741d18599255b23a66529afb5
+  -- TSK-0063: gate-suite shell arbitration is a measured property (arbiter reads
+  back a nonce through its own redirect, content not exit code); nine selection sites;
+  FAIL->rework->PASS over three prose findings; prose-only rework proven by AST comparison;
+  residues carried as H45'
+artifact_refs:
+- staging/TSK-0063/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-15T14:51:25'

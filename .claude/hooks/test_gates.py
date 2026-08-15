@@ -128,13 +128,16 @@ def the_repo_is_not_a_sandbox(tmp_path_factory):
     the run measured a tree that moved under it.
     """
     probe = _sandbox(str(tmp_path_factory.mktemp("canary")), 0)
-    shell = next(iter(_posix_shells()), None)
-    if shell is not None:
-        # `_sandbox` makes the FREE file; the protected one is made by the helper that runs a line
-        # in it, so the list is taken after both have had their say. Without this the walk found
-        # only `docs/note.md`, which this repo does not have -- measured 2026-08-07, the guard was
-        # green while the escaping run really rewrote the tree.
-        _changes_the_protected_file(shell, probe, ":")
+    shell = next((candidate for candidate in _posix_shells()
+                  if _sees_this_filesystem(candidate, probe)), None)
+    assert shell is not None, (
+        "no shell on this host reads back a file this process writes (%s), so the line below never "
+        "runs and the walk after it finds a list this guard did not build" % (_posix_shells(),))
+    # `_sandbox` makes the FREE file; the protected one is made by the helper that runs a line
+    # in it, so the list is taken after both have had their say. Without this the walk found
+    # only `docs/note.md`, which this repo does not have -- measured 2026-08-07, the guard was
+    # green while the escaping run really rewrote the tree.
+    _changes_the_protected_file(shell, probe, ":")
     watched = sorted(
         os.path.relpath(os.path.join(root, name), probe).replace("\\", "/")
         for root, _dirs, names in os.walk(probe) for name in names)
@@ -1258,11 +1261,10 @@ def test_gate3_sees_what_the_kits_classification_calls_a_write_and_no_more(proje
         "this line is refused now, so the boundary moved: the constitution and H22 describe an "
         "edge that is no longer there, and both have to be corrected rather than left standing")
     shell = next((candidate for candidate in _posix_shells()
-                  if subprocess.run([candidate, "-c", "true"], cwd=work,
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL).returncode == 0), None)
+                  if _sees_this_filesystem(candidate, work)), None)
     assert shell is not None, (
-        "no shell on this host could run the line, so what it does to the file was not measured")
+        "no shell on this host reads back a file this process writes under %s, so what the line "
+        "does to the file below was not measured: %s" % (work, _posix_shells()))
     subprocess.run([shell, "-c", 'sed -n "w docs/note.md" radar/note.md'], cwd=work,
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
     with open(os.path.join(work, "docs", "note.md"), encoding="utf-8") as handle:
@@ -2354,10 +2356,10 @@ def _line(template, outside, here):
 def _posix_shells():
     """Every shell on this host that COULD arbitrate -- candidates, never a decision.
 
-    Which of them sees this filesystem is measured by the caller, not assumed here: on Windows the
-    first `bash` on PATH is the WSL launcher, and its `C:/...` is a different tree. The last
-    candidate is derived rather than typed -- the shell that ships beside the version control
-    system this repo already requires.
+    Which of them sees this filesystem is measured by the caller (`_sees_this_filesystem`) and not
+    assumed here: on Windows the first `bash` on PATH is the WSL launcher, and its `C:/...` is a
+    different tree. The last candidate is derived rather than typed -- the shell that ships beside
+    the version control system this repo already requires.
     """
     out = []
     for directory in (os.environ.get("PATH") or "").split(os.pathsep):
@@ -2367,6 +2369,58 @@ def _posix_shells():
     if vcs:
         out.append(os.path.join(os.path.dirname(os.path.dirname(vcs)), "bin", "bash.exe"))
     return [path for path in out if os.path.isfile(path)]
+
+
+def _reads_back(shell, path, nonce):
+    """Does this shell hand back `nonce` out of `path`, spelled the way this host writes it?
+
+    THE SHELL'S OWN REDIRECT AND NO PROGRAM: `cat` would answer for what is installed beside the
+    shell, and the question here is where the SHELL resolves a path.
+
+    THE CONTENT DECIDES, NOT THE EXIT CODE -- a redirect that finds nothing leaves the `printf`
+    after it at rc 0. Measured 2026-08-15 against the WSL launcher: rc 0, empty stdout, `No such
+    file or directory` on stderr. An exit code would have called that shell a reader of this
+    filesystem, and a path that merely EXISTS is answered by any file of that name in any tree.
+
+    AND THE CHILD IS GIVEN A `cwd`, AND ONLY THAT HALF OF A SHELL'S DIRECTORY STATE: a run of this
+    suite stands in THIS repo, so a shell started from it would stand there too. The rest of that
+    state -- the names a word like `~-` is resolved out of -- is left INHERITED here, and this line
+    carries no such word to point anywhere: one absolute redirect and nothing relative.
+    `_changes_the_protected_file` sets those names as well, because the lines it runs do carry them.
+    """
+    line = 'IFS= read -r seen < "%s"; printf "%%s" "$seen"' % path
+    try:
+        done = subprocess.run([shell, "-c", line], cwd=os.path.dirname(path), capture_output=True,
+                              text=True, timeout=120, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return (done.stdout or "").strip() == nonce
+
+
+def _sees_this_filesystem(shell, where):
+    """Is `where` the same directory for this shell as it is for this process?
+
+    THE ARBITER IS THE MEASUREMENT, and choosing it by "it runs `true`" cost this suite a control
+    that could not fail (BUG-0051): since this host registered a WSL distro, the launcher in
+    system32 answers `-c true` with rc 0 and stands FIRST on PATH. It is not a shell that fails,
+    and it is not one that stays off this tree either: a RELATIVELY named word reaches THIS side
+    through the `cwd` it translates, and a payload's `sed -i` really rewrites the file it names.
+    The ABSOLUTE spelling alone lands in the distro's own filesystem -- so a check set whose reach
+    is spelled absolutely runs, reports nothing wrong and never arrives.
+
+    SO THE PROBE IS A NONCE THIS PROCESS JUST WROTE INTO `where`, read back through the absolute
+    spelling: a shell that hands it back resolved that spelling to the very file that was written,
+    which is what two trees being one tree means. Both ends of the probe are driven by
+    `test_the_arbiter_is_a_shell_that_reads_back_what_this_process_writes`.
+    """
+    nonce = os.urandom(16).hex()
+    path = os.path.join(where, ".sees-this-filesystem-%s" % nonce)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(nonce)
+    try:
+        return _reads_back(shell, _sandbox_module().posix(path), nonce)
+    finally:
+        os.remove(path)
 
 
 def _changes_the_protected_file(shell, sandbox, line, outside=""):
@@ -2413,19 +2467,23 @@ def _claimed(label):
     return LINE_SHAPES[label][1]
 
 
-def _can_arbitrate(shell, sandbox, outside):
-    """Does this shell see the two trees the table is about, as THIS host spells them?
+def _can_arbitrate(shell, sandbox, outside=None):
+    """Does this shell see the trees this measurement is about, as THIS host spells them?
 
-    TWO MEASUREMENTS, and the second is the one that matters on Windows: the WSL launcher passes
-    the first (it reaches the sandbox through the cwd it inherits and has `sed`) and fails the
-    second, because `C:/...` names nothing in it -- so every move in the table would look like a
-    move that failed, and the table would be measured against a different filesystem.
+    TWO MEASUREMENTS, and the second is the one the WSL launcher passes on its own: every tree a
+    check set names ABSOLUTELY has to be the same tree for this shell (`_sees_this_filesystem`),
+    and a RELATIVELY named write has to really land in the sandbox -- which is also where the `sed`
+    those lines are written with is measured. The launcher reaches the sandbox through the `cwd` it
+    translates and has `sed`, so with the first question left out every move whose word names a
+    tree ABSOLUTELY would look like a move that failed, measured against a different filesystem.
+
+    `outside` is the second tree a caller crosses with; a caller whose lines name only its own
+    sandbox passes none.
     """
-    if not _changes_the_protected_file(shell, sandbox, RELATIVE_WRITE):
+    trees = [sandbox] + ([] if outside is None else [outside])
+    if not all(_sees_this_filesystem(shell, tree) for tree in trees):
         return False
-    return subprocess.run([shell, "-c", 'cd "%s"' % outside], cwd=sandbox,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                          timeout=120).returncode == 0
+    return _changes_the_protected_file(shell, sandbox, RELATIVE_WRITE)
 
 
 def _sandbox(base, index):
@@ -2928,10 +2986,10 @@ def test_gate1_does_not_see_a_program_a_here_document_hands_a_shell(project, tmp
     """
     sandbox = _sandbox(str(tmp_path), 0)
     shell = next((candidate for candidate in _posix_shells()
-                  if _changes_the_protected_file(candidate, sandbox, RELATIVE_WRITE)), None)
+                  if _can_arbitrate(candidate, sandbox)), None)
     assert shell is not None, (
-        "no shell on this host reaches the protected file with %r, so what the here-document does "
-        "was measured against nothing" % RELATIVE_WRITE)
+        "no shell on this host sees this sandbox and reaches the protected file in it with %r, so "
+        "what the here-document does was measured against nothing" % RELATIVE_WRITE)
     seen = "bash -c '%s'" % RELATIVE_WRITE
     assert run(project, "gate_lead_write_scope.py", bash_payload(project, seen))[0] == 2, (
         "the same program passed as an ARGUMENT is allowed too, so this test is not measuring what "
@@ -3011,6 +3069,42 @@ def _pointed_at(name, tree):
     return os.path.dirname(tree) if name.endswith("PATH") else _sandbox_module().posix(tree)
 
 
+def test_the_arbiter_is_a_shell_that_reads_back_what_this_process_writes(tmp_path):
+    """Every measurement here that runs a real line stands on the shell `_sees_this_filesystem` picks.
+
+    THE PREDICATE IS DRIVEN AT BOTH ENDS, because the way the selection before it failed was silent:
+    it asked whether a candidate RUNS, and the WSL launcher runs everything while its absolute words
+    name another tree (BUG-0051). So the probe is shown to answer on the CONTENT of a file this
+    process wrote -- a shell that hands back something else and a read that finds nothing at all are
+    both refused. A predicate that went back to reading an exit code fails HERE, and not in the
+    control of some other test that then has nothing left to compare against.
+
+    AND THE OTHER END IS THIS HOST: no candidate qualifying is not a skip. A host on which this
+    suite cannot reach the files it writes measures nothing at all, and says so here.
+    """
+    candidates = _posix_shells()
+    assert candidates, "this host carries no POSIX shell at all, so nothing here can be measured"
+    shell = next((candidate for candidate in candidates
+                  if _sees_this_filesystem(candidate, str(tmp_path))), None)
+    assert shell is not None, (
+        "no shell of %s reads back a file written under %s, so every measurement in this file that "
+        "runs a line has nothing to run it with" % (candidates, tmp_path))
+    nonce = os.urandom(16).hex()
+    path = os.path.join(str(tmp_path), "written-by-this-process")
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(nonce)
+    spelled = _sandbox_module().posix(path)
+    assert _reads_back(shell, spelled, nonce), (
+        "%s does not hand back what stands in %s, so the selection above qualified it for some "
+        "other reason than the one it is written for" % (shell, spelled))
+    assert not _reads_back(shell, spelled, os.urandom(16).hex()), (
+        "the probe accepts a nonce the file does not hold, so it is not reading the file at all")
+    os.remove(path)
+    assert not _reads_back(shell, spelled, nonce), (
+        "the probe accepts a path that holds nothing, which is what an exit code answers here -- "
+        "and that is what let a shell on another filesystem arbitrate")
+
+
 # WHAT A SHELL ON THIS HOST WAS MEASURED TO READ A DIRECTORY BACK OUT OF -- a fact about shells,
 # and it is stated HERE rather than taken from `_sandbox` on purpose. A measurement whose hostile
 # environment comes out of the module under test cannot fail when that module DROPS a name: it then
@@ -3048,14 +3142,20 @@ def test_the_measurement_sandbox_leaves_a_child_shell_no_directory_word_that_nam
     handles that carries nothing -- which is how `DIRSTACK` and `PWD` came to be marked as carried
     without a chain instead of described as protection. The hostile state itself comes from
     `CARRY_A_TREE` and not from the module, for the reason written there.
+
+    AND THE ARBITER IS MEASURED INSTEAD OF TAKEN FROM THE FRONT OF PATH (BUG-0051). This test used
+    to take the first candidate that ran `true`, which on this host is a shell whose absolute words
+    land in another filesystem: every line of the check set ran, none of them damaged anything, and
+    the control below asserted False. `_sees_this_filesystem` is the property it is chosen by.
     """
     harness = _reader()
     module = _sandbox_module()
     shell = next((candidate for candidate in _posix_shells()
-                  if subprocess.run([candidate, "-c", "true"], cwd=str(tmp_path),
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL).returncode == 0), None)
-    assert shell is not None, "no shell on this host could run these lines: %s" % (_posix_shells(),)
+                  if _sees_this_filesystem(candidate, str(tmp_path))), None)
+    assert shell is not None, (
+        "no shell on this host reads back a file this process writes under %s, so no line of this "
+        "check set could reach a decoy of it and nothing below would be measured: %s"
+        % (tmp_path, _posix_shells()))
     controlled = set(module.POINTED_AT_THE_SANDBOX) | set(module.DROPPED)
     hostile = controlled | set(CARRY_A_TREE)
     # short subject names on purpose: each of them becomes a directory below `tmp_path`, and this

@@ -1895,7 +1895,8 @@ prüft ihn jetzt.
 H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit TSK-0007 dazu, H16–H18
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
-TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062.
+TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
+TSK-0063.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -1931,6 +1932,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H42 | **GESCHLOSSEN** (TSK-0060, `DEC-0043`), mit benannten Resten | der Vertrag ist entschieden statt normalisiert: `INV.scope` regiert genau einen Bereich, `backlog_types.SINGLE_VALUE_FIELDS` deklariert das, `state._assert_single_value_fields` verweigert die Mehrere-Dinge-Form an beiden Türen in den aktiven Zustand und `report._check_single_value_fields` meldet sie als Fehler (gemessen: capture/update verweigert, `validate` 0 → 1 Fehler, `gate_memory_complete` rc 0 → rc 2). Die vier Leser sind unverändert. Reste: ein schon geschriebenes Item wird gemeldet statt geheilt, die Archiv-Tür nimmt die Form weiter an (DEC-0009), die Deklaration ist nicht abgeleitet, und im `office-team` schützt sie keinen Leser |
 | H43 | **GESCHLOSSEN** (TSK-0059, `BUG-0038`), mit benannten Resten | die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS` nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde). Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt — je im Eintrag |
 | H44 | **Rest**, keine Angriffskette | vier gemessene Grenzen der Amendment-Ableitung aus TSK-0062, je im Eintrag: die Kriterien eines ANGEWENDETEN Änderungsantrags zählen nicht mehr (Über-Verweigerung, per Test festgehalten); die Zugehörigkeit (`target_pr`) ist nicht signiert (durch den Kernel geschlossen, offen nur vorbei an ihm — und diese Sitzungstür hält Gate 1 zu); `target_revision` wird nie als Wert verglichen (leiht ausschließlich nutzersignierten Inhalt); Hop 1 bleibt für Nicht-Amendments ohne Freigabeterm (Design, H39 — die Amendment-Hälfte ist seit dieser Runde zu) |
+| H45 | **Rest** bzw. entschiedene Über-Verweigerung | zwei gemessene Grenzen der Arbiter-Härtung aus TSK-0063, je im Eintrag: die Sitzungswache verlangt die Seh-Eigenschaft auch von shell-freien Registrierungs-Prüfungen (fail-closed, auf diesem Host ohne Effekt; Schließrichtung benannt), und `_can_arbitrate` ist von keinem Test rot-fähig gedeckt (die entfernte `cd`-Probe ist unbeobachtet — H10-Klasse) |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -3875,6 +3877,45 @@ braucht eine Shell außerhalb von Claude Code, (c) leiht nur nutzersignierten In
 autorisierten Wurzel, (d) ist eine entschiedene, beidseitig getestete Design-Richtung, deren
 gefährliche Hälfte diese Runde geschlossen hat. Die drei Test-Zeiger dieses Eintrags sind von
 Hand aufgelöst und in H41(d) mitgezählt.
+
+### H45 — Zwei Grenzen der Arbiter-Härtung der Gate-Suite (neu, TSK-0063)
+
+Anlass war `BUG-0051`: seit dieser Host ein WSL-Linux trägt, gewann der Windows-eigene
+`bash`-Starter die Shell-Auswahl der Suite („läuft `true`" genügte), obwohl er absolut benannte
+Pfade in ein fremdes Dateisystem auflöst — die Kontrolle des Sandbox-Tests konnte den Unfall
+nicht mehr vorführen. TSK-0063 ersetzt die Auswahl durch eine Eigenschaft: der Schiedsrichter
+muss eine Nonce, die dieser Prozess schreibt, **durch seine eigene Umleitung inhaltlich
+zurücklesen** (der Starter antwortet rc 0 mit leerem stdout — der Exit-Code war genau die
+Lücke). Zwei Grenzen der Härtung sind vom Prüfer gemessen und bleiben benannt; die
+Zeilennummern sind der Stand 2026-08-15.
+
+**(a) Die Sitzungswache verlangt die Shell-Eigenschaft auch von Prüfungen, die nie eine Shell
+starten.** Mechanismus: die autouse-Fixture der Suite (`test_gates.py:131-135`) arbitriert beim
+Sitzungsaufbau einen sehenden Shell als Vorbedingung — ihre Wachliste wird aber **in Python**
+gebaut, die Shell führt dort nur `:` aus. Auf einem Host ohne sehenden Shell fällt damit die
+ganze Suite zu, einschließlich der Registrierungs-Prüfungen, die nur `.claude/settings.json`
+lesen. Kette (Prüfer, 2026-08-15, PATH ohne Git, nur der System32-Starter): neue Fassung rc 1
+mit **4 ERROR** — genau die vier Registrierungs-Tests —, die vorige Fassung 4 passed; der
+Mechanismus trifft über die autouse-Fixture alle 243. Auf diesem Host: kein Effekt (Git Bash
+vorhanden). Urteil: **Über-Verweigerung, entschieden statt erlitten** — die vorige Fassung
+ließ die Wache ihre Liste mit einem blinden Shell bauen, und fail-closed ist die ehrliche
+Richtung; die benannte Schließrichtung (die gewachte Datei in der Fixture direkt anlegen und
+die Shell-Forderung dorthin schieben, wo wirklich eine Zeile läuft) ist eine eigene Runde.
+
+**(b) `_can_arbitrate` ist von keinem Test rot-fähig gedeckt.** Mechanismus: die Suite kann
+die neue Form (jeder absolut genannte Baum wird inhaltlich gelesen) von der alten (zusätzliche
+`cd`-Probe) **auf diesem Host nicht unterscheiden** — der Prüfer hat die alte Form im Klon
+wiederhergestellt und die acht einschlägigen Tests blieben in 19:51 grün. Damit ist die
+entfernte `cd`-Probe unbeobachtet: eine Shell, die absolut liest und `cd` verweigert
+(rbash-Klasse), würde heute arbitrieren; konstruiert argumentiert, nicht gefahren. Die
+Lautstärke des Ausfalls ist nur schräg gemessen (eine Mutante machte die Tabelle rot, aber als
+Timeout nach 120 s, nicht als widersprechende Zelle) — dieselbe Klasse wie H10 (Codehälften
+ohne rote Mutation): eine Messlücke des Instruments, kein offenes Gate.
+
+**Urteil: Rest bzw. entschiedene Über-Verweigerung, keine Angriffskette.** (a) ist fail-closed
+in die ehrliche Richtung und auf diesem Host ohne Effekt — die Schließrichtung steht im Absatz
+und ist eine eigene Runde; (b) ist eine Messlücke des Instruments, kein offenes Gate. Beide
+Ketten sind vom Prüfer der TSK-0063-Runde gemessen und stehen oben im Eintrag.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

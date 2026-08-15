@@ -1,0 +1,63 @@
+id: TSK-0064
+product_requirement: PR-0003
+derives_from: BUG-0041
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/**
+- user/claude/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user's home directory incl. the installed ~/.claude copy -- rollout is a separate
+  user-approved step
+required_inputs:
+- 'BUG-0041 (pilot 3 B4: preset change after install is Notepad+terminal+restart,
+  the persona failed at step one; the PM de-escalated to the pilot project''s DEC-0001)'
+- 'BUG-0044 (pilot 3 B2: the interview never asks the preset question the entry file
+  claims is confirmed; AC-2 here covers both bugs -- one fix, both name it)'
+- user/claude/CLAUDE.md:110-111 (the entry-file SOURCE in this repo; the interview
+  instructions above it carry no preset question)
+- 'the scaffold surface (scaffold_team.sh/.ps1) and the kernel CLI -- where preset:
+  is read, what role installation does, which writes a running kit project''s gates
+  refuse (gate_write_scope refuses tool writes under project_memory/ and write lines
+  naming .claude or team-kits)'
+- docs/pilot/2026-08-14-pilot-3-rechnungswerkzeug.md findings B2+B4 (the lived chain)
+expected_outputs:
+- 'STEP 1 MEASURE: reproduce today''s dead end against a scaffolded kit project OUTSIDE
+  the repo -- what exactly a preset change requires today, which step the kit''s own
+  gates refuse, where preset: is read; the measured refusal lines are the baseline'
+- 'STEP 2 FIX (AC-1): a walkable preset-change path the PM may drive -- per the item''s
+  expected: a kernel command (approval-gated where it changes enforcement, i.e. where
+  roles/hooks/permissions land in the project) or, where genuinely not closable, an
+  explicit honest handback flow; measured end-to-end against the outside project:
+  preset changed, roles present, next session usable, no Notepad/terminal/restart
+  step for the user'
+- 'STEP 2b (AC-2): the entry interview in user/claude/CLAUDE.md asks and records the
+  preset choice, and what gets written to project_config.yaml cites the answer --
+  closes BUG-0044 in the same stroke; the installed home copy is NOT yours to write
+  (rollout is a separate user-approved step, name it in the report)'
+- 'STEP 3 (AC-3) TESTS: the old dead-end remedy appears in no shipped text (measured
+  over the kits, not asserted); every code claim red-without-fix in a clone outside
+  the repo -- for prose-only halves name the honest measurement instead of a string-search
+  test (house rule: a check must read the part that runs)'
+- 'STEP 4 SHIP (AC-4): python tools/bump_kit_version.py (kit content moves), ruff,
+  validate, ONE full tools/ run green with numbers, mirrors byte-identical unless
+  KIT_SPECIFIC_HOOKS names the reason; report file:line, the design chosen and why,
+  residues named'
+dependencies:
+- BUG-0041
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-15T13:43:38'

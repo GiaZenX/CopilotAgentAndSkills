@@ -1,0 +1,18 @@
+id: FR-0025
+title: 'Containerisierte Harness-Umgebung: gekapselt vom Rechner, globale Dateien
+  trennbar, Vollzugriff nur wo noetig'
+request_text: 'User wish (2026-08-14/15): the ''app'' runs containerised -- decoupled
+  from the personal machine, the global config/agent/skill files live inside the container
+  world and stay separable from C:/Users, while full machine access (even GPU for
+  app/game builds) remains grantable where a project needs it. Clarified: the point
+  is CONFIG SEPARATION and detachability, not capability isolation. On Windows the
+  substrate would be WSL2 + Docker (both already installed on the user''s host, measured
+  2026-08-15: Ubuntu + docker-desktop registered). The measured little sister of this
+  wish is the pilot mechanism: a redirected config directory per session (docs/research/2026-08-15-multi-provider-eigene-oberflaeche.md,
+  Erste Scheibe #3). Depends naturally on FR-0023 (provider-agnostic harness) and
+  FR-0024 (backlog UI) if it becomes the desktop app''s runtime. Post-release; user
+  prioritises.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T13:32:08'

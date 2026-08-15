@@ -32,7 +32,7 @@ acceptance_criteria:
 - id: AC-3
   text: every other _posix_shells caller in test_gates.py either arbitrates by the
     same property or is named unaffected with the measured reason
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T12:43:51'

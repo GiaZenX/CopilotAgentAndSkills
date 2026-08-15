@@ -1,4 +1,4 @@
-generated_at: '2026-08-15T12:45:41'
+generated_at: '2026-08-15T14:51:33'
 items:
 - id: BUG-0001
   type: BUG
@@ -329,7 +329,7 @@ items:
   type: BUG
   title: gate-suite shell arbitration picks a shell that cannot see this filesystem
     once WSL answers
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: DEC-0002
@@ -814,6 +814,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0036
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -961,6 +967,13 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
+- id: FR-0025
+  type: FR
+  title: 'Containerisierte Harness-Umgebung: gekapselt vom Rechner, globale Dateien
+    trennbar, Vollzugriff nur wo noetig'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1026,5 +1039,11 @@ items:
   title: 'This repo''s enforcement: four gates, a bound session agent, and no history
     record without a verdict'
   status: ACCEPTED
+  revision: 1
+  approval_ref: null
+- id: TSK-0064
+  type: TSK
+  title: null
+  status: DRAFT
   revision: 1
   approval_ref: null
