@@ -1,0 +1,17 @@
+id: FR-0027
+title: 'Preset approval question: name the role DELTA, not only the full target set'
+request_text: 'TSK-0064 verifier residue R10: the preset approval question renders
+  roles: as the FULL target set and removes: as the removed ones. On an upgrade solo->duo
+  a non-technical user reads six role names of which four are already installed --
+  literally true, but misleading for exactly the BUG-0041 audience the round served.
+  Wanted: the question names what is ADDED and what is REMOVED (the delta), while
+  the signed manifest stays the RESULT (preset, roles, removes) so the hash semantics
+  do not move -- a rendering change in build_question''s preset path, not a manifest
+  change. Pilot 4 (TSK-0066) will exercise the preset flow and can measure the confusion
+  live. Source: TSK-0064 verifier report 2026-08-15, R10; constitutions'' sentence
+  ''the question names every role added and removed'' is the anchor the rendering
+  should actually satisfy.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T18:25:35'

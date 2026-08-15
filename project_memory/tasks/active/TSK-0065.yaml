@@ -1,0 +1,52 @@
+id: TSK-0065
+product_requirement: PR-0003
+derives_from: BUG-0042
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'DEC-0044 (the chosen continuation story: sweep orphaned leases at session start,
+  checkpoint duty in the dispatch envelope, successor MAY adopt only after verification;
+  adoption is earned, never assumed; re-order from scratch stays the fallback)'
+- 'BUG-0042 (pilot 3 B11: three in-flight specialists lost work at session breaks;
+  pilot project commit 17bf932 and archive/TSK/2026/TSK-0004.yaml carry the chains)'
+- 'the kits'' dispatch surface: lease creation/TTL/sweep (kernel + sweep-leases command),
+  the dispatch envelope the PM hands a specialist, the session-start hook that briefs
+  the PM (generated/session_brief.yaml)'
+expected_outputs:
+- 'STEP 1 MEASURE: against a scaffolded kit project outside the repo, reproduce the
+  orphaned-lease state (dispatch, kill the session, restart) and record what the successor
+  session sees today -- the baseline the DEC names'
+- 'STEP 2 FIX per DEC-0044, both halves: (a) HYGIENE -- at session start orphaned
+  leases are swept immediately and honestly, nothing pretends to run; (b) CONTINUATION
+  -- the dispatch envelope carries a checkpoint duty with a defined shape, and the
+  retry path offers verified adoption: an unverified or failing checkpoint is treated
+  as absent; verification measures against the task''s expected_outputs, not just
+  file integrity (DEC-0044 names this risk)'
+- 'STEP 3 TESTS (AC-2, AC-3): red-without-fix for both halves in a clone outside the
+  repo; the session-break scenario replayed end to end -- the successor''s first action
+  on an orphaned dispatch matches DEC-0044 (sweep, then verified adoption or honest
+  from-zero)'
+- 'STEP 4 SHIP (AC-4): bump_kit_version, ruff, validate, ONE full tools/ run green
+  with numbers, mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason;
+  report file:line, checkpoint shape chosen and why, residues named'
+dependencies:
+- BUG-0042
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-15T14:57:28'

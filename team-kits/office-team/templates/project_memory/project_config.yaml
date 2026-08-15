@@ -1,8 +1,8 @@
 # project_config.yaml — owned by: Manager
 # Created once at init. Preset + model map. Preset and any model change MUST be user-confirmed.
-# Presets are MECHANICAL: the scaffold installs only the preset's roles (kit presets.yaml) —
-# core = records-clerk + bookkeeper; commerce adds product-editor + shop-curator; full adds
-# compliance-researcher + marketing-planner. Upgrading = re-run the scaffold + session restart.
+# Presets are MECHANICAL: the scaffold installs only the preset's roles (kit presets.yaml is the
+# authority on which; the office manager can read it out to you). Changing the preset later is the
+# manager's to do from the chat — it asks you first and then asks for a session restart.
 
 project:
   name: ""                  # set at init

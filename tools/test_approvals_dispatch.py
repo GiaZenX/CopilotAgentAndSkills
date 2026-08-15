@@ -1844,9 +1844,19 @@ def _possible_statuses(node, constants=None):
     return None
 
 
-# The one function that puts a mapping on disk. A NAME rather than the set, because the set is what
+# The one function that lands BYTES on disk. A NAME rather than the set, because the set is what
 # `_store_calls` derives FROM it -- and the test named in that function is what keeps the name true.
-_THE_WRITER = "_write_yaml_atomic"
+#
+# IT IS THE BYTE WRITER AND NOT THE SERIALISER, since `kernel.presets` gave the kernel a second
+# shape of content to put on disk (one FIELD of a kit document, whose comments a YAML round-trip
+# would delete). `_write_yaml_atomic` is now a serialiser in front of this one, so deriving the
+# closure from the byte writer keeps every route that existed AND covers the ones that carry text
+# rather than a mapping -- deriving it from the serialiser would have been silent about those.
+_THE_WRITER = "_write_text_atomic"
+# ...and the serialiser in front of it, named for the premise below: those two are the whole of
+# what puts data on disk in `kernel/state.py`, and a third name there is a route the closure
+# cannot see.
+_THE_SERIALISER = "_write_yaml_atomic"
 
 # HOW A FUNCTION IS SPELLED. Every reader in this file that asks "what does this function do" has
 # to see both forms, because Python has two and a kernel that grows a coroutine grows it without
@@ -2483,10 +2493,13 @@ def test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on():
         source = handle.read()
     kernel = ast.parse(source)
     writing = _persisting_primitives(kernel)
-    assert set(writing) == {_THE_WRITER}, (
+    assert set(writing) == {_THE_WRITER, _THE_SERIALISER}, (
         "kernel/state.py puts data on disk from %s; `_store_calls` derives every route into the "
-        "store from %r alone, so any other writer is a route it cannot see"
-        % (sorted(writing), _THE_WRITER))
+        "store from %r alone (with %r the serialiser in front of it), so any other writer is a "
+        "route it cannot see" % (sorted(writing), _THE_WRITER, _THE_SERIALISER))
+    assert _THE_SERIALISER in _store_calls(), (
+        "%r no longer reaches %r, so a mapping can now be put on disk on a route the closure does "
+        "not follow" % (_THE_SERIALISER, _THE_WRITER))
 
     # THE READER'S OWN BOTH-ENDED PROBE: spellings of a write, which must all be seen, and shapes
     # that only READ, which must not be -- a rule that flags reading too would be satisfied by
@@ -2509,7 +2522,7 @@ def test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on():
     # THE RESIDUAL, MEASURED RATHER THAN DESCRIBED. A primitive that moves, copies or removes a
     # path puts data on disk and this reader does not see it. That is a documented gap in the
     # premise, not a property of `kernel/state.py` -- which reaches `os.replace` only from inside
-    # `_write_yaml_atomic` -- and it is asserted here so that the paragraph in
+    # the byte writer -- and it is asserted here so that the paragraph in
     # `_persisting_primitives` cannot quietly stop matching the code in either direction.
     residual = ast.parse(
         "def j(a, b):\n    os.replace(a, b)\n"
@@ -2520,10 +2533,10 @@ def test_the_store_has_exactly_one_writer_for_this_derivation_to_rest_on():
         "`_persisting_primitives` is closed and its paragraph is the thing that is now false")
 
     sample = ast.parse(
-        "def _write_yaml_atomic(p, d):\n    pass\n"
-        "def near(self, d):\n    self._write_yaml_atomic('p', d)\n"
+        "def %s(p, d):\n    pass\n"
+        "def near(self, d):\n    self.%s('p', d)\n"
         "async def far(self, d):\n    self.near(d)\n"
-        "def unrelated(self, d):\n    self.parse_id(d)\n")
+        "def unrelated(self, d):\n    self.parse_id(d)\n" % (_THE_WRITER, _THE_WRITER))
     assert _store_calls(sample) == {_THE_WRITER, "near", "far"}, _store_calls(sample)
     # ...and on the shipped kernel the route THIS round added is in it. Named because it is the
     # route the tuple this replaces did not know: a writer with its own field contract (DEC-0004)

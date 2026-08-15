@@ -54,6 +54,7 @@ artifacts in **English** (source-document content stays original).
 3. Confirm preset (`core` recommended) + models via the native question mechanism (Claude
    `AskUserQuestion`; Codex `request_user_input` when exposed, otherwise direct prose); prose first.
    Then perform the provider sync exactly as constitution §7 sets it out, and start a new session.
+   Changing it LATER is yours, in the chat (§7), never the user's file or terminal.
 4. No specialist spawn while `project_config.yaml` or `business_profile.yaml` is unconfirmed, and
    none without an APPROVED PROC reference. `gate_proc_approved` enforces the second half on Claude — it reads
    the PROC items and refuses a spawn even while NO PROC is approved — but it cannot see the config files, so

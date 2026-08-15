@@ -1866,6 +1866,70 @@ legitimierte Träger (verändertes Bundle). Nachbarreste derselben Runde: das `k
 `report.py:1974-1975`), und `kit_trust_state.py:23-27` behauptet einen fehlenden Ausgang, den
 `transition()` hat — als **BUG-0037** erfasst. Beide mit Messung im Review-Dokument.
 
+### L40 — Ein Subagent erreicht `set-preset`: die Subagenten-Regel kennt nur die Klasse „bestellt Arbeit" (TSK-0064)
+
+**Mechanismus, als Eigenschaft:** Mit TSK-0064 (`BUG-0041`) hat der Kernel einen Befehl bekommen,
+der die **Durchsetzungsschicht neu installiert** — `set-preset` schreibt `project.preset` und fährt
+das Scaffold, das Rollen nach `.claude/agents` legt —, ohne Arbeit zu bestellen. Die
+Subagenten-Regel von `gate_write_scope` (Regel 4) erkennt aber genau die Klasse „bestellt Arbeit":
+`_ORDERING_COMMANDS` ist aus den CLI-Routen abgeleitet, die `create_task`/`create_lease` erreichen,
+und `set-preset` erreicht keines von beiden. Die Ableitung ist damit **intakt und zu eng zugleich**
+— eine neue Befehlsklasse (installiert Durchsetzung, bestellt nichts) liegt außerhalb ihrer
+Definition.
+
+**Kette (Prüfer der TSK-0064-Runde, 2026-08-15, echte Hook-Prozesse gegen die 8 registrierten
+`Bash|PowerShell`-PreToolUse-Hooks eines gescaffoldeten Projekts, aus dessen eigener
+`settings.json` gelesen):** als Subagent ist `python scripts/harness.py set-preset team` und
+`… request-approval preset --preset …` bei **allen 8 Hooks** durchgelassen, während `create-task`
+für denselben Subagenten rc 2 ist (Regel 4 arbeitet für ihre Klasse). Was ein Subagent damit
+erreicht: eine vom Nutzer signierte, noch nicht angewandte Änderung zum **selbstgewählten
+Zeitpunkt** auslösen (einschließlich des Entfernens von Peer-Rollen), und eine
+**Upgrade**-Freigabe (leeres `removes`) innerhalb ihrer Stunde beliebig oft wiederholen —
+gemessen: zweiter und dritter Lauf rc 0, je ein voller Scaffold-Lauf mit neuem
+Backup-Verzeichnis, `kit_state: restart_required`, `.claude/HANDOVER_PENDING`. Was er NICHT
+erreicht, ebenfalls gemessen: einen anderen **Inhalt** als den signierten — Freigabe A gegen
+Preset B, Rollendrift zwischen Mint und Set, abgelaufene Freigabe sind alle verweigert (der Hash
+deckt das Ergebnis).
+
+**Begrenzung, und ihre eigene Grenze:** sobald `.claude/HANDOVER_PENDING` steht, verweigert der
+**nutzerglobale** `handover_guard.py` weitere Läufe (rc 2 für beide Befehle, rc 0 für `doctor`).
+Dieser Riegel ist aber kein Kit-Hook — ein Projekt ohne die globale Datei hat ihn nicht —, und er
+trägt seine eigenen benannten Reste (L39: die Verbposition, die ein Wrapper besetzt; gemessen sind
+einzelne Wrapper-Schreibweisen rc 0, eine Kommandoersetzung rc 2).
+
+**Urteil: Rest mit gemessener Kette, kein Inhalts-Loch.** Die Autorisierung selbst ist die APR des
+Nutzers und deckt das Ergebnis; was der Subagent kontrolliert, ist **Zeitpunkt und Wiederholung**
+einer signierten Änderung, nicht ihr Inhalt. Die Reparaturstelle ist die Subagenten-Regel der
+Kits: die abgeleitete Klasse um „installiert die Durchsetzungsschicht" erweitern (aus derselben
+Quelle abgeleitet, aus der `set-preset` seine Wirkung bezieht) — eine Kit-Runde, kein Repo-Gate.
+
+### L41 — Was die Fehlermeldungen von `set-preset` nicht wissen: Skills und Provider-Artefakte im Abbruchfenster (TSK-0064)
+
+**Mechanismus:** Nach einem abgebrochenen oder verweigerten Installationslauf liest der Kernel
+zwei Dinge neu — das Besitzverzeichnis `.claude/team_kit_roles.txt` und die Rollendateien
+`.claude/agents/<rolle>.md`, die es nennt (`kernel/presets._installed_state`). **Nicht** neu
+gelesen werden `.claude/skills/<rolle>/`, die generierten Provider-Artefakte
+(`.codex/agents/*.toml`, `.codex/hooks.json`, `.agents/skills/`) und Rollen-Artefakte, die diese
+Installation nicht besitzt. Ein Abbruchfenster kann diese ungelesenen Teile in **beide**
+Richtungen verfehlen: Artefakte fehlen, oder überzählige bleiben zurück.
+
+**Kette (gemessen 2026-08-15, echtes Scaffold, Abbruch nach 1,5 s):** Prüfer der TSK-0064-Runde,
+zweimal unabhängig — die Rollen waren zurück und beide Leser einig, während `.claude/skills` von
+sieben Verzeichnissen auf **null** gefallen war; der Satz darüber lautete vor dem Fix „nothing is
+missing". Umsetzer, Wiederholung derselben Frist — die Spiegelform: Besitzverzeichnis nennt fünf
+Rollen, `.claude/agents` hält neun, `.claude/skills` sieben (Reste des halb installierten
+Satzes). Beides räumt der **nächste vollständige Installerlauf** auf, er prunet nach demselben
+Verzeichnis — kein dauerhafter Verlust.
+
+**Urteil: Rest mit gemessener Kette, geschlossen ist die EHRLICHKEIT, nicht die Messung.** Seit
+TSK-0064 tragen alle drei Ausgangs-Meldungen die Grenze im Klartext (`kernel/presets.UNREAD`, in
+beiden Richtungen: fehlend *und* übrig) statt Vollständigkeit zu behaupten; der unbedingte Satz
+ist von `test_the_outcome_messages_carry_the_limit_of_what_was_re_read` in beiden Fenstern rot
+gedeckt. Wer die Skills wirklich prüfen will, lässt den Installer noch einmal laufen. Die
+Schließrichtung — `_installed_state` liest auch Skill-Verzeichnisse und Provider-Artefakte —
+ist eine Kit-Runde und lohnt erst, wenn das Fenster in der Praxis trifft (Pilot 4 beobachtet
+den Preset-Fluss).
+
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier

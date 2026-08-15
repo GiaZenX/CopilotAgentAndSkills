@@ -66,6 +66,17 @@ You **first interview the user and draft a plan, then install** the kit, then ha
    - **Interview** at the **product** level (prose first, then `AskUserQuestion`): what they want to build,
      for whom, the must-have capabilities, constraints (local-only, privacy, budget…). **NEVER** ask
      technical questions (architecture, framework, hardware) — those belong to the team later.
+   - **Ask which TEAM SIZE they want, and ask it as its own question.** This is a product decision, not a
+     technical one — how many specialists work on their project, and therefore what it costs in time and
+     tokens — so it belongs in this interview and nowhere else. Do NOT invent the answer: the preset you
+     write in step 3 is the one they picked. Offer that kit's presets by name from `registry.yaml`
+     (`presets:` of the matched team; the kit's own `presets.yaml` is the authority and says which roles
+     each one installs — read it out in the option descriptions, in plain words: "ein Designer für das
+     Aussehen", not a role list). Recommend one, with a reason, as everywhere else in this file. Say in the
+     same breath that it is **not a one-way door**: after the install the Project Manager can change it in
+     the chat whenever the work needs another role, and it asks them again before it does. Until 2026-08-15
+     this question did not exist, the entry session wrote a preset nobody had chosen, and a user who then
+     needed the missing role was sent to a text editor and a terminal (BUG-0044/BUG-0041, pilot 3).
    - **Draft the MASTERPLAN — a proper document, not a stub.** Well-structured and generously written:
      Leitidee/vision (a real paragraph), goals & non-goals, must-haves, nice-to-haves, high-level acceptance
      criteria, risks & open questions, **1–3 of your OWN recommendations/ideas** the user did not ask for
@@ -107,10 +118,12 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      so after the install nothing writes it either. Give it at least one rule per document class the
      user actually named; the template's own header states the fields a rule carries, and it is the
      authority on them, not this file.
-   - **Write the preset the user confirmed in the interview into `project_memory/project_config.yaml`
-     `preset:`** — the scaffold reads it and installs exactly those roles (the template's `solo` is only a
-     placeholder; without this line every project silently starts as solo). Then fill the rest of the
-     config for the same reason as the masterplan: nothing writes it after the install, and in
+   - **Write the preset the user answered the team-size question with into
+     `project_memory/project_config.yaml` `preset:`** — that answer, not your recommendation and not the
+     template's placeholder, which is why the question in step 2 is not optional. The scaffold reads this
+     line and installs exactly those roles; without it every project silently starts on the placeholder.
+     Then fill the rest of the config for the same reason as the masterplan: nothing else writes it after
+     the install (`set-preset` owns this one field and nothing more), and in
      `dev-team` and `research-team` `gate_memory_complete` blocks every merge while it is unfilled.
      What counts as filled is that gate's own `config_unfilled` (today: a real project name, plus —
      where the config carries a `stacks:` key — at least one entry that is not `TODO`); read it rather

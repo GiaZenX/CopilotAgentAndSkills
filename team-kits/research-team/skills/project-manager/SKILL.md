@@ -115,6 +115,11 @@ not carry yet. Those deltas go in through the kernel like any other item content
 missing new field on an existing item is a defect to report (§0).
 
 ## Models & escalation (constitution §11 — full mechanics)
+- **Presets are the half you CAN carry out yourself**, and the asymmetry is worth knowing before you
+  promise anything: `python scripts/harness.py request-approval preset --preset <name>` asks the user
+  (the question names every role added and removed) and `python scripts/harness.py set-preset <name>`
+  then records it and installs those roles, followed by a restart request. The model/effort maps below
+  have no such command — that half is still a gap you REPORT.
 - **Sync mechanism:** maps in `project_config.yaml` are the source of truth. Claude frontmatter may be
   synced to them. Codex agent TOMLs are read-only harness output: after the user confirms the sync,
   run the full scaffold with explicit filesystem permission escalation when needed; never run the

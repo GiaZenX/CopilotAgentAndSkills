@@ -403,22 +403,26 @@ class ProjectState:
             return yaml.safe_load(fh)
 
     @staticmethod
-    def _write_yaml_atomic(path: str, data: dict) -> None:
-        """Write `data` to `path` atomically, leaving NO half-written file behind either way.
+    def _write_text_atomic(path: str, text: str) -> None:
+        """Write `text` to `path` atomically, leaving NO half-written file behind either way.
 
-        THE TEMP FILE IS CLEANED UP ON FAILURE, and that is not tidiness. `yaml.safe_dump` can
-        raise on a payload it cannot represent, and the `.tmp-<pid>` it had already opened then
+        THE TEMP FILE IS CLEANED UP ON FAILURE, and that is not tidiness. The serialisation above
+        can raise on a payload it cannot represent, and the `.tmp-<pid>` it had already opened then
         stayed in the item directory -- measured in `procedures/active/`, where it is read by
         `migrate.state_fingerprint` (so a later plan digest covers a file nobody wrote on purpose)
         and by `report`'s directory readers. `os.replace` is still what makes the write atomic;
         this only makes the FAILING write leave the directory as it found it.
+
+        The one atomic write in the kernel: `_write_yaml_atomic` is this plus a serialiser, and
+        `kernel.presets` writes a kit document's single line through it -- two shapes of content,
+        one rule about how bytes land.
         """
         directory = os.path.dirname(path)
         os.makedirs(ext_path(directory), exist_ok=True)
         tmp = path + ".tmp-%s" % os.getpid()
         try:
-            with open(ext_path(tmp), "w", encoding="utf-8", newline="\n") as fh:
-                yaml.safe_dump(data, fh, sort_keys=False, allow_unicode=True)
+            with open(ext_path(tmp), "w", encoding="utf-8", newline="") as fh:
+                fh.write(text)
             os.replace(ext_path(tmp), ext_path(path))
         except BaseException:
             try:
@@ -426,6 +430,18 @@ class ProjectState:
             except OSError:
                 pass          # never mask the original failure with the cleanup's own
             raise
+
+    @staticmethod
+    def _write_yaml_atomic(path: str, data: dict) -> None:
+        """Serialise `data` and write it through the atomic write above.
+
+        The dump happens BEFORE any file is opened, so a payload YAML cannot represent leaves the
+        directory untouched instead of leaving a temp file behind. `newline="\\n"` used to be given
+        to the stream; it is now in the text itself, because `safe_dump` emits `\\n` and the writer
+        below is told to translate nothing.
+        """
+        ProjectState._write_text_atomic(
+            path, yaml.safe_dump(data, sort_keys=False, allow_unicode=True))
 
     def read_item(self, item_id: str) -> dict:
         path = self.active_path(item_id)

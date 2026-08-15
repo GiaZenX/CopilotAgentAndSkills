@@ -329,12 +329,15 @@ entry point asks the shipped parser rather than matching text).
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
-`archive`, `sweep-leases`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `migrate`. Of the twelve
+`archive`, `sweep-leases`, `set-preset`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`,
+`migrate`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also
 walks the status transition it commits. What has no writer at
-all either way: `project_config.yaml` and `product/masterplan.md` are not typed items. Those are
+all either way: `product/masterplan.md` is not a typed item, and neither is `project_config.yaml` —
+of which `set-preset` owns exactly one field, `project.preset`, on a user-minted approval, because
+the roles a project may spawn otherwise had no route after the install at all (BUG-0041). Those are
 infrastructure defects to report, not a licence to write state by hand, and the three constitutions
 say the same in their §0. The promotion path (II.6a) DOES have one now: an `ARC`/`WFR`/`DSN` is
 frozen by `freeze-architecture`/`freeze-wireframe`/`freeze-design`, each taking the operation's own
@@ -475,12 +478,14 @@ opens by double-click.
 - **Branch per work item** (`<typ>/<ITEM-ID>-<slug>`, prefixes `pr/ cr/ bug/` — e.g.
   `pr/PR-0012-checkout`), merge after internal QA, **push only on user confirmation**, no force-push,
   no work on a dirty tree.
-- **Team preset** chosen once per project (dev/research: `solo` | `duo` | `team`; office: `core` |
+- **Team preset** chosen at init per project (dev/research: `solo` | `duo` | `team`; office: `core` |
   `commerce` | `full`) — **mechanical**: the scaffold installs only the preset's roles (kit
-  `presets.yaml`), so another **custom kit role** is unavailable until an upgrade. Codex's upstream
-  built-in roles remain technically selectable and are prohibited by team policy, not removed by
-  the scaffold. Upgrading = re-run the scaffold with the larger preset + session restart.
-  Escalation is user-gated only.
+  `presets.yaml`), so another **custom kit role** is unavailable until the preset changes. Codex's
+  upstream built-in roles remain technically selectable and are prohibited by team policy, not
+  removed by the scaffold. Changing it later is the LEAD's step and stays inside the chat:
+  `request-approval preset --preset <name>` asks the user (the question names every role added and
+  removed), `set-preset <name>` records it and installs those roles, and the lead then asks for a
+  session restart. Escalation is user-gated only.
 - **Models:** portable `lead`/`worker`/`light` tiers use canonical Claude aliases
   `opus`/`sonnet`/`haiku`; Codex maps them to Sol/Terra IDs. PM/judgment roles default to lead and
   implementers to worker, controlled via `project_config.yaml` — the scaffold stamps the shared Claude agent

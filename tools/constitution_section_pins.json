@@ -25,7 +25,7 @@
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
-        "digest": "ddb758e0275011ad",
+        "digest": "217fa14398e4421b",
         "hooks": [
           "gate_write_scope"
         ]
@@ -45,7 +45,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "a4e6b0b7586974b8",
+        "digest": "198058ebf43f91fc",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -56,7 +56,7 @@
         "hooks": []
       },
       "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
-        "digest": "6a78123abb9b8e7d",
+        "digest": "105f42fc5c6f940a",
         "hooks": [
           "session_status"
         ]
@@ -214,7 +214,7 @@
         ]
       },
       "Models & escalation (constitution §11 — full mechanics)": {
-        "digest": "1bfbf06c137900eb",
+        "digest": "7f98f12a1b768135",
         "hooks": [
           "session_status"
         ]
@@ -257,7 +257,7 @@
         "hooks": []
       },
       "Startup gate (before any delegation)": {
-        "digest": "2d328638191258c8",
+        "digest": "65b743ca9e9ffdc3",
         "hooks": [
           "gate_proc_approved"
         ]
@@ -277,7 +277,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "6e916d4d58ebc16d",
+        "digest": "fd77cc64ae9accb6",
         "hooks": [
           "gate_write_scope"
         ]
@@ -331,7 +331,7 @@
         ]
       },
       "4a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "126e38081cecd258",
+        "digest": "712dc33d85110e30",
         "hooks": [
           "gate_write_scope",
           "guard_agent_spawn",
@@ -349,7 +349,7 @@
         "hooks": []
       },
       "7. Models & presets": {
-        "digest": "9d8e8fa6c95d22e8",
+        "digest": "20dc8e44ef685204",
         "hooks": [
           "session_status"
         ]
@@ -421,7 +421,7 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "f5be7adf7cafe5d1",
+        "digest": "b071d37484c2e80c",
         "hooks": [
           "gate_proc_approved",
           "session_status"
@@ -452,7 +452,7 @@
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
-        "digest": "3313d2759695b0e2",
+        "digest": "33d9a8ab6d9efba0",
         "hooks": [
           "gate_write_scope"
         ]
@@ -472,7 +472,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "c872189d70ba1fa2",
+        "digest": "a2eef6ae4dac3081",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -483,7 +483,7 @@
         "hooks": []
       },
       "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
-        "digest": "2579e277a43a3ce7",
+        "digest": "0bea172b546a007e",
         "hooks": [
           "session_status"
         ]
@@ -645,7 +645,7 @@
         ]
       },
       "Models & escalation (constitution §11 — full mechanics)": {
-        "digest": "e2476843ef56d1ef",
+        "digest": "c24b7981e59780f6",
         "hooks": [
           "session_status"
         ]

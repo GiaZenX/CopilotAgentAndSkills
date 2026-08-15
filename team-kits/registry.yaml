@@ -21,10 +21,13 @@
 # runs, and it is the one thing a reader choosing a kit could previously not learn here. Each entry
 # names a file that is simultaneously (a) read by a gate the kit registers, which refuses work
 # while its content is still the shipped template, and (b) unwritable from inside an installed
-# project: the kernel has no path builder that can name it, so no `harness.py` command writes it,
-# and the state directory is write-scoped against tools. The only sessions that can fill one are
-# the entry gate's — the session BEFORE the scaffold, which is why the fact belongs in the routing
-# table and not only in the kit — and the user's own editor.
+# project: the kernel has no path builder that can name it, so no `harness.py` command writes such
+# a FILE, and the state directory is write-scoped against tools. The only sessions that can fill
+# one are the entry gate's — the session BEFORE the scaffold, which is why the fact belongs in the
+# routing table and not only in the kit — and the user's own editor. One single FIELD is the
+# exception and it is named where it lives (`project.preset`, below): `harness.py set-preset` owns
+# it, on a user-minted approval, because the roles a project may spawn otherwise had no route at
+# all after the install (BUG-0041). Everything else in these files still has none.
 #
 # The set is DERIVED, not curated: `kernel.layout.gated_documents` answers it per kit from the
 # kit's registered, refusal-capable hooks and `kernel.layout.is_project_document`, and
@@ -57,6 +60,8 @@ teams:
           Project name, team preset and the declared `stacks:`. `gate_memory_complete` refuses
           merge and push while the name is empty or `stacks:` is still `[TODO]` — the merge
           pipeline selects its checks from that list, so an undeclared stack is an unchecked one.
+          The preset is the one field the installed project can still change, through
+          `harness.py set-preset` and a user approval; name and stacks cannot.
     intents:
       - software
       - app
@@ -100,7 +105,9 @@ teams:
       - path: project_memory/project_config.yaml
         why: >
           Project name, team preset and the declared `stacks:`. `gate_memory_complete` refuses
-          merge and push while the name is empty or `stacks:` is still `[TODO]`.
+          merge and push while the name is empty or `stacks:` is still `[TODO]`. The preset is the
+          one field the installed project can still change, through `harness.py set-preset` and a
+          user approval; name and stacks cannot.
     intents:
       - research
       - experiment

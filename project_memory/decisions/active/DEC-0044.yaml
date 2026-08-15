@@ -1,0 +1,35 @@
+id: DEC-0044
+title: 'Session-break continuation: specialists checkpoint, the successor may adopt
+  AFTER verification'
+context: 'Pilot 3 (B11/BUG-0042): three in-flight specialists lost their work at session
+  breaks (TSK-0004 at S3->S4, TSK-0012/0013 at S4->S5). The bookkeeping was honest
+  -- leases named agents that no longer lived, FAILED results were submitted naming
+  zero adoptable progress, approved retries rebuilt from zero, one partial edit was
+  discarded (pilot commit 17bf932) -- but the paid work was lost and re-paid every
+  time. There is no continuation path across a session break: no rebrief from partial
+  state, no checkpoint a successor could adopt. The user chose among three stories
+  on 2026-08-15 (AskUserQuestion): checkpoint+verified adoption (recommended), honest-sweep-only,
+  documented-limitation-only.'
+decision: 'The user chose checkpoint WITH verified adoption. Two composed halves:
+  (1) HYGIENE -- at session start, orphaned leases (a lease whose agent the session
+  cannot see) are swept immediately and honestly; nothing pretends to run. (2) CONTINUATION
+  -- the dispatch envelope carries a checkpoint duty: a specialist records resumable
+  progress at defined points (shape decided in the build round); after a break, the
+  successor''s retry MAY adopt the checkpoint, but only after a verification step
+  confirms it (an unverified checkpoint is treated as absent -- adoption is earned,
+  never assumed). Re-order from scratch remains the fallback when verification fails
+  or no checkpoint exists.'
+consequences: 'Paid work survives session breaks where a verified checkpoint exists;
+  silent loss stops being the default. Costs: specialists carry a checkpoint duty
+  (write overhead during runs); the retry path gains a verification step (its cost
+  is the price of never adopting a half-broken state); the build round (BUG-0042 AC-2/AC-3)
+  must red-test both halves -- sweep-on-start and verified adoption -- and replay
+  the session-break scenario end to end. The named risk: a checkpoint that verifies
+  but is semantically stale can still mislead a successor; the verification design
+  must measure against the task''s expected_outputs, not just file integrity.'
+source: BUG-0042 (pilot 3 finding B11; pilot project commit 17bf932, archive/TSK/2026/TSK-0004.yaml);
+  user decision 2026-08-15 in-session
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-15T14:57:05'

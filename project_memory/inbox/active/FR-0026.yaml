@@ -1,0 +1,16 @@
+id: FR-0026
+title: 'Codex entry twin: user/codex/AGENTS.md asks the preset question but does not
+  know set-preset'
+request_text: 'TSK-0064 closed BUG-0041/0044 for the Claude entry file (user/claude/CLAUDE.md
+  asks the team-size question and the PM drives request-approval preset / set-preset).
+  The Codex twin user/codex/AGENTS.md already asks the preset (:119) but does not
+  name the new walkable change path -- a Codex-driven project still hits the old dead
+  end after install. Bring the twin to parity: name set-preset as the change route,
+  mirror the not-a-one-way-street sentence, and measure the dead-end sweep over the
+  codex entry prose too. Out of TSK-0064''s allowed_scope by design (user/codex/**
+  was not listed); needs its own small round. Source: TSK-0064 implementer report
+  2026-08-15, residue 2.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T16:37:25'

@@ -24,7 +24,8 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
    channels, VAT/Kleinunternehmer flags, active provider/account type, sensitive-document choice:
    process/redact/exclude) + `product/masterplan.md` (a frozen discovery artifact — never a status
    source). Preset confirm (recommend `core` first — presets are
-   MECHANICAL; a larger preset = re-run scaffold + restart).
+   MECHANICAL; changing one later is `request-approval preset` → the user answers →
+   `set-preset` → restart, and stays inside the chat: §7).
 3. **DEFINE PROCs** — capture one `PROC-nnnn` per automation wish
    (trigger, steps, owning role, outputs, approval points, exception policy); the kernel allocates the id
    and sets status `DRAFT`.

@@ -53,12 +53,16 @@ from .backlog_types import AUTOMATA, HASHED_FIELDS, parse_id
 from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso
 
-APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push")
+APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset")
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
 # push token that outlives its session is a standing permission to publish.
-EXPIRING_KINDS = frozenset(("routine", "analysis", "push"))
+# `preset` on the same ground as `push` and one step further: what it authorises
+# is the installation of the roles a project may spawn, i.e. a change to the
+# enforcement layer itself (BUG-0041). An unused one that lingers is a standing
+# permission to rewrite that layer, so it carries a clock like the other three.
+EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
 # approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
 # analysis/routine deliberately excluded and NOT because they authorise nothing:
@@ -218,25 +222,49 @@ def push_subject_manifest(remote: str, branch: str, head: str) -> dict:
     }
 
 
+def preset_subject_manifest(preset: str, roles, removes) -> dict:
+    """What a preset change is bound to: the OUTCOME the user is asked to sign (BUG-0041).
+
+    The user is not shown a preset NAME and asked to trust it -- `duo` and `team` say nothing to
+    the person pilot 3 measured. The manifest carries the resulting specialist set and, separately,
+    the roles this project has installed that the new preset drops, because a downgrade takes work
+    capacity away and that is the half a name hides completely.
+
+    BOUND TO THE OUTCOME AND NOT TO THE STEP: `kernel.presets.change_manifest` derives these same
+    three values from the kit staging and the installed role manifest, and `set-preset` re-derives
+    them and refuses unless the hash still matches. So an approval signed for one role set cannot
+    install another -- not after a kit staging changed underneath it, and not for a preset the
+    user was never shown.
+    """
+    return {
+        "preset": str(preset or ""),
+        "roles": list(roles or []),
+        "removes": list(removes or []),
+    }
+
+
 # THE OTHER HALF OF THE KIND SPLIT, and the reason B2 was a wall: `item_derived_kinds` names the
 # kinds a command line can open because it can carry an item id, and `cli` asked ONLY for those.
-# `push` is in `APR_KINDS`, has its manifest builder right above, and `gate_push_token` refuses
+# `push` is in `APR_KINDS`, has its manifest builder above, and `gate_push_token` refuses
 # every push without one -- but nothing could create the request, so no project could ever push.
 # Measured 2026-08-02 before this: `approvals/pending/` never held a push request, and the gate's
 # own remedy pointed at a command the parser did not have.
 #
-# A kind belongs here when its subject is a handful of SCALAR facts a role can type. The CLI reads
-# the flags off the builder's SIGNATURE (the pattern `cli.freeze_parameters` already uses for the
-# freeze bodies), so a second line kind arrives on the command line with the right flags and no
-# edit there.
-LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest}
+# A kind belongs here when its subject is a handful of facts a COMMAND LINE can put together --
+# typed on it, or resolved from the project by `cli.LINE_MANIFEST_RESOLVERS` (the shape `head` has
+# always had, and the one `preset`'s role lists need: a role typing them would be typing what the
+# kit's own preset file decides). The CLI reads the flags off the builder's SIGNATURE (the pattern
+# `cli.freeze_parameters` already uses for the freeze bodies), so a second line kind arrives on
+# the command line with the right flags and no edit there.
+LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest}
 
 # How long an approval minted from a command-line manifest stays valid. Every kind in this map is
 # in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
 # one to choose how long, or the supervised party decides how long its own permission lasts.
-# One hour, on `push`'s reason: the token is ALREADY single-use through HEAD (see
-# `push_subject_manifest`), so this clock only bounds how long an unused one lingers, and a push
-# token that outlives the working session is a standing permission to publish.
+# One hour, on the reason both kinds share: each is ALREADY bound to content that moves -- a push
+# token to HEAD (see `push_subject_manifest`), a preset approval to the role set it names -- so
+# this clock only bounds how long an UNUSED one lingers, and an unused authorisation that outlives
+# the working session is a standing permission to publish, or to reinstall the project's roles.
 LINE_APPROVAL_VALIDITY = 3600.0
 
 
@@ -687,9 +715,16 @@ def build_question(request: dict) -> dict:
     equality of question text, header AND all options for marked questions.
     """
     target = request["item"] if request["item"] else request["kind"]
-    if request["kind"] == "routine":
-        # THE SAME RULE THE PUSH CASE BELOW STATES, applied to the other kind whose subject is not
-        # the item it hangs from. A routine approval is a STANDING, recurring spawn permission, and
+    if request["kind"] == "routine" or request["item"] is None:
+        # WHAT THE HASH COVERS IS WHAT THE USER IS SHOWN, and the condition is that property rather
+        # than the kinds it happens to hold for today. A request whose subject is a MANIFEST -- a
+        # routine permission hanging from an item it is not about, or any kind with no item at all
+        # -- renders that manifest, because the generic line would otherwise ask the user to sign a
+        # bare kind name. This used to name `routine` alone, so every future item-less kind
+        # inherited the bare line; `preset` is the one that would have asked a non-technical user
+        # to approve the word "team" (BUG-0041). `push` overrides it just below with a form built
+        # for reading, which is why this branch may widen without changing that question.
+        # A routine approval is a STANDING, recurring spawn permission, and
         # what the dispatch route binds it to is the manifest -- the role first of all. Asked as
         # "Freigabe erbeten: routine für PR-0001" the user was signing a role they were never
         # shown, for a period they were never shown either.
@@ -702,9 +737,14 @@ def build_question(request: dict) -> dict:
         # text and compares it character for character), and it carries no mint code -- that lives
         # only in the option label.
         manifest = request.get("subject_manifest") or {}
-        target = "%s [%s]" % (target, ", ".join(
+        rendered = "[%s]" % ", ".join(
             "%s: %s" % (field, _render_manifest_value(field, manifest[field]))
-            for field in sorted(manifest)))
+            for field in sorted(manifest))
+        # The kind is already the first half of the sentence this goes into, so an item-less
+        # request shows the manifest ALONE -- "Freigabe erbeten: preset für preset [...]" says the
+        # word twice and reads like a machine to the person who has to judge it. With an item, the
+        # item stays in front of the manifest: that is what a routine approval hangs from.
+        target = ("%s %s" % (target, rendered)) if request["item"] else rendered
     if request["kind"] == "push" and not request["item"]:
         # A push approval has no ITEM, so the generic target would read "push" and the human would
         # be asked to authorise publishing without being told WHAT gets published. The manifest is
@@ -826,25 +866,68 @@ def _assert_minting_caller() -> None:
         )
 
 
-def _approval_of_request(state: ProjectState, request_id: str):
-    """The APR minted from this request, or None -- the ONE scan of the approval store.
+def _stored_approvals(state: ProjectState):
+    """Every readable APR record in the store, in name order -- the ONE scan of it.
 
-    Two readers need it (the replay guard in `mint`, and `_gone_request_user_text` telling a user
-    her yes is already recorded), and a second copy of a store scan is how `report._parents_of`
-    became two.
+    Three readers need it (the replay guard in `mint`, `_gone_request_user_text` telling a user her
+    yes is already recorded, and `live_line_approval`), and a second copy of a store scan is how
+    `report._parents_of` became two. An unreadable file is skipped: it proves nothing either way,
+    and every caller here is asking "is there one that grants this", never "is the store sound".
     """
     approvals_dir = os.path.join(state.root, "approvals")
     if not os.path.isdir(approvals_dir):
-        return None
+        return
     for name in sorted(os.listdir(approvals_dir)):
         if not (name.startswith("APR-") and name.endswith(".yaml")):
             continue
         try:
-            existing = state._read_yaml(os.path.join(approvals_dir, name))
+            record = state._read_yaml(os.path.join(approvals_dir, name))
         except Exception:
             continue        # an unreadable approval proves nothing either way (fail-closed)
-        if isinstance(existing, dict) and existing.get("request_id") == request_id:
+        if isinstance(record, dict):
+            yield record
+
+
+def _approval_of_request(state: ProjectState, request_id: str):
+    """The APR minted from this request, or None."""
+    for existing in _stored_approvals(state):
+        if existing.get("request_id") == request_id:
             return existing
+    return None
+
+
+def live_line_approval(state: ProjectState, kind: str, manifest: dict):
+    """A minted, unrevoked, unexpired approval of `kind` whose REQUEST carries exactly `manifest`.
+
+    The one definition of "this line-manifest approval is in force", because there were two: the
+    push gate carried this scan and `set-preset` would have been the second copy of it, down to the
+    detail that decides whether a lapsed permission still works -- reading the expiry off the
+    HASH-COVERED side (`proven_expiry`) rather than off the APR file. `gate_push_token` now asks
+    this function.
+
+    The APR file carries only the hash; coverage is read from the consumed REQUEST, which is where
+    the manifest lives and which `revoke` MOVES out of the way (`consumed_request`). So a
+    hand-written APR proves nothing, and a revoked one stops matching even though its file still
+    exists. The expiry is dropped from the STORED manifest before hashing because
+    `create_pending_request` puts it there and no caller can know the minute it was minted;
+    everything else must match key for key.
+    """
+    wanted_hash = subject_manifest_hash(dict(manifest))
+    for apr in _stored_approvals(state):
+        if apr.get("kind") != kind or apr.get("revoked"):
+            continue
+        try:
+            request = consumed_request(state, apr)
+            expires = proven_expiry(request)
+        except ApprovalError:
+            continue        # unprovable provenance or an unreadable expiry grants nothing
+        stored = dict(request.get("subject_manifest") or {})
+        stored.pop(EXPIRY_FIELD, None)
+        if subject_manifest_hash(stored) != wanted_hash:
+            continue
+        if expires is not None and expires <= time.time():
+            continue
+        return apr
     return None
 
 

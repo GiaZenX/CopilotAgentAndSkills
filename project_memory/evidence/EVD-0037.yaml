@@ -1,0 +1,19 @@
+id: EVD-0037
+kind: review
+related:
+- TSK-0064
+- BUG-0041
+- BUG-0044
+result: pass
+summary: 'verifier PASS (round 5) for diff:fdc30dbe8ce63cd97808e14ff135861ab809f5b5e298300fd52bbe348823488c
+  -- TSK-0064: PM-drivable preset change (request-approval preset + set-preset, result-signed
+  approval, version pin, two-reader failure honesty with UNREAD limit in all three
+  outcomes, no-shell refusal true by construction), entry interview asks the team-size
+  question, dead-end prose gone with both-ends sweep; five rounds converged 4 findings
+  -> 1 branch -> 1 sentence -> 1 line -> nothing; kits 2026.08.15-17/-18/-17, suite
+  2612; residues L40/L41/FR-0026/FR-0027 named'
+artifact_refs:
+- staging/TSK-0064/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-15T21:57:09'

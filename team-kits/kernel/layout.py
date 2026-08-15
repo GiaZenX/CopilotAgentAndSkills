@@ -14,9 +14,16 @@ THE PROPERTY, not the three file names. The state directory holds two kinds of f
     approval hashes and the index. A tool write here really would bypass all three, and
     `approvals/pending/**` in particular holds mint codes in cleartext.
   * KIT DOCUMENTS -- the prose and configuration a kit ships into `templates/project_memory/`.
-    No kernel path builder can name one, so no kernel command can write one; they are ordinary
-    project files that happen to live under the state directory, and they are scoped like
+    No kernel path builder can name one, so no kernel command WRITES one as a file; they are
+    ordinary project files that happen to live under the state directory, and they are scoped like
     ordinary project files.
+
+    ONE QUALIFICATION, and it is a qualification and not an exception: a kernel command may own a
+    single FIELD inside such a document. `set-preset` writes `project.preset` and nothing else in
+    `project_config.yaml`, because the roles a project has installed had no writer at all and the
+    only remaining route was a human with a text editor (BUG-0041). The document is still a
+    document -- everything above about scoping and about tool writes is unchanged -- and
+    `partial_writers` below is what lets a refusal say so instead of denying a route that exists.
 
 `kernel_written_subtrees` answers the first half by ASKING THE WRITERS' OWN PATH BUILDERS with a
 probe id, rather than by listing directories: `state.active_path`, `state.archive_path`,
@@ -59,7 +66,8 @@ from .state import STAGING_DIRNAME, ProjectState
 # name; the writers need the path, and one of the two spelling the other's answer is how a
 # predicate and a writer come to disagree about a directory.
 __all__ = ["STAGING_DIRNAME", "gated_documents", "is_in_proposal_area", "is_kernel_written",
-           "is_project_document", "kernel_written_subtrees", "path_segments_composed"]
+           "is_project_document", "kernel_written_subtrees", "partial_writers",
+           "path_segments_composed"]
 
 # Probe values handed to the path builders. They name nothing that has to exist: a path builder
 # composes a name, it does not open a file, so `TSK-0001` and a zero request id are enough to make
@@ -152,6 +160,23 @@ def is_in_proposal_area(relative_path: str) -> bool:
     """
     rel = str(relative_path or "").replace("\\", "/").strip("/").lower()
     return bool(rel) and rel.split("/")[0] == STAGING_DIRNAME
+
+
+def partial_writers(relative_path: str) -> tuple:
+    """({"field", "command"}, ...) a kernel COMMAND writes inside this kit document.
+
+    Asked of the modules that do the writing (`presets.DOCUMENT_WRITES`) rather than listed here,
+    for the reason the module docstring gives: the refusal a role reads must not deny a route the
+    harness has, and a second copy of "which command writes what" is how it would come to.
+    Matched on the document's own path inside the state directory, case-folded like every other
+    comparison in this module.
+    """
+    from . import presets                # lazy: keeps the package's import graph a tree
+
+    rel = str(relative_path or "").replace("\\", "/").strip("/").lower()
+    return tuple({"field": entry["field"], "command": entry["command"]}
+                 for entry in presets.DOCUMENT_WRITES
+                 if entry["document"].lower() == rel)
 
 
 def is_project_document(root: str, relative_path: str) -> bool:

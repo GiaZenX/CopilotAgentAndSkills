@@ -49,7 +49,7 @@ import subprocess
 import sys
 import time
 
-from . import approvals, dispatch, migrate, report, staging
+from . import approvals, dispatch, migrate, presets, report, staging
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -177,40 +177,81 @@ def manifest_parameters(builder) -> list:
     return list(inspect.signature(builder).parameters)
 
 
-def _worktree_head(state: ProjectState) -> str:
+def _worktree_head(state: ProjectState, _args) -> str:
     """The commit a push would publish, read from the worktree the state directory sits in.
 
     `gate_push_token` resolves the SAME value with the same git call and binds its check to it, so
     a head a role typed from memory would mint a token for a different commit -- which is exactly
-    the single-use property `push_subject_manifest` rests on. Empty string when git cannot answer;
-    the caller turns that into a usage error naming the flag.
+    the single-use property `push_subject_manifest` rests on. None when git cannot answer; the
+    caller turns that into a usage error naming the flag.
     """
     repo = os.path.dirname(os.path.abspath(state.root))
     try:
         result = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"],
                                 capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
-        return ""
-    return (result.stdout or "").strip() if result.returncode == 0 else ""
+        return None
+    return ((result.stdout or "").strip() or None) if result.returncode == 0 else None
 
 
-# Manifest keys the CLI can determine itself; every other key of a builder must be typed. A key
-# WITH a resolver is optional on the command line, one without is required -- that is the whole
-# rule, and it is why `remote` and `branch` stay mandatory: they are what the user is asked to
-# authorise, so they come from the role's intent, never from whatever the machine happens to be
-# checked out at.
-LINE_MANIFEST_RESOLVERS = {"head": _worktree_head}
+def _preset_roles(state: ProjectState, args):
+    """The specialist set the requested preset installs here -- the kit's own answer."""
+    return presets.change_manifest(state, args.preset)["roles"]
+
+
+def _preset_removes(state: ProjectState, args):
+    """The installed specialists that the requested preset drops -- possibly none, legitimately."""
+    return presets.change_manifest(state, args.preset)["removes"]
+
+
+# Manifest keys the CLI determines ITSELF, from the project rather than from the role -- each with
+# the SOURCE it determines them from, in the words the `--help` prints. A key here is not the
+# role's to fill in; a key without an entry is required on the line. That split is why `remote` and
+# `branch` stay typed: they are what the user is asked to authorise, so they come from the role's
+# intent, never from whatever the machine happens to be checked out at. `preset`'s two lists are
+# the mirror image -- they are what the KIT decides, and a role typing them would be typing over
+# the file that owns them.
+#
+# A TYPED VALUE FOR ONE OF THESE IS REFUSED, not quietly overridden and not quietly used. The
+# verifier measured what "used" costs: `--roles product-designer --removes nothing-at-all` produced
+# a real, kernel-signed approval question whose role lists were those strings split into single
+# CHARACTERS -- and `build_question` rests on the property that what the hash covers is what the
+# user is shown. A silent override would be no better: the question would then be right while the
+# line the role typed said something else. `test_a_resolver_owned_key_is_not_the_roles_to_type`
+# measures the refusal on both keys.
+#
+# A resolver takes (state, args): the second half arrived with `preset`, whose answer depends on
+# the preset already named on the line. `_worktree_head` ignores it, which is the honest shape --
+# one signature, and no branch here about which resolver wants what.
+LINE_MANIFEST_RESOLVERS = {
+    "head": (_worktree_head, "read from the worktree this state directory sits in"),
+    "roles": (_preset_roles, "read from the kit's own presets.yaml for the preset on this line"),
+    "removes": (_preset_removes, "derived from what this installation owns and that preset"),
+}
 
 
 def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
-    """The subject manifest for a line kind, from the flags plus the resolvers."""
+    """The subject manifest for a line kind, from the flags plus the resolvers.
+
+    EMPTY IS AN ANSWER WHEN A RESOLVER GAVE IT, and that distinction is load-bearing: a preset
+    upgrade REMOVES nothing, so `removes: []` is the truth about it, while the same emptiness in a
+    key the role must type means the question would not say what it releases. So a resolved key
+    fails only when the resolver cannot answer at all (None), and a typed key fails on emptiness.
+    `test_a_manifest_key_a_resolver_answers_with_nothing_is_still_an_answer` measures the pair.
+    """
     values = {}
     for name in manifest_parameters(builder):
         value = getattr(args, name, None)
-        if not value:
-            resolver = LINE_MANIFEST_RESOLVERS.get(name)
-            value = resolver(state) if resolver else None
-        if not value:
+        entry = LINE_MANIFEST_RESOLVERS.get(name)
+        if entry is not None:
+            if value:
+                raise UsageError(
+                    "%s is not a value to type on this line: it is %s, and the command re-derives "
+                    "it when it acts on the approval -- a typed one could only differ from what "
+                    "the user was shown. Remedy: drop `--%s %s` and run the command again."
+                    % (name, entry[1], name.replace("_", "-"), value))
+            value = entry[0](state, args)
+        if value is None or (not value and entry is None):
             raise UsageError(
                 "a %s approval question must say what it releases, and %s is missing. Remedy: "
                 "`%s request-approval %s %s` -- the keys are the manifest the approval hashes, "
@@ -381,12 +422,18 @@ def build_parser() -> argparse.ArgumentParser:
             if flag in {action.option_strings[0] for action in request._actions
                         if action.option_strings}:
                 continue          # two line kinds sharing a manifest key share the flag
-            resolver = LINE_MANIFEST_RESOLVERS.get(name)
+            # THE HELP SAYS WHERE THE VALUE COMES FROM, in the resolver's own words, and says it
+            # is refused where that source is not the role. It used to say "default: read from the
+            # worktree" for every resolved key, which was true of `head` and false of the two the
+            # kit's preset file answers -- and it read as an override the line may set, which is
+            # exactly what `_line_manifest` refuses. The flag stays VISIBLE for the reason `--root`
+            # does: a flag the parser accepts and the command refuses must be findable in `--help`.
+            entry = LINE_MANIFEST_RESOLVERS.get(name)
             request.add_argument(
                 flag, metavar=name.upper(),
                 help="%s subject: %s%s" % (line_kind, name,
-                                           " (default: read from the worktree)" if resolver
-                                           else ""))
+                                           " -- NOT typed here: %s, and a value is refused"
+                                           % entry[1] if entry else ""))
     # The lease + header, in one command, because they are one moment: spec II.4 orders
     # "READY -> kurzlebige Dispatch-Lease mit Nonce und TTL -> Header", and the gate that reads the
     # header runs at PreToolUse of the spawn -- AFTER the model has composed the prompt. A lease
@@ -444,6 +491,19 @@ def build_parser() -> argparse.ArgumentParser:
         sub.add_parser(command, help=summary, description="%s. The keys are exactly the "
                        "operation's own parameters; send them as ONE JSON object on stdin, e.g. "
                        "`%s %s <<'EOF'` … `EOF`." % (summary, INVOCATION, command))
+    # THE ROUTE OUT OF THE PRESET DEAD END (BUG-0041). Before this, changing which specialist
+    # roles a project has meant editing `project_config.yaml` and running the scaffold -- and both
+    # are refused from inside a session, on purpose, so the lead's only move was to send the USER
+    # to a text editor and a terminal. Pilot 3 measured what that is worth to a non-technical user:
+    # she got no further than finding the folder. `kernel/presets.py` carries the design; what
+    # belongs here is that this is a NORMAL command line -- it names neither the state directory
+    # nor the enforcement layer, which is what lets a role type it at all.
+    preset = sub.add_parser(
+        "set-preset",
+        help="record a user-approved team preset and install exactly its roles (needs a minted "
+             "`preset` approval; asks for a session restart afterwards)")
+    preset.add_argument("preset", help="the preset to move to; the kit's presets.yaml names them "
+                                       "and an unknown one is refused with the list")
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
@@ -766,6 +826,21 @@ def main(argv=None) -> int:
             print("%s %s rev %s approval_ref: %s" % (
                 item["id"], item.get("status") or "-", item.get("revision", 1),
                 item.get("approval_ref") or "-"))
+            return 0
+        if args.command == "set-preset":
+            result = presets.apply(state, args.preset)
+            print("%s preset: %s" % (result["kit"], result["preset"]))
+            # READ BACK OFF THE INSTALLATION, not off the plan: what this prints is the ownership
+            # manifest the installer just wrote, so a role that did not arrive does not appear here
+            # either. The lead is in that list because the installation manages it too.
+            print("roles installed (lead first): %s" % (", ".join(result["installed"]) or "-"))
+            print("removed: %s" % (", ".join(result["removed"]) or "-"))
+            # THE RESTART IS PART OF THE ANSWER, not an afterthought: the provider reads its agent
+            # set at session start, so a role installed here is not spawnable in this session and
+            # the installer's handover marker stops this one deriving further. A command that
+            # reported success and left the lead to discover that is the shape BUG-0016 named.
+            print("RESTART REQUIRED: the new role set loads at the next session start. Tell the "
+                  "user in their own words and stop deriving here.")
             return 0
         if args.command == "archive":
             print(state.archive(args.item_id))

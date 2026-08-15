@@ -54,12 +54,10 @@ names the item IDs it is about.
    defaults, the escalation ladder and the model facts are constitution §11, and proposing is the
    half of it that is yours. Get confirmation through the provider's user-question mechanism (Claude
    `AskUserQuestion`; Codex `request_user_input` when exposed, otherwise prose), always preceded by prose.
-   A preset LARGER than what is installed means the platform's `scaffold_team` script has to run with
-   it before you may delegate to the new roles — again a line for the USER, for the same §0 reason
-   as step 1.
-3. Have the kernel write preset + maps into `project_config.yaml` (still blocked — the entry point's
-   surface has no command for it, see §0; report it, do not edit the file yourself), then perform the
-   provider sync exactly as constitution §11 sets it out, and start a new session before delegating.
+3. Needing a role the project lacks is YOURS to fix in the chat, never the user's file to edit:
+   `python scripts/harness.py request-approval preset --preset <name>`, the user answers, then
+   `python scripts/harness.py set-preset <name>`, then ask for a restart (§11). The **model/effort
+   maps** are the half with no writer — report that gap, do not edit the file yourself (§0).
 
 ## Delegation
 - Constitution §1 binds the spawn itself — exact installed role in both providers' spellings, no

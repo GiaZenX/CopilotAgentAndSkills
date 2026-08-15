@@ -8644,17 +8644,32 @@ def _preset_parser_kit(tmp_path, presets):
     return kit
 
 
-def test_preset_parser_resolves_only_valid_specialists(tmp_path):
-    kit = _preset_parser_kit(tmp_path, "mini: alpha beta\nfull: all\n")
+def _resolve_preset(kit, preset):
     result = subprocess.run(
         [sys.executable, os.path.join(ROOT, "team-kits", "preset_config.py"),
-         "--kit", str(kit), "--preset", "mini", "--format", "json"],
+         "--kit", str(kit), "--preset", preset, "--format", "json"],
         capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stderr
-    parsed = json.loads(result.stdout)
-    assert parsed == {
+    return json.loads(result.stdout)
+
+
+def test_preset_parser_resolves_only_valid_specialists(tmp_path):
+    """The whole answer, key for key -- a reader added here must be added on purpose.
+
+    `specialists` is `all` RESOLVED and the lead taken out, which is the one question `roles`
+    cannot answer: for an `all` preset that list is empty, because the scaffolds branch on the flag
+    and then install every role file they find. `kernel.presets` has to tell a user WHICH roles she
+    is approving, so it asks the catalogue's own resolver rather than listing `agents/` itself.
+    """
+    kit = _preset_parser_kit(tmp_path, "mini: alpha beta\nfull: all\n")
+    assert _resolve_preset(kit, "mini") == {
         "preset": "mini", "lead": "project-manager", "all": False,
-        "roles": ["alpha", "beta"], "available": ["mini", "full"],
+        "roles": ["alpha", "beta"], "specialists": ["alpha", "beta"],
+        "available": ["mini", "full"],
+    }
+    assert _resolve_preset(kit, "full") == {
+        "preset": "full", "lead": "project-manager", "all": True,
+        "roles": [], "specialists": ["alpha", "beta"], "available": ["mini", "full"],
     }
 
 
@@ -11371,7 +11386,25 @@ def test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_do
     The write is still refused (§0 of every constitution locks the state directory and names these
     files explicitly), so what this measures is that the refusal now names the DEAD END rather than
     a route: no command, and the user as the only one who can close it.
+
+    THE SECOND HALF, and it cuts the other way (BUG-0041). One command does own one FIELD of one of
+    these documents — `set-preset` and `project.preset` — and a refusal that denies a route the
+    harness HAS is the same defect as one that invents a route it lacks.
+
+    THE EXPECTATION COMES FROM THE SOURCE, `presets.DOCUMENT_WRITES`, and NOT from
+    `layout.partial_writers` — that function is on the path under test (the gate asks it), so
+    building the expectation from it made both sides move together: with it emptied, the message
+    fell back to the dead-end phrasing and this test stayed green. The counts are pinned here for
+    the same reason: exactly one writer for `project_config.yaml` and none for the masterplan is
+    what the two branches below are, so a third document or a second field arrives with a red test
+    rather than with a silently unmeasured message.
     """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import presets
+    writes = {}
+    for entry in presets.DOCUMENT_WRITES:
+        writes.setdefault(entry["document"], []).append(entry)
+    assert len(writes.get("project_config.yaml") or []) == 1 and "product/masterplan.md" not in writes
     state = _state_template(tmp_path)
     capture_root_item(tmp_path, status=None)
     for relative in ("product/masterplan.md", "project_config.yaml"):
@@ -11384,6 +11417,13 @@ def test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_do
         # the false route is gone: the old remedy's instruction was to run the entry point
         assert "write it through the entry point" not in message, message
         assert "no route from inside this session" in message.lower(), message
+        for writer in writes.get(relative) or []:
+            assert writer["command"] in message and writer["field"] in message, (
+                "%s: a command owns %s here and the refusal does not say so -- a role reading it "
+                "reports a dead end that is not one:\n%s" % (relative, writer["field"], message))
+        if relative not in writes:
+            assert "The one exception" not in message, (
+                "%s has no partial writer and the refusal claims one:\n%s" % (relative, message))
     # ...and the merge gate that blocks on the same files says the same thing, instead of sending
     # the role to a validator that answers `0 error(s), 0 warning(s)` in exactly this state
     blocked = run_hook_process("gate_memory_complete.py", _merge(tmp_path), tmp_path)

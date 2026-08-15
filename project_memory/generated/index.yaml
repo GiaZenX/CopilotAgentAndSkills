@@ -1,4 +1,4 @@
-generated_at: '2026-08-15T14:51:33'
+generated_at: '2026-08-15T21:57:17'
 items:
 - id: BUG-0001
   type: BUG
@@ -604,6 +604,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0044
+  type: DEC
+  title: 'Session-break continuation: specialists checkpoint, the successor may adopt
+    AFTER verification'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -820,6 +827,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0037
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -974,6 +987,20 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0026
+  type: FR
+  title: 'Codex entry twin: user/codex/AGENTS.md asks the preset question but does
+    not know set-preset'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0027
+  type: FR
+  title: 'Preset approval question: name the role DELTA, not only the full target
+    set'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1041,7 +1068,13 @@ items:
   status: ACCEPTED
   revision: 1
   approval_ref: null
-- id: TSK-0064
+- id: TSK-0065
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0066
   type: TSK
   title: null
   status: DRAFT

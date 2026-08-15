@@ -46,8 +46,6 @@ except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must no
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
-import time  # noqa: E402
-
 import _compat  # noqa: E402
 
 HOOK = "gate_push_token"
@@ -194,38 +192,14 @@ def _resolve(root, invocation):
 def _live_push_approval(root, state, wanted):
     """A minted, unrevoked, unexpired `push` approval whose REQUEST matches `wanted`.
 
-    The APR file carries only the hash; coverage is read from the consumed REQUEST, which is where
-    the manifest lives and which `revoke` MOVES out of the way. So a hand-written APR proves
-    nothing, and a revoked one stops matching even though its file still exists.
+    ASKED OF THE KERNEL (`approvals.live_line_approval`), which is where the rule now lives with
+    its reasons: the APR file carries only the hash, so coverage is read from the consumed REQUEST
+    — the tamper-evident side, and the one `revoke` MOVES out of the way. This gate carried that
+    scan itself until a second line-manifest kind (`preset`) needed the same answer; two copies of
+    "is this authorisation in force" is the shape that decides whether a lapsed permission still
+    works, so there is one.
     """
-    approvals = _kernel.kernel_module("approvals", root)
-    subject_manifest_hash = _kernel.kernel_module("hashing", root).subject_manifest_hash
-
-    wanted_hash = subject_manifest_hash(dict(wanted))
-    approvals_dir = os.path.join(state.root, "approvals")
-    if not os.path.isdir(approvals_dir):
-        return None
-    for name in sorted(os.listdir(approvals_dir)):
-        if not (name.startswith("APR-") and name.endswith(".yaml")):
-            continue
-        try:
-            apr = state._read_yaml(os.path.join(approvals_dir, name))
-        except Exception:  # noqa: BLE001
-            continue
-        if not isinstance(apr, dict) or apr.get("kind") != "push" or apr.get("revoked"):
-            continue
-        try:
-            request = approvals.consumed_request(state, apr)
-        except Exception:  # noqa: BLE001 — a revoked/absent request is simply not a match
-            continue
-        manifest = dict(request.get("subject_manifest") or {})
-        expires = manifest.pop("expires", None)
-        if subject_manifest_hash(manifest) != wanted_hash:
-            continue
-        if expires is not None and float(expires) <= time.time():
-            continue
-        return apr
-    return None
+    return _kernel.kernel_module("approvals", root).live_line_approval(state, "push", dict(wanted))
 
 
 def main():

@@ -88,11 +88,14 @@ kit's `filing_plan.yaml` is the same class of file.
 
 So the refusal distinguishes the two cases with `kernel.layout.is_project_document` — a definition
 derived from the kernel writers' own path builders, not a list of file names. For canonical state
-the remedy is the entry point, as before; for a kit document it says plainly that NO command writes
-it and that the gap is the user's to close outside the session, which is what §0 of all three
-constitutions already instructs ("a gap you report, not an edit you make"). The permission itself is
-unchanged: §0 is a constitutional rule that this gate is the enforcement of, and widening it is a
-constitution change, not a hook change.
+the remedy is the entry point, as before; for a kit document it says plainly that no command writes
+such a FILE and that the gap is the user's to close outside the session, which is what §0 of all
+three constitutions already instructs ("a gap you report, not an edit you make"). Where a command
+does own a single FIELD of one — `set-preset` and `project.preset`, the route out of BUG-0041's
+dead end — the refusal names it, from `kernel.layout.partial_writers` (see `_partial_writers`);
+that is a different write from this one, and a refusal must not deny a route the harness has. The
+permission itself is unchanged: §0 is a constitutional rule that this gate is the enforcement of,
+and widening it is a constitution change, not a hook change.
 """
 import os
 import sys
@@ -361,6 +364,27 @@ def _is_project_document(root, inside):
     return layout.is_project_document(_kernel.state_dir(root), inside)
 
 
+def _partial_writers(root, inside):
+    """The sentence naming any command that owns a FIELD of this document, or "".
+
+    The refusal below used to end "and NO `harness.py` command writes it either", which was true of
+    every kit document until `set-preset` began writing `project.preset` (BUG-0041). A refusal that
+    denies a route the harness HAS teaches a role to stop believing refusals, so the answer is
+    asked of `kernel.layout.partial_writers` — which asks the writing module itself — instead of
+    being restated here. No writer, no sentence: the ordinary document refusal is unchanged.
+    """
+    try:
+        layout = _kernel.kernel_module("layout")
+        writers = layout.partial_writers(inside)
+    except Exception:  # noqa: BLE001 — an unreachable kernel names no route (fail-closed)
+        return ""
+    if not writers:
+        return ""
+    return (" The one exception is not this write: %s -- and that command asks the USER first."
+            % "; ".join("`python scripts/harness.py %s` owns %s in it"
+                        % (writer["command"], writer["field"]) for writer in writers))
+
+
 def _assert_state_write_allowed(rel, inside, task, data, root):
     """The state dir is the kernel's. Only `staging/<own key>/` is an agent's to write."""
     parts = [p for p in inside.split("/") if p]
@@ -374,10 +398,11 @@ def _assert_state_write_allowed(rel, inside, task, data, root):
                 HOOK,
                 "'%s' is a kit DOCUMENT inside the write-locked state directory — prose or "
                 "configuration, not a typed item. Being a document is no exception: this gate "
-                "refuses the write (constitution §0), and NO `python scripts/harness.py` command "
-                "writes it either — the kernel has a path builder for every canonical file and "
-                "none for this one. So there is no route from inside this session, and this "
-                "refusal is not one to work around." % rel,
+                "refuses the write (constitution §0), and no `python scripts/harness.py` command "
+                "writes such a file — the kernel has a path builder for every canonical file and "
+                "none for this one.%s So this write has no route from inside this session, and "
+                "this refusal is not one to work around."
+                % (rel, _partial_writers(root, inside)),
                 remedy="report the gap to the user and name this file. It is filled by the entry "
                        "gate BEFORE the kit is installed, or by the user in an editor outside "
                        "this session; `init_project_memory` is copy-if-absent and will not "

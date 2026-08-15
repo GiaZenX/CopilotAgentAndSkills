@@ -134,11 +134,21 @@ def resolve_preset(kit_dir, preset, source="argument"):
         raise ValueError("unknown preset %r (source: %s); available: %s" %
                          (preset, source, available))
     selected = catalog["presets"][preset]
+    # WHICH SPECIALISTS THIS PRESET REALLY INSTALLS, with `all` resolved and the lead out of it
+    # (the lead is installed separately and is never a specialist -- see `load_preset_catalog`).
+    # `roles` below is what the scaffolds read, and they branch on `all` first and then install
+    # every role file they find, so for an `all` preset that list is empty and says nothing about
+    # the roster -- which is exactly what a caller has to know to tell a user which roles she is
+    # approving (`kernel.presets`). Answered here, where the catalogue is, rather than by a second
+    # reader listing `agents/` for itself.
+    specialists = (sorted(role for role in catalog["roles"] if role != catalog["lead"])
+                   if selected is None else list(selected))
     return {
         "preset": preset,
         "lead": catalog["lead"],
         "all": selected is None,
         "roles": [] if selected is None else list(selected),
+        "specialists": specialists,
         "available": list(catalog["presets"]),
     }
 
