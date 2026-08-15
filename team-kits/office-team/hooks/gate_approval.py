@@ -30,6 +30,27 @@ the code deliberately mints — but that user IS the approving authority.
 ONE EVENT CAN REFUSE, THE OTHER CANNOT (hooks reference, exit-code-2 table): PreToolUse blocks;
 PostToolUse only shows stderr. So prevention lives in the PreToolUse comparison, and the
 PostToolUse side protects state by REFUSING TO MINT, never by pretending to block.
+
+AND A REFUSAL TO MINT IS SPOKEN, not merely performed (BUG-0039). On this event stderr reaches
+nobody: pilot 3 relayed the approval question in the model's own words, the user clicked
+`Freigeben [489405]`, nothing minted — correctly — and no surface told her her yes had evaporated.
+`_announce` names the channel that does reach her.
+
+WHAT TRIGGERS THAT MESSAGE IS THE STATE, NOT A SPELLING, and the first cut of this fix got that
+wrong in a way worth recording: it asked whether the ANSWER looked like the kernel's approval
+label, so a relay that reworded the options ("Ja, freigeben" / "Nein") walked the pilot's hole
+again, unannounced. The trigger is now `approvals.open_requests` — this project is waiting on an
+approval AND the question that was answered was not that request's (no marker, therefore not it).
+It says nothing at all in a project with no request outstanding, and it covers every rewording FOR
+AS LONG AS THE REQUEST IS ANSWERABLE: `open_requests` drops one whose TTL has run out, so past that
+clock a reworded relay is silent again — measured, and named in
+`tools/test_hooks_v2.py::test_an_expired_request_is_not_open_and_a_reworded_relay_goes_silent`.
+
+THE COST OF THAT DEFINITION IS PAID IN THE MESSAGE: an unrelated question answered while a request
+is open also lands here, so what the user is told is INFORMATION — an approval is still open and
+this was not it — rather than an accusation. The marked path keeps its own, sharper sentences, and
+a deliberate `Ändern`/`Ablehnen` on the kernel's own question stays quiet
+(`tools/test_hooks_v2.py::test_only_the_requests_own_decline_options_stay_quiet`).
 """
 import os
 import sys
@@ -43,7 +64,8 @@ except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must no
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
-import re  # noqa: E402 — everything after GATE_PREAMBLE, which must stay verbatim
+import json  # noqa: E402 — everything after GATE_PREAMBLE, which must stay verbatim
+import re  # noqa: E402
 
 HOOK = "gate_approval"
 TOOL = "AskUserQuestion"
@@ -190,30 +212,101 @@ def _echoed(result, answered_text):
     return None
 
 
+def _user_text_of(approvals, exc):
+    """An ApprovalError's sentence for the user — or a last resort that still says the true things.
+
+    A kernel branch that carries none must not fall back into SILENCE, which is the whole of
+    BUG-0039; it falls back to the two facts that hold for every refusal (nothing was approved, and
+    starting the flow over is a way out) plus an admission that the precise reason is not in plain
+    language here. Kept a LAST RESORT rather than the normal answer by
+    `tools/test_hooks_v2.py::test_every_approval_refusal_the_hook_can_surface_speaks_to_the_user`,
+    which derives the reachable branches from this hook's own calls.
+    """
+    return getattr(exc, "user_text", None) or (
+        "Es wurde keine Freigabe erteilt — dein Klick hat nichts bewirkt. Warum genau, kann das "
+        "Programm hier nicht in einfachen Worten sagen. " + approvals.NEXT_START_OVER)
+
+
+# THE ONE CASE THAT NEEDS NO NOTICE — a deliberate decline on the kernel's own question, appended
+# once the request behind the answer is known. A hook process handles exactly one payload, so this
+# is a value of the run and not shared state; keeping it here rather than threading it through
+# every refusal site is what keeps each of those sites one call. Empty means "not established",
+# and that direction announces.
+_QUIET = []
+
+
+def _announce(user_text, model_text):
+    """Say a refusal on the channels this event actually has.
+
+    TWO KEYS BECAUSE TWO AUDIENCES, and neither of them is stderr: measured live against
+    claude.exe 2.1.227 on 2026-08-15, stderr on this event reaches nobody, `systemMessage` reaches
+    the USER and `hookSpecificOutput.additionalContext` reaches the MODEL. The full record with its
+    provenance is the harness's `provider_observations.json` → `hook_output_channels`; this
+    docstring keeps only the consequence, so the measurement has one home.
+
+    Exit code stays 0. Exit 2 would reach the model's side too, but PostToolUse cannot block and
+    this gate does not pretend otherwise (see the module docstring); the protection was never the
+    exit code.
+    """
+    sys.stdout.write(json.dumps({
+        "systemMessage": user_text,
+        "hookSpecificOutput": {"hookEventName": "PostToolUse",
+                               "additionalContext": model_text},
+    }))
+
+
 def handle_post_tool_use(data):
     if data.get("tool_name") != TOOL:
         sys.exit(0)
     result = _result(data)
     answers = result.get("answers") or {}
-    marked = [(text, answer) for text, answer in answers.items() if _markers(text)]
-    if not marked:
-        sys.exit(0)  # nothing marked was answered — nothing to mint, and that is the normal case
+    if not answers:
+        sys.exit(0)  # nothing was answered — nothing to mint and nothing to say
     root = _kernel.find_repo_root(data.get("cwd"))
     if not os.path.isdir(_kernel.state_dir(root)):
         sys.exit(0)
     state = _kernel.open_state(root)
     approvals = _kernel.kernel_module("approvals")
+    # The kernel is loaded for an ordinary question too, which it used not to be: the trigger below
+    # is a question about this project's STATE, and the cost is one import on an event that only
+    # ever follows a human click.
+    marked = [(text, answer) for text, answer in answers.items() if _markers(text)]
+    if not marked:
+        # THE PILOT'S OWN SHAPE (BUG-0039): the relayed question carried no marker at all, so this
+        # exit was reached with no note, no stderr and no state change — the purest form of the
+        # silence.
+        # WHAT DECIDES IS THE STATE: an approval this project is waiting on, answered past. Every
+        # question the kernel generates carries its marker, so arriving here already proves the
+        # answered question was not the open request's — whatever words the relay used, and whether
+        # the model reworded the options or only dropped the marker (neither is measurable here).
+        # A project with nothing outstanding says nothing at all, which is what keeps an ordinary
+        # question traceless.
+        outstanding = approvals.open_requests(state)
+        if outstanding:
+            _report("%d approval request(s) outstanding and the answered question was none of "
+                    "them — nothing to mint, and the user was told (BUG-0039)." % len(outstanding),
+                    user_text="Hinweis: eine Freigabe-Frage des Programms ist noch offen und "
+                              "unbeantwortet — die Frage, die du eben beantwortet hast, war nicht "
+                              "diese, und dabei ist keine Freigabe entstanden. Falls du gerade "
+                              "freigeben wolltest: " + approvals.NEXT_ASK_AGAIN)
+        sys.exit(0)  # nothing marked was answered — nothing to mint, and that is the normal case
     # exactly one, by construction: the PreToolUse side refuses a bundle, and spec II.2 wants one
     # question per approval. More than one marked answer here means the pair did not go through
     # that gate, so nothing is minted.
     if len(marked) > 1:
         _report("%d answered questions carry approval markers — minting nothing, because an "
-                "approval is one deliberate decision (spec II.2)." % len(marked))
+                "approval is one deliberate decision (spec II.2)." % len(marked),
+                user_text="Es wurde keine Freigabe erteilt: es standen mehrere Freigabe-Fragen "
+                          "gleichzeitig zur Wahl, und eine Freigabe muss allein stehen. "
+                          + approvals.NEXT_ASK_AGAIN)
     text, answer = marked[0]
     ids = set(_markers(text))
     if len(ids) != 1:
         _report("the answered question carries %d approval markers — not minting, because which "
-                "request was approved would be ambiguous." % len(ids))
+                "request was approved would be ambiguous." % len(ids),
+                user_text="Es wurde keine Freigabe erteilt: die Frage bezog sich auf mehrere "
+                          "Freigaben auf einmal, und es wäre nicht eindeutig, welche du erteilt "
+                          "hast. " + approvals.NEXT_ASK_AGAIN)
     request_id = ids.pop()
     # Re-run the exact-match on the PLATFORM's echo of what was asked. PreToolUse is where this
     # gets PREVENTED, but a hook timeout there is a non-blocking error, and this event is the one
@@ -223,7 +316,13 @@ def handle_post_tool_use(data):
     try:
         request = approvals.pending_request(state, request_id)
     except approvals.ApprovalError as exc:
-        _report("no approval was created for request %s.\n%s" % (request_id, exc))
+        _report("no approval was created for request %s.\n%s" % (request_id, exc),
+                _user_text_of(approvals, exc))
+    # THE ONE ANSWER THAT NEEDS NO NOTICE, decided against THIS request's own options rather than
+    # against the shape of what was typed: a user who picked `Ändern` or `Ablehnen` on the kernel's
+    # question got the outcome she chose. Everything else that fails to mint — free text, the label
+    # with a trailing space, a list — is announced, because from her seat it was a yes.
+    _QUIET.append(str(answer) in approvals.declining_labels(request))
     # The one-question rule is enforced HERE too, not left to PreToolUse. The echo makes it free,
     # and bundles are the normal shape rather than an exotic one (measured: 15 of 37 real
     # AskUserQuestion calls in this repo's transcripts carry 2-4 questions). II.2/1 wants exactly
@@ -234,38 +333,73 @@ def handle_post_tool_use(data):
     if not echoed_all:
         _report("the platform recorded no copy of the question that was actually answered for "
                 "request %s, so there is nothing to verify the answer against — not minting "
-                "(spec II.2 wants the approved question provably the kernel's)." % request_id)
+                "(spec II.2 wants the approved question provably the kernel's)." % request_id,
+                user_text="Es wurde keine Freigabe erteilt: das Programm hat keine Kopie der "
+                          "Frage erhalten, die du beantwortet hast, und kann deine Antwort "
+                          "deshalb keiner geprüften Frage zuordnen. " + approvals.NEXT_ASK_AGAIN)
     if len(echoed_all) != 1 or len(answers) != 1:
         _report("the approval for request %s was answered as part of a batch of %d question(s) — "
                 "not minting. Spec II.2 wants exactly ONE question per approval, so the decision "
                 "is deliberate rather than a reflex click."
-                % (request_id, max(len(echoed_all), len(answers))))
+                % (request_id, max(len(echoed_all), len(answers))),
+                user_text="Es wurde keine Freigabe erteilt: die Freigabe-Frage kam zusammen mit "
+                          "anderen Fragen, und eine Freigabe muss für sich allein beantwortet "
+                          "werden. " + approvals.NEXT_ASK_AGAIN)
     echo = _echoed(result, text)
     if echo is None:
         _report("the platform's question echo does not contain the question that was answered for "
                 "request %s — not minting, because the answer cannot be tied to a verified "
-                "question." % request_id)
+                "question." % request_id,
+                user_text="Es wurde keine Freigabe erteilt: deine Antwort lässt sich keiner "
+                          "geprüften Frage zuordnen. " + approvals.NEXT_ASK_AGAIN)
     difference = _mismatch(approvals.build_question(request), echo)
     if difference is not None:
         _report("the question the user actually answered was NOT the one the kernel generated for "
                 "request %s — not minting, whatever the answer said.\nDifference: %s"
-                % (request_id, difference))
+                % (request_id, difference),
+                user_text="Es wurde keine Freigabe erteilt: die Frage, die du beantwortet hast, "
+                          "war nicht Wort für Wort die Freigabe-Frage des Programms. "
+                          + approvals.NEXT_ASK_AGAIN)
     try:
         apr = approvals.mint(state, request_id, str(answer))
     except approvals.ApprovalError as exc:
         # The normal, expected outcome for "Ändern"/"Ablehnen"/free text. Reported, not blocked:
         # PostToolUse cannot block, and the protection is that no APR was written.
-        _report("no approval was created for request %s.\n%s" % (request_id, exc))
+        _report("no approval was created for request %s.\n%s" % (request_id, exc),
+                _user_text_of(approvals, exc))
     _kernel.record_note(HOOK, "minted %s for request %s" % (apr["id"], request_id))
     sys.stderr.write("[team-kit %s] approval %s recorded for %s.\n"
                      % (HOOK, apr["id"], apr.get("item") or apr["kind"]))
     sys.exit(0)
 
 
-def _report(message):
-    """Say something on an event that cannot refuse, and audit it — see gate_dispatch._report."""
+def _report(message, user_text):
+    """Say something on an event that cannot refuse, and audit it — see gate_dispatch._report.
+
+    `user_text` is the SAME refusal for the person who clicked, written by the branch that refused
+    (`kernel.approvals.ApprovalError.user_text` for the kernel's own branches). It is emitted
+    unless `_QUIET` established that the answer was a deliberate decline. Every refusal site passes
+    one —
+    `tools/test_hooks_v2.py::test_every_non_minting_exit_of_the_approval_hook_carries_a_user_sentence`
+    reads this file's own calls rather than trusting them to stay in step.
+    """
     _kernel.record_note(HOOK, message)
     sys.stderr.write("[team-kit %s] %s\n" % (HOOK, message))
+    if not (_QUIET and _QUIET[0]):
+        if not user_text:
+            # A refusal site without a sentence would put this event back where BUG-0039 found it,
+            # for that one reason only — so it fails loudly instead of quietly.
+            raise ValueError("a refusal the user has to hear must carry a sentence for her; this "
+                             "one carried none: %s" % message)
+        # THE MODEL'S HALF CLAIMS ONLY WHAT THIS CALL MEASURED — that it minted nothing — and
+        # leaves the consequence to the branch's own sentence. "her click did nothing" stood here
+        # and was false for the branch where the approval already exists, which is the same
+        # over-claim in prose that `_gone_request_user_text` removed from the user's half.
+        _announce(user_text,
+                  "gate_approval: this AskUserQuestion answer minted NO approval. The user has "
+                  "just been shown the sentence below, so say the same thing in her language "
+                  "before anything else and then do exactly what it names. Technical reason: "
+                  "%s\nShown to the user: %s" % (message, user_text))
     sys.exit(0)
 
 

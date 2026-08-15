@@ -1,0 +1,19 @@
+id: FR-0019
+title: Ein tragfaehiger Uebergabeweg fuer Nutzerdateien (Logo, Vorlagen) ins Projekt
+  -- die Gegenrichtung von FR-0016
+request_text: 'Pilot 3 (B10): die Nutzerin bekam ihr Logo nie ins Projekt -- der Weg
+  scheiterte an Bueroklammer-Annahme, nicht existentem Explorer-Pfad (''Explorer-Pfad,
+  mein Fehler #2'', S5 Zug 6) und ''Datei zu gross''. Der Apparat-Anteil: es gibt
+  keinen vorgesehenen, dokumentierten Weg, eine Datei des Nutzers (Logo, Briefpapier,
+  CSV-Bestand) in ein Kit-Projekt zu bringen -- dieselbe Klasse wie FR-0016 (Bild
+  nicht in den Chat stellbar), in Gegenrichtung. Gewuenscht: ein definierter Uebergabeweg
+  (z. B. ein beobachteter Eingangsordner mit Ansage im PM-Text, oder die dokumentierte
+  Drag-and-drop-Faehigkeit des Providers, gemessen statt angenommen), den der PM einem
+  Nicht-Entwickler in einem Satz erklaeren kann.'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-08-15T06:59:53'
+triage_result: 'wanted: no shipped handover path exists (pilot 3 B10 measured the
+  failure chain end to end); pairs with FR-0016 as the two directions of the same
+  capability gap'

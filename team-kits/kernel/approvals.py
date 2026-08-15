@@ -93,6 +93,17 @@ EXPIRY_FIELD = "expires"
 _CHANGE_LABEL = "Ändern"
 _REJECT_LABEL = "Ablehnen"
 
+# THE TWO EXITS FROM A REFUSED MINT, in the language of the person who clicked. A branch picks the
+# one its own situation allows; there is no third, and no branch may invent one (BUG-0039). Which
+# one is NOT interchangeable: sending a user back to re-ask a question whose request is already
+# gone is a loop, and that mismatch between a state and its advice is the defect TSK-0057/BUG-0036
+# closed one report earlier. German because these strings are read by the user, like the approval
+# question `build_question` writes a few functions down.
+NEXT_ASK_AGAIN = ("Dein Assistent muss die Freigabe-Frage noch einmal stellen — unverändert, Wort "
+                  "für Wort so, wie das Programm sie ausgibt.")
+NEXT_START_OVER = ("Dein Assistent muss den Freigabe-Vorgang neu starten; diese Anfrage ist "
+                   "verbraucht und kann nichts mehr freigeben.")
+
 
 def approve_label(mint_code: str) -> str:
     """The ONE answer string that mints -- entropy-carrying by design."""
@@ -144,7 +155,22 @@ _SCOPE_FIELDS = ("problem", "goal", "question", "motivation",
 
 
 class ApprovalError(StateError):
-    """Approval-protocol violation -- message carries the remedy."""
+    """Approval-protocol violation -- message carries the remedy.
+
+    `user_text` is the SAME refusal addressed to the person who clicked, and it exists because the
+    message above is addressed to a role: it names spec sections, file paths and request ids, and
+    pilot 3 (BUG-0039) is what a user gets out of that -- nothing. The branch that refuses writes
+    it, so the sentence is as specific as the branch is; the alternative, one text chosen by
+    whoever reports the error, is the blanket reason BUG-0036 cost a round.
+
+    Optional in the signature and NOT optional where it matters:
+    `tools/test_hooks_v2.py::test_every_approval_refusal_the_hook_can_surface_speaks_to_the_user`
+    derives the reachable raise sites from the approval hook's own calls and fails on one without.
+    """
+
+    def __init__(self, message, user_text=None):
+        super().__init__(message)
+        self.user_text = user_text
 
 
 def _pending_dir(state: ProjectState) -> str:
@@ -245,7 +271,9 @@ def item_subject_manifest(item: dict, kind: str) -> dict:
     raise ApprovalError(
         "kind %r is not item-derived (analysis/routine/push take an explicit "
         "manifest -- for push, build it with `push_subject_manifest`). Remedy: "
-        "pass `manifest=` to create_pending_request." % kind
+        "pass `manifest=` to create_pending_request." % kind,
+        user_text="Es wurde keine Freigabe erteilt: die gespeicherte Freigabe-Anfrage nennt eine "
+                  "Freigabe-Art, zu der das Programm keinen Inhalt bilden kann. " + NEXT_START_OVER
     )
 
 
@@ -777,7 +805,9 @@ def _assert_minting_caller() -> None:
             "an approval can only be minted from the %s hook, and this process "
             "has no hook bridge loaded at all -- refused. Remedy: approvals "
             "happen through the AskUserQuestion flow; nothing else creates an "
-            "APR." % APPROVAL_HOOK
+            "APR." % APPROVAL_HOOK,
+            user_text="Es wurde keine Freigabe erteilt: der Versuch kam nicht aus dem "
+                      "Freigabe-Dialog, und nur von dort zählt ein Ja. " + NEXT_START_OVER
         )
     expected = os.path.join(os.path.dirname(bridge), APPROVAL_HOOK)
     frames = inspect.stack()
@@ -790,8 +820,55 @@ def _assert_minting_caller() -> None:
             "%s (entry point %s) and was refused. A mint is a USER decision; any "
             "other caller would be manufacturing one. Remedy: approvals happen "
             "through the AskUserQuestion flow."
-            % (expected, caller or "<unknown>", entry or "<none>")
+            % (expected, caller or "<unknown>", entry or "<none>"),
+            user_text="Es wurde keine Freigabe erteilt: die Freigabe wurde von einer anderen "
+                      "Stelle als dem Freigabe-Dialog angefordert. " + NEXT_START_OVER
         )
+
+
+def _approval_of_request(state: ProjectState, request_id: str):
+    """The APR minted from this request, or None -- the ONE scan of the approval store.
+
+    Two readers need it (the replay guard in `mint`, and `_gone_request_user_text` telling a user
+    her yes is already recorded), and a second copy of a store scan is how `report._parents_of`
+    became two.
+    """
+    approvals_dir = os.path.join(state.root, "approvals")
+    if not os.path.isdir(approvals_dir):
+        return None
+    for name in sorted(os.listdir(approvals_dir)):
+        if not (name.startswith("APR-") and name.endswith(".yaml")):
+            continue
+        try:
+            existing = state._read_yaml(os.path.join(approvals_dir, name))
+        except Exception:
+            continue        # an unreadable approval proves nothing either way (fail-closed)
+        if isinstance(existing, dict) and existing.get("request_id") == request_id:
+            return existing
+    return None
+
+
+def _gone_request_user_text(state: ProjectState, request_id: str) -> str:
+    """What to tell the USER about a request that is no longer pending -- read off the store.
+
+    THREE OUTCOMES, TOLD APART BY WHERE THE REQUEST WENT: `mint` moves it to
+    `approvals/consumed/` and `revoke` to `approvals/revoked/`, so its location is the answer and
+    nothing has to be inferred from the absence alone. Measured while building BUG-0039's fix: with
+    one blanket sentence here, a second click on an already-minted question told the user her
+    approval had not happened and sent her to start over -- an alarm as wrong as the silence the
+    fix is about, in the other direction
+    (`test_a_second_click_on_an_already_minted_question_does_not_alarm_the_user`).
+    """
+    if os.path.exists(_request_path(state, request_id, consumed=True)):
+        apr = _approval_of_request(state, request_id)
+        return ("Deine Freigabe zu dieser Frage ist bereits erteilt%s — es fehlt nichts, und du "
+                "musst nichts wiederholen."
+                % (" (%s)" % apr.get("id") if isinstance(apr, dict) and apr.get("id") else ""))
+    if os.path.exists(_request_path(state, request_id, revoked=True)):
+        return ("Es wurde keine Freigabe erteilt: die Freigabe zu dieser Frage wurde "
+                "zurückgezogen. " + NEXT_START_OVER)
+    return ("Es wurde keine Freigabe erteilt: zu dieser Frage ist keine Freigabe-Anfrage mehr "
+            "offen — sie ist abgelaufen oder wurde nie angelegt. " + NEXT_START_OVER)
 
 
 def mint(state: ProjectState, request_id: str, answer: str) -> dict:
@@ -815,12 +892,15 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                 "-- an invented request ID never mints. (A hand-WRITTEN pending "
                 "file with a self-chosen mint_code would mint; keeping the "
                 "pending-request area kernel-only is the write-scope gate's job, "
-                "and the state validator flags hand edits.)" % request_id
+                "and the state validator flags hand edits.)" % request_id,
+                user_text=_gone_request_user_text(state, request_id)
             ) from None
         if time.time() > float(request["expires_at_epoch"]):
             raise ApprovalError(
                 "approval request %s expired. Remedy: create a fresh request "
-                "and ask again -- expired requests never mint." % request_id
+                "and ask again -- expired requests never mint." % request_id,
+                user_text="Es wurde keine Freigabe erteilt: die Freigabe-Anfrage war schon "
+                          "abgelaufen, als deine Antwort ankam. " + NEXT_START_OVER
             )
         # format check, not mere presence: `mint_code: null` / "" would yield a
         # guessable label like "Freigeben [None]" (Opus check 2026-07-24)
@@ -828,7 +908,9 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
             raise ApprovalError(
                 "pending request %s carries no valid mint_code (pre-amendment "
                 "or hand-written file) -- refusing to mint (fail-closed). "
-                "Remedy: create a fresh approval request." % request_id
+                "Remedy: create a fresh approval request." % request_id,
+                user_text="Es wurde keine Freigabe erteilt: die gespeicherte Freigabe-Anfrage "
+                          "trägt keinen gültigen Freigabe-Code. " + NEXT_START_OVER
             )
         expected = approve_label(request["mint_code"])
         if answer != expected:
@@ -836,7 +918,11 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                 "answer %r does not mint: only the exact approval label of "
                 "THIS request mints (it carries a per-request code shown in "
                 "the option). Casual free text never approves. The pending "
-                "request stays until TTL." % (answer,)
+                "request stays until TTL." % (answer,),
+                user_text="Es wurde keine Freigabe erteilt: der angeklickte Text gehört nicht zu "
+                          "dieser Freigabe-Anfrage — jede Frage trägt ihren eigenen Code in "
+                          "eckigen Klammern, und nur der Freigeben-Knopf DIESER Frage zählt. "
+                          + NEXT_ASK_AGAIN
             )
         item = None
         if request["item"] is not None:
@@ -846,7 +932,10 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                     "item %s moved to revision %s since the request (requested "
                     "%s) -- out-of-band change, no mint. Remedy: re-run the "
                     "approval flow on the current revision."
-                    % (request["item"], item.get("revision"), request["revision"])
+                    % (request["item"], item.get("revision"), request["revision"]),
+                    user_text="Es wurde keine Freigabe erteilt: der Vorgang wurde geändert, "
+                              "nachdem die Frage gestellt wurde — du hättest eine andere Fassung "
+                              "freigegeben als die, die jetzt vorliegt. " + NEXT_START_OVER
                 )
             if request["kind"] in ("scope", "acceptance", "delivery"):
                 current_hash = subject_manifest_hash(
@@ -856,26 +945,29 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                     raise ApprovalError(
                         "subject manifest of %s changed since the request -- "
                         "no mint. Remedy: re-run the approval flow."
-                        % request["item"]
+                        % request["item"],
+                        user_text="Es wurde keine Freigabe erteilt: der Inhalt des Vorgangs hat "
+                                  "sich geändert, nachdem die Frage gestellt wurde. "
+                                  + NEXT_START_OVER
                     )
         # idempotency guard (Fable-Check 8/#2): a crash between APR write and
         # request consume would leave the request pending -- a replayed mint
         # must not create a SECOND approval for the same request
-        approvals_dir = os.path.join(state.root, "approvals")
-        if os.path.isdir(approvals_dir):
-            for name in sorted(os.listdir(approvals_dir)):
-                if not (name.startswith("APR-") and name.endswith(".yaml")):
-                    continue
-                try:
-                    existing = state._read_yaml(os.path.join(approvals_dir, name))
-                except Exception:
-                    continue
-                if isinstance(existing, dict) and existing.get("request_id") == request_id:
-                    raise ApprovalError(
-                        "request %s already minted %s -- replay blocked. "
-                        "Remedy: run `python scripts/harness.py validate` to reconcile the "
-                        "half-consumed request." % (request_id, existing.get("id"))
-                    )
+        existing = _approval_of_request(state, request_id)
+        if existing is not None:
+            raise ApprovalError(
+                "request %s already minted %s -- replay blocked. "
+                "Remedy: run `python scripts/harness.py validate` to reconcile the "
+                "half-consumed request." % (request_id, existing.get("id")),
+                # THE ONE BRANCH THAT MUST NOT SAY "no approval was created", because one was:
+                # this is the crash window between the APR write and the request consume (see the
+                # ordering note below). An alarm here would be as wrong as the silence BUG-0039 is
+                # about, in the other direction.
+                user_text="Deine Freigabe zu dieser Frage steht bereits (%s) — es fehlt nichts "
+                          "und du musst nichts wiederholen. Dein Assistent sollte einmal den "
+                          "Zustand prüfen lassen, damit der Vorgang die Freigabe auch sichtbar "
+                          "trägt." % existing.get("id")
+            )
         # LAST gate before the approval exists: provenance of the CALLER (see
         # _assert_minting_caller). Everything above refuses on content grounds and
         # says so; this refuses on "who is asking".
@@ -1001,23 +1093,82 @@ def pending_request(state: ProjectState, request_id: str) -> dict:
         raise ApprovalError(
             "no pending approval request %s (consumed, expired-and-cleaned, or "
             "never created). Remedy: run the kernel approval flow again -- an "
-            "invented request id never mints." % request_id
+            "invented request id never mints." % request_id,
+            user_text=_gone_request_user_text(state, request_id)
         ) from None
     except Exception as exc:
         raise ApprovalError(
             "pending request %s is unreadable (%s) -- fail-closed. Remedy: "
-            "re-run the approval flow." % (request_id, type(exc).__name__)
+            "re-run the approval flow." % (request_id, type(exc).__name__),
+            user_text="Es wurde keine Freigabe erteilt: die gespeicherte Freigabe-Anfrage lässt "
+                      "sich nicht mehr lesen. " + NEXT_START_OVER
         ) from None
     if not isinstance(request, dict):
         raise ApprovalError(
-            "pending request %s is not a mapping -- fail-closed." % request_id
+            "pending request %s is not a mapping -- fail-closed." % request_id,
+            user_text="Es wurde keine Freigabe erteilt: die gespeicherte Freigabe-Anfrage hat "
+                      "nicht die Form, die das Programm erwartet. " + NEXT_START_OVER
         )
     if time.time() > float(request.get("expires_at_epoch") or 0):
         raise ApprovalError(
             "approval request %s expired -- expired requests never mint. "
-            "Remedy: create a fresh request and ask again." % request_id
+            "Remedy: create a fresh request and ask again." % request_id,
+            user_text="Es wurde keine Freigabe erteilt: die Freigabe-Frage war abgelaufen, als du "
+                      "geantwortet hast. " + NEXT_START_OVER
         )
     return request
+
+
+def open_requests(state: ProjectState) -> list:
+    """Every approval request this project is still WAITING ON -- answerable right now.
+
+    "Still open" is asked of `pending_request` per file rather than re-tested here, so the TTL and
+    the unreadable case have one spelling: a request whose clock ran out is not something a user
+    can still answer, and counting it would make the approval hook announce a request nobody could
+    complete. Both ends of that -- the expired file is excluded HERE, and the hook that reads this
+    goes quiet BECAUSE of it -- are measured in
+    `tools/test_hooks_v2.py::test_an_expired_request_is_not_open_and_a_reworded_relay_goes_silent`,
+    whose docstring also carries what the exclusion costs.
+
+    WHAT READS THIS AND WHY IT IS STATE AND NOT SPELLING: `gate_approval` announces a non-mint when
+    an approval is outstanding and the question that got answered was not that request's. That
+    trigger has to survive a relay in the model's own words -- "Ja, freigeben" / "Nein" -- which is
+    exactly what a test on the LABEL's wording does not
+    (`tools/test_hooks_v2.py::test_a_relay_in_the_models_own_words_still_reaches_the_user`).
+    """
+    directory = _pending_dir(state)
+    if not os.path.isdir(directory):
+        return []
+    requests = []
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".yaml"):
+            continue
+        try:
+            requests.append(pending_request(state, name[: -len(".yaml")]))
+        except ApprovalError:
+            continue
+    return requests
+
+
+def declining_labels(request: dict) -> tuple:
+    """The labels of THIS request's own question that do NOT approve.
+
+    Read off `build_question`, so a renamed or added option arrives here with no second edit and no
+    list of spellings. That is a claim about the DERIVATION and not about today's two words, so it
+    is measured against a kernel whose question renames one of them:
+    `tools/test_hooks_v2.py::test_a_renamed_decline_option_needs_no_second_edit`. What it is FOR:
+    telling a DELIBERATE decline from a click that meant yes and achieved nothing. The first needs
+    no notice -- the user chose it, on the kernel's own question, and a message there is noise on a
+    correct outcome; the second is BUG-0039.
+
+    Anything that is not one of these strings exactly -- free text, the approve label with a
+    trailing space, a list -- is NOT a decline and is announced. That direction is the deliberate
+    one: an unnecessary notice costs a sentence, a missing one cost pilot 3 a lost approval
+    (`tools/test_hooks_v2.py::test_only_the_requests_own_decline_options_stay_quiet`).
+    """
+    approve = approve_label(request["mint_code"])
+    return tuple(str(option["label"]) for option in build_question(request)["options"]
+                 if str(option["label"]) != approve)
 
 
 def consumed_request(state: ProjectState, apr: dict) -> dict:

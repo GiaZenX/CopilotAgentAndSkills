@@ -1,0 +1,18 @@
+id: FR-0021
+title: Mehrere gleiche Spezialisten parallel an verschiedenen Features -- Skalierung
+  des dev-team fuer grosse Projekte
+request_text: 'Nutzerwunsch 2026-08-15 (deckt Wunschliste Abschnitt 6 vom 2026-07-31):
+  mehrere Instanzen derselben Rolle (z. B. drei implementer) gleichzeitig an unterschiedlichen
+  Features. Die gemessene Huerde ist nicht das Spawnen (Dispatch/Lease tragen mehrere
+  Leases), sondern die GEMEINSAME TESTSUITE des Produkts: zwei parallele Schreiber
+  auf disjunkten Baeumen haben hier am 2026-08-04 neun Tests gerissen, weil die Suite
+  ueber beide spannt -- dieselbe Physik gilt in jedem Kundenprojekt. Zu loesen: Arbeits-Isolation
+  (worktrees o. ae.), abgegrenzte Testflaechen je Feature, und eine Zusammenfuehrungs-Disziplin
+  mit Abnahme. Dazu die Komfort-Haelfte: Instanzen brauchen referenzierbare Namen
+  (siehe eigenes FR).'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:40:37'
+triage_result: 'wanted: post-release; the suite-span constraint is measured (2026-08-04
+  incident), the isolation design is the actual work'

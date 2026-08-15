@@ -37,6 +37,28 @@
     }
   },
 
+  "hook_output_channels": {
+    "measurement": {
+      "date": "2026-08-15",
+      "provider": "claude.exe",
+      "provider_version": "2.1.227",
+      "mode": "headless (-p, --output-format stream-json)",
+      "method": "a scratch project outside this repo with ONE PostToolUse(Bash) hook that wrote a distinct marker to stderr, a second into top-level `systemMessage` and a third into `hookSpecificOutput.additionalContext`, all on exit 0; the session was then asked to list every marker it could see, and the raw stream was searched for all three",
+      "location": "a scratch project in the session scratchpad, outside this repo",
+      "occasion": "BUG-0039 -- a refusal to mint an approval was performed correctly and reached nobody"
+    },
+    "post_tool_use": {
+      "exit_0_stderr": "reached NEITHER party: absent from the whole session stream, and the session listed it among no markers it could see. This is the channel every kit gate used for its non-blocking refusals, and it is why a refused mint was silent.",
+      "exit_0_stdout_plain": "not measured separately; the documented behaviour is the debug log only, and nothing in the kits relies on it",
+      "reaches_user": "systemMessage",
+      "reaches_user_shape": "arrived as its own stream record {\"type\": \"system\", \"subtype\": \"informational\", \"level\": \"notice\", \"content\": \"PostToolUse:<matcher> says: <text>\"} -- and the session did NOT list this marker, so it is the user's channel and not the model's",
+      "reaches_model": "hookSpecificOutput.additionalContext",
+      "reaches_model_shape": "the session listed this marker verbatim and named it a PostToolUse hook note; it produced no `informational` record, so it is the model's channel and not the user's",
+      "exit_2_stderr": "NOT measured here. The hooks reference says it shows stderr to Claude on this event; the kits do not use it, because PostToolUse cannot block and this repo's gates refuse to exit 2 where a refusal would be theatre."
+    },
+    "_consequence": "Two audiences need two keys, and neither of them is stderr. `gate_approval._announce` writes both; tools/test_hooks_v2.py::test_the_approval_hook_speaks_on_the_channels_this_record_measured holds the hook to the two names above, so a re-measurement that moved them cannot leave the hook talking to nobody."
+  },
+
   "agent_identity": {
     "measurement": {
       "date": "2026-08-03",

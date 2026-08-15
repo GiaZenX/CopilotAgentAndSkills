@@ -1,0 +1,20 @@
+id: EVD-0034
+kind: review
+related:
+- TSK-0061
+result: pass
+summary: 'verifier PASS for diff:3e3e424adacfc9214baad1cd54fd7b9c6eff8f2d5a1dcf07b17df2bdc75f92df
+  -- BUG-0039 closed at the STATE, not the spelling: an assent on any rewording of
+  an open approval request now yields a user-visible notice (channel table measured
+  live against the provider: systemMessage reaches the user, stderr reaches nobody
+  on this event), the request''s own decline options stay quiet (derived from build_question,
+  tripwired via kernel-clone rename), minting stays byte-silent; the honest cost (unrelated
+  question while a request is open) is measured for tone; the 24h-TTL residue is written
+  in test docstring and hook head; three verification rounds, all mutations red exactly
+  at their tests; kits 2026.08.15-3, test_hooks_v2 1241 + test_hooks 636 green; riding
+  along: BUG-0040..0050, FR-0019..0024 captures and the parked FR-0020'
+artifact_refs:
+- ../docs/pilot/2026-08-14-pilot-3-rechnungswerkzeug.md
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:49:26'

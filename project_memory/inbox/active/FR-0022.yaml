@@ -1,0 +1,13 @@
+id: FR-0022
+title: Menschliche Namen fuer Agenten-Instanzen, damit sie referenzierbar sind
+request_text: 'Nutzerwunsch 2026-08-15: Agenten-Instanzen bekommen menschliche Namen
+  (z. B. ''Mara baut Feature A, Jonas Feature B''), damit Nutzer und PM sie in Gespraech
+  und Items eindeutig referenzieren koennen. Klein, aber mit Substanz: der Name muss
+  an der Lease/dem Task haengen (Zustand), nicht nur im Chat stehen, sonst ist er
+  nach der ersten Zusammenfassung weg.'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:40:38'
+triage_result: 'wanted: post-release comfort feature; pairs with FR-0021 (parallel
+  instances make names necessary, not just nice)'

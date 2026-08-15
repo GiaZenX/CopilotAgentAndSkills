@@ -1,4 +1,4 @@
-generated_at: '2026-08-14T23:42:55'
+generated_at: '2026-08-15T09:49:27'
 items:
 - id: BUG-0001
   type: BUG
@@ -238,6 +238,90 @@ items:
   title: Kernel-written fields outside the contract universe (design_refs, premise_rechecks,
     supersedes) are read shape-assumingly -- freeze-design letter-splits a scalar
     design_refs INTO CANONICAL STATE and validate stays silent
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0039
+  type: BUG
+  title: 'A non-verbatim approval relay mints NOTHING -- silently for the user: the
+    click ''Freigeben'' vanishes without any feedback'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0040
+  type: BUG
+  title: gate_dispatch knows only the ROOT item's acceptance criteria -- a task written
+    against CR-minted criteria is not dispatchable
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0041
+  type: BUG
+  title: 'A preset change after install is a dead end for non-developers: no writer
+    for project_config.yaml, the remedy is Notepad plus terminal plus restart'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0042
+  type: BUG
+  title: A running background dispatch survives NO session end -- 3 of 3 in-flight
+    specialists lost their work at a session break
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0043
+  type: BUG
+  title: Masterplan sign-off ran through the plan-mode dialog, not an explicit user
+    'passt' -- the review loop shrinks to one click
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0044
+  type: BUG
+  title: 'The entry session wrote preset: duo without asking -- the interview lacks
+    the preset question the entry file claims is confirmed'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0045
+  type: BUG
+  title: 'The hand-written root item carried an invented timestamp (created: 12:00:00)
+    instead of the real time'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0046
+  type: BUG
+  title: Specialist narration and mixed-language jargon leak into the user's view,
+    and the PM cannot switch it off
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0047
+  type: BUG
+  title: Role memory writing fails on TWO mechanisms -- task-scope after submit-result,
+    and guard_memory_budget's content rule that also hits the PM
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0048
+  type: BUG
+  title: Shell-less specialist roles cannot fulfil the submit contract -- harness.py
+    submit-result demands a tool they do not have
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0049
+  type: BUG
+  title: gate_subagent_output's one-retry pass-through logs 'still missing nothing'
+    -- misleading message, and a second consecutive violation would pass unblocked
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0050
+  type: BUG
+  title: 'The no-technical-questions property is hook-enforced and porous: guard_question_context
+    caught 2, two technical questions reached the user uncaught'
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -711,6 +795,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0034
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -813,6 +903,48 @@ items:
 - id: FR-0018
   type: FR
   title: Weicher Dubletten-Hinweis beim Anlegen eines PR/SR -- ohne Fehlalarm-Flut
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0019
+  type: FR
+  title: Ein tragfaehiger Uebergabeweg fuer Nutzerdateien (Logo, Vorlagen) ins Projekt
+    -- die Gegenrichtung von FR-0016
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0020
+  type: FR
+  title: 'Duenne Installation: Hooks/Agenten/Skills zentral, im Projekt nur ein Zeiger
+    -- das Repo bleibt sichtbar sauber'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0021
+  type: FR
+  title: Mehrere gleiche Spezialisten parallel an verschiedenen Features -- Skalierung
+    des dev-team fuer grosse Projekte
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0022
+  type: FR
+  title: Menschliche Namen fuer Agenten-Instanzen, damit sie referenzierbar sind
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0023
+  type: FR
+  title: 'Provider-agnostisches Harness: Google, OpenAI, Kimi, Qwen, DeepSeek, lokale
+    Modelle -- inkl. ueberkreuzter Besetzung und einer Auswahlregel je Rolle'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0024
+  type: FR
+  title: 'Backlog-Oberflaeche mit Kanban und Roh-Eingang: Freitext-Items mit Anhaengen
+    und Prio anlegen, gesammelt senden, PM klaert Rueckfragen und pflegt sie als Items
+    ein'
   status: TRIAGED
   revision: 1
   approval_ref: null

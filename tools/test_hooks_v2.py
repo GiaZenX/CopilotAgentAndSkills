@@ -3003,11 +3003,15 @@ def test_a_corrupt_lease_blocks_the_spawn(tmp_path):
 
 # -- gate_approval: the two-phase approval protocol (spec II.2) ----------------
 
-def run_approval(tmp_path, payload, kit="dev-team"):
+def run_approval(tmp_path, payload, kit="dev-team", launched=False):
+    """The shipped hook as a process. `launched=True` is the form settings.json really registers —
+    `_gate.py` running the gate inside its own process, which is the only way the provider ever
+    sees this hook's stdout."""
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=TEAM_KITS)
-    return subprocess.run([sys.executable, os.path.join(TEAM_KITS, kit, "hooks",
-                                                        "gate_approval.py")],
-                          input=json.dumps(payload), capture_output=True, text=True,
+    hooks = os.path.join(TEAM_KITS, kit, "hooks")
+    argv = ([sys.executable, os.path.join(hooks, "_gate.py"), "gate_approval.py"] if launched
+            else [sys.executable, os.path.join(hooks, "gate_approval.py")])
+    return subprocess.run(argv, input=json.dumps(payload), capture_output=True, text=True,
                           env=env, timeout=120)
 
 
@@ -3192,6 +3196,454 @@ def test_an_unmarked_answer_mints_nothing(tmp_path):
                    "Darf ich das freigeben?": approvals.approve_label(request["mint_code"])}}}
     assert run_approval(tmp_path, payload).returncode == 0
     assert state.read_item(pr["id"])["approval_ref"] is None
+
+
+# -- BUG-0039: a non-minting approval answer is SPOKEN, not merely performed ---
+#
+# Which stdout key reaches whom on PostToolUse is a live measurement and lives in
+# `tools/provider_observations.json` → `hook_output_channels`, with its provenance. The tests below
+# read the hook's stdout JSON because that record says the user's half can travel nowhere else.
+
+POST_TOOL_USE_CHANNELS = json.load(open(os.path.join(ROOT, "tools", "provider_observations.json"),
+                                        encoding="utf-8"))["hook_output_channels"]["post_tool_use"]
+
+
+def _channel(blob, dotted):
+    for step in dotted.split("."):
+        blob = blob.get(step) if isinstance(blob, dict) else None
+    return blob
+
+
+def spoken(result):
+    """The hook's stdout as the provider parses it — {} when the hook said nothing."""
+    return json.loads(result.stdout) if result.stdout.strip() else {}
+
+
+def to_user(result):
+    return _channel(spoken(result), POST_TOOL_USE_CHANNELS["reaches_user"]) or ""
+
+
+def to_model(result):
+    return _channel(spoken(result), POST_TOOL_USE_CHANNELS["reaches_model"]) or ""
+
+
+def test_the_pilots_silent_relay_now_speaks_to_the_user(tmp_path):
+    """Pilot 3's own S3 shape (BUG-0039), replayed: the question relayed in the model's words
+    carries no `[APR-REQ:]` marker, the user clicks `Freigeben [<code>]`, nothing mints.
+
+    Before this fix that path exited 0 with EMPTY stdout, EMPTY stderr and not even an audit note —
+    the purest form of the silence. The protection is unchanged (no APR, item still DRAFT); what is
+    new is that both the user and the model are told."""
+    state, pr, request, _question = pending(tmp_path)
+    enriched = {"question": "Ich habe alles vorbereitet. Bitte gib die Lieferung frei.",
+                "header": "Freigabe", "multiSelect": False,
+                "options": [{"label": approvals.approve_label(request["mint_code"]),
+                             "description": "erteilt die Freigabe"}]}
+    result = run_approval(tmp_path, answered(
+        tmp_path, enriched, approvals.approve_label(request["mint_code"])))
+
+    assert result.returncode == 0
+    assert state.read_item(pr["id"])["approval_ref"] is None
+    assert state.read_item(pr["id"])["status"] == "DRAFT"
+    message = to_user(result)
+    assert "keine Freigabe entstanden" in message
+    assert approvals.NEXT_ASK_AGAIN in message      # the ONE next action, not a menu
+    assert "gate_approval" in to_model(result)
+    assert audit_notes(tmp_path), "the non-mint left no record either"
+
+
+def test_a_relay_in_the_models_own_words_still_reaches_the_user(tmp_path):
+    """THE HOLE THE FIRST CUT LEFT OPEN, and the reason the trigger is state and not spelling.
+
+    That cut asked whether the ANSWER looked like `Freigeben [<code>]`. A relay that also reworded
+    the OPTIONS — "Ja, freigeben" / "Nein", which is what a model paraphrasing a question naturally
+    produces — answered no to that test, and the whole chain went silent again: rc 0, no message,
+    no audit line, request still pending. Nothing about the label's wording is asked any more."""
+    state, pr, _request, _question = pending(tmp_path)
+    own_words = {"question": "Ich habe die Lieferung fertig. Soll ich sie freigeben?",
+                 "header": "Freigabe", "multiSelect": False,
+                 "options": [{"label": "Ja, freigeben", "description": "los"},
+                             {"label": "Nein", "description": "noch nicht"}]}
+    result = run_approval(tmp_path, answered(tmp_path, own_words, "Ja, freigeben"))
+
+    assert result.returncode == 0
+    assert to_user(result), "a reworded relay went silent again"
+    assert approvals.NEXT_ASK_AGAIN in to_user(result)
+    assert state.read_item(pr["id"])["approval_ref"] is None
+    assert approvals.open_requests(state), "the request is still open and the user was told so"
+
+
+def test_the_announce_path_emits_one_json_document_through_the_launcher(tmp_path):
+    """The registered command is `_gate.py <gate>.py`, and the new surface is STDOUT — which the
+    launcher shares with every gate it runs. A second document, or a launcher line in front of the
+    first, would make the provider read the whole thing as plain text and show the user nothing."""
+    state, _pr, _request, _question = pending(tmp_path)
+    own_words = {"question": "Soll ich das freigeben?", "header": "Freigabe", "multiSelect": False,
+                 "options": [{"label": "Ja", "description": "los"}]}
+    result = run_approval(tmp_path, answered(tmp_path, own_words, "Ja"), launched=True)
+
+    assert result.returncode == 0
+    decoder = json.JSONDecoder()
+    document, end = decoder.raw_decode(result.stdout)
+    assert result.stdout[end:].strip() == "", "more than one document on stdout: %r" % result.stdout
+    assert _channel(document, POST_TOOL_USE_CHANNELS["reaches_user"])
+    assert approvals.open_requests(state)
+
+
+def audit_notes(repo):
+    """Every gate_approval record this project's hook audit log carries."""
+    path = os.path.join(str(repo), "project_memory", ".audit", "hook_events.jsonl")
+    if not os.path.isfile(path):
+        return []
+    with io.open(path, encoding="utf-8") as handle:
+        rows = [json.loads(line) for line in handle if line.strip()]
+    return [row for row in rows if row.get("hook") == "gate_approval"]
+
+
+ORDINARY_QUESTION = {"question": "Welche Farbe soll der Knopf haben?", "header": "Design",
+                     "multiSelect": False,
+                     "options": [{"label": "Petrol", "description": "kuehl"}]}
+
+
+def test_an_ordinary_question_leaves_no_trace_at_all(tmp_path):
+    """A project with NO approval outstanding says nothing, on any surface.
+
+    Every non-approval AskUserQuestion answer reaches the same exit, so a trigger that did not ask
+    the state first would put a line in the audit log for every colour the user was ever asked
+    about. Measured as the absence of all three surfaces, not just of stdout."""
+    state = ProjectState(str(tmp_path / "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    state.capture("PR", dict(PR_FIELDS))
+    assert approvals.open_requests(state) == []
+
+    result = run_approval(tmp_path, answered(tmp_path, ORDINARY_QUESTION, "Petrol"))
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert result.stderr == ""
+    assert audit_notes(tmp_path) == []
+
+
+def test_an_unrelated_question_while_a_request_is_open_says_so_without_accusing(tmp_path):
+    """THE MEASURED COST OF A STATE-DERIVED TRIGGER, written down rather than hidden.
+
+    Deciding on "an approval is outstanding and this was not it" covers every rewording — and it
+    also catches a genuinely unrelated question asked while a request waits. That case gets the
+    SAME notice, so the notice has to be true of it: information about an open approval, no claim
+    about what the user meant, and the next action offered conditionally."""
+    state, pr, _request, _question = pending(tmp_path)
+    result = run_approval(tmp_path, answered(tmp_path, ORDINARY_QUESTION, "Petrol"))
+
+    message = to_user(result)
+    assert message, "the cost of the trigger is a notice, and it did not appear"
+    assert message.startswith("Hinweis:")
+    assert "offen und unbeantwortet" in message
+    assert "Falls du gerade freigeben wolltest" in message
+    # nothing in it asserts what she did or wanted, and nothing demands an action of HER
+    for accusation in ("du hättest", "falsch", "Fehler", "du musst"):
+        assert accusation not in message, (accusation, message)
+    assert state.read_item(pr["id"])["approval_ref"] is None
+
+
+def test_the_approval_hook_speaks_on_the_channels_this_record_measured(tmp_path):
+    """The hook's stdout carries the two names `provider_observations.json` measured, and no other.
+
+    Nothing in this repo can make a provider deliver a hook's output, so the channel record is a
+    measurement rather than a derivation — what a test CAN do is stop the two from drifting apart.
+    A re-measurement that moved either name, or a hook that grew a third key nobody measured, ends
+    here instead of ending as a message that reaches no one (BUG-0039 again, one layer up)."""
+    _state, _pr, request, _question = pending(tmp_path)
+    plain = {"question": "Bitte gib das frei.", "header": "Freigabe", "multiSelect": False,
+             "options": [{"label": approvals.approve_label(request["mint_code"]),
+                          "description": "erteilt die Freigabe"}]}
+    blob = spoken(run_approval(tmp_path, answered(
+        tmp_path, plain, approvals.approve_label(request["mint_code"]))))
+
+    named = [POST_TOOL_USE_CHANNELS["reaches_user"], POST_TOOL_USE_CHANNELS["reaches_model"]]
+    for dotted in named:
+        assert _channel(blob, dotted), "%s carried nothing: %s" % (dotted, blob)
+    assert set(blob) == {dotted.split(".")[0] for dotted in named}, sorted(blob)
+
+
+def test_a_minting_answer_stays_silent_on_every_new_channel(tmp_path):
+    """AC-2: success is unchanged. The mint's own line goes to stderr as it always did, and NOTHING
+    is written to stdout — a notice on a correct approval would train the user to ignore them."""
+    state, pr, request, question = pending(tmp_path)
+    result = run_approval(tmp_path, answered(
+        tmp_path, question, approvals.approve_label(request["mint_code"])))
+    assert result.returncode == 0
+    assert result.stdout == ""
+    assert "recorded for" in result.stderr
+    assert state.read_item(pr["id"])["status"] == "APPROVED"
+
+
+def test_only_the_requests_own_decline_options_stay_quiet(tmp_path):
+    """The ONE answer that needs no notice is a decline the kernel itself offered, and the set of
+    those is read off the request's own question — never off a list of German words here.
+
+    The other half of the same test is what made the first cut fail: an answer that is not one of
+    them, however much it looks like a decline or like an approval, IS announced. `Freigeben`
+    without the code and free text both meant yes to the person who typed them."""
+    state, pr, request, question = pending(tmp_path)
+    declines = approvals.declining_labels(request)
+    assert declines, "a request whose question offers no way to decline is a different bug"
+
+    for label in declines:
+        result = run_approval(tmp_path, answered(tmp_path, question, label))
+        assert result.returncode == 0
+        assert result.stdout == "", (label, result.stdout)
+
+    for answer in ("Freigeben", "ok passt", approvals.approve_label(request["mint_code"]) + " ",
+                   [approvals.approve_label(request["mint_code"])]):
+        result = run_approval(tmp_path, answered(tmp_path, question, answer))
+        assert result.returncode == 0
+        assert to_user(result), "%r minted nothing and said nothing" % (answer,)
+    assert state.read_item(pr["id"])["approval_ref"] is None
+
+
+def _kernel_clone(tmp_path, old, new):
+    """A kernel beside the shipped one with ONE line changed — the only way to measure a claim
+    about a DERIVATION, since both sides of a derived assertion move together by construction."""
+    clone = tmp_path / "kernel-clone"
+    shutil.copytree(os.path.join(TEAM_KITS, "kernel"), str(clone / "kernel"))
+    path = clone / "kernel" / "approvals.py"
+    source = path.read_text(encoding="utf-8")
+    assert source.count(old) == 1, source.count(old)
+    path.write_text(source.replace(old, new), encoding="utf-8")
+    return clone
+
+
+def _question_of(clone, state, request_id):
+    """`build_question` AS THE CLONE RUNS IT — a hand-built copy would differ from what the hook
+    rebuilds for its own comparison, and the test would then measure the mismatch branch."""
+    script = ("import json, sys; sys.path.insert(0, %r)\n"
+              "from kernel.approvals import build_question, pending_request\n"
+              "from kernel.state import ProjectState\n"
+              "print(json.dumps(build_question(pending_request(ProjectState(%r), %r))))\n"
+              % (str(clone), state.root, request_id))
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True,
+                            timeout=120)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)
+
+
+def test_a_renamed_decline_option_needs_no_second_edit(tmp_path):
+    """`declining_labels` claims it READS the question's options. Measured against a kernel that
+    renames one of them, because nothing else can tell a derivation from an enumeration.
+
+    The trap this closes: every other test here builds its expectation with `declining_labels`
+    itself, so replacing that function's body with `(_CHANGE_LABEL, _REJECT_LABEL)` kept the whole
+    set green — both sides moved together. Here the QUESTION renames its middle option and the two
+    constants do not, so the derived reader stays quiet on the renamed click and an enumerated one
+    would announce it."""
+    state, pr, request, _question = pending(tmp_path)
+    clone = _kernel_clone(tmp_path, '"label": _CHANGE_LABEL,', '"label": "Anders machen",')
+    question = _question_of(clone, state, request["request_id"])
+    renamed = [option["label"] for option in question["options"]][1]
+    assert renamed == "Anders machen", question["options"]
+
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=str(clone))
+    result = subprocess.run([sys.executable, os.path.join(HOOKS, "gate_approval.py")],
+                            input=json.dumps(answered(tmp_path, question, renamed)),
+                            capture_output=True, text=True, env=env, timeout=120)
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "", (
+        "a decline the kernel's own question offers was announced as a lost approval — "
+        "`declining_labels` is reading something other than that question: %s" % result.stdout)
+    assert state.read_item(pr["id"])["approval_ref"] is None
+
+
+def test_an_expired_request_is_not_open_and_a_reworded_relay_goes_silent(tmp_path):
+    """Both ends of `open_requests`' TTL claim, and the residue it leaves, in one place.
+
+    END ONE: the pending FILE is still on disk and `open_requests` does not return it, because it
+    asks `pending_request`, which refuses an expired request. END TWO: the hook's trigger is built
+    on exactly that answer, so a reworded relay after the clock ran out is silent again — no
+    notice, no stderr, no audit line.
+
+    THE RESIDUE, written here because it is the price of the definition and not a bug in it: an
+    approval request lives 24 h (`create_pending_request`'s default `ttl_seconds`). Past that, a
+    user who clicks yes on a relay in the model's own words is back in BUG-0039's silence. It is
+    not a chain that runs inside one session, which is why it is recorded rather than closed — and
+    the kernel's OWN question still speaks past the clock, which is where the residue stops; the
+    last assertion holds that boundary."""
+    state = ProjectState(str(tmp_path / "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    pr = state.capture("PR", dict(PR_FIELDS))
+    request = approvals.create_pending_request(state, "scope", pr["id"], ttl_seconds=0.01)
+    question = approvals.build_question(request)
+    time.sleep(0.05)
+
+    assert os.path.exists(approvals._request_path(state, request["request_id"]))
+    assert approvals.open_requests(state) == []
+
+    own_words = {"question": "Soll ich das jetzt freigeben?", "header": "Freigabe",
+                 "multiSelect": False,
+                 "options": [{"label": "Ja, freigeben", "description": "los"},
+                             {"label": "Nein", "description": "noch nicht"}]}
+    silent = run_approval(tmp_path, answered(tmp_path, own_words, "Ja, freigeben"))
+    assert silent.returncode == 0
+    assert silent.stdout == ""
+    assert silent.stderr == ""
+    assert audit_notes(tmp_path) == []
+
+    still_spoken = run_approval(tmp_path, answered(
+        tmp_path, question, approvals.approve_label(request["mint_code"])))
+    assert "abgelaufen" in to_user(still_spoken), to_user(still_spoken)
+    assert state.read_item(pr["id"])["approval_ref"] is None
+
+
+def _refusal_variants(tmp_path):
+    """One payload per way an ASSENTING answer can fail to mint — each built from the running
+    kernel, never from a hard-coded string. Returns {name: (state, pr, payload)}."""
+    variants = {}
+
+    state, pr, request, question = pending(tmp_path / "unmarked")
+    plain = dict(question, question="Bitte gib das frei.")
+    variants["unmarked"] = (state, pr, answered(tmp_path / "unmarked", plain,
+                                                approvals.approve_label(request["mint_code"])))
+
+    state, pr, request, question = pending(tmp_path / "reworded")
+    tampered = dict(question, question="Kurz erklärt: " + question["question"])
+    variants["reworded"] = (state, pr, answered(tmp_path / "reworded", tampered,
+                                                approvals.approve_label(request["mint_code"]),
+                                                echo=tampered))
+
+    state, pr, request, question = pending(tmp_path / "stale")
+    fresh = approvals.create_pending_request(state, "scope", pr["id"])
+    variants["stale_code"] = (state, pr, answered(
+        tmp_path / "stale", approvals.build_question(fresh),
+        approvals.approve_label(request["mint_code"])))
+
+    root = tmp_path / "expired"
+    state = ProjectState(str(root / "project_memory"))
+    os.makedirs(state.root, exist_ok=True)
+    pr = state.capture("PR", dict(PR_FIELDS))
+    request = approvals.create_pending_request(state, "scope", pr["id"], ttl_seconds=0.01)
+    time.sleep(0.05)
+    variants["expired"] = (state, pr, answered(root, approvals.build_question(request),
+                                               approvals.approve_label(request["mint_code"])))
+
+    state, pr, request, question = pending(tmp_path / "noecho")
+    payload = ask(tmp_path / "noecho", question, event="PostToolUse",
+                  tool_response={"answers": {
+                      question["question"]: approvals.approve_label(request["mint_code"])}})
+    variants["no_echo"] = (state, pr, payload)
+
+    state, pr, request, question = pending(tmp_path / "batch")
+    other = {"question": "Welche Farbe?", "header": "Design", "multiSelect": False,
+             "options": [{"label": "Petrol", "description": "kuehl"}]}
+    payload = ask(tmp_path / "batch", question, event="PostToolUse",
+                  tool_response={"answers": {
+                      question["question"]: approvals.approve_label(request["mint_code"]),
+                      other["question"]: "Petrol"},
+                      "questions": [question, other]})
+    variants["batched"] = (state, pr, payload)
+    return variants
+
+
+def test_each_refusal_reason_gets_its_own_sentence_for_the_user(tmp_path):
+    """The TSK-0057/BUG-0036 discipline, applied here: ONE blanket sentence for every non-mint
+    would send a user whose request expired back to re-ask a question that can no longer mint.
+
+    Measured as a property rather than asserted per string: every variant speaks, every message
+    ends in one of the kernel's two honest exits, and no two variants say the same thing."""
+    variants = _refusal_variants(tmp_path)
+    messages = {}
+    for name, (state, pr, payload) in sorted(variants.items()):
+        result = run_approval(os.path.dirname(state.root), payload)
+        assert result.returncode == 0, (name, result.stderr)
+        assert state.read_item(pr["id"])["approval_ref"] is None, name
+        message = to_user(result)
+        assert message, "%s said nothing to the user" % name
+        assert (message.endswith(approvals.NEXT_ASK_AGAIN)
+                or message.endswith(approvals.NEXT_START_OVER)), (name, message)
+        messages[name] = message
+    assert len(set(messages.values())) == len(messages), messages
+
+
+def test_a_second_click_on_an_already_minted_question_does_not_alarm_the_user(tmp_path):
+    """The other direction of the same rule: an over-alarming message is as wrong as the silence.
+
+    Replaying the answer after a successful mint finds no PENDING request — and a blanket "no
+    approval was created, start over" there tells a user whose yes IS recorded that it is not."""
+    state, pr, request, question = pending(tmp_path)
+    payload = answered(tmp_path, question, approvals.approve_label(request["mint_code"]))
+    assert run_approval(tmp_path, payload).returncode == 0
+    apr_id = state.read_item(pr["id"])["approval_ref"]
+    assert apr_id is not None
+
+    again = run_approval(tmp_path, payload)
+    message = to_user(again)
+    assert apr_id in message, message
+    assert "bereits erteilt" in message
+    assert approvals.NEXT_START_OVER not in message
+    assert state.read_item(pr["id"])["approval_ref"] == apr_id
+
+
+def _approval_calls_of_the_hook():
+    """The `approvals.<name>` calls the shipped approval hook really makes — parsed, not searched."""
+    with io.open(os.path.join(HOOKS, "gate_approval.py"), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), "gate_approval.py")
+    return {node.attr for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)
+            and node.value.id == "approvals"}
+
+
+def test_every_approval_refusal_the_hook_can_surface_speaks_to_the_user():
+    """Every `ApprovalError` the approval hook can put in front of a user carries `user_text`.
+
+    DERIVED FROM BOTH RUNNING FILES, never from a list kept beside them: the reachable set is the
+    hook's own `approvals.<name>` calls, closed transitively over the kernel functions those call.
+    A branch added to `mint` tomorrow is therefore in scope the day it ships, and one that forgets
+    its sentence for the user fails here instead of falling back to `_user_text_of`'s last resort.
+    """
+    with io.open(os.path.join(TEAM_KITS, "kernel", "approvals.py"), encoding="utf-8") as handle:
+        module = ast.parse(handle.read(), "approvals.py")
+    functions = {node.name: node for node in module.body if isinstance(node, ast.FunctionDef)}
+    reachable, todo = set(), [name for name in _approval_calls_of_the_hook() if name in functions]
+    assert todo, "the hook calls no kernel approval function — this test would prove nothing"
+    while todo:
+        name = todo.pop()
+        if name in reachable:
+            continue
+        reachable.add(name)
+        todo += [node.func.id for node in ast.walk(functions[name])
+                 if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                 and node.func.id in functions]
+    silent = [(name, node.lineno)
+              for name in sorted(reachable)
+              for node in ast.walk(functions[name])
+              if isinstance(node, ast.Raise) and isinstance(node.exc, ast.Call)
+              and getattr(node.exc.func, "id", "") == "ApprovalError"
+              and not any(keyword.arg == "user_text" for keyword in node.exc.keywords)]
+    assert not silent, "ApprovalError without a sentence for the user: %s" % silent
+    assert len(reachable) > 1, reachable
+
+
+def test_every_non_minting_exit_of_the_approval_hook_carries_a_user_sentence():
+    """Each `_report` call in the shipped hook passes BOTH halves — the role's line and the user's.
+
+    ARITY IS NOT ENOUGH, and this test used to check only that: `_report(message, "")` satisfied a
+    count and delivers nothing, which is the defect wearing the fix's shape. A second argument that
+    is a CONSTANT is therefore read and must be non-empty; anything computed (a name, a call, a
+    concatenation) is left to the runtime tests above, which is where "is the sentence any good"
+    belongs."""
+    with io.open(os.path.join(HOOKS, "gate_approval.py"), encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), "gate_approval.py")
+    calls = [node for node in ast.walk(tree)
+             if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+             and node.func.id == "_report"]
+    assert len(calls) >= 6, len(calls)
+    sentences = {}
+    for call in calls:
+        given = list(call.args[1:]) + [kw.value for kw in call.keywords if kw.arg == "user_text"]
+        sentences[call.lineno] = given[0] if given else None
+    missing = sorted(line for line, node in sentences.items() if node is None)
+    assert not missing, "_report call without a user sentence at line(s) %s" % missing
+    empty = sorted(line for line, node in sentences.items()
+                   if isinstance(node, ast.Constant) and not str(node.value or "").strip())
+    assert not empty, "_report call whose user sentence is an empty constant, line(s) %s" % empty
 
 
 def test_the_transcript_key_is_understood_too(tmp_path):

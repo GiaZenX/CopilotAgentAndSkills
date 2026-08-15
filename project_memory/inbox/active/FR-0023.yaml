@@ -1,0 +1,21 @@
+id: FR-0023
+title: 'Provider-agnostisches Harness: Google, OpenAI, Kimi, Qwen, DeepSeek, lokale
+  Modelle -- inkl. ueberkreuzter Besetzung und einer Auswahlregel je Rolle'
+request_text: 'Nutzerwunsch 2026-08-15: das Harness soll mit beliebigen Anbietern
+  laufen (Google, Anthropic, OpenAI, Kimi, Qwen, DeepSeek, lokale Modelle) und sogar
+  ueberkreuzt besetzen koennen (z. B. Anthropic fuers Backend, Kimi fuers Frontend).
+  Stand heute: eine zweite Provider-Flaeche existiert bereits (Codex/OpenAI: gen_provider_artifacts
+  erzeugt .codex/config.toml + hooks.json, dieselben Hook-Skripte laufen dort, gemessen;
+  Copilot wurde nach Messung entfernt), und die Kits tragen model_map/effort_map je
+  Rolle als Auswahlmechanismus. Der Wunsch verallgemeinert beides: (1) eine Provider-Abstraktion,
+  gegen die Hooks/Dispatch/Session-Mechanik einmal geschrieben sind, (2) die Auswahlregel
+  wird Rolle x Provider x Modell (die heutige model_map als Keimzelle), vom Nutzer
+  je Projekt konfigurierbar, (3) je Provider eine MESSRUNDE wie damals bei Codex (welche
+  Events, welche Blocking-Semantik, welche Luecken) statt Annahmen -- die Copilot-Entfernung
+  ist der Praezedenzfall fuer ehrliches Nein. Gross; nach dem Release in Scheiben.'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:41:09'
+triage_result: 'wanted: post-release, sliced (one provider = one measured round);
+  the Codex surface and per-role model_map are the existing seeds'

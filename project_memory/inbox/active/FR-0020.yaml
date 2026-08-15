@@ -1,0 +1,22 @@
+id: FR-0020
+title: 'Duenne Installation: Hooks/Agenten/Skills zentral, im Projekt nur ein Zeiger
+  -- das Repo bleibt sichtbar sauber'
+request_text: 'Nutzerwunsch 2026-08-15: In einem Projekt mit installiertem Team liegen
+  heute alle Hooks, Agenten, Skills, Verfassung sichtbar im Repo. Gewuenscht: eine
+  Installationsform, bei der der Apparat zentral liegt (globale Ablage) und im Projekt
+  nur ein kleiner Anker bleibt (Kit, Version, Bundle-Prüfsumme). Zu loesen dabei,
+  gemessen statt angenommen: (1) Versions-Pinnung pro Projekt muss erhalten bleiben
+  (die Juli-Messungen zum Store/Repo-Drift sind der Gegenfall), (2) die Vertrauensprüfung
+  (Bundle-Hash) muss den zentralen Code gegen den projektlokalen Anker rechnen, (3)
+  der Update-Fluss (Erkennen/Einspielen/Neustart) muss die Form kennen, (4) Klon-Portabilitaet:
+  ein frisch geklontes Projekt ohne passende globale Ablage braucht eine ehrliche
+  Ansage statt stillen Fehlverhaltens. Zwischenstufe, sofort baubar: eine Installer-Option,
+  die den Apparat per .gitignore aus der Versionsverwaltung haelt (Dateien bleiben
+  lokal; Preis: frische Klone brauchen eine Neu-Installation).'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:24:49'
+triage_result: wanted, PARKED by the user 2026-08-15 ('bin mir noch nicht sicher ob
+  ich das will') -- no build until the user re-raises it; the thin-install redesign
+  and the .gitignore interim step both stay described in the request

@@ -1,0 +1,25 @@
+id: FR-0024
+title: 'Backlog-Oberflaeche mit Kanban und Roh-Eingang: Freitext-Items mit Anhaengen
+  und Prio anlegen, gesammelt senden, PM klaert Rueckfragen und pflegt sie als Items
+  ein'
+request_text: 'Nutzerwunsch 2026-08-15 (die grosse Idee): eine Oberflaeche mit (1)
+  Kanban-Sicht auf das echte Backlog (project_memory als Quelle, generiert, nie zweite
+  Wahrheit), (2) einem Roh-Eingang: Karte anlegen als Feature-Wunsch / Produktanforderung
+  / Aenderung-anfordern, Freitextfeld, Anhaenge (Bilder, Code-Dateien, Schnipsel,
+  PDFs, Tabellen -- was sinnvoll ist, wird gemessen), Prio niedrig/mittel/hoch als
+  Wunsch-Zeitpunkt, mehrere Karten sammeln, dann ''Anfrage senden''; (3) der PM bekommt
+  die Sammlung, stellt Rueckfragen wo noetig und pflegt erst nach Klaerung saubere
+  typisierte Items ins Backlog ein (capture ueber den Kernel -- der Eingang ist ein
+  Vorzimmer, kein zweiter Schreibweg). Beruehrt: Wunschliste Abschnitt 2 (Board-Ansichten),
+  FR-0017 (Gliederung), FR-0018 (Dubletten-Hinweis), FR-0019 (Datei-Uebergabe -- die
+  Anhaenge SIND dieser Uebergabeweg). Technisch traegt das die Agent SDK: eine eigene
+  (Web-)Oberflaeche kann Sessions headless fahren, wie die Piloten es tun, ohne Claude
+  Code als Alltagswerkzeug aufzugeben. Riesig; nach dem Release, in Scheiben (zuerst
+  read-only-Kanban aus dem Index, dann der Eingang, dann die PM-Klaerstrecke).'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-08-15T09:41:11'
+triage_result: 'wanted: the flagship post-release wish; sliced read-only-board ->
+  intake -> PM triage; project_memory stays the single truth, the UI is a generated
+  view plus an antechamber'

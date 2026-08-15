@@ -1,0 +1,51 @@
+id: TSK-0061
+product_requirement: PR-0003
+derives_from: BUG-0039
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- CLAUDE.md
+- project_memory/**
+- user/**
+- docs/POST_V2_WISHLIST.md
+required_inputs:
+- 'BUG-0039 (the silent non-mint: pilot 3 S3 chain -- enriched relay, user clicked
+  Freigeben, no APR, no audit mint entry, no signal to the user; only the PM''s self-check
+  caught it)'
+- 'the kit''s mint path: the PostToolUse hook on the AskUserQuestion answer (gate_approval/approvals
+  machinery) and kernel/approvals.py -- MEASURE where the non-mint decision falls
+  today and what surfaces the hook can speak through'
+- 'the report-language rule (CLAUDE.md: plain language to the user, no invented ceremony)
+  -- the new message is user-facing'
+expected_outputs:
+- 'STEP 1 MEASURE: replay the pilot''s S3 shape against the running hook (enriched
+  relay + approval-shaped answer) and record where the decision not to mint falls
+  and what output channels exist at that point (hook stdout/stderr semantics per event
+  type, what the provider shows)'
+- 'STEP 2 FIX: a non-minting approval-shaped answer produces an immediate user-visible
+  message naming that NO approval was created, why (non-verbatim/stale code/wrong
+  revision -- state-accurate, the TSK-0057 discipline), and the one next action (PM
+  re-relays verbatim); a minting answer stays byte-identical in behavior'
+- 'STEP 3 TESTS: red-without-fix on the silent path (running hook as a process, clone
+  outside the repo); the minting path pinned unchanged; every refusal reason variant
+  covered; mirrors byte-identical across kits where the hook is shared'
+- 'STEP 4 SHIP: bump_kit_version (state stamps); ruff; validate; ONE full tools/ run
+  with numbers; report file:line, the measured channel table, residues named'
+dependencies:
+- BUG-0039
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-15T06:58:07'
+closed_at: '2026-08-15T09:49:27'
