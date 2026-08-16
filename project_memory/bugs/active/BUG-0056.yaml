@@ -1,0 +1,31 @@
+id: BUG-0056
+title: A recorded V1 file outside the state tree is writable -- protected is the PLACE,
+  not the record
+related_pr: PR-0001
+observed: 'TSK-0069 side check N11 (live, gate_write_scope.py): project_memory/legacy/tasks.yaml
+  rc 2 and project_memory/tasks.yaml rc 2 -- both only because they lie IN the state
+  tree. docs/old/product_requirements.yaml -> rc 0. Mechanism measured, not assumed:
+  gate_write_scope.py carries NO V1/legacy rule (the only V1 occurrences are prose
+  about the history, lines 21 and 43), and NO installed hook reads search_coverage/record_scan_coverage
+  (searched over the installed .claude/hooks/: no hit). The migration KNOWS which
+  files hold V1 records; no gate asks it. NOT a duplicate of L19/L20 (those are the
+  V1 SEARCH blind spots read at merge -- closing both changes nothing at the rc-0
+  lines). Neighbours, not duplicates: SR-0001 and SR-0005 (both PROPOSED) say where
+  V1 material belongs IN THE END; this finding says who may touch it WHILE it still
+  lies where it lies -- derives_from them is right, a merge is not.'
+expected: 'II.12: write on a legacy manifest or a RECORDED V1 file -> block (restore
+  only via a user-confirmed command).'
+repro: Run the migration over a V1 stock, then gate_write_scope on a file the scan
+  reported as recorded, outside project_memory/ -> rc 0 today; red test asserts rc
+  == 2.
+severity: medium
+acceptance_criteria:
+- id: AC-1
+  text: a write on a file the migration recorded as a V1 record is refused, wherever
+    it lies (red-without-fix)
+- id: AC-2
+  text: the rule is derived from the migration's own record, not a path list
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:05:13'

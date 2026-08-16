@@ -1,0 +1,10 @@
+id: FR-0043
+title: Latenz-Bench aus II.12 in den ausgelieferten CI-Workflow (klein, nicht blockierend)
+request_text: 'TSK-0069 side check N10. Measured: the shipped CI workflow has one
+  job (quality) with seven steps (YAML parsed); no bench, no p95 measurement. The
+  spec itself marks it non-blocking -- priority accordingly low, but it is an open
+  promise. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md N10.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:06:45'

@@ -38,7 +38,8 @@ expected_outputs:
 dependencies:
 - FR-0004
 root_revision: 1
-status: DRAFT
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-08-15T23:37:55'
+closed_at: '2026-08-16T14:08:43'

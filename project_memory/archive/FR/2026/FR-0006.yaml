@@ -14,10 +14,11 @@ request_text: 'Die Entscheidung samt Begruendung steht in DEC-0001; dieses Item 
   dir geaendert -- starte neu'' verweigern laesst. Der erzwungene Neustart ist der
   Teil, den V1 nicht hatte: dort konnte der PM nach dem Scaffold unter alten Regeln
   weiterarbeiten.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T23:32:13'
 triage_result: 'wanted: the kernel has no update-kit command (grep update-kit|update_kit
   over team-kits/kernel: no match); the DEC-0001 flow the memory decision demands
   is unbuilt (assessment TSK-0055)'
+closed_at: '2026-08-16T14:07:49'

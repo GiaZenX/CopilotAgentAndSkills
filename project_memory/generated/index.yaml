@@ -1,4 +1,4 @@
-generated_at: '2026-08-16T12:38:58'
+generated_at: '2026-08-16T14:08:44'
 items:
 - id: BUG-0001
   type: BUG
@@ -339,6 +339,41 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: BUG-0053
+  type: BUG
+  title: Compose foreign-project rule enumerates flag spellings instead of deciding
+    the property -- four spellings of the same target pass
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0054
+  type: BUG
+  title: architecture_refs is hashed in the delivery manifest and has no producer
+    -- a second freeze_architecture leaves the approval in force
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0055
+  type: BUG
+  title: The scope manifest has no wireframe field -- a re-frozen wireframe invalidates
+    nothing, and nothing can check a UI scope names one (DEC before fix)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0056
+  type: BUG
+  title: A recorded V1 file outside the state tree is writable -- protected is the
+    PLACE, not the record
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0057
+  type: BUG
+  title: doctor reports spawn_veto verified where the Codex path has no veto -- the
+    capability line promises a provider it never measured
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -625,6 +660,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0046
+  type: DEC
+  title: R5 traegt seine Regel als Textverankerung, nicht als Mechanismus -- der Tausch
+    ist hiermit entschieden statt stillschweigend
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -865,6 +907,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0041
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -888,12 +936,6 @@ items:
   type: FR
   title: Ein Zuschnitt-Kritiker vor dem Arbeitsauftrag, der einen KLEINEREN Plan vorlegen
     muss
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0006
-  type: FR
-  title: harness.py update-kit -- der PM spielt Kit-Updates selbst ein
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1096,6 +1138,59 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0037
+  type: FR
+  title: Pfadlaengen-Warnung des Validators fehlt (II.4-Zusage)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0038
+  type: FR
+  title: 'Auditor-Routine: Faelligkeitsdatensatz und SessionStart-Melder (der Hook
+    meldet, der PM spawnt)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0039
+  type: FR
+  title: INV.verified bekommt einen Produzenten und einen Merge-Blocker (check ->
+    Testname -> sammelbar)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0040
+  type: FR
+  title: 'EVD unterscheidet Teillauf nicht von Volllauf -- Umfang und Befehl des Laufs
+    werden Pflicht (moeglicher DEC: Vertragsaenderung an unveraenderlichem Typ)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0041
+  type: FR
+  title: Kit-Pinning und Rollback aufs vorige Bundle als Mechanismus (II.11/5) --
+    Vorbedingung der seitlichen RC
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0042
+  type: FR
+  title: E2E-Kettentest fuer die Research-Kette (RQ -> HYP -> EXP -> Report) im Testbestand
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0043
+  type: FR
+  title: Latenz-Bench aus II.12 in den ausgelieferten CI-Workflow (klein, nicht blockierend)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0044
+  type: FR
+  title: Der Installer klassifiziert den vorgefundenen Bestand (greenfield/V2/V1/mixed)
+    mit No-write-Nachweis auf V1
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1164,12 +1259,6 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0066
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0069
   type: TSK
   title: null
   status: DRAFT

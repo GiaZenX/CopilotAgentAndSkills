@@ -1,0 +1,16 @@
+id: FR-0044
+title: Der Installer klassifiziert den vorgefundenen Bestand (greenfield/V2/V1/mixed)
+  mit No-write-Nachweis auf V1
+request_text: 'TSK-0069 side check N13. Measured by ABSENCE in the installer: greenfield
+  appears nowhere in scaffold_team.sh, scaffold_team.ps1, init_project_memory.sh or
+  any kernel/*.py; what a preflight search finds is migrate.capture_preflight -- whether
+  a RECORD is writable, another subject; kitupdate.relation answers staged-vs-installed,
+  not which stock lies here. Expected (II.12): preflight classifies greenfield/V2/V1/mixed,
+  each with a no-write proof on V1 stocks. Not measured: the no-write proof itself
+  (needs a real V1 stock -- side check section 5). Related: FR-0041 (without classification
+  there is no place a pin would be decided). Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
+  N13.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:06:56'

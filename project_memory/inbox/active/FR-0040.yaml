@@ -1,0 +1,15 @@
+id: FR-0040
+title: 'EVD unterscheidet Teillauf nicht von Volllauf -- Umfang und Befehl des Laufs
+  werden Pflicht (moeglicher DEC: Vertragsaenderung an unveraenderlichem Typ)'
+request_text: 'TSK-0069 side check N7. Measured: REQUIRED_FIELDS[''EVD''] = (kind,
+  related, result, summary, artifact_refs) -- no field names the command, the scope
+  or the selection of the run; a pass from a -k selection is indistinguishable from
+  a full-suite pass. Expected (II.12 operations): fast mode allowed but REFUSED as
+  merge evidence. Cut proposal: a required field carrying the executed command, plus
+  a rule classifying a selection (-k, single file) as non-merge evidence. This is
+  a contract change on an immutable type -- the lead checks whether a DEC is owed
+  first. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md N7.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:06:14'

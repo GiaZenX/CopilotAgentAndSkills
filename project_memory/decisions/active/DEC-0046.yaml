@@ -1,0 +1,30 @@
+id: DEC-0046
+title: R5 traegt seine Regel als Textverankerung, nicht als Mechanismus -- der Tausch
+  ist hiermit entschieden statt stillschweigend
+context: 'TSK-0069 side check N5: the phase-0 disposition (section 4, row R5) planned
+  an II.12 test case (''snapshot assertion exists as a pattern in testing_guidelines'');
+  the lockstep dissolved that file. What measures today is tools/test_hooks_v2.py:9363
+  -- a regex over three role texts, cleanly built (verb + CR in the same markdown
+  block, because an earlier form was satisfied by a glossary line) but measuring TEXT,
+  not behaviour; its neighbour :9399 says for the same class ''no gate sees either''.
+  The disposition counts R5 among the FIXED phase-1 additions (gates/tests) with the
+  2026-07-24 confirmation; today''s state deviates and until now no record carried
+  the deviation.'
+decision: 'The swap STANDS for this release line: R5''s rule is carried by the text
+  anchoring (the :9363 tripwire) and is thereby in the same documented class as R4
+  (capability gap carried by prose, no gate). This DEC is the record the deviation
+  lacked. An upgrade to a mechanism (a gate or behavioural test) is NOT promised --
+  it is a post-release option to be weighed like any other wish, against the measured
+  cost of the class (text tripwires rot loudly here, the pointer discipline holds
+  them).'
+consequences: The disposition's phase-1 sentence is superseded on this row by this
+  record; readers of the disposition find the pointer in the side check (section N5).
+  Nothing changes in shipped kits. If a future round builds the mechanism, it supersedes
+  this DEC with its measurement.
+source: TSK-0069 / docs/reviews/2026-08-16-tsk0069-ii12-side-check.md N5; phase0-disposition.md
+  section 4 row R5 and section 7 (2026-07-24 confirmation); lead decision 2026-08-16
+  within the DEC-0045 autonomy envelope
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:07:22'

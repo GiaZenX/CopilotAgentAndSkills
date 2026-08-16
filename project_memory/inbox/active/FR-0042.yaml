@@ -1,0 +1,13 @@
+id: FR-0042
+title: E2E-Kettentest fuer die Research-Kette (RQ -> HYP -> EXP -> Report) im Testbestand
+request_text: 'TSK-0069 side check N9. Measured: tools/test_e2e.py drives the dev
+  chain (:361, :458); its 16 functions contain no research chain, and a search over
+  name + first docstring line of all 1816 test functions for RQ|HYP|EXP yields only
+  links, no chain -- what that search cannot exclude (a chain test naming none of
+  the three) is said openly. Relation: FR-0029 wants a research PILOT (a live session);
+  this is the cheaper neighbour -- a chain test in the suite that runs without a model
+  session. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md N9.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:06:35'

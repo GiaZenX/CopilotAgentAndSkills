@@ -1,0 +1,15 @@
+id: FR-0038
+title: 'Auditor-Routine: Faelligkeitsdatensatz und SessionStart-Melder (der Hook meldet,
+  der PM spawnt)'
+request_text: 'TSK-0069 side check N4. Measured: kernel/dispatch.py:1577-1582 concedes
+  trigger/cadence are hashed but not enforced and last_completed/next_due have no
+  producer; session_status.py names audit only in comments. Wanted: a recorded timestamp
+  of the last audit run, a week id against double runs, and a SessionStart notice
+  when overdue. Boundary that shapes the cut: DEC-0028 forbids a hook starting a model
+  process itself -- the shape is ''the hook REPORTS, the PM spawns'', never ''automation
+  starts the weekly run''. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
+  N4.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:05:52'

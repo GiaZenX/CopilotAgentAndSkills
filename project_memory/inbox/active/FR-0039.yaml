@@ -1,0 +1,17 @@
+id: FR-0039
+title: INV.verified bekommt einen Produzenten und einen Merge-Blocker (check -> Testname
+  -> sammelbar)
+request_text: 'TSK-0069 side check N6. Measured: kernel/backlog_types.py:226-228 concedes
+  it itself (''NOTHING in this kernel writes it yet ... in the vocabulary, not in
+  the behaviour''); the absence of readers measured with method named: kit hook sources
+  and report.validate_state read INV by SCOPE (gate_test_coverage.py:138-169, guard_guidelines.py)
+  and by text/value duty (kernel/report.py:393) -- nowhere by status. Expected (II.12):
+  an INV whose check points at no collectable test stays unverified and blocks the
+  merge. Half the groundwork stands: INV.scope is a single value since H42/TSK-0060
+  and gate_test_coverage already reads INV scopes; missing is the resolution check
+  -> test name -> collectable. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
+  N6.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:06:03'

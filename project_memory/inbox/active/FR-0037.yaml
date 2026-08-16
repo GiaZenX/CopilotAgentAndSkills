@@ -1,0 +1,17 @@
+id: FR-0037
+title: Pfadlaengen-Warnung des Validators fehlt (II.4-Zusage)
+request_text: 'TSK-0069 side check N2 (FR or BUG -- lead read II.4 as a shipped promise
+  whose warning half is missing while the extended-length half is BUILT, so: defect-shaped
+  want). Measured live: state tree copied into a 309-char root, item path 337 chars
+  -> kernel.report.validate_state yields exactly one finding and it concerns user_story
+  -- none names a path length; weaker and marked as such: the string 240 appears in
+  no kit .py source. II.4 verbatim: ''der State-Validator warnt bei absoluten Pfaden
+  >240 Zeichen''. The OTHER half of the same promise is built (kernel/lock.py:33-45
+  uses extended-length paths, measured at 406 chars in the S1 spike). Wanted: the
+  early-warning finding for stocks approaching the limit without extended-length paths
+  (OneDrive, deep filing trees). Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
+  N2.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:05:40'
