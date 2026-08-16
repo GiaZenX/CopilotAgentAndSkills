@@ -1509,7 +1509,13 @@ def _mk_kit_repo(tmp_path, local_version, staged_version):
 
 
 def _run_session_status(home, repo):
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo), HOME=str(home), USERPROFILE=str(home))
+    # HARNESS_KERNEL_PATH for the reason `run_hook_process` sets it: the kit comparison is the
+    # kernel's since FR-0006 (`_kernel.kit_update_verdict`), a scaffolded project carries it at
+    # `.claude/kernel`, and this fixture writes two stamp files and nothing else. Without it the
+    # hook honestly reports that it could not reach the kernel, which is not what these tests are
+    # about.
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo), HOME=str(home), USERPROFILE=str(home),
+               HARNESS_KERNEL_PATH=os.path.join(ROOT, "team-kits"))
     p = subprocess.run([sys.executable, os.path.join(HOOKS, "session_status.py")],
                        input=json.dumps({"cwd": str(repo)}), capture_output=True, text=True,
                        env=env, timeout=60)
@@ -7742,11 +7748,18 @@ def _requested_approval_kinds(text):
 
     A `<placeholder>` yields nothing: `request-approval <kind> <ITEM-ID>` points at the surface
     instead of promising one member of it, which is how the constitutions and the README spell it.
+
+    THE UNDERSCORE IS IN THE CLASS because a KIND is not a subcommand: argparse takes whatever
+    string the vocabulary carries, and `kit_update` (FR-0006) is the first one that is not a single
+    word. Without it this reader saw `kit` -- a kind the parser rejects -- and reported six shipped
+    texts as handing out a wall, while the texts were right and the READER was short. A blind spot
+    in a tripwire is worth more than a rename here: the next kind that carries a separator is seen
+    the day it ships.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel import cli
     for match in re.finditer(
-            re.escape(cli.INVOCATION) + r"\s+request-approval\s+([a-z][a-z0-9-]*)", text):
+            re.escape(cli.INVOCATION) + r"\s+request-approval\s+([a-z][a-z0-9_-]*)", text):
         yield match.group(1)
 
 
@@ -11783,19 +11796,20 @@ def test_a_version_that_cannot_be_ordered_is_reported_without_a_direction(kit, t
     assert "KIT UPDATE AVAILABLE" not in briefing and "KIT DOWNGRADE OFFERED" not in briefing
 
 
-def test_the_version_order_is_read_from_the_numbers_and_not_from_the_string():
-    """The one definition all three briefings read (`_compat.kit_version_order`).
+@pytest.mark.parametrize("kit", KITS)
+def test_the_version_order_is_read_from_the_numbers_and_not_from_the_string(kit, tmp_path):
+    """`2026.08.02-11` is newer than `-9`, and the BRIEFING has to say so -- string order does not.
 
-    String order would call `2026.08.02-9` newer than `2026.08.02-11`, which is the release
-    numbering this repo actually uses.
+    Measured through the running hook rather than through the helper it used to call: the ordering
+    rule moved out of `_compat` into `kernel.kitupdate` when `update-kit` began refusing a
+    downgrade on it (FR-0006), and what matters here is that the briefing still reads THAT
+    definition. A unit-level assertion on the function lives with the command it now belongs to
+    (`tools/test_kitupdate.py::test_the_version_order_is_the_numbers_and_not_the_string`).
     """
-    compat = load_kit_module("compat_version", os.path.join(HOOKS, "_compat.py"))
-    assert compat.kit_version_order("version: 2026.08.02-11\ncontent: x\n") > \
-        compat.kit_version_order("version: 2026.08.02-9\ncontent: x\n")
-    assert compat.kit_version_order("version: 2026.07.18-1\n") < \
-        compat.kit_version_order("version: 2026.08.02-1\n")
-    assert compat.kit_version_order("") is None
-    assert compat.kit_version_order("hand-edited\n") is None
+    update = _briefing(kit, staged_version="version: 2026.08.02-11\ncontent: a\n",
+                       local_version="version: 2026.08.02-9\ncontent: b\n", tmp_path=tmp_path)
+    assert "KIT UPDATE AVAILABLE" in update
+    assert "KIT DOWNGRADE OFFERED" not in update
 
 
 # ---------------- session break: the successor's first action (DEC-0044 / BUG-0042) ----------------

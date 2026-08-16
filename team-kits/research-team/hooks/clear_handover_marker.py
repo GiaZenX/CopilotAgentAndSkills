@@ -33,7 +33,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _compat
 from _root import find_repo_root
 
-MARKER = os.path.join(".claude", "HANDOVER_PENDING")
+# The path, from the one place the hooks spell it: `gate_dispatch` refuses a spawn on the same
+# file, and two hooks acting on one marker under two spellings is how one of them would stop
+# meaning anything. Kept as a module constant because this hook's own tests address it by name.
+MARKER = _compat.HANDOVER_MARKER
 
 
 def clear_marker(repo_root, source):

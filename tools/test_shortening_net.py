@@ -1873,8 +1873,14 @@ def _session_start(repo, home, env=None):
     A real process with JSON on stdin, in a project OUTSIDE this repo: importing `main()` would
     measure a function, and what a session gets is the output of a program.
     """
+    # HARNESS_KERNEL_PATH: a scaffolded project carries the kernel at `.claude/kernel`, and this
+    # fixture writes only the files each toggle needs. The kit-comparison block asks the kernel
+    # since FR-0006 (`_kernel.kit_update_verdict`), so without it the `update_available` toggle
+    # would switch a paragraph that says "the kernel could not be reached" either way -- the census
+    # would then be counting the fixture's gaps rather than the hook's blocks.
     environment = dict(os.environ, CLAUDE_PROJECT_DIR=str(repo), HOME=str(home),
-                       USERPROFILE=str(home), CLAUDE_CONFIG_DIR=os.path.join(str(home), ".claude"))
+                       USERPROFILE=str(home), CLAUDE_CONFIG_DIR=os.path.join(str(home), ".claude"),
+                       HARNESS_KERNEL_PATH=TEAM_KITS)
     environment.pop("TEAM_KIT_PROVIDER", None)
     environment.update(env or {})
     body = {"cwd": str(repo), "hook_event_name": "SessionStart", "session_id": "this-session"}

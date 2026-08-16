@@ -1897,11 +1897,26 @@ Dieser Riegel ist aber kein Kit-Hook — ein Projekt ohne die globale Datei hat 
 trägt seine eigenen benannten Reste (L39: die Verbposition, die ein Wrapper besetzt; gemessen sind
 einzelne Wrapper-Schreibweisen rc 0, eine Kommandoersetzung rc 2).
 
+**Erweiterung (TSK-0067, gemessen 2026-08-16 vom Prüfer jener Runde):** dieselbe Klasse trifft
+das **zweite** Kommando, das die Durchsetzungsschicht neu installiert — als Subagent
+(`agent_id: sub-1`, `agent_type: backend-developer`) sind `python scripts/harness.py update-kit`
+und `… request-approval kit_update` bei **allen 8** registrierten `Bash|PowerShell`-Gates rc 0,
+während `create-task` für denselben Subagenten rc 2 bleibt. Ein Unterschied zur
+`set-preset`-Hälfte, gemessen: die **Wiederholung trägt hier nicht** — der zweite Lauf ist rc 1
+(„already runs the staged … kit"). Was der Subagent kontrolliert, ist also nur der
+**Zeitpunkt**, einmalig. Daneben, als bewusster Nicht-Weg derselben Runde: ein
+**Reparatur-Scaffold auf gleicher Version** (manipuliertes Bundle) hat weiterhin keine Route aus
+der Sitzung — `update-kit` verweigert „already runs the staged release", und das ist gewollt:
+ein Befehl, der ein Bundle neu segnet, wäre die Selbstfreigabe, die `write_kit_state.py`
+verhindert; die Vertrauens-Remedy von `gate_dispatch` zeigt dort korrekt auf den Nutzer.
+
 **Urteil: Rest mit gemessener Kette, kein Inhalts-Loch.** Die Autorisierung selbst ist die APR des
 Nutzers und deckt das Ergebnis; was der Subagent kontrolliert, ist **Zeitpunkt und Wiederholung**
-einer signierten Änderung, nicht ihr Inhalt. Die Reparaturstelle ist die Subagenten-Regel der
+einer signierten Änderung, nicht ihr Inhalt (bei `update-kit` nur der Zeitpunkt, einmalig). Die
+Reparaturstelle ist die Subagenten-Regel der
 Kits: die abgeleitete Klasse um „installiert die Durchsetzungsschicht" erweitern (aus derselben
-Quelle abgeleitet, aus der `set-preset` seine Wirkung bezieht) — eine Kit-Runde, kein Repo-Gate.
+Quelle abgeleitet, aus der `set-preset` und `update-kit` ihre Wirkung beziehen) — eine
+Kit-Runde, kein Repo-Gate.
 
 ### L41 — Was die Fehlermeldungen von `set-preset` nicht wissen: Skills und Provider-Artefakte im Abbruchfenster (TSK-0064)
 
@@ -1929,6 +1944,18 @@ gedeckt. Wer die Skills wirklich prüfen will, lässt den Installer noch einmal 
 Schließrichtung — `_installed_state` liest auch Skill-Verzeichnisse und Provider-Artefakte —
 ist eine Kit-Runde und lohnt erst, wenn das Fenster in der Praxis trifft (Pilot 4 beobachtet
 den Preset-Fluss).
+
+**Erweiterung (TSK-0067, gemessen 2026-08-16 vom Prüfer jener Runde):** dasselbe Fenster trifft
+`update-kit`, mit einer Zuspitzung durch den dortigen F1-Fix (der „nichts bewegt"-Zweig setzt
+bewusst **keinen** Stopp-Marker mehr, damit ein Konfigurationsfehler nicht die Sitzung tötet):
+bei einem Abbruch nach 1,4 s von ~3,4 s waren **fünf Skill-Verzeichnisse weg**, während beide
+Leser „unverändert" sagten — kein Marker, Sitzung lebt. Keine Datei der Durchsetzungsschicht
+bewegte sich dabei (Bundle „recorded", `agents`/`settings.json` unverändert), der Regelsatz
+unter einem laufenden Kind bliebe also der der Sitzung; die Meldung trägt die Grenze selbst
+(`UNREAD` nennt „the role skills" ausdrücklich), und die Remedy **heilt gemessen**:
+Wiederholungslauf rc 0, Skills 0 → 5, Marker gesetzt, Stempel bewegt. Der Richtungsentscheid
+ist richtig — die Vorfassung stoppte die Sitzung über einen Baum, an dem nachweislich gar
+nichts war, und das war die teurere Fehlrichtung; was bleibt, ist die ehrliche Restmenge.
 
 ### L42 — Drei gemessene Grenzen der Fortsetzungs-Mechanik (TSK-0065)
 

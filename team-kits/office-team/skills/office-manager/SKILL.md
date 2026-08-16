@@ -97,6 +97,12 @@ Work them through — diff each against the kit template, have the owning role m
 conscious skip as a decision item under `decisions/active/` — then DELETE them; the nag escalates. Claude frontmatter may sync
 from the maps. Codex agent TOMLs are read-only harness output: only a user-confirmed full scaffold may
 change them; request explicit filesystem permission escalation when needed and never run the provider
-generator alone. The scaffold command names `team-kits`, so `gate_write_scope` refuses it from inside this
-session (§0 write-lock) — hand the user the exact line instead of trying to run it. Verify the TOMLs, re-review/re-trust the changed bundle hash in `/hooks`, start a new
+generator alone. A kit UPDATE is yours to install and needs no terminal: `python scripts/harness.py
+request-approval kit_update` prints the approval question — relay it VERBATIM, the USER answers it —
+and `python scripts/harness.py update-kit` runs the kit's own installer through the kernel. Neither
+line names the enforcement layer, so `gate_write_scope` has nothing to refuse; the command refuses a
+downgrade, a staging that no longer hashes to its own stamp and a project already waiting for a
+restart, and it STOPS this session afterwards: the handover marker means specialist spawns are refused here; with the harness's user-global handover guard installed, further work-engine commands and product writes as well. Re-applying the SAME release is a
+repair, not an update: that one still names `team-kits` and is the USER's to run outside this session
+(§0 write-lock) — hand them the exact line instead of trying to run it. Verify the TOMLs, re-review/re-trust the changed bundle hash in `/hooks`, start a new
 session, and never edit TOML directly.

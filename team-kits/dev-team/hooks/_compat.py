@@ -1742,27 +1742,22 @@ def run_captured(cmd, cwd=None, timeout=60, **kw):
                           encoding="utf-8", errors="replace", timeout=timeout, **kw)
 
 
-# A kit version stamp is ORDERED, not merely equal or unequal. One definition, three readers: the
-# session briefing of each kit compares the staged kit against the installed one, and until
-# 2026-08-02 all three compared with `!=` and called every difference "usually a newer harness.
-# Propose the update to the user". Measured against the real staging of a live machine: a 07-18 kit
-# was offered to an 08-02 project as an update, and accepting it prunes the V2 hooks while leaving
-# the V2 kernel in place. Direction is what the message claims, so direction is what gets computed.
-_VERSION_NUMBER_RX = re.compile(r"\d+")
+# THE HANDOVER MARKER, spelled once for every hook that acts on it. `clear_handover_marker` removes
+# it on a genuine restart and `gate_dispatch` refuses a specialist spawn while it exists; the global
+# `~/.claude/hooks/handover_guard.py` and the two scaffolds name it too, which is a boundary between
+# languages rather than a second opinion. What its presence MEANS is one sentence: an installer ran
+# in this session -- a kit install, a preset change or a kit update (`kernel.kitupdate`) -- and no
+# session has started since, so the registration this session is running under is not the one on
+# disk.
+HANDOVER_MARKER = os.path.join(".claude", "HANDOVER_PENDING")
 
-
-def kit_version_order(stamp):
-    """The comparable key of a kit VERSION stamp, or None when it has none.
-
-    A stamp is `version: YYYY.MM.DD-N` on its first line, and every part of it that ORDERS the
-    stamp is a number -- so the key is the numbers, in the order they appear, as a tuple. That is
-    a property of the format rather than a parse of it: a stamp gaining a fourth component sorts
-    correctly with no edit here, and anything carrying no number at all (a corrupt or hand-edited
-    file) answers None, which callers must read as "cannot say which is newer" and never as equal.
-    """
-    first = str(stamp or "").splitlines()[0] if str(stamp or "").strip() else ""
-    numbers = _VERSION_NUMBER_RX.findall(first)
-    return tuple(int(number) for number in numbers) or None
+# WHERE THE VERSION ORDERING WENT, and why this is a pointer rather than a function: a kit version
+# stamp is ORDERED, not merely equal or unequal (measured 2026-08-02 against a live machine's
+# staging -- a 07-18 kit was offered to an 08-02 project as an update, and accepting it prunes the
+# V2 hooks while leaving the V2 kernel in place). That rule now has ONE home, `kernel.kitupdate`,
+# because the command that REFUSES a downgrade and the briefing that OFFERS an update have to agree
+# about a direction, and two copies of an ordering rule is exactly how they would not. The briefing
+# asks it as a whole verdict (`kitupdate.relation`, through `_kernel.kernel_module`).
 
 
 # The reference the constitution stopped carrying. The §2 hook table moved out of the three

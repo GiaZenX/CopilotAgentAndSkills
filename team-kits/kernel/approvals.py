@@ -53,7 +53,8 @@ from .backlog_types import AUTOMATA, HASHED_FIELDS, parse_id
 from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso
 
-APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset")
+APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
+             "kit_update")
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
@@ -62,7 +63,11 @@ APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "
 # is the installation of the roles a project may spawn, i.e. a change to the
 # enforcement layer itself (BUG-0041). An unused one that lingers is a standing
 # permission to rewrite that layer, so it carries a clock like the other three.
-EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset"))
+# `kit_update` is the same argument at its strongest: it authorises REPLACING that
+# layer -- hooks, kernel, settings and constitution -- with another release
+# (FR-0006), and an unused one lingering past the conversation is a standing
+# permission to do that.
+EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
 # approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
 # analysis/routine deliberately excluded and NOT because they authorise nothing:
@@ -96,6 +101,13 @@ ROUTINE_MANIFEST_FIELDS = (ROUTINE_ROLE_FIELD, "scope", "trigger", "cadence")
 EXPIRY_FIELD = "expires"
 _CHANGE_LABEL = "Ändern"
 _REJECT_LABEL = "Ablehnen"
+# HOW MUCH OF A HASH A HUMAN IS SHOWN, in one place: `build_question` prints this many characters
+# of the subject-manifest hash, and `_render_manifest_value` shortens a hashed VALUE to the same
+# length so one question does not show two conventions. A digest is recognised by BEING one --
+# hex, and at least as long as the shortest algorithm anything here uses (sha1) -- rather than by
+# the field name carrying it, which would be a list that the next hashed field is missing from.
+DIGEST_SHOWN = 12
+_DIGEST = re.compile(r"\A[0-9a-f]{40,}\Z")
 
 # THE TWO EXITS FROM A REFUSED MINT, in the language of the person who clicked. A branch picks the
 # one its own situation allows; there is no third, and no branch may invent one (BUG-0039). Which
@@ -256,15 +268,42 @@ def preset_subject_manifest(preset: str, roles, removes) -> dict:
 # kit's own preset file decides). The CLI reads the flags off the builder's SIGNATURE (the pattern
 # `cli.freeze_parameters` already uses for the freeze bodies), so a second line kind arrives on
 # the command line with the right flags and no edit there.
-LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest}
+def kit_update_subject_manifest(kit, from_version, from_content, to_version, to_content) -> dict:
+    """What a kit update is bound to: the two RELEASES, each as the kit's own identity statement.
+
+    THE VERSION STAMP ALONE WOULD NOT DO IT, and the case is not hypothetical: the session briefing
+    has been able to report "the same version stamp over different content" since 2026-08-02 and
+    nothing could act on that reading. `content:` is the hash `tools/bump_kit_version.py` writes
+    over everything a scaffold reads or installs, so the pair (version, content) is what tells two
+    trees apart that call themselves one release -- and it is what makes an approval survive
+    exactly as long as the staging it was given for.
+
+    BOTH ENDS, because "update A to B" and "update C to B" are different decisions: the FROM side is
+    what the user is told the project is losing. `kernel.kitupdate.change_manifest` derives all five
+    values from the two VERSION files and `update-kit` re-derives them before it acts, refusing
+    unless the hash still matches (`tools/test_kitupdate.py::test_an_approval_for_one_release_pair_
+    does_not_cover_another`).
+    """
+    return {
+        "kit": str(kit or ""),
+        "from_version": str(from_version or ""),
+        "from_content": str(from_content or ""),
+        "to_version": str(to_version or ""),
+        "to_content": str(to_content or ""),
+    }
+
+
+LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest,
+                          "kit_update": kit_update_subject_manifest}
 
 # How long an approval minted from a command-line manifest stays valid. Every kind in this map is
 # in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
 # one to choose how long, or the supervised party decides how long its own permission lasts.
-# One hour, on the reason both kinds share: each is ALREADY bound to content that moves -- a push
-# token to HEAD (see `push_subject_manifest`), a preset approval to the role set it names -- so
-# this clock only bounds how long an UNUSED one lingers, and an unused authorisation that outlives
-# the working session is a standing permission to publish, or to reinstall the project's roles.
+# One hour, on the reason every kind here shares: each is ALREADY bound to content that moves -- a
+# push token to HEAD (see `push_subject_manifest`), a preset approval to the role set it names, a
+# kit update to the two release identities -- so this clock only bounds how long an UNUSED one
+# lingers, and an unused authorisation that outlives the working session is a standing permission
+# to publish, to reinstall the project's roles, or to replace its enforcement layer.
 LINE_APPROVAL_VALIDITY = 3600.0
 
 
@@ -697,6 +736,14 @@ def _render_manifest_value(field: str, value) -> str:
     the PreToolUse gate, in a different process: a machine whose timezone changed between the
     request and the answer would otherwise render a different question and the approval could not
     be completed.
+
+    A DIGEST IS SHORTENED, for the expiry's reason and to the same length the sentence around it
+    already uses for one: `build_question` prints the subject-manifest hash as twelve characters
+    and an ellipsis, so a hashed VALUE reading out in full made the question unreadable exactly
+    where a non-technical user has to judge it -- measured on the `kit_update` manifest, whose two
+    content hashes are 128 of its ~180 characters. It is a property of the value, not a list of
+    fields that carry one, and it is deterministic, which is all the PreToolUse comparison needs.
+    The full value stays in the pending request the question names.
     """
     if field == EXPIRY_FIELD:
         try:
@@ -705,7 +752,9 @@ def _render_manifest_value(field: str, value) -> str:
             return "unreadable (%r)" % (value,)
     if isinstance(value, (list, tuple)):
         return " / ".join(str(entry) for entry in value) or "-"
-    return "-" if value is None else str(value)
+    if value is None:
+        return "-"
+    return "%s…" % str(value)[:DIGEST_SHOWN] if _DIGEST.match(str(value)) else str(value)
 
 
 def build_question(request: dict) -> dict:
@@ -762,7 +811,7 @@ def build_question(request: dict) -> dict:
             request["kind"],
             target,
             request["revision"] if request["revision"] is not None else "-",
-            request["subject_manifest_hash"][:12],
+            request["subject_manifest_hash"][:DIGEST_SHOWN],
             request["request_id"],
             request["request_id"],
         )

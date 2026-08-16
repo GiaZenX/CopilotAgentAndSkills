@@ -72,6 +72,8 @@ except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must no
                      "usual cause.\n" % (exc,))
     sys.exit(2)
 
+import _compat  # noqa: E402 — after GATE_PREAMBLE, which must stay the first executable statement
+
 HOOK = "gate_dispatch"
 SPAWN_TOOLS = ("Agent", "Task")
 # A spawn SUCCEEDED when the child was launched — not when it finished. Measured on Claude Code
@@ -147,10 +149,55 @@ def _refuse_untrusted_bundle(data):
                "`python scripts/harness.py doctor` reports the same state as `hook_trust`.")
 
 
+def _refuse_while_a_restart_is_pending(data):
+    """No delegation while an installer has changed this project and no session has started since.
+
+    THE WINDOW, measured 2026-08-16 against a real scaffold over a live project: `.claude/hooks`
+    and `.claude/kernel` are the new kit's from 1.6 s into a 3.4 s run, while the REGISTRATION in
+    `settings.json`, the agent set and the session agent stay whatever this session started with.
+    A spawn in that window hands a child a task's `allowed_scope` under a rule set that is half one
+    release and half another -- and the child's own definition is read from the file the installer
+    just replaced.
+
+    THE MARKER IS THE SIGNAL AND ITS ABSENCE IS THE ALL-CLEAR, which is what makes this cheap and
+    invisible: `clear_handover_marker` removes it on a SessionStart whose source is `startup`, so
+    outside such a window this costs one `os.path.exists`. The global
+    `~/.claude/hooks/handover_guard.py` refuses the same act on the same file; this one is the
+    kit's own, so a project whose user never installed the global half is not left with the
+    handover unenforced (measured: `tools/test_kitupdate.py::test_the_marker_this_command_leaves_
+    really_stops_the_session` runs both hooks as processes).
+
+    NO KERNEL IS ASKED, deliberately: a half-finished kit update is exactly the state in which the
+    kernel may be mid-copy, and a check that needed it would fail closed with a message about the
+    wrong thing.
+    """
+    marker = os.path.join(_kernel.find_repo_root(data.get("cwd")), _compat.HANDOVER_MARKER)
+    if not os.path.exists(marker):
+        return
+    _kernel.block(
+        HOOK,
+        "specialist spawn refused: %s exists, so an installer changed this project's kit files "
+        "during this session and no session has started since. The hooks on disk are the new "
+        "release's while this session's registration, agent set and session agent are the old "
+        "one's, so what a child would be held to is not what this session was started under."
+        % _compat.HANDOVER_MARKER.replace(os.sep, "/"),
+        event="PreToolUse",
+        remedy="end this session and start a new one in this folder -- the marker clears itself on "
+               "a real restart, and the work is picked up there. Tell the USER that this is what "
+               "is needed; nothing else clears it, and deleting it by hand only removes the sign.")
+
+
 def handle_pre_tool_use(data):
     if data.get("tool_name") not in SPAWN_TOOLS:
         sys.exit(0)
+    # AFTER the bundle reading, and that order was measured rather than chosen: mid-way through an
+    # installer run BOTH hold -- the bundle on disk is the new kit's while `kit_state.json` still
+    # records the old one (1.6 s into a 3.4 s scaffold, docs/reviews/2026-08-16-tsk0067-
+    # measurements.md) -- and of the two the withdrawn bundle is the finding a reader must not have
+    # hidden from them. Its remedy (reinstall, then ONE new session) also ends the state this one
+    # names, so nothing is lost by it winning.
     _refuse_untrusted_bundle(data)
+    _refuse_while_a_restart_is_pending(data)
     state = _state_for_prevention(data)
     if state is None:
         sys.exit(0)

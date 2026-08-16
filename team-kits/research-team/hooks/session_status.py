@@ -267,63 +267,63 @@ def main():
             m = re.match(r"\s*<!--\s*agents-and-skills:team-kit\s+([\w-]+)\s*-->\s*$", first_line)
             kit = m.group(1) if m else ""
         if kit:
-            staged_p = os.path.join(os.path.expanduser("~"), ".claude", "team-kits", kit, "VERSION")
-            local_p = os.path.join(cwd, ".claude", "kit_version")
-            staged = open(staged_p, encoding="utf-8").read().lstrip("\ufeff").strip() if os.path.isfile(staged_p) else ""
-            local = open(local_p, encoding="utf-8").read().lstrip("\ufeff").strip() if os.path.isfile(local_p) else ""
-            staged_order = _compat.kit_version_order(staged)
-            local_order = _compat.kit_version_order(local)
-            lv = local.splitlines()[0].replace("version: ", "") if local else "no version stamp"
-            sv = staged.splitlines()[0].replace("version: ", "") if staged else ""
-            # A DOWNGRADE IS NOT AN UPDATE, and neither is a difference whose direction nobody can
-            # read. This used to be one `staged != local` branch calling every difference "usually
-            # a newer harness. Propose the update to the user" — measured against a real staging, a
-            # 07-18 kit was offered to an 08-02 project, and accepting it prunes the project's
-            # newer hooks while leaving its newer kernel in place. Ordering comes from
-            # `_compat.kit_version_order`; each branch below claims only what that answered.
-            if staged and staged != local and not (staged_order and local_order):
+            # THE DIRECTION IS THE KERNEL'S ANSWER AND NOT THIS HOOK'S (FR-0006): `update-kit`
+            # refuses on the same verdict, so a briefing that ordered the two stamps itself
+            # could OFFER an update that command then REFUSES. `_kernel.kit_update_verdict`
+            # carries the derivation and the one case this block may not fall silent in (a
+            # kernel it cannot reach); the four sentences below are this kit's own.
+            import _kernel
+            verdict, lv, sv, why = _kernel.kit_update_verdict(cwd, kit)
+            if verdict == "unclear":
                 parts.append(
                     "KIT VERSION MISMATCH: the staged '%s' kit (%s) differs from this repo's "
                     "installed kit (%s), and at least one of the two stamps carries no readable "
-                    "version, so which is newer cannot be determined here. Report it to the user "
-                    "and let them decide; do not scaffold on a guess." % (kit, sv or "unreadable", lv))
-            elif staged and staged_order and local_order and staged_order < local_order:
+                    "version, so which is newer cannot be determined here (%s). Report it to "
+                    "the user and let them decide; `update-kit` refuses it for the same "
+                    "reason." % (kit, sv, lv, why))
+            elif verdict == "downgrade":
                 parts.append(
-                    "KIT DOWNGRADE OFFERED, do NOT run the scaffold: the staged '%s' kit (%s) is "
-                    "OLDER than this repo's installed kit (%s). Scaffolding it would prune files "
-                    "this project needs and leave others in place. Tell the user their staging is "
-                    "behind and let them update the staging (the installer) first." % (kit, sv, lv))
-            elif staged and staged_order == local_order and staged != local:
+                    "KIT DOWNGRADE OFFERED, do NOT install it: the staged '%s' kit (%s) is OLDER "
+                    "than this repo's installed kit (%s). Installing it would prune files this "
+                    "project needs and leave others in place; `update-kit` refuses it. Tell the "
+                    "user their staging is behind and let them update the staging (the harness "
+                    "installer) first." % (kit, sv, lv))
+            elif verdict == "content":
                 parts.append(
                     "KIT CONTENT MISMATCH: the staged '%s' kit and this repo's installed kit carry "
                     "the SAME version stamp (%s) but different content hashes — one of the two was "
                     "changed without a version bump. That is a finding to report, not an update to "
-                    "run." % (kit, sv))
-            elif staged and staged_order and local_order and staged_order > local_order:
+                    "run, and `update-kit` refuses it." % (kit, sv))
+            elif verdict == "update":
                 parts.append(
-                    "KIT UPDATE AVAILABLE: the staged '%s' kit (%s) is NEWER than this repo's installed kit "
-                    "(%s). Propose the update to the user; on their OK, FIRST "
-                    "re-read .claude/kit_version (a PARALLEL session may have already updated — this "
-                    "briefing is a snapshot from session start; a real manager nearly double-updated), "
-                    "ASK THE USER TO RUN the scaffold_team script and then init_project_memory (both safe: "
-                    "backup first, copy-if-absent — project_memory content is NEVER overwritten), then ask "
-                    "for a session restart. You cannot run either yourself: `gate_write_scope` refuses a "
-                    "WRITE-CAPABLE command line that names the enforcement layer, and starting a script is "
-                    "one — measured rc 2 for both installers, in both shells. "
-                    "Never hand-merge harness files. The scaffold re-applies the recorded preset "
-                    "from project_config.yaml and re-stamps each agent's model:/effort: from "
-                    "model_map/effort_map automatically (verify; this hook nags on drift), and it records "
-                    "diverged files in .claude/kit_update_pending.* — work those through. After updating, "
-                    "gates may require newly added fields in existing YAMLs — fill those small deltas."
+                    "KIT UPDATE AVAILABLE: the staged '%s' kit (%s) is NEWER than this repo's "
+                    "installed kit (%s). Propose it to the user in one sentence, with what it "
+                    "costs: a session restart. On their OK you install it YOURSELF, in two "
+                    "commands — `python scripts/harness.py request-approval kit_update` prints the "
+                    "approval question (relay it VERBATIM; the USER answers it), then `python "
+                    "scripts/harness.py update-kit` installs it. That command re-reads both stamps "
+                    "when it runs, so a PARALLEL session that already updated is caught there and "
+                    "not by this briefing, which is a snapshot from session start. It refuses a "
+                    "downgrade, a staging that no longer hashes to its own stamp and a project "
+                    "already waiting for a restart, and it runs the kit's own installer — never "
+                    "hand-merge harness files. AFTERWARDS THIS SESSION IS STOPPED: the handover "
+                    "marker is set, so specialist spawns are refused here; with the harness's "
+                    "user-global handover guard installed, further work-engine commands and "
+                    "product writes as well. Diverged repo templates are recorded in "
+                    ".claude/kit_update_pending.* — work those through in the NEXT session, where "
+                    "gates may also require newly added fields in existing YAMLs."
                     % (kit, sv, lv)
                 )
                 if is_codex:
                     parts.append(
-                        "CODEX KIT UPDATE PROCEDURE: after explicit user approval, run the full "
-                        "scaffold with explicit filesystem permission escalation because .codex/ and "
-                        ".agents/skills/ are read-only harness paths. Never run the provider generator "
-                        "alone. Then verify generated TOMLs, open /hooks, review and trust the changed "
-                        "bundle hash, and start a new session before delegating."
+                        "CODEX KIT UPDATE NOTE: `update-kit` starts the kit's installer as a CHILD "
+                        "of this session, and .codex/ plus .agents/skills/ are read-only harness "
+                        "paths there — that combination is NOT measured on Codex. If the installer "
+                        "refuses on one of them, the command reports its message together with the "
+                        "state it read back; hand that to the user instead of retrying. Never run "
+                        "the provider generator alone. After a successful update, verify the "
+                        "generated TOMLs, open /hooks, review and trust the changed bundle hash, "
+                        "and start a new session before delegating."
                     )
     except Exception:
         pass

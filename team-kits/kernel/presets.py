@@ -88,7 +88,14 @@ INSTALLER_TIMEOUT = 600.0
 # produce is a DIAGNOSTIC to pass on, so an undecodable byte must cost a replacement character and
 # nothing else. Same doctrine as `cli._json_body`: the kernel decides the encoding, not the
 # console (BUG-0018).
-_TEXT = {"text": True, "encoding": "utf-8", "errors": "replace"}
+#
+# THE FOUR NAMES `kernel.kitupdate` READS OUT OF THIS MODULE are public for one reason: it starts
+# the SAME installer, against the same staging, and a copy of the decoding rule, of the reader that
+# keeps line endings, of the interpreter search or of the child budget would be a second answer to
+# a question this module already answers (`CHILD_TEXT`, `read_text`, `installer_command`,
+# `INSTALLER_TIMEOUT`). What that module does NOT reuse is everything about roles: its subject is
+# the release, and the two readings are different data.
+CHILD_TEXT = {"text": True, "encoding": "utf-8", "errors": "replace"}
 
 
 def repo_root(state: ProjectState) -> str:
@@ -100,7 +107,7 @@ def staging_root() -> str:
     return os.path.join(os.path.expanduser("~"), STAGING_RELATIVE)
 
 
-def _read_text(path: str) -> str:
+def read_text(path: str) -> str:
     """The file as it stands, line endings included (`newline=""`).
 
     Universal-newline reading would hand back `\\n` for a CRLF file, and both readers here care:
@@ -120,7 +127,7 @@ def installation(root: str) -> dict:
     """
     path = os.path.join(root, ROLES_MANIFEST)
     try:
-        lines = _read_text(path).splitlines()
+        lines = read_text(path).splitlines()
     except OSError:
         raise StateError(
             "this project has no %s, so nothing here can say which kit installed it or which "
@@ -161,7 +168,7 @@ def assert_installable(root: str, directory: str) -> None:
     installed = os.path.join(root, KIT_VERSION_FILE)
     staged = os.path.join(directory, STAGED_VERSION_FILE)
     try:
-        same = _read_text(installed) == _read_text(staged)
+        same = read_text(installed) == read_text(staged)
     except OSError as exc:
         raise StateError(
             "cannot compare the staged kit with the one this project installed (%s) -- refused "
@@ -192,7 +199,7 @@ def resolve(directory: str, preset: str) -> dict:
         result = subprocess.run([sys.executable, "-B", script, "--kit", directory,
                                  "--preset", preset, "--source", COMMAND,
                                  "--format", "json"],
-                                capture_output=True, timeout=120, **_TEXT)
+                                capture_output=True, timeout=120, **CHILD_TEXT)
     except (OSError, subprocess.SubprocessError) as exc:
         raise StateError(
             "the kit's preset resolver (%s) could not be run (%s) -- refused; nothing was "
@@ -302,14 +309,14 @@ def record_preset(state: ProjectState, preset: str) -> str:
     """
     path = config_path(state)
     try:
-        before = _read_text(path)
+        before = read_text(path)
     except OSError as exc:
         raise StateError(
             "project_config.yaml cannot be read (%s), so the preset it records cannot be "
             "changed -- refused. Remedy: report the gap and name the file." % exc) from None
     state._write_text_atomic(path, _with_preset(before, preset))
     try:
-        written = (yaml.safe_load(_read_text(path)) or {}).get("project") or {}
+        written = (yaml.safe_load(read_text(path)) or {}).get("project") or {}
     except Exception:                                   # noqa: BLE001 -- any parse failure is one
         written = {}
     if written.get("preset") != preset:
@@ -321,7 +328,7 @@ def record_preset(state: ProjectState, preset: str) -> str:
     return before
 
 
-def _installer_command(kit: str):
+def installer_command(kit: str):
     """The kit's own scaffold, started the way this host can start it.
 
     Platform-native first, and the first candidate whose interpreter this host actually HAS wins
@@ -463,7 +470,7 @@ def _after_a_failed_install(state, root, before, was, command, reason):
     repair_note = ""
     try:
         again = subprocess.run(command, cwd=root, capture_output=True,
-                               timeout=INSTALLER_TIMEOUT, **_TEXT)
+                               timeout=INSTALLER_TIMEOUT, **CHILD_TEXT)
         if again.returncode != 0:
             repair_note = " (the repair run itself exited %d)" % again.returncode
     except (OSError, subprocess.SubprocessError) as exc:
@@ -525,11 +532,11 @@ def apply(state: ProjectState, preset: str) -> dict:
         # and real on a POSIX host without bash, which is exactly where the `.sh` twin ships
         # (`test_a_host_without_a_shell_for_the_installer_changes_nothing`). Ordering it before the
         # write makes the sentence true by construction rather than by a second restore site.
-        command = _installer_command(plan["kit"])
+        command = installer_command(plan["kit"])
         before = record_preset(state, preset)
         try:
             result = subprocess.run(command, cwd=root, capture_output=True,
-                                    timeout=INSTALLER_TIMEOUT, **_TEXT)
+                                    timeout=INSTALLER_TIMEOUT, **CHILD_TEXT)
         except (OSError, subprocess.SubprocessError) as exc:
             raise _after_a_failed_install(
                 state, root, before, was, command,

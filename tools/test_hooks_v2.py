@@ -10532,6 +10532,23 @@ def _really_scaffolded(tmp_path, team="dev-team", name="lead-identity"):
           "project:\n  name: %s\n  preset: solo\nproviders: [claude]\n" % name)
     scaffolded = _run_real_scaffold(home, repo, team=team)
     assert scaffolded.returncode == 0, scaffolded.stdout[-3000:] + scaffolded.stderr[-2000:]
+    # ...AND THE RESTART THE INSTALLER ASKS FOR, walked through the hook that owns it. A scaffold
+    # ends by writing `.claude/HANDOVER_PENDING`, and since TSK-0067 the kit's own `gate_dispatch`
+    # refuses a specialist spawn while it stands (the global handover guard always did). A project
+    # that delegates is therefore one that has STARTED A SESSION since the install, and the honest
+    # way to put a fixture in that state is to run `clear_handover_marker` with the source only a
+    # real process start carries -- not to delete the file behind the gate's back.
+    restarted = subprocess.run(
+        [sys.executable, "-B", os.path.join(str(repo), ".claude", "hooks",
+                                            "clear_handover_marker.py")],
+        input=json.dumps({"hook_event_name": "SessionStart", "source": "startup",
+                          "cwd": str(repo)}),
+        capture_output=True, text=True, cwd=str(repo), timeout=120,
+        env=dict(os.environ, CLAUDE_PROJECT_DIR=str(repo)))
+    assert restarted.returncode == 0, restarted.stderr
+    assert not os.path.exists(str(repo / ".claude" / "HANDOVER_PENDING")), (
+        "the SessionStart hook did not clear the installer's handover marker, so this fixture is "
+        "not a project that has restarted")
     return home, repo
 
 

@@ -49,7 +49,7 @@ import subprocess
 import sys
 import time
 
-from . import approvals, checkpoints, dispatch, migrate, presets, report, staging
+from . import approvals, checkpoints, dispatch, kitupdate, migrate, presets, report, staging
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -223,11 +223,29 @@ def _preset_removes(state: ProjectState, args):
 # A resolver takes (state, args): the second half arrived with `preset`, whose answer depends on
 # the preset already named on the line. `_worktree_head` ignores it, which is the honest shape --
 # one signature, and no branch here about which resolver wants what.
+def _kit_update_key(key):
+    """One resolver per key of the kit-update manifest, all reading ONE derivation.
+
+    Every key of that manifest is the kit's own statement about a release
+    (`approvals.kit_update_subject_manifest`), so none of them is a role's to type -- and the
+    entries are generated from the builder's signature rather than written out, for the reason
+    `manifest_parameters` exists: a renamed or added key arrives here correctly refused instead of
+    silently becoming a flag the command ignores.
+    """
+    def resolve(state: ProjectState, _args):
+        return kitupdate.change_manifest(state).get(key)
+    return resolve
+
+
 LINE_MANIFEST_RESOLVERS = {
     "head": (_worktree_head, "read from the worktree this state directory sits in"),
     "roles": (_preset_roles, "read from the kit's own presets.yaml for the preset on this line"),
     "removes": (_preset_removes, "derived from what this installation owns and that preset"),
 }
+LINE_MANIFEST_RESOLVERS.update(
+    (name, (_kit_update_key(name),
+            "read from this project's own kit stamp and the kit staged on this machine"))
+    for name in manifest_parameters(approvals.kit_update_subject_manifest))
 
 
 def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
@@ -530,6 +548,16 @@ def build_parser() -> argparse.ArgumentParser:
              "`preset` approval; asks for a session restart afterwards)")
     preset.add_argument("preset", help="the preset to move to; the kit's presets.yaml names them "
                                        "and an unknown one is refused with the list")
+    # THE SECOND HALF OF THE SAME DEAD END (FR-0006). A preset change and a kit update were both
+    # "ask the USER to run the scaffold", and the second one is the wider of the two: it replaces
+    # the hooks, the kernel, the settings and the constitution. `kernel/kitupdate.py` carries the
+    # design; what belongs here is that this command takes NO argument -- which kit, which release
+    # and which direction are the project's and the staging's own statements, and a role typing
+    # any of them would be typing over the files that own them.
+    sub.add_parser(
+        kitupdate.COMMAND,
+        help="install the kit release staged on this machine over this project (needs a minted "
+             "`%s` approval; refuses a downgrade and stops the session afterwards)" % kitupdate.KIND)
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
@@ -888,6 +916,25 @@ def main(argv=None) -> int:
             # reported success and left the lead to discover that is the shape BUG-0016 named.
             print("RESTART REQUIRED: the new role set loads at the next session start. Tell the "
                   "user in their own words and stop deriving here.")
+            return 0
+        if args.command == kitupdate.COMMAND:
+            result = kitupdate.apply(state)
+            print("%s kit: %s -> %s" % (result["kit"], result["from"], result["to"]))
+            # READ BACK OFF THE INSTALLATION, never off the plan, and BOTH readers: the stamp says
+            # what the project claims to run and the bundle says what it actually runs, which is
+            # the pair an aborted run makes disagree (`kitupdate._bundle_reading`).
+            print("installed: %s" % result["installed"])
+            print("NOT re-read: %s" % kitupdate.UNREAD)
+            if result["pending_templates"]:
+                print("follow-up: %s" % result["pending_templates"])
+            # THE RESTART IS THE COMMAND'S LAST ACT, not a courtesy line: the registration in
+            # `settings.json`, the agent set and the session agent are what this session started
+            # with, while the hook FILES are already the new kit's. What actually stops the session
+            # is the marker, so the line says which one and what state it was found in.
+            print("RESTART REQUIRED: %s. Tell the user in their own words and stop here -- "
+                  "specialist spawns are refused here; with the harness's user-global "
+                  "handover guard installed, further work-engine commands and product writes "
+                  "as well." % result["marker"])
             return 0
         if args.command == "archive":
             print(state.archive(args.item_id))

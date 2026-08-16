@@ -45,7 +45,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "d538c983fadbbeb4",
+        "digest": "43c97c3ef3a88b53",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -76,7 +76,7 @@
         "hooks": []
       },
       "15. Upkeep": {
-        "digest": "7190e821393528c6",
+        "digest": "759b20a53ddd1fa4",
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
@@ -207,7 +207,7 @@
         ]
       },
       "Kit updates (session start flags a version mismatch)": {
-        "digest": "9b3a00d6641c5afb",
+        "digest": "b8f508c043da79d7",
         "hooks": [
           "gate_write_scope",
           "session_status"
@@ -277,7 +277,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "ae59e8dfc45a7270",
+        "digest": "245bf6a8bac23e66",
         "hooks": [
           "gate_write_scope"
         ]
@@ -355,7 +355,7 @@
         ]
       },
       "8. Behavior": {
-        "digest": "34fc0d18aa33965e",
+        "digest": "9613146c75290560",
         "hooks": []
       },
       "9. Git & data": {
@@ -407,7 +407,7 @@
         "hooks": []
       },
       "Kit updates": {
-        "digest": "4dada00077d35581",
+        "digest": "5543de19b80ef1dc",
         "hooks": [
           "gate_write_scope"
         ]
@@ -472,7 +472,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "408b405e501ae81c",
+        "digest": "1a1b0e85e6b5d76d",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -503,7 +503,7 @@
         "hooks": []
       },
       "15. Upkeep": {
-        "digest": "7b5ff89da7ce4185",
+        "digest": "448ae1f038fdd0ae",
         "hooks": []
       },
       "16. FZulG / BSFZ application layer": {
@@ -638,7 +638,7 @@
         "hooks": []
       },
       "Kit updates (session start flags a version mismatch)": {
-        "digest": "c0ccae601cbe244c",
+        "digest": "1373e9d7313f9f57",
         "hooks": [
           "gate_write_scope",
           "session_status"

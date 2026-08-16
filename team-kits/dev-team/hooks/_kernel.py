@@ -504,6 +504,39 @@ def gated_document_briefing(repo_root=None):
         "`gated_documents`." % ("S" if len(walls) > 1 else "", listed))
 
 
+def kit_update_verdict(repo_root, kit):
+    """(verdict, installed version, staged version, why) for the session briefing's kit paragraph.
+
+    THE DECISION IS THE KERNEL'S. `kernel.kitupdate.relation` is what `update-kit` refuses on, so a
+    briefing that ordered the two stamps itself could OFFER an update that command then REFUSES --
+    which is why that ordering rule left `_compat` (FR-0006). What this adds is the mapping onto the
+    four sentences a briefing has, and it lives here rather than in `session_status` for the reason
+    `gated_document_briefing` does: one derivation, three kits, and the WORDING stays per kit.
+
+    A KERNEL THAT CANNOT BE REACHED IS AN ANSWER HERE, NOT SILENCE, and that is measured: with the
+    module unreachable the whole paragraph vanished, so the one sentence that tells a lead a newer
+    release exists at all would be missing in exactly the project whose kernel is damaged -- the
+    project that most needs the update. `unclear` is what such a project gets, with the reason, and
+    `tools/test_kitupdate.py::test_a_briefing_whose_kernel_is_unreachable_still_reports_the_kit_
+    comparison` runs the hook without one.
+
+    Verdicts: `unclear` / `downgrade` / `content` / `update` / `none` (nothing to say).
+    """
+    try:
+        kitupdate = kernel_module("kitupdate", repo_root)
+        answer = kitupdate.relation(repo_root, kit)
+    except BaseException as exc:  # noqa: BLE001 -- see above: no kernel is an answer, not silence
+        return ("unclear", "unreadable", "unreadable",
+                "the state kernel that decides which is newer could not be reached (%s)" % exc)
+    sentences = {kitupdate.UNREADABLE: "unclear", kitupdate.UNREADABLE_ORDER: "unclear",
+                 kitupdate.DOWNGRADE: "downgrade", kitupdate.CONTENT_MISMATCH: "content",
+                 kitupdate.UPDATE_AVAILABLE: "update"}
+    return (sentences.get(answer["verdict"], "none"),
+            answer["from"].get("version") or "no version stamp",
+            answer["to"].get("version") or "unreadable",
+            "at least one of the two stamps carries no readable version")
+
+
 def orphaned_dispatch_briefing(repo_root=None, session_id=None):
     """Sweep the dispatches no child of THIS session can be behind, and say what was measured.
 

@@ -67,6 +67,12 @@ def _run_session_status(repo, home):
         HOME=str(home),
         USERPROFILE=str(home),
         CLAUDE_CONFIG_DIR=os.path.join(str(home), ".claude"),
+        # A REACHABLE KERNEL, because a scaffolded project has one at `.claude/kernel` and this
+        # fixture builds only the two files its own subject needs. The banner below is the kit
+        # COMPARISON, and since FR-0006 that comparison is the kernel's (`kitupdate.relation`) --
+        # without this the hook would answer "the kernel could not be reached" and the proxy would
+        # measure the fixture's incompleteness instead of the detection under test.
+        HARNESS_KERNEL_PATH=TEAM_KITS,
     )
     environment.pop("TEAM_KIT_PROVIDER", None)
     body = {"cwd": str(repo), "hook_event_name": "SessionStart", "session_id": "s"}

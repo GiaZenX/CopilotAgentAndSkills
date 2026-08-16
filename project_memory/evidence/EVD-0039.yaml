@@ -1,0 +1,18 @@
+id: EVD-0039
+kind: review
+related:
+- TSK-0067
+- FR-0006
+result: pass
+summary: 'verifier PASS round 2 for diff:9070769af43f7437eafca83263a51b95d24294381b8f2bc3a3f90c20ced036c1
+  -- TSK-0067: update-kit kernel command per FR-0006: one version authority, staging
+  self-checked against its own stamp before the first byte, approval signs five release-identity
+  values, two-reader failure branches, marker written by the kernel only where change
+  was measured (a config typo no longer kills the session), scoped stop sentence with
+  mechanism at all shipped places; kits 2026.08.16-7, suite 2676; L40/L41 extended,
+  residues named'
+artifact_refs:
+- staging/TSK-0067/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-16T08:38:38'
