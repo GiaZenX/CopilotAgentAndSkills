@@ -1,4 +1,4 @@
-generated_at: '2026-08-16T08:38:46'
+generated_at: '2026-08-16T12:38:58'
 items:
 - id: BUG-0001
   type: BUG
@@ -859,6 +859,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0040
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1083,6 +1089,13 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0036
+  type: FR
+  title: 'Wunsch-Prosa-Abgleich: jeder Abschnitt 1-10 der POST_V2_WISHLIST traegt
+    ein FR oder einen Verweis'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1151,12 +1164,6 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0066
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0068
   type: TSK
   title: null
   status: DRAFT

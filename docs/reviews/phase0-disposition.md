@@ -633,37 +633,84 @@ existiert und läuft. Die Passung Regel↔Mechanismus bleibt eine Leseentscheidu
 ZWEI Fälle unmöglich: ein Ersatz, den es nicht gibt, und einer, der rot wird, sobald man die
 Lizenz benutzt.
 
-**Der dritte Fall ist nur halb geschlossen, und die Hälfte ist gezählt.** Ein Matcher lässt sich
-nur gegen einen Hook beurteilen, der AUSSPRICHT, auf welche Tools er reagiert — als
-`data.get("tool_name")`-Vergleich gegen Literale oder gegen eine Modulkonstante, die der Hook
-neben seinem Docstring deklariert (`FILE_TOOLS`, `SHELL_TOOLS`, `SPAWN_TOOLS`, `TOOL`). Sechs der
-registrierten dev-Hooks sprechen es nicht aus — darunter `gate_write_scope`, der meistzitierte
-Mechanismus dieser Tabelle; sie entscheiden aus dem Payload oder aus dem EREIGNIS. Gemessen: beide
-`gate_write_scope`-Registrierungen durch eine auf
-`matcher: "WebFetch"` ersetzt, der Hook sieht danach weder einen Datei-Write noch ein Kommando,
-und das Netz blieb grün. **8 der 36 wirksamen Lizenzen ruhen auf einem Hook, dessen Matcher dieses
-Modul nicht beurteilen kann** (6, 17, 19, 34, 54, 62, 73, 106).
+**Der dritte Fall ist seit 2026-08-16 geschlossen, und die Null ist gezählt.** Ein Tool-Matcher
+lässt sich nur gegen einen Hook beurteilen, der AUSSPRICHT, auf welche Tools er reagiert. Beide
+Hälften dieser Frage liest das Netz jetzt als Eigenschaft statt als Schreibweise:
 
-**Hier stand 14, und die Zahl war aus zwei Gründen falsch (korrigiert 2026-08-02, Schnittrunde).**
-Erstens las der Leser nur LITERALE, zählte also jeden Hook als stumm, der seine Tool-Menge als
+* Die Tool-Menge steht auch dann da, wenn der Hook sie über einen NAMEN führt.
+  `gate_write_scope` und `gate_ledger_valid` schreiben `tool = data.get("tool_name")` und
+  verzweigen zwei Zeilen später auf `tool`; der alte Leser verlangte den Aufruf selbst als linke
+  Seite des Vergleichs und lieferte für den meistzitierten Mechanismus dieser Tabelle `set()`
+  (`test_shortening_net.py:_reads_the_tool_name`).
+* Beurteilt werden muss nur ein Matcher, der überhaupt TOOLS auswählt, und das sind wieder zwei
+  Eigenschaften (`test_shortening_net.py:_selects_tools`). Erstens die Registrierung selbst:
+  `kit_trust_state` (`SessionStart`) und `gate_subagent_output` (`SubagentStop`) sind ganz ohne
+  Matcher registriert, da wählt nichts aus — das ist es, was die Zeilen 19 und 54 herausnimmt.
+  Zweitens das EREIGNIS, gelesen aus `gen_provider_artifacts.py:TOOL_MATCHED_EVENTS`, derselben
+  Definition, aus der der Generator seine Codex-Übersetzung zieht, statt aus einer zweiten Liste im
+  Testmodul: `notify_agent_events` ist auf `Notification` mit `agent_completed|agent_needs_input`
+  registriert, das sind Benachrichtigungsarten. Diese zweite Hälfte nimmt heute keine Zeile heraus
+  — auf `notify_agent_events` ruht keine Lizenz —, sie hält nur die falsche Frage draussen; gemessen
+  wird sie von `test_the_judgeability_question_is_asked_only_of_a_matcher_that_selects_tools`.
+
+Gemessen an genau der Mutation, unter der das Netz vorher grün blieb — beide
+`gate_write_scope`-Registrierungen auf `matcher: "WebFetch"` gesetzt, der Hook sieht danach weder
+einen Datei-Write noch ein Kommando: heute fallen `test_every_shipped_kit_hook_has_a_registration`
+und `test_every_named_mechanism_resolves_in_the_running_code`.
+**0 der 36 wirksamen Lizenzen ruhen auf einem Hook, dessen Matcher dieses Modul nicht beurteilen
+kann** — vorher acht (6, 17, 19, 34, 54, 62, 73, 106).
+
+**Beurteilbar ist nicht schnittreif, und der Unterschied ist die Leseentscheidung, die kein Parser
+trifft.** Von diesen acht hat die Kürzungsrunde am 2026-08-16 genau EINE eingelöst (6: die drei
+erfundenen Beispieldateinamen; die Liste, gegen die wirklich entschieden wird, ist
+`guard_no_adhoc.py:DENY_NAME`, und jeder der drei Namen ist gegen den ausgelieferten Hook als
+rc 2 gemessen). Die anderen sieben bleiben stehen, jede aus einem benannten Grund:
+
+* **17** — `lock.py:KernelLock` serialisiert KERNEL-Schreibzugriffe, und
+  `gate_write_scope.py:_assert_in_scope` liest den Arbeitsauftrag. Dass zwei Agenten dieselbe DATEI
+  nacheinander bearbeiten, baut keiner von beiden; überlappende `allowed_scope` prüft nichts.
+* **19** — die Quelle ist die Enforcement-Referenz selbst. Die Zeile dort BESCHREIBT
+  `gate_subagent_output`; sie zu streichen nähme die Beschreibung aus genau dem Dokument, auf das
+  jede Verweigerung zeigt.
+* **34** — die office-Hälfte zeigt auf `reports/euer_*.md`, also NEBEN `project_memory/`, wohin
+  `gate_write_scope.py:_assert_state_write_allowed` nicht reicht; die research-Hälfte trägt gar
+  keine Dashboard-Prosa mehr (dieses Kit liefert keinen Generator).
+* **54** — zwei Gründe, und der Stolperdraht aus TSK-0067 ist KEINER davon: gemessen lässt er den
+  ganzen Stopp-Satz löschen (rc 0) und fällt nur über eine falsche VERKÜRZUNG, weil er die
+  Reichweiten-Aussage prüft und nicht die Anwesenheit des Satzes. Erstens ist der Satz seit
+  TSK-0067 eine Inhalts-Entscheidung: er trennt, was das KIT verweigert (Spawns, über den
+  Handover-Marker), von dem, was erst der nutzerglobale Handover-Wächter hinzufügt — eine
+  Unterscheidung, die kein Gate ausspricht. Zweitens ist `gate_dispatch.py:_refuse_untrusted_bundle`
+  auf `PreToolUse('Agent|Task')` gebunden und damit auf Codex nicht startbar (siehe die
+  Provider-Grenze unten): dort trägt die Verfassung diese Hälfte allein.
+* **62** — off §2.3 trägt die Zeilenvalidierung nicht mehr; eine frühere Runde hat sie bereits
+  eingelöst. Nichts zu schneiden.
+* **73 und 106** — `_assert_in_scope`/`_assert_not_forbidden` setzen den Bereich des
+  ARBEITSAUFTRAGS durch, nicht die Rollengrenze. Ob der Auftrag für einen office-developer oder
+  einen Entwickler die Grenze überhaupt nennt, prüft kein Gate; die Prosa ist hier das, was den
+  Auftrag richtig macht, und nicht das, was der Auftrag ersetzt.
+
+**Hier stand 14, dann 8, und beide Male war die Zahl ein Leserfehler, kein Befund.**
+Zuerst las der Leser nur LITERALE, zählte also jeden Hook als stumm, der seine Tool-Menge als
 Modulkonstante deklariert — `guard_memory_budget` prüft `data.get("tool_name") not in FILE_TOOLS`
 mit `FILE_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")`, und der alte Leser lieferte
-dafür `set()`. Acht Hooks hatten diese Form; die Zeilen 4, 15, 36, 37, 41 und 56 verlassen die
-Menge damit. Zweitens mass der Satz etwas anderes, als er sagte: die Zahl ist eine Aussage über
+dafür `set()`. Acht Hooks hatten diese Form; die Zeilen 4, 15, 36, 37, 41 und 56 verliessen die
+Menge damit (2026-08-02). Dann fehlte ihm die andere Seite desselben Vergleichs, siehe oben.
+Ausserdem mass der Satz etwas anderes, als er sagte: die Zahl ist eine Aussage über
 die BEURTEILBARKEIT eines Matchers, nicht darüber, auf welchen Wegen eine Regel gebrochen werden
-kann. Die zwei Gegenbeispiele stehen im selben Baum. `gate_write_scope` spricht keine Tool-Menge
-aus und ist trotzdem auf `Bash|PowerShell` UND auf die Datei-Tools registriert, deckt also beide
-Wege. `guard_pm_scope` spricht seine aus und ist nur auf die Datei-Tools registriert, lässt also
-den Shell-Weg offen — weshalb der II.11/3-Schnitt Zeile 3 nicht eingelöst hat, obwohl sie in
-dieser Menge nie stand. Wer aus dieser Zahl auf Wegabdeckung schliesst, liest sie falsch.
+kann. Das Gegenbeispiel steht im selben Baum: `guard_pm_scope` spricht seine Tool-Menge aus und ist
+nur auf die Datei-Tools registriert, lässt also den Shell-Weg offen — weshalb der II.11/3-Schnitt
+Zeile 3 nicht eingelöst hat, obwohl sie in dieser Menge nie stand. Wer aus dieser Zahl auf
+Wegabdeckung schliesst, liest sie falsch.
 
-Die naheliegende Reparatur für die verbleibenden acht — die Tool-Klasse aus
-dem gelesenen Payload-Feld ableiten — braucht eine Tabelle (`file_paths` = Datei-Tools,
-`tool_input.command` = Shell-Tools, `questions` = `AskUserQuestion`, `subagent_type` =
-`Agent`/`Task`), also genau die Aufzählung von Sonderfällen, die dieses Repo wiederholt bezahlt
-hat, und sie schlägt fehl, sobald ein Hook ein Feld aus einem anderen Grund anfasst. Eine falsche
-Ableitung verweigert Lizenzen mit einer unwahren Begründung. Deshalb steht hier eine ZAHL, die rot
-wird, wenn sie wächst, und keine Heuristik.
+Was weiterhin NICHT abgeleitet wird, damit die Null nicht als „gelöst" gelesen wird: die
+Tool-Klasse eines Hooks, der aus dem gelesenen PAYLOAD-Feld statt aus dem Tool-Namen entscheidet.
+Das bräuchte eine Tabelle (`file_paths` = Datei-Tools, `tool_input.command` = Shell-Tools,
+`questions` = `AskUserQuestion`, `subagent_type` = `Agent`/`Task`), also genau die Aufzählung von
+Sonderfällen, die dieses Repo wiederholt bezahlt hat, und sie schlägt fehl, sobald ein Hook ein
+Feld aus einem anderen Grund anfasst. Eine falsche Ableitung verweigert Lizenzen mit einer
+unwahren Begründung. Kein ausgelieferter Hook braucht sie heute; sobald einer sie braucht, wächst
+die Zahl oben und sagt es.
 
 **Der Pin-Detektor erkennt drei Schreibweisen, nicht vier.** `open(...)`, `Path(...).read_text()`
 und `Path(...).open()` werden erkannt (gemessen an einem Probemodul mit denselben Konstanten);
@@ -689,7 +736,37 @@ vier, die dazugekommen sind (3, 6, 49, 54), waren bereits in der Klasse und nur 
 bei unverändertem Zählprädikat — keine einzige Regel hat in dieser Runde eine Lizenz BEKOMMEN, die
 sie vorher nicht schon hatte.
 
-**Und die Grenze, die der Ausführende VOR dem ersten Schnitt kennen muss: 18 der 36 wirksamen
+**Die zweite Grenze ist der ANDERE PROVIDER, gemessen am 2026-08-16.** Ein Kit liefert für Claude
+UND Codex, und die Verfassung wird von beiden geladen — der Hook nicht. Wo der ersetzende
+Mechanismus nur auf Tools registriert ist, für die Codex kein Äquivalent hat
+(`gen_provider_artifacts.py:CODEX_UNSUPPORTED_TOOLS` — `Agent`, `Task`, `AskUserQuestion`),
+verschiebt das Streichen der Prosa die Regel nicht vom Text ins Gate, sondern löscht den einzigen
+Träger, den die Codex-Sitzung hat. Zwei Hooks sagen das in ihrem eigenen Kopfkommentar
+(`guard_agent_spawn`, `guard_question_context`), und die office-Verfassung sagt es für ihr §1
+(„On Codex this binds as POLICY only"); gezählt wird es erst jetzt.
+**5 der 36 wirksamen Lizenzen ruhen auf einem Mechanismus, den Codex nicht starten kann**
+(4, 15, 41, 54, 56).
+
+**Gefragt wird nach dem SYMBOL, nicht nach der Datei, und das ist der Unterschied zwischen drei und
+fünf.** Das Mechanismus-Feld nennt `<datei>.py:<symbol>`; `gate_dispatch.py` ist auf fünf Ereignisse
+registriert, zwei davon (`Stop`, `SubagentStart`) hat Codex — die DATEI läuft dort also. Ihr
+eigenes `HANDLERS` bindet aber `handle_pre_tool_use` allein an `PreToolUse('Agent|Task')`, und
+`_refuse_untrusted_bundle` wird nur aus diesem Handler gerufen. Genau diese zwei Symbole nennen die
+Zeilen 4 und 54; eine Zählung über die Datei liess beide draussen, während der Absatz daneben
+`guard_agent_spawn`s „on Codex no spawn hook runs at all" zitierte.
+`test_shortening_net.py:_events_reaching` liest die Zuordnung aus dem Hook selbst (Handler-Map plus
+Aufrufgraph) und ist bewusst permissiv, wo er nicht einengen kann: ein Symbol, das keine
+Handler-Map führt oder das kein Handler erreicht (`main`), wird gegen ALLE Registrierungen des
+Hooks beurteilt.
+Eine Zeile zählt, sobald EINER ihrer genannten Mechanismen draussen ist — das Feld nennt, was die
+Regel übernimmt, und eine Hälfte, die Codex nicht starten kann, ist Prosa, die die Codex-Sitzung
+weiter braucht (Zeile 54 ist genau diese Form: `kit_trust_state.py:transition` läuft dort,
+`gate_dispatch.py:_refuse_untrusted_bundle` nicht).
+Abgeleitet aus den ausgelieferten Registrierungen über `codex_matchers_for`, also aus derselben
+Übersetzung, die der Generator fährt; gepinnt ist wie bei den anderen Zahlen die ZAHL, nicht die
+Einstufung der Zeilen.
+
+**Und die dritte Grenze, die der Ausführende VOR dem ersten Schnitt kennen muss: 18 der 36 wirksamen
 Lizenzen** (26, 30, 49, 62, 64, 65, 66, 73, 86, 88, 90, 92, 94, 98, 102, 106, 115, 116) nennen
 mindestens eine SPEZIALISTEN-Rollendatei als Quelle, und Spezialisten-SKILLs liegen ausserhalb des
 Lead-Pakets, das der Sektionspin bewacht. Gemessen: „Never change SRs, architecture, or
@@ -1255,6 +1332,10 @@ nicht gelesen.
 - 2026-08-16 · office-team · `skills/office-manager/SKILL.md` · §Kit updates — **CHANGED** · verankert gate_write_scope · Grund: TSK-0067 verifier round, F2: the stop sentence is scoped to what the kit builds (specialist spawns) and names the user-global handover guard as the condition for work-engine commands and product writes.
 - 2026-08-16 · research-team · `constitution/AGENTS.md` · §15. Upkeep — **CHANGED** · verankert keinen registrierten Hook · Grund: TSK-0067 verifier round, F2: the stop sentence is scoped to what the kit builds (specialist spawns) and names the user-global handover guard as the condition for work-engine commands and product writes.
 - 2026-08-16 · research-team · `skills/project-manager/SKILL.md` · §Kit updates (session start flags a version mismatch) — **CHANGED** · verankert gate_write_scope, session_status · Grund: TSK-0067 verifier round, F2: the stop sentence is scoped to what the kit builds (specialist spawns) and names the user-global handover guard as the condition for work-engine commands and product writes.
+
+- 2026-08-16 · dev-team · `constitution/AGENTS.md` · §2. Hard enforcement (NEVER skip — these are the rules real runs broke) — **CHANGED** · verankert clear_handover_marker, format_on_write, gate_approval, gate_dispatch, gate_git, gate_memory_complete, gate_packaging_decision, gate_pipeline, gate_push_token, gate_shell_hygiene, gate_subagent_output, gate_test_coverage, gate_write_scope, guard_agent_spawn, guard_guidelines, guard_harness_selfmod, guard_memory_budget, guard_no_adhoc, guard_pm_scope, guard_question_context, guard_scratchpad_ref, guard_yaml_valid, kit_trust_state, notify_agent_events, session_status · Grund: II.11/3-Kuerzung TSK-0068, in DIESEM Kit die Zeilen 6 und 7: §2.1 verliert die drei erfundenen Beispieldateinamen (die Liste, gegen die entschieden wird, steht in guard_no_adhoc.DENY_NAME), §2.4 die Wiederholung des evidence-Flagvertrags (argparse verlangt --related/--artifact-ref) und den dritten Abzug von „never with --root" (steht in §0 und in agents/project-manager.md). Zeile 64 betrifft dieses Kit nicht.
+- 2026-08-16 · office-team · `constitution/AGENTS.md` · §2. Hard rules (deterministic where possible) — **CHANGED** · verankert clear_handover_marker, gate_approval, gate_dispatch, gate_filing, gate_ledger_valid, gate_proc_approved, gate_push_token, gate_shell_hygiene, gate_subagent_output, gate_write_scope, guard_agent_spawn, guard_fs_tripwire, guard_harness_selfmod, guard_memory_budget, guard_no_adhoc, guard_pm_scope, guard_question_context, guard_scratchpad_ref, guard_yaml_valid, kit_trust_state, notify_agent_events, session_status · Grund: II.11/3-Kuerzung TSK-0068, in DIESEM Kit allein die Zeile 64: §2.5 nennt statt der Prosa das Gate, das eine ungedeckte Ablage verweigert (gate_filing.check, wortgleiche Verweigerung). Die Zeilen 6 und 7 betreffen dieses Kit nicht — §2.1 trug hier nie erfundene Dateinamen und §2 keinen evidence-Flagsatz.
+- 2026-08-16 · research-team · `constitution/AGENTS.md` · §2. Hard enforcement (NEVER skip) — **CHANGED** · verankert clear_handover_marker, format_on_write, gate_approval, gate_dispatch, gate_git, gate_memory_complete, gate_pipeline, gate_push_token, gate_shell_hygiene, gate_subagent_output, gate_write_scope, guard_agent_spawn, guard_guidelines, guard_harness_selfmod, guard_memory_budget, guard_no_adhoc, guard_pm_scope, guard_question_context, guard_scratchpad_ref, guard_yaml_valid, kit_trust_state, notify_agent_events, session_status · Grund: II.11/3-Kuerzung TSK-0068, in DIESEM Kit die Zeilen 6 und 7: §2.1 verliert die drei erfundenen Beispieldateinamen (die Liste, gegen die entschieden wird, steht in guard_no_adhoc.DENY_NAME), §2.4 die Wiederholung des evidence-Flagvertrags (argparse verlangt --related/--artifact-ref) und den dritten Abzug von „never with --root" (steht in §0 und in agents/project-manager.md). Zeile 64 betrifft dieses Kit nicht.
 ## 10. Lead-Paket-Grössenjournal (append-only)
 
 Jede übernommene Änderung der Lead-Paket-Grösse, eine Zeile pro Kit, geschrieben von
@@ -1317,3 +1398,7 @@ gerade entfernten. Wer eine Grenze anhebt, schreibt hier hin, wofür.
 - 2026-08-16 · dev-team · **GREW** 32666 B → 32764 B (+98) · Grund: TSK-0067 verifier round, F2: the claim that the KIT refuses further work-engine commands is protection it does not build (measured: with the marker present a dispatch/capture/update-kit line passes all eight kit shell gates rc 0; only the user-global handover guard refuses them). The scoped sentence names the spawn refusal the kit builds and the guard as the condition for the rest -- +98/+144/+98 B.
 - 2026-08-16 · office-team · **GREW** 33629 B → 33773 B (+144) · Grund: TSK-0067 verifier round, F2: the claim that the KIT refuses further work-engine commands is protection it does not build (measured: with the marker present a dispatch/capture/update-kit line passes all eight kit shell gates rc 0; only the user-global handover guard refuses them). The scoped sentence names the spawn refusal the kit builds and the guard as the condition for the rest -- +98/+144/+98 B.
 - 2026-08-16 · research-team · **GREW** 36777 B → 36875 B (+98) · Grund: TSK-0067 verifier round, F2: the claim that the KIT refuses further work-engine commands is protection it does not build (measured: with the marker present a dispatch/capture/update-kit line passes all eight kit shell gates rc 0; only the user-global handover guard refuses them). The scoped sentence names the spawn refusal the kit builds and the guard as the condition for the rest -- +98/+144/+98 B.
+
+- 2026-08-16 · dev-team · **SHRANK** 32764 B → 32585 B (-179) · Grund: II.11/3-Kuerzung TSK-0068, Paritaetszeilen 6 und 7 in DIESEM Kit: §2.1 verliert die drei erfundenen Ad-hoc-Dateinamen (entschieden wird gegen guard_no_adhoc.DENY_NAME, jeder der Namen als rc 2 gemessen), §2.4 den wiederholten evidence-Flagvertrag samt dem dritten --root-Abzug. Zeile 64 ist office-only.
+- 2026-08-16 · office-team · **SHRANK** 33773 B → 33727 B (-46) · Grund: II.11/3-Kuerzung TSK-0068, in DIESEM Kit allein Paritaetszeile 64: §2.5 nennt statt der Prosa das Gate, das eine ungedeckte Ablage verweigert (gate_filing.check, rc 2 gemessen). Die Zeilen 6 und 7 haben hier keinen Text getroffen.
+- 2026-08-16 · research-team · **SHRANK** 36875 B → 36698 B (-177) · Grund: II.11/3-Kuerzung TSK-0068, Paritaetszeilen 6 und 7 in DIESEM Kit: §2.1 verliert die drei erfundenen Ad-hoc-Dateinamen (entschieden wird gegen guard_no_adhoc.DENY_NAME, jeder der Namen als rc 2 gemessen), §2.4 den wiederholten evidence-Flagvertrag samt dem dritten --root-Abzug. Zeile 64 ist office-only.

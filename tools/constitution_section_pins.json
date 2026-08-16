@@ -80,7 +80,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "661e02339f74a95c",
+        "digest": "b83bbad09fdd82da",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -293,7 +293,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "52b4a581315ff542",
+        "digest": "5ac434015b6e0507",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -515,7 +515,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "d110be5cb0cfe0e1",
+        "digest": "61aaa1f5cd31138b",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",

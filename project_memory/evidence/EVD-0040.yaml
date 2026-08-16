@@ -1,0 +1,17 @@
+id: EVD-0040
+kind: review
+related:
+- TSK-0068
+result: pass
+summary: 'verifier PASS round 2 for diff:ea2994f324fecb64419993dbcfad75756593adbc90a5f498348610ec86257237
+  -- TSK-0068: shortening net gap closed (8->0 via scoped binding reader + selects-tools
+  judgeability), per-symbol Codex boundary (five rows, independently re-derived),
+  three licenced cuts measured end-to-end in shipped kits, sizes ratcheted down 32585/33727/36698
+  with per-kit journal lines, honest non-cuts with measured reasons; kits unchanged
+  2026.08.16-8, suite 2680; residues cosmetic, reclassification of pinned counts deliberately
+  deferred'
+artifact_refs:
+- staging/TSK-0068/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-16T12:38:50'

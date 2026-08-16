@@ -92,8 +92,7 @@ question inside the run (§1) and becomes no item. Auditor findings split the sa
    the data); the bookkeeper adds prose only in the separate `_notes.md`. The Verfahrensdoku draft
    (`python scripts/process_doc.py`) renders from the active PROC items and the filing plan; never hand-write it.
 5. **Filing is verified, not trusted.** `filing_plan.yaml` is the single machine-readable truth for
-   where a document belongs; a document matching no rule is left untouched and the user is asked with a
-   concrete rule proposal. Nobody writes a filing log: the archive
+   where a document belongs, and `gate_filing` refuses a filing no rule of it covers. Nobody writes a filing log: the archive
    tree IS the record of what ended up where (spec II.9 turns `filing_log.yaml` into a REGENERATED scan index
    over that tree, but nothing builds it yet and no gate reads it, so a V2 project simply has no such file).
    Migration MOVES via the approved plan, never deletes; originals are never re-saved/altered.

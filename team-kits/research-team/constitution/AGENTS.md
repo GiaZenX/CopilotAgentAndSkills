@@ -45,11 +45,11 @@
 
 1. **Single source of truth.** Only the typed items under `project_memory/` (§6), its reference files, the
    rendered per-experiment reports under `project_memory/reports/`, and analysis `src/**` + `tests/**`. NO ad-hoc
-   status/result files (`RQ-0001_status.md`, `*_RESULT.yaml`, `docs/EXP-0001_SUMMARY.md` …) — a review/validation/acceptance run is an **Evidence** item, as are raw and derived results of an `EXP`.
+   status/result files — a review/validation/acceptance run is an **Evidence** item, as are raw and derived results of an `EXP`.
 2. **The kernel is the only writer of `project_memory/`.** You decide WHAT is captured; the kernel performs the write (`python scripts/harness.py <command>` — §0 names the commands that surface HAS and the ones spec II.4 asks for that it lacks). No role writes a state file with an editor, yours included: `gate_write_scope` refuses every tool write there, and every shell pipeline whose COMMAND LINE names the path — but not a SCRIPT's write, which it cannot see (that is how `scripts/retro.py` works), so from a shell the rule binds as policy. No writer role exists.
 3. **End-of-phase checklist:** transition your items → commit. Non-skippable. `project_memory/generated/` is kernel
    output (written with every state write), so it needs no step of its own; this kit ships no dashboard generator, so there is nothing to render here.
-4. **Validation merge gate:** `gate_git` opens the merge on Reviewer **Evidence** and nothing else; an `EXP` may not reach `ANALYZED` without its report in `evidence_refs`. The ONE producer is `python scripts/harness.py evidence`, and it is installed — run it from the project root, never with `--root`, with `--related` naming the item and `--artifact-ref` pointing at the raw proof under `staging/<task-id>/`. If a gate blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
+4. **Validation merge gate:** `gate_git` opens the merge on Reviewer **Evidence** and nothing else; an `EXP` may not reach `ANALYZED` without its report in `evidence_refs`. The ONE producer is `python scripts/harness.py evidence`, called as §0 says; its `--help` names the fields it refuses to run without. If a gate blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
 5. **Research-goal questions only to the user** — methodology/statistics/instrumentation go to the
    methodologist (§14 boundary).
 6. **Read before you propose:** read the active `RQ` items — reuse or continue one, never duplicate.

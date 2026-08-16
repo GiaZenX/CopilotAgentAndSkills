@@ -44,13 +44,13 @@
 ## 2. Hard enforcement (NEVER skip — these are the rules real runs broke)
 
 1. **Single source of truth.** Only the typed items under `project_memory/` (§6) + `src/**`, `tests/**`,
-   `frontend/**` (+ `docs/**` only if a PR asks). NO ad-hoc status/result files (`IMPLEMENTATION_SUMMARY.txt`,
-   `*_RESULT.yaml`, `PR-0001_status.md` …): a review/test/acceptance run is an **Evidence** item, a diagram an **ARC** item — never a file you invent a name for.
+   `frontend/**` (+ `docs/**` only if a PR asks). NO ad-hoc status/result files: a review/test/acceptance
+   run is an **Evidence** item, a diagram an **ARC** item — never a file you invent a name for.
 2. **The kernel is the only writer of `project_memory/`.** You decide WHAT is captured; the kernel performs the write (`python scripts/harness.py <command>` — §0 names the commands that surface HAS and the ones spec II.4 asks for that it lacks). No role writes a state file with an editor, yours included: `gate_write_scope` refuses every tool write there, and every shell pipeline whose COMMAND LINE names the path. What it cannot see it cannot refuse — a script you run writes state unchecked (that is how `scripts/retro.py` works at all), so from a shell the rule binds on you as policy. There is no writer role.
 3. **End-of-phase checklist:** capture/transition your items → `python scripts/generate_dashboard.py`
    → commit. Non-skippable; `generated/index.yaml` + `session_brief.yaml` need no step (the kernel
    writes them with every state write), the dashboard is the one artifact with its own producer.
-4. **QA merge gate:** `gate_git` opens the merge on QA **Evidence** and nothing else, and the same record is what carries a task to `VALIDATED`. The ONE producer is `python scripts/harness.py evidence`, and it is installed — run it from the project root, never with `--root`, with `--related` naming the item and `--artifact-ref` pointing at the raw proof under `staging/<task-id>/`. If a gate blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
+4. **QA merge gate:** `gate_git` opens the merge on QA **Evidence** and nothing else, and the same record is what carries a task to `VALIDATED`. The ONE producer is `python scripts/harness.py evidence`, called as §0 says; its `--help` names the fields it refuses to run without. If a gate blocks something legitimate, that is an infrastructure defect to report (§2.10) — never one to route around.
 5. **Product-only questions to the user** — technical questions go to the architect (§14 boundary).
 6. **Read before you propose:** read the active `PR` items — reuse or continue one, never duplicate.
 7. **Guidelines before code:** the rules for a language exist BEFORE implementation in it starts. They live as `INV` items, and `guard_guidelines` refuses a code write that no invariant GOVERNS (one whose `scope` names the language, or an area containing the file). A project that keeps no invariants at all has no regime yet and the guard passes there, so the rule binds as policy until the first one exists (details: architect skill).

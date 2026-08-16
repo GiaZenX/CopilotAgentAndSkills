@@ -1,0 +1,27 @@
+id: FR-0036
+title: 'Wunsch-Prosa-Abgleich: jeder Abschnitt 1-10 der POST_V2_WISHLIST traegt ein
+  FR oder einen Verweis'
+request_text: 'User question 2026-08-16: has the wishlist MD been fully migrated to
+  FR items, and should it be deleted? Measured answer: the document is TWO things
+  -- wish prose (sections 1-10) and the HOLE LIST (sections 11-12, L1-L42/H1-H45).
+  The hole list is load-bearing: test_gates.py reads the file (HOLE_LIST), several
+  tripwires judge its entries, tools/test_migrate.py checks every L-reference, and
+  CLAUDE.md''s discipline routes measured gaps there -- deletion or rename would red
+  the suite and destroy the gap record, so the file STAYS. The wish-prose half is
+  only PARTIALLY mirrored in FRs, completeness never measured; FR-0003 is itself still
+  open. Wanted, post-release housekeeping: (1) one measured pass over sections 1-10
+  -- each section has its FR and gains a pointer, or gets a thin FR, or is marked
+  superseded with the closing item; folds FR-0003 in. (2) ADDENDUM (user 2026-08-16,
+  ''MD Dateien muellen das repo zu''): a measured docs cleanup -- prose with NO wire
+  (no test reads it, no hole entry or EVD artifact_ref cites it, no living item points
+  at it) moves to a docs archive directory; every move verified by a full suite run
+  and an EVD-reference check (moved artifact refs broke evidence twice before -- the
+  check is mandatory, not optional). The hole list, the V2 spec (contract, cited by
+  checks and by TSK-0069''s side check) and cited review protocols stay where wires
+  expect them. The SOURCE repo is the workshop -- none of these files ship into user
+  projects; the cleanup is about workshop hygiene, not user-facing clutter. Source:
+  user questions 2026-08-16.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T10:01:07'

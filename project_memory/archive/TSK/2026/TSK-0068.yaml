@@ -48,7 +48,8 @@ expected_outputs:
 dependencies:
 - SR-0001
 root_revision: 1
-status: DRAFT
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-08-15T23:37:39'
+closed_at: '2026-08-16T12:38:57'

@@ -19,15 +19,17 @@ WHAT THIS MODULE CHECKS, and — as loudly — what it does not:
     must name one for EVERY KIT THE RULE LIVES IN. When the file is a kit hook it must be
     REGISTERED there, under a matcher that can hand it the tools it judges. What this does NOT
     establish is that the named mechanism enforces the named rule: that pairing stays a reading
-    decision. Two failures become impossible — licensing a deletion in favour of a replacement
-    that is not there, and one that is red the moment the licence is used. THE THIRD IS PARTIAL:
-    a matcher can only be judged against a hook that declares which tools it acts on, and six of
-    the registered dev hooks (among them `gate_write_scope`, the most-cited mechanism in the table)
-    declare none. For those the matcher is not judged at all — measured, both `gate_write_scope`
-    registrations replaced by one on `matcher: "WebFetch"` and the module stayed green. The
-    licences that rest on such a hook are COUNTED and pinned
-    (`test_the_licences_resting_on_an_unjudgeable_matcher_are_counted`), because a caveat nobody
-    counts is how a hole grows quietly.
+    decision. Three failures become impossible — licensing a deletion in favour of a replacement
+    that is not there, one that is red the moment the licence is used, and one wired under a
+    matcher it can never be reached through. The third was PARTIAL until 2026-08-16 and is what
+    that round closed: a matcher is judged against the tools a hook declares, and the reader missed
+    them wherever the hook bound the tool name to a NAME first (`gate_write_scope`,
+    `gate_ledger_valid`) — measured, both `gate_write_scope` registrations replaced by one on
+    `matcher: "WebFetch"` and the module stayed green; today that mutation fails
+    `test_every_shipped_kit_hook_has_a_registration` and
+    `test_every_named_mechanism_resolves_in_the_running_code`. What is left of the caveat is
+    COUNTED rather than described (`test_the_licences_resting_on_an_unjudgeable_matcher_are_counted`,
+    0 rows today), because a caveat nobody counts is how a hole grows quietly.
   * A PIN IS NOT A REPLACEMENT. `test_hooks_v2.py:test_the_ui_inventory_snapshot_rule_is_shipped`
     READS three shipped instruction texts and fails when the rule is not in them. Named as the
     replacement for parity rows 25/97 it turned the licence upside down: using the licence makes
@@ -355,6 +357,78 @@ def _string_constants(tree):
     return values
 
 
+def _reads_the_tool_name(node, bound):
+    """Does this expression yield the payload's `tool_name`?
+
+    Either the read itself (`data.get("tool_name")`) or a name that HOLDS it. Both spellings are
+    one property — "the left operand of this comparison is the tool name" — and reading only the
+    first is what this reader got wrong for a round: `gate_write_scope` and `gate_ledger_valid`
+    bind it (`tool = data.get("tool_name")`) and dispatch on the NAME two lines down, so the
+    literal-shape reader answered `set()` for the most-cited mechanism in the parity table.
+    """
+    if isinstance(node, ast.Name):
+        return node.id in bound
+    return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "get" and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "tool_name")
+
+
+def _own_nodes(scope):
+    """Every node of this scope EXCEPT the bodies of the functions nested in it.
+
+    So each statement belongs to exactly one scope and a name can be attributed to the frame it is
+    written in — `ast.walk` alone puts every nested function's body into the module's answer, which
+    is the confusion the binding reader below was measured to have.
+    """
+    out, stack = [], list(ast.iter_child_nodes(scope))
+    while stack:
+        node = stack.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            continue
+        out.append(node)
+        stack += list(ast.iter_child_nodes(node))
+    return out
+
+
+def _bindings_of(scope):
+    """The names THIS scope binds to the payload's tool name — and only those.
+
+    PER SCOPE, and a name is only bound when EVERY assignment to it in the scope reads the tool
+    name. Both halves were measured false in the permissive direction as a module-wide answer:
+    with `tool = data.get("tool_name")` anywhere in the file, a foreign function writing
+    `tool = cfg.get("mode")` and comparing `tool == "WebFetch"` added `WebFetch` to the hook's
+    declared tools — `_unjudgeable_matchers` then answered "judged" and `_matcher_reaches` "True"
+    for a matcher the hook never sees. No shipped hook has that shape (checked over all three
+    kits), which is exactly why the claim had to be measured rather than believed; the probe is in
+    `test_the_tool_reader_follows_a_module_constant_and_a_bound_name`.
+    """
+    reads, rebinds = set(), set()
+    for node in _own_nodes(scope):
+        if not isinstance(node, ast.Assign):
+            continue
+        names = {target.id for target in node.targets if isinstance(target, ast.Name)}
+        (reads if _reads_the_tool_name(node.value, ()) else rebinds).update(names)
+    return reads - rebinds, reads | rebinds
+
+
+def _scoped_tool_name_bindings(tree):
+    """[(scope, names bound to the tool name in it)] — module scope plus every function scope.
+
+    A function inherits the module's bindings for every name it does not assign itself, which is
+    what Python does; a name it assigns is its own, and then only its own assignments decide.
+    """
+    module_bound, module_assigned = _bindings_of(tree)
+    scopes = [(tree, module_bound)]
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        local_bound, local_assigned = _bindings_of(node)
+        scopes.append((node, local_bound | (module_bound - local_assigned)))
+    del module_assigned
+    return scopes
+
+
 @_cached
 def _declared_tools(path):
     """The tool names a hook judges itself, read from its own `data.get("tool_name")` test.
@@ -365,63 +439,87 @@ def _declared_tools(path):
     and a reader that only asked "is it wired" still certified it as the mechanism behind a
     deletion licence.
 
-    THE COMPARATOR MAY BE A NAME, and reading only literals is how this reader under-reported for
-    a whole round: `guard_memory_budget` writes `data.get("tool_name") not in FILE_TOOLS` with the
-    tuple declared beside its docstring, and the literal-only reader answered `set()` for it.
-    Eight hooks have that shape (`TOOL`, `SPAWN_TOOLS`, `SHELL_TOOLS`, `FILE_TOOLS`), and the
-    pinned count of unjudgeable licences fell from 14 to 8 when `_string_constants` resolved them.
+    BOTH SIDES OF THE COMPARISON ARE READ THROUGH A DEFINITION rather than a shape, and each half
+    was a round's under-report:
 
-    An empty answer means the hook does not filter on the tool name — every SessionStart hook keys
-    off the EVENT instead, `gate_write_scope` decides from the payload shape — and then no matcher
-    can be judged this way. THAT IS A REAL HOLE, not a footnote: the licences resting on such a
-    hook are counted and pinned by
-    `test_the_licences_resting_on_an_unjudgeable_matcher_are_counted`, because a caveat nobody
-    counts is how a hole grows. What that count does NOT say is which routes a rule can be broken
-    through — the docstring of that test carries the two counter-examples. (An earlier version of
-    this line claimed "13 of 29" — measured over hook FILES including `_compat.py`, asserted by
-    nothing, and wrong.)
+      * the COMPARATOR may be a name — `guard_memory_budget` writes
+        `data.get("tool_name") not in FILE_TOOLS` with the tuple declared beside its docstring, and
+        the literal-only reader answered `set()` for it (`_string_constants`; the pinned count of
+        unjudgeable licences fell from 14 to 8 when it landed).
+      * the LEFT SIDE may be a name too — `gate_write_scope` and `gate_ledger_valid` bind
+        `tool = data.get("tool_name")` and dispatch on `tool` (`_reads_the_tool_name`). Measured
+        before this half existed: `_declared_tools` answered `set()` for `gate_write_scope`, the
+        most-cited mechanism in the parity table, and eight live deletion licences were counted
+        unjudgeable because of it. That binding is read PER SCOPE
+        (`_scoped_tool_name_bindings`), because the module-wide first cut let a rebound name in a
+        foreign function add a tool the hook never sees.
+
+    An empty answer means the hook does not filter on the tool name at all — every SessionStart
+    hook keys off the EVENT instead — and then no matcher over tool names can be judged against it.
+    Whether that is a HOLE depends on the registration and not on the hook alone: a matcher that
+    selects nothing away has nothing to be wrong about. `_unjudgeable_matchers` is where the two
+    halves meet, and the licences left resting on one are counted and pinned by
+    `test_the_licences_resting_on_an_unjudgeable_matcher_are_counted`. (An earlier version of this
+    line claimed "13 of 29" — measured over hook FILES including `_compat.py`, asserted by nothing,
+    and wrong.)
     """
     with open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
     constants = _string_constants(tree)
     tools = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Compare):
-            continue
-        left = node.left
-        if not (isinstance(left, ast.Call) and isinstance(left.func, ast.Attribute)
-                and left.func.attr == "get" and left.args
-                and isinstance(left.args[0], ast.Constant)
-                and left.args[0].value == "tool_name"):
-            continue
-        for comparator in node.comparators:
-            if isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
-                tools |= {e.value for e in comparator.elts
-                          if isinstance(e, ast.Constant) and isinstance(e.value, str)}
-            elif isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
-                tools.add(comparator.value)
-            elif isinstance(comparator, ast.Name):
-                tools |= constants.get(comparator.id, frozenset())
+    for scope, bound in _scoped_tool_name_bindings(tree):
+        for node in _own_nodes(scope):
+            if not isinstance(node, ast.Compare) or not _reads_the_tool_name(node.left, bound):
+                continue
+            for comparator in node.comparators:
+                if isinstance(comparator, (ast.Tuple, ast.List, ast.Set)):
+                    tools |= {e.value for e in comparator.elts
+                              if isinstance(e, ast.Constant) and isinstance(e.value, str)}
+                elif isinstance(comparator, ast.Constant) and isinstance(comparator.value, str):
+                    tools.add(comparator.value)
+                elif isinstance(comparator, ast.Name):
+                    tools |= constants.get(comparator.id, frozenset())
     return tools
 
 
-def _matcher_reaches(matcher, tools):
+def _selects_tools(event, matcher):
+    """Does this registration's matcher pick TOOL NAMES out of what the event carries?
+
+    Two conditions, and neither is spelled here. WHICH EVENTS match on tools is
+    `gen_provider_artifacts.TOOL_MATCHED_EVENTS`, the repo's one answer to that question — the
+    generator needs it to translate a matcher for Codex, and a second list in a test module is how
+    the last two duplicated readers drifted. WHETHER THE MATCHER PICKS ANYTHING is the provider's
+    documented default: `None`, `""` and `*` are "every value", so such a registration reaches the
+    hook whatever the event hands it and there is nothing about it a reader could get wrong.
+
+    The shipped counter-cases for both halves: `Notification` under
+    `agent_completed|agent_needs_input` names notification KINDS, not tools (all three kits), and
+    every `SessionStart`/`SubagentStop` registration carries no matcher at all.
+
+    The import is lazy and carries NO `sys.path` insert — the module-level one above is what makes
+    it resolve, exactly as `_registrations` imports the kernel. Inserting here was measured at 15
+    `sys.path` entries growing to 126 over one pass across the three kits, because this predicate
+    runs once per registration.
+    """
+    from gen_provider_artifacts import TOOL_MATCHED_EVENTS
+    return event in TOOL_MATCHED_EVENTS and matcher not in (None, "", "*")
+
+
+def _matcher_reaches(event, matcher, tools):
     """Could a registration under this matcher ever hand the hook a tool it acts on?
 
-    `*`, an empty matcher and `None` mean every tool (Claude Code's documented default); otherwise
-    the matcher is an unanchored regex over tool names, and every shipped kit spells it as plain
-    alternatives, so the tokens are compared. A hook that declares no tools is not judged here.
+    A matcher that selects no tools reaches everything (`_selects_tools`); otherwise it is an
+    unanchored regex over tool names, and every shipped kit spells it as plain alternatives, so the
+    tokens are compared. A hook that declares no tools is not judged here.
     """
-    if not tools:
-        return True
-    if matcher in (None, "", "*"):
+    if not tools or not _selects_tools(event, matcher):
         return True
     return bool({token.strip() for token in str(matcher).split("|")} & tools)
 
 
 @_cached
-def _registered_hooks(kit_dir):
-    """{hook filename} — every hook of this kit that a SHIPPED registration could actually start.
+def _registrations(kit_dir):
+    """{hook filename: frozenset of (event, matcher)} — every SHIPPED registration of this kit.
 
     TWO SURFACES, and reading one of them is how this module's first cut invented a defect:
 
@@ -437,13 +535,24 @@ def _registered_hooks(kit_dir):
 
     The second surface is judged with the SAME kernel helpers as the first, so "this command runs
     that file" has one definition in the repo rather than one per reader.
+
+    THE EVENT IS KEPT BESIDE THE MATCHER, and the matcher is not consumed here — the split of
+    2026-08-16. What a matcher selects on is a property of its EVENT (`_selects_tools`), so a
+    reader that dropped the event could only compare every matcher against tool names; and whether
+    a registration can start the hook (`_registered_hooks`) is a different question from whether
+    this module can DECIDE that (`_unjudgeable_matchers`), which the old reader answered inside
+    itself and left the second question nothing to read.
     """
     from kernel import report
     hooks_dir = os.path.join(kit_dir, "hooks")
     if not os.path.isdir(hooks_dir):
-        return set()
+        return {}
     shipped = {name for name in os.listdir(hooks_dir) if name.endswith(".py")}
-    registered = set()
+    found = {}
+
+    def record(name, event, matcher):
+        if name in shipped:
+            found.setdefault(name, set()).add((event, matcher))
 
     settings = os.path.join(kit_dir, "settings", "settings.json")
     if os.path.isfile(settings):
@@ -453,10 +562,9 @@ def _registered_hooks(kit_dir):
             shutil.copytree(hooks_dir, os.path.join(claude, "hooks"))
             shutil.copy(settings, os.path.join(claude, "settings.json"))
             for name, events in report._wired_hooks(staged).items():
-                tools = _declared_tools(os.path.join(hooks_dir, name))
-                if any(_matcher_reaches(matcher, tools)
-                       for matchers in events.values() for matcher in matchers):
-                    registered.add(name)
+                for event, matchers in events.items():
+                    for matcher in matchers:
+                        record(name, event, matcher)
         finally:
             shutil.rmtree(staged, ignore_errors=True)
 
@@ -467,7 +575,7 @@ def _registered_hooks(kit_dir):
         if raw.count("---") < 2:
             continue
         front = yaml.safe_load(raw.split("---", 2)[1]) or {}
-        for entries in (front.get("hooks") or {}).values():
+        for event, entries in (front.get("hooks") or {}).items():
             for group in entries if isinstance(entries, list) else []:
                 if not isinstance(group, dict):
                     continue
@@ -479,10 +587,40 @@ def _registered_hooks(kit_dir):
                     if report._swallows_exit_code(command):
                         continue
                     for name in report._invoked_scripts(command):
-                        if name in shipped and _matcher_reaches(
-                                matcher, _declared_tools(os.path.join(hooks_dir, name))):
-                            registered.add(name)
-    return frozenset(registered & shipped)
+                        record(name, event, matcher)
+    return {name: frozenset(entries) for name, entries in found.items()}
+
+
+def _registered_hooks(kit_dir):
+    """{hook filename} — every hook of this kit a SHIPPED registration could actually start."""
+    return frozenset(
+        name for name, entries in _registrations(kit_dir).items()
+        if any(_matcher_reaches(event, matcher,
+                                _declared_tools(os.path.join(kit_dir, "hooks", name)))
+               for event, matcher in entries))
+
+
+def _unjudgeable_matchers(kit_dir, name):
+    """The registrations of this hook whose matcher this module cannot judge — the hole, as a set.
+
+    A tool matcher is judged against the tool names the hook says it acts on. Two ways there is
+    nothing left to judge, and both are properties rather than exemptions: the hook DECLARES its
+    tools (then `_matcher_reaches` answers), or the matcher selects no tools at all
+    (`_selects_tools` — an absent matcher, and every matcher on an event that does not match on
+    tools).
+
+    WHAT THIS DOES NOT ASK, named because the sentence above reads wider than the instrument:
+    whether a matcher over ANOTHER vocabulary is right. `notify_agent_events` is registered on
+    `Notification` under `agent_completed|agent_needs_input`; that those two kinds exist is
+    `gen_provider_artifacts`' subject (it translates them for Codex, and
+    `test_every_registration_a_kit_writes_survives_the_codex_translation` measures it), not this
+    module's. Reading it here would mean comparing a notification kind against a tool set, which is
+    the wrong comparison rather than a stricter one.
+    """
+    if _declared_tools(os.path.join(kit_dir, "hooks", name)):
+        return frozenset()
+    return frozenset(entry for entry in _registrations(kit_dir).get(name, ())
+                     if _selects_tools(*entry))
 
 
 def _kit_relative(path):
@@ -918,21 +1056,35 @@ def test_the_pin_detector_reads_the_spellings_it_claims(tmp_path):
                     "by_helper": False, "by_hook": False}, seen
 
 
-def test_the_tool_reader_follows_a_module_constant(tmp_path):
-    """The floor under `_declared_tools`, and the defect it was written for.
+def test_the_tool_reader_follows_a_module_constant_and_a_bound_name(tmp_path):
+    """The floor under `_declared_tools`, and the two defects it was written for.
 
-    A hook declares its tool set as a module constant and compares the payload against the NAME —
-    the shape `guard_memory_budget` ships (`data.get("tool_name") not in FILE_TOOLS`). A reader
-    over literal comparators alone answered `set()` for it, which `_matcher_reaches` reads as "this
-    hook cannot be judged, assume the matcher reaches", so the hook was filed as matcher-blind and
-    every licence resting on it was counted into the pinned figure. Eight shipped hooks have that
-    shape; the count fell from 14 to 8.
+    BOTH SIDES OF THE COMPARISON, because each of them cost a round:
 
-    All four declaration forms are on the probe, so dropping one from `_string_constants` goes red
-    instead of quietly shrinking what this docstring claims. And the counter-direction is asserted:
-    a name the module does not declare, and a constant that is not a set of strings, must still
-    answer "no tools" — a reader that guessed there would certify a matcher against a tool set it
-    invented.
+      * the COMPARATOR as a module constant — the shape `guard_memory_budget` ships
+        (`data.get("tool_name") not in FILE_TOOLS`). A reader over literal comparators alone
+        answered `set()` for it, which `_matcher_reaches` reads as "this hook cannot be judged,
+        assume the matcher reaches", so the hook was filed as matcher-blind and every licence
+        resting on it was counted into the pinned figure. Eight shipped hooks have that shape; the
+        count fell from 14 to 8.
+      * the LEFT SIDE as a bound name — the shape `gate_write_scope` and `gate_ledger_valid` ship
+        (`tool = data.get("tool_name")`, then `tool in FILE_TOOLS`). Same silence, same
+        consequence: the most-cited mechanism of the parity table declared nothing, and eight
+        licences were counted unjudgeable for it. The count fell from 8 to 0.
+
+    All four declaration forms and both comparison shapes are on the probe, so dropping one goes
+    red instead of quietly shrinking what this docstring claims. And the counter-direction is
+    asserted: a name the module does not declare, a constant that is not a set of strings, and a
+    name bound to something OTHER than the tool name must still answer "no tools" — a reader that
+    guessed there would certify a matcher against a tool set it invented.
+
+    THE THIRD PROBE IS THE PERMISSIVE DIRECTION, and it is the one the first cut of this fix got
+    wrong. The binding was collected module-wide with the claim that over-collecting costs nothing;
+    measured, it costs the whole judgement: a hook that binds the tool name in one function and a
+    FOREIGN function that rebinds the same name to something else (`tool = cfg.get("mode")`, then
+    `tool == "WebFetch"`) made `_declared_tools` answer `WebFetch` as well — and a tool a hook never
+    sees, in the set a matcher is judged against, is a licence certified on a registration that
+    cannot fire. `_bindings_of` is per scope and drops a name any assignment in that scope rebinds.
     """
     probe = tmp_path / "probe_tools.py"
     probe.write_text(
@@ -940,6 +1092,7 @@ def test_the_tool_reader_follows_a_module_constant(tmp_path):
         "SPAWN_TOOLS = ('Agent', 'Task')\n"
         "FILE_TOOLS = ['Edit', 'Write']\n"
         "SHELL_TOOLS = {'Bash', 'PowerShell'}\n"
+        "NOTEBOOK_TOOLS = ('NotebookEdit',)\n"
         "TIMEOUT = 60\n"
         "def a(data):\n"
         "    return data.get('tool_name') == TOOL\n"
@@ -948,9 +1101,15 @@ def test_the_tool_reader_follows_a_module_constant(tmp_path):
         "def c(data):\n"
         "    return data.get('tool_name') not in FILE_TOOLS\n"
         "def d(data):\n"
-        "    return data.get('tool_name') in SHELL_TOOLS\n", encoding="utf-8")
+        "    return data.get('tool_name') in SHELL_TOOLS\n"
+        "def e(data):\n"
+        "    tool = data.get('tool_name')\n"
+        "    if tool in NOTEBOOK_TOOLS:\n"
+        "        return tool == 'Read'\n"
+        "    return False\n", encoding="utf-8")
     assert _declared_tools(str(probe)) == {
-        "AskUserQuestion", "Agent", "Task", "Edit", "Write", "Bash", "PowerShell"}
+        "AskUserQuestion", "Agent", "Task", "Edit", "Write", "Bash", "PowerShell",
+        "NotebookEdit", "Read"}
 
     blind = tmp_path / "probe_blind.py"
     blind.write_text(
@@ -960,38 +1119,115 @@ def test_the_tool_reader_follows_a_module_constant(tmp_path):
         "def b(data):\n"
         "    return data.get('tool_name') == TIMEOUT\n"
         "def c(data):\n"
-        "    return data.get('hook_event_name') == 'SessionStart'\n", encoding="utf-8")
+        "    return data.get('hook_event_name') == 'SessionStart'\n"
+        "def d(data):\n"
+        "    event = data.get('hook_event_name')\n"
+        "    return event == 'PreToolUse'\n", encoding="utf-8")
     assert _declared_tools(str(blind)) == set()
 
-    # the shipped case this was written for, so the probe cannot drift away from the tree
-    budget = os.path.join(_kit_dirs()[0], "hooks", "guard_memory_budget.py")
+    # the permissive shape: one function binds the tool name, another rebinds the SAME name
+    rebound = tmp_path / "probe_rebound.py"
+    rebound.write_text(
+        "SHELL_TOOLS = ('Bash', 'PowerShell')\n"
+        "def judges(data):\n"
+        "    tool = data.get('tool_name')\n"
+        "    return tool in SHELL_TOOLS\n"
+        "def elsewhere(cfg):\n"
+        "    tool = cfg.get('mode')\n"
+        "    return tool == 'WebFetch'\n", encoding="utf-8")
+    assert _declared_tools(str(rebound)) == {"Bash", "PowerShell"}, (
+        "a name another function rebinds is not the tool name there — reading the binding "
+        "module-wide put `WebFetch` into the set a matcher is judged against")
+
+    # the shipped cases this was written for, so the probe cannot drift away from the tree. One per
+    # comparison shape: the constant on the right, and the tool name bound to a name on the left.
+    hooks = os.path.join(_kit_dirs()[0], "hooks")
+    budget = os.path.join(hooks, "guard_memory_budget.py")
     assert _declared_tools(budget) == {"Edit", "Write", "MultiEdit", "NotebookEdit"}, \
         _declared_tools(budget)
+    scope = os.path.join(hooks, "gate_write_scope.py")
+    assert _declared_tools(scope) == {"Edit", "Write", "MultiEdit", "NotebookEdit",
+                                      "Bash", "PowerShell"}, _declared_tools(scope)
+
+
+def test_the_judgeability_question_is_asked_only_of_a_matcher_that_selects_tools(tmp_path):
+    """The floor under `_unjudgeable_matchers`, over the four cases its docstring distinguishes.
+
+    A synthetic kit, so the mutation is outside the shipped tree and the four cases stand side by
+    side rather than being read off whichever hook happens to ship them today:
+
+      * no declared tools + a tool matcher   -> UNJUDGEABLE. This is the hole the count exists for,
+        and without this case "return frozenset()" would pass everything.
+      * no declared tools + no matcher       -> judged. `kit_trust_state` and
+        `gate_subagent_output` are the shipped case, and it is what took rows 19 and 54 out.
+      * declared tools + a tool matcher      -> judged by `_matcher_reaches`.
+      * no declared tools + a matcher on an event that does not select tools -> judged, the limit
+        the docstring names: `Notification` matches notification kinds, and comparing one against
+        a tool set is the wrong question rather than a stricter one.
+    """
+    kit = tmp_path / "probe-team"
+    (kit / "hooks").mkdir(parents=True)
+    for name in ("blind_tool_matcher.py", "blind_no_matcher.py", "blind_other_vocabulary.py"):
+        (kit / "hooks" / name).write_text(
+            'import sys\nif str(data.get("hook_event_name")) != "PreToolUse":\n'
+            "    sys.exit(0)\n", encoding="utf-8")
+    (kit / "hooks" / "declares.py").write_text(
+        'SHELL_TOOLS = ("Bash", "PowerShell")\n'
+        'tool = data.get("tool_name")\nif tool not in SHELL_TOOLS:\n    raise SystemExit(0)\n',
+        encoding="utf-8")
+    (kit / "settings").mkdir(parents=True)
+    (kit / "settings" / "settings.json").write_text(json.dumps({"hooks": {
+        "PreToolUse": [
+            {"matcher": "Bash|PowerShell",
+             "hooks": [{"type": "command", "command": "python blind_tool_matcher.py"}]},
+            {"matcher": "Bash|PowerShell",
+             "hooks": [{"type": "command", "command": "python declares.py"}]},
+        ],
+        "SubagentStop": [{"hooks": [{"type": "command",
+                                     "command": "python blind_no_matcher.py"}]}],
+        "Notification": [{"matcher": "agent_completed|agent_needs_input",
+                          "hooks": [{"type": "command",
+                                     "command": "python blind_other_vocabulary.py"}]}],
+    }}), encoding="utf-8")
+
+    verdict = {name: bool(_unjudgeable_matchers(str(kit), name))
+               for name in ("blind_tool_matcher.py", "blind_no_matcher.py",
+                            "blind_other_vocabulary.py", "declares.py")}
+    assert verdict == {"blind_tool_matcher.py": True, "blind_no_matcher.py": False,
+                       "blind_other_vocabulary.py": False, "declares.py": False}, verdict
+    # and the registration reader agrees that all four run — the judgeability question is about
+    # what this module can DECIDE, never about whether the hook is wired
+    assert _registered_hooks(str(kit)) == {"blind_tool_matcher.py", "blind_no_matcher.py",
+                                           "blind_other_vocabulary.py", "declares.py"}
 
 
 def test_the_licences_resting_on_an_unjudgeable_matcher_are_counted():
-    """How many live licences rest on a hook whose matcher this module CANNOT judge.
+    """How many live licences rest on a registration whose matcher this module CANNOT judge.
 
-    `_matcher_reaches` needs the hook to say which tools it acts on; six registered dev hooks do
-    not say it (they key off the event, or read the payload and decide later). For those, a matcher
-    naming a tool the hook never sees reads as a working registration — measured with both
-    `gate_write_scope` registrations replaced by one on `matcher: "WebFetch"`: still counted as
-    registered, module green, and the licences resting on it dead.
+    THE COUNT IS 0 SINCE 2026-08-16, and it got there by reading two facts the module already had
+    rather than by lowering the bar — both halves are in `_unjudgeable_matchers`:
+
+      * `gate_write_scope` and `gate_ledger_valid` DO declare their tools, through a name
+        (`tool = data.get("tool_name")`). The reader now follows that binding, which is what took
+        rows 6, 17, 34, 62, 73 and 106 out of this set.
+      * `gate_subagent_output` and `kit_trust_state` are registered with NO matcher (`SubagentStop`,
+        `SessionStart`). A registration that selects nothing cannot name a tool the hook never
+        sees, so there is nothing left to judge — rows 19 and 54. (`_selects_tools` asks the EVENT
+        too, and that half takes no row out today: no licence rests on `notify_agent_events`, the
+        one hook with a matcher over another vocabulary. Its floor is
+        `test_the_judgeability_question_is_asked_only_of_a_matcher_that_selects_tools`.)
 
     WHAT THIS NUMBER IS NOT, and it read as the other thing for a whole round: it is a statement
-    about MATCHER JUDGEABILITY, not about which routes a rule can be broken through. The two
-    counter-examples are in the tree — `gate_write_scope` declares no tool set and is registered on
-    the shell AND the file tools, so both routes are covered; `guard_pm_scope` declares one and is
-    registered on the file tools only, so its shell route is open and it is NOT in this set.
+    about MATCHER JUDGEABILITY, not about which routes a rule can be broken through. The
+    counter-example is in the tree — `guard_pm_scope` declares its tools and is registered on the
+    file tools only, so its shell route is open and it is not in this set, nor should it be.
 
-    WHY THE HOLE IS COUNTED RATHER THAN CLOSED, decided after measuring the alternative. The
-    proposal was to derive the tool class from the payload field a hook reads. That derivation
-    needs a table — `file_paths` means the file tools, `tool_input.command` means the shell tools,
-    `questions` means `AskUserQuestion`, `subagent_type` means `Agent`/`Task` — which is precisely
-    the enumeration of special cases this repo keeps paying for, and it misfires on any hook that
-    touches a field for a reason other than acting on it. A wrong derivation would refuse licences
-    with a false reason. So the honest instrument is a NUMBER that goes red when it grows, and the
-    executor of the shortening is told which rows it covers.
+    WHAT IS STILL NOT DERIVED, so a later reader does not read 0 as "solved": the tool class of a
+    hook that filters on the PAYLOAD instead of the tool name. The proposal was a table —
+    `file_paths` means the file tools, `tool_input.command` the shell tools — which is the
+    enumeration of special cases this repo keeps paying for, and it misfires on any hook that
+    touches a field for a reason other than acting on it. No shipped hook needs it today; the day
+    one does, this number moves and says so.
     """
     resting = []
     for number, _rule, sources, classification in _matrix_rows():
@@ -1004,18 +1240,222 @@ def test_the_licences_resting_on_an_unjudgeable_matcher_are_counted():
                 relative = _kit_relative(path) if path else None
                 if not relative or relative.split(os.sep)[0] != "hooks":
                     continue
-                if any(not _declared_tools(os.path.join(kit, relative))
+                if any(_unjudgeable_matchers(kit, os.path.basename(relative))
                        for kit in (kits or _kits_shipping(relative))):
                     resting.append(number)
     resting = sorted(set(resting), key=int)
+    # No parenthesis behind an empty set — the same reading decision
+    # `test_the_open_mechanism_count_is_the_rows_that_are_there` states for its own list: `(…)`
+    # with nothing in it reads like a list somebody forgot to fill. The COUNT is pinned either way.
+    tail = (r" \(%s\)" % ", ".join(resting)) if resting else ""
     assert re.search(r"\*\*%d der %d wirksamen Lizenzen ruhen auf einem Hook, dessen Matcher "
-                     r"dieses Modul nicht beurteilen kann\*\* \(%s\)"
+                     r"dieses Modul nicht beurteilen kann\*\*%s"
                      % (len(resting),
                         len([row for row in _matrix_rows() if _licenses_a_deletion(row[3])
                              and not _is_open(_mechanism_field(row[3]))]),
-                        ", ".join(resting)), _reading_view()), (
+                        tail), _reading_view()), (
         "the document does not state that %d licences rest on an unjudgeable matcher (%s)"
-        % (len(resting), ", ".join(resting)))
+        % (len(resting), ", ".join(resting) or "none"))
+
+
+def _event_handlers(tree):
+    """{event: handler name} — the hook's OWN event→symbol mapping, or {} when it declares none.
+
+    A module-level dict from string constants to function names is what `gate_dispatch` and
+    `gate_ledger_valid` ship (`HANDLERS = {"PreToolUse": handle_pre_tool_use, …}`) and what their
+    `main` dispatches through. Read rather than assumed: this is the file stating which of its
+    symbols an event can reach, and nothing else in the repo states it.
+    """
+    handlers = {}
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict)):
+            continue
+        for key, value in zip(node.value.keys, node.value.values):
+            if (isinstance(key, ast.Constant) and isinstance(key.value, str)
+                    and isinstance(value, ast.Name)):
+                handlers[key.value] = value.id
+    return handlers
+
+
+def _call_graph(tree):
+    """{function name: the module functions it calls} — plain names and `self`-less attributes."""
+    defined = {node.name for node in ast.walk(tree)
+               if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    graph = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        calls = set()
+        for inner in _own_nodes(node):
+            if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name):
+                calls.add(inner.func.id)
+        graph[node.name] = calls & defined
+    return graph
+
+
+def _reached_from(graph, entry):
+    """`entry` plus everything it can call, transitively."""
+    seen, stack = set(), [entry]
+    while stack:
+        current = stack.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        stack += list(graph.get(current, ()))
+    return seen
+
+
+@_cached
+def _events_reaching(path, symbol):
+    """The events under which this SYMBOL can run, or None for "every registration reaches it".
+
+    THE MECHANISM FIELD NAMES A SYMBOL, NOT A FILE, and the file-level answer is measurably the
+    wrong subject: `gate_dispatch` is registered on five events, two of which Codex has
+    (`Stop`, `SubagentStart`), so the file "runs on Codex" — while `handle_pre_tool_use` is bound
+    to `PreToolUse` alone (`HANDLERS`) and `_refuse_untrusted_bundle` is called from that handler
+    only. Rows 4 and 54 name exactly those two symbols, and a file-level reader left both out of
+    the Codex count while the paragraph beside it quoted `guard_agent_spawn`'s "on Codex no spawn
+    hook runs at all".
+
+    None means the question does not narrow: the hook declares no handler map (then every
+    registration runs its `main` end to end), or the symbol is reachable from a scope no handler
+    owns — `main` itself is the shipped case of that. The direction is deliberate and stated
+    because it is the permissive one: a symbol whose events cannot be narrowed is judged against
+    ALL of the hook's registrations, so this reader can only ever count a row Codex-blind when the
+    hook's own mapping says so.
+    """
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    handlers = _event_handlers(tree)
+    if not handlers:
+        return None
+    graph = _call_graph(tree)
+    events = frozenset(event for event, handler in handlers.items()
+                       if symbol in _reached_from(graph, handler))
+    return events or None
+
+
+def _reaches_codex(kit_dir, name, symbol=None):
+    """Can any shipped registration start this MECHANISM under Codex?
+
+    Asked of the generator that writes the Codex artifacts, never of a second table here:
+    `CODEX_EVENTS` says which events exist there and `codex_matchers_for` translates the matcher,
+    contributing nothing for a tool `CODEX_UNSUPPORTED_TOOLS` declares. An empty translation is
+    therefore "this registration does not exist on Codex" — and the empty TUPLE is the answer to
+    read, not the truthiness of its members: a matcher of `None` translates to `(None,)`, which is
+    one registration and not none (measured while writing this: `any(...)` read that as no
+    registration and filed every `SessionStart` hook as Codex-blind).
+
+    The registrations are narrowed to the ones that can reach `symbol` (`_events_reaching`); with
+    no symbol the question is asked of the file, which is a weaker question and is why the callers
+    pass one.
+    """
+    from gen_provider_artifacts import CODEX_EVENTS, codex_matchers_for
+    events = _events_reaching(os.path.join(kit_dir, "hooks", name), symbol) if symbol else None
+    for event, matcher in _registrations(kit_dir).get(name, ()):
+        if events is not None and event not in events:
+            continue
+        if event in CODEX_EVENTS and codex_matchers_for(event, matcher) != ():
+            return True
+    return False
+
+
+def test_the_licences_whose_mechanism_cannot_run_on_codex_are_counted():
+    """The limit this round measured, and the reason it belongs beside the other two counts.
+
+    A kit ships for two providers, and its constitution is loaded by BOTH. Where the replacing
+    mechanism is registered only on tools Codex has no equivalent for, deleting the prose does not
+    move the rule from the text into the gate — it deletes the only carrier the Codex session has.
+    Two shipped hooks say so in their own words (`guard_agent_spawn`: "on Codex no spawn hook runs
+    at all and the rule binds through the constitution alone"; `gen_provider_artifacts`'
+    `AskUserQuestion` note for `guard_question_context`), and the office constitution states it for
+    its own §1 ("On Codex this binds as POLICY only"). Counted here instead of remembered.
+
+    THE SUBJECT IS THE CITED SYMBOL, not the file that holds it, and the first cut of this test got
+    that wrong: `gate_dispatch` runs on two events Codex has, so file-wise it "runs there", while
+    rows 4 and 54 name `handle_pre_tool_use` and `_refuse_untrusted_bundle` — bound by the hook's
+    own `HANDLERS` to `PreToolUse('Agent|Task')` and reachable through nothing else. Both were
+    missing from the count while this docstring quoted `guard_agent_spawn`'s Codex sentence.
+    `_events_reaching` is the narrowing, and mutating it back to the file question turns this red.
+
+    A ROW COUNTS WHEN ONE OF ITS NAMED MECHANISMS IS OUT, not only when all of them are: the field
+    names what takes the rule over, so a half that Codex cannot start is prose the Codex session
+    still needs. Row 54 is exactly that shape — `kit_trust_state.transition` runs there,
+    `gate_dispatch._refuse_untrusted_bundle` does not.
+
+    WHAT IS PINNED IS THE COUNT, as with the other two: which rows they are is a fact about the
+    registrations, and reclassifying a row is a user decision. What the number is FOR is the
+    executor of the next shortening pass — these rows are the ones a standing licence does not make
+    cuttable.
+    """
+    blind = []
+    for number, _rule, sources, classification in _matrix_rows():
+        field = _mechanism_field(classification)
+        if not _licenses_a_deletion(classification) or _is_open(field):
+            continue
+        for kits, text in _field_entries(field, _source_kits(sources)):
+            for name, symbol in _CITATION_RX.findall(text):
+                path = _resolve_file(name)
+                relative = _kit_relative(path) if path else None
+                if not relative or relative.split(os.sep)[0] != "hooks":
+                    continue
+                if any(not _reaches_codex(kit, os.path.basename(relative), symbol)
+                       for kit in (kits or _kits_shipping(relative))):
+                    blind.append(number)
+    blind = sorted(set(blind), key=int)
+    tail = (r" \(%s\)" % ", ".join(blind)) if blind else ""
+    assert re.search(r"\*\*%d der %d wirksamen Lizenzen ruhen auf einem Mechanismus, den Codex "
+                     r"nicht starten kann\*\*%s"
+                     % (len(blind),
+                        len([row for row in _matrix_rows() if _licenses_a_deletion(row[3])
+                             and not _is_open(_mechanism_field(row[3]))]),
+                        tail), _reading_view()), (
+        "the document does not state that %d licences rest on a mechanism Codex cannot start (%s)"
+        % (len(blind), ", ".join(blind) or "none"))
+
+
+def test_the_codex_reader_separates_a_spawn_hook_from_a_shell_hook():
+    """The floor under `_reaches_codex`: a reader answering the same for both closes nothing.
+
+    Over the shipped tree in both directions, because each direction is a different failure. A
+    reader that answered "reachable" everywhere would empty the count above; one that answered
+    "blind" everywhere would refuse every licence with a reason that is not true. `guard_agent_spawn`
+    is registered on `Agent|Task` only — the declared gap — and `gate_write_scope` on the file and
+    shell tools, which Codex has.
+    """
+    kit = _kit_dirs()[0]
+    assert not _reaches_codex(kit, "guard_agent_spawn.py"), (
+        "`Agent`/`Task` is in CODEX_UNSUPPORTED_TOOLS, so no Codex registration starts this hook")
+    assert _reaches_codex(kit, "gate_write_scope.py")
+    assert _reaches_codex(kit, "session_status.py"), (
+        "a SessionStart registration carries no matcher and exists on Codex — the empty-tuple "
+        "reading of `codex_matchers_for` is what this asserts")
+
+
+def test_the_codex_reader_asks_about_the_symbol_and_not_only_its_file():
+    """The floor under `_events_reaching`, over the shipped case that made the count wrong.
+
+    `gate_dispatch.py` is registered on five events; `Stop` and `SubagentStart` exist on Codex, so
+    the FILE runs there. Its `HANDLERS` bind `handle_pre_tool_use` to `PreToolUse` alone, and
+    `_refuse_untrusted_bundle` is called from that handler only — so both symbols, which parity
+    rows 4 and 54 name as the replacement, cannot be reached on Codex at all. Asserting both
+    answers of the same reader is what makes a mutation back to the file-level question red here as
+    well as in the count above.
+
+    The third assertion is the permissive direction the docstring of `_events_reaching` names: a
+    symbol no handler owns (`main`) does not narrow anything, so the file's registrations answer.
+    """
+    kit = _kit_dirs()[0]
+    dispatch = os.path.join(kit, "hooks", "gate_dispatch.py")
+    assert _reaches_codex(kit, "gate_dispatch.py"), "the FILE has Codex-reachable registrations"
+    assert _events_reaching(dispatch, "handle_pre_tool_use") == frozenset(["PreToolUse"])
+    assert _events_reaching(dispatch, "_refuse_untrusted_bundle") == frozenset(["PreToolUse"])
+    assert not _reaches_codex(kit, "gate_dispatch.py", "handle_pre_tool_use")
+    assert not _reaches_codex(kit, "gate_dispatch.py", "_refuse_untrusted_bundle")
+    assert _reaches_codex(kit, "gate_dispatch.py", "handle_stop"), (
+        "`Stop` is a Codex event and its handler is reachable there — a reader that answered "
+        "'blind' for every symbol of this file would count rows that are not blind")
+    assert _events_reaching(dispatch, "main") is None
 
 
 def test_the_licences_whose_rule_also_lives_in_a_specialist_file_are_counted():
