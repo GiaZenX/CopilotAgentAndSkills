@@ -4176,6 +4176,59 @@ _ORDERING_ALLOWED = (
 )
 
 
+# The second class of rule 4 (L40): commands that REINSTALL the enforcement layer. The last two
+# are the spellings a rule written on the plain word would miss -- the entry point reached after a
+# `cd`, and the module form of the same CLI.
+_INSTALLING_REFUSED = (
+    "python scripts/harness.py set-preset team",
+    "python scripts/harness.py update-kit",
+    "cd scripts && python harness.py update-kit",
+    "python -m kernel.cli set-preset core",
+)
+# What a subagent may still run around such a change, and it is the RESIDUE this round names
+# rather than closes: opening the approval QUESTION orders nothing and installs nothing -- the
+# user mints by answering it, so the content stays theirs. See the test that owns this tuple.
+_INSTALL_APPROVAL_ALLOWED = (
+    "python scripts/harness.py request-approval preset --preset team",
+    "python scripts/harness.py request-approval kit_update",
+)
+
+
+@pytest.mark.parametrize("command", _INSTALLING_REFUSED)
+def test_a_subagent_cannot_run_the_harness_commands_that_install_enforcement(tmp_path, command):
+    """L40, closed for the class rather than for the two names in it: a specialist may not start
+    the kit's installer, which rewrites the hooks, the settings and the role set the session is
+    judged by.
+
+    Measured red before this (verifiers of TSK-0064 and TSK-0067, real hook processes against a
+    scaffolded project): as a subagent, `set-preset` and `update-kit` passed ALL eight registered
+    `Bash|PowerShell` gates while `create-task` was rc 2 for the same caller -- rule 4 knew only
+    the class "orders work", and neither of these orders anything. What the subagent controlled
+    was the TIMING of a user-signed change (and, for `set-preset`, its repetition).
+
+    The class is derived, not named:
+    `test_the_installing_commands_are_the_cli_routes_to_the_installer`.
+    """
+    _state, _task = bound_repo(tmp_path)
+    result = run_scope(tmp_path, dict(shell_payload(tmp_path, command), agent_id="child-1"))
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "REINSTALLS THE ENFORCEMENT LAYER" in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("command", _INSTALL_APPROVAL_ALLOWED)
+def test_asking_the_user_for_an_install_approval_is_the_named_residue(tmp_path, command):
+    """THE TRIPWIRE ON THE LIMIT, in both directions. `request-approval` prints the question the
+    USER answers; no command mints, so a subagent that opens one has changed nothing yet and this
+    rule leaves it alone -- which is why L40's judgement is "the authorisation is the user's APR".
+
+    If a later round decides the QUESTION is the lead's act too, this test goes red and the
+    sentence above has to move with the code instead of quietly outliving it.
+    """
+    _state, _task = bound_repo(tmp_path)
+    result = run_scope(tmp_path, dict(shell_payload(tmp_path, command), agent_id="child-1"))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 @pytest.mark.parametrize("command", _ORDERING_REFUSED)
 def test_a_subagent_cannot_run_the_harness_commands_that_order_work(tmp_path, command):
     """The DELEGATE/ROUTE row of every kit's work loop — the lead creates the `TSK` before the
@@ -4197,11 +4250,13 @@ def test_a_subagent_cannot_run_the_harness_commands_that_order_work(tmp_path, co
 
 @pytest.mark.parametrize("identity", _SESSION_INSTANCE_SHAPES,
                          ids=["fields-absent", "fields-null"])
-@pytest.mark.parametrize("command", _ORDERING_ALLOWED + _ORDERING_REFUSED)
+@pytest.mark.parametrize("command",
+                         _ORDERING_ALLOWED + _ORDERING_REFUSED + _INSTALLING_REFUSED
+                         + _INSTALL_APPROVAL_ALLOWED)
 def test_the_orchestrator_is_not_caught_by_the_ordering_rule(tmp_path, command, identity):
-    """The anti-lockout control, and it covers the REFUSED battery too: the same lines from the
-    session instance must pass, or rule 4 has just taken the ordering commands away from the only
-    role that has them.
+    """The anti-lockout control, and it covers BOTH refused batteries too: the same lines from the
+    session instance must pass, or rule 4 has just taken the ordering commands — or the kit
+    update — away from the only role that has them.
 
     BOTH parent payload shapes, for the reason the spawn test states — the identity fields have
     been seen absent and present-as-null, and only the null one distinguishes a truthiness test
@@ -4245,72 +4300,120 @@ def _functions_by_name(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
 
 
-def _reaches_producer(node, producers, functions, seen):
-    """Does `node` reach one of `producers`, following calls into LOCAL helper functions?
+def _reaches_producer(node, module, producers, trees, functions, seen):
+    """Does `node` reach one of `producers`, following calls into helper functions?
 
     TRANSITIVE, WITH CYCLE PROTECTION (BUG-0006, the class of review round 2's B7). A check that
     stopped at the first hop read a branch reaching a producer only THROUGH a helper as not
-    reaching it at all -- and for the map this derivation pins, that silence removes an ordering
-    command from rule 4, which then stops refusing it for a subagent. A producer call is a `Call`
-    whose func names one of `producers` (as `x.create_task` or a bare `create_task`); a local hop
-    is a `Call` to a bare Name that this module defines. `seen` (function names already entered)
-    makes a self- or mutually-recursive helper terminate instead of looping forever.
+    reaching it at all -- and for the maps this derivation pins, that silence removes a command
+    from rule 4, which then stops refusing it for a subagent. A producer call is a `Call` whose
+    func names one of `producers` (as `x.create_task` or a bare `create_task`).
+
+    ACROSS MODULES, not only inside one: `set-preset` and `update-kit` take their effect from
+    `presets.installer_command`, and `cli.py` reaches it only through `presets.apply` /
+    `kitupdate.apply` -- a module-local walk answers "no route" for both and the enforcement class
+    is empty. So a `Call` on `<module>.<name>` is followed when `<module>` is a module of the same
+    package (that is the import shape `kernel/*.py` uses throughout: `from . import presets`).
+    `seen` holds (module, function) pairs already entered, so a self-, mutually- or
+    cross-module-recursive helper terminates instead of looping forever.
     """
     for inner in ast.walk(node):
         if not isinstance(inner, ast.Call):
             continue
         func = inner.func
-        if isinstance(func, ast.Attribute) and func.attr in producers:
-            return True
-        if isinstance(func, ast.Name):
+        if isinstance(func, ast.Attribute):
+            if func.attr in producers:
+                return True
+            owner = func.value
+            if isinstance(owner, ast.Name) and owner.id in trees:
+                target = functions[owner.id].get(func.attr)
+                if target is not None and (owner.id, func.attr) not in seen:
+                    seen.add((owner.id, func.attr))
+                    if _reaches_producer(target, owner.id, producers, trees, functions, seen):
+                        return True
+        elif isinstance(func, ast.Name):
             if func.id in producers:
                 return True
-            target = functions.get(func.id)
-            if target is not None and func.id not in seen:
-                seen.add(func.id)
-                if _reaches_producer(target, producers, functions, seen):
+            target = functions[module].get(func.id)
+            if target is not None and (module, func.id) not in seen:
+                seen.add((module, func.id))
+                if _reaches_producer(target, module, producers, trees, functions, seen):
                     return True
     return False
 
 
-def _commands_reaching(source, path, producers):
-    """The `args.command` constants whose branch in `source` reaches one of `producers`.
+def _branch_command(test, trees):
+    """The subcommand an `if args.command == ...` branch belongs to, or None.
 
-    Split from `_cli_commands_reaching` so the transitive resolution can be measured against a
-    constructed module (a branch that reaches a producer only via a helper) rather than only
-    against whatever `cli.py` happens to route directly today.
+    THE VALUE, not the spelling of the comparator: `cli.py` writes one of these branches as
+    `args.command == kitupdate.COMMAND`, and a reader that only accepted a literal dropped
+    `update-kit` from every derivation over it -- silently, which for a rule-4 map means the class
+    goes green one command short. A module attribute is therefore resolved against that module's
+    own constant.
     """
-    tree = ast.parse(source, path)
-    functions = _functions_by_name(tree)
+    if not (isinstance(test, ast.Compare) and len(test.ops) == 1
+            and isinstance(test.ops[0], ast.Eq)
+            and isinstance(test.left, ast.Attribute) and test.left.attr == "command"
+            and isinstance(test.left.value, ast.Name) and test.left.value.id == "args"):
+        return None
+    right = test.comparators[0]
+    if isinstance(right, ast.Constant):
+        return right.value
+    if (isinstance(right, ast.Attribute) and isinstance(right.value, ast.Name)
+            and right.value.id in trees):
+        for node in trees[right.value.id].body:
+            if isinstance(node, ast.Assign) and any(
+                    isinstance(target, ast.Name) and target.id == right.attr
+                    for target in node.targets):
+                return ast.literal_eval(node.value)
+    return None
+
+
+def _commands_reaching(trees, producers, entry="cli"):
+    """The `args.command` values whose branch in `trees[entry]` reaches one of `producers`.
+
+    Takes the parsed package rather than one source string, so the resolution can be measured
+    against constructed modules (a branch that reaches a producer only via a helper, or only via
+    another module) rather than only against whatever `cli.py` happens to route directly today.
+    """
+    functions = {name: _functions_by_name(tree) for name, tree in trees.items()}
     found = set()
-    for node in ast.walk(tree):
+    for node in ast.walk(trees[entry]):
         if not isinstance(node, ast.If):
             continue
-        test = node.test
-        if not (isinstance(test, ast.Compare) and len(test.ops) == 1
-                and isinstance(test.ops[0], ast.Eq)
-                and isinstance(test.left, ast.Attribute) and test.left.attr == "command"
-                and isinstance(test.left.value, ast.Name) and test.left.value.id == "args"
-                and isinstance(test.comparators[0], ast.Constant)):
+        command = _branch_command(node.test, trees)
+        if command is None:
             continue
         # each branch gets its OWN `seen` -- one command's helper walk must not suppress another's
-        if any(_reaches_producer(stmt, producers, functions, set()) for stmt in node.body):
-            found.add(test.comparators[0].value)
+        if any(_reaches_producer(stmt, entry, producers, trees, functions, set())
+               for stmt in node.body):
+            found.add(command)
     return found
+
+
+def _kernel_trees():
+    """Every module of the SHIPPED kernel package, parsed -- the call graph the CLI routes into."""
+    trees = {}
+    directory = os.path.join(TEAM_KITS, "kernel")
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".py"):
+            continue
+        path = os.path.join(directory, name)
+        with io.open(path, encoding="utf-8") as handle:
+            trees[name[:-3]] = ast.parse(handle.read(), path)
+    return trees
 
 
 def _cli_commands_reaching(producers):
     """The `args.command` values whose branch in `kernel/cli.py` reaches one of `producers`.
 
-    THE DERIVATION, so the gate's map cannot be a tuple that was true once. `create_task` and
-    `create_lease` are the kernel's two producers of "work somebody else executes"; which CLI
-    subcommands reach them is a fact of `cli.py` and is read out of it here -- at ANY call depth,
-    so a future refactor that routes an ordering command through a helper cannot make this fall
-    silent (see `_reaches_producer`).
+    THE DERIVATION, so a gate's map cannot be a tuple that was true once. Which CLI subcommands
+    reach a given kernel producer is a fact of the kernel and is read out of it here -- at ANY
+    call depth and through any of its modules, so neither a refactor that routes a command through
+    a helper nor one that moves the producer into another module can make this fall silent (see
+    `_reaches_producer`).
     """
-    path = os.path.join(TEAM_KITS, "kernel", "cli.py")
-    with io.open(path, encoding="utf-8") as handle:
-        return _commands_reaching(handle.read(), path, producers)
+    return _commands_reaching(_kernel_trees(), producers)
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -4370,9 +4473,95 @@ def test_the_route_derivation_follows_helper_hops_with_cycle_protection():
     cyclic branch reaches no producer and must be ABSENT (and must not hang), and the innocent one
     must be absent too, so the assertion also fails if the walk over-counts.
     """
-    found = _commands_reaching(_CLI_WITH_HELPER_HOPS, "<cli-with-hops>",
+    found = _commands_reaching({"cli": ast.parse(_CLI_WITH_HELPER_HOPS, "<cli-with-hops>")},
                                {"create_task", "create_lease"})
     assert found == {"direct", "one-hop", "two-hops"}, found
+
+
+# The two shapes `set-preset` and `update-kit` really have in `kernel/cli.py`, reduced to their
+# skeleton: the producer sits in ANOTHER module and the branch is reached through that module's
+# `apply`, and one of the two branches compares against a module CONSTANT rather than a literal.
+_CLI_ACROSS_MODULES = '''
+def main(args, state):
+    if args.command == "installs":
+        presets.apply(state, args.preset)
+    if args.command == installer.COMMAND:
+        installer.apply(state)
+    if args.command == "innocent":
+        presets.record_preset(state, args.preset)
+'''
+_MODULE_WITH_THE_PRODUCER = '''
+COMMAND = "update-kit"
+
+def installer_command(kit):
+    return ["scaffold", kit]
+
+def apply(state, preset=None):
+    return _run(installer_command(state.kit))
+
+def _run(command):
+    return command
+
+def record_preset(state, preset):
+    return preset
+'''
+
+
+def test_the_route_derivation_crosses_modules_and_resolves_a_constant_comparator():
+    """The two things the ENFORCEMENT class needs that the ordering class never did, both measured
+    on a constructed package instead of on whatever `cli.py` looks like today.
+
+    RED WITHOUT THE FIX, each half on its own: a module-LOCAL walk answers "reaches nothing" for
+    both branches, because the producer is `presets.installer_command` and `cli.py` only ever
+    calls `presets.apply` -- the derived class comes out EMPTY and the pin below would then demand
+    an empty `_INSTALLING_COMMANDS`, i.e. the rule switched off by a green test. And a comparator
+    reader that accepts only `ast.Constant` drops the `installer.COMMAND` branch, which is exactly
+    how `update-kit` is written in the shipped CLI -- the class would come out one command short,
+    which is the state L40 measured.
+
+    The `innocent` branch is the over-count control: it calls into the same module and reaches no
+    producer, so it must be absent.
+    """
+    trees = {"cli": ast.parse(_CLI_ACROSS_MODULES, "<cli-across>"),
+             "presets": ast.parse(_MODULE_WITH_THE_PRODUCER, "<producer>"),
+             "installer": ast.parse(_MODULE_WITH_THE_PRODUCER, "<producer>")}
+    found = _commands_reaching(trees, {"installer_command"})
+    assert found == {"installs", "update-kit"}, found
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_the_installing_commands_are_the_cli_routes_to_the_installer(kit):
+    """`_INSTALLING_COMMANDS` IS the set of CLI subcommands that reach `presets.installer_command`
+    — the second derived class of rule 4 (L40), asserted against the kernel and not against a
+    memory of it.
+
+    WHY THAT PRODUCER: a command "installs the enforcement layer" when it starts the kit's
+    installer, and the kernel builds that invocation in exactly one place; `presets.apply` and
+    `kitupdate.apply` both hand its result to a child process. So a third command with the same
+    effect joins this class the day it ships, and an entry here that starts no installer is red —
+    which is the property L40 asks for instead of the two names it measured.
+
+    What the derivation cannot see is the same boundary `_ORDERING_COMMANDS` has: a command that
+    shelled out to the scaffold itself instead of asking the kernel for the invocation.
+    """
+    routes = _cli_commands_reaching({"installer_command"})
+    assert routes, "the derivation found no route at all — the kernel's shape changed, not the gate's"
+    assert set(_gate_constant(kit, "_INSTALLING_COMMANDS")) == routes, (
+        "%s: gate_write_scope reserves %s to the lead, the kernel routes to the installer through %s"
+        % (kit, sorted(_gate_constant(kit, "_INSTALLING_COMMANDS")), sorted(routes)))
+
+
+def test_the_two_derived_classes_of_rule_4_stay_disjoint():
+    """One command, one reason — otherwise a refusal names a property the command does not have.
+
+    Not a taste rule: `_reserved_command` is asked once per class and the FIRST match wins, so an
+    overlap would silently decide which of two messages a role reads. Both maps are derived, so
+    this is a statement about the KERNEL: nothing that orders work installs enforcement today.
+    """
+    ordering = _cli_commands_reaching({"create_task", "create_lease"})
+    installing = _cli_commands_reaching({"installer_command"})
+    assert ordering and installing and not (ordering & installing), (sorted(ordering),
+                                                                     sorted(installing))
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -5754,9 +5943,12 @@ def test_a_continued_line_is_one_command_in_both_directions(tmp_path, command, b
     ("cd .github && cd hooks && echo x > pre-commit", True),
     ("cd .agents && cd skills && echo x > evil.md", True),
     ("cd .github && cd workflows && echo x > ci.yml", False),
-    # unwinding INSIDE one argument: depth counted this as entering
-    ("cd project_memory/../src && echo x > a.py", False),
-    ("cd project_memory && cd ../src && echo x > a.py", False),
+    # Unwinding INSIDE one argument: depth counted this as entering. The sibling is `docs/` and
+    # the file an ordinary document, because the lead's OWN rule (rule 5) judges the target as
+    # well: with `src/a.py` these two lines are refused for a second, unrelated reason and would
+    # stop measuring the position tracker at all.
+    ("cd project_memory/../docs && echo x > a.yaml", False),
+    ("cd project_memory && cd ../docs && echo x > a.yaml", False),
     # the case that distinguishes path-tracking from a boolean: descend, then unwind ONE level
     ("cd project_memory && cd approvals && cd .. && echo x > a.yaml", True),
     ("cd project_memory/approvals/pending && cd ../.. && echo x > a.yaml", True),
@@ -5769,7 +5961,7 @@ def test_the_working_directory_is_tracked_as_a_path(tmp_path, command, blocked):
     """Third model for this, and the first that answers all three questions by construction.
 
     A boolean could not tell leaving from descending. A depth counter fixed that but could not
-    enter a TWO-SEGMENT tree in two steps, and read `cd project_memory/../src` as entering. The
+    enter a TWO-SEGMENT tree in two steps, and read `cd project_memory/../docs` as entering. The
     working directory itself makes "are we inside a protected tree" the same question the
     direct-naming check already asks."""
     dispatched_repo(tmp_path)
@@ -5890,15 +6082,27 @@ def test_a_write_verb_of_the_tools_own_language_is_invisible(tmp_path):
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0
 
 
-def test_a_descriptor_duplication_is_not_a_redirect_into_a_file():
-    """`2>&1` sends stderr to stdout; its right-hand side is a stream number and no file receives
-    anything. The operator shape must not swallow it, or `2>&1` would name `1` as a target and
-    every diagnostic-merging read would be refused as a write to a file called `1`."""
+def test_a_descriptor_duplication_is_a_redirect_but_a_file_after_gt_amp_is_a_write():
+    """`>&` is BOTH forms and the right-hand side tells them apart (`_is_descriptor`).
+
+    `2>&1` and `>&2` send a stream to a descriptor and `>&-` closes one — no file receives
+    anything, and the operator shape must not name `1`/`2`/`-` as a target or every
+    diagnostic-merging read is refused as a write to a file called `1`. But `>& WORD` for any other
+    WORD is the csh spelling of `&> file`, and bash DOES land both streams in that file — measured
+    writing `services/pay.py` in a real bash. The predecessor of this test claimed the right-hand
+    side "is a stream number", full stop; that read `echo hi >& services/pay.py` (and the same onto
+    state and the enforcement layer) as naming no target at all, so every write rule ran empty at
+    rc 0 for every caller. `_output_redirect_targets` is the one place that decision lives now."""
     module = load_hook_module("gate_write_scope")
     sinks = module._null_sinks("Bash")
+    # descriptor forms: no file target
     assert module._redirect_targets(module._tokenise("cat x 2>&1 | head"), sinks) == []
     assert module._redirect_targets(module._tokenise("cat x >&2"), sinks) == []
+    assert module._redirect_targets(module._tokenise("cat x >&-"), sinks) == []
+    # file forms: the target is a write, whichever spelling puts both streams there
     assert module._redirect_targets(module._tokenise("cat x &> out"), sinks) == ["out"]
+    assert module._redirect_targets(module._tokenise("cat x >& out"), sinks) == ["out"]
+    assert module._redirect_targets(module._tokenise("cat x 2>& out"), sinks) == ["out"]
 
 
 def test_the_null_sink_is_the_hosts_own_device_not_a_word_someone_typed():

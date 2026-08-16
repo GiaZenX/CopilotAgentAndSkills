@@ -1,4 +1,4 @@
-generated_at: '2026-08-16T14:08:44'
+generated_at: '2026-08-16T20:01:20'
 items:
 - id: BUG-0001
   type: BUG
@@ -913,6 +913,18 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0042
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0043
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1188,6 +1200,26 @@ items:
   type: FR
   title: Der Installer klassifiziert den vorgefundenen Bestand (greenfield/V2/V1/mixed)
     mit No-write-Nachweis auf V1
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0045
+  type: FR
+  title: Claude-Design-Buendelformat als Designer-Vertragsschema festschreiben --
+    ein echter Export verifiziert die Dateinamen
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0046
+  type: FR
+  title: Feldtest des Update-/Migrationswegs an echten alten Projektkopien (BuyPlugGo,
+    synaipse, tradingbot)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0047
+  type: FR
+  title: Modell-Stufe je Rolle festnageln und stilles Herunterstufen sichtbar machen
   status: OPEN
   revision: 1
   approval_ref: null

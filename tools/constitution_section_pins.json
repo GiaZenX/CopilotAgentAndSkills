@@ -157,7 +157,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "902fd06e5b23281b",
+        "digest": "84c2f43891b65415",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -374,7 +374,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "c121aaf388b0b25b",
+        "digest": "2a4c0066a2ee507e",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -588,7 +588,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "cdced66b9a2c60a1",
+        "digest": "536efbdf0af43f6d",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",

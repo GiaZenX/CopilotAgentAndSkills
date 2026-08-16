@@ -1999,6 +1999,49 @@ existierenden Aufrufer begrenzt und seine Schließrichtung (Kernel-seitiges fail
 kleine Folgerunde; (b) öffnet keine Übernahme, weil nur Gemessenes sie öffnet; (c) ist ehrliche
 Unwissenheit mit benannter Messrichtung, keine Behauptung.
 
+### L43 — Was die neue PM-Shell-Regel (Regel 5) nicht erreicht: Werkzeugsprache, PowerShell-Cmdlets, unauflösbare Erweiterungen, Wrapper (TSK-0070)
+
+**Anlass:** FR-0013 — `guard_pm_scope` der Kits deckte die Schreibwerkzeuge, nicht die Shell; ein
+PM konnte `echo … > services/pay.py` an ihm vorbei fahren. TSK-0070 hat die Entscheidung
+gemessen getroffen (Variante b, sauberer Schnitt: Dateieigenschaft bei `guard_pm_scope`,
+Kommandozeilen-Zerlegung bei `gate_write_scope`, Regel 5 greift an der **einen** Schreibposition,
+die die Shell-Syntax selbst definiert — dem Ziel einer bytehaltenden Umleitung) und die
+Beschwichtigungsprosa des alten Docstrings („95%-Wächter; der QA-Gate ist der harte Riegel")
+durch die Messung ersetzt: der QA-Riegel fragt nur nach einem **Verdikt**, und dasselbe Lead
+erzeugt Verdikte selbst — er ist also über Autorschaft blind. Was Regel 5 **nicht** erreicht,
+bleibt als benannte Restklasse, beidseitig getripwired in `ENFORCEMENT.md` aller drei Kits und
+im Docstring von `_assert_the_lead_lands_no_code`:
+
+- **Werkzeugsprachliche Writes** (`cp`, `mv`, `tee`, `sed -i`, `python -c`, `rm`): die Shell
+  landet dort keine Bytes selbst, das Werkzeug schreibt aus seiner eigenen Sprache/Argumentliste.
+  Die L4-Klasse — eine Verbliste wäre genau die Behauptung, die schon zweimal eine Datei zu kurz
+  war; darum nicht aufgezählt, sondern als Grenze benannt.
+- **PowerShell-Cmdlets** (`Out-File`, `Set-Content`, `Add-Content`, `Tee-Object`): dieselbe
+  Klasse in der anderen Shell, gemessen rc 0, mit eigenem Test
+  (`test_a_powershell_cmdlet_write_is_the_named_residue_too`).
+- **Unauflösbare Erweiterungen** als Umleitungsziel (`$(cmd)`, Backticks, eine Variable, die die
+  Zeile **nicht** zuweist): B2 löst nur die **Zeilen-eigenen** Zuweisungen auf; alles, was erst
+  eine laufende Shell kennt, bleibt offen. `$UNSET/pay.py` verweigert übrigens (die Endung
+  überlebt im Wort — sichere Über-Verweigerung), gehört also nicht hierher.
+- **Wrapper** (`sh -c '…'`, `bash -c '…'`, `eval '…'`): schalten **alle** Kommandozeilenregeln ab,
+  weil der innere Befehl dem Parser verborgen bleibt — gemessen läuft so auch `sh -c 'python
+  scripts/harness.py create-task'` als Subagent durch (rc 0), also dieselbe **vorbestehende**
+  Klassengrenze wie Regel 4 (die Subagenten-Regel), nicht neu von Regel 5. Verwandt mit der
+  Interpreter-Klasse H11 und dem Handover-Wrapper L39.
+
+**Über-Verweigerungen, alle in der billigen Richtung, gemessen und in den Batterien:** `~/pay.py`,
+`$HOME/pay.py` (nicht platzierbar → nach Dateinamen beurteilt), `Docs/…` auf einem
+case-insensitiven Host, ein Ziel unter `project_memory/staging/**` (fällt in Regel 1), `3>& …`
+(schreibt in bash keine Datei, wird trotzdem verweigert). Reibung, kein Loch.
+
+**Urteil: Rest, benannte Restklasse, keine der Über-Verweigerungen ist ein Loch.** Der
+Datenverlust-Kern (die bytehaltenden Umleitungsformen `>`, `>>`, `>|`, `&>`, `>&`, und das
+Variablenziel derselben Zeile) ist geschlossen und rot-getestet; was bleibt, ist Werkzeugsprache
+und Wrapper, deren Schließung eine Verbliste oder einen Interpreter-Leser bräuchte (L4/H11) — das
+ist eine eigene Abwägung Nutzen gegen Wartungslast, keine offene Naht dieser Runde. Der harte
+Rückhalt gegen lead-geschriebenen Code bleibt gemessen `gate_pipeline` bei Merge/Push (urteilt
+über Qualität, nicht Autorschaft) — so benannt, nicht als Autorschaftsriegel behauptet.
+
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier
@@ -2029,7 +2072,7 @@ H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
-TSK-0063.
+TSK-0063, H46 und H47 mit TSK-0070.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -2066,6 +2109,8 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H43 | **GESCHLOSSEN** (TSK-0059, `BUG-0038`), mit benannten Resten | die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS` nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde). Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt — je im Eintrag |
 | H44 | **Rest**, keine Angriffskette | vier gemessene Grenzen der Amendment-Ableitung aus TSK-0062, je im Eintrag: die Kriterien eines ANGEWENDETEN Änderungsantrags zählen nicht mehr (Über-Verweigerung, per Test festgehalten); die Zugehörigkeit (`target_pr`) ist nicht signiert (durch den Kernel geschlossen, offen nur vorbei an ihm — und diese Sitzungstür hält Gate 1 zu); `target_revision` wird nie als Wert verglichen (leiht ausschließlich nutzersignierten Inhalt); Hop 1 bleibt für Nicht-Amendments ohne Freigabeterm (Design, H39 — die Amendment-Hälfte ist seit dieser Runde zu) |
 | H45 | **Rest** bzw. entschiedene Über-Verweigerung | zwei gemessene Grenzen der Arbiter-Härtung aus TSK-0063, je im Eintrag: die Sitzungswache verlangt die Seh-Eigenschaft auch von shell-freien Registrierungs-Prüfungen (fail-closed, auf diesem Host ohne Effekt; Schließrichtung benannt), und `_can_arbitrate` ist von keinem Test rot-fähig gedeckt (die entfernte `cd`-Probe ist unbeobachtet — H10-Klasse) |
+| H46 | **GESCHLOSSEN** (TSK-0070), am eigenen Gate nachgemessen | `>&datei` ist im Bash eine bytehaltende Umleitung (csh-Form von `&>`), die der Umleitungs-Erkenner nicht als Ziel verbuchte; der B1-Fix (`_output_redirect_targets`, Deskriptor nur bei Zahl/`-` verworfen) hat über die Kit-Leih-Mechanik (`_from_kit`) auch das Repo-Gate geheilt — gemessen `echo x >& …` rc 0 → rc 2 an `gate_lead_write_scope.py`, `>&2` bleibt rc 0. Kein Schritt außerhalb der Sitzung nötig |
+| H47 | **OFFEN, blockierend** — Schließrichtung (a) zu messen | dieselbe Klasse wie H46, aber die **Variablen**-Variante: Gate 1 leiht den Ziel-Leser des Kits, nicht dessen Zeilen-Zuweisungskarte, also ist `F=team-kits/kernel/state.py; echo x > $F` am Repo-Gate rc 0 (am Kit-Gate seit B2 rc 2). Vorbestehend, von TSK-0070 sichtbar gemacht. Schließrichtung (a): Auflösung in den geteilten Leser ziehen → Kit-Fix heilt mit; (b): Gate 1 baut die Karte selbst → Fix außerhalb der Sitzung. Welche greift, ist zu messen; der Nutzer entscheidet danach |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -4049,6 +4094,92 @@ ohne rote Mutation): eine Messlücke des Instruments, kein offenes Gate.
 in die ehrliche Richtung und auf diesem Host ohne Effekt — die Schließrichtung steht im Absatz
 und ist eine eigene Runde; (b) ist eine Messlücke des Instruments, kein offenes Gate. Beide
 Ketten sind vom Prüfer der TSK-0063-Runde gemessen und stehen oben im Eintrag.
+
+### H46 — `>&datei` ist eine bytehaltende Umleitung, die Gate 1 nicht als Schreibzugriff sah — GESCHLOSSEN (TSK-0070, über die Kit-Leih-Mechanik mitgeheilt)
+
+**Mechanismus:** Der Umleitungs-Erkenner von Gate 1 (`.claude/hooks/_harness`, dieselbe
+Regex-Klasse `_REDIRECT_RX` wie im Kit-Gate) liest hinter `>` nur `>`, `|` oder Zeilenende. Die
+Schreibweise `>&WORT` ist im Bash aber genau dann **keine** Deskriptor-Verdopplung, sondern die
+csh-Form von `&>datei` (beide Ströme in die Datei), wenn `WORT` **keine** Zahl und nicht `-` ist.
+Der Lexer liefert `>&` als ein Token, das Muster verwirft es, das Folgewort wird nie als Ziel
+verbucht — und damit läuft **jede** Pfadregel dieses Gates ins Leere, nicht nur eine.
+
+**Kette (Lead gemessen 2026-08-16, als Gate-Entscheidung über echten Prozess, NICHTS
+ausgeführt):**
+```
+echo x >& project_memory/decisions/active/DEC-9999.yaml   → rc 0  (durchgelassen)
+echo x >  project_memory/decisions/active/DEC-9999.yaml   → rc 2  (verweigert)
+```
+Der Prüfer der TSK-0070-Runde hat dieselbe Schreibweise gegen `.claude/hooks/gate_git.py`,
+`.claude/settings.json` und `team-kits/kernel/state.py` als rc 0 gemessen (ebenfalls nur die
+Entscheidung, im Sandkasten mit echtem Bash als Datenverlust belegt: `gate_git.py` von 23 436
+auf 6 Byte). Der Sitzungsagent kann damit kanonischen Zustand, die Durchsetzungsschicht und
+den Kit-Hash-Eingang an Gate 1 vorbei überschreiben — die gesamte Eigenschaft, auf der dieses
+Repo steht.
+
+**Wo der Fix saß — gemessen an der Leih-Mechanik, nicht angenommen:** Gate 1 hat **keine
+eigene** Umleitungs-Regex. `.claude/hooks/_harness.py:982-984` (`_from_kit("gate_write_scope")`)
+leiht die Kommandozeilen-Lesung aus dem **Kit-Modul** `team-kits/<kit>/hooks/gate_write_scope.py`
+— genau, damit keine zweite Regex driftet (H15). Die Reparaturstelle war also
+`gate_write_scope._REDIRECT_RX` in `team-kits/`, im `allowed_scope` des Umsetzers; Hooks lesen
+ihre Dateien bei jedem Aufruf frisch.
+
+**Der Fix, als Eigenschaft und nicht als Aufzählung:** `_REDIRECT_RX` um `[0-9]*>&` erweitert
+(`gate_write_scope.py:611`), ein `_is_descriptor`-Leser (`:614`) und **ein** Ziel-Leser
+`_output_redirect_targets` (`:627`), durch den alle drei Aufrufstellen gehen; das Folgewort wird
+nur verworfen, wenn es ein Deskriptor ist (`^[0-9]+$` oder `-`). Der korrigierte Test
+`test_a_descriptor_duplication_is_a_redirect_but_a_file_after_gt_amp_is_a_write` misst den
+Datei-Fall.
+
+**Urteil: GESCHLOSSEN (TSK-0070), am eigenen Gate NACHGEMESSEN.** Der B1-Fix in `team-kits/` hat
+das Repo-Gate über die Leih-Mechanik **mitgeheilt**, und das ist nicht mehr Erwartung, sondern
+gemessen (Lead und Prüfer unabhängig, echter Prozess gegen `.claude/hooks/gate_lead_write_scope.py`):
+```
+echo x >& project_memory/decisions/active/DEC-9999.yaml   rc 2   (vorher rc 0)
+echo x >& .claude/hooks/gate_lead_write_scope.py          rc 2
+echo x >& team-kits/kernel/state.py                       rc 2
+echo x >&2                                                rc 0   (Deskriptor-Dup, korrekt frei)
+```
+Kein Schritt außerhalb der Sitzung war nötig — die geteilte Regex trägt beide Kopien. Was diese
+Runde NICHT mitgeheilt hat, ist die **Variablen-Variante derselben Klasse** am Repo-Gate: siehe
+**H47**.
+
+### H47 — Das Repo-Gate leiht den Ziel-Leser des Kits, aber nicht dessen Zeilen-Zuweisungskarte: `F=…; > $F` schreibt kanonischen Zustand an Gate 1 vorbei — OFFEN (neu, TSK-0070)
+
+**Mechanismus:** TSK-0070 hat kit-seitig zwei Dinge gebaut — den `>&`-Ziel-Leser (B1, den Gate 1
+über `_from_kit` leiht, siehe H46) **und** die Variablen-Auflösung (B2: `_line_assignments`
+baut die `NAME=value`-Karte der ganzen Zeile, `_resolve` substituiert `$NAME` vor dem Urteil).
+Die Auflösung sitzt aber im **Regel-5-Leadprüfer des Kits**, nicht im geteilten Ziel-Leser. Gate 1
+hat seinen **eigenen** `_subjects`-Weg und baut **keine** Zuweisungskarte — also leiht es B1 mit,
+B2 nicht.
+
+**Kette (Prüfer der TSK-0070-Runde, 2026-08-16, echter Prozess gegen
+`.claude/hooks/gate_lead_write_scope.py`, NICHTS ausgeführt):**
+```
+F=team-kits/kernel/state.py; echo x > $F   → rc 0  (durchgelassen)
+echo x > team-kits/kernel/state.py         → rc 2  (verweigert)
+```
+Dieselbe Klasse wie H46: eine in einer Sitzung durchlaufende Schreibbahn des Sitzungsagenten auf
+kanonischen Zustand / Durchsetzungsschicht / Kit-Hash-Eingang, hier über ein Umleitungsziel in
+einer Variablen, die dieselbe Zeile zuweist. Am **Kit-Gate** ist diese Form seit TSK-0070
+verweigert (B2 gemessen); nur die **Repo-Kopie** trägt sie noch.
+
+**Zwei Schließrichtungen, und welche greift, ist zu messen:** (a) die Auflösung wandert in den
+**geteilten** Ziel-Leser, den Gate 1 ohnehin leiht (`_output_redirect_targets` bekäme die
+`_line_assignments`-Karte als Eingabe) — dann heilt ein **Kit-Fix** das Repo-Gate mit, wie bei
+H46, und die Reparaturstelle liegt im `allowed_scope` eines Umsetzers; (b) Gate 1 baut die
+Zuweisungskarte in `_harness` selbst — das liegt in `.claude/hooks/`, also außerhalb jeder
+Sitzung, und wäre der Ausweg „von außen". Welche der beiden nötig ist, hängt daran, ob sich die
+Auflösung sauber in den geteilten Leser ziehen lässt, ohne den Kit-Gate-Pfad zu verbiegen —
+ungemessen.
+
+**Urteil: OFFEN, blockierend, mit benannter Zwischenbegrenzung.** Die Kette läuft in einer
+Sitzung durch, es gibt keinen dritten Zustand. Die Begrenzung bis zum Fix: die Lücke ist
+**vorbestehend** (das Kit hatte an HEAD gar keine Variablen-Auflösung, also hatte das Repo-Gate
+sie nie — TSK-0070 hat sie kit-seitig gebaut und dabei den Unterschied sichtbar gemacht), und die
+Rollentrennung hält sie sozial (der Sitzungsagent schreibt Zustand über den Kernel, nicht über
+eine Umleitung). Der Nutzer entscheidet nach der Messung von Richtung (a): fällt sie aus, ist es
+ein Fix von außerhalb der Sitzung wie H46 in seiner ursprünglichen Form.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

@@ -1,0 +1,60 @@
+id: TSK-0070
+product_requirement: PR-0002
+derives_from: FR-0013
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- FR-0013 (guard_pm_scope covers the write tools, not the shell -- a bash line writes
+  production code past it; the hook docstring names the gap itself; the item carries
+  an explicit design fork a/b/c incl. the honest-hole answer, and the warning that
+  a verb list is NOT a solution -- L4)
+- 'L40 in docs/POST_V2_WISHLIST.md (read-only): the kits'' subagent rule knows only
+  the orders-work class; set-preset AND update-kit pass all 8 gates as a subagent
+  (verifier-measured); the closing direction is naming the second class -- installs
+  the enforcement layer -- derived from the same source the commands take their effect
+  from'
+- 'this repo''s own precedent: gate_lead_write_scope + _harness registered on BOTH
+  event classes, with the measured reason (eight shell lines rc 0, 2026-08-05); and
+  the maintenance price this apparatus carries (H19/H20/H33/H34, L4 -- the open hole
+  class travels with any copy)'
+expected_outputs:
+- 'STEP 1 MEASURE + DECIDE: against a scaffolded kit project outside the repo, measure
+  the real reach of the gap (which PM shell writes land in forbidden areas today,
+  rc 0 lines) and the QA-gate backstop''s actual bite; then DECIDE the FR-0013 fork
+  with the measurement: shared core (a), clean split (b), or honest-hole answer (c)
+  -- the decision is yours to make and justify measured, a maintenance-burden answer
+  is a legitimate outcome'
+- 'STEP 2 BUILD what the decision says: if (a)/(b), the shell half lands in the kits
+  WITHOUT a verb list (derived like the repo''s own gate, shared not copied where
+  possible) and its known over-refusals are named in kit terms; if (c), the kit''s
+  ENFORCEMENT.md and the hook docstring carry the honest measured limit and the QA
+  backstop is measured as the hard stop it claims to be. EITHER WAY: the L40 closing
+  direction is built -- the subagent rule''s derived class gains commands-that-install-enforcement
+  (set-preset, update-kit join by property, not by name)'
+- 'STEP 3 TESTS: red-without-fix in an outside clone for every built half (the measured
+  rc-0 lines flip to rc 2, or the honest-limit prose is tripwired); the L40 half measured
+  as real hook processes (subagent + set-preset/update-kit refused, create-task still
+  refused, lead still allowed)'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, ONE full tools/ run green with numbers,
+  mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason; report the decision
+  taken with its measurement, file:line, residues named'
+dependencies:
+- FR-0013
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-16T14:10:01'
+closed_at: '2026-08-16T20:00:02'

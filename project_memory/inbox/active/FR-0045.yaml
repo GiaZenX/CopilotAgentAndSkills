@@ -1,0 +1,27 @@
+id: FR-0045
+title: Claude-Design-Buendelformat als Designer-Vertragsschema festschreiben -- ein
+  echter Export verifiziert die Dateinamen
+request_text: 'User reminder 2026-08-16: is the Claude Design feature still on the
+  list -- and the user offered to export a real design so we can see what it actually
+  produces. Answer: it lives as prose in POST_V2_WISHLIST section 1b, never migrated
+  to an item. The plan there: do NOT embed claude.ai/design (hosted, interactive login,
+  canvas an agent cannot use), but ADOPT its handover BUNDLE format so a hand-exported
+  bundle drops in unchanged and the designer role produces the same triple offline:
+  design.html (self-contained, CSS/JS inline), screenshots/ (one image per state),
+  design-notes.md (target stack, conventions). The wishlist itself names the open
+  pre-condition VERBATIM: ''before freezing as a contract schema: export one real
+  bundle once and verify the filenames -- the composition so far comes from secondary
+  sources.'' The designer role is the dev-team product-designer (installed via the
+  preset work); its staging output shape (staging/<task-id>/ per section 1b) is what
+  this schema fixes, and it ties to the freeze_design / DSN item type in the kernel
+  (design/revisions/DSN-*.html) plus the wireframe gap BUG-0055. NEXT ACTION carried
+  by this item: the USER exports one real Claude Design bundle and places it on the
+  local filesystem; the lead reads design.html (as text) and the screenshots (viewable
+  images) and verifies the actual filenames/structure against the assumed triple,
+  then the schema can be frozen. Content skill stays the Apache-2.0 anthropics/skills
+  frontend-design (~12 lines). Post-release per DEC-0045; folds the 1b prose into
+  a tracked item. Source: user 2026-08-16; POST_V2_WISHLIST 1b (2026-07-27).'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T17:31:50'

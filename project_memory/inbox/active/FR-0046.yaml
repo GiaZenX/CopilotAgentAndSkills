@@ -1,0 +1,31 @@
+id: FR-0046
+title: Feldtest des Update-/Migrationswegs an echten alten Projektkopien (BuyPlugGo,
+  synaipse, tradingbot)
+request_text: 'User idea 2026-08-16: test that the PM cleanly updates EXISTING old
+  kits using the user''s real project copies. MEASURED 2026-08-16 (read-only) at C:/Offline
+  Repos/v2-pilot -- USE ONLY THESE, and COPY-BEFORE-USE so the masters stay reusable
+  (the dir is marked _DIES_SIND_KOPIEN.md; never touch the originals, work on a copy-of-a-copy
+  outside the repo). The three real projects and their stamps: BuyPlugGo-KOPIE = 2026.07.17-8
+  (office-team: ledger/outbox/filing), synaipse-KOPIE = 2026.07.18-3 (dev-team: docker/frontend/pyproject),
+  portfoliomanaigement-KOPIE = 2026.07.17-9 (dev-team: alembic/compounder). Release
+  candidate is 2026.08.16-11 -- so ALL THREE are the update-kit path (old-V2 -> new-V2),
+  NOT migration; the earlier V1 guess was wrong (measured). The third project is portfoliomanaigement,
+  not tradingbot. A MIXED case may still exist INSIDE a project (synaipse was a forensic
+  source; portfolio carries two odd _tmp.py;C files) -- step-0 classification per
+  project still applies (FR-0044/N13). METHOD, mechanical (verifier-style, not a costly
+  persona session): copy each master out of the repo, count items + kernel validate
+  BEFORE, run update-kit, then measure AFTER -- all items survive, validate clean,
+  a merge/dispatch still works, restart marker set, bundle trust correct; record any
+  state lost or gate that flips. Cross-refs: TSK-0066 pilot 4 half 1 (the persona
+  EXPERIENCES one update on pilot-3-rechnung; THIS item MEASURES the mechanics across
+  three real July-vintage projects and both kit types dev+office), FR-0041/N8 (pin+rollback
+  -- no safe undo yet, hence copy-before-use is mandatory), FR-0044/N13 (classification),
+  BUG-0056/N11 (recorded V1 file writable, exercised only if a mixed remnant appears).
+  TIMING: copies are READY now, so this feeds release confidence in the pilot-4 phase
+  (pre-release); it is a cheap measurement, no extra budget. Also present in the dir:
+  earlier pilots 1/1b/2/2b/3, _runner (the pilot harness persona_run/pilot_run), _sdk-probe.
+  Source: user 2026-08-16, measured facts by the lead.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T17:40:57'

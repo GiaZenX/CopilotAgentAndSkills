@@ -1,0 +1,18 @@
+id: EVD-0042
+kind: review
+related:
+- TSK-0070
+- FR-0013
+result: pass
+summary: 'verifier PASS round 2 for diff:3d52a79feb7300b0adcc5c13879e6eefc8677e0db74c1bc4c2b1c43cfc37a704
+  -- TSK-0070: PM shell gap closed as a clean split (rule 5 gates the byte-keeping
+  redirect target; decision (b) measured against a false (c) premise), >& redirect
+  + same-line variable target closed and red-tested, L40 second derived class (subagent
+  refused set-preset/update-kit); kits 2026.08.16-12, suite 2758; H46 CLOSED (healed
+  the repo gate via the kit borrow, measured), H47 NEW (variable variant still open
+  at gate 1), L43 (rule-5 residue class)'
+artifact_refs:
+- staging/TSK-0070/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-16T19:59:55'

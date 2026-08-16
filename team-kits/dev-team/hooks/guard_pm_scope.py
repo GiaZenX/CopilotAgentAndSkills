@@ -4,9 +4,24 @@ PreToolUse(Edit|Write|MultiEdit|NotebookEdit) — keep the PM out of production 
 
 settings.json tool-hooks fire for the PM AND for every subagent (verified in a real run + the
 Claude Code docs), so to block ONLY the PM we skip when `agent_id` is present (set only inside a
-subagent call). A real run had the PM make ~60 self-edits instead of delegating; code goes to the
-specialist subagents and QA gates it. (Bash writes bypass Edit/Write hooks — this is a 95% guard;
-the QA gate is the hard backstop.)
+subagent call) — `gates_this_caller` below, which is where that question is answered for both
+doors of this guard. A real run had the PM make ~60 self-edits instead of delegating; code goes to
+the specialist subagents and QA gates it.
+
+THE SHELL IS THE SECOND DOOR, AND THIS HOOK IS NOT ON IT — settings.json registers it for the
+write tools only. What stood here was "Bash writes bypass Edit/Write hooks — this is a 95% guard;
+the QA gate is the hard backstop", and TSK-0070 measured both halves of that sentence in a
+scaffolded dev project, as real processes against every `Bash|PowerShell` gate its own
+settings.json registers: the bypass is real, `git commit` behind it is refused by nothing, and
+the backstop is not one for this question — it asks whether a VERDICT exists on the item, and the
+lead can record those Evidence items itself through the sanctioned entry point. So the reassuring
+half was the wrong one to leave standing.
+
+What a command LINE can decide about it now lives in `gate_write_scope.handle_shell`, which owns
+the kits' one shell decomposition and asks `production_code()` below for the file property (one
+answer to "what is production code", two doors). Which shell forms that reaches, and which stay
+open, is measured from both ends by `test_the_lead_cannot_land_code_through_a_shell_redirect` and
+`test_the_shell_writes_no_command_line_can_decide_stay_the_named_residue`.
 
 WHAT COUNTS AS PRODUCTION CODE is a property of the FILE, not a directory somebody thought of.
 This guard used to decide on two lists — a set of top-level directories (`BLOCK_TOP`) plus root
@@ -81,11 +96,18 @@ def block(rel):
         "PreToolUse")
 
 
-def check(path, root):
+def repo_relative(path, root):
+    """`path` as a forward-slashed path relative to `root`, or None when that is not decidable.
+
+    None means "outside the repo, or unresolvable" — not our business either way, which is the
+    exit the docstring's last line promises. Split out of `check` so the SHELL half asks the same
+    normaliser: two spellings of "which file is this" is how one door ends up stricter than the
+    other, and this hook already paid for one of those (the leading-dot note below).
+    """
     try:
         rel = os.path.relpath(path, root)
-    except Exception:
-        return
+    except Exception:  # noqa: BLE001 — an unresolvable path is not a decision, see above
+        return None
     # A LEADING `./` IS A PREFIX, NOT A CHARACTER SET. `lstrip("./")` strips every leading `.` and
     # `/`, so `.claude/hooks/x.py` arrived here as `claude/hooks/x.py` -- `.claude` could never
     # match `ALLOW_TOP`, and once the rule above started deciding on the extension that turned into
@@ -96,26 +118,55 @@ def check(path, root):
     while rel.startswith("./"):
         rel = rel[2:]
     if rel.startswith("../"):
-        return  # outside the repo -> not our business
+        return None  # outside the repo -> not our business
+    return rel
+
+
+def production_code(rel):
+    """Is this repo-relative path production code — the file property, for BOTH doors.
+
+    The ONE answer to that question in this kit: the write tools reach it through `check` below,
+    a shell redirect target through `gate_write_scope.handle_shell`. A second copy of the rule
+    would be a door with its own idea of what code is, which is the shape this guard's own
+    directory list already failed as.
+    """
     segs = [s for s in rel.split("/") if s]
     if not segs:
-        return
+        return False
     top = segs[0]
-
     if top in ALLOW_TOP:
-        return
+        return False
     if top.lower() in BLOCK_TOP:
-        block(rel)
+        return True
     # ...and OUTSIDE those areas, what makes a file production code is its LANGUAGE, at any depth:
     # `services/pay.py`, `core/pay.go` and `deep/nested/dir/util.ts` are the same thing `app.py` at
     # the root is, and a directory list can never be finished.
-    if os.path.splitext(segs[-1])[1].lower() in CODE_EXT:
+    return os.path.splitext(segs[-1])[1].lower() in CODE_EXT
+
+
+def check(path, root):
+    rel = repo_relative(path, root)
+    if rel is not None and production_code(rel):
         block(rel)
+
+
+def gates_this_caller(data):
+    """Is this call the LEAD's — the caller this guard exists for?
+
+    THE MIRRORED QUESTION OF `_compat.calling_subagent`, and deliberately not that function: this
+    one decides whom to GATE, so widening it makes this guard SKIP more calls, while widening
+    `calling_subagent` makes its callers REFUSE more. `_compat` states that asymmetry beside its
+    own definition, and substituting it here would exempt every payload that names a specialist
+    role without an `agent_id`. Named as a function because the shell half in
+    `gate_write_scope.handle_shell` asks the same question and must get the same answer — two
+    doors, one caller test (`test_the_shell_half_gates_the_same_caller_the_write_tools_do`).
+    """
+    return not data.get("agent_id")
 
 
 def main():
     data = _compat.load()
-    if data.get("agent_id"):
+    if not gates_this_caller(data):
         sys.exit(0)  # settings.json hooks also fire for subagents; only gate the PM (main agent)
     if data.get("tool_name") not in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
         sys.exit(0)

@@ -1,0 +1,34 @@
+id: FR-0047
+title: Modell-Stufe je Rolle festnageln und stilles Herunterstufen sichtbar machen
+request_text: 'User ask 2026-08-16, after seeing a platform safety switch (Fable 5
+  flagged a message -> auto-switched to Opus 4.8): can we (a) stop the automatic downgrade,
+  and (b) build model-tier control into the harness. IMPORTANT boundary to research
+  and state honestly: the Fable->Opus switch is Anthropic''s own safety classifier
+  (a platform mechanism), NOT a harness setting and NOT the session agent choosing
+  to downgrade -- it is very likely NOT disable-able from inside a coding session
+  or via this repo. What the harness plausibly CAN do, to be confirmed by research:
+  pin which model each ROLE uses (model_map/model_tiers already exist in the kits
+  but N-side-check found model_map/effort_map have NO producer -- FR/DEC territory),
+  force a tier per specialist at spawn, and DETECT + SURFACE when the running model
+  differs from the requested one (a silent downgrade becomes a visible, logged event
+  instead of a surprise). Wanted: a Sonnet research pass (cheap, per the cost line)
+  into how Claude Code / the Agent SDK expose model selection and safety-downgrade
+  behaviour, then a harness design that pins tiers and alerts on drift -- without
+  ever claiming to override Anthropic''s safety system. Related: FR-0023 (provider-agnostic
+  harness), the model_map/effort_map producer gap. Post-release build; the research
+  is the immediate step. Source: user 2026-08-16.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-16T18:20:45'
+triage_result: 'Researched 2026-08-16 (Sonnet, docs primary). VERDICT: the classifier
+  cannot be disabled, but switchModelsOnFlag (default true) controls the CONSEQUENCE
+  -- set false and the silent downgrade becomes an ask (interactive) / a refusal (SDK/headless,
+  stop_reason==''refusal''). Per-role model pinning is fully supported (AgentDefinition.model
+  / subagent frontmatter / CLAUDE_CODE_SUBAGENT_MODEL). Drift detection is post-hoc
+  only via ResultMessage.modelUsage diffing -- no push event exists. Full sourced
+  write-up: docs/research/2026-08-16-model-downgrade-and-tier-pinning.md. IMMEDIATE
+  user action available: /config -> ''Switch models when a message is flagged'' OFF
+  stops the SILENT downgrade in interactive Claude Code. Harness build (post-release):
+  pin tiers per role + a modelUsage-diff drift alarm; the model_map/effort_map producer
+  gap (side-check N-items) is the natural home.'

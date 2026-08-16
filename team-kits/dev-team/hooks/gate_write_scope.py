@@ -32,10 +32,16 @@ it, and not a second time here, where the last widening of it left this table a 
                             `state_write_protection.shell`, which is what keeps
                             `python scripts/harness.py doctor` from reporting that capability
                             green.
-                         4. a SUBAGENT may not run the harness commands that ORDER work. See
-                            `_ORDERING_COMMANDS` for what that is and how narrow it is; the
-                            constitution row it makes true is the DELEGATE/ROUTE step of every
-                            kit's work loop, which reserves creating the `TSK` to the lead.
+                         4. a SUBAGENT may not run the harness commands that ORDER work, nor the
+                            ones that INSTALL THE ENFORCEMENT LAYER. Two derived classes, one
+                            rule: see `_ORDERING_COMMANDS` and `_INSTALLING_COMMANDS` for what
+                            each is and how narrow it is. The constitution row the first makes
+                            true is the DELEGATE/ROUTE step of every kit's work loop, which
+                            reserves creating the `TSK` to the lead.
+                         5. the LEAD lands no production code through a shell REDIRECT. Same file
+                            property `guard_pm_scope` applies to the write tools, asked of the
+                            same function; what a redirect is, is shell syntax and not a verb
+                            list — `_assert_the_lead_lands_no_code`.
 
 WHY THE STATE DIR IS ABSOLUTE, no orchestrator exemption: `approvals/pending/**` holds mint codes
 in cleartext, and a writable pending file mints a real approval with a self-consistent consumed
@@ -110,10 +116,16 @@ except BaseException as exc:  # noqa: BLE001 — a hook that cannot load must no
     sys.exit(2)
 
 import bisect  # noqa: E402
+import posixpath  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402 — everything after GATE_PREAMBLE, which must stay verbatim
 
 import _compat  # noqa: E402
+# The FILE PROPERTY of rule 5, imported rather than restated: `guard_pm_scope` owns "what is
+# production code" for the write tools, and a second copy here would be a door with its own idea
+# of it. The import is cheap (`_root`, `_audit`, `_compat`, all loaded by then) and runs no code —
+# that module's body is constants and defs.
+import guard_pm_scope  # noqa: E402
 
 HOOK = "gate_write_scope"
 # NotebookEdit included: a notebook write is a file write, and a gate that does not see it scopes
@@ -221,21 +233,27 @@ def _norm(path):
     return os.path.normcase(str(path)).replace("\\", "/").lower()
 
 
-def _repo_relative(path, root):
-    """(rel, undecidable). `rel` is the repo-relative, normcased path; `undecidable` says the
-    comparison could not be made at all.
+def _repo_relative(path, root, fold=True):
+    """(rel, undecidable). `rel` is the repo-relative path; `undecidable` says the comparison could
+    not be made at all.
 
     REALPATH, not abspath: a directory junction (`mklink /J pm project_memory`, no admin needed)
     and an extended-length `\\\\?\\C:\\...` spelling both reach the same file while looking like
     another path. `_root.find_repo_root` stays lexical on purpose — only the TARGET side needs
     resolving, exactly as `_kernel._same_file` argues.
+
+    `fold=False` keeps the SPELLING. Every consumer of the folded form compares against a
+    normcased entry or an `IGNORECASE` pattern, but rule 5 hands its answer to
+    `guard_pm_scope.production_code`, whose ALLOW list is case-SENSITIVE on purpose (folding it
+    would widen it on Linux, where `Docs/` really is a different directory) — a folded `Docs`
+    would have read as the lead's own area and let a code write through.
     """
     try:
         target = os.path.realpath(os.path.abspath(str(path)))
         rel = os.path.relpath(target, os.path.realpath(root))
     except (OSError, ValueError):
         return None, True
-    rel = _norm(rel)
+    rel = _norm(rel) if fold else str(rel).replace("\\", "/")
     if rel.startswith("../"):
         return None, False  # genuinely outside the repo -- other guards own that
     return rel, False
@@ -566,24 +584,63 @@ _WRITE_FLAGS = {
 _PROGRAM_ARG_VERBS = frozenset(("awk", "gawk", "mawk", "sed", "perl", "ruby", "jq"))
 
 
-# An OUTPUT REDIRECT, as a shape rather than as the spellings that happened to be listed: an
-# optional file descriptor or `&` (both streams), then `>` or `>>`, then bash's optional
-# force-clobber `|`. The tuple that stood here knew `>`, `>>` and `2>` and knew neither `&>` nor
-# `>|`, so `cat .claude/hooks/gate_approval.py &> copy.py` and `... >| copy.py` produced no target
-# at all — a read-only verb, no redirect, allowed — while the very same relocation spelled `>` was
-# refused. `>&` deliberately does not match: `2>&1` duplicates a DESCRIPTOR, and its right-hand
-# side is a stream number, not a file anything lands in.
+# An OUTPUT REDIRECT OPERATOR, as a shape rather than as the spellings that happened to be listed:
+# an optional file descriptor or `&` (both streams), then `>` or `>>`, then bash's optional
+# force-clobber `|` — OR the `>&` form (an optional descriptor, then `>&`). The tuple that stood
+# here knew `>`, `>>` and `2>` and knew neither `&>` nor `>|`, so `cat <hook> &> copy.py` and
+# `... >| copy.py` produced no target at all — a read-only verb, no redirect, allowed — while the
+# very same relocation spelled `>` was refused.
 #
-# THIS ONE FAILS OPEN, and that is the opposite of `_null_sinks` below — read the two together.
+# `>&` MATCHES BUT IS NOT ALWAYS A FILE, and that distinction is `_is_descriptor`, applied where
+# the target is read (`_output_redirect_targets`) rather than folded into this pattern: in bash
+# `>& WORD` duplicates a DESCRIPTOR only when WORD is a number (`>&2`) or the close form (`>&-`);
+# for anything else it is the csh spelling of `&> file` and BOTH streams land in the file. The
+# note that used to stand here — "`>&` deliberately does not match: its right-hand side is a
+# stream number" — was false for the csh case, and it measured as the heavy hole: `echo hi >&
+# services/pay.py`, and the same `>&` onto `.claude/**` and `project_memory/approvals/pending/**`,
+# named no target at all, so rules 1, 2 and 5 every one ran empty (rc 0 for every caller).
+#
+# THIS SHAPE FAILS OPEN, and that is the opposite of `_null_sinks` below — read the two together.
 # There, a spelling the code does not know stays a WRITE, so the set can only be too small and the
 # cost is a false refusal. Here, a form the shape does not match is not a redirect at all, the
 # pipeline looks read-only, and the bytes land wherever they were sent. So this shape must stay
 # WIDER than any spelling in use, over-matching is the safe direction (`>>|` is meaningless to
 # bash and matches anyway), and every future shell operator that lands bytes in a file is a hole
-# until it is added here. Two forms are known to be outside it and are outside it deliberately:
-# `>&`, above, and the write verbs a TOOL's own language carries — see the module docstring, which
-# says why that second one is not this regex's problem to solve.
-_REDIRECT_RX = re.compile(r"^(?:[0-9]*|&)>>?\|?$")
+# until it is added here. The one class still outside it is the write verbs a TOOL's own language
+# carries — see the module docstring, which says why that is not this regex's problem to solve.
+_REDIRECT_RX = re.compile(r"^(?:(?:[0-9]*|&)>>?\|?|[0-9]*>&)$")
+
+
+def _is_descriptor(word):
+    """A `>&` right-hand side that duplicates or closes a DESCRIPTOR rather than naming a FILE.
+
+    `>&2` sends the stream to descriptor 2 and `>&-` closes it — no file receives anything. Every
+    other word after `>&` is the csh spelling of `&> file`, so this is the whole of the
+    file-vs-descriptor decision and it lives in ONE place (`_output_redirect_targets`). A quoted
+    right-hand side is never a descriptor to bash, so a non-digit reading stays a file — the
+    over-refusing direction, consistent with the rest of this gate.
+    """
+    text = str(word)
+    return text == "-" or text.isdigit()
+
+
+def _output_redirect_targets(tokens):
+    """(target_index, target_token) for every output redirect on `tokens` that lands in a FILE.
+
+    THE ONE READER of "which words are output-redirect file targets", so the three callers below
+    cannot drift on the `>&` question. A `>&`/`N>&` operator (`_operator(token).endswith("&")`) is
+    a descriptor duplication when its right-hand side is one (`_is_descriptor`); anything else is a
+    file. `&>`/`&>>` do NOT end with `&` and are always a file (both streams into it). The leading
+    descriptor of `N>&` is a token of its own — the lexer splits it — so it never reaches here.
+    """
+    for index, token in enumerate(tokens[:-1]):
+        operator = _operator(token)
+        if not _REDIRECT_RX.match(operator):
+            continue
+        target = tokens[index + 1]
+        if operator.endswith("&") and _is_descriptor(target):
+            continue
+        yield index + 1, target
 
 
 def _has_write_flag(verb, tokens):
@@ -764,25 +821,39 @@ def _stage_is_read_only(stage):
     return verb in _READ_ONLY_VERBS
 
 
-# --- rule 4: ordering work is the orchestrator's act -------------------------
+# --- rule 4: ordering work, and installing enforcement, are the orchestrator's acts -----------
+#
+# TWO CLASSES, ONE SHAPE, and both are DERIVED FROM THE KERNEL rather than typed: each map's keys
+# are the `args.command` branches of `kernel/cli.py` that reach a named PRODUCER, and a test
+# parses the kernel to assert exactly that. A route added to the CLI turns that test red on the
+# day it ships, which is what keeps either map from becoming the next stale tuple. In both maps
+# the VALUE narrows a command by its first positional (`capture` reaches the task producer only
+# for `TSK`; `capture EVD` is an ordinary item and stays allowed); an empty value means the
+# subcommand qualifies on its own.
 #
 # WHAT MAKES A SUBCOMMAND "ORDERING" rather than "writing", because the wider split does not
 # survive contact: the commands a specialist hands its OWN finished work back with write too, and
 # it has to be able to run them — so "the writing ones, except those" would be two lists holding
 # each other up. The property is narrower and it is the one the work loop states: an ordering
 # command CREATES THE WORK ORDER somebody executes, or LEASES one for a spawn. In kernel terms
-# that is the two producers
-# `dispatch.create_task` and `dispatch.create_lease`, and the CLI routes reaching them are what
-# stands below.
-#
-# THE MAP IS DERIVED, NOT TYPED, and that is what keeps it from being the next stale tuple:
-# `tools/test_hooks_v2.py::test_the_ordering_commands_are_the_cli_routes_to_the_task_producers`
-# parses `kernel/cli.py` and asserts these keys ARE the `args.command` branches that reach those
-# two functions. A fourth route added to the CLI turns that test red on the day it ships.
-# The value narrows a command by its first positional (`capture` reaches the task producer only
-# for `TSK`; `capture EVD` is an ordinary item and stays allowed); an empty value means the
-# subcommand qualifies on its own.
+# that is the two producers `dispatch.create_task` and `dispatch.create_lease`.
+# Pinned by `tools/test_hooks_v2.py::test_the_ordering_commands_are_the_cli_routes_to_the_task_producers`.
 _ORDERING_COMMANDS = {"create-task": (), "capture": ("tsk",), "dispatch": ()}
+
+# ...AND THE SECOND CLASS, which the first could not see because it orders nothing: a command that
+# REINSTALLS THE ENFORCEMENT LAYER — the hooks, the settings, the role set this session is judged
+# by. Measured by the verifiers of TSK-0064 and TSK-0067 as real hook processes: a subagent ran
+# `set-preset` and `update-kit` past all eight registered `Bash|PowerShell` gates, while the
+# ordering class above stayed rc 2 for that same caller. The user's approval covers the CONTENT of
+# such a change; what a subagent took was the TIMING and, for the preset one, the repetition.
+# THE PROPERTY, so a third such command joins by itself: the kernel starts the kit's installer
+# exactly one way — `presets.installer_command` builds that invocation and both `apply` functions
+# hand it to a child process. So the class is "the CLI branches that reach that producer", at any
+# call depth and across kernel modules, and
+# `tools/test_hooks_v2.py::test_the_installing_commands_are_the_cli_routes_to_the_installer`
+# derives it. A command that shelled out to the scaffold on its own would be outside the
+# derivation — the same boundary `_ORDERING_COMMANDS` has against a hand-written task.
+_INSTALLING_COMMANDS = {"set-preset": (), "update-kit": ()}
 # `os.path.basename(kernel.cli.ENTRY_POINT)` and the module spelling of the same CLI. Both are
 # pinned against the kernel by the same test — the gate keeps its own copy so that a Bash call does
 # not pay for importing argparse and every field schema just to answer "is this the harness".
@@ -816,8 +887,12 @@ def _harness_argv(stage):
     return None
 
 
-def _ordering_command(stage):
-    """The ordering subcommand this stage would run, or "".
+def _reserved_command(stage, reserved):
+    """The subcommand of `reserved` this stage would run, or "".
+
+    ONE reader for both classes of rule 4: they differ in which kernel producer their map is
+    derived from, never in how a command line is read, and a second copy of this function is how
+    the second class would start deciding differently from the first.
 
     The subcommand is the FIRST POSITIONAL, which is what argparse reads too. A `--root
     project_memory` in front of it shifts that position and this returns nothing — deliberately
@@ -832,9 +907,9 @@ def _ordering_command(stage):
     if not positional:
         return ""
     command = positional[0].lower()
-    if command not in _ORDERING_COMMANDS:
+    if command not in reserved:
         return ""
-    qualifiers = _ORDERING_COMMANDS[command]
+    qualifiers = reserved[command]
     if not qualifiers:
         return command
     if len(positional) > 1 and positional[1].lower() in qualifiers:
@@ -881,18 +956,116 @@ def _redirect_targets(tokens, sinks):
     target and is still refused. The `sinks` argument has no default on purpose — a caller that
     forgot it would silently get the old, over-refusing behaviour back.
     """
-    targets = []
-    for index, token in enumerate(tokens[:-1]):
-        if _REDIRECT_RX.match(_operator(token)):
-            target = tokens[index + 1]
-            if _norm(target) not in sinks:
-                targets.append(target)
-    return targets
+    return [target for _index, target in _output_redirect_targets(tokens)
+            if _norm(target) not in sinks]
 
 
 def _names(rx, tokens):
     """Does any word of `tokens` name this tree, under ANY reading a shell could give it?"""
     return any(rx.search(reading) for token in tokens for reading in _readings(token))
+
+
+# A `NAME=value` word, and a `$NAME`/`${NAME}` reference to one. Used to resolve a redirect target
+# the shell would expand from the SAME command line before rule 5 judges it.
+_ASSIGNMENT_RX = re.compile(r"^([A-Za-z_]\w*)=(.*)$", re.DOTALL)
+_VAR_REF_RX = re.compile(r"\$\{(\w+)\}|\$(\w+)")
+
+
+def _line_assignments(tokens):
+    """{NAME: value} for every `NAME=value` word on the command line — a best-effort static map.
+
+    STATIC AND ORDER-BLIND ON PURPOSE, because this is not a shell: it exists to close the ONE
+    decidable case rule 5 was measured to miss — a plain `F=services/pay.py; … > $F`, rc 0 before
+    — and no more. A value that is itself an expansion is left unresolved, and the target is then
+    judged by its readable part in `_lead_target`. `export F=x` and a command-prefix `F=x cmd`
+    both put the assignment in a `NAME=value` word, so scanning every token catches them.
+    """
+    found = {}
+    for token in tokens:
+        match = _ASSIGNMENT_RX.match(str(token))
+        if match:
+            found[match.group(1)] = match.group(2)
+    return found
+
+
+def _resolve(text, assignments):
+    """`text` with every `$NAME`/`${NAME}` the line assigned substituted in; the rest left as is.
+
+    A reference the map does not carry stays verbatim, so `$(cmd)` and `$UNSET` do not resolve and
+    the target falls to the readable-part judgement below — the named residue, not a false pass.
+    """
+    if not assignments or "$" not in text:
+        return text
+    return _VAR_REF_RX.sub(
+        lambda m: assignments.get(m.group(1) or m.group(2), m.group(0)), text)
+
+
+def _lead_target(reading, cwd, root, assignments):
+    """A redirect target as the path rule 5 judges, or None when there is nothing to judge.
+
+    A `$NAME` the SAME LINE assigned is resolved first (`_resolve`): `F=services/pay.py; … > $F`
+    is decidable and was measured rc 0 while this returned the literal `$F` (no extension, no
+    refusal). Then, in order:
+
+      * a target this reader can PLACE and that lands outside the repo is not this project's
+        production code — None, the same exit `guard_pm_scope.repo_relative` takes for it;
+      * a target whose TILDE prefix only a shell can resolve — it needs that shell's `HOME`, or
+        its `PWD` for `~+` — is judged by the part of it that IS readable, the file name. Skipping
+        the word is what this did first, and `~+/` is the WORKING DIRECTORY, so that version let
+        the repo's own code be written through a prefix. The price of judging it is the opposite
+        error and it is the cheaper one: a code file the lead writes into its own home directory
+        is refused too, while an ordinary document there is not.
+
+    A reference the line did NOT assign (`$(cmd)`, an unset or externally-exported var) stays
+    unresolved and lands in the relative branch, judged as spelled — a named residue, not a false
+    pass. All of these sit in the batteries of `test_the_lead_cannot_land_code_through_a_shell_redirect`
+    and `test_the_shell_rule_leaves_the_leads_own_work_alone`, one entry per direction.
+    """
+    text = _resolve(str(reading), assignments).replace("\\", "/")
+    if not text:
+        return None
+    if text.startswith("~"):
+        return posixpath.basename(text) or None
+    if text.startswith("/") or (len(text) > 1 and text[1] == ":"):
+        return _repo_relative(text, root, fold=False)[0]
+    rel = posixpath.normpath(posixpath.join(cwd or "", text))
+    return None if rel == ".." or rel.startswith("../") else rel
+
+
+def _assert_the_lead_lands_no_code(targets, cwd, root, assignments):
+    """RULE 5 — the lead writes no production code, whichever door it uses.
+
+    WHAT A WRITE POSITION IS HERE, and why this is not the verb list L4 refuses: the SHELL itself
+    lands the bytes of an output redirect in the target, so `>`/`>>`/`>&`-to-a-file and their
+    forms name a file being written without anyone classifying a tool's language.
+    `_redirect_targets` (with `_null_sinks` and the descriptor test in `_output_redirect_targets`)
+    already decides which of them RETAIN what is written, so this rule inherits that answer instead
+    of asking again. What the file IS, is `guard_pm_scope.production_code` — the same predicate the
+    write tools are judged by, so the two doors cannot drift apart.
+
+    WHAT IT DOES NOT REACH, all measured and named beside the tripwire that pins them
+    (`test_the_shell_writes_no_command_line_can_decide_stay_the_named_residue`): a write a TOOL
+    performs from inside its own language or arguments (`cp`, `mv`, `tee`, `sed -i`,
+    `python -c "open(...)"`, and the PowerShell `Out-File`/`Set-Content`/`Add-Content`/`Tee-Object`
+    cmdlets), and a redirect target built by an expansion the line does not assign (`$(cmd)`, an
+    unset or externally-exported variable) — see `_lead_target`.
+    """
+    for token in targets:
+        for reading in _readings(token):
+            rel = _lead_target(reading, cwd, root, assignments)
+            if rel is None or not guard_pm_scope.production_code(rel):
+                continue
+            _kernel.block(
+                HOOK,
+                "'%s' is production code and this command line LANDS bytes in it. You are the "
+                "lead: you do not write production code — that is any file in a programming "
+                "language outside your own areas, at any depth, and the DOOR does not change the "
+                "answer (`guard_pm_scope` refuses the same file through Write/Edit; this is the "
+                "shell half of it)." % rel,
+                remedy="delegate it to the matching specialist subagent, whose work order carries "
+                       "the scope, and let QA gate the result. Your own areas stay open: docs/, "
+                       "plans/, .claude/** and root configuration. If this refusal is wrong, it is "
+                       "an infrastructure defect worth reporting rather than working around.")
 
 
 # An INPUT redirect, and only the file form of it: `<`, `0<`. `<<` opens a here-document and `<<<`
@@ -920,8 +1093,7 @@ def _read_sources(pipeline, stages):
     for stage in stages:
         if not stage or not _stage_is_read_only(stage):
             continue
-        written = {index + 1 for index, token in enumerate(stage[:-1])
-                   if _REDIRECT_RX.match(_operator(token))}
+        written = {target_index for target_index, _target in _output_redirect_targets(stage)}
         sources.update(str(token) for index, token in enumerate(stage)
                        if index and index not in written)
     return sources
@@ -956,8 +1128,7 @@ def _only_reads_staging(pipeline, stages):
     if not named:
         return False
     sources = _read_sources(pipeline, stages)
-    written = {str(pipeline[index + 1]) for index, token in enumerate(pipeline[:-1])
-               if _REDIRECT_RX.match(_operator(token))}
+    written = {str(target) for _target_index, target in _output_redirect_targets(pipeline)}
     return all(str(token) in sources and str(token) not in written
                and all(_STAGING_SOURCE_RX.search(reading) for reading in _readings(token)
                        if _STATE_RX.search(reading))
@@ -1028,14 +1199,26 @@ def handle_shell(data):
     # DEPTH, not a boolean: assigning a flag on every `cd` could not tell "left the tree" from
     # "went deeper into it", so `cd project_memory && cd approvals && echo x > a.yaml` wiped the
     # very flag that should have blocked it.
-    # the working directory, relative to the repo root, as the pipelines walk it
-    cwd = _repo_relative(data.get("cwd") or ".", _kernel.find_repo_root(data.get("cwd")))[0] or ""
+    # the working directory, relative to the repo root, as the pipelines walk it. UNFOLDED: rule 5
+    # compares against a case-sensitive ALLOW list, while every other consumer of this value is an
+    # `IGNORECASE` pattern — see `_repo_relative`.
+    root = _kernel.find_repo_root(data.get("cwd"))
+    cwd = _repo_relative(data.get("cwd") or ".", root, fold=False)[0] or ""
     # WHICH SHELL decides which redirect targets keep the bytes — see `_null_sinks`.
     sinks = _null_sinks(data.get("tool_name"))
     # WHO IS ASKING (rule 4). One definition for the whole kit — `_compat.calling_subagent` carries
     # the measurement and the reason it tests truthiness rather than key presence.
     caller = _compat.calling_subagent(data)
-    for pipeline in _pipelines(_tokenise(code_view)):
+    # ...and rule 5 asks the MIRRORED question, from the guard that owns it: "is this the lead?"
+    # is not "is this not a subagent", and `_compat.calling_subagent` states why the two must not
+    # be merged (they fail in opposite directions).
+    lead = guard_pm_scope.gates_this_caller(data)
+    all_tokens = _tokenise(code_view)
+    # WHOLE-LINE assignments, resolved once: `F=x` and its use `> $F` can sit in different
+    # pipelines (a `;` between them), so rule 5's target resolver needs the map of the entire line,
+    # not of the pipeline it is judging.
+    assignments = _line_assignments(all_tokens)
+    for pipeline in _pipelines(all_tokens):
         stages, current = [], []
         for token in pipeline:
             if _operator(token) == "|":
@@ -1046,7 +1229,7 @@ def handle_shell(data):
         stages.append(current)
         if caller:
             for stage in stages:
-                ordered = stage and _ordering_command(stage)
+                ordered = stage and _reserved_command(stage, _ORDERING_COMMANDS)
                 if ordered:
                     _kernel.block(
                         HOOK,
@@ -1060,8 +1243,26 @@ def handle_shell(data):
                                "report, prove or return your OWN work is affected by this rule; "
                                "`python scripts/harness.py --help` is the authority on what the "
                                "surface has.")
+                installs = stage and _reserved_command(stage, _INSTALLING_COMMANDS)
+                if installs:
+                    _kernel.block(
+                        HOOK,
+                        "`%s` REINSTALLS THE ENFORCEMENT LAYER — it runs the kit's installer, "
+                        "which rewrites the hooks, the settings and the role set this session is "
+                        "judged by — and this call comes from a subagent (%s). The user's "
+                        "approval covers WHAT such a change contains; WHEN it happens, and how "
+                        "often, is the orchestrator's act, and a specialist cannot judge whether "
+                        "the session is at a point where the rule set may move." % (installs,
+                                                                                    caller),
+                        remedy="hand it BACK: name it in `followups` of your result envelope and "
+                               "let the lead run it. The approval you may already hold stays "
+                               "valid — nothing about it is spent by this refusal.")
         verbs_read_only = all(_stage_is_read_only(stage) for stage in stages if stage)
         redirects = _redirect_targets(pipeline, sinks)
+        if lead:
+            # RULE 5, on the targets `_redirect_targets` already resolved: where the SHELL lands
+            # bytes, the lead lands no production code.
+            _assert_the_lead_lands_no_code(redirects, cwd, root, assignments)
         # a redirect that RETAINS makes a pipeline write-capable whatever its verbs: `echo x > f`
         # writes. A redirect into the null device retains nothing and is therefore not one — see
         # `_null_sinks` for why that is a property of the target and not a list of harmless forms.

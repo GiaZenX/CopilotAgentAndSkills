@@ -7042,8 +7042,8 @@ def _project_the_installers_produce(tmp_path):
     return repo, created
 
 
-def _run_project_hook(repo, hook, command, agent_id=None):
-    """One of the PROJECT's own hooks, as a real process, on a real shell payload.
+def _project_hook_process(repo, hook, payload):
+    """One of the PROJECT's own hooks, as a real process, on a payload the caller composed.
 
     The project's copy under `.claude/hooks`, not this repo's kit source, and with no
     `$HARNESS_KERNEL_PATH`: the question these tests ask is what a scaffolded project does, and an
@@ -7052,13 +7052,18 @@ def _run_project_hook(repo, hook, command, agent_id=None):
     """
     env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
     env["CLAUDE_PROJECT_DIR"] = str(repo)
+    return subprocess.run(
+        [sys.executable, "-B", os.path.join(str(repo), ".claude", "hooks", hook)],
+        input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
+
+
+def _run_project_hook(repo, hook, command, agent_id=None):
+    """The same, for the shell payload every caller here used before the tool payload was needed."""
     payload = {"tool_name": "Bash", "tool_input": {"command": command},
                "cwd": str(repo), "hook_event_name": "PreToolUse"}
     if agent_id:
         payload["agent_id"] = agent_id     # what a SUBAGENT's payload carries (spike S3)
-    return subprocess.run(
-        [sys.executable, "-B", os.path.join(str(repo), ".claude", "hooks", hook)],
-        input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=120)
+    return _project_hook_process(repo, hook, payload)
 
 
 def _shell_gates_of(repo):
@@ -10156,6 +10161,299 @@ def test_guard_pm_scope_still_ignores_subagents(tmp_path, rel):
     guard is the lead's alone, and the widening must not change that."""
     payload = dict(_pm_write(tmp_path, rel), agent_id="agent-1")
     assert run_hook_process("guard_pm_scope.py", payload, tmp_path).returncode == 0
+
+
+# ------- the SECOND door: the same file property, on the shell (FR-0013, gate rule 5) -------
+#
+# The lines below were all rc 0 through every registered `Bash|PowerShell` gate of a scaffolded
+# dev project before this rule, while the identical target through `Write` was rc 2 — one target,
+# two doors, two answers.
+PM_SHELL_LANDINGS = [
+    "echo pwned > services/pay.py",          # FR-0013's own example
+    "echo pwned >> core/pay.go",
+    "echo pwned > src/app.py",
+    "echo pwned > 'services/pay.py'",        # quoting changes the words, not the landing
+    "echo pwned >| services/pay.py",         # bash's force-clobber
+    "echo pwned &> services/pay.py",         # both streams
+    "cat > services/pay.py <<'EOF'\nprint('pwned')\nEOF\n",   # how an agent really writes a file
+    "cd services && echo pwned > pay.py",    # the position the pipeline walked to
+    "echo pwned > deep/nested/dir/util.ts",  # any depth, any language
+    # A prefix or a variable only a shell resolves: unplaceable, so judged by the file NAME —
+    # `~+/` is the working directory, i.e. this repo, and skipping such a word let the repo's own
+    # code be written through one (`_lead_target`).
+    "echo pwned > ~+/services/pay.py",
+    "echo pwned > ~/pay.py",
+    "echo pwned > $HOME/pay.py",
+    # The `>&` form: in bash `>& WORD` is the csh spelling of `&> file` unless WORD is a descriptor,
+    # so it LANDS bytes in the file — measured writing `services/pay.py` in a real bash. The tuple
+    # that read every `>&` as descriptor duplication let this, and the same `>&` onto state and the
+    # enforcement layer, name no target at all (rc 0, every caller). See `_output_redirect_targets`.
+    "echo pwned >& services/pay.py",
+    "echo pwned >& deep/nested/dir/util.ts",
+    # A `$NAME` the SAME command line assigns is decidable and the shell expands it — measured
+    # writing `services/pay.py` in a real bash while the gate returned the literal `$F` (no
+    # extension, no refusal). `_line_assignments` + `_resolve` close the decidable case.
+    "F=services/pay.py; echo pwned > $F",
+    "F=services/pay.py; echo pwned >$F",
+    "F=services/pay.py; echo pwned > ${F}",
+    "export F=services/pay.py && echo pwned > $F",
+]
+# ...and what a lead really does all day, which is the half that decides whether this rule is
+# affordable. Every one of these NAMES production code or writes something; none of them lands
+# code, and `pytest tests/test_pay.py`, `python services/pay.py` and `python scripts/quality.py`
+# are the three an "any word of a writing pipeline" rule would have taken away.
+PM_SHELL_UPKEEP = [
+    "echo note > docs/notes.md",
+    "echo plan > plans/plan.md",
+    "cd docs && echo x > note.py",
+    "cat services/pay.py",
+    "cat services/pay.py > /dev/null",
+    "grep -rn pay services/",
+    "pytest tests/test_pay.py",
+    "python services/pay.py",
+    "python scripts/quality.py",
+    "npm run build > build.log",
+    "git add services/pay.py",
+    "echo x > README.md",
+    "echo x > docs/examples/snippet.py",
+    "echo pwned > /tmp/pay.py",              # placeable and outside the repo -> not our business
+    # the other direction of the unplaceable case: judged by the NAME, and a note is not code
+    "echo x > ~/notes.md",
+    "echo x > $HOME/notes.md",
+    # a `>&` that DUPLICATES or closes a descriptor lands in no file — the read must stay allowed,
+    # or `2>&1` would be read as a write to a file called `1` (`_is_descriptor`)
+    "cat services/pay.py >&2",
+    "cat services/pay.py 2>&1",
+    "cat services/pay.py >&-",
+    # a same-line variable resolves to a non-code file: judged, and a doc is not code
+    "F=docs/notes.md; echo x > $F",
+    # the `>&` capture of a read into a scratch, non-code file is the capture carve-out, not code
+    "cat services/pay.py >& /tmp/out.txt",
+]
+# The complement, and it is a NAMED LIMIT rather than an oversight. Two classes, and neither is a
+# case the SHELL decides:
+#   * a TOOL writes from inside its own language or arguments (`cp`, `mv`, `tee`, `sed -i`,
+#     `python -c`, `rm`) — refusing these from a command line needs a list of each language's
+#     writing words, the shape L4 names as wrong;
+#   * the redirect TARGET is built by an expansion this process cannot resolve — a command
+#     substitution `$(...)`/backticks, or a variable the line does not assign (unset here, or
+#     exported by an earlier session). `_lead_target` judges it by its readable part and a
+#     `$(...)` has no code extension in the word, so it stays a residue rather than a false pass.
+PM_SHELL_RESIDUE = [
+    "cp /tmp/x.py services/pay.py",
+    "mv /tmp/x.py services/pay.py",
+    "echo pwned | tee services/pay.py",
+    "sed -i 's/a/b/' services/pay.py",
+    "python -c \"open('services/pay.py','w').write('pwned')\"",
+    "rm -f services/pay.py",
+    # the code extension is BEHIND an expansion this process cannot resolve, so the readable word
+    # carries none: a command substitution, and a variable the line does not assign
+    "echo pwned > $(echo services/pay.py)",
+    "echo pwned > $F",
+]
+
+
+@pytest.fixture(scope="module")
+def installed_project(tmp_path_factory):
+    """ONE real scaffold for the batteries below — they only READ the installed enforcement layer.
+
+    Module-scoped because the installers take the better part of a minute and none of these tests
+    writes into the project; per-test scaffolding would buy nothing but ten more of those.
+    """
+    repo, _created = _project_the_installers_produce(tmp_path_factory.mktemp("pm-shell"))
+    return repo
+
+
+@pytest.mark.parametrize("command", PM_SHELL_LANDINGS)
+def test_the_lead_cannot_land_code_through_a_shell_redirect(installed_project, command):
+    """FR-0013: `guard_pm_scope` is registered on the write tools only, so the same file the lead
+    may not Write it could `echo >` into — measured 2026-08-16 in a scaffolded dev project, all
+    eight registered shell gates rc 0 for every line above, and `git commit -am wip` behind them
+    rc 0 as well.
+
+    The claim the guard's own docstring made about that ("a 95% guard; the QA gate is the hard
+    backstop") is measured false in the same project: `gate_git` asks whether a delivery VERDICT
+    exists on the item, and the lead recorded all three Evidence kinds itself through the
+    sanctioned entry point, after which the merge was open — see
+    `test_the_qa_backstop_verdicts_the_item_not_the_author`.
+
+    WHAT IS CLOSED HERE is the class the SHELL itself decides: an output redirect lands bytes in
+    its target, which is syntax and not a verb list. What is not, is
+    `test_the_shell_writes_no_command_line_can_decide_stay_the_named_residue`.
+    """
+    refused = _run_project_hook(installed_project, "gate_write_scope.py", command)
+    assert refused.returncode == 2, (command, refused.stdout + refused.stderr)
+    assert "production code" in refused.stderr, refused.stderr
+
+
+@pytest.mark.parametrize("command", PM_SHELL_UPKEEP)
+def test_the_shell_rule_leaves_the_leads_own_work_alone(installed_project, command):
+    """THE COUNTER-BATTERY, through EVERY shell gate the project registers rather than through the
+    one under test: a rule that lamed the lead would be a worse defect than the one it closes, and
+    the cost of getting the write POSITION wrong lands exactly here — on reading, running and
+    testing the very files the rule protects."""
+    for gate in _shell_gates_of(installed_project):
+        allowed = _run_project_hook(installed_project, gate, command)
+        assert allowed.returncode == 0, (gate, command, allowed.stdout + allowed.stderr)
+
+
+@pytest.mark.parametrize("command", PM_SHELL_RESIDUE)
+def test_the_shell_writes_no_command_line_can_decide_stay_the_named_residue(installed_project,
+                                                                           command):
+    """THE TRIPWIRE ON THE LIMIT, both ends. These lines write production code from the lead's
+    shell and are NOT refused, for one of two reasons neither of which the SHELL decides: the
+    writing happens inside a tool's own language or arguments (refusing it needs the verb list L4
+    names as the wrong shape of check), or the target is built by an expansion this process cannot
+    resolve, so the readable word carries no code extension.
+
+    If a later round closes one of them, this test goes red and the sentences that call it open —
+    in `gate_write_scope._assert_the_lead_lands_no_code`/`_lead_target` and in each kit's
+    `ENFORCEMENT.md` — move with the code instead of quietly outliving it.
+    """
+    allowed = _run_project_hook(installed_project, "gate_write_scope.py", command)
+    assert allowed.returncode == 0, (command, allowed.stdout + allowed.stderr)
+
+
+# PowerShell WRITE CMDLETS are the same L4 class one language over: `Out-File`, `Set-Content`,
+# `Add-Content` and `Tee-Object` write from inside the cmdlet, with no redirect operator the shell
+# lands bytes through. Measured rc 0, and named as residue rather than left to a reader to assume
+# the POSIX sentence covers PowerShell too. (The PowerShell `>` operator IS `Out-File`, and that
+# form — a redirect operator — is caught: it is in the landings battery's spirit, tested here as
+# the contrast.)
+PM_POWERSHELL_RESIDUE = [
+    '"pwned" | Out-File services/pay.py',
+    'Set-Content services/pay.py "pwned"',
+    'Add-Content services/pay.py "pwned"',
+    '"pwned" | Tee-Object services/pay.py',
+]
+
+
+@pytest.mark.parametrize("command", PM_POWERSHELL_RESIDUE)
+def test_a_powershell_cmdlet_write_is_the_named_residue_too(installed_project, command):
+    """The residue class is per LANGUAGE, and PowerShell is a second shell this kit gates
+    (`SHELL_TOOLS`). Its write cmdlets carry no redirect operator, so rule 5 does not reach them —
+    named here so the boundary sentence is not read as a POSIX-only claim a cmdlet refutes.
+
+    Measured as a `PowerShell` payload, so the null-sink and tool selection are the PowerShell
+    ones. If a later round teaches the gate a cmdlet write, this goes red and the ENFORCEMENT
+    sentence that names them moves with it."""
+    payload = {"tool_name": "PowerShell", "cwd": str(installed_project),
+               "hook_event_name": "PreToolUse", "tool_input": {"command": command}}
+    allowed = _project_hook_process(installed_project, "gate_write_scope.py", payload)
+    assert allowed.returncode == 0, (command, allowed.stdout + allowed.stderr)
+
+
+@pytest.mark.parametrize("spelling, refused", [("Docs", True), ("docs", False)])
+def test_the_shell_rule_reads_the_position_as_the_lead_spelled_it(tmp_path, spelling, refused):
+    """`guard_pm_scope`'s ALLOW list is compared case-SENSITIVELY, and its own comment says why:
+    folding it would WIDEN it on Linux, where `Docs/` really is a different directory from the
+    lead's `docs/`.
+
+    The shell half inherits that or it does not inherit the rule at all. The position a relative
+    redirect target is resolved against used to arrive case-FOLDED (`_repo_relative` normcases for
+    every other consumer, all of which compare `IGNORECASE`), so a lead standing in `Docs/` wrote
+    `pay.py` into it with rc 0 — the folded position read as its own area. The directory is
+    CREATED with the spelling under test, so the answer does not depend on what a filesystem
+    canonicalises. On a case-insensitive host the refusal is the fail-closed direction of the same
+    question (there the two directories are one), which is why the second case pins the allow.
+    """
+    os.makedirs(os.path.join(str(tmp_path), spelling))
+    payload = {"tool_name": "Bash", "hook_event_name": "PreToolUse",
+               "cwd": os.path.join(str(tmp_path), spelling),
+               "tool_input": {"command": "echo pwned > pay.py"}}
+    seen = run_hook_process("gate_write_scope.py", payload, tmp_path)
+    assert seen.returncode == (2 if refused else 0), (spelling, seen.stdout + seen.stderr)
+
+
+def test_the_qa_backstop_verdicts_the_item_not_the_author(tmp_path):
+    """WHY FR-0013 was not answered with "the shell bypass is covered by the QA gate".
+
+    That claim stood in `guard_pm_scope`'s docstring ("the QA gate is the hard backstop") and is
+    measured here instead of believed: `gate_git` refuses the merge while no delivery verdict
+    covers the item — and it opens once the verdicts exist, whoever recorded them. The LEAD can,
+    through the sanctioned entry point, with every registered shell gate allowing each line: so
+    what the backstop judges is the ITEM's verdict, never who wrote the file. It is also LATE by
+    construction — it fires on merge/push, and the commit that carries the lead's own code into
+    the history is refused by nothing (`_shell_gates_of` over `git commit -am wip`, below).
+
+    Nothing here says the backstop is worthless: `gate_pipeline` still judges the code's quality
+    at the same moment. It says it is not an authorship rule, which is the rule FR-0013 asked
+    about.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+
+    repo, _created = _project_the_installers_produce(tmp_path / "backstop")
+    capture_root_item(repo)
+    merge = "git merge feat/PR-0001-x"
+    blocked = _run_project_hook(repo, "gate_git.py", merge)
+    assert blocked.returncode == 2, blocked.stdout + blocked.stderr
+    assert "QA Evidence" in blocked.stderr, blocked.stderr
+
+    for gate in _shell_gates_of(repo):
+        committed = _run_project_hook(repo, gate, "git commit -am wip")
+        assert committed.returncode == 0, (gate, committed.stdout + committed.stderr)
+
+    environment = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+    for kind in qa_kinds():
+        arguments = ["evidence", "--kind", kind, "--result", "pass", "--summary", "qa",
+                     "--related", "PR-0001", "--artifact-ref", "staging/PR-0001/run.log"]
+        line = "%s %s" % (cli.INVOCATION, " ".join(arguments))
+        for gate in _shell_gates_of(repo):
+            asked = _run_project_hook(repo, gate, line)
+            assert asked.returncode == 0, (gate, asked.stdout + asked.stderr)
+        ran = subprocess.run([sys.executable, os.path.join(*cli.ENTRY_POINT.split("/"))]
+                             + arguments, cwd=str(repo), capture_output=True, text=True,
+                             env=environment, timeout=120)
+        assert ran.returncode == 0, ran.stdout + ran.stderr
+
+    opened = _run_project_hook(repo, "gate_git.py", merge)
+    assert opened.returncode == 0, (
+        "the QA gate still refuses the merge after the lead recorded every delivery verdict:\n%s"
+        % opened.stderr)
+
+
+def test_the_shell_half_gates_the_same_caller_the_write_tools_do(installed_project):
+    """One caller test for both doors (`guard_pm_scope.gates_this_caller`), measured from both
+    sides on the same target.
+
+    A subagent is scoped by its work order, not by this rule — `gate_write_scope` refuses its
+    out-of-scope WRITE and `guard_pm_scope` stands down for it — so the shell half must stand down
+    for it too, or a specialist doing its job meets the lead's rule. That the same subagent's
+    shell redirect is not refused at all is the kits' own pinned `known_hole` on
+    `state_write_protection.shell`, not something this rule changes.
+
+    THE THIRD PAYLOAD is the one that tells the two caller questions apart: `agent_type` set,
+    `agent_id` absent. `_compat.calling_subagent` reads it as a subagent (its callers then refuse
+    more), while the question "is this the lead, whom I gate?" reads it as the lead (this guard
+    then gates more) — `_compat` states why the two must fail in opposite directions. Both doors
+    must answer it the SAME way, or one target has two verdicts again; substituting
+    `calling_subagent` for `guard_pm_scope.gates_this_caller` in the shell half turns this half of
+    the test red while the two above stay green.
+    """
+    command = "echo pwned > services/pay.py"
+    lead = _run_project_hook(installed_project, "gate_write_scope.py", command)
+    assert lead.returncode == 2, lead.stdout + lead.stderr
+    child = _run_project_hook(installed_project, "gate_write_scope.py", command,
+                              agent_id="child-1")
+    assert child.returncode == 0, child.stdout + child.stderr
+
+    target = os.path.join(str(installed_project), "services", "pay.py")
+    write = {"tool_name": "Write", "cwd": str(installed_project), "hook_event_name": "PreToolUse",
+             "tool_input": {"file_path": target, "content": "x"}}
+    door = _project_hook_process(installed_project, "guard_pm_scope.py", write)
+    assert door.returncode == 2, door.stdout + door.stderr
+    child_door = _project_hook_process(installed_project, "guard_pm_scope.py",
+                                       dict(write, agent_id="child-1"))
+    assert child_door.returncode == 0, child_door.stdout + child_door.stderr
+
+    typed = {"agent_type": "backend-developer"}
+    shell_payload = {"tool_name": "Bash", "cwd": str(installed_project),
+                     "hook_event_name": "PreToolUse", "tool_input": {"command": command}}
+    both = [_project_hook_process(installed_project, "gate_write_scope.py",
+                                  dict(shell_payload, **typed)),
+            _project_hook_process(installed_project, "guard_pm_scope.py", dict(write, **typed))]
+    assert [seen.returncode for seen in both] == [2, 2], [seen.stderr for seen in both]
 
 
 # --------- every kit's LEAD meets the same two write guards (parity matrix rows 3 and 6) ---------
