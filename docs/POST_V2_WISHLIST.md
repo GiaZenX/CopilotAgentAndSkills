@@ -1930,6 +1930,48 @@ Schließrichtung — `_installed_state` liest auch Skill-Verzeichnisse und Provi
 ist eine Kit-Runde und lohnt erst, wenn das Fenster in der Praxis trifft (Pilot 4 beobachtet
 den Preset-Fluss).
 
+### L42 — Drei gemessene Grenzen der Fortsetzungs-Mechanik (TSK-0065)
+
+TSK-0065 (`BUG-0042`, `DEC-0044`) hat den Sitzungsabbruch zweiteilig beantwortet: verwaiste
+Dispatches werden beim Sitzungsstart ehrlich gefegt (Definition: die anfordernde Sitzung ist
+nicht die jetzt fragende), und ein Spezialisten-Zwischenstand (`staging/<TSK>/checkpoint.yaml`)
+wird vom Nachfolger nur nach dreifacher Verifikation übernommen (Identität, Vertrag über den
+`expected_outputs`-Digest samt Task-/Root-Revision, Artefakt-Bytes — seit der Nachbesserung mit
+Pfad-Eingrenzung und „ohne Artefakt = abwesend"). Drei Grenzen bleiben, je gemessen in der
+Prüfung 2026-08-16:
+
+**(a) Kernel-seitig fällt die Waisen-Frage bei fehlender Sitzungs-Id nicht zu.**
+`dispatch.orphaned_dispatches(state, None)` — und ebenso mit `""` — liefert **jeden**
+aufgezeichneten Dispatch als verwaist (gemessen von Prüfer und Umsetzer unabhängig); was davor
+steht, ist allein der Kit-Hook (`_kernel.py`, gibt bei fehlender/leerer Id `None` zurück und
+fegt nichts — gemessen für fehlenden Schlüssel, Leerstring und Whitespace). Die Definition
+gehört in den Kernel, nicht in den einen Aufrufer; ein zweiter Kernel-Aufrufer ohne diese
+Vorsicht würde alles fegen. Nebenwirkung derselben Konstruktion, als Preis des ehrlichen
+Fixes: ein Dispatch im Fenster zwischen `dispatch` und Antritt (Lease existiert, trägt aber
+noch keine Sitzung) wird bei jedem Sitzungsstart als „LEFT ALONE / unentscheidbar" gemeldet —
+melden statt zerstören ist die richtige Richtung, aber es ist wiederkehrendes Rauschen im
+Briefing und gehört mit in die Folgerunde.
+
+**(b) Was der Datensatz ÜBER die Dateien sagt, prüft niemand.** Ein handgeschriebener
+Checkpoint mit **korrekten** Digests bleibt möglich — `staging/` ist genau das Verzeichnis, in
+das ein dispatchter Spezialist schreiben darf. Die Verifikation misst Baum und Task neu; die
+Prosa (`note`, `next_step`) ist unverifiziert, und die Verfassung sagt dem Nachfolger „Read it,
+judge it". Benannt im Modul-Docstring und im Verdikt-Text; die Begrenzung ist, dass nur
+signierte Fakten (Digests, Revisionen) die Übernahme öffnen, nie die Prosa.
+
+**(c) Ungemessen bleiben zwei Betriebsfragen:** ob eine zweite **gleichzeitige** Sitzung im
+selben Projekt vom Fegen getroffen würde (der Term beweist „woanders angefordert", nicht
+„Anforderer ist tot"; Begrenzung: der Sweep landet nur auf Status, an denen ein Mensch
+weiterhandelt, und zerstört keine noch auflösbare Bindung), und ob der Provider einer
+weiterlaufenden Sitzung über Kompaktierung/Resume je eine **neue Id** gibt (sähe von innen wie
+ein Sitzungsende aus). Beides steht als „NOT measured" im Code; die Id-Frage ist ein Kandidat
+für die nächste echte Provider-Messrunde (`tools/provider_observations.json`).
+
+**Urteil: Rest, keine offene Angriffskette in dieser Konstruktion.** (a) ist durch den einzigen
+existierenden Aufrufer begrenzt und seine Schließrichtung (Kernel-seitiges fail-closed) eine
+kleine Folgerunde; (b) öffnet keine Übernahme, weil nur Gemessenes sie öffnet; (c) ist ehrliche
+Unwissenheit mit benannter Messrichtung, keine Behauptung.
+
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier

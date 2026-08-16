@@ -45,7 +45,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "198058ebf43f91fc",
+        "digest": "d538c983fadbbeb4",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -130,7 +130,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "6466384a22343f65",
+        "digest": "1bd826166ded0b02",
         "hooks": [
           "gate_test_coverage"
         ]
@@ -238,7 +238,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "31d03e0fde8c2e0b",
+        "digest": "ee0ff87600452064",
         "hooks": [
           "gate_dispatch",
           "gate_git"
@@ -277,7 +277,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "fd77cc64ae9accb6",
+        "digest": "ae59e8dfc45a7270",
         "hooks": [
           "gate_write_scope"
         ]
@@ -345,7 +345,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "7f9d22fe1063dfbb",
+        "digest": "e58f1a28bf332470",
         "hooks": []
       },
       "7. Models & presets": {
@@ -421,7 +421,7 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "b071d37484c2e80c",
+        "digest": "d8a5998eb40e3822",
         "hooks": [
           "gate_proc_approved",
           "session_status"
@@ -472,7 +472,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "a2eef6ae4dac3081",
+        "digest": "408b405e501ae81c",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod"
@@ -563,7 +563,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "d789f7c0a51d7023",
+        "digest": "492d10304d805948",
         "hooks": []
       },
       "7. Evolution: CR / BUG — explicit, never silent": {
@@ -667,7 +667,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "6feeda6d2979662c",
+        "digest": "1761f6bfad04736a",
         "hooks": [
           "guard_yaml_valid"
         ]

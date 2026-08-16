@@ -11796,3 +11796,129 @@ def test_the_version_order_is_read_from_the_numbers_and_not_from_the_string():
         compat.kit_version_order("version: 2026.08.02-1\n")
     assert compat.kit_version_order("") is None
     assert compat.kit_version_order("hand-edited\n") is None
+
+
+# ---------------- session break: the successor's first action (DEC-0044 / BUG-0042) ----------------
+#
+# END TO END and through the processes that really run: the dispatch is claimed by the SHIPPED
+# gate_dispatch on PreToolUse/PostToolUse, and the sweep is whatever the SHIPPED session_status
+# hook does at the next session start. Pilot 3 lost three specialists this way and the state they
+# left behind said they were still running.
+
+BREAK_SESSION_A = "sess-aaaa-1111"
+BREAK_SESSION_B = "sess-bbbb-2222"
+
+
+def _dispatch_in_session(repo, session_id):
+    """Lease a task and drive the REAL dispatch gate through claim + spawn, as `session_id`.
+
+    Returns (state, task id). Everything the hook needs is written by the kernel, never by hand:
+    the PR is captured and its scope approval MINTED through the approval hook (`conftest.approve`),
+    because `create_lease` refuses a root nobody approved -- a fixture that faked either would be
+    measuring itself.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    pr = capture_root_item(repo, status=None)
+    conftest.approve(ProjectState(os.path.join(str(repo), "project_memory")), pr["id"], "scope")
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    task = dispatch.create_task(state, {
+        "product_requirement": pr["id"], "derives_from": pr["id"], "type": "implementation",
+        "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"], "required_inputs": [],
+        "allowed_scope": ["src/"], "forbidden_scope": ["secrets/"],
+        "expected_outputs": ["src/checkout.py"], "dependencies": []})
+    state.transition(task["id"], "READY")
+    header = dispatch.dispatch_header(dispatch.create_lease(state, task["id"]))
+    spawn = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(repo),
+             "session_id": session_id, "prompt_id": "prompt-1",
+             "tool_input": {"subagent_type": "backend-developer", "run_in_background": True,
+                            "prompt": header + "\nobjective: implement\noutput: summary"}}
+    assert run_hook_process("gate_dispatch.py", spawn, repo).returncode == 0
+    started = dict(spawn, hook_event_name="PostToolUse",
+                   tool_response={"status": "async_launched", "agentId": "agent-xyz"})
+    assert run_hook_process("gate_dispatch.py", started, repo).returncode == 0
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+    return state, task["id"]
+
+
+def _session_start(repo, session_id):
+    """The briefing text the shipped SessionStart hook injects for a session of that id."""
+    result = run_hook_process(
+        "session_status.py",
+        {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(repo),
+         "session_id": session_id}, repo)
+    assert result.returncode == 0, result.stderr
+    return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_the_session_start_sweeps_a_dispatch_no_child_of_this_session_can_be_behind(tmp_path):
+    """The replay BUG-0042 describes: dispatch, session break, new session -- and its first action.
+
+    Measured before the fix in a scaffolded project outside this repo: the successor's briefing said
+    nothing at all, `sweep-leases` reported the lease as live with 879 s left, `validate` found 0
+    errors, and the task sat in IN_PROGRESS with no agent behind it. What has to hold now is the
+    whole of DEC-0044: the dispatch is swept along the automaton's own no-progress edge, the
+    briefing NAMES what was measured (which task, which session asked for it, where it went), and
+    the checkpoint the dead run left is offered with a verdict rather than assumed.
+    """
+    state, task_id = _dispatch_in_session(tmp_path, BREAK_SESSION_A)
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import checkpoints
+
+    write(str(tmp_path / "src" / "checkout.py"), "half the flow\n")
+    checkpoints.record(state, task_id, {"next_step": "the error path is missing", "outputs": [
+        {"output_index": 0, "progress": "partial", "artifacts": ["src/checkout.py"]}]})
+
+    briefing = _session_start(tmp_path, BREAK_SESSION_B)
+
+    assert "ORPHANED DISPATCH SWEPT" in briefing, briefing
+    assert task_id in briefing and BREAK_SESSION_A in briefing, briefing
+    assert "now FAILED" in briefing, briefing
+    assert "approved-retry" in briefing, briefing
+    assert "CHECKPOINT VERIFIED for %s" % task_id in briefing, briefing
+    assert "NOT measured" in briefing, briefing
+    assert state.read_item(task_id)["status"] == "FAILED"
+    assert not os.path.exists(os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml"))
+
+
+def test_the_sweep_briefing_claims_only_the_dispatches_it_could_judge(tmp_path):
+    """A swept dispatch and an unjudgeable one in ONE session start -- the sentence must say both.
+
+    THE STATE THIS IS ABOUT is not exotic: it is EVERY dispatch that was in flight when a project
+    updated to this kit, because nothing recorded an asking session for those. A briefing that ended
+    on "nothing is left claiming to run" would be measurably false in the very paragraph that also
+    reports one left standing, and the first session after the update is exactly the BUG-0042
+    moment. So the swept class is named as what it is -- the dispatches that RECORDED a session --
+    and the remainder is reported, not implied away.
+    """
+    state, judged = _dispatch_in_session(tmp_path, BREAK_SESSION_A)
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import dispatch
+
+    unjudgeable = _dispatch_in_session(tmp_path, session_id=None)[1]
+    assert dispatch.dispatching_session_locked(state, unjudgeable) is None
+
+    briefing = _session_start(tmp_path, BREAK_SESSION_B)
+
+    assert "nothing is left claiming to run" not in briefing, briefing
+    assert "a dispatch that recorded none is reported below and left standing" in briefing, briefing
+    assert "LEFT ALONE" in briefing and unjudgeable in briefing, briefing
+    assert state.read_item(judged)["status"] == "FAILED"
+    assert state.read_item(unjudgeable)["status"] == "IN_PROGRESS", (
+        "a dispatch nothing recorded a session for was moved anyway")
+
+
+def test_a_session_start_inside_the_session_that_dispatched_leaves_its_own_child_alone(tmp_path):
+    """The counter-direction, and it is not hypothetical: SessionStart fires again on a compaction.
+
+    Same replay, same hook, same everything -- except that the session asking is the session that
+    asked for the child. A sweep that judged anything other than the asking session would end a run
+    that is still going, which is the damage this whole item is about.
+    """
+    state, task_id = _dispatch_in_session(tmp_path, BREAK_SESSION_A)
+    briefing = _session_start(tmp_path, BREAK_SESSION_A)
+    assert "ORPHANED DISPATCH" not in briefing, briefing
+    assert state.read_item(task_id)["status"] == "IN_PROGRESS"
+    assert os.path.exists(os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml"))

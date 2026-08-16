@@ -1,4 +1,4 @@
-generated_at: '2026-08-15T21:57:17'
+generated_at: '2026-08-16T03:11:20'
 items:
 - id: BUG-0001
   type: BUG
@@ -332,6 +332,13 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
+- id: BUG-0052
+  type: BUG
+  title: 'The tools/ suite writes into canonical state on every run: project_memory/.audit/hook_events.jsonl
+    grows from test fixtures'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -611,6 +618,13 @@ items:
   status: VALID
   revision: 1
   approval_ref: null
+- id: DEC-0045
+  type: DEC
+  title: 'Road to release and beyond: in-flight work, then Block A, then a three-half
+    pilot, then release WITH push; full autonomy at 100 USD/session'
+  status: VALID
+  revision: 1
+  approval_ref: null
 - id: EVD-0001
   type: EVD
   title: null
@@ -833,6 +847,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0038
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1001,6 +1021,62 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0028
+  type: FR
+  title: 'Office-Team ist werkzeug- und produktgruppen-agnostisch: Regeln statt Anbindungen,
+    Workflows einmal beibringen'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0029
+  type: FR
+  title: Research-Team hat noch nie einen Piloten gesehen -- ein Workflow-Pilot nach
+    dem Muster der dev-Piloten
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0030
+  type: FR
+  title: 'Dashboard-HTML wird das Zwischenloesungs-Backlog: Kanban-Spalten, alle Item-Typen,
+    automatisch aktuell, in allen drei Kits'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0031
+  type: FR
+  title: 'Office: Standard-Aktenplan-Entwurf beim Onboarding + gerenderter Verzeichnisbaum
+    als sichtbare Wahrheit'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0032
+  type: FR
+  title: 'Office: standardisiertes Finanz-HTML-Dashboard -- Einnahmen/Ausgaben, offene
+    Posten, EUeR auf einen Blick'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0033
+  type: FR
+  title: 'Office: Schriftverkehr-Faehigkeit -- Angebote, Mahnungen, Kundenkorrespondenz
+    als Rolle oder beibringbarer Workflow'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0034
+  type: FR
+  title: 'Office: Fristen und Wiedervorlagen -- aktive Erinnerungen statt stiller
+    Faelligkeiten'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0035
+  type: FR
+  title: 'Office: Vier-Augen-Ablage MECHANISCH -- kein Verschieben ohne neuen Namen
+    UND ohne dass ein zweiter unabhaengiger Agent auf dasselbe Ergebnis kommt'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1068,13 +1144,25 @@ items:
   status: ACCEPTED
   revision: 1
   approval_ref: null
-- id: TSK-0065
+- id: TSK-0066
   type: TSK
   title: null
   status: DRAFT
   revision: 1
   approval_ref: null
-- id: TSK-0066
+- id: TSK-0067
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0068
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0069
   type: TSK
   title: null
   status: DRAFT

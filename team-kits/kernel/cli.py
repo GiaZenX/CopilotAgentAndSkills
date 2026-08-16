@@ -49,7 +49,7 @@ import subprocess
 import sys
 import time
 
-from . import approvals, dispatch, migrate, presets, report, staging
+from . import approvals, checkpoints, dispatch, migrate, presets, report, staging
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -445,6 +445,32 @@ def build_parser() -> argparse.ArgumentParser:
     lease = sub.add_parser(
         "dispatch", help="lease a READY task and print its HARNESS_DISPATCH header")
     lease.add_argument("task_id")
+    # THE CHECKPOINT PAIR (DEC-0044). Written and read through the kernel for the same reason the
+    # result envelope is: the two digests that decide adoption later are MEASUREMENTS, and a record
+    # whose integrity data the checked party supplied would verify itself (`kernel/checkpoints.py`).
+    # The body is on STDIN like `capture`'s, and for the second of that command's two reasons as
+    # well -- an artefact list is a list of mappings once the kernel has measured it, and a
+    # `--from project_memory/staging/...` cannot be typed past `gate_write_scope` at all.
+    checkpoint = sub.add_parser(
+        "checkpoint",
+        help="record resumable progress for a dispatched task (JSON body on stdin: next_step, "
+             "outputs[{output_index, progress, artifacts[, note]}]) -- a successor MAY adopt it "
+             "only after the verification command below confirms it",
+        description="Record resumable progress for a task that is dispatched RIGHT NOW, so a "
+                    "session break does not take the work with it (DEC-0044). JSON body on stdin: "
+                    "{\"next_step\": \"...\", \"outputs\": [{\"output_index\": 0, \"progress\": "
+                    "\"partial\", \"artifacts\": [\"src/x.py\"], \"note\": \"...\"}]}. "
+                    "`output_index` addresses the task's expected_outputs in order; artefact paths "
+                    "are relative to the project root, have to stay inside it (an absolute one, a "
+                    "`..` and a link that leads out are refused) and are hashed by the kernel as "
+                    "they are recorded. Nothing else is written, and the record is a PROPOSAL in "
+                    "staging/<TSK-ID>/, never state.")
+    checkpoint.add_argument("task_id")
+    status = sub.add_parser(
+        "checkpoint-status",
+        help="verify a task's checkpoint (read-only) and print what was measured; exit 1 when it "
+             "is absent, stale or broken -- which are one answer: treat it as absent")
+    status.add_argument("task_id")
     transition = sub.add_parser(
         "transition",
         help="status transition via the automaton; an edge an approval COMMITS needs that "
@@ -806,8 +832,29 @@ def main(argv=None) -> int:
             # ONLY the header on stdout: it has to be copied into the spawn prompt character for
             # character (the gate compares the nonce), so anything else printed beside it is
             # something a role might copy along with it.
-            print(dispatch.dispatch_header(dispatch.create_lease(state, args.task_id)))
+            lease = dispatch.create_lease(state, args.task_id)
+            print(dispatch.dispatch_header(lease))
+            # ...AND THE CHECKPOINT VERDICT ON STDERR, for that same rule rather than despite it:
+            # the reasons are for the human composing the dispatch, and putting them on stdout
+            # would make them one paste away from travelling inside the prompt. `create_lease`
+            # has already decided whether the header carries the pointer; this only says why.
+            sys.stderr.write(dispatch.checkpoint_verdict(state, args.task_id).summary + "\n")
             return 0
+        if args.command == "checkpoint":
+            stored = checkpoints.record(state, args.task_id, _json_body("checkpoint"))
+            print("%s checkpoint recorded: %s (%d output(s), %d artefact(s))" % (
+                stored["task_id"], checkpoints.state_relative(
+                    state, checkpoints.checkpoint_path(state, args.task_id)),
+                len(stored["outputs"]),
+                sum(len(entry["artifacts"]) for entry in stored["outputs"])))
+            return 0
+        if args.command == "checkpoint-status":
+            verdict = checkpoints.verify(state, args.task_id)
+            print(verdict.summary)
+            # 1 = "there is nothing here to adopt", exactly as `validate` uses it for findings: a
+            # caller scripting the retry has to tell "adopt" from "start over" without reading
+            # prose, and DEC-0044 makes absent, stale and broken ONE answer.
+            return 0 if verdict.adoptable else 1
         if args.command == "transition":
             item = state.transition(args.item_id, args.to_status, approved_retry=args.approved_retry)
             print("%s -> %s" % (item["id"], item["status"]))
@@ -852,9 +899,19 @@ def main(argv=None) -> int:
             # that never started -- the case a permission refusal produces, which no hook event
             # reports. Running only the first left that case waiting the full DEFAULT_LEASE_TTL
             # after a sweep that had just told the role there was nothing to release.
-            released = sorted(set(dispatch.sweep_expired_leases(state))
-                              | set(dispatch.reconcile_unstarted_dispatches(state)))
+            to_ready, lease_only = dispatch.sweep_expired_leases(state)
+            released = sorted(set(to_ready) | set(dispatch.reconcile_unstarted_dispatches(state)))
             print("released to READY: %s" % (", ".join(released) or "-"))
+            # THE OTHER HALF OF THE SAME SWEEP, and it used to be printed as part of the line above
+            # while being none of it (see `sweep_expired_leases`): the lease is gone, the status is
+            # not. Which of the two readings applies is not decidable from inside a session, so the
+            # line says both and points at the moment that can decide -- a new session's start,
+            # where `sweep_orphaned_dispatches` runs against the session that asked for the child.
+            print("lease expired, status left standing: %s%s" % (
+                ", ".join(sorted(lease_only)) or "-",
+                " (either a child still working past its lease, or a dispatch nothing is behind "
+                "any more -- this command cannot tell them apart; the next session start can)"
+                if lease_only else ""))
             # THE SECOND LINE IS THE ANSWER A CALLER CAME FOR. A role runs this because a lease
             # blocked its dispatch; "released to READY: -" alone tells it the sweep found nothing
             # and leaves the length of the wait unknown, which is what turns a bounded wait into a

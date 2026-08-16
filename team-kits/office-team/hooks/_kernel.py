@@ -504,6 +504,81 @@ def gated_document_briefing(repo_root=None):
         "`gated_documents`." % ("S" if len(walls) > 1 else "", listed))
 
 
+def orphaned_dispatch_briefing(repo_root=None, session_id=None):
+    """Sweep the dispatches no child of THIS session can be behind, and say what was measured.
+
+    DEC-0044 half (1), and the reason it runs HERE: a session start is the only moment at which
+    "the session that asked for this child is not the session asking now" is decidable at all, and
+    the session id arrives in this event's payload. The kernel does the deciding
+    (`dispatch.sweep_orphaned_dispatches`); this composes the sentence, once for three kits, for the
+    same reason `gated_document_briefing` is not written in `session_status`.
+
+    NEVER RAISES AND NEVER BLOCKS -- same contract as the wall briefing above: its caller is a
+    comfort hook. Without a session id nothing is swept: every dispatch would then look foreign, and
+    sweeping on a missing field is the one direction that destroys work rather than reporting it.
+
+    WHAT THE TEXT MAY CLAIM. Only what was measured -- which task stood in which status, which
+    session asked for it, and where it was moved to. It must NOT claim the other session is over
+    (nothing here can see a process), and it must not claim a checkpoint is good work; the verdict
+    sentence comes from `checkpoints.Verdict.summary`, which is scoped for that reason.
+    """
+    repo_root = repo_root or find_repo_root()
+    if not str(session_id or "").strip():
+        return None
+    try:
+        state = open_state(repo_root)
+        dispatch = kernel_module("dispatch", repo_root)
+        swept, left = dispatch.sweep_orphaned_dispatches(state, str(session_id))
+    except BaseException:  # noqa: BLE001 -- see the contract above
+        return None
+    if not swept and not left:
+        return None
+    parts = []
+    if swept:
+        parts.append(
+            "ORPHANED DISPATCH%s SWEPT AT SESSION START -- measured: %s. A subagent is a child of "
+            "the session that asked for it and cannot outlive it, so no child of these can be "
+            "running here; the kernel moved each one along its own automaton and dropped its lease. "
+            "WHAT THAT COVERS is exactly the dispatches that RECORDED an asking session and named "
+            "another one -- a dispatch that recorded none is reported below and left standing, so "
+            "do not read this as \"nothing claims to run any more\". NOT measured either: whether "
+            "the other session is over -- a second session open in this project right now would "
+            "look exactly the same from here. A task in FAILED goes back to work only on the "
+            "USER's approved retry (`python scripts/harness.py transition <TSK-ID> READY "
+            "--approved-retry`), so ask before you re-order anything, and say all of this in your "
+            "FIRST paragraph."
+            % ("ES" if len(swept) > 1 else "",
+               "; ".join("%s was %s under a dispatch session %s asked for, now %s"
+                         % (row["task_id"], row["status"], row["asked_by"], row["moved_to"])
+                         for row in swept)))
+        parts.append(_checkpoint_briefing(repo_root, [row["task_id"] for row in swept]))
+    if left:
+        parts.append(
+            "DISPATCH%s LEFT ALONE by that sweep, reported rather than acted on: %s. Nothing was "
+            "changed about %s; `python scripts/harness.py sweep-leases` and the lease TTL remain "
+            "the backstop."
+            % ("ES" if len(left) > 1 else "",
+               "; ".join("%s (%s) -- %s" % (row["task_id"], row["status"], row["why"])
+                         for row in left),
+               "them" if len(left) > 1 else "it"))
+    return " ".join(part for part in parts if part)
+
+
+def _checkpoint_briefing(repo_root, task_ids):
+    """The per-task adoption verdicts for the swept tasks, or "" when none can be produced.
+
+    Separate from the sweep sentence because it answers the other half of DEC-0044: what the
+    successor may pick up. Each line is the kernel's own `Verdict.summary`, quoted rather than
+    paraphrased -- a paraphrase of a scoped sentence is how the scope gets lost.
+    """
+    try:
+        state = open_state(repo_root)
+        checkpoints = kernel_module("checkpoints", repo_root)
+        return " ".join(checkpoints.verify(state, task_id).summary for task_id in task_ids)
+    except BaseException:  # noqa: BLE001
+        return ""
+
+
 _PAYLOAD_CACHE = []
 
 

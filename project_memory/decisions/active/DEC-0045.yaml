@@ -1,0 +1,40 @@
+id: DEC-0045
+title: 'Road to release and beyond: in-flight work, then Block A, then a three-half
+  pilot, then release WITH push; full autonomy at 100 USD/session'
+context: 'User decision 2026-08-15, replacing the loose ''wishlist after release,
+  user prioritises'' state with a bound order. The user reviewed the sorted wishlist
+  blocks (A cleanup+kit-gate gaps; B UI; C provider/container; D team comfort; E office/shop)
+  and chose: only Block A joins the pre-release path; the UI idea (FR-0024/0023/0025)
+  is developed as a CONCEPT in parallel after release while the user works with the
+  released harness (office care + own projects); backlog/kanban was always meant tool-independent
+  of the full UI. Office steering captured as FR-0028 (tool-/product-agnostic, taught
+  workflows); research pilot gap as FR-0029. Office kit gets its first pilot INSIDE
+  pilot 4 (user chose ''vor dem Release, in Pilot 4'').'
+decision: 'Order, binding: (1) finish in-flight TSK-0065 (session-break continuation);
+  (2) plan core: FR-0006 update-kit, Lead-Paket-Kuerzung, FR-0004; (3) BLOCK A: remaining
+  pilot-3 findings BUG-0043..BUG-0050 (triage: fix or explicitly defer each), FR-0026
+  (codex twin), FR-0027 (delta rendering), FR-0009 (role names in reports), FR-0013
+  plus the L40 class (kit-gate subagent/shell gaps -- the security half of A); (4)
+  pilot 4 (TSK-0066) with THREE halves incl. the office pilot, cap ~70 USD; (5) RELEASE
+  CUT including PUSH -- the push for this release cut is explicitly pre-approved by
+  the user in-session 2026-08-15 (''danach committen, pushen und fertig''); the lead
+  announces it when executing. Post-release: the user works with the harness; the
+  UI/provider/container track (FR-0024, FR-0023, FR-0025, first slice: standalone
+  read-only kanban) is worked out as a concept in parallel and prioritised by the
+  user; FR-0020 stays parked; remaining blocks D/E on user call (FR-0014 office pilot
+  largely absorbed by pilot 4 half 3, FR-0029 research pilot post-release).'
+consequences: 'Autonomy: the lead works the bound order fully autonomously, including
+  while the user is away -- build, verify, commit; the user is consulted only for
+  money beyond the envelope, external approvals (entry-file rollout to the home directory),
+  genuine product questions, and the named pre-approved push. Money envelope: up to
+  100 USD per session on the lead''s own judgment; cost-bearing SDK/pilot runs stay
+  on Sonnet (DEC-0027/DEC-0031 line continues). Risk named: Block A before release
+  lengthens the path by days; the user chose it knowingly (''erstmal jetzt alles machen
+  + A. danach committen, pushen und fertig'').'
+source: User messages 2026-08-15 in-session (wishlist sorting answer + office-pilot
+  answer); supersedes the unbound 'wishlist after release' ordering; DEC-0044, TSK-0066,
+  FR-0028, FR-0029 are the neighbouring records
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-15T22:42:27'

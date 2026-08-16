@@ -734,7 +734,7 @@ def test_a_running_lease_is_reported_with_the_time_it_has_left(tmp_path):
     state = ProjectState(root)
     task_id = _leasable_task(state)
     dispatch.create_lease(state, task_id, ttl=120.0)
-    assert dispatch.sweep_expired_leases(state) == []
+    assert dispatch.sweep_expired_leases(state) == ([], [])
     reported = dispatch.live_leases(state)
     assert [entry[0] for entry in reported] == [task_id]
     assert 0 < reported[0][1] <= 120.0
@@ -804,7 +804,7 @@ def test_sweep_reports_a_leased_task_whose_lease_vanished(tmp_path):
     task_id = _leasable_task(state)
     dispatch.create_lease(state, task_id)           # -> LEASED + lease file
     os.remove(os.path.join(root, "tasks", "leases", task_id + ".lease.yaml"))
-    assert dispatch.sweep_expired_leases(state) == []       # no lease file -> nothing to sweep
+    assert dispatch.sweep_expired_leases(state) == ([], [])  # no lease file -> nothing to sweep
     assert dispatch.leased_without_live_lease(state) == [task_id]
     assert state.read_item(task_id)["status"] == "LEASED"   # reported, NOT reset
 

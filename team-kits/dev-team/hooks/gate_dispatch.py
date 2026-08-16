@@ -163,8 +163,13 @@ def handle_pre_tool_use(data):
         # again, without waiting for the turn to end.
         dispatch.reconcile_unstarted_dispatches(state)
         header = dispatch.parse_header(str(tool_input.get("prompt") or ""))
+        # `session_id` is what makes a later session able to tell a dispatch of ITS OWN from one
+        # nothing can be behind any more (DEC-0044; `dispatch.DISPATCHING_SESSION`). It is recorded
+        # at the CLAIM because that is the moment a child is asked for -- and the key is one the
+        # provider was measured to send on this event (`tools/provider_observations.json`).
         dispatch.validate_dispatch(state, header, tool_input.get("subagent_type"), claim=True,
-                                   prompt_id=data.get("prompt_id"))
+                                   prompt_id=data.get("prompt_id"),
+                                   session_id=data.get("session_id"))
     except dispatch.DispatchError as exc:
         _kernel.block(HOOK, "specialist spawn refused.\n%s" % exc, event="PreToolUse")
     sys.exit(0)
@@ -270,7 +275,9 @@ def handle_post_tool_use(data):
                     % (header["task_id"], response.get("status")))
         if agent_id:
             dispatch.bind_agent(state, header["task_id"], agent_id)
-        dispatch.spawn_outcome(state, header["task_id"], True)
+        # The session goes onto the TASK here, because the lease it also sits on is the record the
+        # TTL sweep deletes first -- see `dispatch.spawn_outcome`.
+        dispatch.spawn_outcome(state, header["task_id"], True, session_id=data.get("session_id"))
     except dispatch.DispatchError as exc:
         _report("could not record the spawn outcome for %s.\n%s" % (header["task_id"], exc))
     sys.exit(0)

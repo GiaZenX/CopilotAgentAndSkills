@@ -1,0 +1,17 @@
+id: FR-0034
+title: 'Office: Fristen und Wiedervorlagen -- aktive Erinnerungen statt stiller Faelligkeiten'
+request_text: 'Gap named by the lead and prioritised by the user 2026-08-15: nothing
+  in the office kit actively reminds -- USt-Voranmeldung, retention periods (filing_plan
+  carries retention per rule but nobody watches it), dunning follow-ups, Wiedervorlagen.
+  Wanted: a deadline register in state (derived where possible: tax rhythm from business_profile,
+  retention from filing_plan rules, dunning candidates from ledger age) and an active
+  surface: the manager''s session brief names what is due/overdue (the session-start
+  brief exists and is the natural carrier -- generated/session_brief.yaml), optionally
+  the FR-0032 finance dashboard shows it. No silent automation that ACTS on deadlines
+  -- the reminder proposes, the user decides (kit line: approval before action). Source:
+  user selection 2026-08-15, ''Schriftverkehr & Fristen'' chosen with the note that
+  these gaps become priority items.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:03:52'

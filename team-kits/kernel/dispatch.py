@@ -18,6 +18,7 @@ moves IN_PROGRESS -> SUBMITTED; the envelope is stored beside the task.
 from __future__ import annotations
 
 import json
+import operator
 import os
 import time
 import uuid
@@ -35,6 +36,7 @@ from .approvals import (
 )
 from .backlog_types import (
     AMENDMENT_TYPES,
+    AUTOMATA,
     PARENT_FIELDS,
     UI_TASK_TYPES,
     field_elements,
@@ -216,6 +218,15 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
             "ttl": float(ttl),
             "agent_id": None,
         }
+        # THE ADOPTION OFFER IS MADE HERE, at the one moment a dispatch is composed, so that what
+        # the specialist receives says whether there is anything to resume -- and says it ONLY when
+        # the verification passed (DEC-0044: an unverified checkpoint is treated as absent). The
+        # key is absent otherwise, so "no offer" and "a failing offer" are the same envelope.
+        # `checkpoint_verdict` is the caller's route to the REASONS, which belong in front of a
+        # human rather than in the header.
+        verdict = checkpoint_verdict(state, task_id, _locked=True)
+        if verdict.adoptable:
+            lease["checkpoint"] = verdict.pointer
         state._write_yaml_atomic(lease_path, lease)
         task["status"] = LEASE_MINTED_STATUS
         task["leased_at"] = _now_iso()
@@ -224,16 +235,36 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
         return lease
 
 
+def checkpoint_verdict(state: ProjectState, task_id: str, _locked: bool = False):
+    """What `kernel.checkpoints` says about this task's checkpoint -- deferred so the two stay leaves.
+
+    `checkpoints` imports `LEASE_BEARING_STATUSES` from here, so a module-level import in this
+    direction would be a cycle. The same shape as `_assert_origins_belong_to_root_locked`'s import
+    of `report`, and for the same reason.
+    """
+    from .checkpoints import verify
+
+    return verify(state, task_id, _locked=_locked)
+
+
 def dispatch_header(lease: dict) -> str:
-    """The ONLY thing the gate parses -- never free prompt prose (spec II.4)."""
-    return HEADER_PREFIX + json.dumps(
-        {
-            "task_id": lease["task_id"],
-            "root_revision": lease["root_revision"],
-            "lease": lease["nonce"],
-        },
-        sort_keys=True,
-    )
+    """The ONLY thing the gate parses -- never free prompt prose (spec II.4).
+
+    `checkpoint` rides ALONG when `create_lease` verified one, because the header is the part of the
+    envelope that reaches the specialist verbatim; `parse_header` names the three keys the gate
+    decides on and this is not one of them, so it grants nothing. It is a POINTER the specialist
+    re-verifies for itself (`python scripts/harness.py checkpoint-status <TSK-ID>`) -- the tree can
+    move between the lease and the spawn, and a pointer inside a model-composed prompt is not
+    evidence of anything on its own.
+    """
+    body = {
+        "task_id": lease["task_id"],
+        "root_revision": lease["root_revision"],
+        "lease": lease["nonce"],
+    }
+    if lease.get("checkpoint"):
+        body["checkpoint"] = lease["checkpoint"]
+    return HEADER_PREFIX + json.dumps(body, sort_keys=True)
 
 
 def parse_header(prompt: str) -> dict:
@@ -392,7 +423,8 @@ def reconcile_unstarted_dispatches(state: ProjectState) -> list:
 
 
 def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
-                      claim: bool = False, prompt_id: str = None) -> dict:
+                      claim: bool = False, prompt_id: str = None,
+                      session_id: str = None) -> dict:
     """The full gate-layer-2 check (spec II.4), re-run at SPAWN time.
 
     `create_lease` checked the same ground when the lease was made, but that was
@@ -535,7 +567,7 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
                 )
         if claim:
             lease["dispatched_at"] = _now_iso()
-            _open_bind_window(lease, prompt_id)
+            _open_bind_window(lease, prompt_id, session_id)
             state._write_yaml_atomic(_lease_path(state, task_id), lease)
         return {"lease": lease, "task": task, "root": root}
 
@@ -582,7 +614,8 @@ def verify_dispatch_identity(state: ProjectState, header: dict, subagent_type: s
         return {"lease": lease, "task": task}
 
 
-def mark_awaiting_bind(state: ProjectState, task_id: str, prompt_id: str = None) -> dict:
+def mark_awaiting_bind(state: ProjectState, task_id: str, prompt_id: str = None,
+                       session_id: str = None) -> dict:
     """Record that a validated dispatch is waiting for its SubagentStart.
 
     Why this exists: the SubagentStart payload carries `agent_id` and
@@ -603,15 +636,23 @@ def mark_awaiting_bind(state: ProjectState, task_id: str, prompt_id: str = None)
     """
     with state.lock:
         lease = _read_lease(state, task_id)
-        _open_bind_window(lease, prompt_id)
+        _open_bind_window(lease, prompt_id, session_id)
         state._write_yaml_atomic(_lease_path(state, task_id), lease)
         return lease
 
 
-def _open_bind_window(lease: dict, prompt_id: str = None) -> dict:
-    """Mark a lease as awaiting its child for BIND_WINDOW seconds (caller writes)."""
+def _open_bind_window(lease: dict, prompt_id: str = None, session_id: str = None) -> dict:
+    """Mark a lease as awaiting its child for BIND_WINDOW seconds (caller writes).
+
+    THE ASKING SESSION IS RECORDED HERE because this is the moment a child is ASKED FOR, and
+    `DISPATCHING_SESSION` explains what the record is for. A caller that has no session id (an
+    in-process test, a CLI) leaves the existing record standing rather than blanking it: a claim
+    re-opened without the id must not turn a decidable dispatch into an undecidable one.
+    """
     lease["awaiting_bind_until"] = time.time() + BIND_WINDOW
     lease["awaiting_bind_prompt"] = prompt_id
+    if session_id:
+        lease[DISPATCHING_SESSION] = str(session_id)
     return lease
 
 
@@ -721,14 +762,23 @@ def task_for_agent(state: ProjectState, agent_id: str):
     return None
 
 
-def spawn_outcome(state: ProjectState, task_id: str, ok: bool) -> dict:
-    """PostToolUse on the spawn: success -> IN_PROGRESS, failure -> READY."""
+def spawn_outcome(state: ProjectState, task_id: str, ok: bool, session_id: str = None) -> dict:
+    """PostToolUse on the spawn: success -> IN_PROGRESS, failure -> READY.
+
+    THE SESSION IS RECORDED ON THE TASK AS WELL, and not only on the lease, because the lease is
+    the record that goes away first: `sweep_expired_leases` drops it after the TTL while leaving an
+    IN_PROGRESS task standing (see `LEASE_MINTED_STATUS`), and that is precisely the state BUG-0042
+    measured -- "IN_PROGRESS with no live agent behind them". With the asker recorded only on the
+    lease, that task would be undecidable for `orphaned_dispatches` forever.
+    """
     with state.lock:
         task = state.read_item(task_id)
         if ok:
             if task.get("status") == "LEASED":
                 task["status"] = "IN_PROGRESS"
                 task["started"] = _now_iso()
+                if session_id:
+                    task[DISPATCHING_SESSION] = str(session_id)
                 state._write_yaml_atomic(state.active_path(task_id), task)
         else:
             _release_lease_locked(state, task_id, to_ready=True)
@@ -737,13 +787,23 @@ def spawn_outcome(state: ProjectState, task_id: str, ok: bool) -> dict:
         return task
 
 
-def sweep_expired_leases(state: ProjectState) -> list:
-    """Orphaned leases fall back to READY after TTL (no task hangs, spec II.4)."""
-    released = []
+def sweep_expired_leases(state: ProjectState):
+    """(returned to READY, lease dropped only) for every expired lease (spec II.4: no task hangs).
+
+    TWO LISTS AND NOT ONE, because for one of the two the sweep did LESS than it says. Measured
+    2026-08-15 in a scaffolded project against the previous single list: an IN_PROGRESS task whose
+    lease expired was printed as "released to READY: TSK-0001" while it stayed IN_PROGRESS --
+    `_release_lease_locked` resets only `LEASE_MINTED_STATUS`, deliberately (a child can outlive its
+    lease, see that constant). The task was then unleasable, unreported by `validate` and unnamed by
+    the next sweep: the "IN_PROGRESS with no live agent behind them" dead end of BUG-0042, wearing a
+    sentence that said the opposite. Every caller has to carry both halves; what to DO about the
+    second one is a question only a new session can answer (`sweep_orphaned_dispatches`).
+    """
+    to_ready, lease_only = [], []
     with state.lock:
         lease_dir = os.path.join(state.root, "tasks", "leases")
         if not os.path.isdir(lease_dir):
-            return released
+            return to_ready, lease_only
         for name in sorted(os.listdir(lease_dir)):
             if not name.endswith(".lease.yaml"):
                 continue
@@ -753,11 +813,11 @@ def sweep_expired_leases(state: ProjectState) -> list:
             except DispatchError:
                 continue
             if _expired(lease):
-                _release_lease_locked(state, task_id, to_ready=True)
-                released.append(task_id)
-        if released:
+                reset = _release_lease_locked(state, task_id, to_ready=True)
+                (to_ready if reset else lease_only).append(task_id)
+        if to_ready or lease_only:
             state._regenerate_index_locked()
-    return released
+    return to_ready, lease_only
 
 
 def live_leases(state: ProjectState) -> list:
@@ -859,6 +919,171 @@ def leased_without_live_lease(state: ProjectState) -> list:
             if task.get("status") == LEASE_MINTED_STATUS and not lease_in_force(state, stem):
                 flagged.append(stem)
     return sorted(flagged)
+
+
+# -- session ownership: the one locally decidable form of "no agent is behind this" -------------
+
+# WHERE THE ASK IS RECORDED. A subagent is a child of the session that asked for it and cannot
+# outlive that session, so "the session that asked for this child is not the session asking now" is
+# the only form of DEC-0044's "a lease whose agent the session cannot see" this kernel can decide
+# without looking at a process it has no handle on. The provider hands every hook payload a
+# `session_id` (measured key list in `tools/provider_observations.json`, agent_identity), which is
+# what makes the term readable at all.
+#
+# ONE field name on TWO records, because one of them is dropped first: the LEASE carries it from the
+# claim (`_open_bind_window`), the TASK from the successful spawn (`spawn_outcome`) -- and
+# `sweep_expired_leases` deletes the lease after the TTL while leaving an IN_PROGRESS task standing,
+# which is exactly the state BUG-0042 measured. `dispatching_session_locked` is the single reader.
+DISPATCHING_SESSION = "dispatch_session"
+
+
+def dispatching_session_locked(state: ProjectState, task_id: str, task: dict = None):
+    """Which session asked for THIS task's current dispatch, or None when nothing recorded it.
+
+    THE LEASE IS THE LIVE RECORD, and while one EXISTS it is the only one asked -- even when it is
+    still empty. The task's copy answers only where there is no lease at all, which is precisely the
+    state it was written for (`sweep_expired_leases` drops the lease and leaves IN_PROGRESS
+    standing).
+
+    THE DEFECT THAT MADE THAT ORDER A RULE INSTEAD OF A PREFERENCE, measured 2026-08-15: a fallback
+    that ran whenever the lease carried no session read the LAST run's value out of the task, and
+    `create_lease` mints a lease with no session (it is recorded at the CLAIM, one tool call later).
+    In that window a retry dispatched by THIS session was judged foreign: a mid-session SessionStart
+    -- a compaction, same id -- swept the fresh dispatch back to READY and killed the nonce sitting
+    in the prompt that was being composed. `test_approvals_dispatch
+    .test_a_fresh_lease_of_this_session_is_not_judged_by_the_previous_runs_record` is that chain.
+
+    None is NOT "nobody" -- it is "undecidable here", and every caller has to treat it that way (see
+    `orphaned_dispatches`). A corrupt lease answers None for the same reason.
+    """
+    if os.path.exists(_lease_path(state, task_id)):
+        try:
+            recorded = _read_lease(state, task_id).get(DISPATCHING_SESSION)
+        except DispatchError:
+            return None
+        return str(recorded) if recorded else None
+    try:
+        recorded = (task if task is not None else state.read_item(task_id)).get(
+            DISPATCHING_SESSION)
+    except StateError:
+        return None
+    return str(recorded) if recorded else None
+
+
+def no_progress_status(from_status: str):
+    """The status the TSK automaton offers for a run that produced NOTHING, or None when it is not
+    the single obvious one.
+
+    DERIVED FROM THE EDGE SET, not a table of two rows, because a table is a claim that the
+    lifecycle has exactly these two lease-bearing statuses forever. Three subtractions, each of
+    which says what such a status may NOT be:
+      * a TERMINAL -- a run that produced nothing did not end the task's life,
+      * the CHAIN SUCCESSOR -- that edge means the run DID produce something,
+      * a LEASE-BEARING status -- landing in one would re-assert the very thing being swept away.
+    What the shipped automaton leaves is LEASED -> READY (the lease-timeout back-edge) and
+    IN_PROGRESS -> FAILED (the run that did not deliver, which is also the edge the pilot's PM
+    walked by hand -- BUG-0042). Ambiguity is refused rather than guessed: with no single answer
+    left, the caller REPORTS the dispatch instead of moving it.
+    `test_approvals_dispatch.test_the_no_progress_status_is_derived_from_the_automatons_edge_set`
+    holds both halves.
+    """
+    auto = AUTOMATA["TSK"]
+    if from_status not in auto.states:
+        return None
+    candidates = {dst for src, dst in auto.allowed if src == from_status}
+    candidates -= set(auto.terminals)
+    candidates -= set(LEASE_BEARING_STATUSES)
+    if from_status in auto.chain and auto.chain.index(from_status) + 1 < len(auto.chain):
+        candidates.discard(auto.chain[auto.chain.index(from_status) + 1])
+    return candidates.pop() if len(candidates) == 1 else None
+
+
+def orphaned_dispatches(state: ProjectState, session_id: str):
+    """(orphaned, undecidable) for every task sitting in a lease-bearing status.
+
+    ORPHANED means the ask is recorded and it names a session other than `session_id` -- no child of
+    it can be running here, so the status is a claim nothing backs. UNDECIDABLE means the record this
+    task's CURRENT dispatch answers with (`dispatching_session_locked`) names no session at all:
+    state written before this record existed, a lease just minted and not yet claimed, a lease
+    removed out of band. The honest answer there is "this cannot be judged", and the caller says so
+    rather than sweeping on a guess. A dispatch this very session asked for is neither, which is what
+    keeps a mid-session SessionStart (a compaction) from reporting a live child of its own as gone --
+    and that holds for the retry it minted seconds ago only because of the reading order the reader's
+    own docstring measures.
+
+    WHAT THIS DOES NOT MEASURE, named because the answer would otherwise read stronger than it is:
+    a session id that is not ours proves the ask came from ELSEWHERE, not that the asker is over.
+    Two Claude Code sessions in one repo at the same time are therefore the case where "orphaned" is
+    true by this definition and wrong in fact; `sweep_orphaned_dispatches` is what decides what may
+    be done about that, and it is deliberately narrower than this function. The second boundary is
+    the id itself: it is the provider's, and what this term needs of it -- that a session KEEPS it
+    while its children live -- is not among the things `tools/provider_observations.json` records as
+    measured. A provider that issued a fresh id to a continuing session would look, from here,
+    exactly like a session that ended.
+    """
+    orphaned, undecidable = [], []
+    with state.lock:
+        for stem, _path in state.iter_active_items("TSK"):
+            try:
+                task = state.read_item(stem)
+            except StateError:
+                continue
+            status = task.get("status")
+            if status not in LEASE_BEARING_STATUSES:
+                continue
+            asked_by = dispatching_session_locked(state, stem, task)
+            record = {"task_id": stem, "status": status, "asked_by": asked_by,
+                      "lease_in_force": lease_in_force(state, stem)}
+            if asked_by is None:
+                undecidable.append(record)
+            elif asked_by != str(session_id or ""):
+                orphaned.append(record)
+    by_id = operator.itemgetter("task_id")          # one sort key, two lists
+    return sorted(orphaned, key=by_id), sorted(undecidable, key=by_id)
+
+
+def sweep_orphaned_dispatches(state: ProjectState, session_id: str):
+    """(swept, left) -- return every orphaned dispatch to an honest status at session start.
+
+    DEC-0044 half (1): nothing pretends to run. The status moves through `state.transition`, i.e.
+    along an edge the TSK automaton names (`no_progress_status`), so the sweep cannot write a status
+    the lifecycle does not offer, and the transition drops the lease on its way out
+    (`release_lease_for_status_locked`). An IN_PROGRESS dispatch therefore lands in FAILED and its
+    retry is the user's approved one (`state.RETRY_APPROVAL_EDGE`) -- which is the moment DEC-0044
+    puts the checkpoint verdict in front of a human.
+
+    `left` carries every dispatch this did NOT move, with the reason, and it is not a leftover: the
+    undecidable ones and any whose transition the automaton refuses have to reach the session as
+    facts, or the sweep's silence would read as "there was nothing".
+
+    THE RESIDUE THIS DOES NOT CLOSE, measured against the shipped surface rather than assumed: a
+    SECOND live session in the same repo owns dispatches this session cannot see either, and they
+    are indistinguishable here from those of a session that ended. What bounds the damage is that
+    the sweep only ever moves a task to a status a human then has to act on -- READY (re-leasable)
+    or FAILED (whose way back needs the user's approved retry) -- and never touches an agent binding
+    that is still resolvable: `task_for_agent` reads the LEASE, and by the time this has run the
+    lease is gone, so a still-running foreign child is refused by gate layer 3 exactly as it already
+    is today once its lease expires (`test_approvals_dispatch
+    .test_a_swept_orphan_keeps_no_lease_and_no_agent_binding`).
+    """
+    orphaned, undecidable = orphaned_dispatches(state, session_id)
+    swept, left = [], list(undecidable)
+    for record in orphaned:
+        target = no_progress_status(record["status"])
+        if target is None:
+            left.append(dict(record, why="the TSK automaton offers no single no-progress edge out "
+                                         "of %s -- refusing to guess one" % record["status"]))
+            continue
+        try:
+            state.transition(record["task_id"], target)
+        except StateError as exc:
+            left.append(dict(record, why="the transition to %s was refused (%s)" % (target, exc)))
+            continue
+        swept.append(dict(record, moved_to=target))
+    for record in left:
+        record.setdefault("why", "no dispatching session is recorded for it, so whether a child was "
+                                 "ever asked for by another session cannot be decided here")
+    return swept, left
 
 
 def release_lease_for_status_locked(state: ProjectState, task_id: str, status: str) -> bool:
@@ -1534,9 +1759,15 @@ def _remove_lease(state: ProjectState, task_id: str) -> None:
         pass
 
 
-def _release_lease_locked(state: ProjectState, task_id: str, to_ready: bool) -> None:
+def _release_lease_locked(state: ProjectState, task_id: str, to_ready: bool) -> bool:
+    """Drop the lease; True when the TASK's status was reset too, False when only the lease went.
+
+    The return value is what keeps `sweep_expired_leases` honest -- see the two lists there.
+    """
     _remove_lease(state, task_id)
     task = state.read_item(task_id)
     if to_ready and task.get("status") == LEASE_MINTED_STATUS:
         task["status"] = "READY"
         state._write_yaml_atomic(state.active_path(task_id), task)
+        return True
+    return False

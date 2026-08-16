@@ -12,7 +12,7 @@ TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 sys.path.insert(0, TEAM_KITS)
 
 from conftest import approve, drive_task_to, mint_via_hook  # noqa: E402 -- shared suite helpers
-from kernel import approvals, backlog_types, dispatch, hashing, staging  # noqa: E402
+from kernel import approvals, backlog_types, checkpoints, dispatch, hashing, staging  # noqa: E402
 from kernel.approvals import ApprovalError  # noqa: E402
 from kernel.dispatch import DispatchError  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
@@ -321,7 +321,7 @@ def test_lease_timeout_sweep_returns_to_ready(state):
     _pr, task = make_ready_task(state)
     dispatch.create_lease(state, task["id"], ttl=0.01)
     time.sleep(0.05)
-    assert dispatch.sweep_expired_leases(state) == [task["id"]]
+    assert dispatch.sweep_expired_leases(state) == ([task["id"]], [])
     assert state.read_item(task["id"])["status"] == "READY"
 
 
@@ -3070,3 +3070,375 @@ def test_the_refusal_names_the_excluded_amendment_that_could_explain_it(state):
     message = str(exc.value)
     assert cr["id"] in message and "DRAFT" in message, message
     assert unrelated["id"] not in message, message
+
+
+# ---------------- session-break continuation (DEC-0044 / BUG-0042) ----------------
+#
+# The defect these measure: a running background dispatch survives NO session end. Pilot 3 lost
+# three specialists at session breaks, and the state they left behind said they were still running.
+
+SESSION_A = "sess-aaaa-1111"          # the session that asked for the child
+SESSION_B = "sess-bbbb-2222"          # the one that starts afterwards
+
+
+def _dispatched(state, session_id=SESSION_A, started=True):
+    """A task carried through the REAL dispatch lifecycle, as `session_id` asked for it.
+
+    Through `validate_dispatch(claim=True)`/`spawn_outcome` rather than by writing a lease, for the
+    reason `conftest.drive_task_to` gives: a fixture that hand-wrote the record under test would
+    measure the fixture. This is exactly the call gate_dispatch makes on PreToolUse and PostToolUse.
+    """
+    _pr, task = make_ready_task(state)
+    lease = dispatch.create_lease(state, task["id"])
+    header = dispatch.parse_header(dispatch.dispatch_header(lease))
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True,
+                               prompt_id="prompt-1", session_id=session_id)
+    if started:
+        dispatch.spawn_outcome(state, task["id"], ok=True, session_id=session_id)
+    return task
+
+
+def test_the_no_progress_status_is_derived_from_the_automatons_edge_set(monkeypatch):
+    """`no_progress_status` reads the TSK automaton; ambiguity is refused, never guessed.
+
+    The derivation is re-done here from `AUTOMATA` itself rather than compared against the two
+    values the shipped automaton happens to produce -- a test that asserted "LEASED to READY,
+    IN_PROGRESS to FAILED" would be the table the function exists not to be. The second half feeds
+    an automaton with TWO no-progress edges out of LEASED: the answer must be None, because a sweep
+    that guessed there would move a task along an edge nobody chose.
+    """
+    auto = backlog_types.AUTOMATA["TSK"]
+    for status in dispatch.LEASE_BEARING_STATUSES:
+        candidates = {dst for src, dst in auto.allowed if src == status}
+        candidates -= set(auto.terminals)
+        candidates -= set(dispatch.LEASE_BEARING_STATUSES)
+        if status in auto.chain and auto.chain.index(status) + 1 < len(auto.chain):
+            candidates.discard(auto.chain[auto.chain.index(status) + 1])
+        assert len(candidates) == 1, (status, candidates)
+        assert dispatch.no_progress_status(status) == candidates.pop()
+    ambiguous = backlog_types._Automaton(
+        chain=("READY", "LEASED"), terminals=(), terminal_from={},
+        extra_edges=(("LEASED", "READY"), ("LEASED", "PAUSED")), extra_states=("PAUSED",))
+    monkeypatch.setitem(backlog_types.AUTOMATA, "TSK", ambiguous)
+    assert dispatch.no_progress_status("LEASED") is None
+
+
+def test_a_dispatch_of_another_session_is_swept_and_one_of_this_session_is_not(state):
+    """DEC-0044 half (1) and its counter-direction in one measurement.
+
+    Two dispatches, one asked for by SESSION_A and one by SESSION_B; the sweep runs as SESSION_B.
+    RED without the sweep: both stay IN_PROGRESS with a lease, which is the pilot state. RED in the
+    other direction if the sweep judged anything but the asking session -- a mid-session
+    SessionStart (a compaction) would then report this session's own running child as gone.
+    """
+    theirs = _dispatched(state, SESSION_A)
+    ours = _dispatched(state, SESSION_B)
+    swept, left = dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert [row["task_id"] for row in swept] == [theirs["id"]]
+    assert [row["moved_to"] for row in swept] == ["FAILED"]
+    assert left == []
+    assert state.read_item(theirs["id"])["status"] == "FAILED"
+    assert state.read_item(ours["id"])["status"] == "IN_PROGRESS"
+
+
+def test_a_swept_orphan_keeps_no_lease_and_no_agent_binding(state):
+    """What the sweep leaves behind: nothing that still claims to run.
+
+    Named in `sweep_orphaned_dispatches`, whose docstring rests on it -- the transition drops the
+    lease (`release_lease_for_status_locked`), so `task_for_agent` can no longer resolve the dead
+    child's writes onto the task, and `live_leases` no longer reports it as running.
+    """
+    task = _dispatched(state, SESSION_A)
+    dispatch.bind_agent(state, task["id"], "agent-xyz")
+    assert dispatch.task_for_agent(state, "agent-xyz")["id"] == task["id"]
+    dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert dispatch.task_for_agent(state, "agent-xyz") is None
+    assert dispatch.live_leases(state) == []
+    assert not dispatch.lease_in_force(state, task["id"])
+
+
+def test_a_dispatch_whose_lease_the_ttl_already_dropped_is_still_decidable(state):
+    """The pilot's worst state: IN_PROGRESS, no lease, nothing reporting it.
+
+    `sweep_expired_leases` drops the lease and leaves IN_PROGRESS standing on purpose (a child may
+    outlive its lease), so the LEASE's record of who asked is gone by the time a successor looks.
+    RED without the task-side copy `spawn_outcome` writes: the dispatch is undecidable, the sweep
+    leaves it, and the task can never be leased again.
+    """
+    task = _dispatched(state, SESSION_A)
+    os.remove(os.path.join(state.root, "tasks", "leases", task["id"] + ".lease.yaml"))
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+    swept, left = dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert [row["task_id"] for row in swept] == [task["id"]] and left == []
+    assert state.read_item(task["id"])["status"] == "FAILED"
+
+
+def test_a_dispatch_with_no_recorded_session_is_reported_and_not_swept(state):
+    """Fail-safe direction: what cannot be decided is NAMED, never guessed at.
+
+    A lease claimed without a session id -- state written before this record existed, or a hook
+    payload without the key -- must not be swept: every dispatch would look foreign to every
+    session, and the sweep would end runs it knows nothing about.
+    """
+    _pr, task = make_ready_task(state)
+    lease = dispatch.create_lease(state, task["id"])
+    header = dispatch.parse_header(dispatch.dispatch_header(lease))
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True)
+    dispatch.spawn_outcome(state, task["id"], ok=True)
+    swept, left = dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert swept == []
+    assert [row["task_id"] for row in left] == [task["id"]]
+    assert "no dispatching session is recorded" in left[0]["why"]
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+
+
+def test_the_expired_lease_sweep_does_not_claim_a_release_it_did_not_make(state):
+    """The sweep says what it DID: an IN_PROGRESS task keeps its status, and is not called released.
+
+    Measured before this: `sweep-leases` printed "released to READY: TSK-0001" for a task that
+    stayed IN_PROGRESS, because the id was collected whatever `_release_lease_locked` had done. The
+    two lists are what makes the sentence true; the second one is the state only a session start
+    can judge.
+    """
+    leased = _dispatched(state, SESSION_A, started=False)
+    running = _dispatched(state, SESSION_A)
+    for task_id in (leased["id"], running["id"]):
+        path = os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml")
+        lease = state._read_yaml(path)
+        lease["created_epoch"] = 0.0
+        state._write_yaml_atomic(path, lease)
+    to_ready, lease_only = dispatch.sweep_expired_leases(state)
+    assert to_ready == [leased["id"]] and lease_only == [running["id"]]
+    assert state.read_item(leased["id"])["status"] == "READY"
+    assert state.read_item(running["id"])["status"] == "IN_PROGRESS"
+
+
+def _checkpoint(state, tmp_path, task, artifact="src/x.py", body=None):
+    """Record a checkpoint the way a specialist does -- through the kernel, over a real file."""
+    path = tmp_path / artifact
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text("work in progress\n", encoding="utf-8")
+    return checkpoints.record(state, task["id"], body or {
+        "next_step": "finish the error path",
+        "outputs": [{"output_index": 0, "progress": "partial", "artifacts": [artifact],
+                     "note": "happy path done"}]})
+
+
+def test_a_verified_checkpoint_says_what_was_measured_and_no_more(state, tmp_path):
+    """The adoptable case, and the scope of what "verified" is allowed to mean.
+
+    A verdict that read as "this work is good" would be the claim DEC-0044 warns about wearing a
+    green light, so the summary has to name what was NOT measured as well.
+    """
+    task = _dispatched(state, SESSION_A)
+    _checkpoint(state, tmp_path, task)
+    verdict = checkpoints.verify(state, task["id"])
+    assert verdict.adoptable and verdict.pointer == "staging/%s/checkpoint.yaml" % task["id"]
+    assert "expected_outputs are unchanged" in verdict.summary
+    assert "NOT measured" in verdict.summary and "whether the work is correct" in verdict.summary
+
+
+def test_a_checkpoint_is_verified_against_the_tasks_expected_outputs_not_just_its_files(
+        state, tmp_path):
+    """DEC-0044's named risk: a record that passes file integrity while measuring another contract.
+
+    The task file is rewritten OUTSIDE the kernel, because that is the only route this term can be
+    reached by -- `backlog_types.TSK_PLAN_FIELDS` freezes `expected_outputs` for every status past
+    DRAFT, so `update_item` refuses the same change (asserted below, or this test would be
+    measuring a path production does not have). Nothing about the artefact changes; a verification
+    that only hashed files would call this adoptable.
+    """
+    task = _dispatched(state, SESSION_A)
+    _checkpoint(state, tmp_path, task)
+    with pytest.raises(Exception):
+        state.update_item(task["id"], {"expected_outputs": ["src/somewhere_else.py"]})
+    stored = state.read_item(task["id"])
+    stored["expected_outputs"] = ["src/somewhere_else.py"]
+    state._write_yaml_atomic(state.active_path(task["id"]), stored)
+    verdict = checkpoints.verify(state, task["id"])
+    assert not verdict.adoptable
+    assert any("expected_outputs have changed" in reason for reason in verdict.reasons)
+    assert "TREATED AS ABSENT" in verdict.summary
+
+
+def test_a_checkpoint_whose_artefact_moved_is_treated_as_absent(state, tmp_path):
+    """The other half: the contract holds, the tree does not.
+
+    Both directions in one test, because "changed" and "gone" are one answer -- what the record
+    measured is not what is there now, so there is nothing to resume from.
+    """
+    task = _dispatched(state, SESSION_A)
+    _checkpoint(state, tmp_path, task)
+    (tmp_path / "src" / "x.py").write_text("somebody else's work\n", encoding="utf-8")
+    verdict = checkpoints.verify(state, task["id"])
+    assert not verdict.adoptable and "src/x.py changed" in " ".join(verdict.reasons)
+    os.remove(str(tmp_path / "src" / "x.py"))
+    assert "src/x.py is gone" in " ".join(checkpoints.verify(state, task["id"]).reasons)
+
+
+def test_a_checkpoint_claiming_progress_with_no_artefact_is_refused(state, tmp_path):
+    """A claim nothing backs cannot be verified later, so it is refused when it is made."""
+    task = _dispatched(state, SESSION_A)
+    with pytest.raises(checkpoints.CheckpointError) as exc:
+        checkpoints.record(state, task["id"], {"next_step": "x", "outputs": [
+            {"output_index": 0, "progress": "partial", "artifacts": [], "note": "trust me"}]})
+    assert "names no artefact" in str(exc.value)
+
+
+def test_a_checkpoint_progress_word_outside_the_vocabulary_is_refused(state, tmp_path):
+    """`PROGRESS_STATES` is enforced by the kernel, not merely described in the schema.
+
+    The schema validator checks that an entry HAS its keys, not what the values say
+    (`schemas._check_field`, list branch), so without the check in `_measured_outputs` a made-up
+    word would travel to the successor as if the harness understood it.
+    """
+    task = _dispatched(state, SESSION_A)
+    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "src" / "x.py").write_text("x\n", encoding="utf-8")
+    with pytest.raises(checkpoints.CheckpointError) as exc:
+        checkpoints.record(state, task["id"], {"next_step": "x", "outputs": [
+            {"output_index": 0, "progress": "nearly", "artifacts": ["src/x.py"]}]})
+    assert "progress 'nearly'" in str(exc.value)
+
+
+def test_a_checkpoint_points_inside_the_tasks_own_contract(state, tmp_path):
+    """An entry that addresses an expected output the task does not have is refused."""
+    task = _dispatched(state, SESSION_A)
+    (tmp_path / "src").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "src" / "x.py").write_text("x\n", encoding="utf-8")
+    with pytest.raises(checkpoints.CheckpointError) as exc:
+        checkpoints.record(state, task["id"], {"next_step": "x", "outputs": [
+            {"output_index": 7, "progress": "partial", "artifacts": ["src/x.py"]}]})
+    assert "output_index 7" in str(exc.value)
+
+
+def test_the_digests_a_checkpoint_is_verified_by_are_the_kernels_and_not_the_callers(
+        state, tmp_path):
+    """A record whose integrity data the checked party supplied would verify itself."""
+    task = _dispatched(state, SESSION_A)
+    with pytest.raises(checkpoints.CheckpointError) as exc:
+        checkpoints.record(state, task["id"], {
+            "next_step": "x", "expected_outputs_digest": "0" * 64,
+            "outputs": [{"output_index": 0, "progress": "partial", "artifacts": ["src/x.py"]}]})
+    assert "measured by the kernel" in str(exc.value)
+
+
+def test_a_checkpoint_records_a_dispatch_in_flight_or_nothing(state, tmp_path):
+    """Outside a lease-bearing status there is no run for a checkpoint to describe."""
+    _pr, task = make_ready_task(state)
+    with pytest.raises(checkpoints.CheckpointError) as exc:
+        checkpoints.record(state, task["id"], {"next_step": "x", "outputs": [
+            {"output_index": 0, "progress": "partial", "artifacts": ["src/x.py"]}]})
+    assert "IN FLIGHT" in str(exc.value)
+
+
+def test_the_retry_envelope_carries_the_checkpoint_only_when_it_verifies(state, tmp_path):
+    """Adoption is OFFERED by the dispatch envelope, and only on a verification that passed.
+
+    The whole loop: dispatch, checkpoint, session break, sweep, retry. The header the successor
+    receives names the checkpoint when it verifies -- and carries no such key at all when the tree
+    has moved under it, which is what "treated as absent" has to look like from the outside.
+    """
+    task = _dispatched(state, SESSION_A)
+    _checkpoint(state, tmp_path, task)
+    dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert state.read_item(task["id"])["status"] == "FAILED"
+    state.transition(task["id"], "READY", approved_retry=True)
+    header = dispatch.dispatch_header(dispatch.create_lease(state, task["id"]))
+    assert '"checkpoint": "staging/%s/checkpoint.yaml"' % task["id"] in header
+    assert dispatch.parse_header(header)["task_id"] == task["id"]
+
+    state.transition(task["id"], "READY")                 # drop the lease, retry once more
+    (tmp_path / "src" / "x.py").write_text("moved on\n", encoding="utf-8")
+    assert "checkpoint" not in dispatch.dispatch_header(dispatch.create_lease(state, task["id"]))
+
+
+# ---------------- the five findings of the TSK-0065 verification round ----------------
+
+
+def test_a_fresh_lease_of_this_session_is_not_judged_by_the_previous_runs_record(state):
+    """The retry this session just minted must survive its own next SessionStart (a compaction).
+
+    THE CHAIN, measured in-session before the fix: `spawn_outcome` writes the asking session on the
+    TASK and nothing ever clears it, while `create_lease` mints a lease WITHOUT one (it is recorded
+    at the CLAIM, one tool call later). A reader that fell back to the task inside that window
+    judged the FRESH dispatch by the DEAD run's session -- so a compaction with the very same id
+    swept it: LEASED -> READY, lease gone, and the nonce in the prompt being composed dead.
+    `dispatching_session_locked` is where the reading order lives.
+    """
+    task = _dispatched(state, SESSION_A)
+    dispatch.sweep_orphaned_dispatches(state, SESSION_B)          # the break: -> FAILED
+    assert state.read_item(task["id"])[dispatch.DISPATCHING_SESSION] == SESSION_A
+    state.transition(task["id"], "READY", approved_retry=True)
+    dispatch.create_lease(state, task["id"])                      # the retry, minted by SESSION_B
+    swept, left = dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert swept == [], "a compaction swept the retry this very session had just created"
+    assert [row["task_id"] for row in left] == [task["id"]]
+    assert state.read_item(task["id"])["status"] == "LEASED"
+    assert dispatch.lease_in_force(state, task["id"])
+
+
+def test_while_a_lease_exists_it_is_what_says_which_session_asked(state):
+    """The LEASE half of the record, measured on its own -- the task carries nothing here.
+
+    A claim without a spawn outcome: the lease records the asking session, the task does not, and
+    the sweep still has to reach a verdict. RED when `_open_bind_window` stops recording -- nothing
+    anywhere names the asker, the dispatch becomes undecidable and the sweep leaves a LEASED task
+    that no child of any live session is behind. The companion for the task half is
+    `test_a_dispatch_whose_lease_the_ttl_already_dropped_is_still_decidable`.
+    """
+    task = _dispatched(state, SESSION_A, started=False)
+    assert dispatch.DISPATCHING_SESSION not in state.read_item(task["id"])
+    assert dispatch.dispatching_session_locked(state, task["id"]) == SESSION_A
+    swept, left = dispatch.sweep_orphaned_dispatches(state, SESSION_B)
+    assert [row["task_id"] for row in swept] == [task["id"]] and left == []
+    assert state.read_item(task["id"])["status"] == "READY"        # LEASED has no work behind it
+
+
+@pytest.mark.parametrize("outside", ["../outside-secret.txt", "../../Windows/win.ini",
+                                     "C:\\Windows\\win.ini", "/Windows/win.ini"])
+def test_a_checkpoint_artefact_outside_the_project_is_refused_and_never_verified(
+        state, tmp_path, outside):
+    """An artefact path that leaves the project is refused when written AND when read back.
+
+    Measured rc 0 for all four spellings before this, with the record then VERIFYING cleanly -- so a
+    checkpoint could point the successor, whom the constitution tells to read and judge it, at a
+    file outside the project. Both sides are tested because the write path is a route and not a
+    wall: staging is the one directory a dispatched specialist may write with its own tools, so the
+    record can arrive without ever passing `record`.
+    """
+    task = _dispatched(state, SESSION_A)
+    (tmp_path.parent / "outside-secret.txt").write_text("not yours\n", encoding="utf-8")
+    with pytest.raises(checkpoints.CheckpointError) as exc:
+        checkpoints.record(state, task["id"], {"next_step": "x", "outputs": [
+            {"output_index": 0, "progress": "partial", "artifacts": [outside]}]})
+    assert "cannot measure under the project root" in str(exc.value)
+
+    _checkpoint(state, tmp_path, task)                 # a legitimate record...
+    path = checkpoints.checkpoint_path(state, task["id"])
+    stored = state._read_yaml(path)
+    stored["outputs"][0]["artifacts"][0]["path"] = outside      # ...aimed out of the tree by hand
+    state._write_yaml_atomic(path, stored)
+    verdict = checkpoints.verify(state, task["id"])
+    assert not verdict.adoptable
+    assert "is not inside the project" in " ".join(verdict.reasons)
+
+
+def test_a_handwritten_checkpoint_that_measures_nothing_is_absent(state, tmp_path):
+    """`outputs: []` verified rc 0 before this, with the artefact clause silently dropping out.
+
+    The write path refuses it; `verify` is the step DEC-0044 gates adoption on, and it has to refuse
+    it too, because a record that reaches the successor without passing `record` is exactly the case
+    the staging directory makes possible.
+    """
+    task = _dispatched(state, SESSION_A)
+    _checkpoint(state, tmp_path, task)
+    path = checkpoints.checkpoint_path(state, task["id"])
+    stored = state._read_yaml(path)
+    stored["outputs"] = []
+    state._write_yaml_atomic(path, stored)
+    verdict = checkpoints.verify(state, task["id"])
+    assert not verdict.adoptable
+    assert "names no artefact at all" in " ".join(verdict.reasons)
+    assert "TREATED AS ABSENT" in verdict.summary

@@ -1,0 +1,14 @@
+id: FR-0029
+title: Research-Team hat noch nie einen Piloten gesehen -- ein Workflow-Pilot nach
+  dem Muster der dev-Piloten
+request_text: 'Measured gap the user asked about on 2026-08-15 (''haben wir das schon
+  getestet fuer Research und Office?''): all three pilots ran the dev-team; office
+  gets its first pilot inside pilot 4 (TSK-0066 half 3, FR-0014); the research-team
+  has NO pilot at all. Wanted post-release: a persona-driven research project from
+  zero (research question root RQ, hypotheses, experiments, reports, literature/methodology
+  files) measuring the same independence number as the dev pilots. Post-release per
+  the user''s ordering decision (DEC-0045); thin item so the gap does not get lost.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T22:42:05'

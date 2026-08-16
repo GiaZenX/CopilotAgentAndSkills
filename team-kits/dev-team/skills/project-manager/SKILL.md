@@ -109,6 +109,13 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    suite runs ONCE per slice END (normally as QA's single verdict run), and the merge/push gate stays the
    untouchable guarantee. Escalate to full immediately only for cross-cutting changes (shared components,
    config, dependency bumps) — a real session ran the full 792-test suite after every micro-step.
+   **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
+   briefing names what the kernel swept and what it measured; before you re-order the work run
+   `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own
+   envelope offers the checkpoint only when the verification passed, and an absent, stale or failing
+   one is one answer: from scratch (DEC-0044). The way out of `FAILED` is the user's approved retry
+   (`python scripts/harness.py transition <TSK-ID> READY --approved-retry`); the kernel takes that
+   flag at your word, so the asking is a duty of yours and not a gate.
 7. **GATE** — trigger `quality-engineer`. If QA reports missing guidelines, task the `software-architect`
    to add the missing rule(s) before accepting. On PASS, transition the PR to `DELIVERED` and merge — in
    that order, because `gate_git` also refuses a merge for a PR still in `DRAFT` or already

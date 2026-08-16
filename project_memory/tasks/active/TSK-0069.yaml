@@ -1,0 +1,44 @@
+id: TSK-0069
+product_requirement: PR-0003
+derives_from: FR-0004
+type: analysis
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- docs/reviews/**
+- tools/**
+- team-kits/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0004 (Stufe 5: Spec II.12 gegen das Gebaute abgleichen -- die seitliche V2-Restkontrolle
+  vor dem Release)'
+- docs/HARNESS_V2_SPEC.md II.12 (the side-check list) and docs/reviews/2026-08-08-v2-plan-status.md
+  (the last plan-status measurement, 2026-08-08 -- a week of rounds has landed since)
+- 'the release line since then: TSK-0054..0068 packages, kits at the current stamp,
+  the four release blockers closed'
+expected_outputs:
+- 'STEP 1: II.12 read clause by clause against the RUNNING code (parsed/executed,
+  never a string search): per clause a verdict -- built (with the measuring test named),
+  deliberately deviated (with the DEC/item named), or GAP'
+- 'STEP 2: every GAP becomes an item -- BUG (defect), FR (missing wanted), or a named
+  DEC need -- captured as a LIST in the report for the lead to file via the kernel;
+  nothing lives only in the report prose'
+- 'STEP 3: a dated verdict document under docs/reviews/ (the release-readiness side
+  check) the pilot-4 evaluation and the release cut can cite; honest about what was
+  NOT measured'
+- 'SHIP: no kit-content change expected -- if the analysis DID require touching team-kits,
+  bump + suite per house rules and say why; otherwise ruff/validate suffice; report
+  file:line per verdict'
+dependencies:
+- FR-0004
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:37:55'

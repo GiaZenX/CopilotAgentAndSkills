@@ -1,0 +1,20 @@
+id: FR-0032
+title: 'Office: standardisiertes Finanz-HTML-Dashboard -- Einnahmen/Ausgaben, offene
+  Posten, EUeR auf einen Blick'
+request_text: 'User steering 2026-08-15: ''dann noch ein standardisiertes HTML Dashboard
+  fuer die Finanzen, das hat ja auch jedes Unternehmen.'' Measured today: euer_report.py
+  produces the EUeR report and ledger_add.py the bookings, but no visual finance overview
+  exists. Wanted: a read-only HTML finance dashboard generated from the ledger/master
+  data (income/expenses over time, open invoices/dunning candidates, EUeR summary,
+  Kleinunternehmer threshold watch where business_profile says so), auto-regenerated
+  like the FR-0030 backlog dashboard (derive the refresh trigger, do not hand-run),
+  shipped by the office kit. No new writer: it renders state, never edits it. Fits
+  the FR-0030 dashboard round''s machinery. ADDENDUM (user 2026-08-15): use the existing
+  BuyPlugGo finance dashboard TEMPLATE as the content reference -- ''inhaltlich hat
+  sie mir gefallen'' -- but improve FILTERABILITY and DESIGN: less overloaded, the
+  important numbers directly visible, typically modern. The user names the template''s
+  location when the round starts. Source: user messages 2026-08-15.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:03:26'

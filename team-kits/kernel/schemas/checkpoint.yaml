@@ -1,0 +1,47 @@
+# Checkpoint: the resumable progress a dispatched specialist records while it runs, and the one
+# thing a successor's retry MAY adopt after verification (DEC-0044 / BUG-0042). It lives at
+# staging/<TSK-ID>/checkpoint.yaml -- a PROPOSAL, never canonical state -- and only `kernel.
+# checkpoints.record` writes it, because the two digests below are measurements and not claims.
+#
+# BOUNDED like the result envelope it is the mid-run counterpart to: a successor session reads this
+# file in full before it decides anything, so it has to fit a context budget. Twice the envelope's
+# 4096 B, because a checkpoint carries one measured row per artefact where the envelope carries
+# prose; a run with more artefacts than that fits records the ones it can resume from.
+schema: checkpoint
+version: 1
+strict: true
+max_serialized_bytes: 8192
+fields:
+  task_id:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  recorded:
+    type: str
+    required: true
+  recorded_epoch:
+    type: float
+    required: true
+  # The three terms verification measures the record against -- see `kernel.checkpoints.verify`.
+  # `expected_outputs_digest` is the one DEC-0044 asks for by name: it is what makes a stale
+  # checkpoint (one written against a contract that has since changed) fail verification instead of
+  # passing a mere file-integrity check.
+  task_revision:
+    type: int
+    required: true
+  root_revision:
+    type: int
+    required: true
+  expected_outputs_digest:
+    type: str
+    required: true
+    pattern: '^[0-9a-f]{64}$'
+  next_step:
+    type: str
+    required: true
+    max_len: 1000
+  outputs:
+    type: list
+    item_type: dict
+    required: true
+    item_required: [output_index, progress, expected_output, artifacts]

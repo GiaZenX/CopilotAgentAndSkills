@@ -317,6 +317,13 @@ def main():
         wall_briefing = _kernel.gated_document_briefing(cwd)
         if wall_briefing:
             parts.append(wall_briefing)
+        # THE DISPATCHES NOTHING IS BEHIND ANY MORE (DEC-0044 / BUG-0042). Also in `_kernel`, one
+        # text for three kits, and passed this session's own id: that id is the whole term the
+        # sweep decides on, so a hook that forgot it would sweep nothing at all rather than sweep
+        # wrongly.
+        orphan_briefing = _kernel.orphaned_dispatch_briefing(cwd, data.get("session_id"))
+        if orphan_briefing:
+            parts.append(orphan_briefing)
     except BaseException:
         pass
 

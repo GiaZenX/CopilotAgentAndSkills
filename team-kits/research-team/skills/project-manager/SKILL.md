@@ -57,6 +57,13 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
    equivalent to Claude frontmatter; an exposed tool is not authorization beyond role boundaries.
    **A "not possible / blocked" never settles a decision** — demand the best alternative first, with
    sources (§14 dead-end rule).
+   **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
+   briefing names what the kernel swept and what it measured; before you re-order the work run
+   `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own
+   envelope offers the checkpoint only when the verification passed, and an absent, stale or failing
+   one is one answer: from scratch (DEC-0044). The way out of `FAILED` is the user's approved retry
+   (`python scripts/harness.py transition <TSK-ID> READY --approved-retry`); the kernel takes that
+   flag at your word, so the asking is a duty of yours and not a gate.
    **Infrastructure defects** (a guard/hook/pipeline misfires): route the fix to the `research-engineer`
    (Bash-capable tooling owner); a minimal mechanical PM unblock only as last resort — record it as a
    **Decision item** (git holds the history, no changelog file does), flag it for upstream kit backport, and

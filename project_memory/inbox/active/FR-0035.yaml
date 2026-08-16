@@ -1,0 +1,22 @@
+id: FR-0035
+title: 'Office: Vier-Augen-Ablage MECHANISCH -- kein Verschieben ohne neuen Namen
+  UND ohne dass ein zweiter unabhaengiger Agent auf dasselbe Ergebnis kommt'
+request_text: 'User requirement 2026-08-15, verbatim intent: ''ein Hook der das Verschieben
+  sperrt bis der Datei kein neuer Name zugewiesen wurde und ein zweiter unabhaengiger
+  Agent nicht auf dasselbe Ergebnis kommt.'' Mechanism sketch: gate_filing today matches
+  a landing file against the plan rules (fail-closed). Wanted ON TOP, enforced not
+  advised: a move out of inbox/ is BLOCKED until (a) a new rule-conforming name has
+  been assigned AND (b) a SECOND, independent classification run -- an agent that
+  has not seen the first answer -- arrives at the SAME target path and name; the gate
+  compares two recorded classifications, it never trusts one. Disagreement or a missing
+  second reading -> the document stays in inbox/ and the user is asked with both readings
+  side by side. Design points for the round: where the two classification records
+  live (staging, signed), how independence is enforced (separate spawn, no shared
+  context), and the cost question -- two runs per document always, or only for document
+  types the plan marks as sensitive/new (user decides in the round). This is the office
+  twin of the harness''s own implementer/verifier separation: the one who files is
+  never the only one who judged. Source: user message 2026-08-15.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:08:37'

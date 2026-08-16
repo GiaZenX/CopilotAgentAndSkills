@@ -1,0 +1,57 @@
+id: TSK-0067
+product_requirement: PR-0003
+derives_from: FR-0006
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0006 (the wanted shape: a kernel command that frees exactly the one scaffold
+  line, checks downgrade/stamp/state BEFORE, and afterwards sets a marker every gate
+  reads as ''the kit changed under you -- restart''; the forced restart is the part
+  V1 lacked)'
+- 'the kit-update-flow decision (2026-08-04): the PM MUST install the kit update itself
+  on the user''s OK and then ask for the restart -- V2''s ''ASK THE USER TO RUN''
+  was a side effect of gate hardening, not a decision'
+- 'TSK-0064''s preset machinery as the base to DERIVE from, not duplicate: presets._installer_command,
+  assert_installable (version pin), _installed_state/UNREAD honesty, the approval
+  kind pattern (result-signed manifest), HANDOVER_PENDING + kit_state restart_required
+  + the user-global handover_guard'
+- 'the kits'' existing update surface: what scaffold_team does on a RE-run over an
+  installed project, write_kit_state, kit_updated_from marker, and what gate_write_scope
+  refuses the PM today'
+expected_outputs:
+- 'STEP 1 MEASURE: against a scaffolded project outside the repo on an OLDER kit stamp,
+  what a kit update requires today and which step the gates refuse (rc, lines); what
+  a re-scaffold does to a live project (roles, hooks, settings, project_memory untouched?)'
+- 'STEP 2 FIX: kernel command update-kit -- approval-gated on a result-signed manifest
+  (from/to version at minimum, derived like the preset manifest), refuses downgrades
+  and a dirty kit state, runs the kit''s own scaffold as the one installer, and afterwards
+  the session is honestly stopped: marker set, gates refuse further derivation with
+  the restart message; scoped messages per the UNREAD pattern -- no unconditional
+  claim after a write (the class that cost TSK-0064 five rounds)'
+- 'STEP 3 TESTS: red-without-fix in a clone outside the repo for: the command exists
+  and updates an outdated project end-to-end; downgrade refused; approval required
+  and covering the from/to pair; post-update derivation refused until restart; failure
+  branches honest (measure the abort window like TSK-0064''s B4 did)'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, ONE full tools/ run green with numbers,
+  mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason; report file:line,
+  design choices with reasons, residues named -- pilot 4 half 1 consumes this command
+  to lift C:/pilot3-rechnung'
+dependencies:
+- FR-0006
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:13:05'

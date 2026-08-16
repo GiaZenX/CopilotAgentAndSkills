@@ -46,7 +46,8 @@ expected_outputs:
 dependencies:
 - BUG-0042
 root_revision: 1
-status: DRAFT
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-08-15T14:57:28'
+closed_at: '2026-08-16T03:11:19'

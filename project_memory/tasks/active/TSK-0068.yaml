@@ -1,0 +1,54 @@
+id: TSK-0068
+product_requirement: PR-0001
+derives_from: SR-0001
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'spec II.11/3 (docs/HARNESS_V2_SPEC.md): the lead package shortening comes AFTER
+  the replacing gates of step 2 -- the gates stand since 2026-08, the shortening is
+  outstanding (docs/reviews/2026-08-08-v2-plan-status.md, ''Was fehlt'' #1)'
+- 'tools/lead_package.py (files/size/ceiling), tools/lead_package_sizes.json (the
+  ratchet: moves only via record_lead_package_sizes.py --write --note), docs/reviews/phase0-disposition.md
+  par.10 (the growth journal; recent rounds added +73/+14/+73 and ~+1051/+1069/+1081
+  B for preset and checkpoint prose)'
+- 'tools/test_shortening_net.py and its COUNTED GAP (''Was fehlt'' #2): every deletion
+  licence of the parity matrix must name its replacement as datei.py:symbol with the
+  hook registered -- but six registered dev hooks declare no tools, among them gate_write_scope,
+  the most-cited replacement; licences resting on those are counted, not closed'
+- the parity matrix and its deletion licences (tools/parity_sources.py readers); the
+  three constitutions and lead skills as the shortening surface
+expected_outputs:
+- 'STEP 1 MEASURE: current lead package sizes per kit (lead_package.size()), the deletion
+  licences that are ready (replacement gate registered AND judgeable), and the six
+  no-tools hook declarations -- the counted gap becomes a measured list'
+- 'STEP 2 FIX the net first: the six hooks declare their tools (or the net derives
+  judgeability another measured way) so gate_write_scope-backed licences are CLOSED,
+  not counted; then SHORTEN: every constitution/lead-skill span whose deletion licence
+  now stands is removed or reduced -- the gate is the rule, the prose only points;
+  sizes recorded via record_lead_package_sizes.py --write with the reason'
+- 'STEP 3 TESTS: shortening net green with the gap closed (red-without-fix for the
+  net change in a clone); no behavioural loss -- the full suite proves the gates still
+  refuse what the removed prose used to ask for (spot-measure at least the three most-cited
+  licences end-to-end against real hook processes)'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, ONE full tools/ run green with numbers,
+  mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason; report the size
+  delta per kit with the journal lines, residues named'
+dependencies:
+- SR-0001
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:37:39'

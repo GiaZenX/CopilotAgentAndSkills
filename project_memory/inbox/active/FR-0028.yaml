@@ -1,0 +1,20 @@
+id: FR-0028
+title: 'Office-Team ist werkzeug- und produktgruppen-agnostisch: Regeln statt Anbindungen,
+  Workflows einmal beibringen'
+request_text: 'User steering (2026-08-15, verbatim intent): the office team must NOT
+  be bound to Shopify -- other people use WooCommerce or other tools -- and must not
+  be trimmed to a specific product group. It gets RULES and ways of acting: ''es muss
+  einfach ein Office Team sein was alles kann und was sich workflows einpraegt und
+  mit 100% Zuverlaessigkeit uebernimmt wie man''s einmal beibringt bzw sich drauf
+  einigt.'' Consequences: (1) FR-0015 (BuyPlugGo product care via Shopify API) is
+  ONE concrete instance, never the shape -- any tool binding lives in taught workflows/config,
+  not in the kit; (2) the PROC item type is the vehicle for taught workflows: teach
+  once, then reliably followed -- the reliability claim needs a measured loop (pilot
+  4 half 3 measures teach-then-recall across sessions); (3) product/tool specifics
+  belong in project_memory (master_data, product_catalog, taught PROCs), never in
+  shipped kit texts. Source: user message 2026-08-15; pilot 4 half 3 (TSK-0066) carries
+  the first measurement.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T22:41:54'

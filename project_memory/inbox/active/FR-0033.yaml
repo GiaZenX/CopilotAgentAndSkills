@@ -1,0 +1,18 @@
+id: FR-0033
+title: 'Office: Schriftverkehr-Faehigkeit -- Angebote, Mahnungen, Kundenkorrespondenz
+  als Rolle oder beibringbarer Workflow'
+request_text: 'Gap named by the lead and prioritised by the user 2026-08-15 (all four
+  office areas selected, incl. Schriftverkehr): the office kit has NO role for correspondence
+  today -- offers, dunning letters, customer replies. Nine shipped agents cover filing,
+  bookkeeping, product/shop, marketing, compliance, tooling, audit; none writes business
+  letters. Wanted: correspondence capability -- either a role (correspondence-clerk)
+  or, per FR-0028''s teach-once principle, PROC-taught letter workflows with templates
+  in state (tone from content_guidelines, sender data from business_profile, dunning
+  candidates from the ledger); outgoing documents land in outbox/ (the tray exists
+  and is guarded). Design question for the round: role vs taught workflow -- measure
+  what the PROC mechanism can already carry before adding a role. Source: user selection
+  2026-08-15.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:03:40'

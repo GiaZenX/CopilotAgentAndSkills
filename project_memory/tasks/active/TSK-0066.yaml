@@ -18,7 +18,7 @@ required_inputs:
 - docs/pilot/2026-08-09-plan.md -- Methode, Beobachtungsraster, und die Regel dass
   niemand im Lauf erfaehrt dass es ein Versuch ist
 - DEC-0031 (anspruchsvolle Persona), DEC-0027 (Kostendeckel; fuer diesen Bestaetigungs-Piloten
-  eigene Grenze ~40 USD), Sonnet fuer Vergleichbarkeit
+  eigene Grenze ~70 USD ueber drei Haelften), Sonnet fuer Vergleichbarkeit
 - 'die vier Blocker-Fixes als Messgegenstand: BUG-0040 (CR-Kriterien dispatchbar),
   BUG-0041+0044 (Preset-Wechsel + Interview-Frage), BUG-0042/DEC-0044 (Sitzungsabbruch:
   sweep + geprueftes Uebernehmen), FR-0006 (update-kit als Einspielweg fuer die Bestandshaelfte)'
@@ -28,18 +28,34 @@ required_inputs:
   wireframes/ LEER (Folge des fehlenden Designers, B4) und evidence/ mit NULL Eintraegen
   bei 13 Tasks und laufendem Produkt -- beide Schubladen sind ausdrueckliche Beobachtungspunkte
   dieses Piloten'
+- 'HAELFTE-3-METHODE (Nutzer 2026-08-15, ''Mix: echt + erfunden''): ~10-15 Dokumente
+  -- mehrheitlich ECHTE Kopien aus dem BuyPlugGo-Bestand (Ort nennt der Nutzer bei
+  Pilotstart), deren historisch korrekte Ablage der LOESUNGSSCHLUESSEL ist (vom Lead
+  VOR dem Lauf angelegt, der Persona unbekannt), plus 2-3 vom Lead erzeugte Kunstfaelle
+  fuer die Grenzfaelle; die mehrdeutigen Faelle messen NACHFRAGEN statt Raten (gate_filing
+  schliesst bei Unklarheit); Ablageplan wird ZUERST im Onboarding aus dem echten Schema
+  beigebracht; PII bleibt lokal, Auswertungsdokumente tragen Dokument-Nummern, nie
+  Inhalte'
 expected_outputs:
-- 'HAELFTE 1 (Bestand): das Pilot-3-Projekt per update-kit auf den Release-Kandidaten
+- 'HAELFTE 1 (Bestand, dev): das Pilot-3-Projekt per update-kit auf den Release-Kandidaten
   heben, dann mit der Persona gezielt die vier reparierten Stellen durchspielen: Team-Besetzung
-  aendern (Designer-Fall aus B4), eine Aufgabe gegen CR-Kriterien schneiden (B12-Kette),
-  einen Sitzungsabbruch mitten im Dispatch erzwingen und die Wiederaufnahme nach DEC-0044
-  erleben; je Stelle Vorher/Nachher gegen den Pilot-3-Befund'
-- 'HAELFTE 2 (neu): ein frisches Vorhaben von null mit dem neuen Eingangs-Interview
+  aendern (Designer-Fall aus B4, jetzt request-approval preset + set-preset), eine
+  Aufgabe gegen CR-Kriterien schneiden (B12-Kette), einen Sitzungsabbruch mitten im
+  Dispatch erzwingen und die Wiederaufnahme nach DEC-0044 erleben; je Stelle Vorher/Nachher
+  gegen den Pilot-3-Befund'
+- 'HAELFTE 2 (neu, dev): ein frisches Vorhaben von null mit dem neuen Eingangs-Interview
   (Team-Frage) bis zum ersten lauffaehigen Ergebnis; dieselbe Selbstaendigkeits-Zahl
   wie bei den drei Piloten (Nutzereingaben bis zum ersten Ergebnis, Stelle des Stehenbleibens)'
+- 'HAELFTE 3 (neu, office -- vom Nutzer 2026-08-15 in den Piloten geholt, FR-0014):
+  ein frisches office-team-Projekt mit der Persona: Onboarding (business_profile +
+  filing_plan mit echten Regeln), EIN Dokument einreichen (misst gate_filing am ersten
+  Dokument), EINEN Workflow beibringen (PROC-Item) und ihn in einer zweiten Sitzung
+  abrufen -- misst die Kernbehauptung des Nutzers: einmal beigebracht, zuverlaessig
+  uebernommen; Werkzeug-Agnostik beachten (keine Shopify-Bindung testen, sondern Regeln)'
 - Defekte werden NOTIERT und nicht behoben solange der Pilot laeuft; Befunde als datiertes
   Dokument unter docs/pilot/ plus Gegenueberstellung zu Pilot 3; die Befunde entscheiden
-  mit ueber das Release-Go des Nutzers
+  mit ueber das Release-Go des Nutzers; Kostendeckel fuer alle drei Haelften zusammen
+  ~70 USD (unter der 100-USD-Session-Vollmacht aus DEC-0045)
 dependencies:
 - BUG-0041
 - BUG-0042

@@ -1,0 +1,26 @@
+id: FR-0031
+title: 'Office: Standard-Aktenplan-Entwurf beim Onboarding + gerenderter Verzeichnisbaum
+  als sichtbare Wahrheit'
+request_text: 'User steering 2026-08-15: the office kit must ALWAYS produce a binding
+  folder structure with binding document naming. The structure is the USER''s call;
+  the manager MAY propose a standard draft; a visible directory TREE matters and is
+  then adhered to. Measured today: enforcement exists (filing_plan rules with path/filename
+  templates, gate_filing fail-closed, fs-tripwire keeps the archive closed) but (a)
+  the shipped plan starts EMPTY (rules: []) with comment examples only -- no standard
+  draft the manager can put on the table; (b) no rendered TREE view exists. Wanted:
+  (1) a standard filing-plan draft shipped with the kit (typical small-business tree)
+  that the manager proposes at onboarding and the user amends/approves -- a PROPOSAL,
+  never silently applied; (2) the plan is MAINTAINED AS A TREE, not as markdown prose
+  (user 2026-08-15: ''der Plan muss als Baum gepflegt werden bei der Ordnerstruktur
+  und nicht als markdown. der Baum soll also die Vorlagenstruktur beinhalten'') --
+  the machine-readable tree IS the plan and carries the template structure; whatever
+  renders it renders the tree, not a second hand-written copy; (3) the gap flow is
+  ORDERED, enforced not advised: when a document fits nothing in the tree, the gap
+  is NAMED clearly, the tree is amended FIRST (user approval), the tree is updated,
+  and only THEN is the file placed -- never file first and fix the tree later. Fits
+  gate_filing''s fail-closed line and FR-0035''s four-eyes move. Source: user messages
+  2026-08-15.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T23:03:15'

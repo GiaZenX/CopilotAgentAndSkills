@@ -1,0 +1,19 @@
+id: EVD-0038
+kind: review
+related:
+- TSK-0065
+- BUG-0042
+result: pass
+summary: 'verifier PASS round 2 (no conditions) for diff:19e22d607757f214b67b116d7fdd4bea9c0771b161190b46265c132f0fc44fcb
+  -- TSK-0065: session-break continuation per DEC-0044: orphan sweep at session start
+  (lease is the living record, compaction can never sweep this session''s own retry),
+  honest two-list expired-lease sweep, scoped briefing+constitution prose; checkpoint
+  with kernel-measured digests, three-term verification plus artifact containment
+  (traversal/absolute/UNC/junction refused on write AND verify) and no-artifact==absent;
+  both recording halves red-covered; kits 2026.08.16-1, suite 2637; residues carried
+  as L42, suite-writes-audit as BUG-0052'
+artifact_refs:
+- staging/TSK-0065/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-16T03:11:09'

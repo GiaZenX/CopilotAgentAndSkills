@@ -52,6 +52,13 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
    files to read, and the scope it may write. Verify outputs against REALITY
    (the archive tree against `filing_plan.yaml`, catalog entries, register entries) — never trust "done"
    strings. Parallelize only independent work and await every required result before advancing.
+   **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
+   briefing names what the kernel swept and what it measured; before you re-order the work run
+   `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own
+   envelope offers the checkpoint only when the verification passed, and an absent, stale or failing
+   one is one answer: from scratch (DEC-0044). The way out of `FAILED` is the user's approved retry
+   (`python scripts/harness.py transition <TSK-ID> READY --approved-retry`); the kernel takes that
+   flag at your word, so the asking is a duty of yours and not a gate.
 5. **REPORTS** — when a quarter closed (session_status flags it): `python scripts/euer_report.py`
    (deterministic; the bookkeeper's `_notes.md` carries prose). The Verfahrensdoku renderer for PROC changes
    (`python scripts/process_doc.py`) still reads the deleted V1 registry and crashes — report that rather than

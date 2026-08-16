@@ -1,0 +1,23 @@
+id: FR-0030
+title: 'Dashboard-HTML wird das Zwischenloesungs-Backlog: Kanban-Spalten, alle Item-Typen,
+  automatisch aktuell, in allen drei Kits'
+request_text: 'User decision 2026-08-15: the existing per-project dashboard (dev-team
+  templates/repo/scripts/generate_dashboard.py + progress.dashboard.template.html
+  -> generated/dashboard.html) becomes the INTERIM backlog view until the real app
+  (FR-0024) exists -- ''vielleicht genuegt das erstmal als backlog so umzugestalten
+  und spaeter eben gescheit mit der app''. Measured baseline (lead, 2026-08-15): the
+  generator is test-covered (tools/test_hooks.py:1768ff renders typed items + kernel
+  index) but (a) the pilot-3 project NEVER generated it -- nothing triggers it, a
+  stale-by-default view; (b) ONLY dev-team ships it: research-team and office-team
+  deliver no overview at all, while the user will work with office first. Wanted:
+  (1) kanban-style columns by status over ALL item types of the kit (incl. CR/APR/EVD/ARC/INV
+  where the kit has them); (2) automatic regeneration so it cannot go stale (e.g.
+  the kernel regenerates it wherever it regenerates the index -- derive, do not duplicate);
+  (3) shipped by all three kits with kit-appropriate types; (4) read-only, no new
+  writer. Slotted by the user into BLOCK A (pre-release), extending DEC-0045''s Block
+  A list -- this FR records that insertion. First slice of the standalone-kanban line
+  named in DEC-0045.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-15T22:56:30'
