@@ -42,3 +42,10 @@ __pycache__/
 # project_memory/ for exactly this reason.
 Microsoft/
 project_memory/.audit/
+
+# The kernel-rendered kanban view (TSK-0071): a pure derivation of the items, rebuilt with the
+# index on every state write, ~320 KB of HTML that would churn in every commit. Never tracked,
+# so this rule is live from day one (unlike the two above). index.yaml STAYS tracked: rollups
+# refuse to run against a state directory that holds items but no index — the board has no such
+# consumer. Enforced by the same tools/test_repo_hygiene.py rule (tracked ∩ ignored must be empty).
+project_memory/generated/board.html

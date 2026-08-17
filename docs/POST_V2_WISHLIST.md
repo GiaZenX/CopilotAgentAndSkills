@@ -4181,6 +4181,42 @@ Rollentrennung hält sie sozial (der Sitzungsagent schreibt Zustand über den Ke
 eine Umleitung). Der Nutzer entscheidet nach der Messung von Richtung (a): fällt sie aus, ist es
 ein Fix von außerhalb der Sitzung wie H46 in seiner ursprünglichen Form.
 
+### H48 — Ein offener Lesehandle friert das Board für die Dauer der Sitzung ein; das einzige aktive Signal ist eine im Hook-Pfad praktisch ungelesene stderr-Zeile — OFFEN als bewusster Tausch (neu, TSK-0071)
+
+**Mechanismus:** Seit TSK-0071 rendert der Kernel bei jeder Index-Regeneration auch
+`generated/board.html` (`kernel/state.py`, `_write_board`). Der Schreibweg ist atomar
+(`os.replace`), und auf Windows scheitert `os.replace` gegen eine Datei, die irgendein Prozess
+auch nur **lesend** offen hält. Der Fail-Soft derselben Runde fängt das ab: der
+Zustandsschreibvorgang **gelingt**, die Seite behält Inhalt und Zeitstempel, die Warnung geht
+auf stderr. Genau dieser Fang erzeugt die neue Klasse: solange der Handle gehalten wird, ist die
+Seite eingefroren — und eine nicht geschriebene Seite kann ihr eigenes Scheitern nicht anzeigen,
+nur ihren stehen gebliebenen Zeitstempel.
+
+**Kette (Prüfer der TSK-0071-Runde, 2026-08-16/17, echter Kernel gegen eine Store-Kopie
+außerhalb des Repos):**
+```
+Lesehandle auf board.html halten; capture →  ok (PR-0002 captured)
+  page kept its old stamp: True    index current: True
+  Warnung wörtlich auf stderr
+```
+Vorher (ohne Fail-Soft) war dieselbe Konstellation schlimmer: `PermissionError [WinError 5]`
+ließ **jeden** Zustandsschreibvorgang scheitern — der Tausch dieser Runde ist also
+Kernel-läuft-weiter gegen Seite-kann-einfrieren, und er ist absichtlich so herum gewählt.
+Gemessen mit einem gewöhnlichen Lesehandle; ein echter Browser gegen eine `file://`-Seite ist
+ungemessen.
+
+**Warum die stderr-Zeile kein verlässliches Signal ist:** In den Kit-Projekten läuft der
+Renderer auch in Hook-Unterprozessen (`gate_approval` beim Mint, `gate_dispatch` beim
+Spawn-Ausgang); `_gate.py` leitet stderr nicht um, und die Registrierungen dieser Einträge
+nennen kein `timeout`. Die Zeile existiert, aber praktisch liest sie dort niemand.
+
+**Urteil: OFFEN, nicht blockierend — bewusster Tausch mit benannter Begrenzung.** Keine
+Angriffskette auf Zustand oder Durchsetzung: Zustand, Index und alle Gates arbeiten korrekt
+weiter; eingefroren ist ausschließlich die Anzeige. Die Begrenzung: der Zeitstempel auf der
+Seite ist die Kontrolle (die Seitenfußnote sagt das seit dieser Runde ausdrücklich), und die
+bedingte Frischezusage steht an allen fünf Prosastellen. Ein aktives Signal im Sitzungsbrief
+(„Board älter als Index") wäre die Schließrichtung, wenn sich die Klasse im Alltag zeigt.
+
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 
 **(Nachtrag 2026-08-14, TSK-0058):** Beide Abweichungen sind in den geltenden Vertrag eingeflossen —

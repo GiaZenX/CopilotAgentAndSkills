@@ -1,4 +1,4 @@
-generated_at: '2026-08-16T20:01:20'
+generated_at: '2026-08-17T03:23:24'
 items:
 - id: BUG-0001
   type: BUG
@@ -925,6 +925,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0044
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1098,13 +1104,6 @@ items:
   type: FR
   title: Research-Team hat noch nie einen Piloten gesehen -- ein Workflow-Pilot nach
     dem Muster der dev-Piloten
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0030
-  type: FR
-  title: 'Dashboard-HTML wird das Zwischenloesungs-Backlog: Kanban-Spalten, alle Item-Typen,
-    automatisch aktuell, in allen drei Kits'
   status: OPEN
   revision: 1
   approval_ref: null

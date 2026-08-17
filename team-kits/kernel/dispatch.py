@@ -306,7 +306,14 @@ def _validate_lease_locked(state: ProjectState, header: dict) -> dict:
             "Remedy: create a fresh lease." % header["task_id"]
         )
     if _expired(lease):
+        # THE ONE RELEASE SITE THAT DID NOT REGENERATE, of the four this function has siblings in
+        # (`reconcile_unstarted_dispatches`, `spawn_outcome`, `sweep_expired_leases` all do). The
+        # release resets the task to READY on disk, so without this the index -- and the board over
+        # it -- kept saying LEASED for a task nobody holds any more (TSK-0071 verifier finding B2).
+        # Only on the EXPIRY branch, which already writes the item; a validation that passes stays
+        # a pure read.
         _release_lease_locked(state, header["task_id"], to_ready=True)
+        state._regenerate_index_locked()
         raise DispatchError(
             "lease for %s expired (ttl %ss) -- task returned to READY. "
             "Remedy: create a fresh lease." % (header["task_id"], lease["ttl"])

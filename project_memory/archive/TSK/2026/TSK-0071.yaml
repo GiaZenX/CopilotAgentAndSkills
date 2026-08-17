@@ -1,0 +1,68 @@
+id: TSK-0071
+product_requirement: PR-0002
+derives_from: FR-0030
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0030 (the order, user-slotted into Block A pre-release: (1) kanban-style columns
+  by status over ALL item types of the kit incl. CR/APR/EVD/ARC/INV where the kit
+  has them; (2) automatic regeneration so it cannot go stale -- e.g. the kernel regenerates
+  it wherever it regenerates the index; DERIVE, do not duplicate; (3) shipped by all
+  three kits with kit-appropriate types; (4) read-only, no new writer)'
+- 'measured baseline from FR-0030 + lead re-check 2026-08-16: ONLY dev-team ships
+  the generator (team-kits/dev-team/templates/repo/scripts/generate_dashboard.py +
+  progress.dashboard.template.html -> generated/dashboard.html); nothing triggers
+  it (pilot 3 never generated it, stale-by-default); research-team and office-team
+  ship no overview at all'
+- kernel.state generate_index (team-kits/kernel/state.py:1147) -- the regeneration
+  point FR-0030 names as the natural trigger; the existing generator already derives
+  types/dirs/status chains from kernel.backlog_types (its DERIVED-NOT-LISTED header),
+  and an unassigned type lands in Other WITH a warning, never silently
+- 'docs/POST_V2_WISHLIST.md section Board-Ansichten (READ-ONLY prose source): cards
+  show only the title, expandable for the description; hiding finished work is already
+  given by the archive (terminal items leave */active/)'
+- 'existing coverage: tools/test_hooks.py:1768ff renders typed items + kernel index;
+  house rules: mirrored kit files byte-identical unless KIT_SPECIFIC_HOOKS names the
+  reason; a test must read the part that runs, never string-search a file'
+expected_outputs:
+- 'STEP 1 MEASURE + DECIDE: enumerate every kernel write path that regenerates the
+  index and DECIDE where the dashboard regeneration lives (kernel-side renderer vs
+  kit script the kernel invokes) -- justify measured; the constraint either way: derived
+  from backlog_types per kit, no second type list, read-only, output only under generated/'
+- 'STEP 2 BUILD: kanban-style status columns over ALL item types the installed kit
+  has (incl. CR/APR/EVD/ARC/INV where present), cards title-only and expandable; regeneration
+  happens automatically at the index-regeneration point so the view cannot go stale;
+  ALL THREE kits ship it with kit-appropriate types; if the decision lands kernel-side,
+  measure it on THIS repos own kit-less state too (kernel called directly)'
+- 'STEP 3 TESTS red-without-fix in an outside clone: (a) a state write that regenerates
+  the index leaves a fresh dashboard -- the stale-by-default finding flips; (b) research-team
+  and office-team render their own types; (c) NOTHING silently disappears from the
+  board: an item whose STATUS no declared column set describes still appears AND warns,
+  and record types without a status vocabulary raise no false alarm (both directions
+  measured) -- [reworded by lead 2026-08-16 after verifier B6: the built board has
+  one section per type and no view->type assignment, so the vanishing risk lives at
+  status level, not type level] -- each test reads the running part (executed generator
+  / parsed output), no file string-search'
+- 'STEP 4 SHIP: python tools/bump_kit_version.py, ruff, kernel validate, ONE full
+  python -m pytest tools/ run green with numbers, mirrors byte-identical unless KIT_SPECIFIC_HOOKS
+  names the reason; report with file:line for every claim and residues named'
+dependencies:
+- FR-0030
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-16T20:19:41'
+closed_at: '2026-08-17T03:22:57'

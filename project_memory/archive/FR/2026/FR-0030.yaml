@@ -17,7 +17,17 @@ request_text: 'User decision 2026-08-15: the existing per-project dashboard (dev
   writer. Slotted by the user into BLOCK A (pre-release), extending DEC-0045''s Block
   A list -- this FR records that insertion. First slice of the standalone-kanban line
   named in DEC-0045.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T22:56:30'
+triage_result: 'wanted and DELIVERED by TSK-0071 (Block A round A2): kernel-side renderer
+  kernel/board.py rebuilds generated/board.html with the index on every state write
+  via ProjectState._regenerate_index_locked; two non-regenerating kernel write paths
+  (approvals.revoke, lease-expiry release) fixed in code with an AST-derived class
+  tripwire; all three kits ship the board (kernel shared, READMEs name it); read-only,
+  no new writer (generated/ was already a kernel-written subtree); fail-soft so a
+  board failure can never fail a state write. Three verifier rounds FAIL/FAIL/PASS,
+  report docs/reviews/2026-08-16-tsk0071-measurements.md, close-out project_memory/staging/TSK-0071/close-out.md;
+  residue H48 (open read handle freezes the page) named in docs/POST_V2_WISHLIST.md.'
+closed_at: '2026-08-17T03:22:51'

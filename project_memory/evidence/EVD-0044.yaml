@@ -1,0 +1,13 @@
+id: EVD-0044
+kind: review
+related:
+- TSK-0071
+result: pass
+summary: verifier PASS for diff:64eb04b9d8ba7b8d1ae15588d77ebef91a2b030acabb2bd897c155b294c99093
+  -- TSK-0071 round 3 (C1/C2 closed, all ablations red, stamp 2026.08.17-2, suite
+  2779+13, gates 243)
+artifact_refs:
+- staging/TSK-0071/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-17T03:23:24'

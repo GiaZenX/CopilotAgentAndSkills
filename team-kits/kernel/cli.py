@@ -49,7 +49,7 @@ import subprocess
 import sys
 import time
 
-from . import approvals, checkpoints, dispatch, kitupdate, migrate, presets, report, staging
+from . import approvals, board, checkpoints, dispatch, kitupdate, migrate, presets, report, staging
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -295,7 +295,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("doctor", help="read-only activation/diagnosis report")
     sub.add_parser("validate", help="fail-closed state validation (exit 1 on errors)")
-    sub.add_parser("generate-index", help="regenerate generated/index.yaml")
+    # NAMES BOTH ARTEFACTS because the command writes both (`state._regenerate_index_locked`): a
+    # help line that mentions only the index is a description one release out of date the moment
+    # somebody looks for the human-readable view under `generated/`.
+    sub.add_parser("generate-index",
+                   help="regenerate generated/index.yaml and the board rebuilt with it")
     brief = sub.add_parser("generate-session-brief", help="regenerate generated/session_brief.yaml")
     brief.add_argument("--kit", required=True)
     brief.add_argument("--kit-version", required=True)
@@ -759,7 +763,10 @@ def main(argv=None) -> int:
                 print("  NOT SEARCHED %s: %s" % (entry["path"], entry["why"]))
             return 1 if errors else 0
         if args.command == "generate-index":
+            # Both paths, for the reason the subparser's help gives: the index is what the machines
+            # read, the board is what a person opens, and the same call writes them together.
             print(state.generate_index())
+            print(state.generated_path(board.FILENAME))
             return 0
         if args.command == "generate-session-brief":
             print(report.generate_session_brief(state, args.kit, args.kit_version, args.enforcement))

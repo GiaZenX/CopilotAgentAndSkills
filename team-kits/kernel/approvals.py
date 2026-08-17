@@ -1208,6 +1208,12 @@ def revoke(state: ProjectState, apr_id: str) -> dict:
                 state._write_yaml_atomic(
                     _request_path(state, request_id, revoked=True), request)
                 os.remove(consumed)
+        # The APR file is a rendered item (`backlog_types.ACTIVE_DIRS["APR"]`), and `revoked` is a
+        # field the index does not carry -- so before this line the board went on showing the
+        # approval as in force while the file said otherwise, and nothing said the view was behind
+        # (TSK-0071 verifier finding B2). The regeneration is on the rare branch: revoking is a
+        # user act, and it already writes two files here.
+        state._regenerate_index_locked()
         return apr
 
 

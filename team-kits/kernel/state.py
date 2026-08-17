@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
 
 import yaml
@@ -61,6 +62,7 @@ from .backlog_types import (
     single_value_offences,
 )
 from .lock import KernelLock, ext_path
+from . import board
 
 _KERNEL_SET = ("id", "status", "revision", "approval_ref", "created")
 
@@ -403,7 +405,7 @@ class ProjectState:
             return yaml.safe_load(fh)
 
     @staticmethod
-    def _write_text_atomic(path: str, text: str) -> None:
+    def _write_text_atomic(path: str, text: str, errors: str = "strict") -> None:
         """Write `text` to `path` atomically, leaving NO half-written file behind either way.
 
         THE TEMP FILE IS CLEANED UP ON FAILURE, and that is not tidiness. The serialisation above
@@ -416,12 +418,20 @@ class ProjectState:
         The one atomic write in the kernel: `_write_yaml_atomic` is this plus a serialiser, and
         `kernel.presets` writes a kit document's single line through it -- two shapes of content,
         one rule about how bytes land.
+
+        `errors` IS STRICT FOR STATE AND LOOSE FOR EXACTLY ONE CALLER. A YAML file may legally hold
+        a lone surrogate (`"\\uD800"`), which `safe_load` hands on and UTF-8 cannot encode. Where
+        the bytes ARE the state, refusing is right -- a silently substituted character would be a
+        state nobody wrote. The board is a REPORT of that state, so it passes `errors="replace"`:
+        a `?` in a rendered page is a reading of the item, while a raised UnicodeEncodeError there
+        would fail the state write that had already happened
+        (`test_board.test_a_surrogate_in_an_item_does_not_stop_the_state_write`).
         """
         directory = os.path.dirname(path)
         os.makedirs(ext_path(directory), exist_ok=True)
         tmp = path + ".tmp-%s" % os.getpid()
         try:
-            with open(ext_path(tmp), "w", encoding="utf-8", newline="") as fh:
+            with open(ext_path(tmp), "w", encoding="utf-8", newline="", errors=errors) as fh:
                 fh.write(text)
             os.replace(ext_path(tmp), ext_path(path))
         except BaseException:
@@ -1149,7 +1159,25 @@ class ProjectState:
             return self._regenerate_index_locked()
 
     def _regenerate_index_locked(self) -> str:
+        """Rewrite `generated/index.yaml` AND the board beside it, from one reading of the store.
+
+        THE BOARD IS WRITTEN HERE AND NOWHERE ELSE (FR-0030). Every kernel writer that regenerates
+        the index arrives in this method, so the human-readable view is REBUILT WITH the index --
+        a second trigger is a second thing to forget, and the measured baseline of the shipped
+        dashboard was exactly that: nothing ran it, so it was stale by default.
+        `test_board.test_every_state_write_leaves_a_board_as_fresh_as_the_index` drives real
+        writers through it; `kernel.board` is what the page itself is.
+
+        "REBUILT WITH" AND NOT "NEVER OLDER THAN", because `_write_board` below is deliberately
+        fail-soft and therefore builds the counter-case itself: a rebuild that cannot finish says
+        so on stderr and leaves the page -- with its own, now older, timestamp -- where it was.
+        Which is the honest claim is decided there, not here.
+
+        The item BODIES this loop already reads travel to the renderer, so the second reader the
+        board would otherwise need does not exist and the two cannot report different states.
+        """
         rows = []
+        entries = []
         for item_type in sorted(ACTIVE_DIRS):
             # through `iter_active_items`, not a second listing of the same directory: the index
             # is what the dashboard and every "what is open" reader work from, and with its own
@@ -1160,7 +1188,9 @@ class ProjectState:
                 except Exception:
                     item = None
                 if not isinstance(item, dict):
-                    rows.append({"id": stem, "type": item_type, "corrupt": True})
+                    row = {"id": stem, "type": item_type, "corrupt": True}
+                    rows.append(row)
+                    entries.append((row, None))
                     continue
                 row = {
                     "id": item.get("id", stem),
@@ -1173,9 +1203,49 @@ class ProjectState:
                 if item.get("blocked_by"):
                     row["blocked_by"] = item["blocked_by"]
                 rows.append(row)
+                entries.append((row, item))
+        # ONE timestamp for both files, so "the board is as old as the index" is a fact a reader can
+        # check rather than a claim: two calls to the clock would differ by a second often enough.
+        generated_at = _now_iso()
         index_path = self.generated_path("index.yaml")
-        self._write_yaml_atomic(index_path, {"generated_at": _now_iso(), "items": rows})
+        self._write_yaml_atomic(index_path, {"generated_at": generated_at, "items": rows})
+        self._write_board(entries, generated_at)
         return index_path
+
+    def _write_board(self, entries: list, generated_at: str) -> None:
+        """Render `generated/<board.FILENAME>` -- and never let it fail a state write.
+
+        FAIL-SOFT, AND THIS IS THE ONE PLACE IN THE KERNEL WHERE THAT IS THE RIGHT ANSWER. The
+        index above is state: if it cannot be written, the operation must fail. The board is a
+        REPORT of that state and it is written AFTER the item and after the index, so an exception
+        here would report a write that had already happened as failed -- and, because this method
+        runs on EVERY state write over ALL items, one file the renderer cannot cope with would fail
+        every later capture in that project with a traceback whose only apparent remedy is the hand
+        edit the gates refuse. Measured instances: a lone surrogate in any field, and a board file
+        another process holds open (Windows `os.replace`).
+
+        WHAT IT COSTS AND HOW THAT IS PAID: a silent failure would be a stale page nobody doubts.
+        So the failure is SAID -- on stderr, which belongs to the caller's own error channel --
+        and the page keeps its own timestamp for comparison. `board._card` catches per item and
+        names the id ON the page; this catches what is left, which is the write itself.
+        `test_board.test_a_board_that_cannot_be_written_does_not_fail_the_state_write` carries it.
+        """
+        try:
+            self._write_text_atomic(self.generated_path(board.FILENAME),
+                                    board.render(self, entries, generated_at),
+                                    errors="replace")
+        except Exception as exc:                  # noqa: BLE001 -- see the docstring
+            # `print(..., file=sys.stderr)` and NOT `sys.stderr.write`, which is the spelling one
+            # would reach for: `test_approvals_dispatch.test_the_store_has_exactly_one_writer_for
+            # _this_derivation_to_rest_on` derives every route into the store from the functions of
+            # this module that call something write-shaped, and a `.write` here would make this
+            # method look like a second byte writer beside `_write_text_atomic`. `kernel.cli` uses
+            # the same spelling for the same output.
+            print("[board] %s was NOT rebuilt (%s: %s); the state write itself went through and "
+                  "%s is current. The page keeps its previous timestamp — read that, not this "
+                  "board, until the next state write succeeds."
+                  % (self.generated_path(board.FILENAME), type(exc).__name__, exc,
+                     self.generated_path("index.yaml")), file=sys.stderr)
 
 
 _AUTOMATON_TYPES = frozenset(

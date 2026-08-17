@@ -27,7 +27,7 @@ approvals/pending/                 open approval requests — written by the KER
 evidence/                          test, review and acceptance evidence
 archive/<type>/<year>/<ID>.yaml    closed items leave the active context
 staging/<task_id>/                 non-canonical proposals
-generated/                         index.yaml, session_brief.yaml, dashboard.html — NOT committed
+generated/                         index.yaml, session_brief.yaml, board.html, dashboard.html — NOT committed
 ```
 
 ## Rules
@@ -36,6 +36,11 @@ generated/                         index.yaml, session_brief.yaml, dashboard.htm
   ARE the current context and nothing has to be filtered out while reading.
 - **`generated/**` is never hand-edited and never committed.** It is rebuilt from the items; a
   hand-maintained summary is a second source of truth, which is what this structure ends.
+- **`generated/board.html` is the overview.** Every item of every type this project has, in columns
+  by status, with the card's fold carrying the item's own fields. The kernel rebuilds it together
+  with `index.yaml` on every state write it makes; a rebuild that cannot finish says so on the
+  error output of the command and leaves the page — and its timestamp — as it was. It reports and
+  never sets.
 - **History lives in git**, not as a changelog inside an active file.
 - **`approvals/pending/` belongs to the kernel.** An approval an agent could write is not one.
 
