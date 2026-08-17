@@ -1,4 +1,4 @@
-generated_at: '2026-08-17T12:14:02'
+generated_at: '2026-08-17T18:25:53'
 items:
 - id: BUG-0001
   type: BUG
@@ -937,6 +937,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0046
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1225,6 +1231,13 @@ items:
 - id: FR-0047
   type: FR
   title: Modell-Stufe je Rolle festnageln und stilles Herunterstufen sichtbar machen
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0048
+  type: FR
+  title: Entry agent breaks the German-report rule itself -- fix user/claude/CLAUDE.md
+    wording and roll out to the home directory (user approval required)
   status: OPEN
   revision: 1
   approval_ref: null

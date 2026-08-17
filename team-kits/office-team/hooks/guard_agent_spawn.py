@@ -128,6 +128,35 @@ def main():
               "  output: <the YAML keys expected back>\n"
               "  boundaries: <what is OUT of scope>" % " + ".join("`%s:`" % k for k in missing))
 
+    # THE MODE IS NOT ONLY ABOUT ORDERING, and until this note the choice was made blind. Measured
+    # 2026-08-17 on the SDK stream — the transport a headless client reads — with one flag flipped
+    # and nothing else: with `true` the child's assistant messages arrive in the SESSION's own
+    # stream while it works, so its English work narration can land in front of the user; with
+    # `false` its text stays inside the task. What a TERMINAL client collapses of that is NOT
+    # measured, which is why the note below names THIS SESSION's stream and makes the sentence to
+    # the user conditional, instead of announcing what the user will see.
+    # Occasion, figures and the pilot run that produced this: BUG-0046 and
+    # docs/reviews/2026-08-17-tsk0074-measurements.md.
+    #
+    # A NOTE and not a refusal, because a deliberate parallel batch stays legitimate wherever the
+    # work loop's delegation step licenses one; this file is mirrored across kits whose
+    # constitutions number that step differently, so it is named here rather than cited. Its reach
+    # is the weak kind — on PreToolUse only exit 2 is guaranteed to put text in front of the model,
+    # which `guard_question_context` states at its top — so this is a reminder at the decision
+    # point, not a control over it.
+    #
+    # `is True` and nothing wider: the field arrives as a JSON boolean, so a spelling this reader
+    # does not know — the string "true", the integer 1 — loses the note rather than inventing one
+    # for a foreground spawn. The presence check above does not narrow the type either, so that
+    # silence is real and carried as such in the round's report, not closed here.
+    if inp.get("run_in_background") is True:
+        sys.stderr.write(
+            "[team-kit note] %s runs in the BACKGROUND, so its work narration appears in this "
+            "session's own stream while it works (measured on the SDK stream; a terminal client "
+            "may collapse it). If the user asks about that chatter, say plainly that it is "
+            "machine talk nobody has to read — and do not promise to switch it off. "
+            "`run_in_background: false` keeps that text inside the task.\n" % sub)
+
     # allowed spawn -> audit it (V2): the Notification route for background completions proved dead
     # in a real environment (0 of 15 completions logged), so spawn accounting must not depend on it.
     try:

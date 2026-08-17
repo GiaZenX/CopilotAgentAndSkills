@@ -793,6 +793,38 @@ def test_spawn_explicit_background_allowed(kit_repo):
     assert run_hook("guard_agent_spawn.py", payload, kit_repo) == 0
 
 
+def _spawn_result(kit_repo, background):
+    payload = {"tool_name": "Agent",
+               "tool_input": {"subagent_type": "backend-developer",
+                              "run_in_background": background, "prompt": WORK_ORDER},
+               "cwd": str(kit_repo)}
+    return run_hook_process("guard_agent_spawn.py", payload, kit_repo)
+
+
+def test_background_spawn_is_told_the_user_sees_it_and_a_foreground_one_is_not():
+    """The mode is the one lever the kit has over what reaches the user, so it says so.
+
+    Measured 2026-08-17 with that one flag flipped and nothing else: a background child's
+    assistant messages arrive in the session's OWN stream while it works, a foreground child's
+    text does not. Both ends are asserted, because a note printed on every spawn would carry no
+    information about the choice — and the earlier state of this hook printed neither.
+    """
+    # not the `kit_repo` fixture: two runs against ONE project would let the first spawn's audit
+    # line answer for the second, and this test's subject is what each run says on its own.
+    for background, expected in ((True, True), (False, False)):
+        with tempfile.TemporaryDirectory() as tmp:
+            write(os.path.join(tmp, ".claude", "agents", "project-manager.md"), "x")
+            write(os.path.join(tmp, ".claude", "agents", "backend-developer.md"), "x")
+            write(os.path.join(tmp, ".claude", "settings.json"),
+                  '{"agent": "project-manager"}')
+            result = _spawn_result(tmp, background)
+            assert result.returncode == 0, result.stderr
+            said = result.stderr.strip()
+            assert bool(said) is expected, (background, said)
+            if expected:
+                assert "backend-developer" in said and "run_in_background: false" in said, said
+
+
 def test_spawn_without_work_order_schema_blocked(kit_repo):
     # Anthropic: vague delegations duplicate work/leave gaps — objective/output are the floor
     payload = {"tool_name": "Agent",

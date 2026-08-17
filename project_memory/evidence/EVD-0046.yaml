@@ -1,0 +1,13 @@
+id: EVD-0046
+kind: review
+related:
+- TSK-0074
+result: pass
+summary: verifier PASS for diff:5ba0aaa1f02e3ae894e637b7de9d4a52aa5bf6a0bb6c3a6f21775ea301a84fa2
+  -- TSK-0074 round 3 sight check (N1-N4 closed, comment-only delta proven via token
+  stream + AST, stamp 2026.08.17-10, suite 2795+13 carried, gates 243)
+artifact_refs:
+- staging/TSK-0074/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-17T18:25:53'

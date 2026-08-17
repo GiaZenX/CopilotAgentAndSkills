@@ -6,7 +6,18 @@ observed: 'Pilot 3 (B5): specialist work narration appears in the same session s
   4 persona complaints (S3 turns 1, 9, 10, 11); the PM answered honestly ''kann ich
   technisch nicht zuverlaessig garantieren''. Partly instrument (the SDK relay shows
   everything), partly real: mixed German/English jargon within single PM turns violates
-  the report-language rule the kits carry.'
+  the report-language rule the kits carry. [CORRECTED by TSK-0074 measurement 2026-08-17,
+  verifier-confirmed: the ''within single PM turns'' claim overclaimed. Measured over
+  the whole pilot: 132 of 256 relayed assistant blocks (51.6%) were NOT the PM but
+  specialist transcripts the provider stores separately and the rig relayed unfiltered;
+  every English block of the four complaint turns is specialist-origin; the PM''s
+  own mixing was ONE one-word case in 112 kit-PM blocks (''Good, alles gestaged.'').
+  The mixture was a two-speaker effect inside one TURN (the pilot doc''s wording ''im
+  selben Zug'' was correct all along); the kit fault was the constitutions PROMISING
+  ''jargon stays between agents'' -- an assurance about foreign voices the kit does
+  not build. Fixed by TSK-0074: assurance removed, mechanism (run_in_background) named
+  with its measured limit (SDK stream; terminal rendering unmeasured), PM address
+  made conditional. Full table: docs/reviews/2026-08-17-tsk0074-measurements.md]'
 expected: 'The kit-side half is fixed: PM turns to the user hold the report-language
   rule even while specialists run; the instrument half is named as such wherever the
   finding is cited.'

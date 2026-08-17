@@ -677,6 +677,15 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   (`{}` → Verweigerung), gehalten von einem AST-Test über jeden ausgelieferten Hook.
 - **Unter der Grössen-Ratsche prüft nichts, ob verschobener Text laden musste** — der Rekord schützt
   Bytes, nicht Semantik. Eine ableitbare Regel dafür ist nicht in Sicht.
+- **Ob eine stderr-Notiz bei exit 0 das Modell erreicht, hat niemand gemessen** (TSK-0074) — der
+  Plattformvertrag garantiert Text vor dem Modell nur bei exit 2; `guard_question_context` SAGT das
+  in seinem Kopf, gemessen ist es nirgends. Jede exit-0-Notiz der Kits (Spawn-Hinweis, R2-Warnung)
+  ist damit ein Signal unbelegter Reichweite — die schwache Klasse, und sie steht in beiden
+  Kommentaren als solche.
+- **Der Spawn-Hinweis feuert nur auf ein JSON-`true` als Boolean** (TSK-0074, `guard_agent_spawn`:
+  die Notiz-Bedingung liest `is True`, die Pflicht-Prüfung davor nur die Anwesenheit des Feldes) —
+  `"true"` als String oder `1` als Zahl passieren die Pflichtprüfung und erzeugen lautlos keine
+  Notiz. Fehlrichtung ist Schweigen, gemessen im echten Hook-Prozess; benannt im Kommentar und hier.
 - **`tar --remove-files` leert das Archiv, ohne ein Kopierer-Verb zu sein** (Rest von BUG-0002).
   `tar --remove-files -cf /tmp/a.tar archive/fin` archiviert die Quelle und **löscht sie danach** —
   eine Verschiebung aus dem Archiv, gemessen **rc 0** am `guard_fs_tripwire`-Prozess. `_filing` liest

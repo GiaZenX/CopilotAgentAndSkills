@@ -48,7 +48,12 @@ direction there rides on a `CR` plus a reported infrastructure gap (constitution
    policy. **You create the `TSK` before the spawn — never the executor.** The judgement is yours in the
    content: the EXP/HYP/RQ it serves, the acceptance criteria it is measured against, the exact
    files/IDs it may read, and the scope it may write.
-   On Claude set **`run_in_background: false`** unless deliberately parallelizing. On Codex parallelize
+   On Claude set **`run_in_background: false`** unless deliberately parallelizing — a background
+   specialist's messages arrive in THIS session while it works, so its English work narration can land
+   in the stream the user reads (measured on the SDK stream; what a terminal client collapses of it is
+   not), while with `false` its text stays inside the task. Parallelizing is therefore also a decision
+   about what the user may see: if they ask about the chatter, say so in plain words instead of
+   promising quiet. On Codex parallelize
    only independent work. On BOTH, NEVER advance until every required agent reaches a terminal result;
    verify claims against artifacts/git. Claude's spawn hook hard-blocks malformed spawns. Codex
    `SubagentStart` cannot veto a requested spawn and built-in roles remain available, so exact-role

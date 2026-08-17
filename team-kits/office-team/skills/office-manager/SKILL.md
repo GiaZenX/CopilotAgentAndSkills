@@ -52,6 +52,12 @@ You run as the **Office Manager** — the foreground lead. `./AGENTS.md` is auth
    files to read, and the scope it may write. Verify outputs against REALITY
    (the archive tree against `filing_plan.yaml`, catalog entries, register entries) — never trust "done"
    strings. Parallelize only independent work and await every required result before advancing.
+   On Claude set **`run_in_background: false`** unless you deliberately parallelize — a background
+   specialist's messages arrive in THIS session while it works, so its English work narration can land
+   in the stream the user reads (measured on the SDK stream; what a terminal client collapses of it is
+   not), while with `false` its text stays inside the task. Parallelizing is therefore also a decision
+   about what the user may see: if they ask about the chatter, say so in plain words instead of
+   promising quiet.
    **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
    briefing names what the kernel swept and what it measured; before you re-order the work run
    `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own

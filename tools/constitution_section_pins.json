@@ -69,7 +69,7 @@
         ]
       },
       "14. Behavior (all roles)": {
-        "digest": "9dbb27c5b83acb21",
+        "digest": "2ffa661d4daefb4b",
         "hooks": []
       },
       "14a. Loops & failures": {
@@ -240,7 +240,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "ee0ff87600452064",
+        "digest": "3e65fb31b9469158",
         "hooks": [
           "gate_dispatch",
           "gate_git"
@@ -360,7 +360,7 @@
         ]
       },
       "8. Behavior": {
-        "digest": "9613146c75290560",
+        "digest": "fc6ecd489a51b381",
         "hooks": []
       },
       "9. Git & data": {
@@ -426,7 +426,7 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "d8a5998eb40e3822",
+        "digest": "cf1e5eac3c17a18c",
         "hooks": [
           "gate_proc_approved",
           "session_status"
@@ -501,7 +501,7 @@
         ]
       },
       "14. Behavior (all roles)": {
-        "digest": "104f87869c6984b3",
+        "digest": "e8dbc7e90cacf252",
         "hooks": []
       },
       "14a. Loops & failures": {
@@ -675,7 +675,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "1761f6bfad04736a",
+        "digest": "fccbb45d1464ba5b",
         "hooks": [
           "guard_yaml_valid"
         ]

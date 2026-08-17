@@ -95,7 +95,12 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    `acceptance_refs` (the criteria this task is measured against),
    `required_inputs` (exact files/IDs — never "read the tasks", name them), `allowed_scope`/`forbidden_scope`,
    and `design_ref` for a UI task with a confirmed design.
-   On Claude set **`run_in_background: false`** unless deliberately parallelizing; on Codex delegate parallel
+   On Claude set **`run_in_background: false`** unless deliberately parallelizing — a background
+   specialist's messages arrive in THIS session while it works, so its English work narration can land
+   in the stream the user reads (measured on the SDK stream; what a terminal client collapses of it is
+   not), while with `false` its text stays inside the task. Parallelizing is therefore also a decision
+   about what the user may see: if they ask about the chatter, say so in plain words instead of
+   promising quiet. On Codex delegate parallel
    work only when independent. On BOTH, NEVER advance before every required agent has reached a terminal
    result; verify claims via artifacts/git. **Serialize agents that edit the same files:** parallel fixers plus
    a temp-edit agent raced on one file in a real run (commit collision, repaired by luck) — same-file work is

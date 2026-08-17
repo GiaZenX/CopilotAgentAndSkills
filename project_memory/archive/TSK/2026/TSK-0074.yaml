@@ -1,0 +1,66 @@
+id: TSK-0074
+product_requirement: PR-0003
+derives_from: BUG-0046
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'BUG-0046 (pilot-3 B5: specialist work narration appears in the same session stream,
+  4 persona complaints in one session; the PM answered honestly it cannot reliably
+  guarantee suppression; PARTLY instrument -- the SDK relay shows everything -- partly
+  real: mixed German/English jargon within single PM turns violates the report-language
+  rule the kits carry)'
+- 'AC-1 verbatim: the kit-side leak (mixed language in PM turns) has a measured fix
+  OR a named limitation; AC-2 verbatim: the instrument share is separated by MEASUREMENT,
+  not estimate -- the pilot instrument and its transcript are in the TSK-0027 pilot
+  artifacts under docs/reviews/, and the SDK pilot mechanics are the measured way
+  to reproduce a PM session cheaply (DEC-0027/DEC-0031: cost-bearing SDK runs stay
+  on Sonnet)'
+- 'the report-language rule as shipped: find every place the kits state it (constitutions,
+  PM role texts, PM skill) and read the DEC-0029 precedent first -- modelling INTENT
+  or language from free text in a hook was measured to refuse the kits own legitimate
+  questions; a language-judging gate is therefore a known-rejected direction, name
+  it instead of rebuilding it'
+- 'the BUG-0039 context: an own UI rendering systemMessage closes the terminal blind
+  spot post-release (FR-0024 research) -- the instrument share of THIS bug may land
+  there, not in the kits; separating the shares is exactly what makes that assignment
+  honest'
+expected_outputs:
+- 'STEP 1 MEASURE + SEPARATE (AC-2): reproduce a PM-with-specialist session via the
+  measured SDK pilot mechanics (Sonnet, small scope) and record WHAT the user-visible
+  stream carries; classify each leak instance kit-side (PM turn violates the language
+  rule) vs instrument (relay shows internal traffic) -- a table with counts, not an
+  estimate'
+- 'STEP 2 BUILD the kit-side half with what the measurement supports: sharpen the
+  report-language rule where it is weak or unenforced (constitutions/PM role text/PM
+  skill -- one coherent wording, all three kits), and IF a mechanical tripwire is
+  derivable without judging free text (DEC-0029 boundary), build it; otherwise the
+  named limitation states WHY not closable and WHAT bounds it instead (the DEC-0029
+  class sentence)'
+- 'STEP 3 TESTS: red-without-fix for every mechanical piece; for prose changes the
+  section pins move with the intended tool and the measurement from STEP 1 is the
+  before-picture; no test may string-search free text for language (that is the rejected
+  direction)'
+- 'STEP 4 SHIP: bump_kit_version if kit files move, ruff, validate, ONE full pytest
+  tools/ run green with numbers, mirrors byte-identical unless KIT_SPECIFIC_HOOKS
+  names the reason; report with file:line, the instrument-share table, and the exact
+  instrument-half sentence to cite wherever the finding is quoted'
+dependencies:
+- BUG-0046
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-17T12:14:46'
+closed_at: '2026-08-17T18:25:38'

@@ -240,7 +240,11 @@ a defect (a real file grew +666 lines the day its split-flag was logged). The au
   to bring the best alternative + recommendation; (3) free ideas = bounded MAY — max 1–3 bundled
   at decision points, zero is the correct default. Never acted on unilaterally (needs user OK /
   FR / CR). Specialists carry tiers 1–3 in their Output block.
-- **PM speaks plain German to the user** — jargon stays between agents.
+- **PM speaks plain German to the user** — jargon stays out of YOUR messages, and those are the
+  part you control: on Claude, a specialist dispatched with `run_in_background: true` writes its
+  English work narration into the same stream the user reads (measured on the SDK stream; what a
+  terminal client collapses of it is not). Asked about that chatter, say once and plainly that it
+  is machine talk nobody has to read — and never promise to switch it off.
 
 ## 14a. Loops & failures
 
