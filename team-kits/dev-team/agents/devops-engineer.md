@@ -4,6 +4,7 @@ description: "DevOps engineer. Use as a subagent (invoked by the Project Manager
 tools: Read, Edit, Write, Bash, Grep, Glob
 model: worker
 effort: high
+memory: project
 color: red
 skills: [devops-engineer]
 hooks:

@@ -1,0 +1,55 @@
+id: TSK-0072
+product_requirement: PR-0003
+derives_from: BUG-0047
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'BUG-0047 (pilot-3 B6, both mechanisms: (1) after submit-result no write scope remains
+  for the roles OWN memory -- gate_write_scope task scope, allowed_scope staging/**
+  -- so specialist role learning measured ZERO files under agent-memory/backend-developer
+  and software-architect; (2) guard_memory_budgets content rule blocked 10 writes
+  incl. the PM and the PM then rewrote compliantly -- that rule WORKED and stays,
+  AC-2)'
+- 'the L6 hole-list entry in docs/POST_V2_WISHLIST.md (READ-ONLY for you): role memory
+  prescribed and locked -- confirmed live by the pilot; your report proposes the updated
+  L6 wording, the lead applies it (the file is forbidden scope)'
+- 'the contract sits across: role texts that prescribe the memory duty (derive which,
+  do not list), gate_write_scopes task-scope enforcement, guard_memory_budgets content
+  rule, and the kits agent-memory/<role>/ path convention -- measure all four in a
+  scaffold, not from memory'
+expected_outputs:
+- 'STEP 1 MEASURE the contradiction live in a scaffolded kit project outside the repo:
+  dispatch a specialist, submit-result, attempt its memory write, see the refusal;
+  enumerate (derived over the shipped role texts) every role that carries the memory
+  duty'
+- 'STEP 2 DECIDE with the measurement and BUILD: either a sanctioned memory-write
+  window in the submit flow, scoped to agent-memory/<role>/ and ONLY that (the general
+  task scope must stay closed after submit -- measure it stays closed), or the duty
+  leaves every role text that cannot fulfil it (prescribed-and-impossible ends). Justify
+  the fork taken; a maintenance-burden answer is legitimate'
+- 'STEP 3 TESTS red-without-fix in an outside clone: the contradiction measured red
+  (duty prescribed + write refused), green with the fix; guard_memory_budget behaviour
+  unchanged (its existing tests green, AC-2); real hook processes, no string-search'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, ONE full pytest tools/ run green
+  with numbers, mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason;
+  report with file:line, the L6 rewording proposal for the lead, residues named'
+dependencies:
+- BUG-0047
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-17T03:24:45'
+closed_at: '2026-08-17T12:13:32'

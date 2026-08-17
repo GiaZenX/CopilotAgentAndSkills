@@ -677,16 +677,28 @@ def toml_scalar(value):
     return json.dumps(value)
 
 
+# THE ROLE-MEMORY DUTY, as the one pattern that decides what it IS. Codex has no per-role memory
+# feature, so a role text carrying this sentence has to be rewritten on the way out -- which makes
+# this regex the running definition of "this text prescribes the memory duty", and the only one.
+# `tools/test_role_contracts.py::test_the_memory_duty_is_only_prescribed_where_the_role_has_memory`
+# reads it from here to ask the CLAUDE side of the same question: a role told to consult a memory
+# its own frontmatter does not enable has nothing to consult (BUG-0047). Two readers, one pattern,
+# so a reworded duty that slips past the Codex rewrite is caught on the Claude side too.
+MEMORY_DUTY_RX = re.compile(
+    r"Consult\s+your agent memory\s+before,\s*update it after\.", re.IGNORECASE)
+# The frontmatter key that turns the provider's role memory ON. A role without it has no memory
+# directory to consult, whatever its prose says.
+MEMORY_FRONTMATTER_KEY = "memory"
+
+
 def codex_text(text):
     """Apply only unambiguous path translations to generated Codex copies."""
     translated = (text.replace("./CLAUDE.md", "./AGENTS.md")
                   .replace(".claude/skills/", ".agents/skills/"))
-    return re.sub(
-        r"Consult\s+your agent memory\s+before,\s*update it after\.",
+    return MEMORY_DUTY_RX.sub(
         "Consult checked-in project_memory and your native skill before acting; record durable "
         "project facts only in the designated project_memory files.",
         translated,
-        flags=re.IGNORECASE,
     )
 
 

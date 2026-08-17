@@ -70,6 +70,28 @@ ANALYSIS_TASKS_KEY = "tasks"
 # field the first one reads.
 CRITERIA_FIELDS = ("acceptance_criteria", "success_criteria")
 
+# WHICH PROVIDER TOOLS RUN A COMMAND LINE. Provider knowledge, so nothing here can
+# derive it; it lives in the kernel because the party that has to ACT on it is the
+# kernel (`hand_back_path` below) and a kit hook cannot be imported from here. The
+# gate that routes on the same fact keeps its own tuple
+# (`gate_write_scope.SHELL_TOOLS`) rather than importing this one, because that
+# routing must survive a project whose kernel is unreachable; the two ends and the
+# kit's own `settings.json` matcher are measured against each other by
+# `tools/test_role_contracts.py::test_the_command_running_tools_are_one_fact_in_three_places`.
+COMMAND_TOOLS = ("Bash", "PowerShell")
+
+# WHO BOOKS A SPECIALIST'S RESULT IN. Two values, and which one applies to a role is
+# a fact about that role's installed definition, never a list: a role whose `tools:`
+# frontmatter names none of `COMMAND_TOOLS` cannot run the entry point at all, so
+# `submit-result` is not a step it can take. Measured in pilot 3 (BUG-0048) three
+# times: the roles reported the demand as a gap instead of working around it, which
+# is the honest outcome of a contract that asks for something the toolset withholds.
+# The value rides in the lease and then in the dispatch header, so the role is told
+# its path at the one moment the dispatch is composed.
+HAND_BACK_KEY = "hand_back"
+HAND_BACK_SELF = "self"
+HAND_BACK_LEAD = "lead"
+
 
 class DispatchError(StateError):
     """Dispatch-gate violation -- fail-closed, message carries the remedy."""
@@ -227,6 +249,13 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
         verdict = checkpoint_verdict(state, task_id, _locked=True)
         if verdict.adoptable:
             lease["checkpoint"] = verdict.pointer
+        # ...AND THE HAND-BACK PATH, decided here for the same reason: this is the one moment a
+        # dispatch is composed, and the role's own definition is what decides it (BUG-0048).
+        # Absent when the definition cannot be read -- see `hand_back_path`.
+        path = hand_back_path(agents_dir(os.path.dirname(state.root)),
+                              task.get("assigned_role"))
+        if path:
+            lease[HAND_BACK_KEY] = path
         state._write_yaml_atomic(lease_path, lease)
         task["status"] = LEASE_MINTED_STATUS
         task["leased_at"] = _now_iso()
@@ -247,6 +276,81 @@ def checkpoint_verdict(state: ProjectState, task_id: str, _locked: bool = False)
     return verify(state, task_id, _locked=_locked)
 
 
+def agents_dir(repo_root: str) -> str:
+    """Where the INSTALLED role definitions live, asked of the installer that puts them there.
+
+    `presets.AGENTS_DIR` is the path the kit installer writes into, so a kit that moved its
+    role definitions would move this reader with it. Deferred import for the reason
+    `checkpoint_verdict` gives: `presets` pulls in `subprocess`/`shutil` for the installer it
+    drives, and a lease does not need them.
+    """
+    from .presets import AGENTS_DIR
+
+    return os.path.join(repo_root, AGENTS_DIR)
+
+
+def role_tools(definitions: str, role: str):
+    """The tools `role`'s definition grants, or None when it cannot be read.
+
+    `definitions` is the DIRECTORY the role definitions live in -- `agents_dir(repo_root)` in an
+    installed project, `<kit>/agents` for the shipped source, which is how the suite judges a kit
+    before anybody installs it.
+
+    None is NOT "no tools": it means the question could not be asked -- an uninstalled kit, a
+    role name nobody ships, a definition without frontmatter. Every caller has to distinguish
+    the two, because "this role has no shell" is a statement about a contract and "I could not
+    look" is a statement about this process.
+    """
+    import yaml
+
+    path = os.path.join(definitions, str(role or "") + ".md")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    except OSError:
+        return None
+    if not text.startswith("---"):
+        return None
+    end = text.find("\n---", 3)
+    if end < 0:
+        return None
+    try:
+        front = yaml.safe_load(text[3:end])
+    except yaml.YAMLError:
+        return None
+    if not isinstance(front, dict):
+        return None
+    granted = front.get("tools")
+    if granted is None:
+        return None
+    if isinstance(granted, str):
+        granted = [part.strip() for part in granted.split(",")]
+    if not isinstance(granted, list):
+        return None
+    return [str(one).strip() for one in granted if str(one).strip()]
+
+
+def hand_back_path(definitions: str, role: str):
+    """`HAND_BACK_SELF`, `HAND_BACK_LEAD`, or None when the role definition cannot be read.
+
+    THE PROPERTY, not a list of role names: a role can book its own result in exactly when its
+    installed definition grants a tool that runs a command line (`COMMAND_TOOLS`), because
+    `submit-result` IS a command line. A role added tomorrow is judged by its own frontmatter on
+    the day it ships, and one that gains or loses a shell changes path without anybody editing a
+    contract.
+
+    None keeps the dispatch silent rather than guessing. The constitution states the path for
+    every role anyway (the hand-back is the final message; the lead books it in), so an absent
+    key withholds an ADDITIONAL permission and never grants one.
+    """
+    granted = role_tools(definitions, role)
+    if granted is None:
+        return None
+    runnable = {tool.lower() for tool in COMMAND_TOOLS}
+    return (HAND_BACK_SELF if any(tool.lower() in runnable for tool in granted)
+            else HAND_BACK_LEAD)
+
+
 def dispatch_header(lease: dict) -> str:
     """The ONLY thing the gate parses -- never free prompt prose (spec II.4).
 
@@ -264,6 +368,12 @@ def dispatch_header(lease: dict) -> str:
     }
     if lease.get("checkpoint"):
         body["checkpoint"] = lease["checkpoint"]
+    # WHO BOOKS THIS RESULT IN, in the one part of the prompt that reaches the specialist
+    # verbatim. Like `checkpoint` it grants nothing -- `parse_header` names the three keys the
+    # gate decides on and this is not one of them -- it TELLS the role which of the two paths
+    # the constitution describes is the one its own toolset can walk (BUG-0048).
+    if lease.get(HAND_BACK_KEY):
+        body[HAND_BACK_KEY] = lease[HAND_BACK_KEY]
     return HEADER_PREFIX + json.dumps(body, sort_keys=True)
 
 

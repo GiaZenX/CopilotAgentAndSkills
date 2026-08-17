@@ -1,0 +1,13 @@
+id: EVD-0045
+kind: review
+related:
+- TSK-0072
+result: pass
+summary: verifier PASS for diff:91eeb4beecf7134273314a09589f5ce599de16bbd1cf8416f3b3e8dc64404dfa
+  -- TSK-0072+TSK-0073 round 3 (B5/N8-N11 closed, full round-2 battery non-regression,
+  stamp 2026.08.17-7, suite 2794+13, gates 243)
+artifact_refs:
+- staging/TSK-0072/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-17T12:14:01'

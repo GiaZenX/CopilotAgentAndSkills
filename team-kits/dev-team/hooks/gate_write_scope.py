@@ -16,6 +16,11 @@ it, and not a second time here, where the last widening of it left this table a 
                          2. a bound specialist writes only inside its task's `allowed_scope` and
                             never inside `forbidden_scope`; an UNBOUND subagent writes nothing,
                             because there is no scope to check it against.
+                         6. ...with ONE window through rule 2, and only one: a role's OWN craft
+                            memory directory, and only for a call whose content
+                            `guard_memory_budget` really judges. `_own_craft_memory` is the whole
+                            of it — the reason, the four derived conditions and the two
+                            measurements that forced them (BUG-0047) are there, not here.
   the shell              3. RULE 1, plus RULE 4 below, for the shell — shell writes bypass
                             Edit/Write hooks entirely (guard_harness_selfmod has said so
                             since V1), and the
@@ -126,6 +131,10 @@ import _compat  # noqa: E402
 # of it. The import is cheap (`_root`, `_audit`, `_compat`, all loaded by then) and runs no code —
 # that module's body is constants and defs.
 import guard_pm_scope  # noqa: E402
+# ...and for the same reason, the directory NAME that makes a path role memory: `guard_memory_budget`
+# is the guard that owns agent memory (its budgets, its content rule), so rule 6 below asks it what
+# a memory path is instead of carrying a second spelling. Same cost: constants and defs.
+import guard_memory_budget  # noqa: E402
 
 HOOK = "gate_write_scope"
 # NotebookEdit included: a notebook write is a file write, and a gate that does not see it scopes
@@ -475,6 +484,91 @@ def _assert_state_write_allowed(rel, inside, task, data, root):
                    "sequentially.")
 
 
+# THE HALF OF THIS BRANCH'S REFUSAL THAT WAS SIMPLY WRONG (BUG-0047, hole list L6). A role updating
+# its own craft memory from a shell met "hooks and settings are maintained by the scaffold ... a copy
+# of the layer runs outside every path check" — a reason that is false of `agent-memory/`, which is
+# neither settings nor code, and a remedy that named no route while the role's own text prescribed
+# the write. The DECISION is unchanged and stays: `handle_shell` never resolves a role, so a command
+# line cannot be scoped to one role's directory, and a window here would open every role's memory to
+# every caller. What changes is that the refusal now names the door that exists. Written as a
+# CONDITIONAL sentence rather than decided per path: this branch would have to re-read the line to
+# tell a memory path from a hook path, and a second path reader in this gate is the thing that keeps
+# going wrong — a conditional is true of every refusal it is appended to.
+_CRAFT_MEMORY_HAS_A_DOOR = (
+    "If what you are writing is a SUBAGENT's own craft memory (the `agent-memory/<its role>/` tree "
+    "beside the installed role definitions), that has a door and this is not it: the Write/Edit "
+    "TOOL, where this gate scopes a subagent to its own role's directory — and there only to the "
+    "craft topics `guard_memory_budget` judges, so a `notes.txt` beside them is refused through "
+    "that door too. A shell line carries no role identity for it to scope by, which is why the "
+    "shell stays shut for everyone. (The lead is not scoped to one role there through EITHER door "
+    "— rule 2 never bound it and rule 6 does not either.)")
+
+
+def _own_craft_memory(rel, path, data, root):
+    """RULE 6 — is this the CALLING ROLE's OWN craft memory?
+
+    THE ONE THING OUTSIDE A TASK SCOPE **AND OUTSIDE THE STATE DIRECTORY** a specialist writes.
+    The other exception is inside it and belongs to rule 1 (`staging/<its own key>/`), so this is
+    not "the only path a work order does not name" — saying that was measurably wrong in this
+    gate's own first cut. It is a window rather than an exemption: it opens for one directory, the
+    one belonging to the role this very call runs as.
+
+    Measured before it existed (BUG-0047, pilot 3 B6), in a scaffolded project against the
+    project's own hooks: a bound backend-developer writing
+    `.claude/agent-memory/backend-developer/MEMORY.md` was rc 2 "outside TSK-0001's allowed_scope"
+    while its task ran, and rc 2 "this subagent is not bound to a task" once it had submitted —
+    so the duty its role text prescribes ("consult your agent memory before, update it after") had
+    no moment at which it could be discharged, and the two specialists of that run ended with zero
+    memory files. Nothing else refused the write: the other four registered Write gates returned 0
+    and `guard_harness_selfmod` exempts this tree by name.
+
+    FOUR CONDITIONS, ALL DERIVED. The first three bound WHO and WHERE, because the risk this window
+    carries is one role writing ANOTHER's memory — craft prose the other loads at its next spawn,
+    i.e. an instruction channel. The fourth bounds WHAT, and it is the one this gate first left
+    out:
+
+      * the ROLE is the one the payload names (`agent_type`), which the provider sets and the model
+        does not; `tools/provider_observations.json` records that a subagent's PreToolUse payload
+        carries it non-empty, and `_compat.calling_subagent` already decides rule 4 on the same
+        field. A single path segment, or nothing — a name with a separator in it would compose a
+        prefix pointing elsewhere.
+      * the role EXISTS as one of ours, by the predicate `gate_subagent_output` uses: an installed
+        definition. WHERE those live comes from the installer that puts them there
+        (`kernel.presets.AGENTS_DIR`), so a kit that moved them moves this with it.
+      * the DIRECTORY is that role's memory directory beside them — `guard_memory_budget.MEMORY_DIR`
+        under the same provider directory the definitions sit in. That anchoring is what keeps an
+        invented `src/agent-memory/<role>/` outside the window: there is no role definition beside
+        it, so it is an ordinary write and the task scope judges it.
+      * the CONTENT GUARD REALLY JUDGES THIS CALL — `guard_memory_budget.judges_this_write`, which
+        is where that question and its measurement live. This gate widened WHO may write on the
+        stated ground that the budget guard still owns WHAT lands there; the first cut asserted
+        that ground instead of asking for it, and the shapes that guard does not model went through
+        both gates at once. Asking makes the two fail in the same direction.
+
+    An unreachable kernel answers NO and the write falls back to the scope check, which refuses it.
+    `tools/test_hooks.py::test_a_role_writes_its_own_craft_memory_and_only_its_own` holds every
+    direction of this in a scaffolded project, including the ones the window must NOT open.
+    """
+    role = str(data.get("agent_type") or "").strip()
+    if not role or "/" in role or "\\" in role or role in (".", ".."):
+        return False
+    try:
+        agents = _kernel.kernel_module("presets").AGENTS_DIR.replace("\\", "/")
+    except Exception:  # noqa: BLE001 — no kernel, no window (fail-closed)
+        return False
+    if not os.path.isfile(os.path.join(root, *(agents.split("/") + [role + ".md"]))):
+        return False
+    own = _norm(posixpath.join(posixpath.dirname(agents),
+                               guard_memory_budget.MEMORY_DIR, role))
+    if not (rel == own or rel.startswith(own + "/")):
+        return False
+    # THE NAME IS THAT GUARD'S TO DERIVE, not this one's to hand over. `rel` here is
+    # realpath-resolved (`_repo_relative`) and that module resolves with `abspath`, so passing
+    # `rel` asked it about a string it would never judge — measured as an open window under an
+    # NTFS alternate data stream and an 8.3 short name. `guard_relative` carries both.
+    return guard_memory_budget.judges_this_write(data, path)
+
+
 def _assert_in_scope(rel, task):
     """A bound specialist writes only where its work order says (spec II.4 gate 3)."""
     allowed = _scope_entries(task, "allowed_scope")
@@ -514,6 +608,12 @@ def handle_file_write(data):
         inside = _state_relative(rel)
         if inside is not None:
             _assert_state_write_allowed(rel, inside, task, data, root)
+        elif _own_craft_memory(rel, path, data, root):
+            # RULE 6 — the role's own craft memory, and it stays open on BOTH sides of the
+            # hand-back: `submit-result` removes the lease, so after it there is no task to scope
+            # against and this is the only path outside the state directory the role still has.
+            # `forbidden_scope` was already asked above, so a work order can still deny it.
+            continue
         elif task is not None:
             _assert_in_scope(rel, task)
         elif data.get("agent_id"):
@@ -1283,9 +1383,10 @@ def handle_shell(data):
                     "route to a forged approval.",
                     "reading it (cat/grep/diff/ruff/mypy) stays allowed, including with the output "
                     "suppressed (`2>/dev/null`, `> NUL`, `> $null`); what is refused is the bytes "
-                    "LANDING somewhere — a copy, a redirect into a real file, an in-place edit. If "
-                    "a gate blocks something legitimate, that is an infrastructure defect worth "
-                    "reporting.")
+                    "LANDING somewhere — a copy, a redirect into a real file, an in-place edit. "
+                    + _CRAFT_MEMORY_HAS_A_DOOR +
+                    " If a gate blocks something legitimate, that is an infrastructure defect "
+                    "worth reporting.")
         if names_state and writes:
             # ONE carve-out: a read-only command capturing state to a scratch file outside both
             # protected trees. `git diff project_memory > /tmp/state.diff` is how an agent reports

@@ -78,6 +78,10 @@ about.
   header — a prose work order without one is refused.
 - When a result comes back, **verify its claims against the artifacts and git**, never against its
   own summary.
+- **Booking a shell-less specialist's result in is YOUR half** (§6, BUG-0048): a role whose header
+  said `hand_back: lead` cannot type a command, so it stages the envelope in `staging/<TSK-ID>/`
+  and you run `python scripts/harness.py submit-result --task-id <TSK-ID> --from <NAME>`. Use
+  `--from`, not the flags — retyping makes YOU the author of a record the specialist wrote.
 
 ## Git
 - Constitution §8 is the rule and it binds the whole team, you included. Nothing about git is

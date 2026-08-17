@@ -113,10 +113,17 @@ def contained_child(base: str, name: str, what: str) -> str:
 
     A LATENT EDGE, not exploitable today and written down before it becomes one: the containment
     check accepts `resolved == container`, so a name Windows normalises AWAY (`".."` with trailing
-    spaces, `"..."`, `"   "`) passes the segment check and resolves to the container itself. Every
-    caller today appends a FILE NAME afterwards, where the component stays literal, so the
-    operation stops at "staged file does not exist" before `clear_staging` can run (measured). A
-    caller that used this for a directory alone would need `resolved != container` as well.
+    spaces, `"..."`, `"   "`) passes the segment check and resolves to the container itself.
+
+    THE SENTENCE THAT USED TO FOLLOW HERE HAS EXPIRED, and it is written down rather than quietly
+    repaired: "every caller today appends a FILE NAME afterwards" was true until `submit-result
+    --from` (BUG-0048) began OPENING the composed path directly. Measured 2026-08-17 for both
+    normalised-away names on this host: `--from '...'` and `--from '.. '` reach `open()` on the
+    staging DIRECTORY and stop there with a permission error (rc 2, nothing read, nothing written)
+    — so the edge is still not exploitable, for a different reason than before. The condition
+    under which it becomes one is unchanged and now has two ways in: a caller that hands this
+    result to a DIRECTORY operation, or a host on which opening a directory succeeds. Either needs
+    `resolved != container` here.
 
     `what` names the parameter in the refusal, because the role typed it.
     """

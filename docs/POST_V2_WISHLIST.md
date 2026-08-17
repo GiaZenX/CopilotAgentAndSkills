@@ -598,13 +598,48 @@ löst aber ein Problem, das es nicht gibt — die `deny`-Hälfte gilt ja bereits
 einer Regel, die dann in **jedem** fremden Repo des Nutzers gilt und die der Installer bei jedem
 Update wieder einmergt (`user/claude/settings.json`, unioniert von `install.sh`/`install.ps1`).
 
-### L6 — Rollenmemory ist vorgeschrieben und gesperrt
+### L6 — Rollenmemory ist vorgeschrieben und gesperrt — geschlossen am 2026-08-17 (BUG-0047, TSK-0072)
 
-Die Verfassung verlangt „durable craft learnings"; `gate_write_scope` verweigert
-`.claude/agent-memory/<rolle>/…`, sobald `submit-result` gelaufen ist — und der Spezialist schreibt
-sein Memory typischerweise danach. Die zweite Verweigerung nennt ausserdem den falschen Grund
-(„Hooks and settings are maintained by the scaffold"), obwohl `agent-memory` weder Zustand noch
-Enforcement-Schicht ist.
+Der Eintrag war zusätzlich in einem Punkt falsch: er nannte `submit-result` als Auslöser.
+Gemessen im Scaffold gegen die projekteigenen Hooks (2026-08-17) war das eigene Memory an
+**jedem** Punkt gesperrt — während `IN_PROGRESS` mit „outside TSK-0001's allowed_scope", danach
+mit „this subagent is not bound to a task". Es gab also kein Fenster, das `submit-result`
+geschlossen hätte, sondern von Anfang an keines.
+
+Geschlossen als **Regel 6** in `gate_write_scope` (`_own_craft_memory`): der Aufrufer schreibt
+`<Providerverzeichnis>/agent-memory/<seine eigene Rolle>/**` und sonst nichts ausserhalb seines
+Task-Scopes — vor und nach der Rückgabe, während der allgemeine Task-Scope danach unverändert
+geschlossen bleibt. Alle drei Bedingungen sind abgeleitet (Payload-`agent_type`,
+`kernel.presets.AGENTS_DIR`, `guard_memory_budget.MEMORY_DIR`).
+`tools/test_hooks.py::test_a_role_writes_its_own_craft_memory_and_only_its_own` hält sechs
+Richtungen, darunter fünf Verweigerungen; ein aufgeweitetes Fenster (Rolle aus dem Pfad statt aus
+dem Aufrufer) wurde in einem Klon rot gemessen.
+
+**Offen bleibt der Shell-Weg, und zwar absichtlich:** `handle_shell` löst keine Rolle auf, also
+könnte ein Fenster dort nur jedes Rollenmemory für jeden Aufrufer öffnen. Die Verweigerung nennt
+seit dieser Runde die Tür, die es gibt (Write/Edit-Werkzeug für einen Subagenten), statt „Hooks
+and settings are maintained by the scaffold" — der falsche Grund, den dieser Eintrag zu Recht
+anmerkte.
+
+**Und offen bleibt eine Nicht-Kongruenz, die beim ersten Anlauf ein echtes Loch war** (vom
+Prüfer gemessen, in derselben Runde geschlossen — zweimal, denn unter dem ersten Fix lag noch
+eine Namensschicht: Gate und Wächter urteilten über verschieden geschriebene Pfade, geschlossen
+als EINE Ableitung `guard_memory_budget.guard_relative` mit zwei Lesern; beide Vertreter der
+Schreibweisen-Klasse — ADS-Datenstrom und 8.3-Kurzname — sind gemessen zu): das Fenster
+entscheidet über **Pfad und Rolle**, der Inhaltswächter über die **Form des Payloads** — zwei
+Mengen, die nicht deckungsgleich sind. Geschlossen ist das dadurch, dass das Fenster den Wächter
+fragt, statt ihn anzunehmen (`guard_memory_budget.judges_this_write`), also fail-closed in
+dieselbe Richtung. Was damit **verweigert statt gedeckt** ist: jede Payload-Form, die der
+Wächter nicht rekonstruieren kann — ein `Edit` mit leerem oder nicht auffindbarem `old_string`,
+ein `NotebookEdit`, ein Codex-`apply_patch` — jede Datei im Memory-Baum, deren Budget keine
+Inhaltsregel trägt, und jedes Memory-File, das unter einer nicht-geebneten Schreibweise
+adressiert wird (gemessen: `MEMORY.md::$DATA` mit sauberem Inhalt → rc 2). Ein Rollenmemory als
+Notebook oder über Codex zu pflegen ist damit **nicht möglich**; das ist Über-Verweigerung mit
+Ansage, kein Loch, und die Schliessrichtung wäre, den Inhalt dieser Formen im Wächter zu
+modellieren (`guard_memory_budget.py`, „Modelling notebook content is phase 3"). Bewusst NICHT
+angefasst: ob `guard_memory_budget.main` selbst `realpath` auflösen soll — das wäre die
+Ausweitung einer Inhaltsregel mit eigener Fehlalarm-Frage und steht als eigene Entscheidung an,
+nicht als Nebenwirkung dieser Runde.
 
 ### L7 — Eine Lease aus einer abgestürzten Sitzung kostet die volle TTL
 
@@ -2111,6 +2146,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H45 | **Rest** bzw. entschiedene Über-Verweigerung | zwei gemessene Grenzen der Arbiter-Härtung aus TSK-0063, je im Eintrag: die Sitzungswache verlangt die Seh-Eigenschaft auch von shell-freien Registrierungs-Prüfungen (fail-closed, auf diesem Host ohne Effekt; Schließrichtung benannt), und `_can_arbitrate` ist von keinem Test rot-fähig gedeckt (die entfernte `cd`-Probe ist unbeobachtet — H10-Klasse) |
 | H46 | **GESCHLOSSEN** (TSK-0070), am eigenen Gate nachgemessen | `>&datei` ist im Bash eine bytehaltende Umleitung (csh-Form von `&>`), die der Umleitungs-Erkenner nicht als Ziel verbuchte; der B1-Fix (`_output_redirect_targets`, Deskriptor nur bei Zahl/`-` verworfen) hat über die Kit-Leih-Mechanik (`_from_kit`) auch das Repo-Gate geheilt — gemessen `echo x >& …` rc 0 → rc 2 an `gate_lead_write_scope.py`, `>&2` bleibt rc 0. Kein Schritt außerhalb der Sitzung nötig |
 | H47 | **OFFEN, blockierend** — Schließrichtung (a) zu messen | dieselbe Klasse wie H46, aber die **Variablen**-Variante: Gate 1 leiht den Ziel-Leser des Kits, nicht dessen Zeilen-Zuweisungskarte, also ist `F=team-kits/kernel/state.py; echo x > $F` am Repo-Gate rc 0 (am Kit-Gate seit B2 rc 2). Vorbestehend, von TSK-0070 sichtbar gemacht. Schließrichtung (a): Auflösung in den geteilten Leser ziehen → Kit-Fix heilt mit; (b): Gate 1 baut die Karte selbst → Fix außerhalb der Sitzung. Welche greift, ist zu messen; der Nutzer entscheidet danach |
+| H48 | **OFFEN**, nicht blockierend — bewusster Tausch (TSK-0071) | keine Angriffskette auf Zustand oder Durchsetzung: eingefroren ist nur die Anzeige. An die Stelle des Schutzes tritt die bedingte Frischezusage an allen fünf Prosastellen plus der Zeitstempel auf der Seite als Kontrolle (die Seitenfußnote nennt ihn ausdrücklich); Schließrichtung, falls die Klasse im Alltag auftritt: eine Sitzungsbrief-Zeile „Board älter als Index" |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN

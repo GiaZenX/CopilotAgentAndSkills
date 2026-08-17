@@ -116,6 +116,12 @@ and a text that lists only benefits is the comment shape this kit refuses:
     specialist bound to that lease -- the shell carries no agent identity a kernel call could read
     (the binding lives in the hook payload's `agent_id`, and a command line has none). So any
     role, including the lead, can hand back a result for any task in flight.
+    ONE USE OF THAT IS SANCTIONED RATHER THAN MERELY POSSIBLE, and it is why `--from` exists
+    (BUG-0048): a specialist whose definition grants no command-running tool cannot type this line
+    at all, so it stages the envelope under its own task's key and the lead names that file. The
+    kernel then stores the specialist's bytes rather than the lead's paraphrase of them. Which
+    roles those are is `kernel/dispatch.hand_back_path`, and the dispatch header tells each role
+    its own answer.
     AND THE SAME CALL REVOKES A RUNNING SPECIALIST'S WRITE SCOPE, which is the half that costs
     something immediately: submitting REMOVES the lease, and the lease IS the `agent_id -> task`
     mapping gate layer 3 resolves. Measured 2026-07-31 against a bound child: a write inside its

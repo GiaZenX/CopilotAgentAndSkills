@@ -6,7 +6,7 @@
         "hooks": []
       },
       "Delegation": {
-        "digest": "e4ddc47499c25c11",
+        "digest": "260c86ab1e05c626",
         "hooks": []
       },
       "Git": {
@@ -45,10 +45,11 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "43c97c3ef3a88b53",
+        "digest": "7df61e2712ba3b24",
         "hooks": [
           "gate_write_scope",
-          "guard_harness_selfmod"
+          "guard_harness_selfmod",
+          "guard_memory_budget"
         ]
       },
       "1. Roles — who talks to whom": {
@@ -130,8 +131,9 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "1bd826166ded0b02",
+        "digest": "926e89b5e773c11c",
         "hooks": [
+          "gate_subagent_output",
           "gate_test_coverage"
         ]
       },
@@ -157,7 +159,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "84c2f43891b65415",
+        "digest": "da98f7905cf8be9a",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -263,7 +265,7 @@
         ]
       },
       "What you are and are not": {
-        "digest": "06ec73df6e3778a6",
+        "digest": "2af99db891027844",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -277,9 +279,10 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "245bf6a8bac23e66",
+        "digest": "fafa30124665076b",
         "hooks": [
-          "gate_write_scope"
+          "gate_write_scope",
+          "guard_memory_budget"
         ]
       },
       "1. The PROC model (processes are the product)": {
@@ -345,8 +348,10 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "e58f1a28bf332470",
-        "hooks": []
+        "digest": "b760d04c7590584b",
+        "hooks": [
+          "gate_subagent_output"
+        ]
       },
       "7. Models & presets": {
         "digest": "20dc8e44ef685204",
@@ -374,7 +379,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "2a4c0066a2ee507e",
+        "digest": "44d740a80ae6cf2b",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -436,7 +441,7 @@
         "hooks": []
       },
       "Delegation": {
-        "digest": "a8f3fbbd3be6c8b5",
+        "digest": "38a568e299019190",
         "hooks": []
       },
       "Git": {
@@ -472,10 +477,11 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "1a1b0e85e6b5d76d",
+        "digest": "1e8fa655dc7f800b",
         "hooks": [
           "gate_write_scope",
-          "guard_harness_selfmod"
+          "guard_harness_selfmod",
+          "guard_memory_budget"
         ]
       },
       "1. Roles — who talks to whom": {
@@ -563,8 +569,10 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "492d10304d805948",
-        "hooks": []
+        "digest": "c52dc9ca854b4939",
+        "hooks": [
+          "gate_subagent_output"
+        ]
       },
       "7. Evolution: CR / BUG — explicit, never silent": {
         "digest": "35c8ae714ad43818",
@@ -588,7 +596,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "536efbdf0af43f6d",
+        "digest": "52b939a897c6607f",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",

@@ -1,0 +1,54 @@
+id: TSK-0073
+product_requirement: PR-0003
+derives_from: BUG-0048
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'BUG-0048 (pilot-3 B7, measured three times: role text demands running harness.py
+  submit-result, the role has no shell tool; the lived workaround was envelope-as-file
+  plus PM proxy, reported by the roles as a gap instead of bypassed)'
+- 'lead pre-check 2026-08-17 (RE-DERIVE, do not trust): dev-team roles without Bash
+  in their tools frontmatter are product-designer, research-engineer, software-architect;
+  the submit contract text lives across the constitutions (AGENTS.md), hooks/ENFORCEMENT.md,
+  kernel dispatchs HARNESS_DISPATCH header and templates/repo/scripts/harness.py --
+  and the same question exists in research-team and office-team'
+- 'AC-1 verbatim: contract and toolset agree for EVERY shipped specialist, derived
+  over the role definitions, not a list -- the test must read the shipped frontmatter
+  and the shipped contract text, so a role added later is judged automatically'
+expected_outputs:
+- 'STEP 1 MEASURE: derive over ALL three kits role definitions which dispatched specialists
+  can and cannot run the tool the submit contract demands; measure the demanded path
+  in the shipped contract texts (constitution, ENFORCEMENT, dispatch header, harness.py)'
+- 'STEP 2 DECIDE with the measurement and BUILD: either the submitting roles get the
+  tool the contract demands, or the contract names envelope-file + PM-proxy as THE
+  path for shell-less roles -- including the PMs half in its role text and the dispatch
+  header saying which path applies. One coherent answer across all three kits, no
+  per-kit drift without a named reason'
+- 'STEP 3 TESTS red-without-fix in an outside clone: a derived test over the shipped
+  role definitions + contract texts that goes red on the contradiction (role must
+  submit AND cannot run the demanded tool AND no named alternative path) and green
+  with the fix; the chosen path measured END-TO-END in a scaffold (AC-2: a shell-less
+  specialists result reaches the kernel)'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, ONE full pytest tools/ run green
+  with numbers, mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason;
+  report with file:line and residues named'
+dependencies:
+- BUG-0048
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-17T03:25:02'
+closed_at: '2026-08-17T12:13:33'

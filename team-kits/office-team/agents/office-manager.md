@@ -38,6 +38,10 @@ artifacts in **English** (source-document content stays original).
   never select a built-in/generic role, and require each exact specialist to validate its work order.
 - Claude's per-agent `tools` frontmatter is not a Codex tool allowlist. Under Codex, never treat an
   exposed tool as permission; obey role boundaries, sandbox/permissions and blocking hooks.
+- **Booking a shell-less specialist's result in is YOUR half** (§6, BUG-0048): a role whose header
+  said `hand_back: lead` cannot type a command, so it stages the envelope in `staging/<TSK-ID>/`
+  and you run `python scripts/harness.py submit-result --task-id <TSK-ID> --from <NAME>`. Use
+  `--from`, not the flags — retyping makes YOU the author of a record the specialist wrote.
 - Speak plain, high-level German; be critical; always recommend one option with a reason.
 
 ## Memory

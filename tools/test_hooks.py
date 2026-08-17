@@ -7066,6 +7066,21 @@ def _run_project_hook(repo, hook, command, agent_id=None):
     return _project_hook_process(repo, hook, payload)
 
 
+def _write_gates_of(repo):
+    """Every PreToolUse hook THIS PROJECT registered that FIRES ON A `Write`.
+
+    The sibling of `_shell_gates_of`, split off rather than parameterised because the two answer
+    for different DOORS and a caller that passed the wrong tool name would silently measure the
+    other one. Same reading of the matcher — a tool list, never a string (see below).
+    """
+    with open(os.path.join(str(repo), ".claude", "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    return [os.path.basename(entry["command"].split()[-1].strip('"'))
+            for group in settings["hooks"]["PreToolUse"]
+            if "Write" in (group.get("matcher") or "").split("|")
+            for entry in group["hooks"]]
+
+
 def _shell_gates_of(repo):
     """Every PreToolUse hook THIS PROJECT registered that FIRES ON A BASH CALL.
 
@@ -9969,6 +9984,261 @@ def test_the_four_commands_spec_ii4_named_are_runnable_by_the_role_that_needs_th
               for base, _dirs, files in os.walk(os.path.join(str(repo), ".claude"))
               for name in files if name.endswith((".pyc", ".pyo"))]
     assert not cached, cached
+
+
+def test_a_shell_less_specialists_result_reaches_the_kernel(tmp_path):
+    """AC-2 of BUG-0048, end to end in a scaffolded project: the architect has no shell.
+
+    Pilot 3 measured the dead end three times — the role was asked for a `submit-result` it could
+    not type, and reported it as a gap. The path now shipped is measured here in the order a
+    session walks it, every step through the hooks the PROJECT registered:
+
+      1. the dispatch header the specialist receives carries `hand_back: lead`, derived from its
+         OWN installed definition (no shell in `tools:`), not from a name this test knows;
+      2. the specialist STAGES its envelope under its task's own key — the one place inside the
+         state directory `gate_write_scope` lets a bound specialist write — and every registered
+         Write gate allows it;
+      3. the lead's `submit-result --from` line passes every registered shell gate and then runs;
+      4. what the kernel STORED is the specialist's object, field for field. That is the half the
+         retyping workaround cannot give: a lead that paraphrases is the author of the record.
+
+    The counter-measurement is in the same run: a role WITH a shell gets `hand_back: self`, so the
+    header is answering per role rather than saying one thing to everybody.
+    """
+    repo, _created = _project_the_installers_produce(tmp_path / "handback")
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import dispatch as dispatch_module
+    from kernel.state import ProjectState
+
+    captured = _entry_point(repo, "capture", "PR", body=json.dumps(PR_BODY))
+    assert captured.returncode == 0, captured.stdout + captured.stderr
+    planned = _entry_point(repo, "create-task", "--product-requirement", "PR-0001",
+                           "--derives-from", "PR-0001", "--type", "architecture",
+                           "--assigned-role", "software-architect", "--acceptance-ref", "AC-1",
+                           "--allowed-scope", "docs/")
+    assert planned.returncode == 0, planned.stdout + planned.stderr
+    _entry_point(repo, "transition", "TSK-0001", "READY")
+    _mint_in_project(repo, "scope", "PR-0001")
+    leased = _entry_point(repo, "dispatch", "TSK-0001")
+    assert leased.returncode == 0, leased.stdout + leased.stderr
+
+    agents = dispatch_module.agents_dir(str(repo))
+    assert dispatch_module.hand_back_path(agents, "software-architect") == \
+        dispatch_module.HAND_BACK_LEAD
+    assert dispatch_module.hand_back_path(agents, "backend-developer") == \
+        dispatch_module.HAND_BACK_SELF
+    header_line = next(line for line in leased.stdout.splitlines()
+                       if line.startswith(dispatch_module.HEADER_PREFIX))
+    body = json.loads(header_line[len(dispatch_module.HEADER_PREFIX):])
+    assert body.get(dispatch_module.HAND_BACK_KEY) == dispatch_module.HAND_BACK_LEAD, body
+
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    dispatch_module.validate_dispatch(state, dispatch_module.parse_header(leased.stdout),
+                                      "software-architect", claim=True)
+    dispatch_module.bind_agent(state, "TSK-0001", "agent_architect_1")
+    dispatch_module.spawn_outcome(state, "TSK-0001", True)
+
+    envelope = {"task_id": "TSK-0001", "role": "software-architect",
+                "status_proposal": "SUBMITTED", "summary": "SR-0001 derived; ARC staged",
+                "outputs": ["staging/TSK-0001/ARC-0001.drawio.svg"], "evidence": [],
+                "scope_touched": ["staging/TSK-0001/"], "followups": ["freeze the ARC"]}
+    staged = os.path.join(str(repo), "project_memory", "staging", "TSK-0001", "result.json")
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
+               "agent_id": "agent_architect_1", "agent_type": "software-architect",
+               "tool_input": {"file_path": staged, "content": json.dumps(envelope)}}
+    for gate in _write_gates_of(repo):
+        seen = _project_hook_process(repo, gate, payload)
+        assert seen.returncode == 0, "%s refuses the staged envelope:\n%s" % (gate, seen.stderr)
+    write(staged, json.dumps(envelope))
+
+    _every_shell_gate_allows(
+        repo, "python scripts/harness.py submit-result --task-id TSK-0001 --from result.json")
+    booked = _entry_point(repo, "submit-result", "--task-id", "TSK-0001", "--from", "result.json")
+    assert booked.returncode == 0, booked.stdout + booked.stderr
+    assert "TSK-0001 -> SUBMITTED" in booked.stdout, booked.stdout
+
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    assert state.read_item("TSK-0001")["status"] == "SUBMITTED"
+    stored = state._read_yaml(os.path.join(state.root, "tasks", "results",
+                                           "TSK-0001.envelope.yaml"))
+    assert stored == envelope, stored
+
+
+def _memory_payload(repo, relative, role="backend-developer", agent_id="agent_backend_1",
+                    text="# Memory\n\n- prefer an explicit timeout on every subprocess call\n"):
+    """A subagent's Write payload: `agent_id` AND `agent_type`, which is what one really carries.
+
+    Both fields, because `tools/provider_observations.json` records both non-empty for a subagent
+    and rule 6 decides on the second one. A payload carrying only the first is a direction of its
+    own below, not the default.
+    """
+    return _memory_call(repo, "Write", relative, role=role, agent_id=agent_id,
+                        tool_input={"content": text})
+
+
+def _memory_call(repo, tool, relative, role="backend-developer", agent_id="agent_backend_1",
+                 tool_input=None):
+    """The same, for a payload SHAPE other than a plain `Write` — the B1 directions below.
+
+    The path key follows the tool, because `_compat.file_paths` reads `notebook_path` for a
+    notebook and `file_path` for the rest; a probe that sent the wrong one would measure a gate
+    that found no path at all and exited 0, which reads exactly like a pass.
+    """
+    key = "notebook_path" if tool == "NotebookEdit" else "file_path"
+    payload = {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": str(repo),
+               "tool_input": dict({key: os.path.join(str(repo), *relative.split("/"))},
+                                  **(tool_input or {}))}
+    if agent_id:
+        payload["agent_id"] = agent_id
+    if role:
+        payload["agent_type"] = role
+    return payload
+
+
+def _refusing_write_gates(repo, payload):
+    """Which of the project's registered Write gates refuse this payload, with their first line."""
+    refusals = {}
+    for gate in _write_gates_of(repo):
+        seen = _project_hook_process(repo, gate, payload)
+        if seen.returncode:
+            refusals[gate] = seen.stderr.strip().splitlines()[0]
+    return refusals
+
+
+def test_a_role_writes_its_own_craft_memory_and_only_its_own(tmp_path):
+    """BUG-0047: the role-memory duty becomes dischargeable, and stays narrow while it does.
+
+    MEASURED BEFORE THE WINDOW, in this same fixture: a bound backend-developer writing
+    `.claude/agent-memory/backend-developer/MEMORY.md` was rc 2 while its task ran ("outside
+    TSK-0001's allowed_scope") and rc 2 after its hand-back ("this subagent is not bound to a
+    task") — two mechanisms, no moment in between, and the pilot's specialists ended with zero
+    memory files while their role texts told them to update it.
+
+    THE REFUSALS CARRY THE WEIGHT: a window nobody can measure the edges of is an exemption. They
+    come in two families, and the second one is the defect the first cut of this test did not have.
+
+      * WHO and WHERE. The other role's directory matters most — role memory is loaded at the next
+        spawn of that role, so a specialist that could write it would be writing another role's
+        instructions.
+      * WHAT SHAPE THE CALL HAS. Rule 6 widens WHO may write on the ground that
+        `guard_memory_budget` still owns what lands there, and that guard reports NOTHING for a
+        payload it cannot reconstruct. Measured by the verifier of TSK-0072 against the first cut,
+        in a scaffolded project with the shipped tools and a real role: an `Edit` with an EMPTY
+        `old_string` carrying 200 KB, the same carrying project ids, a `MultiEdit` with one empty
+        `old_string`, and a `Write` with no `content` key — every one ALLOWED by all five
+        registered Write gates, while the ordinary spelling of each was refused, and every one of
+        them rc 2 against the gate before rule 6 existed. A `notes.txt` beside the topics is the
+        same family through the other door: its budget carries no content rule at all.
+
+    AC-2 IS MEASURED HERE rather than assumed, in both directions: the budget guard still refuses
+    an item id and an over-budget file at the very path the window opens, AND the window does not
+    open where that guard has judged nothing. Those two together are what makes "the window widens
+    WHO may write, not WHAT may land there" a sentence this test earns.
+    """
+    repo, _created = _project_the_installers_produce(tmp_path / "memory")
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import dispatch as dispatch_module
+    from kernel.state import ProjectState
+
+    assert _entry_point(repo, "capture", "PR", body=json.dumps(PR_BODY)).returncode == 0
+    planned = _entry_point(repo, "create-task", "--product-requirement", "PR-0001",
+                           "--derives-from", "PR-0001", "--type", "implementation",
+                           "--assigned-role", "backend-developer", "--acceptance-ref", "AC-1",
+                           "--allowed-scope", "src/")
+    assert planned.returncode == 0, planned.stdout + planned.stderr
+    _entry_point(repo, "transition", "TSK-0001", "READY")
+    _mint_in_project(repo, "scope", "PR-0001")
+    leased = _entry_point(repo, "dispatch", "TSK-0001")
+    assert leased.returncode == 0, leased.stdout + leased.stderr
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    dispatch_module.validate_dispatch(state, dispatch_module.parse_header(leased.stdout),
+                                      "backend-developer", claim=True)
+    dispatch_module.bind_agent(state, "TSK-0001", "agent_backend_1")
+    dispatch_module.spawn_outcome(state, "TSK-0001", True)
+
+    own = ".claude/agent-memory/backend-developer/MEMORY.md"
+    # 1. its OWN craft memory, while bound: no registered Write gate refuses it
+    assert _refusing_write_gates(repo, _memory_payload(repo, own)) == {}
+    # 2. ANOTHER installed role's memory — the escalation the window must not open
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, ".claude/agent-memory/project-manager/MEMORY.md"))
+    # 3. a memory-shaped tree with no role definition beside it: an ordinary out-of-scope write
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, "docs/agent-memory/backend-developer/MEMORY.md"))
+    # 4. a role name this project does not install
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, ".claude/agent-memory/ghost/MEMORY.md", role="ghost"))
+    # 5. a payload that names no role at all — the window has nothing to scope by
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, own, role=None))
+    # 6. the enforcement layer beside the memory tree is untouched by any of this
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, ".claude/hooks/gate_write_scope.py"))
+
+    submitted = _entry_point(repo, "submit-result", "--task-id", "TSK-0001", "--role",
+                             "backend-developer", "--status-proposal", "SUBMITTED",
+                             "--summary", "done", "--output", "src/checkout.py",
+                             "--scope-touched", "src/checkout.py")
+    assert submitted.returncode == 0, submitted.stdout + submitted.stderr
+
+    # ...and after the hand-back: the memory stays open, the TASK SCOPE closes again. Both halves,
+    # because a window that also reopened `allowed_scope` would be the wider hole, not the fix.
+    assert _refusing_write_gates(repo, _memory_payload(repo, own)) == {}
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, "src/checkout.py", text="print('x')\n"))
+    assert "gate_write_scope.py" in _refusing_write_gates(
+        repo, _memory_payload(repo, ".claude/agent-memory/project-manager/MEMORY.md"))
+
+    # AC-2, half one: the budget guard still owns the CONTENT of what the window lets through
+    for text in ("# Memory\n\n- TSK-0001 needed a longer timeout\n", "# Memory\n\n" + "x" * 9000):
+        refused = _refusing_write_gates(repo, _memory_payload(repo, own, text=text))
+        assert "guard_memory_budget.py" in refused, (text[:30], refused)
+
+    # AC-2, half two (B1): the window does NOT open where that guard has judged nothing. The
+    # payloads are the ones the verifier walked through the first cut; the file has to EXIST for an
+    # Edit to be modelled at all, so the legitimate spelling of each is asserted first — otherwise
+    # every line below would pass for the wrong reason.
+    write(os.path.join(str(repo), *own.split("/")), "# Memory\n\n- pin every timeout\n")
+    assert _refusing_write_gates(repo, _memory_call(
+        repo, "Edit", own, tool_input={"old_string": "pin every timeout",
+                                       "new_string": "pin every subprocess timeout"})) == {}
+    assert _refusing_write_gates(repo, _memory_call(
+        repo, "Write", own, tool_input={"content": ""})) == {}
+    unmodelled = {
+        "Edit with an empty old_string": _memory_call(
+            repo, "Edit", own, tool_input={"old_string": "", "new_string": "x" * 200000}),
+        "Edit with an empty old_string carrying item ids": _memory_call(
+            repo, "Edit", own, tool_input={"old_string": "", "new_string": "- TSK-0001 is late"}),
+        "MultiEdit with one empty old_string": _memory_call(
+            repo, "MultiEdit", own,
+            tool_input={"edits": [{"old_string": "", "new_string": "- PR-0002 slipped"}]}),
+        "Write with no content key": _memory_call(repo, "Write", own),
+        "NotebookEdit, whose content this guard models nowhere": _memory_call(
+            repo, "NotebookEdit", own, tool_input={"new_source": "x" * 200000}),
+        # the same family reached through the budget TABLE rather than the payload: a file in the
+        # memory tree whose budget carries no content rule at all is not a craft artefact
+        "a non-craft file beside the topics": _memory_call(
+            repo, "Write", ".claude/agent-memory/backend-developer/notes.txt",
+            tool_input={"content": "TSK-0001 is blocked\n"}),
+        # ...and the third family: a SPELLING of the craft topic that the two gates read
+        # differently. This gate resolves a target with `realpath` and the budget guard with
+        # `abspath`, so a name the first flattens and the second keeps was measured (by the
+        # verifier, as an NTFS alternate data stream) opening the window on a verdict that never
+        # happened — item ids and a 200-line file allowed by all five gates under
+        # `MEMORY.md::$DATA` while the same bytes under the plain name were refused. On a host
+        # where the two resolutions agree this is an ordinary unjudged name and is refused for
+        # that reason, which is why the assertion is the same one either way.
+        "the craft topic under a spelling the two gates read differently": _memory_call(
+            repo, "Write", own + "::$DATA",
+            tool_input={"content": "# Memory\n\n- TSK-0001 is blocked\n"}),
+        # an Edit whose `old_string` the file does NOT contain: the guard could reconstruct
+        # "unchanged" and reported it as judged, and 200 KB rode in behind that (N8).
+        "Edit with an old_string the file does not contain": _memory_call(
+            repo, "Edit", own, tool_input={"old_string": "no such line anywhere in the file",
+                                           "new_string": "x" * 200000}),
+    }
+    for what, payload in unmodelled.items():
+        assert "gate_write_scope.py" in _refusing_write_gates(repo, payload), what
 
 
 def test_a_root_item_no_longer_leaves_its_initial_status_from_a_roles_command_line(tmp_path):

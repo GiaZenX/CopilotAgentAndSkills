@@ -386,12 +386,26 @@ def build_parser() -> argparse.ArgumentParser:
     envelope_fields = load_schema("result_envelope")["fields"]
     submit = sub.add_parser("submit-result", help="hand a specialist's result envelope back")
     submit.add_argument("--task-id", required=True, metavar="TSK_ID")
-    submit.add_argument("--role", required=True)
-    submit.add_argument("--status-proposal", required=True,
+    # NOT `required=True` any more, and `--from` is why (BUG-0048). A specialist whose toolset
+    # grants no command-running tool cannot type this line at all, so the lead books its result
+    # in; retyping the envelope out of the child's final message makes the LEAD the author of
+    # what the kernel records. `--from` lets the specialist's OWN bytes travel instead: it stages
+    # the envelope under its task's staging key -- the one place `gate_write_scope` lets a bound
+    # specialist write -- and the lead names the file. `_submitted_envelope` refuses the flag
+    # route without the fields the schema requires, which is what these three lines used to do.
+    submit.add_argument("--role")
+    submit.add_argument("--status-proposal",
                         choices=list(envelope_fields["status_proposal"]["enum"]))
-    submit.add_argument("--summary", required=True,
+    submit.add_argument("--summary",
                         help="<= %d chars; raw logs are REFERENCED, never inlined"
                              % envelope_fields["summary"]["max_len"])
+    submit.add_argument("--from", dest="envelope_file", metavar="NAME",
+                        help="a staged envelope to hand back verbatim: the BARE FILE NAME of a "
+                             "JSON object inside this task's own staging directory, e.g. "
+                             "`--from result.json`. The path is composed by the kernel, so a name "
+                             "that walks out of that directory is refused. Use this to book in a "
+                             "specialist that cannot run a command itself; the other flags are "
+                             "then unnecessary and a conflicting one is refused.")
     # Paths are repo-relative; anything inside the state directory is named RELATIVE TO IT
     # (`staging/<task-id>/...`), exactly as `evidence --artifact-ref` is and for the same measured
     # reason -- the shell gate refuses a write-capable command line that names `project_memory`.
@@ -600,6 +614,96 @@ def build_parser() -> argparse.ArgumentParser:
                            help="the archive year for finished records that carry no date of "
                                 "their own; the dry run blocks and asks for it when it needs it")
     return parser
+
+
+def _submitted_envelope(state, args) -> dict:
+    """The result envelope `submit-result` hands the kernel -- from a staged FILE or from flags.
+
+    THE TWO PATHS ARE THE TWO KINDS OF SPECIALIST (BUG-0048), not a convenience pair. A role
+    whose installed definition grants a command-running tool types the flags itself
+    (`dispatch.HAND_BACK_SELF`); a role whose definition grants none cannot type any command
+    line, so it stages the envelope under its own task's key -- the one path
+    `gate_write_scope` leaves a bound specialist inside the state directory -- and the lead
+    names that file here (`dispatch.HAND_BACK_LEAD`). What the lead hands over is then the
+    specialist's own bytes: retyping them out of a child's final message makes the LEAD the
+    author of the record, and a summary the lead paraphrased is a summary nobody can attribute.
+
+    THE FILE NAME IS A NAME, NOT A PATH, and `staging.contained_child` is what makes that true --
+    the same chokepoint every freeze parameter goes through, and for the same measured reason (a
+    `..` there was an `rmtree` on the repository). It is composed onto the staging directory of
+    the task NAMED ON THE COMMAND LINE, so the lead cannot be talked into reading another task's
+    proposal by the envelope it is about to submit.
+
+    JSON AND NOT YAML, for the reason `_json_body` gives one screen down: YAML retypes `no` as
+    false and `1.10` as a float, and a `summary` is a string whatever it spells.
+    """
+    if not args.envelope_file:
+        missing = [name for name, value in (("--role", args.role),
+                                            ("--status-proposal", args.status_proposal),
+                                            ("--summary", args.summary)) if not value]
+        if missing:
+            raise UsageError(
+                "submit-result needs %s, or a staged envelope to hand back instead. Remedy: add "
+                "the flag(s), or -- for a specialist that cannot run a command itself -- let it "
+                "write the envelope into the staging directory its OWN task owns and name that "
+                "file here with `--from <NAME>`. No place is spelled out for you to fill in: the "
+                "kernel composes it from the task id you already named (DEC-0024)."
+                % ", ".join(missing))
+        return {
+            "task_id": args.task_id,
+            "role": args.role,
+            "status_proposal": args.status_proposal,
+            "summary": args.summary,
+            "outputs": list(args.outputs or []),
+            "evidence": list(args.evidence or []),
+            "scope_touched": list(args.scope_touched or []),
+            "followups": list(args.followups or []),
+        }
+    conflicting = sorted(name for name, value in (
+        ("--role", args.role), ("--status-proposal", args.status_proposal),
+        ("--summary", args.summary), ("--output", args.outputs),
+        ("--evidence", args.evidence), ("--scope-touched", args.scope_touched),
+        ("--followup", args.followups)) if value)
+    if conflicting:
+        raise UsageError(
+            "--from hands back a staged envelope VERBATIM, so %s would be a second author of the "
+            "same record and the kernel refuses to pick one. Remedy: drop those flags, or drop "
+            "--from and type the whole envelope." % ", ".join(conflicting))
+    path = staging.contained_child(
+        staging.staging_dir(state, args.task_id), args.envelope_file, "staged envelope")
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read(report.ITEM_MAX_BYTES + 1)
+    except OSError as exc:
+        raise UsageError(
+            "the staged envelope %r is not readable in the staging directory %s owns (%s). "
+            "Remedy: the specialist writes it there before it stops -- that directory is the one "
+            "place inside the state directory its own writes reach."
+            % (args.envelope_file, args.task_id, exc)) from None
+    if len(raw) > report.ITEM_MAX_BYTES:
+        raise UsageError(
+            "the staged envelope %r is over %d bytes. Remedy: an envelope REFERENCES its detail; "
+            "the schema caps it far below this and would refuse it anyway."
+            % (args.envelope_file, report.ITEM_MAX_BYTES))
+    try:
+        envelope = json.loads(raw.decode("utf-8-sig"))
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise UsageError(
+            "the staged envelope %r is not UTF-8 JSON (%s). Remedy: the specialist writes the "
+            "eight envelope fields as ONE JSON object; `kernel/schemas/result_envelope.yaml` is "
+            "the contract and `submit-result` validates against it."
+            % (args.envelope_file, exc)) from None
+    if not isinstance(envelope, dict):
+        raise UsageError(
+            "the staged envelope %r is a %s; an envelope is a JSON OBJECT of field -> value."
+            % (args.envelope_file, type(envelope).__name__))
+    named = envelope.get("task_id")
+    if named != args.task_id:
+        raise UsageError(
+            "the staged envelope names task_id %r and this command names %s -- refused rather "
+            "than reconciled. Remedy: submit the envelope under the task it was written for."
+            % (named, args.task_id))
+    return envelope
 
 
 def _json_body(command: str = "capture") -> dict:
@@ -825,16 +929,7 @@ def main(argv=None) -> int:
             print("%s %s (%s)" % (task["id"], task["status"], task["assigned_role"]))
             return 0
         if args.command == "submit-result":
-            task = dispatch.submit_result(state, {
-                "task_id": args.task_id,
-                "role": args.role,
-                "status_proposal": args.status_proposal,
-                "summary": args.summary,
-                "outputs": list(args.outputs or []),
-                "evidence": list(args.evidence or []),
-                "scope_touched": list(args.scope_touched or []),
-                "followups": list(args.followups or []),
-            })
+            task = dispatch.submit_result(state, _submitted_envelope(state, args))
             print("%s -> %s" % (task["id"], task["status"]))
             return 0
         if args.command == "request-approval":

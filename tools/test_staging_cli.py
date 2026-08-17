@@ -1126,6 +1126,124 @@ def _outside_state(work):
             if not key.replace("\\", "/").startswith("project_memory/")}
 
 
+# THE ESCAPE SHAPES, in one place because two batteries below feed them to two different callers
+# of the SAME chokepoint. A shape added here is asked of both on the day it is written; two tuples
+# would have been the usual drift, with the newer caller carrying the shorter list.
+ESCAPE_SHAPES = ("..", "../..", r"..\..", "sub/deep", "../../../preview.html")
+
+
+def _contained_child_callers():
+    """Every kernel function that names `staging.contained_child`, off the kernel's own AST.
+
+    THE FLOOR UNDER BOTH BATTERIES BELOW, and the reason it is a ONE-HOP scan rather than a
+    call-graph walk: `contained_child` IS the chokepoint, so a caller is by definition the function
+    that names it. A helper three hops away does not compose a path from a role's string; the
+    function holding this call does.
+
+    Parsed rather than grepped for the usual reason — the name appears in prose in this very file.
+    """
+    import ast
+    callers = set()
+
+    def walk(node, owner, module):
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                walk(child, child.name, module)
+                continue
+            if isinstance(child, ast.Call):
+                func = child.func
+                name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+                if name == "contained_child":
+                    callers.add((module, owner))
+            walk(child, owner, module)
+
+    directory = os.path.dirname(os.path.abspath(staging.__file__))
+    for name in sorted(os.listdir(directory)):
+        if not name.endswith(".py"):
+            continue
+        path = os.path.join(directory, name)
+        with io.open(path, encoding="utf-8") as handle:
+            walk(ast.parse(handle.read(), path), "<module>", name[:-3])
+    return callers
+
+
+def test_every_caller_that_composes_a_staged_path_has_an_escape_battery():
+    """A new caller of the containment chokepoint may not ship without one of the batteries below.
+
+    THE DEFECT THIS EXISTS FOR was measured by the verifier of TSK-0073: `submit-result --from`
+    claimed `staging.contained_child` in its own docstring, the shipped code was right (all six
+    escape shapes rc 1), and NOTHING went red when the call was mutated to a bare `os.path.join` —
+    63 tests passed and `--from ../../../outside.json` submitted. A protection claim with no
+    red-capable test is the failure mode this repo is built against, one layer out from the code
+    being correct.
+
+    WHAT IS COVERED AND HOW: `staging_dir` is reached by every caller that names a staging KEY and
+    is exercised through both batteries; the freeze operations are covered per PARAMETER by the
+    derived battery below; `_submitted_envelope` by the one after it. A caller appearing here that
+    is in neither list is red, which is the whole point.
+    """
+    covered = {("staging", "staging_dir"), ("staging", "freeze_design"),
+               ("cli", "_submitted_envelope")}
+    found = _contained_child_callers()
+    assert found, "the derivation found no caller at all — staging.py's shape changed"
+    assert found == covered, (
+        "these functions compose a path through `staging.contained_child` and no escape battery in "
+        "this module feeds them: %s (gone: %s)" % (sorted(found - covered), sorted(covered - found)))
+
+
+# The ABSOLUTE shape cannot be a module constant: it names a directory the fixture creates per
+# run. Both batteries append it themselves, which is the asymmetry this placeholder removes — the
+# freeze one appended a real path and this one appended nothing, so the drive-letter branch of
+# `contained_child` was reached by only one of the two callers.
+ABSOLUTE_ESCAPE = "<absolute-sibling>"
+
+
+@pytest.mark.parametrize("escape", ESCAPE_SHAPES + (ABSOLUTE_ESCAPE, "preview.html"))
+def test_no_staged_envelope_name_can_reach_outside_the_tasks_own_staging(tmp_path, escape, capsys):
+    """`submit-result --from <NAME>` is a NAME, and this is what makes that sentence checkable.
+
+    The same four universal invariants the freeze battery asserts, plus the one this caller adds:
+    the task must NOT have moved. An envelope read from outside its task's own staging directory
+    would be a result the specialist did not stage, booked in under a task it was not written for.
+
+    MEASURED RED with `contained_child` replaced by a bare `os.path.join` in a clone outside this
+    repo: `--from ../../../outside.json` reaches the file and the task goes to SUBMITTED.
+    """
+    sibling = os.path.join(str(tmp_path), "sibling")
+    work = tmp_path / ("from-%s" % abs(hash(escape)))
+    os.makedirs(str(work), exist_ok=True)
+    state = _freeze_fixture(work, sibling)
+    if escape == ABSOLUTE_ESCAPE:
+        escape = os.path.join(sibling, "outside.json")
+    _pr, task = _approved_ready_task(state)
+    header = dispatch.parse_header(_dispatch_line(state, task["id"], capsys))
+    dispatch.validate_dispatch(state, header, "backend-developer", claim=True)
+    dispatch.spawn_outcome(state, task["id"], True)
+    # a VALID envelope at every traversal target, so the refusal cannot be "no such file" — that
+    # is the same trap `_freeze_fixture` documents for the canary copies.
+    envelope = {"task_id": task["id"], "role": "backend-developer",
+                "status_proposal": "SUBMITTED", "summary": CANARY, "outputs": [],
+                "evidence": [], "scope_touched": [], "followups": []}
+    for directory in (str(work), sibling, os.path.dirname(state.root), state.root,
+                      os.path.join(state.root, "staging")):
+        os.makedirs(directory, exist_ok=True)
+        for name in ("preview.html", "outside.json"):
+            with open(os.path.join(directory, name), "w", encoding="utf-8") as handle:
+                json.dump(envelope, handle)
+    before, before_sibling = _outside_state(work), _tree_state(sibling)
+
+    run_cli(state, "submit-result", "--task-id", task["id"], "--from", escape)
+
+    where = "--from %r" % escape
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS", (
+        "%s booked in an envelope from outside the task's own staging directory" % where)
+    assert _outside_state(work) == before, "%s changed the repo outside the state dir" % where
+    assert _tree_state(sibling) == before_sibling, "%s changed a sibling directory" % where
+    assert os.path.isfile(state.active_path("PR-0001")), "%s destroyed canonical state" % where
+    stored = os.path.join(state.root, "tasks", "results", task["id"] + ".envelope.yaml")
+    assert not os.path.exists(stored), "%s stored an envelope from outside" % where
+
+
 @pytest.mark.parametrize("command", sorted(cli.FREEZE_COMMANDS))
 def test_no_freeze_parameter_can_reach_outside_the_state_root(tmp_path, command):
     """THE MECHANISM, not two parameter names: a freeze body arrives on STDIN, so no hook sees it —
@@ -1154,8 +1272,7 @@ def test_no_freeze_parameter_can_reach_outside_the_state_root(tmp_path, command)
     for name, (_required, declared) in sorted(contract.items()):
         if declared is not str:
             continue
-        for escape in ("..", "../..", r"..\..", "sub/deep", "../../../preview.html",
-                       os.path.join(sibling, "preview.html")):
+        for escape in ESCAPE_SHAPES + (os.path.join(sibling, "preview.html"),):
             work = tmp_path / ("%s-%s-%s" % (command, name, abs(hash(escape))))
             os.makedirs(str(work), exist_ok=True)
             state = _freeze_fixture(work, sibling)

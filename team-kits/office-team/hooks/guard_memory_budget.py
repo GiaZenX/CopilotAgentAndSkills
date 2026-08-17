@@ -219,7 +219,14 @@ def _resulting_text(data, path):
                                   "measured on this provider" % path)
         return None
     if tool == "Write":
-        return str(tool_input.get("content") or "")
+        # A MISSING `content` KEY IS UNMODELLED, NOT AN EMPTY FILE. `or ""` mapped both to the same
+        # answer, which cost this guard nothing (an empty file passes every budget, and so does an
+        # unmodelled call) and cost `gate_write_scope` rule 6 its whole footing: that rule asks
+        # THIS function whether the bytes were seen, and a payload carrying no content at all was
+        # answering "seen, and they are empty". A present-but-empty `content` still measures as the
+        # empty file it is.
+        content = tool_input.get("content")
+        return None if content is None else str(content)
     text = _read(path)
     if text is None:
         return None
@@ -238,11 +245,96 @@ def _resulting_text(data, path):
 
 
 def _apply(text, edit):
+    """The file as this edit leaves it, or None when this module cannot say.
+
+    TWO WAYS IT CANNOT SAY, and the second one used to answer "unchanged" instead of "unknown":
+    an EMPTY `old_string`, and an `old_string` the file does not CONTAIN. For a budget those two
+    are the same harmless silence -- an unchanged text measures within budget, so the call passes
+    either way. They stopped being harmless when `judges_this_write` began reading the answer as a
+    VERDICT: an `Edit` naming an absent `old_string` was reported as judged, and 200 KB or a
+    project id rode into a role's memory behind it (measured by the verifier of TSK-0072, allowed
+    by all five registered Write gates). `_read`'s own docstring records the earlier half of this
+    -- a CRLF file made every reconstruction fail to match and silently measure the file unchanged.
+    """
     old = str(edit.get("old_string") or "")
-    if not old:
-        return None  # unmodelled rather than "no change" -- see the docstring
+    if not old or old not in text:
+        return None
     new = str(edit.get("new_string") or "")
     return text.replace(old, new) if edit.get("replace_all") else text.replace(old, new, 1)
+
+
+def guard_relative(root, path):
+    """The repo-relative NAME this guard judges `path` under — one derivation, two readers.
+
+    IT EXISTS BECAUSE THE TWO READERS DIVERGED, and the divergence was a permission. `main` has
+    always resolved a write target with `abspath`, which KEEPS whatever spelling the payload used;
+    `gate_write_scope._repo_relative` resolves with `realpath`, which FLATTENS it ("REALPATH, not
+    abspath" — that gate's own docstring says why). Rule 6 then asked `judges_this_write` about the
+    flattened name while this module went on to judge the literal one, so any spelling the one
+    resolves and the other keeps opened the window on a verdict that never happened. Measured by
+    the verifier of TSK-0072 with two independent spellings, real processes, a bound
+    backend-developer and all five registered Write gates:
+
+      * an NTFS alternate data stream, `MEMORY.md::$DATA`: flattened it is the role's index
+        (`memory-index`, content rule ON), literal it is `memory-other` (content rule OFF) — a
+        `Write` carrying project ids and one 200 lines long were ALLOWED BY ALL FIVE, while the
+        same bytes under the plain name were refused;
+      * an 8.3 short name, `MYCRAF~1.MAR` for the role's own `mycraftnotes.markdown`: allowed by
+        all five, long name refused.
+
+    So the predicate now derives its own name HERE, the way `main` does, and both questions are
+    asked about one string. WHETHER `main` SHOULD RESOLVE `realpath` INSTEAD is a different
+    question with a different blast radius — it would make this guard REFUSE writes it allows
+    today, which is a widening of a content rule and its own decision. It is deliberately not
+    taken here; the consequence is over-refusal (rule 6 does not open for a memory file addressed
+    through an unflattened spelling), and that is a cost a role can report rather than a hole.
+    """
+    try:
+        rel = os.path.relpath(os.path.abspath(path), root).replace("\\", "/")
+    except (OSError, ValueError):
+        return None      # another drive or a UNC path: by definition not this repo's agent memory
+    return None if rel.startswith("../") else rel
+
+
+def judges_this_write(data, path):
+    """Does THIS guard's content rule actually judge the bytes this call will land in `path`?
+
+    THE PREDICATE `gate_write_scope` RULE 6 HANGS ON, and the reason it exists rather than being
+    assumed. That rule opens a role's own memory directory to a write its task scope does not
+    cover, on the stated ground that this guard still owns WHAT lands there. That ground held for
+    exactly the payload shapes this module models, and the shapes it does NOT model are the ones
+    where it reports nothing and the caller lets the write pass -- which is correct for a budget
+    and was a hole the moment another gate started reading the silence as a verdict. Measured by
+    the verifier of TSK-0072 in a scaffolded project, all against a role's own MEMORY.md with the
+    shipped tools: an `Edit` with an EMPTY `old_string` carrying 200 KB, the same carrying project
+    ids, a `MultiEdit` with one empty `old_string`, and a `Write` with no `content` key -- every
+    one allowed by all five registered Write gates, while the ordinary spelling of each was
+    refused. Against the gate as it stood before rule 6, every one of them was rc 2.
+
+    THREE CONDITIONS, all asked of this module and none spelled as a tool name:
+
+      * the NAME is the one this guard will judge under — `guard_relative`, which carries the
+        second measurement and why the derivation lives there rather than in the caller;
+      * the budget matching the path CARRIES the content rule (`forbid_ids`). That is what
+        separates a craft artefact from the rest of the tree: `memory-other` is deliberately
+        bytes-only ("a pasted fixture may legitimately contain ids"), so a `notes.txt` beside the
+        topics is judged for size and not for content -- and a window that opened for it would be
+        a window into an unjudged file. Rule 6 therefore does not open for it; the file class the
+        constitution calls craft is the file class the window is for.
+      * the CONTENT of this very call is modelled (`_resulting_text` returned a string). A shape
+        this module cannot reconstruct is a shape it has not judged, whatever the path says.
+
+    So the two gates fail in the same direction: what this one cannot judge, the other one does
+    not open. `tools/test_hooks.py::test_a_role_writes_its_own_craft_memory_and_only_its_own`
+    carries a direction per shape.
+    """
+    rel = guard_relative(_kernel.find_repo_root(data.get("cwd")), path)
+    if rel is None:
+        return False
+    budget = _budget_for(rel)
+    if not (budget and budget.get("forbid_ids")):
+        return False
+    return _resulting_text(data, path) is not None
 
 
 def _measure(text):
@@ -356,11 +448,8 @@ def main():
         sys.exit(0)
     root = _kernel.find_repo_root(data.get("cwd"))
     for path in _compat.file_paths(data):
-        try:
-            rel = os.path.relpath(os.path.abspath(path), root).replace("\\", "/")
-        except (OSError, ValueError):
-            continue  # another drive or a UNC path: by definition not this repo's agent memory
-        if rel.startswith("../"):
+        rel = guard_relative(root, path)
+        if rel is None:
             continue
         budget = _budget_for(rel)
         if budget is None:
