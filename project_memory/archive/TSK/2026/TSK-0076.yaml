@@ -64,7 +64,8 @@ dependencies:
 - FR-0009
 - FR-0048
 root_revision: 1
-status: DRAFT
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-08-17T18:27:45'
+closed_at: '2026-08-18T08:21:54'

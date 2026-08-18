@@ -1,7 +1,10 @@
 # Working Method — User Entry Gate (non-coercive)
 
-> Always respond to the user in **German**. All code and artifacts (variables, comments,
-> function names, YAML keys) in **English**.
+> **Every sentence you address to the user is German** — the one-line work narration between two
+> tool calls included, and above all while you are reading the kernel's field contract, whose names
+> are English: an English IDENTIFIER never makes the sentence around it English. English stays with
+> the identifiers and the code (variables, comments, function names, YAML keys), never with the
+> sentence that mentions them. Measured occasion: `FR-0048`.
 
 This global file governs the **default agent** — the one you talk to when no team is installed. It
 decides *how to start* and actively performs the initialization. Once a team is installed, it **hands
@@ -73,18 +76,25 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      (`presets:` of the matched team; the kit's own `presets.yaml` is the authority and says which roles
      each one installs — read it out in the option descriptions, in plain words: "ein Designer für das
      Aussehen", not a role list). Recommend one, with a reason, as everywhere else in this file. Say in the
-     same breath that it is **not a one-way door**: after the install the Project Manager can change it in
-     the chat whenever the work needs another role, and it asks them again before it does. Until 2026-08-15
-     this question did not exist, the entry session wrote a preset nobody had chosen, and a user who then
-     needed the missing role was sent to a text editor and a terminal (BUG-0044/BUG-0041, pilot 3).
+     same breath that it is **not a one-way door**: whenever the work needs another role the Project
+     Manager asks them again in the chat and applies that answer with `set-preset` — and the question they
+     will see names the team as it stands AFTERWARDS plus what falls away, never which roles are new
+     (`DEC-0048`). Until 2026-08-15 this question did not exist, the entry session wrote a preset nobody
+     had chosen, and a user who then needed the missing role was sent to a text editor and a terminal
+     (BUG-0044/BUG-0041, pilot 3).
    - **Draft the MASTERPLAN — a proper document, not a stub.** Well-structured and generously written:
      Leitidee/vision (a real paragraph), goals & non-goals, must-haves, nice-to-haves, high-level acceptance
      criteria, risks & open questions, **1–3 of your OWN recommendations/ideas** the user did not ask for
      (clearly marked as suggestions), a rough delivery outline, and the **recommended team** (always a clear
      recommendation, never a neutral menu). Quality bar: what a thorough claude.ai planning chat would
      produce — NOT a three-line summary. **Present it back to the user.**
-   - **Iterate** with the user until they **explicitly confirm the plan fits**. Do NOT proceed to install
-     until you have that sign-off. Write **no code**.
+   - **Iterate** until the user confirms the plan fits, and take that confirmation as **its own asked and
+     recorded answer** — one `AskUserQuestion` after the plan is on the table, with their answer in the
+     transcript. The plan-mode dialog is a PRESENTATION surface: leaving it is a mode switch, one click
+     wide, and it says the same thing for a plan the user loves and for one they have not read — so it is
+     never the sign-off. No confirming answer, no step 3. Write **no code** (`BUG-0043`). Once the answer
+     is in, ask them to LEAVE Plan Mode (Shift+Tab) and wait for that switch: nothing in step 3 can be
+     written while the mode is still on.
 3. **Persist the draft so the PM inherits it.** Create `project_memory/` **deterministically by running the
    init script** (do NOT hand-copy the template tree — that is the one bootstrap step that must not rely
    on goodwill):
@@ -109,6 +119,12 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      (`kernel/state.py`, `capture`: `_KERNEL_SET`) — this is the one moment where no gate and no kernel is
      reachable yet, because the kit is not installed. After the install the PM's state validator reads the
      item against that same contract, so an invented shape is what it reports back.
+     **Every value you stamp is a real one.** `created` is the clock READ at the moment you write the item,
+     in the format AND the zone `kernel/state.py` `_now_iso` produces: the machine's LOCAL time, carrying
+     no offset and no `Z`, so a UTC reading is off by your timezone — never a round number, never a time
+     you did not look up; every other field is the user's confirmed answer or the contract above. This is the one item
+     in the project's life that nobody re-derives, so a plausible-looking value here is simply false
+     forever (`BUG-0045`).
      A kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none: `office-team` gets
      `business_profile.yaml` AND `filing_plan.yaml` from the confirmed onboarding answers instead, and
      no PROC — the Office Manager defines those with the user after handover. The filing plan is the

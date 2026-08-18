@@ -10,7 +10,14 @@ request_text: 'TSK-0064 closed BUG-0041/0044 for the Claude entry file (user/cla
   codex entry prose too. Out of TSK-0064''s allowed_scope by design (user/codex/**
   was not listed); needs its own small round. Source: TSK-0064 implementer report
   2026-08-15, residue 2.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T16:37:25'
+triage_result: 'wanted and DELIVERED by TSK-0076 (Block A4b): user/codex/AGENTS.md
+  carries the team-size question as its own question, the not-a-one-way-door sentence
+  and set-preset as the walkable change route, at parity with the Claude entry file
+  (TSK-0064); the dead-end sweep extended over the codex prose (red-without-fix measured);
+  DEC-0048 compliance held in both files. Two verifier rounds FAIL(prose only)/PASS;
+  report docs/reviews/2026-08-18-tsk0076-measurements.md.'
+closed_at: '2026-08-18T08:21:31'

@@ -5,14 +5,16 @@ request_text: 'TSK-0074 finding (implementer, 2026-08-17, verifier-confirmed): p
   entry session fd2685ae block #3 is FULLY ENGLISH to the user, while the rule ''Always
   respond to the user in German'' stands at user/claude/CLAUDE.md:3 -- the entry agent
   (pre-install, governed by the global entry file) breaks the same report-language
-  rule the kits carry. The in-repo copy under user/ was forbidden_scope for the TSK-0074
-  round and is untouched. Wanted: (1) examine WHY the rule did not bind in that turn
-  (position/emphasis in the entry file, or plain model drift) and strengthen the wording
-  if a mechanical cause shows; (2) roll the corrected entry file out to the home directory
-  -- which is the step that NEEDS THE USER (DEC-0045 names entry-file rollout to the
-  home directory an external approval). Until rollout, the fix exists only in the
-  repo. Source: docs/reviews/2026-08-17-tsk0074-measurements.md (entry-agent residue),
-  pilot store session fd2685ae.'
+  rule the kits carry. HALF 1 DONE (TSK-0076, 2026-08-18): cause analysis (11/12 turns
+  German; the English turn came right after diving into the kernel contract -- unbounded
+  exception scope in the rule''s own sentence), boundary rebuilt around identifiers/code
+  only, byte-identical rule block in both entry files; binding effect unmeasured (needs
+  a pilot). HALF 2 OPEN AND WAITING ON THE USER: roll the corrected entry files out
+  to the home directory -- DEC-0045 names entry-file rollout an external approval.
+  Until rollout, real entry sessions run the OLD ~/.claude/CLAUDE.md (verifier-measured:
+  it still lacks the team-size question, the sign-off step, the clock rule and the
+  sharpened language rule) -- the biggest open effect gap of rounds A4b/TSK-0064.
+  Ask the user at the release conversation at latest.'
 status: OPEN
 revision: 1
 approval_ref: null

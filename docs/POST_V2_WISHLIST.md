@@ -686,6 +686,19 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   die Notiz-Bedingung liest `is True`, die Pflicht-Prüfung davor nur die Anwesenheit des Feldes) —
   `"true"` als String oder `1` als Zahl passieren die Pflichtprüfung und erzeugen lautlos keine
   Notiz. Fehlrichtung ist Schweigen, gemessen im echten Hook-Prozess; benannt im Kommentar und hier.
+- **`cp -r <repo>/project_memory <ziel außerhalb>` wird verweigert, obwohl nur gelesen wird**
+  (TSK-0076, gemessen rc 2): Gate 1 liest jeden `cp`-Operanden als mögliches Schreibziel, und
+  `project_memory` in einer schreibfähigen Zeile ist für jeden Aufrufer gesperrt. Über-Verweigerung
+  der bekannten Fail-closed-Bauart (H19-Familie), kein Loch; Ausweg gemessen: ein Python-Skript
+  kopiert lesend (`clone_state.py`-Muster) oder `git show HEAD:<pfad>`.
+- **`git hash-object <datei>` stuft Gate 3 als historienschreibend ein — ohne `-w` schreibt es
+  aber nichts** (TSK-0076, gemessen; Präzisierung Prüfer: MIT `-w` schreibt es sehr wohl ein Blob,
+  die Einstufung ist also nur für die flaglose Form Über-Verweigerung). Kein Loch; Ausweg:
+  `sha256sum`/PowerShell-`Get-FileHash` über die Datei bzw. `git show` + Vergleich.
+- **Eine reine Lesezeile mit `grep -qE "…=+ .*(passed|failed)"` wird von Gate 1 verweigert**
+  (TSK-0076-Prüfrunde, gemessen rc 2): das `.*` im quotierten Muster wird als relativer Pfad
+  gelesen und auf `..` über der Repo-Wurzel aufgelöst — H19-Familie (Vorfahren-Regel), kein Loch;
+  Ausweg: Muster ohne `.*`-Präfix formulieren oder die Ausgabe erst in eine Datei leiten.
 - **Die Eigenschaftsaussagen der `ENFORCEMENT.md`-Zeilen haben keinen Leser** (TSK-0075, Prüfer):
   ein Draht verlangt, dass jede Warn-Art *vorkommt*, aber nicht, was über sie *behauptet* wird —
   gemessen mit einer frei erfundenen Zeile (falsche Wörter, nicht existierende Konstante, falsche

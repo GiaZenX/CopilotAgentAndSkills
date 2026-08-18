@@ -1,4 +1,4 @@
-generated_at: '2026-08-18T04:55:31'
+generated_at: '2026-08-18T08:22:13'
 items:
 - id: BUG-0001
   type: BUG
@@ -964,6 +964,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0048
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -993,12 +999,6 @@ items:
 - id: FR-0007
   type: FR
   title: 'Die Kommentardisziplin in die Kits: Verfassung und Rollendefinitionen'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0009
-  type: FR
-  title: Fuenf Rollenberichte in docs/research tragen den falschen Rollennamen
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1109,13 +1109,6 @@ items:
   type: FR
   title: 'Containerisierte Harness-Umgebung: gekapselt vom Rechner, globale Dateien
     trennbar, Vollzugriff nur wo noetig'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0026
-  type: FR
-  title: 'Codex entry twin: user/codex/AGENTS.md asks the preset question but does
-    not know set-preset'
   status: OPEN
   revision: 1
   approval_ref: null
@@ -1351,12 +1344,6 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0066
-  type: TSK
-  title: null
-  status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0076
   type: TSK
   title: null
   status: DRAFT

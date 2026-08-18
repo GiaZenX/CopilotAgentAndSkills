@@ -10,10 +10,11 @@ request_text: 'Vom Nutzer gemeldet: in docs/research/ sind fuenf Berichte unter 
   hier: eine Zeile in einer Aufgabenliste ist nach der naechsten Zusammenfassung weg
   (DEC-0003). Zu tun: die Zuordnung messen statt zu raten -- der Inhalt jedes Berichts
   sagt selbst, welche Rolle ihn geschrieben hat -- und die Dateien umbenennen.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-05T09:26:06'
 triage_result: 'wanted: the five docs/research role reports still carry their 2026-07-27
   names (git log docs/research: last change 8773fd9, before this FR existed) (assessment
   TSK-0055)'
+closed_at: '2026-08-18T08:21:45'

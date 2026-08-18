@@ -6457,6 +6457,163 @@ def test_every_document_a_gate_blocks_on_is_named_by_both_entry_gates():
         "session that can fill them, and it does not mention them:\n  " + "\n  ".join(unnamed))
 
 
+def _entry_gate_blocks():
+    """(where, block) for both entry gates — the unit a reader takes in at once.
+
+    All three checks below judge a BLOCK and not a file, for the reason `_markdown_blocks` was
+    written for: a sentence four hundred lines away from the instruction it belongs to is not read
+    with it, and a file-wide check passes on exactly that separation.
+    """
+    for where, text in _entry_gate_texts():
+        for block in _markdown_blocks(text):
+            yield where, block
+
+
+def test_the_field_a_kernel_command_owns_is_named_with_that_command_in_both_entry_gates():
+    """FR-0026: where an entry gate WRITES a field a command owns, it says who owns it afterwards.
+
+    THE SUBJECT IS DERIVED FROM `presets.DOCUMENT_WRITES` — the kernel's own declaration of the one
+    part of a kit document a kernel command writes. That is the same source `kernel.layout
+    .partial_writers` hands to the write-scope gate and the same one
+    `test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_does_not_exist`
+    builds its expectation from, so a second field or a second document arrives here with no edit.
+
+    WHY THE ENTRY GATE OWES THIS AND NOT ONLY THE KITS. The block that tells the initializer to
+    write the field is the one moment in a project's life where the user stands next to that
+    decision, and it is the last one before the state directory closes. Pilot 3 measured what the
+    silence costs: a preset nobody had chosen was written, and the user who then needed the missing
+    role was sent to a text editor and a terminal (BUG-0044/BUG-0041). TSK-0064 gave the Claude gate
+    the route; the Codex twin still named the document and the field and no command at all
+    (FR-0026), so a Codex-driven project walked into the same dead end after the install.
+
+    THE BLOCK MUST NAME THE DOCUMENT **AND** THE FIELD, which is not the same subject as "every
+    block naming the document": both gates legitimately send a repair path to `project_config.yaml`
+    to report what a broken installation is missing, and a preset writer has no business in those
+    sentences. Which of the two gates carries how many such blocks is not prescribed — only that
+    each of them has one, so the loop cannot go quiet on one file alone.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import presets
+    offences, seen = [], {}
+    for where, block in _entry_gate_blocks():
+        for writer in presets.DOCUMENT_WRITES:
+            document = writer["document"].replace("\\", "/").rsplit("/", 1)[-1]
+            field = writer["field"].rsplit(".", 1)[-1]
+            if document not in block or not re.search(r"\b%s\b" % re.escape(field), block):
+                continue
+            seen[where] = seen.get(where, 0) + 1
+            if writer["command"] not in block:
+                offences.append(
+                    "%s: a block writes `%s` in `%s` and never names `%s`, the one command that "
+                    "owns that field afterwards — the reader is left where BUG-0041 left the "
+                    "pilot's user:\n      %s"
+                    % (where, writer["field"], writer["document"], writer["command"],
+                       " ".join(block.split())[:200]))
+    assert set(seen) == {rel.replace(os.sep, "/") for rel in ENTRY_GATE_FILES}, (
+        "an entry gate no longer has a block that writes a kernel-owned field at all — the "
+        "initializer would leave the field on its template default, and this check would pass "
+        "over it in silence: %s" % sorted(seen))
+    assert not offences, "\n  ".join([""] + offences)
+
+
+def test_the_block_that_hand_stamps_the_kernels_fields_names_the_kernels_own_clock():
+    """BUG-0045: the one item a hand ever writes carries REAL values, in the kernel's own format.
+
+    Both entry gates sanction hand-stamping the fields the kernel would otherwise set, because no
+    kernel and no gate is reachable before the scaffold. Pilot 3 took that licence and invented the
+    value: the root item's `created` was stamped as a round midday while the write itself happened
+    in the evening — a fabricated field in the one record of a project that nobody ever re-derives.
+
+    NEITHER NAME IS TYPED HERE. `_KERNEL_SET` selects the block (it is what the gate points the
+    initializer at) and `_now_iso` is what the block must name — the function that produces every
+    timestamp the kernel writes for itself, so the instruction hands over a format rather than the
+    adjective "real", which is the half a hurried reader satisfies with any plausible string. Both
+    are read off `kernel.state`, so renaming either turns this red instead of leaving the shipped
+    instruction pointing at nothing.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import state
+    selector, clock = "_KERNEL_SET", "_now_iso"
+    assert hasattr(state, selector) and hasattr(state, clock), (
+        "kernel.state no longer has %s/%s — the entry gates point the initializer at these two "
+        "names, so a rename has to move them there too" % (selector, clock))
+    offences, seen = [], {}
+    for where, block in _entry_gate_blocks():
+        if selector not in block:
+            continue
+        seen[where] = seen.get(where, 0) + 1
+        if clock not in block:
+            offences.append(
+                "%s: the block that licenses hand-stamping `%s` never names `%s`, so the value the "
+                "initializer invents has no format to be wrong against:\n      %s"
+                % (where, selector, clock, " ".join(block.split())[:200]))
+    assert set(seen) == {rel.replace(os.sep, "/") for rel in ENTRY_GATE_FILES}, (
+        "an entry gate no longer licenses the hand-stamped fields at all — either the bootstrap "
+        "changed and this check needs rewriting, or the licence moved out of the block that "
+        "carries its conditions: %s" % sorted(seen))
+    assert not offences, "\n  ".join([""] + offences)
+
+
+# The occasion of the one instruction this pair shares that has NOTHING in the kernel to be derived
+# from: BUG-0043, the sign-off that shrank to a plan-dialog click. The dialog is a provider surface,
+# so the rule about it is prose all the way down; what remains measurable is the anchor and its
+# parity across the two gates. One constant with its item beside it, not a list of spellings.
+ENTRY_FLOW_OCCASION = "BUG-0043"
+
+
+def test_both_entry_gates_anchor_the_shared_sign_off_and_name_no_item_this_repo_lacks():
+    """BUG-0043 in both gates, and every id in them resolving — the second half arms the first.
+
+    WHAT THIS DOES NOT GUARANTEE, said plainly: it pins the ANCHOR, not the sentence. Someone who
+    deletes the instruction and leaves the id standing passes here. That is the same honest, weaker
+    guarantee `test_every_document_a_gate_blocks_on_is_named_by_both_entry_gates` states for its own
+    subject and for the same reason — no check reads an instruction's intent, and a check that
+    demanded a fixed phrase would be pinning prose by quotation, which rots.
+
+    THE SECOND HALF IS WHAT GIVES THE FIRST ITS TEETH: every item id these two files name must
+    resolve to an item this repo carries, so an anchor can neither be invented nor outlive the
+    record it points at.
+
+    THE ROOT-TYPE EXCLUSION IS A DERIVATION, NOT A NAME. `ROOT_TYPE_BY_KIT` is the set of types an
+    entry gate SEEDS, so an id of one of those types is an example of the item the NEW project will
+    get — `PR-0001` in these files is about the user's project, not about this repo. This repo
+    happens to carry a `PR-0001` as well, which is exactly the coincidence a name-based exclusion
+    would have been quietly resting on.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.backlog_types import ROOT_TYPE_BY_KIT, parse_id
+    seeded = set(ROOT_TYPE_BY_KIT.values())
+    carried = set()
+    for current, dirs, files in os.walk(os.path.join(ROOT, "project_memory")):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for name in files:
+            if name.endswith(".yaml"):
+                carried.add(name[:-len(".yaml")])
+    assert len(carried) > 50, (
+        "only %d items found under project_memory/ — the scan stopped seeing the state directory, "
+        "and an empty subject is how the sweep below passes over a dead reference" % len(carried))
+    missing_anchor, dead = [], []
+    for where, text in _entry_gate_texts():
+        if ENTRY_FLOW_OCCASION not in text:
+            missing_anchor.append(where)
+        for token in set(re.findall(r"\b[A-Z]{2,4}-\d{4}\b", text)):
+            try:
+                item_type, _number = parse_id(token)
+            except ValueError:
+                continue
+            if item_type in seeded or token in carried:
+                continue
+            dead.append("%s names `%s`, which is no item this repo carries" % (where, token))
+    assert not missing_anchor, (
+        "%s: the plan-mode dialog is a PRESENTATION surface and its click is not the sign-off "
+        "(`%s`) — both gates run the same review loop, so an instruction one of them carries and "
+        "the other does not is a Codex project installing on a confirmation nobody gave"
+        % (", ".join(missing_anchor), ENTRY_FLOW_OCCASION))
+    assert not dead, (
+        "an entry gate points at a record that is not here. These two files install into a user's "
+        "home and are read where nothing else of this repo is:\n  " + "\n  ".join(sorted(dead)))
+
+
 def test_the_eval_scenarios_name_only_state_files_a_v2_project_has():
     """`tools/eval/scenarios.yaml` is instruction text too — and the only one nothing else reads.
 

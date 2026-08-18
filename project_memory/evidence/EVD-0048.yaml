@@ -1,0 +1,14 @@
+id: EVD-0048
+kind: review
+related:
+- TSK-0076
+result: pass
+summary: verifier PASS for diff:ea8c20bd5fc919f30c52e50227af9f8fb3e0648d0e6f2e4a0b8f89fe71dad8d2
+  -- TSK-0076 round 2 sight check (F1-F7 closed at their spots, red measurements survive
+  the new prose, all 31 report pointers resolve, no kit change, suite 2828+13 on the
+  final tree)
+artifact_refs:
+- staging/TSK-0076/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-18T08:22:13'

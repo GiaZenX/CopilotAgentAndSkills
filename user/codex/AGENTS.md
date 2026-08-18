@@ -1,7 +1,10 @@
 # Working Method - User Entry Gate (Codex)
 
-> Always respond to the user in **German**. All code and artifacts (variables, comments,
-> function names, YAML keys) must be written in **English**.
+> **Every sentence you address to the user is German** — the one-line work narration between two
+> tool calls included, and above all while you are reading the kernel's field contract, whose names
+> are English: an English IDENTIFIER never makes the sentence around it English. English stays with
+> the identifiers and the code (variables, comments, function names, YAML keys), never with the
+> sentence that mentions them. Measured occasion: `FR-0048`.
 
 This global file governs the default Codex agent when no team kit is installed in the current
 repository. It decides how to start, performs the initialization, and then hands over completely
@@ -116,9 +119,15 @@ Then read the selected team's `requires_before_install` in the same file and car
 the interview below. Those files have no writer once the kit is installed, so whatever you do not
 draft with the user now, nobody can add later.
 
-Read the selected kit's `presets.yaml`, recommend one preset for the stated scope, explain the
-trade-off briefly, and obtain explicit user confirmation. Never leave the template default as an
-unconfirmed placeholder.
+Read the selected kit's `presets.yaml` and ask which TEAM SIZE the user wants, as its own question:
+how many specialists work on their project, and therefore what it costs in time and tokens, is a
+product decision and belongs to them. Offer that kit's presets by name, describe what each one brings
+in plain words rather than as a role list, recommend one with a reason, and obtain explicit
+confirmation. What you write in step 4.3 is their answer, not your recommendation, and never the
+template default left standing as an unconfirmed placeholder. Say in the same breath that it is **not
+a one-way door**: whenever the work needs another role the installed lead asks them again and applies
+that answer with `set-preset` — and the question they will see names the team as it stands AFTERWARDS
+plus what falls away, never which roles are new (`DEC-0048`).
 
 ### 2. Detect greenfield versus existing repository - READ ONLY
 
@@ -174,9 +183,12 @@ Draft a substantial MASTERPLAN, not a stub. It must contain:
 - for an onboarded repository, a factual summary of the current state and the gaps that still need
   specialist assessment.
 
-Present the complete plan to the user. Iterate until the user explicitly confirms that it fits. Do
-not initialize, scaffold, derive technical requirements/tasks, or edit production code before that
-sign-off.
+Present the complete plan to the user. Iterate until the user confirms that it fits, and take that
+confirmation as its own asked and recorded answer — one question after the plan is on the table, with
+their answer in the transcript. Plan mode is a PRESENTATION surface: leaving it is a mode switch, one
+click wide, and it says the same thing for a plan the user loves and for one they have not read — so
+it is never the sign-off. Do not initialize, scaffold, derive technical requirements/tasks, or edit
+production code before that recorded answer (`BUG-0043`).
 
 After sign-off, ask the user to leave Plan mode and switch back to Code/Default mode. Do not run an
 initializer, scaffold, or file edit while Plan mode is still active; continue only after the user
@@ -217,7 +229,13 @@ the confirmed bootstrap draft, using the schemas shipped by the selected kit:
      status-dependent duties named directly above it), and its status is that type's first state in
      `AUTOMATA`. Write the kernel-stamped fields too (`kernel/state.py`, `capture`: `_KERNEL_SET`) — no
      kernel and no gate is reachable before the scaffold, so this is the one item a hand writes, and after
-     the install the lead's state validator reads it against that same contract.
+     the install the lead's state validator reads it against that same contract. **Every value you stamp is
+     a real one**: `created` is the clock READ at the moment you write the item, in the format AND the zone
+     `kernel/state.py` `_now_iso` produces: the machine's LOCAL time, carrying no offset and no `Z`, so a
+     UTC reading is off by your timezone — never a round number, never a time you did not look up; every
+     other field is the user's confirmed answer or the contract above. This is the one item in the
+     project's life that nobody re-derives, so a plausible-looking value here is simply false forever
+     (`BUG-0045`).
    - a kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none. `office-team` is that
      case: fill `project_memory/business_profile.yaml` AND `project_memory/filing_plan.yaml` from the
      explicitly confirmed onboarding answers instead. The filing plan is the one that is easiest to skip
@@ -228,9 +246,12 @@ the confirmed bootstrap draft, using the schemas shipped by the selected kit:
      fields a rule carries, and it is the authority on them, not this file. Do not create or approve a
      `PROC` (`procedures/active/PROC-nnnn.yaml`) here; the Office Manager does that with the user after
      handover.
-3. In `project_memory/project_config.yaml`, set the confirmed `project.name` and `project.preset`.
+3. In `project_memory/project_config.yaml`, set the confirmed `project.name` and the `project.preset`
+   the user ANSWERED the team-size question with — their answer, not your recommendation and not the
+   template default.
    Where the schema contains `project.repo_mode`, set it to `greenfield` or `onboarded` from step 2. Fill
-   the rest of the config for the same reason as the masterplan: nothing writes it after the install, and
+   the rest of the config for the same reason as the masterplan: nothing writes it after the install
+   (`set-preset` owns `project.preset` and nothing else), and
    in `dev-team` and `research-team` `gate_memory_complete` blocks every merge while it is unfilled. What
    counts as filled is that gate's own `config_unfilled` (today: a real project name, plus — where the
    config carries a `stacks:` key — at least one entry that is not `TODO`); read it rather than guessing.
