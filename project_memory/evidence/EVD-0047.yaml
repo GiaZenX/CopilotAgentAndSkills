@@ -1,0 +1,13 @@
+id: EVD-0047
+kind: review
+related:
+- TSK-0075
+result: pass
+summary: verifier PASS for diff:088732119ca00a4c40f3e2eeea94b872ce31a9742335e7aa06be9cce429b6872
+  -- TSK-0075 round 2 (F1-F8 closed, takeover additions verified sharper than claimed,
+  stamp 2026.08.18-3, suite 2824+13, gates 243)
+artifact_refs:
+- staging/TSK-0075/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-18T04:55:31'

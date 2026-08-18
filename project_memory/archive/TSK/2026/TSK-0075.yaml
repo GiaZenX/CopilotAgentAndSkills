@@ -1,0 +1,63 @@
+id: TSK-0075
+product_requirement: PR-0003
+derives_from: BUG-0049
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- BUG-0049 (gate_subagent_output one-retry pass-through logs still-missing-NOTHING
+  in all 8 measured cases where the retry HAD delivered -- the block worked, the message
+  misleads; a second consecutive violation would pass unblocked). AC-1 state-accurate
+  message red-without-fix; AC-2 pass-through kept-and-named (docstring + hole-list
+  proposal for the lead) or closed by decision; AC-3 mirrors identical
+- 'BUG-0050 (no-technical-questions property is hook-carried and porous: guard_question_context
+  caught 2, two others reached the persona -- git identity name/email and the window
+  title bar; entry interview clean). AC-1 the two measured escape classes DECIDED
+  (caught or named) with red-without-fix where caught; AC-2 no kit text claims the
+  property beyond what the hook builds. Boundary: R2 warn-never-block is a user decision
+  2026-07-24 -- read the hook before deciding whether an escape class becomes a block
+  pattern, a warn pattern, or a named limit'
+- 'FR-0027 (preset approval question renders the FULL target role set; on upgrade
+  solo->duo a non-technical user reads six roles of which four are already installed
+  -- literally true, misleading for the BUG-0041 audience). Wanted: the question names
+  ADDED and REMOVED (the delta) while the signed manifest stays the RESULT (preset,
+  roles, removes) so the hash semantics do not move -- a rendering change in build_question
+  preset path, not a manifest change; the constitutions sentence -- the question names
+  every role added and removed -- is the anchor the rendering should satisfy'
+expected_outputs:
+- 'STEP 1 MEASURE each: the gave_up line against the hook source and a real retry
+  flow; the two escape-class questions against the running guard (real hook process);
+  the preset question rendering solo->duo against the running kernel'
+- 'STEP 2 BUILD: BUG-0049 state-accurate message + the pass-through decision named
+  where it lives; BUG-0050 each escape class caught (with red test) or named as limit
+  in hook docstring AND kit texts brought down to what the hook builds; FR-0027 delta
+  rendering with manifest/hash semantics measured UNMOVED (same manifest bytes before
+  and after for the same transition)'
+- STEP 3 TESTS red-without-fix per mechanical piece in an outside clone; real hook
+  processes; no free-text language judging (rejected direction)
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, ONE full pytest tools/ run green
+  with numbers, test_gates if the derivation surface moves (kit hooks do -- run it),
+  mirrors byte-identical unless KIT_SPECIFIC_HOOKS names the reason, pins/sizes with
+  the intended tools if constitution text moves; report with file:line and residues
+  named'
+dependencies:
+- BUG-0049
+- BUG-0050
+- FR-0027
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-17T18:27:21'
+closed_at: '2026-08-18T04:55:14'

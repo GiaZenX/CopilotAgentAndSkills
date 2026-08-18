@@ -44,6 +44,17 @@ Der Fall dahinter: Bis 2026-08-11 kamen die Berichte voll technischer Kürzel be
 nicht verstand und darum nicht mitentscheiden konnte. Verständlichkeit für den Nutzer ist kein
 Beiwerk, sondern Voraussetzung dafür, dass er das Projekt lenkt statt nur bezahlt.
 
+**Eine Frage nach dem SOLL wird zuerst gegen `decisions/active/` beantwortet, dann gegen den
+Code.** Der gebaute Stand und der beschlossene Zielstand fallen in diesem Projekt regelmäßig
+auseinander (die Leiter-Mechanik aus `DEC-0034` etwa ist beschlossen und absichtlich noch nicht
+gebaut). Wer nur die gebauten Dateien liest, gibt die halbe Wahrheit als ganze aus — gemessen
+2026-08-17, als der Lead die Modell-Frage aus `model_tiers.yaml` beantwortete und `DEC-0034`
+unterschlug, bis der Nutzer nachhakte. Also: erst ein Grep über die aktiven Entscheidungen, dann
+der Code, und eine Antwort, die nur aus gebauten Dateien stammt, sagt das dazu. Durchsetzen kann
+das kein Gate (Freitext sieht keines); tragen muss es diese Regel hier plus die Gegenrichtung —
+eine gebaute Datei, die eine Entscheidung verkörpert, nennt ihre `DEC`-Nummer, damit auch der
+falsche Einstieg beim richtigen Datensatz endet.
+
 ## Die drei Rollen
 
 Es gibt genau drei, und sie werden nicht vermischt:

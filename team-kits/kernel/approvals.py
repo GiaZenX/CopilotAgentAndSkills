@@ -757,6 +757,56 @@ def _render_manifest_value(field: str, value) -> str:
     return "%s…" % str(value)[:DIGEST_SHOWN] if _DIGEST.match(str(value)) else str(value)
 
 
+def _push_target_form(manifest: dict) -> str:
+    """A push approval as the human reads it: WHAT gets published, and where.
+
+    The generic target would read "push" and the human would be asked to authorise publishing
+    without being told what. The manifest is already in the request and is hash-covered, so naming
+    it here is deterministic (the PreToolUse gate compares this text character for character) and it
+    is the whole point of the rule: "explizite Userfreigabe" means the user knew what they released.
+    """
+    return "push -> %s/%s @ %s" % (manifest.get("remote", "?"), manifest.get("branch", "?"),
+                                   str(manifest.get("head", "?"))[:8])
+
+
+def _preset_target_form(manifest: dict) -> str:
+    """A preset change as the person deciding it reads it: the team AFTERWARDS, and what goes.
+
+    THE GENERIC FORM WAS LITERALLY TRUE AND STILL MISREAD (FR-0027). It rendered the manifest's own
+    keys -- `[preset: duo, removes: -, roles: <six names>]` -- and on the upgrade solo->duo most of
+    those names are already installed, so a non-technical user reads a list of arrivals and a dash.
+    Named as the team the project HAS afterwards, the same list is what the approval actually
+    guarantees, and "entfernt" is the half a preset NAME hides completely.
+
+    WHAT IT DELIBERATELY DOES NOT SAY IS WHICH ROLES ARE NEW (DEC-0048), and that is not a wording
+    choice. The added set is the target minus what is installed, and WHICH OF THE TARGET ROLES ARE
+    ALREADY INSTALLED is the one thing the hashed manifest does not carry. The removed ones it does:
+    `removes` is derived from the installation too (`kernel.presets._plan`), so the hash moves with
+    the installed state -- just not with the part a delta would be computed from.
+
+    Measured against the shipped dev-team presets: `duo` requested from a solo installation and from
+    one that has all the target roles but two produces the SAME subject_manifest_hash while the
+    added set differs, and `set-preset` accepts that one approval in either state
+    (`test_the_added_roles_are_not_what_a_preset_approval_binds` measures both halves -- the
+    manifest, and a real minted approval that still applies after the installation moved). A delta
+    printed here would be the one sentence in this question the user signs and the hash does not
+    cover.
+    """
+    return ("die Rollen-Aufstellung '%s' -- danach im Team: %s; entfernt: %s"
+            % (str(manifest.get("preset") or "?"),
+               ", ".join(str(role) for role in (manifest.get("roles") or [])) or "keine",
+               ", ".join(str(role) for role in (manifest.get("removes") or [])) or "keine"))
+
+
+# WHICH KINDS GET A FORM BUILT FOR READING, keyed by kind because that is what such a form belongs
+# to: each of these manifests is a different subject, and the readable shape of one says nothing
+# about another. The generic branch in `build_question` renders the manifest's own keys and stays
+# the honest default for every kind with no entry here -- so an entry may only ever shorten the
+# distance between what the hash covers and what the user reads, never add to it.
+# `test_every_target_form_names_a_live_apr_kind` keeps an entry from outliving its kind.
+TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form}
+
+
 def build_question(request: dict) -> dict:
     """The COMPLETE approval question, deterministic from the request alone.
 
@@ -764,15 +814,18 @@ def build_question(request: dict) -> dict:
     equality of question text, header AND all options for marked questions.
     """
     target = request["item"] if request["item"] else request["kind"]
-    if request["kind"] == "routine" or request["item"] is None:
+    form = None if request["item"] else TARGET_FORMS.get(request["kind"])
+    if form is not None:
+        target = form(request.get("subject_manifest") or {})
+    elif request["kind"] == "routine" or request["item"] is None:
         # WHAT THE HASH COVERS IS WHAT THE USER IS SHOWN, and the condition is that property rather
         # than the kinds it happens to hold for today. A request whose subject is a MANIFEST -- a
         # routine permission hanging from an item it is not about, or any kind with no item at all
         # -- renders that manifest, because the generic line would otherwise ask the user to sign a
         # bare kind name. This used to name `routine` alone, so every future item-less kind
         # inherited the bare line; `preset` is the one that would have asked a non-technical user
-        # to approve the word "team" (BUG-0041). `push` overrides it just below with a form built
-        # for reading, which is why this branch may widen without changing that question.
+        # to approve the word "team" (BUG-0041). A kind with an entry in `TARGET_FORMS` never
+        # reaches here, which is why this branch may widen without changing those questions.
         # A routine approval is a STANDING, recurring spawn permission, and
         # what the dispatch route binds it to is the manifest -- the role first of all. Asked as
         # "Freigabe erbeten: routine für PR-0001" the user was signing a role they were never
@@ -790,20 +843,10 @@ def build_question(request: dict) -> dict:
             "%s: %s" % (field, _render_manifest_value(field, manifest[field]))
             for field in sorted(manifest))
         # The kind is already the first half of the sentence this goes into, so an item-less
-        # request shows the manifest ALONE -- "Freigabe erbeten: preset für preset [...]" says the
-        # word twice and reads like a machine to the person who has to judge it. With an item, the
+        # request shows the manifest ALONE -- naming the kind again in front of it says the word
+        # twice and reads like a machine to the person who has to judge it. With an item, the
         # item stays in front of the manifest: that is what a routine approval hangs from.
         target = ("%s %s" % (target, rendered)) if request["item"] else rendered
-    if request["kind"] == "push" and not request["item"]:
-        # A push approval has no ITEM, so the generic target would read "push" and the human would
-        # be asked to authorise publishing without being told WHAT gets published. The manifest is
-        # already in the request and is hash-covered, so naming it here is deterministic (the
-        # PreToolUse gate compares this text character for character) and it is the whole point of
-        # the rule: "explizite Userfreigabe" means the user knew what they released.
-        manifest = request.get("subject_manifest") or {}
-        target = "%s -> %s/%s @ %s" % ("push", manifest.get("remote", "?"),
-                                       manifest.get("branch", "?"),
-                                       str(manifest.get("head", "?"))[:8])
     question = (
         "Freigabe erbeten: %s für %s (Revision %s, subject_manifest sha256 %s…). "
         "Details: approvals/pending/%s.yaml [APR-REQ:%s]"

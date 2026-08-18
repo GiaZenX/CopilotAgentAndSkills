@@ -214,8 +214,9 @@ terminal item moves to `archive/<type>/<year>/`; and direction-setting Decision 
 
 - **Presets are MECHANICAL** (`presets.yaml`): only the preset's roles are installed/spawnable.
   Changing one is YOURS, inside the chat, never the user's file or terminal:
-  `request-approval preset --preset <name>` asks (the question names every role added and removed),
-  the user answers, `set-preset <name>` records and installs it. Then ask for a RESTART: the roles
+  `request-approval preset --preset <name>` asks (the question names the team the project HAS
+  afterwards and every role removed — not which of them are new: which target roles are already
+  installed is the one thing the approval does not bind, DEC-0048), the user answers, `set-preset <name>` records and installs it. Then ask for a RESTART: the roles
   load at session start, and this session may not derive further.
 - **Defaults:** methodologist / reviewer = **opus** (judgment cascades; verdict quality); the rest
   **sonnet**; PM = opus. Propose down-scaling with a reason; any Codex sync needs user confirmation.

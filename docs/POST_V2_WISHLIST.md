@@ -686,6 +686,12 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   die Notiz-Bedingung liest `is True`, die Pflicht-Prüfung davor nur die Anwesenheit des Feldes) —
   `"true"` als String oder `1` als Zahl passieren die Pflichtprüfung und erzeugen lautlos keine
   Notiz. Fehlrichtung ist Schweigen, gemessen im echten Hook-Prozess; benannt im Kommentar und hier.
+- **Die Eigenschaftsaussagen der `ENFORCEMENT.md`-Zeilen haben keinen Leser** (TSK-0075, Prüfer):
+  ein Draht verlangt, dass jede Warn-Art *vorkommt*, aber nicht, was über sie *behauptet* wird —
+  gemessen mit einer frei erfundenen Zeile (falsche Wörter, nicht existierende Konstante, falsche
+  Schwelle, gegenteilige Verhaltensaussage): 12 einschlägige Tests grün. Der Verfassungs-Draht
+  derselben Runde zeigt die Bauform des Fixes (Aussage gegen den laufenden Hook messen); eine
+  eigene Runde, falls gewollt. Bis dahin gilt: `ENFORCEMENT.md`-Prosa ist Wegweiser, nicht Beweis.
 - **`tar --remove-files` leert das Archiv, ohne ein Kopierer-Verb zu sein** (Rest von BUG-0002).
   `tar --remove-files -cf /tmp/a.tar archive/fin` archiviert die Quelle und **löscht sie danach** —
   eine Verschiebung aus dem Archiv, gemessen **rc 0** am `guard_fs_tripwire`-Prozess. `_filing` liest
@@ -2156,6 +2162,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H46 | **GESCHLOSSEN** (TSK-0070), am eigenen Gate nachgemessen | `>&datei` ist im Bash eine bytehaltende Umleitung (csh-Form von `&>`), die der Umleitungs-Erkenner nicht als Ziel verbuchte; der B1-Fix (`_output_redirect_targets`, Deskriptor nur bei Zahl/`-` verworfen) hat über die Kit-Leih-Mechanik (`_from_kit`) auch das Repo-Gate geheilt — gemessen `echo x >& …` rc 0 → rc 2 an `gate_lead_write_scope.py`, `>&2` bleibt rc 0. Kein Schritt außerhalb der Sitzung nötig |
 | H47 | **OFFEN, blockierend** — Schließrichtung (a) zu messen | dieselbe Klasse wie H46, aber die **Variablen**-Variante: Gate 1 leiht den Ziel-Leser des Kits, nicht dessen Zeilen-Zuweisungskarte, also ist `F=team-kits/kernel/state.py; echo x > $F` am Repo-Gate rc 0 (am Kit-Gate seit B2 rc 2). Vorbestehend, von TSK-0070 sichtbar gemacht. Schließrichtung (a): Auflösung in den geteilten Leser ziehen → Kit-Fix heilt mit; (b): Gate 1 baut die Karte selbst → Fix außerhalb der Sitzung. Welche greift, ist zu messen; der Nutzer entscheidet danach |
 | H48 | **OFFEN**, nicht blockierend — bewusster Tausch (TSK-0071) | keine Angriffskette auf Zustand oder Durchsetzung: eingefroren ist nur die Anzeige. An die Stelle des Schutzes tritt die bedingte Frischezusage an allen fünf Prosastellen plus der Zeitstempel auf der Seite als Kontrolle (die Seitenfußnote nennt ihn ausdrücklich); Schließrichtung, falls die Klasse im Alltag auftritt: eine Sitzungsbrief-Zeile „Board älter als Index" |
+| H49 | **offen**, nicht schließbar mit den Mitteln dieses Ereignisses (TSK-0075) | an die Stelle des Schutzes treten drei Begrenzungen: die erste Verletzung wird blockiert und präzise angeleitet; der Durchlass ist zustandsgenau protokolliert (`gave_up` vs `retry_delivered`), sodass die PM-Retro den Fall zählt statt ihn zu verlieren; die `ENFORCEMENT.md`-Zeile aller drei Kits nennt den Durchlass. Ein Zähler wäre beschreibbarer Zustand über eine Durchsetzungsfrage — bewusst nicht gebaut |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -4261,6 +4268,30 @@ weiter; eingefroren ist ausschließlich die Anzeige. Die Begrenzung: der Zeitste
 Seite ist die Kontrolle (die Seitenfußnote sagt das seit dieser Runde ausdrücklich), und die
 bedingte Frischezusage steht an allen fünf Prosastellen. Ein aktives Signal im Sitzungsbrief
 („Board älter als Index") wäre die Schließrichtung, wenn sich die Klasse im Alltag zeigt.
+
+### H49 — Die zweite Vertragsverletzung eines Subagenten läuft ungebremst durch (neu, TSK-0075)
+
+**Mechanismus:** `gate_subagent_output` blockiert einen Spezialisten, der ohne seinen
+Ausgabeblock stoppt. Der Provider setzt auf der dadurch ausgelösten Fortsetzung
+`stop_hook_active`, und der Hook ehrt dieses Flag: er beendet mit 0, statt erneut zu blockieren.
+Wäre es anders, liefe der Subagent in eine Endlosschleife, denn das Flag steht auf jeder
+weiteren Fortsetzung ebenfalls. Damit ist genau die **zweite** aufeinanderfolgende Verletzung
+ungeblockt — der PM baut dann doch auf Prosa.
+
+**Kette (gemessen 2026-08-17, echter Hook-Prozess, Projekt außerhalb des Repos,
+`docs/reviews/2026-08-17-tsk0075-measurements.md`, Abschnitt 1):** `SubagentStop` mit
+`stop_hook_active: true` und der Nachricht `all done!` → **rc 0**, Protokoll
+`gave_up — backend-developer: giving up with summary still missing`. In Pilot 3 wurde die Kette
+nicht durchlaufen: alle 8 gemessenen Fälle waren gelieferte Wiederholungen (B13).
+
+**Urteil: offen, nicht schließbar mit den Mitteln dieses Ereignisses.** Was stattdessen begrenzt:
+(a) es braucht **zwei** Verletzungen hintereinander, die erste wird blockiert und mit einer
+Anweisung beantwortet, die nur den Ausgabeblock verlangt; (b) der Durchlass ist seit TSK-0075
+**zustandsgenau protokolliert** — `gave_up` heißt jetzt wirklich aufgegeben, `retry_delivered`
+heißt, die Sperre hat gewirkt —, sodass die Retro des PM den Fall zählen kann statt ihn im
+Rauschen von acht Fehlmeldungen zu verlieren; (c) ein Zähler pro Subagentenlauf wäre
+beschreibbarer Zustand, der eine Durchsetzungsfrage entscheidet, und ist deshalb bewusst nicht
+gebaut. Die `ENFORCEMENT.md`-Zeile aller drei Kits nennt den Durchlass seit derselben Runde.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

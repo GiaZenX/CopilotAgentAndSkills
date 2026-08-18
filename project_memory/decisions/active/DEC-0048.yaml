@@ -1,0 +1,37 @@
+id: DEC-0048
+title: The preset approval question renders the RESULT in plain words and never a
+  delta -- an added-roles sentence would be signed by the user but unbound by the
+  hash
+context: 'FR-0027 asked the preset question to name the role DELTA (added/removed)
+  instead of the full target set, while keeping the manifest/hash semantics unmoved.
+  TSK-0075 measured that these two wants are incompatible: the same target set requested
+  from different installed states yields the SAME subject_manifest_hash (verifier
+  reproduced: solo-installed and PM-only-installed both hash 6d8e831b1d10eb61...,
+  while ''added'' would be 2 vs 6 roles; a minted preset approval was then proven
+  live in BOTH states via the real gate_approval). build_question is deterministic
+  from the request alone and gate_approval rebuilds the question from the stored request
+  and compares byte-wise (cli.py:218: ''what the hash covers is what the user is shown'')
+  -- so a delta could only live inside the hashed manifest (which FR-0027 forbids:
+  ''preset, roles, removes'') or beside it as a non-binding line, which for the BUG-0041
+  audience is a signed sentence the approval does not bind: a lie with extra steps.
+  Note the precise boundary (verifier F2): what is NOT in the hashed manifest is which
+  target roles are already installed (the intersection); the REMOVED set is state-derived
+  and IS in the manifest.'
+decision: 'The question renders the RESULT in plain words -- ''danach im Team: <roles>;
+  entfernt: <removes|keine>'' -- and deliberately does NOT name which roles are newly
+  added. The constitutions''/PM-skills'' anchor sentence is pulled down to exactly
+  this. FR-0027''s delta half is REJECTED as unbuildable under the unmoved-hash constraint;
+  its readability half is delivered by the plain-words result sentence.'
+consequences: FR-0027 is closed REJECTED with this DEC as the reason (the readability
+  improvement shipped with TSK-0075). Every shipped file that embodies this decision
+  cites this DEC id (approvals.py renderer comment, constitutions, PM skills -- per
+  the CLAUDE.md rule of 2026-08-17). If a future round wants a delta anyway, it must
+  move the hash semantics deliberately (installed set or adds key into the hashed
+  manifest) and supersede this DEC with that measurement.
+source: TSK-0075 implementer measurement + verifier round-1 adjudication (both hash
+  reproductions and the live two-state mint), 2026-08-17/18; FR-0027; BUG-0041 audience;
+  cli.py:218 property; lead decision within the DEC-0045 envelope
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-18T00:08:29'

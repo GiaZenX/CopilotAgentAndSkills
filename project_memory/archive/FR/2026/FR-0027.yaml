@@ -11,7 +11,20 @@ request_text: 'TSK-0064 verifier residue R10: the preset approval question rende
   live. Source: TSK-0064 verifier report 2026-08-15, R10; constitutions'' sentence
   ''the question names every role added and removed'' is the anchor the rendering
   should actually satisfy.'
-status: OPEN
+status: REJECTED
 revision: 1
 approval_ref: null
 created: '2026-08-15T18:25:35'
+triage_result: 'REJECTED as written, per DEC-0048 (TSK-0075, measured twice -- implementer
+  and verifier independently): the delta half (''the question names what is ADDED'')
+  is unbuildable under the FR''s own unmoved-hash constraint. The same target set
+  requested from two installed states yields the SAME subject_manifest_hash while
+  ''added'' would differ (2 vs 6 roles); a minted preset approval was proven live
+  in both states -- an added-roles sentence would be signed by the user but unbound
+  by the approval. The READABILITY half was delivered: the question now renders the
+  result in plain words (''danach im Team: <roles>; entfernt: <removes|keine>'') instead
+  of the bracketed manifest form, and the constitutions'' anchor sentence names exactly
+  what is rendered, incl. ''not which of them are new'' with the DEC-0048 reason.
+  A future round that wants the delta must move the hash semantics deliberately and
+  supersede DEC-0048.'
+closed_at: '2026-08-18T04:54:12'

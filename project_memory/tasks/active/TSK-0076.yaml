@@ -1,0 +1,70 @@
+id: TSK-0076
+product_requirement: PR-0003
+derives_from: FR-0026
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- user/**
+- docs/**
+- tools/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- team-kits/**
+required_inputs:
+- 'FR-0026 (codex entry twin user/codex/AGENTS.md asks the preset at :119 but does
+  not name set-preset as the walkable change route -- a Codex project still hits the
+  old dead end; wanted: parity with the Claude entry file incl. the not-a-one-way-street
+  sentence and the dead-end sweep over the codex prose). TSK-0064 built the Claude
+  side -- its report and tests are the pattern'
+- 'BUG-0043 (masterplan sign-off shrank to one plan-dialog click; expected: the plan
+  dialog is a PRESENTATION surface, the explicit confirmed answer is asked and recorded
+  before install). BUG-0045 (the one hand-written item of a projects life carried
+  an invented 12:00:00 timestamp; expected: the entry instruction demands the real
+  current time, swept over every hand-stamped field). BUG-0044 (interview lacked the
+  preset question) -- per FR-0026s own text TSK-0064 closed BUG-0041/0044 for the
+  Claude entry file: MEASURE that the shipped entry file asks and records it, and
+  report BUG-0044 as already-fixed-by-TSK-0064 if the measurement holds, instead of
+  building it twice'
+- 'FR-0009 (five role reports in docs/research carry the wrong role name, shifted
+  by one in the ring; the CONTENT of each report says which role wrote it -- measure
+  the mapping, rename with git mv, fix references). FR-0048 half 1 only (examine why
+  the German-rule line in user/claude/CLAUDE.md did not bind in pilot session fd2685ae
+  block #3 and strengthen the wording if a mechanical cause shows; the HOME-DIRECTORY
+  ROLLOUT is NOT yours -- it waits for the user, DEC-0045 external approval)'
+- 'the existing entry-prose test surface in tools/ (TSK-0054/TSK-0064 built sweeps
+  over user/claude/CLAUDE.md -- find them and extend rather than invent a second reader);
+  note git mv counts as a tree-moving command: fine for you, but never chained in
+  front of a commit'
+expected_outputs:
+- 'STEP 1 MEASURE: codex twin gap against the Claude entry file; the sign-off and
+  timestamp instructions as shipped; BUG-0044 already-fixed check; the five report-to-role
+  mappings from content'
+- 'STEP 2 BUILD: codex parity (set-preset route + sentence + sweep); explicit sign-off
+  step and real-time instruction in the Claude entry file (and codex twin where it
+  has the same flow); FR-0048 wording strengthening with the found cause named; the
+  five renames with references fixed'
+- 'STEP 3 TESTS: extend the entry-prose sweeps red-without-fix for each new instruction
+  (sign-off, real time, codex set-preset route); the rename measured by the content
+  mapping table in the report'
+- 'STEP 4 SHIP: NO kit bump (team-kits untouched -- forbidden here precisely so the
+  stamp stays), ruff, validate, ONE full pytest tools/ run green with numbers; test_gates
+  NOT expected (derivation surface untouched) -- verify that claim against git diff
+  and say it; report docs/reviews/2026-08-17-tsk0076-measurements.md with file:line,
+  the mapping table, and residues named'
+dependencies:
+- FR-0026
+- BUG-0043
+- BUG-0044
+- BUG-0045
+- FR-0009
+- FR-0048
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-17T18:27:45'

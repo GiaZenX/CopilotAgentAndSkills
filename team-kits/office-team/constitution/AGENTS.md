@@ -251,8 +251,10 @@ when needed, verify its TOMLs, re-review/re-trust its bundle hash in `/hooks`, a
 Never run the generator alone or edit TOMLs directly.
 `session_status` detects drift; tier aliases translate via `model_tiers.yaml`. Up-scaling needs user OK;
 down-scaling needs a reported reason. Presets are mechanical; changing one is YOURS in the chat, never the
-user's file or terminal: `request-approval preset --preset <name>` (the question names every role added and
-removed) → the user answers → `set-preset <name>` → ask for a RESTART, since the roles load at session start.
+user's file or terminal: `request-approval preset --preset <name>` (the question names the team the project
+HAS afterwards and every role removed — not which of them are new: which target roles are already installed
+is the one thing the approval does not bind, DEC-0048) → the user answers → `set-preset <name>` → ask for a
+RESTART, since the roles load at session start.
 
 ## 8. Behavior
 

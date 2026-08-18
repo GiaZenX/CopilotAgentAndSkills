@@ -1,0 +1,27 @@
+id: FR-0049
+title: 'Office filing: a REVIEW step per filing (not only the periodic auditor) --
+  classification and naming checked before or right after the move'
+request_text: 'User steering + detailed design 2026-08-17 (in-session, confirmed via
+  AskUserQuestion): per-filing review EVERY time, as a pipeline -- (1) the CLERK opens
+  every file individually (also inside a bulk drop), reads the content, and produces
+  a per-file move/naming PROPOSAL; (2) a REVIEWER subagent is spawned over the proposal
+  list and answers per file: accept / object / partial; (3) accepted files are moved
+  immediately (through gate_filing as today); (4) everything objected or uncertain
+  goes through the OFFICE MANAGER to the USER (''das dahin und jenes dahin''); (5)
+  a NEW document class means: name + location defined with the user, recorded as a
+  filing_plan rule (the structure grows), then approved and executed. The REVIEW substance
+  goes beyond destination: content plausibility -- invoice amounts readable; required
+  fields present (e.g. USt-ID on the user''s OUTGOING invoices); INCOMING invoices
+  must be addressed to the company (recipient name+address must match business_profile;
+  delivery address may differ) so a foreign invoice thrown into the inbox is caught;
+  price lists: GTIN changes flagged when ambiguous which applies; product images properly
+  named. MODEL CASTING (user): clerk on Sonnet effort LOW, reviewer on Sonnet effort
+  LOW (''reine Auslese, kein starkes Modell noetig''). PLACEMENT (user decision 2026-08-17):
+  built BEFORE pilot 4, together with FR-0050 -- this extends the DEC-0045 pre-pilot
+  path; this FR records that insertion. The periodic read-only auditor stays as backstop.
+  Original trigger: gate_filing checks only the destination against the plan; nobody
+  per-filing checked classification, naming, or content plausibility.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-17T18:38:33'

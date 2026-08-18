@@ -57,7 +57,7 @@
         "hooks": []
       },
       "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
-        "digest": "105f42fc5c6f940a",
+        "digest": "2ba82344506b7f5b",
         "hooks": [
           "session_status"
         ]
@@ -159,7 +159,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "da98f7905cf8be9a",
+        "digest": "554f65abe0b3ae6e",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -216,7 +216,7 @@
         ]
       },
       "Models & escalation (constitution §11 — full mechanics)": {
-        "digest": "7f98f12a1b768135",
+        "digest": "5a372ee93ab996cd",
         "hooks": [
           "session_status"
         ]
@@ -354,7 +354,7 @@
         ]
       },
       "7. Models & presets": {
-        "digest": "20dc8e44ef685204",
+        "digest": "6264d426365f4375",
         "hooks": [
           "session_status"
         ]
@@ -379,7 +379,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "44d740a80ae6cf2b",
+        "digest": "bcbbd073f500dd94",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -489,7 +489,7 @@
         "hooks": []
       },
       "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
-        "digest": "0bea172b546a007e",
+        "digest": "475767967966e978",
         "hooks": [
           "session_status"
         ]
@@ -596,7 +596,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "52b939a897c6607f",
+        "digest": "3076fe31c1792fa4",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -653,7 +653,7 @@
         ]
       },
       "Models & escalation (constitution §11 — full mechanics)": {
-        "digest": "c24b7981e59780f6",
+        "digest": "2f1ce28fc5fc58cc",
         "hooks": [
           "session_status"
         ]

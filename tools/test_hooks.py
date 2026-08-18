@@ -3622,6 +3622,86 @@ def test_subagent_output_gives_up_on_stop_hook_active(kit_repo):
     assert "gave_up" in audit.read_text(encoding="utf-8")
 
 
+def _pass_through(kit_repo, message, atype="backend-developer"):
+    """One `stop_hook_active` stop through the SHIPPED hook, and the record it left (or none)."""
+    (kit_repo / "project_memory").mkdir(exist_ok=True)
+    log = kit_repo / "project_memory" / ".audit" / "hook_events.jsonl"
+    before = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    payload = {"hook_event_name": "SubagentStop", "agent_type": atype,
+               "last_assistant_message": message, "stop_hook_active": True,
+               "cwd": str(kit_repo)}
+    result = run_hook_process("gate_subagent_output.py", payload, kit_repo)
+    assert result.returncode == 0, result.stderr
+    after = log.read_text(encoding="utf-8").splitlines() if log.exists() else []
+    assert len(after) <= len(before) + 1, "one stop wrote more than one record"
+    return json.loads(after[-1]) if len(after) > len(before) else None
+
+
+def test_the_give_up_line_says_what_the_retry_did(kit_repo):
+    """The pass-through record tells the two states apart -- and pilot 3 only ever had one of them.
+
+    `stop_hook_active` is honoured instead of blocked (an endless retry loop is the alternative), so
+    this audit line is the only trace the branch leaves. In all 8 stops pilot 3 measured it read
+    "still missing NOTHING": the retry HAD delivered the contract and the record said the gate gave
+    up -- a give-up written over a working block (BUG-0049).
+
+    Both states, and the exit 0 on the violating one is asserted with them: that exit IS the
+    deliberate hole this hook's docstring names, so a test that measured only the wording would let
+    the hole be closed by accident and stay green.
+    """
+    delivered = _pass_through(kit_repo, "summary: implemented SR-1\nstatus: DONE")
+    assert delivered and delivered["event"] != "gave_up", delivered
+    assert "retry delivered" in delivered["reason"] and "nothing" not in delivered["reason"]
+
+    violated = _pass_through(kit_repo, "still just prose")
+    assert violated and violated["event"] == "gave_up", violated
+    assert "giving up" in violated["reason"] and "summary" in violated["reason"]
+
+
+def test_the_enforcement_table_names_the_condition_the_gate_does_not_refuse_under():
+    """`ENFORCEMENT.md`'s own head promises "the condition under which it does not refuse at all".
+
+    For this gate that condition is the one-retry pass-through, and the row did not have it: a role
+    reading the table would take "a specialist stopping without its output contract" for the whole
+    rule and never learn that the SECOND such stop is let through. Derived from the hook rather than
+    trusted — the branch is `stop_hook_active`, and the row has to name both audit events it can
+    write, which is the only way a reader can tell the two apart in a retro.
+    """
+    source = open(os.path.join(HOOKS, "gate_subagent_output.py"), encoding="utf-8").read()
+    tree = ast.parse(source)
+    # the second argument is a conditional, so the names are read out of ITS subtree -- the set of
+    # event names this one call can write, which is exactly what a retro reader has to tell apart
+    events = sorted({leaf.value for node in ast.walk(tree)
+                     if isinstance(node, ast.Call) and _callee_name(node) == "record_event"
+                     and len(node.args) > 1
+                     for leaf in ast.walk(node.args[1])
+                     if isinstance(leaf, ast.Constant) and isinstance(leaf.value, str)})
+    assert events == ["gave_up", "retry_delivered"], events
+    for kit in KITS:
+        table = open(os.path.join(ROOT, "team-kits", kit, "hooks", "ENFORCEMENT.md"),
+                     encoding="utf-8").read().splitlines()
+        rows = [line for line in table if line.startswith("| `gate_subagent_output`")]
+        assert len(rows) == 1, (kit, len(rows))
+        assert "stop_hook_active" in rows[0], kit
+        for event in events:
+            assert event in rows[0], (kit, event)
+
+
+def test_a_foreign_agent_leaves_no_give_up_record(kit_repo):
+    """The pass-through reports on the agents this gate JUDGES, and it judges kit specialists only.
+
+    Measured before the fix, with the flag set: `Explore` -- a utility agent that owes no output
+    block, and one this gate passes on every other path -- produced `Explore still missing summary`,
+    and a stop with no `agent_type` at all produced ` still missing summary`. Two contract
+    violations recorded against agents under no contract. The scope checks now stand ahead of the
+    branch, so neither writes anything.
+    """
+    for atype in ("Explore", ""):
+        assert _pass_through(kit_repo, "just some search results", atype=atype) is None, atype
+    log = kit_repo / "project_memory" / ".audit" / "hook_events.jsonl"
+    assert not log.exists(), log.read_text(encoding="utf-8")
+
+
 # ---------------- office fs tripwire: shell redirects into the ledger are blocked ----------------
 def test_office_business_profile_records_provider_and_preserves_legacy_key():
     yaml = pytest.importorskip("yaml")
@@ -11457,6 +11537,229 @@ def test_r2_stays_silent_on_product_questions(tmp_path, text, options):
     result = run_hook_process("guard_question_context.py", _question(text, options), tmp_path)
     assert result.returncode == 0
     assert "technical choices" not in result.stderr, (text, result.stderr)
+
+
+# ---------------- guard_question_context R2b: the two escapes pilot 3 measured ----------------
+#
+# WHAT IS FIELD DATA HERE AND WHAT IS NOT. Pilot 3 recorded the two questions that reached the
+# non-technical persona uncaught as CLASSES -- "die Git-Identitätsfrage (Name/E-Mail für Commits)"
+# and "die Umgebungsabklärung über die Fenster-Titelleiste" (B14) -- and the two it caught with the
+# words that caught them ("python, sqlite"). The literal sentences are not in the record, so the
+# wording below is a reconstruction of each class; what is measured against the running hook is the
+# class, not a transcript. The third R2b case is a desktop probe with an umlaut, because the
+# payload goes in as raw UTF-8 and a cp1252 stdin once turned every umlaut pattern into dead code.
+_R2B_ESCAPES = [
+    ("Unter welchem Namen und welcher E-Mail-Adresse sollen die Commits eingetragen werden?",
+     ["Name und E-Mail eintragen", "Standard verwenden"]),
+    ("Was steht oben in der Titelleiste deines Fensters? Ich brauche den Pfad zum Projekt.",
+     ["Titelleiste ablesen", "Weiß ich nicht"]),
+    ("Welchen Eintrag siehst du im Startmenü?", ["Ich schaue nach", "Keinen"]),
+]
+# The product half of the same interview, by the topics pilot 3 logged as clean (Datenablage,
+# Nummern-Start, Layout) -- the direction that decides whether a one-hit threshold is a net or noise.
+_R2B_PRODUCT = [
+    ("Wo sollen deine Rechnungen liegen — nur auf deinem Rechner oder auch in der Cloud?",
+     ["Nur lokal", "Auch Cloud"]),
+    ("Mit welcher Rechnungsnummer soll das Werkzeug starten?", ["RE2026-001", "Eine andere"]),
+    ("Soll dein Logo oben links oder oben rechts auf der Rechnung stehen?", ["Links", "Rechts"]),
+]
+_R2B_NOTE = "only the MACHINE has"
+
+
+def _advice(tmp_path, text, options):
+    """The guard's stderr for one question, sent the way a provider sends it (raw UTF-8)."""
+    result = run_hook_raw_utf8("guard_question_context.py", _question(text, options), tmp_path)
+    assert result.returncode == 0, result.stderr
+    return result.stderr.decode("utf-8", "replace")
+
+
+@pytest.mark.parametrize("text,options,warned", [(t, o, True) for t, o in _R2B_ESCAPES]
+                         + [(t, o, False) for t, o in _R2B_PRODUCT])
+def test_the_two_escape_classes_warn_and_product_questions_stay_quiet(
+        tmp_path, text, options, warned):
+    """The property "no technical questions to the user" is hook-carried, and this is the widening.
+
+    Both directions in one parametrisation, because a one-hit threshold is only defensible if the
+    product questions of the same interview stay silent under it. It stays a WARNING (rc 0): R2/R13
+    warn and never block by the user decision of 2026-07-24, and this heuristic is the same kind of
+    judgement about wording, so it inherits that answer rather than reopening it.
+    """
+    said = _advice(tmp_path, text, options)
+    assert (_R2B_NOTE in said) is warned, said
+
+
+# The verifier's own eight product questions, one ambiguous machine word each, plus a ninth
+# measured here (a fuel card whose brand is `shell`). This is the corpus that DEFINES membership in
+# `_AMBIGUOUS_VOCAB_RX`: a word this repo has seen inside a product question needs a second hit.
+_R2B_AMBIGUOUS_PRODUCT = [
+    "Sollen deine Kundinnen eine Push-Benachrichtigung bekommen, wenn die Rechnung bezahlt ist?",
+    "Soll das Kassen-Terminal im Laden die Rechnungen direkt drucken?",
+    "Sollen die Umsätze pro Branch getrennt ausgewiesen werden?",
+    "Wie lange soll das Commitment deiner Kundinnen mindestens laufen?",
+    "Soll der Shop auch Zubehör für die Konsole führen?",
+    "Soll die App auch auf einem anderen Betriebssystem laufen?",
+    "Sollen doppelte Kundendatensätze beim Import automatisch mergen?",
+    "Soll der Artikel Explorer 500 in den Katalog aufgenommen werden?",
+    "Soll die Shell-Tankkarte als Zahlungsart geführt werden?",
+]
+
+
+@pytest.mark.parametrize("text", _R2B_AMBIGUOUS_PRODUCT)
+def test_a_single_ambiguous_word_is_not_a_technical_question(tmp_path, text):
+    """R2b's first cut said its words had "no product reading at all", and eight of these disproved
+    it — each one a product question a PM is supposed to ask, each warned on by ONE word: a push
+    notification, a Kassen-Terminal, a Branch that is a Filiale, a Commitment (an over-match of
+    `commit\\w*`), a Spielkonsole, a target Betriebssystem, merged customer records, an article
+    named "Explorer 500". A membership rule the list does not obey is the comment claiming a
+    protection the code does not build, pointing the other way.
+
+    These sentences ARE the rule now: a word measured inside a product question sits in the second
+    tier and needs a second hit beside it. Two of them together still warn — that end is
+    `test_the_two_escape_classes_warn_and_product_questions_stay_quiet`.
+    """
+    assert _R2B_NOTE not in _advice(tmp_path, text, ["Ja", "Nein"])
+
+
+def test_every_ambiguous_case_exercises_the_tier_it_measures():
+    """A counter-example that matches nothing proves nothing, and one of these did.
+
+    The first cut of the merge case read "automatisch gemerged" — `merge\\w*` is anchored at a word
+    boundary, so the prefixed form matched neither tier and the sentence would have stayed quiet
+    whatever the code did. It survived the ablation above as a passing test while seven others went
+    red, which is the only reason it was noticed.
+
+    So each case has to hit the second tier, and hit a DIFFERENT word than the others: nine
+    sentences carrying one word between them would be one measurement wearing nine names. Read off
+    the shipped pattern object, not off a copy of the word list.
+    """
+    guard = load_kit_module("gqc", os.path.join(HOOKS, "guard_question_context.py"))
+    words = []
+    for text in _R2B_AMBIGUOUS_PRODUCT:
+        hits = {m.group(0).lower() for m in guard._AMBIGUOUS_VOCAB_RX.finditer(text)}
+        assert hits, "this case matches nothing, so it measures nothing: %r" % text
+        assert not guard._MACHINE_VOCAB_RX.search(text), (
+            "a first-tier word makes this case about that tier instead: %r" % text)
+        words.append(sorted(hits)[0])
+    assert len(set(words)) == len(words), sorted(words)
+
+
+def test_a_warning_is_recorded_as_a_warning_and_not_as_a_block(tmp_path):
+    """What the log says happened has to be what happened — BUG-0049's defect, one file over.
+
+    `_audit.record` is the BLOCK spelling, so every advisory line this hook ever wrote entered the
+    log as `event: "block"`. `retro.py` counts those as "gates blocked work", and pilot 3's
+    forensics read two R2 warnings as two technical questions the guard had CAUGHT — the reading
+    BUG-0050 was written from. Nothing was caught: the hook exits 0 on both.
+
+    The exit code is asserted next to the record on purpose. A warning that started blocking would
+    also make this line honest, and that is not the fix.
+    """
+    log = tmp_path / "project_memory" / ".audit" / "hook_events.jsonl"
+    (tmp_path / "project_memory").mkdir(parents=True)
+    said = _advice(tmp_path, "Welchen Namen soll ich fürs Git eintragen?", ["Ja", "Nein"])
+    assert _R2B_NOTE in said
+    records = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert [r["event"] for r in records] == ["warn"], records
+    # ...and the role that was warned is handed the table that explains the heuristic (F6)
+    assert "ENFORCEMENT.md" in said, said
+
+
+def test_no_question_gets_both_verdicts_about_one_boundary(tmp_path):
+    """R2 and R2b split ONE constitutional boundary between two word classes, so no text may hit
+    both -- a question told twice that it crossed one line is noise, and the two messages give
+    contradictory advice about what to do with it.
+
+    Over every corpus this file has for the guard, in both directions. `repository` was in R2b's
+    first cut and is an R2 word (`repository-pattern`); this is what took it out again.
+    """
+    corpus = ([(t, o) for t, o in _R2B_ESCAPES] + [(t, o) for t, o in _R2B_PRODUCT]
+              + [("Postgres oder MySQL?", ["Postgres", "MySQL"]),
+                 ("Welche Datenbank?", ["PostgreSQL nutzen", "MongoDB nutzen"]),
+                 ("Sollen wir das Repository-Pattern mit Django nutzen?", ["Ja", "Nein"])])
+    for text, options in corpus:
+        said = _advice(tmp_path, text, options)
+        assert not ("technical choices" in said and _R2B_NOTE in said), (text, said)
+
+
+def test_the_advice_exemption_uses_gate_approvals_own_marker(tmp_path):
+    """A marked question gets no wording advice — and the marker cannot be WORN to buy that.
+
+    THE HALF THAT IS STILL LIVE, and the reason this test no longer uses the kernel's own question
+    for it: on R2b's first cut the push question tripped the heuristic on the word `push`, and the
+    exemption was what kept the guard from telling a PM to reword the one text a rewording makes
+    worthless (pilot 3, B15). After `push` moved to the two-hit tier, no kernel question trips
+    anything at all — so a "the same text unmarked warns" assertion would pass on emptiness. What is
+    measurable is the exemption's OWN risk: a question the model wrote, full of machine words, with
+    a well-formed marker glued on.
+
+    Three runs, because the exemption is only as good as the two hooks agreeing on what a marker is.
+    Quiet here with the marker; `gate_approval` refuses that same question (rc 2) because no pending
+    request matches it, so the silence buys nothing; and a NEAR-MISS marker warns here exactly as
+    that gate reads it as markerless (rc 0) — a guard reading markers more loosely than the gate
+    would let a malformed one buy silence from both.
+    """
+    options = ["Freigeben [abc123]", "Ablehnen"]
+    machine = "Welchen Namen und welche E-Mail soll ich im Git eintragen?"
+    assert _R2B_NOTE in _advice(tmp_path, machine, options)
+    marked = "%s [APR-REQ:%s]" % (machine, "b" * 32)
+    assert _R2B_NOTE not in _advice(tmp_path, marked, options), marked
+    near = "%s [APR-REQ:short]" % machine
+    assert _R2B_NOTE in _advice(tmp_path, near, options)
+    # ...and what the marked one costs at the gate that enforces the marker, run as itself
+    for text, expected in ((marked, 2), (near, 0)):
+        payload = _question(text, options)
+        payload["hook_event_name"] = "PreToolUse"
+        payload["cwd"] = str(tmp_path)
+        assert run_hook_process("gate_approval.py", payload,
+                                tmp_path).returncode == expected, text
+
+
+def test_the_enforcement_table_names_every_warning_the_guard_emits():
+    """A role meets these heuristics at `hooks/ENFORCEMENT.md`, so the table has to know them all.
+
+    The table said only what the guard BLOCKS. That is not a false claim but it is a silent one:
+    the role reading it after a `[team-kit note]` finds no row explaining what just spoke to it, and
+    the limit those warnings have — word nets, so a technical question phrased around them passes —
+    is stated nowhere it would be read. Two warnings were missing from it before R2b made three.
+
+    DERIVED FROM THE `_warn` CALLS, not from a list beside them: a fourth heuristic that ships
+    without its row turns this red on the day it ships, in every kit that carries the guard.
+    """
+    tree = ast.parse(open(os.path.join(HOOKS, "guard_question_context.py"), encoding="utf-8").read())
+    kinds = sorted({node.args[0].value for node in ast.walk(tree)
+                    if isinstance(node, ast.Call) and _callee_name(node) == "_warn"
+                    and node.args and isinstance(node.args[0], ast.Constant)})
+    assert len(kinds) >= 3, kinds
+    for kit in KITS:
+        table = open(os.path.join(ROOT, "team-kits", kit, "hooks", "ENFORCEMENT.md"),
+                     encoding="utf-8").read().splitlines()
+        rows = [line for line in table if "`guard_question_context`" in line and line.startswith("|")]
+        assert len(rows) == 1, (kit, len(rows))
+        for kind in kinds:
+            assert re.search(r"\b%s\b" % re.escape(kind), rows[0]), (kit, kind)
+
+
+def test_the_guard_and_the_gate_spell_the_approval_marker_the_same(tmp_path):
+    """The pattern above is a SECOND statement of `gate_approval.MARKER_RX`, so it is pinned.
+
+    Not imported: `gate_approval` loads the kernel bridge and exits 2 when it cannot, and this guard
+    must never fail closed on a question it was only going to look at. Read out of the two shipped
+    files by parsing them, in every kit that ships both — a copy that drifts is a marker one hook
+    honours and the other does not, which is the hole `test_the_advice_exemption_uses_gate_approvals
+    _own_marker` measures the consequence of.
+    """
+    def pattern(path, name):
+        tree = ast.parse(open(path, encoding="utf-8").read())
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Assign)
+                    and any(getattr(t, "id", None) == name for t in node.targets)):
+                return ast.literal_eval(node.value.args[0])
+        raise AssertionError("%s has no %s" % (path, name))
+
+    for kit in KITS:
+        hooks = os.path.join(ROOT, "team-kits", kit, "hooks")
+        assert (pattern(os.path.join(hooks, "guard_question_context.py"), "_APR_MARKER_RX")
+                == pattern(os.path.join(hooks, "gate_approval.py"), "MARKER_RX")), kit
 
 
 # ---------------- the packaging block, and the exit it did not have ----------------

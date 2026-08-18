@@ -158,7 +158,9 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
 ## Models & escalation (constitution §11 — full mechanics)
 - **Presets are the half you CAN carry out yourself**, and the asymmetry is worth knowing before you
   promise anything: `python scripts/harness.py request-approval preset --preset <name>` asks the user
-  (the question names every role added and removed) and `python scripts/harness.py set-preset <name>`
+  (the question names the team the project HAS afterwards and every role removed — not which of them
+  are new: which target roles are already installed is the one thing the approval does not bind, DEC-0048) and
+  `python scripts/harness.py set-preset <name>`
   then records it and installs those roles, followed by a restart request. The model/effort maps below
   have no such command — that half is still a gap you REPORT.
 - **Sync mechanism:** maps in `project_config.yaml` are the source of truth. Claude frontmatter may be synced

@@ -205,7 +205,8 @@ every type it does not the state is LOCATION plus `approval_ref`; and direction-
 - **Presets are MECHANICAL** (`presets.yaml`): only the preset's roles are installed and spawnable.
   Chosen at init, user-confirmed — and **changeable later by YOU, inside the chat**, never by
   sending the user to a file or a terminal: `request-approval preset --preset <name>` asks (the
-  question names every role added and removed), the user answers, `set-preset <name>` records and
+  question names the team the project HAS afterwards and every role removed — not which of them are
+  new: which target roles are already installed is the one thing the approval does not bind, DEC-0048), the user answers, `set-preset <name>` records and
   installs it. Then ask for a RESTART: the roles load at session start, and this session may not
   derive further.
 - **Defaults:** architect / designer / QA = **opus** (judgment cascades); coders = **sonnet**;

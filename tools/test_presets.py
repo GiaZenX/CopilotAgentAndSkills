@@ -633,7 +633,7 @@ def test_a_manifest_key_a_resolver_answers_with_nothing_is_still_an_answer(proje
     state = project["state"]
     assert cli.main(["--root", state.root, "request-approval", "preset", "--preset", "full"]) == 0
     question = json.loads(capsys.readouterr().out)
-    assert "removes: -" in question["question"] and "beta" in question["question"]
+    assert "entfernt: keine" in question["question"] and "beta" in question["question"]
     assert cli.main(["--root", state.root, "request-approval", "push", "--branch", "main"]) == 2
     assert "remote is missing" in capsys.readouterr().err
 
@@ -661,6 +661,163 @@ def test_a_resolver_owned_key_is_not_the_roles_to_type(project, capsys, flag, va
     assert "not a value to type on this line" in message and flag[2:] in message
     assert not os.path.isdir(os.path.join(state.root, "approvals", "pending")) or not os.listdir(
         os.path.join(state.root, "approvals", "pending")), "a request was written anyway"
+
+
+def _preset_question(project, preset):
+    """The approval question the kernel composes for a change to `preset` here."""
+    state = project["state"]
+    manifest = presets.change_manifest(state, preset)
+    request = {"request_id": "r" * 32, "kind": presets.KIND, "item": None, "revision": None,
+               "subject_manifest": manifest,
+               "subject_manifest_hash": approvals.subject_manifest_hash(manifest),
+               "created": "x", "expires_at_epoch": 0, "mint_code": "abc123"}
+    return manifest, approvals.build_question(request)
+
+
+def test_the_preset_question_names_the_team_afterwards_and_what_goes(project):
+    """What a non-technical user reads, in both directions of the change (FR-0027).
+
+    The generic manifest form was `[preset: full, removes: -, roles: alpha / beta]`: the manifest's
+    own keys, with the resulting set under a bare `roles:` and nothing saying it IS the result. On
+    the upgrade pilot 3's persona was headed for, most of those names are already installed, so she
+    read a list of arrivals and a dash. The words are the whole fix here, and they are what the
+    kernel-generated question is compared character for character against, so they are measured on
+    the running builder rather than read off the source.
+
+    BOTH TRANSITIONS, because the removing one is where a name hides the most: `entfernt` has to
+    carry the roles the project LOSES, and an upgrade has to say plainly that it loses none.
+    """
+    _manifest, question = _preset_question(project, "full")
+    assert "danach im Team: alpha, beta" in question["question"], question["question"]
+    assert "entfernt: keine" in question["question"]
+    assert "roles:" not in question["question"] and "removes:" not in question["question"]
+    # the option the user clicks carries the same sentence -- it is what the mint is bound to
+    assert "danach im Team: alpha, beta" in question["options"][0]["description"]
+
+    _write(str(project["repo"] / ".claude" / "team_kit_roles.txt"),
+           (ROLES_MANIFEST_HEADER % (KIT, 3)) + "\nproject-manager\nalpha\nbeta\n")
+    _manifest, question = _preset_question(project, "mini")
+    assert "danach im Team: alpha" in question["question"]
+    assert "entfernt: beta" in question["question"], question["question"]
+
+
+def test_the_added_roles_are_not_what_a_preset_approval_binds(project):
+    """Why the question names the RESULT and not the delta (DEC-0048) -- measured in both halves.
+
+    THE MANIFEST HALF. `removes` is derived from the installation, so the hash does move with the
+    installed state -- but WHICH OF THE TARGET ROLES ARE ALREADY THERE is exactly the part it does
+    not carry, and that is the part a delta is computed from. Two installations that differ only
+    inside the target set produce one hash and two different added sets.
+
+    THE MINT HALF, and it is here because the sentence in `_preset_target_form` claims it: an
+    approval really minted for the first installation still applies after the second -- `set-preset`
+    re-derives the manifest, the hash still matches, and the install goes through. Without this the
+    docstring would name a test for something the test never ran.
+
+    This is also the tripwire for the other direction: the day the manifest gains what is installed,
+    the first half goes red, and a delta rendering becomes buildable.
+    """
+    manifest_from_alpha = presets.change_manifest(project["state"], "full")
+    approve_preset(project, "full")     # a real mint, through the project's own approval hook
+
+    # ...the installation moves INSIDE the target set: `alpha` goes, `beta` was never there
+    _write(str(project["repo"] / ".claude" / "team_kit_roles.txt"),
+           (ROLES_MANIFEST_HEADER % (KIT, 1)) + "\nproject-manager\n")
+    manifest_from_none = presets.change_manifest(project["state"], "full")
+    assert manifest_from_alpha == manifest_from_none
+    assert (approvals.subject_manifest_hash(manifest_from_alpha)
+            == approvals.subject_manifest_hash(manifest_from_none))
+    assert sorted(set(manifest_from_alpha["roles"]) - {"alpha"}) == ["beta"]
+    assert sorted(manifest_from_none["roles"]) == ["alpha", "beta"], (
+        "the added set differs between the two starts the one hash covers")
+
+    # the approval given for the first state authorises the second, unchanged
+    assert approvals.live_line_approval(project["state"], presets.KIND, manifest_from_none)
+    assert presets.apply(project["state"], "full")["preset"] == "full"
+
+
+def test_the_removed_roles_ARE_hashed_so_the_approval_follows_the_installation(project):
+    """The other half of the same fact, and the one the first cut of this round got wrong.
+
+    `removes` is `installed - target` (`kernel.presets._plan`), so it is state-derived and it IS in
+    the hashed manifest: an installation that carries a role the target drops produces a DIFFERENT
+    hash, and the approval given before that role appeared no longer covers the change. Written down
+    as "what is installed is not in the hashed manifest", the docstring made a claim this measures
+    false -- only the intersection with the target is outside it.
+    """
+    with_alpha = presets.change_manifest(project["state"], "mini")
+    _write(str(project["repo"] / ".claude" / "team_kit_roles.txt"),
+           (ROLES_MANIFEST_HEADER % (KIT, 3)) + "\nproject-manager\nalpha\nbeta\n")
+    with_beta_too = presets.change_manifest(project["state"], "mini")
+    assert with_alpha["removes"] == [] and with_beta_too["removes"] == ["beta"]
+    assert (approvals.subject_manifest_hash(with_alpha)
+            != approvals.subject_manifest_hash(with_beta_too))
+
+
+def test_every_kit_constitution_describes_the_preset_question_the_kernel_builds(project):
+    """The sentence a PM reads about that question, held against the question (DEC-0048).
+
+    THE DEFECT THIS EXISTS FOR, and it is why the check is derived rather than a third careful
+    edit: two of the three constitutions were pulled down to what `_preset_target_form` renders and
+    the office one was not -- it still promised "the question names every role added and removed",
+    measured live in an office scaffold where three of five named roles were already installed and
+    the question said nothing about which were new. The sweep that missed it was a line-based grep
+    over a sentence that happens to wrap mid-phrase in that kit.
+
+    DERIVED ON BOTH HALVES OF THE SENTENCE, so neither a third kit nor a later renderer can leave
+    one of them standing alone. The two halves it PRINTS are read off a run of the shipped renderer.
+    The half every constitution says it WITHHOLDS is the same run from two different installations:
+    the manifest is the renderer's only input and it does not carry which of the target roles are
+    already there, so one target renders one identical sentence from both starts while "added"
+    differs. The day a question names the new roles, that equality breaks here -- before a reader
+    meets a constitution promising it does not. Whitespace in the documents is flattened first,
+    because where a kit wraps its lines is not what this measures.
+    """
+    form = approvals.TARGET_FORMS["preset"]
+    from_alpha = presets.change_manifest(project["state"], "full")
+    rendered = form(from_alpha)
+    # what the renderer actually put in front of the user, as claims a sentence has to match
+    assert "danach im Team" in rendered and "entfernt" in rendered
+    # ...and now the installation moves INSIDE the target set (the fixture had `alpha`, this has
+    # none of it), which is the difference a delta would be computed from
+    _write(str(project["repo"] / ".claude" / "team_kit_roles.txt"),
+           (ROLES_MANIFEST_HEADER % (KIT, 1)) + "\nproject-manager\n")
+    from_none = presets.change_manifest(project["state"], "full")
+    assert sorted(set(from_alpha["roles"]) - {"alpha"}) == ["beta"]
+    assert sorted(from_none["roles"]) == ["alpha", "beta"], "the two starts add different roles"
+    assert form(from_alpha) == form(from_none), (
+        "the question tells the two installations apart, so a constitution may promise a delta")
+    checked = []
+    for kit in sorted(os.listdir(TEAM_KITS)):
+        path = os.path.join(TEAM_KITS, kit, "constitution", "AGENTS.md")
+        if not os.path.isfile(path):
+            continue
+        flat = " ".join(open(path, encoding="utf-8").read().split())
+        if "request-approval preset" not in flat:
+            continue                       # this kit does not put the command in front of a lead
+        checked.append(kit)
+        assert "names every role added and removed" not in flat, (
+            "%s promises a delta the renderer does not print" % kit)
+        assert "HAS afterwards" in flat and "removed" in flat, (
+            "%s does not describe the result the renderer names" % kit)
+        assert "not which of them are new" in flat, (
+            "%s does not say which half the question withholds" % kit)
+        assert "DEC-0048" in flat, "%s states the limit without the decision behind it" % kit
+    assert len(checked) >= 3, checked
+
+
+def test_every_target_form_names_a_live_apr_kind(project):
+    """Both ends of the one map in `build_question` that is an enumeration.
+
+    A form for a kind that no longer exists answers for nothing, and this map is the one place the
+    builder departs from rendering the hashed manifest key by key -- a leftover entry makes that
+    departure look wider than it is. And a form that arrives WITHOUT a measurement of what it
+    renders is the other end: every entry here writes a sentence a user signs, so the second
+    assertion is the one that has to be edited deliberately, next to a new test like the two above.
+    """
+    assert set(approvals.TARGET_FORMS) <= set(approvals.APR_KINDS)
+    assert set(approvals.TARGET_FORMS) == {"push", "preset"}, (
+        "a new readable form arrived without a measurement of what it renders")
 
 
 def test_the_preset_command_is_on_the_surface_the_refusals_name(project, capsys):

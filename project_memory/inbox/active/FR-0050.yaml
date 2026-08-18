@@ -1,0 +1,19 @@
+id: FR-0050
+title: 'Office archive: delete and move-out become possible AFTER an explicit user
+  approval (correction path) instead of hard-blocked forever'
+request_text: 'User steering 2026-08-17 (in-session): guard_fs_tripwire hard-blocks
+  deletes under inbox/ and archive/ and any move OUT of archive/ -- correct as the
+  default, but a mis-filed or mis-named document stays wrong until the user fixes
+  it by hand outside the kit. Wanted: an approval-gated correction path -- the clerk
+  requests a correction (which file, from where to where / delete, why), the USER
+  approves via the existing approval mechanism (APR mint), the gate honours exactly
+  that approved operation once, everything journaled. Default stays fail-closed; the
+  approval is the only door. User''s words: ''loeschen und verschieben darf moeglich
+  sein, aber erst nach Freigabe.'' Fits the kit line approval-before-action (same
+  machinery as preset changes). PLACEMENT (user decision 2026-08-17, AskUserQuestion):
+  built BEFORE pilot 4, together with FR-0049 -- extends the DEC-0045 pre-pilot path;
+  this FR records that insertion.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-17T18:38:38'

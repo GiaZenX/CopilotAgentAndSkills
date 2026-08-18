@@ -1,0 +1,22 @@
+id: FR-0052
+title: Kit PMs answer target-state questions from the DECISIONS first, not from built
+  files -- the same discipline the harness lead just adopted
+request_text: 'User steering 2026-08-17: after the harness lead answered a model question
+  from built files and missed the standing decision DEC-0034 (built state and decided
+  target state diverge routinely), the user asked how to make decision-lookup the
+  default before answering -- for the harness AND the kits. Harness side is done (CLAUDE.md
+  rule + lead memory, 2026-08-17). Kit side wanted: (1) the PM/manager skill carries
+  the same rule -- a user question about WHY something is the way it is, or what the
+  target/plan is, is answered by consulting generated/session_brief.yaml (which already
+  carries recent decisions since TSK-0051) and grepping decisions/active/ FIRST, then
+  the code; an answer drawn only from built artifacts says so; (2) the pointer counter-direction
+  where cheap: a shipped file that embodies a DEC names the DEC id (model_tiers.yaml
+  gets DEC-0034/DEC-0047 in the FR-0051 round -- generalise where a round touches
+  such a file, no big sweep). HONEST LIMIT to carry in the text: no hook can enforce
+  search-before-answer (free text is invisible to gates, the DEC-0029/R2 class); the
+  rule lives in the skill prose and the brief surface. Fits BUG-0005/TSK-0051 (brief
+  carries decisions) and the kanban board (DEC column visible since TSK-0071).'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-17T22:05:16'

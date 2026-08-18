@@ -1,0 +1,31 @@
+id: DEC-0047
+title: The T-ladder is PER KIT, not one global scale -- dev/research climb to fable,
+  office is compressed with a sonnet-low reading floor
+context: 'DEC-0034 records the user-drafted escalation ladder (T0 Sonnet5-High floor
+  / T1 Opus-High / T2 Opus-XHigh / T3 Fable-High/XHigh) as ONE ordered scale, drafted
+  against dev work where cheap rungs take revenge. In-session 2026-08-17 the user
+  refined the casting (FR-0049/FR-0051): dev/research PM permanently fable high, office-manager
+  opus high suffices, and the office filing pipeline (clerk + filing reviewer) deliberately
+  runs sonnet effort LOW (''reine Auslese, kein starkes Modell noetig''). Asked whether
+  that breaks the T0 never-below floor, the user confirmed: ''ja die T stufen unterscheiden
+  sich bei den Kits.'''
+decision: 'The ladder''s SHAPE is shared (ordered rungs, state-based triggers, one
+  rung up per FAIL, reversible, QA never on the cheapest rung), but its ENDPOINTS
+  are per kit: dev-team and research-team use the full T0-T3 with fable at the top
+  (planning/architecture/design start there; PM pinned there permanently per FR-0051);
+  office-team is COMPRESSED -- top rung is opus high (the office-manager''s permanent
+  seat), and pure-reading pipelines with double control behind them (filing clerk
+  + filing reviewer, FR-0049) may run BELOW the dev floor at sonnet low. The dev/research
+  floor stays sonnet high, never below.'
+consequences: 'The FR-0049 and FR-0051 build rounds implement per-kit castings without
+  a uniformity pass ''correcting'' them; the future DEC-0034 ladder mechanic (dispatcher
+  picks the rung, post-release) reads its rung table PER KIT. Cost effect: office
+  routine work gets cheaper (sonnet low) while decision quality stays at opus high;
+  dev/research planning gets dearer (fable) by explicit user choice.'
+source: User messages 2026-08-17 in-session (model casting steering + the confirming
+  sentence); refines DEC-0034 (stays VALID -- shape and dev/research rungs unchanged);
+  FR-0049, FR-0051 carry the concrete castings
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-17T20:17:07'

@@ -338,6 +338,16 @@ kein Beiwerk, sondern griff im Schnitt alle ~2,6 Minuten einmal ein (61 Blocks �
 Mitschnitt-Spanne, 20:08:36–22:49:19); was der Bericht
 oben über Gates erzählt, ist hier zeilenweise belegt.
 
+*[Korrektur 2026-08-18, aus der TSK-0075-Prüfrunde: die zwei `guard_question_context`-Zeilen in
+dieser Zählung waren keine Blocks. `_warn` protokollierte bis TSK-0075 jede WARNUNG (exit 0, die
+Frage wurde der Persona gezeigt) mit der Ereignisart `block`; der Wortlaut „python, sqlite" ist
+die Formatzeichenkette der R2-Warnung, nicht eines Blocks. Die „hookerzwungene Hälfte von B14"
+gab es also nicht — 0 von 4 technischen Fragen wurden gefangen, alle vier erreichten die Persona
+(zwei mit stderr-Notiz an den Agenten). Richtig sind damit 59 Blocks + 2 Warnungen; die
+Eingriffsrate „alle ~2,6 Minuten" bleibt in der Größenordnung. Mechanismus gemessen und seit
+TSK-0075 geschlossen (`warn` als eigene Ereignisart); BUG-0050 `observed` trägt dieselbe
+Korrektur.]*
+
 ## Selbständigkeit (die Zahl nach TSK-0027)
 
 Nutzereingaben je Sitzung (Chat + Auswahlantworten): S1 13 (3+10), S2 21 (5+16), S3 35 (12+23),

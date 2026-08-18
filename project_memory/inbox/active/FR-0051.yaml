@@ -1,0 +1,24 @@
+id: FR-0051
+title: 'Model casting: build on the DEC-0034 T0-T3 ladder -- PM permanently T3 (fable
+  high), office-manager permanently T1-class (opus high)'
+request_text: 'User steering 2026-08-17, REFINING DEC-0034 (the user-drafted T0-T3
+  ladder, VALID since 2026-08-10: T0 Sonnet5-High floor / T1 Opus-High / T2 Opus-XHigh
+  / T3 Fable-High/XHigh; planning+architecture+design start T3, build drops to T0/T1
+  after scope approval + frozen architecture, one rung up per FAIL, reversible, QA
+  never below T1; the dispatcher choosing the rung at spawn is a NOT-YET-BUILT kernel
+  mechanic, wishlist item, post-release per DEC-0033/DEC-0045). The refinement the
+  user states now: (1) the dev/research PM is pinned PERMANENTLY at T3 (fable, effort
+  high) -- not phase-dependent -- ''den PM wuerde ich gern immer auf fable high behalten'',
+  and at PROJECT ENTRY the PM and the most important agents (architecture/design)
+  run fable so the project is set up cleanly (matches DEC-0034 rules 1/4/6); (2) the
+  office-manager stays at opus high permanently (''beim Office Team reicht Opus high'').
+  Shipped today is the static precursor (leads model: lead=opus high, workers sonnet
+  high). TO MEASURE in the round: which source governs the FOREGROUND session model
+  (agent frontmatter vs user model choice) and whether a fable pin binds; the specialists''
+  rung mechanics stay the DEC-0034 wishlist item and are NOT pulled forward by this
+  FR. Any re-tiering is a user-approved restamp -- this FR records that approval for
+  exactly the two manager pins.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-17T18:51:58'
