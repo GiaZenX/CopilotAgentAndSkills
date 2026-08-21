@@ -699,6 +699,13 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   (TSK-0076-Prüfrunde, gemessen rc 2): das `.*` im quotierten Muster wird als relativer Pfad
   gelesen und auf `..` über der Repo-Wurzel aufgelöst — H19-Familie (Vorfahren-Regel), kein Loch;
   Ausweg: Muster ohne `.*`-Präfix formulieren oder die Ausgabe erst in eine Datei leiten.
+- **Zwei Bestandsreste der Office-Wand, an HEAD wie nach TSK-0077 identisch offen** (Prüfer,
+  Runde 2-4, je gemessen rc 0): `A=archive/…; rm "$A"` — der Operand wird von der Shell aus einer
+  Variablen derselben Zeile umgeschrieben, die der Wand-Leser nicht auflöst (dieselbe Klasse wie
+  H47 am Repo-Gate; als MITFAHRER neben einer Freigabe seit TSK-0077 rc 2, allein weiter rc 0);
+  und `mv ARCHIVE/… outbox/…` — `_filing.under` vergleicht das Präfix case-sensitiv, NTFS faltet
+  (die Lösch-Hälfte fängt es per `re.I`, die Move-Hälfte nicht). Beide vorbestehend, kein Werk
+  der Korrektur-Tür; Schließrichtung: die Zeilen-Zuweisungskarte bzw. `normcase` in `under`.
 - **Die Eigenschaftsaussagen der `ENFORCEMENT.md`-Zeilen haben keinen Leser** (TSK-0075, Prüfer):
   ein Draht verlangt, dass jede Warn-Art *vorkommt*, aber nicht, was über sie *behauptet* wird —
   gemessen mit einer frei erfundenen Zeile (falsche Wörter, nicht existierende Konstante, falsche

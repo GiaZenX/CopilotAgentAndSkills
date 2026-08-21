@@ -100,6 +100,14 @@ question inside the run (§1) and becomes no item. Auditor findings split the sa
    tree IS the record of what ended up where (spec II.9 turns `filing_log.yaml` into a REGENERATED scan index
    over that tree, but nothing builds it yet and no gate reads it, so a V2 project simply has no such file).
    Migration MOVES via the approved plan, never deletes; originals are never re-saved/altered.
+   `guard_fs_tripwire` refuses every delete under `inbox/`/`archive/` and every move OUT of `archive/`, and that wall
+   has ONE door: a `filing_correction` approval the USER mints (`request-approval filing_correction --document … [--destination …] --reason …`)
+   lets through exactly the operation it names — that document, that version of its bytes, that destination or that deletion.
+   It covers ONE correction and not the command line around it: run it alone, because anything else on that line — another
+   document, another program, an operand the shell fills in, an output redirect `>` — refuses the whole call, and a line asking
+   for more corrections than the guard may decide about at once (`guard_fs_tripwire.CORRECTION_CAP`) is refused as well.
+   That is about the DOOR, not the wall: what the guard never saw it still never sees, so report a gap rather than assume cover.
+   A mis-filed document is corrected by asking, never by working around the guard.
 6. **No tax advice, no legal advice.** Bookkeeping output is PREPARATION for the user/Steuerberater
    (EÜR-style draft per Zufluss/Abfluss where payment dates exist; open items listed separately);
    compliance output is a RESEARCH REGISTER with sources + review dates. Decisions stay human;

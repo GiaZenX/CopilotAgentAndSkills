@@ -114,7 +114,12 @@ vocabulary of six and put `analysis` among the item-bound ones, which it is not.
 migration has no item, it creates them. `analysis` is not in that set precisely because its subject
 is an analysis question, a read-only scope and a cadence, none of which a migration has. `routine`
 is a standing licence for a RECURRING run, so minting one for a one-off would leave the licence
-behind afterwards. What `approvals.line_manifest_kinds()` returns is about publishing a commit.
+behind afterwards. Every kind `approvals.line_manifest_kinds()` returns is bound to a subject a
+COMMAND LINE can put together, i.e. to a handful of named facts a role types or the project
+resolves; a migration touches every record it finds and has no such subject, so none of them fits
+either -- whichever kinds that function returns today. (This paragraph carried a LIST of them, and
+the list was one entry short for two releases running; asking the function is what keeps the reason
+from having to be re-checked against a set that moves.)
 Rather than bend any of them, the consent this command carries is structural: the dry run changes
 nothing and prints a DIGEST, and the executing run refuses unless it re-derives that same digest.
 What the digest is taken over is stated where it is built (`state_fingerprint`), not here, because

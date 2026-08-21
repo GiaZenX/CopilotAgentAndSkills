@@ -816,7 +816,11 @@ def test_every_target_form_names_a_live_apr_kind(project):
     assertion is the one that has to be edited deliberately, next to a new test like the two above.
     """
     assert set(approvals.TARGET_FORMS) <= set(approvals.APR_KINDS)
-    assert set(approvals.TARGET_FORMS) == {"push", "preset"}, (
+    # `filing_correction` joined the map in TSK-0077 (FR-0050) and brought its measurement with it:
+    # `tools/test_staging_cli.py::test_a_filing_correction_question_says_in_words_what_happens_to_
+    # the_document` is what says the rendered sentence names the document, both outcomes in words,
+    # the reason and the shortened version digest.
+    assert set(approvals.TARGET_FORMS) == {"push", "preset", "filing_correction"}, (
         "a new readable form arrived without a measurement of what it renders")
 
 

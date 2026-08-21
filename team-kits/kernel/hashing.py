@@ -693,3 +693,81 @@ def subject_manifest_hash(manifest) -> str:
         "subject_manifest": manifest,
     }
     return hashlib.sha256(canonical_json(envelope).encode("utf-8")).hexdigest()
+
+
+# HOW MUCH OF A DOCUMENT `document_content_hash` WILL READ, and why there is a bound at all. The
+# hash is computed inside a PreToolUse guard, and a guard the provider KILLS on its deadline is
+# read as "hook error, carry on" -- i.e. as permission, on the one call the guard exists to refuse.
+# So an unbounded read would turn a large file in the archive into a way past the wall rather than
+# into a slow refusal. Measured on this host 2026-08-18, warm cache, 1 MiB chunks: 16 MiB in
+# 0.021 s, 64 MiB in 0.050 s, 256 MiB in 0.217 s.
+# What a document past the bound gets is a REFUSAL, not a pass: no hash means no approval can name
+# it, and every caller here treats "cannot be hashed" as "not covered" (see
+# `tools/test_hooks.py::test_a_document_too_large_to_bind_cannot_be_corrected_by_approval`).
+DOCUMENT_HASH_LIMIT = 256 * 1024 * 1024
+
+
+def on_disk_position(root: str, relative: str):
+    """The project-relative path spelled the way the FILESYSTEM spells it, or None.
+
+    WHY A LEXICAL COMPARISON IS NOT ENOUGH, measured (verifier round 2, R2): on a case-insensitive
+    filesystem `ARCHIVE/1-Finanzen/2026/x.pdf` opens the same file as `archive/…`, resolves to the
+    same absolute path, and normalises back to itself -- so it round-trips, mints a real user
+    approval, and then matches nothing, because the gate reads the position out of a command that
+    spells it the way the archive does. A burned approval is worse than a refusal: the user answered
+    a question for nothing.
+
+    So each segment is looked up in its parent and the entry's REAL name is used. `None` when a
+    segment does not exist or the parent cannot be listed -- the caller's other checks then refuse
+    with their own message. Nothing here compares case itself: the comparison belongs to the caller,
+    and the case-insensitive filesystem is only the reason the two spellings could differ at all.
+    """
+    current = root
+    spelled = []
+    for segment in str(relative or "").split("/"):
+        if not segment:
+            return None
+        try:
+            entries = os.listdir(current)
+        except OSError:
+            return None
+        wanted = os.path.normcase(segment)
+        found = next((entry for entry in entries if os.path.normcase(entry) == wanted), None)
+        if found is None:
+            return None
+        spelled.append(found)
+        current = os.path.join(current, found)
+    return "/".join(spelled)
+
+
+def document_content_hash(path: str, limit: int = DOCUMENT_HASH_LIMIT):
+    """SHA-256 hex of ONE file's bytes, or None when it cannot be bound.
+
+    THE FASSUNG, NOT THE NAME. An approval that named only a path would still apply after the file
+    at that path had been replaced -- and in a business archive "the document at this place" is
+    exactly the thing that changes without the path moving. Hashing the bytes is what makes the
+    user's signature cover the document they were shown.
+
+    IT IS ALSO WHAT MAKES A FILING-CORRECTION APPROVAL SINGLE-USE, in the same derived way a push
+    token is (`approvals.push_subject_manifest`): once the approved move or delete has run, there is
+    no file at the source path any more, this returns None, and the same approval matches nothing.
+    No "used" flag in writable state has to be kept honest for that.
+
+    None -- never an exception and never a partial digest -- for every reason the bytes cannot be
+    read in full: the file is absent, is a directory, is unreadable, or is larger than `limit`.
+    Callers are gates, and for a gate "I could not measure it" and "it is not covered" have to be
+    one answer.
+    """
+    try:
+        if not os.path.isfile(path) or os.path.getsize(path) > limit:
+            return None
+        digest = hashlib.sha256()
+        with open(path, "rb") as handle:
+            while True:
+                chunk = handle.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        return digest.hexdigest()
+    except OSError:
+        return None

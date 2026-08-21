@@ -1,0 +1,65 @@
+id: TSK-0077
+product_requirement: PR-0002
+derives_from: FR-0050
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0050 (user steering, confirmed pre-pilot-4: guard_fs_tripwire hard-blocks deletes
+  under inbox/ and archive/ and any move OUT of archive/ -- correct as the default,
+  but a mis-filed document stays wrong until the user fixes it by hand outside the
+  kit. Wanted: an approval-gated correction path -- the clerk requests a correction
+  (which file, from where to where / delete, why), the USER approves via the existing
+  approval mechanism (APR mint), the gate honours exactly that approved operation
+  ONCE, everything journaled. Default stays fail-closed; the approval is the only
+  door)'
+- 'the existing approval machinery is the pattern, not a new one: request-approval
+  kinds, build_question determinism, gate_approval byte-compare, subject_manifest
+  hashing (DEC-0048 taught the hash-binds-what-you-sign rule -- the correction approval
+  must hash the exact operation: file, source, destination-or-delete), single-use
+  consumption like the mint_code; read approvals.py and gate_filing/guard_fs_tripwire
+  BEFORE designing'
+- 'kit line: approval before action; the office kit is the primary owner (records-clerk
+  role text carries the request half) but the mechanism should live where the tripwire
+  lives so all three kits inherit consistently -- decide derived, not per-kit copies
+  without reason'
+expected_outputs:
+- 'STEP 1 MEASURE + DESIGN: todays refusal paths (real hook processes: delete under
+  archive, move out of archive -> rc 2); design the correction flow on the existing
+  approval machinery -- a new APR kind (e.g. filing_correction) whose hashed subject
+  names the exact operation; the gate honours a live approval for exactly that operation
+  exactly once; journal entry written by the kernel path that executes or observes
+  it'
+- 'STEP 2 BUILD: request side (clerk/manager can request with file+from+to/delete+reason),
+  question rendered in plain words for the BUG-0041 audience (what moves where / what
+  is deleted, why); gate side (guard_fs_tripwire honours exactly the approved operation
+  once, everything else stays rc 2); single-use (a second identical operation needs
+  a new approval); office records-clerk role text carries the request half honestly'
+- 'STEP 3 TESTS red-without-fix in an outside scaffold: (a) refused today, approved
+  operation passes ONCE, second attempt rc 2; (b) a DIFFERENT operation under the
+  same approval rc 2 (hash binds the operation); (c) revoked/expired approval rc 2;
+  (d) the default paths all still rc 2 with no approval present -- real hook processes,
+  no string-search'
+- 'STEP 4 SHIP: bump_kit_version, mirrors byte-identical unless KIT_SPECIFIC_HOOKS
+  names the reason, ruff, validate, ONE full pytest tools/ green with numbers, test_gates
+  (kit hooks change), pins/sizes if constitution text moves; report docs/reviews/2026-08-18-tsk0077-measurements.md
+  with file:line, red evidence, residues named'
+dependencies:
+- FR-0050
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-18T08:22:53'
+closed_at: '2026-08-21T07:30:07'

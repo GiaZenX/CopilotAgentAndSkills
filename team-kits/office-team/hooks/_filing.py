@@ -74,6 +74,14 @@ REDIRECT_OP_RX = re.compile(r"^(?:[0-9]*|&)>>?\|?$")
 # A token that is ALL shell metacharacters — a separator or an operator, never a filename. Used to
 # keep a `tee` operand reader from mistaking an input redirect `<` for a file `tee` writes.
 _METACHAR_RX = re.compile(r"^[<>|&;]+$")
+# ONE WHOLE REDIRECT — the operator AND the file it names — so `_tokens` can cut it out of the
+# argument list instead of ending the list at it (see `_tokens` for what ending it cost). The
+# operator side is `REDIRECT_OP_RX`'s shape with an input `<` added, because for THIS purpose the
+# direction does not matter: either way the word after it belongs to the shell and not to the
+# command. The target is read with `TOKEN_RX`'s alternation so a quoted name with spaces goes with
+# its operator rather than leaving half of itself behind as a word.
+REDIRECT_SPAN_RX = re.compile(r"(?:[0-9]*|&)>>?\|?\s*(?:\"[^\"]*\"|'[^']*'|[^\s<>|&;]+)?"
+                              r"|<\s*(?:\"[^\"]*\"|'[^']*'|[^\s<>|&;]+)?")
 # Copy/move commands, grouped by WHERE their calling convention puts the destination. `robocopy`
 # and `xcopy` take two directories and the destination is the SECOND token; the POSIX/PowerShell
 # family takes N sources and one destination, so it is the LAST. `install` is a copy that does not
@@ -258,8 +266,20 @@ def named_destination(tokens, gnu_target_dir=False):
 def _tokens(invocation):
     """The invocation's words, with the shell's QUOTING resolved (`_compat.shell_words`).
 
-    A redirect ends the argument list; leaving it in would make `>` or the log file the "last
-    token" and hide the real destination.
+    A REDIRECT IS CUT OUT OF THE ARGUMENT LIST, not treated as the end of it, and that difference
+    is verifier round 3's V2. Leaving the redirect in would make `>` or the log file the "last
+    token" and hide the real destination — but ENDING the list at the first `<`/`>` throws away
+    every word AFTER it, and a shell does no such thing: `> log.txt mv a b` runs `mv a b` with its
+    output redirected. Truncating there made a LEADING redirect hide the whole command from every
+    reader in this module — the wall stopped seeing `> log.txt rm archive/…/y.pdf` as a delete and
+    `> inbox/b.pdf mv archive/…/x.pdf outbox/` as a move out (measured rc 0 where the same commands
+    without the leading redirect are rc 2), and `gate_filing` stopped seeing the filing in
+    `> log.txt mv inbox/a.pdf archive/…`. Removing the operator together with its target leaves
+    exactly the words the command is given.
+
+    A file descriptor in front (`2>`), the both-streams `&>`, the noclobber `>|` and an input `<`
+    are all the same construct and are cut the same way; `2>&1` leaves its `&1` behind as an
+    ordinary word, which resolves to a position no tray matches and no rule reads.
 
     THE MARKS HAVE TO BE GONE BEFORE ANY PATH COMPARISON, and this reader had the same gap the
     shell gate had — measured 2026-08-04 against the running `gate_filing` with a plan that covers
@@ -279,7 +299,7 @@ def _tokens(invocation):
     whether a source and a destination are on opposite sides of `archive/`, which is a RELATION and
     not a lookup. `_compat.shell_readings` carries the second reading for whoever closes it.
     """
-    return _compat.shell_words(re.split(r"[<>]", invocation)[0], TOKEN_RX.findall)
+    return _compat.shell_words(REDIRECT_SPAN_RX.sub(" ", invocation), TOKEN_RX.findall)
 
 
 def _operands(tokens):
@@ -401,6 +421,79 @@ def moves(command, bases):
         if move is not None:
             found.append(move)
     return found
+
+
+# ---------------------------------------------------------------- the line, invocation by invocation
+def invocations(command, bases):
+    """[(text, tokens, bases in effect)] — the command line as the shell will run it, in order.
+
+    THE WHOLE LINE AND NOT ONLY ITS INTERESTING PARTS, which is what `moves` and `named_by` return:
+    they answer "what does this line do that I recognise", and a caller that has to know whether
+    there is anything ELSE on the line cannot get that from an answer which drops it. That caller is
+    `guard_fs_tripwire`'s correction door: a user approval names ONE correction, and a line that
+    also carries an invocation nobody placed would have had that approval cover it too (verifier
+    finding F1 — a `python -c "os.remove(...)"` or a `tar --remove-files` riding along behind an
+    approved move, measured rc 0 where the wall alone answered rc 2).
+
+    Public because it is the same walk both readers already share, offered whole rather than
+    filtered; the filtering stays with whoever knows which verbs matter to it.
+    """
+    return list(_walk(command, bases))
+
+
+def move_of(tokens, bases):
+    """The relocation/copy THIS invocation performs, or None — `moves` for one invocation."""
+    return _move(tokens, bases)
+
+
+def redirects_of(invocation):
+    """The files an output redirect in THIS ONE invocation writes to — `redirect_targets` per
+    invocation, so a caller that walks the line itself keeps the bases each target belongs to.
+
+    A REDIRECT IS NOT AN OPERAND and that is exactly why it needs its own reader: `>` is shell
+    syntax, so `_tokens` cuts it off the argument list and no reader of operands can see it. The
+    ledger guard has read this surface since BUG-0003; the correction door had not, and a `> inbox/
+    b.pdf` riding behind an approved move truncated a document of record with the whole line at
+    rc 0 (verifier round 2, R1)."""
+    return _redirect_targets_in(invocation)
+
+
+def operands_of(tokens, verbs):
+    """The path-shaped operands of this invocation when its command word is one of `verbs`, else
+    None. `named_by` for one invocation, with the same two steps and the same ownership of the verb
+    list: which commands matter is the caller's rule, the reading is this module's."""
+    arguments = _arguments(tokens, verbs)
+    return None if arguments is None else _operands(arguments)
+
+
+def directory_change(tokens):
+    """(does this invocation move the working directory, could this reader compute where to).
+
+    `_bases_after` already answers the first half and swallows the second: a `cd` it cannot follow
+    and a `popd` both come back as "the bases we started with", which is indistinguishable from a
+    change this reader really did compute. That is the right answer for POSITIONS — the readers then
+    consider every base a token could be meant against — and the wrong one for a caller asking
+    whether the line holds anything it could not place, because there the difference is the whole
+    question.
+    """
+    arguments = _arguments(tokens, CHDIR)
+    if arguments is None:
+        return False, False
+    argument = next((token for token in arguments if not str(token).startswith("-")), None)
+    return True, bool(argument) and not EXPANSION_RX.search(str(argument))
+
+
+def rewritten_by_the_shell(token):
+    """Is this token's TEXT not the path the command will be handed?
+
+    A variable, a glob, a `~`, a `%VAR%`, a delayed `!VAR!` — `EXPANSION_RX`, the same definition
+    `_bases_after` uses to decide it no longer knows where the shell stands. Offered on its own
+    because a caller that must not GUESS at a position needs to tell "this resolves to a place
+    outside my concern" from "the text I resolved is not the text the shell will use". Reading the
+    second as the first is verifier finding F2: `rm inbox/a.pdf ~/archive/secret.pdf` placed only
+    the first operand, and the approval for THAT one let the line through.
+    """
+    return bool(EXPANSION_RX.search(str(token or "")))
 
 
 def _redirect_targets_in(invocation):

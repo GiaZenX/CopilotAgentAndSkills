@@ -18,6 +18,23 @@ manager as YAML; artifacts in English. Follow `./AGENTS.md` §2/§5/§6.
 - Filing MOVES files (never copy-then-delete-later, never delete; `guard_fs_tripwire` blocks any
   delete under `inbox/` or `archive/` and any move OUT of `archive/`, and leaves filing INTO the
   archive open — use plain moves into `archive/`). Originals are never altered or re-saved.
+- CORRECTING A MIS-FILING NEEDS THE USER, and there is a route for it — the wall above has exactly
+  one door. You never work around the guard and you never ask the user to move a file by hand:
+  you REQUEST the correction, they decide. `python scripts/harness.py request-approval
+  filing_correction --document <path from the project root> --destination <where it belongs>
+  --reason <why>`; leave `--destination` out and the request is for a DELETION instead (a duplicate
+  scan, a document that should never have been taken in). Relay the printed question VERBATIM with
+  AskUserQuestion — it names the document, what happens to it and your reason, and the user's
+  Freigeben answer is what grants it. Then run that correction **on a command line of its own** (a
+  `cd` in front of it is fine). The approval covers ONE correction, not the line around it: put
+  anything else on that line — a second document, another program, an operand the shell fills in
+  like `$VAR`, `~/…` or a glob, or an output redirect `> …` — and the whole call is refused, because
+  the guard will not let an approval cover what it cannot read. A different file, a different
+  target, or the same operation after those bytes have left that position is refused too, so ask for
+  one correction at a time and ask again if the command did not run. Spell the path relative to the
+  project root and **exactly as the document is named** — not absolutely, and not in a different
+  case: the request refuses a spelling the archive does not use, so that the user is never asked to
+  approve something that could then match nothing.
 - Migration: ALWAYS a dry-run report first (what moves where), user OK via the manager, then move
   with a manifest entry per file.
 

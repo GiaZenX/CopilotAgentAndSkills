@@ -1,4 +1,4 @@
-generated_at: '2026-08-18T08:22:13'
+generated_at: '2026-08-21T07:30:38'
 items:
 - id: BUG-0001
   type: BUG
@@ -970,6 +970,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0049
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1255,13 +1261,6 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
-- id: FR-0050
-  type: FR
-  title: 'Office archive: delete and move-out become possible AFTER an explicit user
-    approval (correction path) instead of hard-blocked forever'
-  status: OPEN
-  revision: 1
-  approval_ref: null
 - id: FR-0051
   type: FR
   title: 'Model casting: build on the DEC-0034 T0-T3 ladder -- PM permanently T3 (fable
@@ -1273,6 +1272,20 @@ items:
   type: FR
   title: Kit PMs answer target-state questions from the DECISIONS first, not from
     built files -- the same discipline the harness lead just adopted
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0053
+  type: FR
+  title: 'Board v2: card detail popup, real tabs instead of one endless page, and
+    two hierarchical backlog views (product and system) -- pre-pilot-4'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0054
+  type: FR
+  title: 'Kernel contract: optional BUG->SR link (related_sr) so software bugs can
+    hang under the system requirement they hit -- post-release'
   status: OPEN
   revision: 1
   approval_ref: null

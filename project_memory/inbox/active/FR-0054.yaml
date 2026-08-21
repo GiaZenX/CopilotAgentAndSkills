@@ -1,0 +1,18 @@
+id: FR-0054
+title: 'Kernel contract: optional BUG->SR link (related_sr) so software bugs can hang
+  under the system requirement they hit -- post-release'
+request_text: 'User question 2026-08-18 during the board-v2 design (''manche Bugs
+  sind ja Softwarebugs und keine Userbugs''): today BUG carries only the mandatory
+  related_pr; no BUG->SR field exists, so the system backlog can only group bugs under
+  their product root. Wanted post-release: an OPTIONAL related_sr field in the BUG
+  contract (backlog_types REQUIRED/OPTIONAL_FIELDS, capture/update validation, index
+  row, board grouping falls back to related_pr when absent); existing items stay valid
+  (field optional, no migration forced). Deliberately split from the board-v2 round
+  (FR-0053) so the pre-pilot view ships without a kernel schema change; decided with
+  the user via AskUserQuestion (option ''Jetzt unter PR, spaeter SR-Link''). Note
+  the existing L9 residue while in there: related_pr/target_pr check existence, not
+  root membership -- the new field should not repeat that gap.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-18T09:16:26'

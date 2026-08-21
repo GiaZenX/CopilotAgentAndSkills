@@ -13,7 +13,16 @@ request_text: 'User steering 2026-08-17 (in-session): guard_fs_tripwire hard-blo
   machinery as preset changes). PLACEMENT (user decision 2026-08-17, AskUserQuestion):
   built BEFORE pilot 4, together with FR-0049 -- extends the DEC-0045 pre-pilot path;
   this FR records that insertion.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-17T18:38:38'
+triage_result: 'wanted and DELIVERED by TSK-0077 (pre-pilot-4 per user decision):
+  the archive wall keeps its fail-closed default and gains exactly one approval-shaped
+  door -- APR kind filing_correction on the existing machinery, hashed to the exact
+  operation incl. file-content SHA (single-use derived, no writable flag), plain-words
+  question, honoured only for a line the guard fully placed (riders of every measured
+  kind refuse, incl. output redirects after the root fix in _filing._tokens that also
+  closed a pre-existing wall hole). Four verifier rounds FAIL/FAIL/FAIL/PASS; report
+  docs/reviews/2026-08-18-tsk0077-measurements.md; close-out staging/TSK-0077/close-out.md.'
+closed_at: '2026-08-21T07:30:06'

@@ -1,0 +1,25 @@
+id: FR-0053
+title: 'Board v2: card detail popup, real tabs instead of one endless page, and two
+  hierarchical backlog views (product and system) -- pre-pilot-4'
+request_text: 'User steering 2026-08-18 with Azure-DevOps screenshots, confirmed via
+  AskUserQuestion; extends the delivered FR-0030 interim board (kernel/board.py) and
+  the wishlist section Board-Ansichten (the recorded two-view want FR-0024 points
+  to). (1) CARD DETAIL AS POPUP: clicking a card opens a modal with the full item
+  cleanly laid out -- title, id, status, description/body fields, linked items (related_pr/derives_from/dependencies
+  as clickable references), dates -- like a DevOps work-item view; no inline <details>
+  fold as the primary surface. (2) REAL TABS: Board / Produkt-Backlog / System-Backlog
+  (+ archive counts); ONLY the active view is displayed (hidden DOM, not anchor-scrolling)
+  -- the page stays one self-contained file, no server. (3) HIERARCHICAL BACKLOG VIEWS
+  from REAL links only (the board never invents a link): Produkt-Backlog = PR as root,
+  FR/CR beneath in customer language, NO tasks; System-Backlog = per PR its SRs, TSKs
+  beneath their SR/BUG (derives_from), BUGs as their own group under their PR (related_pr
+  -- the only link every BUG carries today; the BUG->SR refinement is a separate post-release
+  FR). Same page shipped by all three kits AND rendered for this repo (kernel-side,
+  as FR-0030 established). PLACEMENT (user): before pilot 4, as its own round after
+  FR-0050/FR-0049. Read-only stays absolute: the page renders state, never writes
+  it; popup and tabs are client-side only (CSP-clean inline, no external resources
+  -- same constraints TSK-0071 measured).'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-18T09:16:21'

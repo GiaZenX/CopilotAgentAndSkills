@@ -44,9 +44,11 @@ from __future__ import annotations
 
 import inspect
 import os
+import posixpath
 import re
 import sys
 import time
+import unicodedata
 import uuid
 
 from .backlog_types import AUTOMATA, HASHED_FIELDS, parse_id
@@ -54,7 +56,7 @@ from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
-             "kit_update")
+             "kit_update", "filing_correction")
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
@@ -67,7 +69,13 @@ APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "
 # layer -- hooks, kernel, settings and constitution -- with another release
 # (FR-0006), and an unused one lingering past the conversation is a standing
 # permission to do that.
-EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update"))
+# `filing_correction` for the same reason once more, and against the one wall a business archive
+# has: it is the single door through which a document of record may leave its place or cease to
+# exist at all (FR-0050). It is already bound to the document's own bytes, so the clock only bounds
+# how long an UNUSED one lingers -- and an unused permission to delete an archived document that
+# outlives the conversation it was given in is exactly the standing permission this kit refuses.
+EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update",
+                            "filing_correction"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
 # approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
 # analysis/routine deliberately excluded and NOT because they authorise nothing:
@@ -293,8 +301,179 @@ def kit_update_subject_manifest(kit, from_version, from_content, to_version, to_
     }
 
 
+def filed_position(value) -> str:
+    """One repo-relative path, spelled the ONE way this approval's two ends spell it.
+
+    Both ends have to produce the same string or the approval matches nothing: the REQUEST side
+    gets it from a role typing a path on a command line, the GATE side from `_filing.position`
+    resolving an operand against the working directory a shell command left behind. Windows
+    separators, a leading `./`, a `..` segment and a trailing slash are all spellings of one
+    position, and normalising them in one function is what keeps the two sides from disagreeing
+    about it. The empty string stays empty -- see `filing_correction_operation`, where it is the
+    absence of a destination and therefore the whole difference between a move and a deletion.
+
+    WHAT IT NO LONGER DOES IS MAKE AN ABSOLUTE PATH LOOK RELATIVE. It used to `strip("/")`, so
+    `/etc/passwd` came back as `etc/passwd` -- a position that reads like one inside the project and
+    is not, which is how an approval could be minted for a spelling the gate can never produce
+    (verifier finding F5). Only a TRAILING separator is dropped now, and `is_project_position` is
+    what decides whether the result is a place this project has at all.
+    """
+    raw = str(value or "").replace("\\", "/").strip()
+    if not raw:
+        return ""
+    normalised = posixpath.normpath(raw)
+    return "" if normalised == "." else (normalised.rstrip("/") or normalised)
+
+
+def is_project_position(value) -> bool:
+    """Is this a place INSIDE the project that a question can honestly show?
+
+    Three properties, and each is one measured way an approval became unusable or unreadable:
+      * it names something -- an empty position is the absence of a destination, never a place;
+      * it stays inside the project: no drive letter, no leading separator, no `..` climb. The gate
+        only ever produces repo-relative positions (`_filing.position` refuses everything else), so
+        an approval for any other spelling is one nothing can ever match -- minted, and then the
+        real spelling refused (F5);
+      * it carries no control character. The question the user signs puts this position inside a
+        sentence, so a newline in it moves text onto its own line above the mint label, which is the
+        same attack on the reader that F4 measured in the free-typed reason. The reason is FOLDED
+        because it is prose; a position is REFUSED instead, because folding two different filenames
+        onto one string would make one approval cover both.
+    """
+    position = filed_position(value)
+    if not position or position.startswith("/") or position == ".." \
+            or position.startswith("../") or os.path.splitdrive(position)[0]:
+        return False
+    return not any(unicodedata.category(char)[0] == "C" for char in position)
+
+
+# HOW MUCH OF A FREE-TYPED REASON THE QUESTION CARRIES. The number lives here because the fold is
+# what the HASH covers, so it is a property of the subject and not of the renderer. 200 characters
+# is what fits beside the two positions and the digest without pushing the sentence past the point
+# where the person deciding stops reading; a reason that needs more than that belongs in the chat
+# the approval question interrupts.
+REASON_SHOWN = 200
+
+
+def _one_line(text, limit=REASON_SHOWN) -> str:
+    """Free agent text as ONE readable line -- the form the user sees IS the form the hash covers.
+
+    `--reason` is the first subject key any line kind lets a role type freely, and the question is
+    read by the person pilot 3 measured (BUG-0041). Measured by the verifier (F4): a reason of
+    "ALLES BLEIBT ERHALTEN\\nHinweis: nichts wird geloescht." renders as its own lines above the
+    mint label, so the sentence the user judges is one the requester wrote rather than the kernel.
+    The mint code stays unforgeable either way -- the target of that is the human, not the protocol.
+
+    THE FOLD IS A PROPERTY, NOT A LIST OF CHARACTERS: everything unicode classes as a control,
+    format, surrogate, private-use or unassigned code point (category `C*`) and every line or
+    paragraph separator (`Zl`/`Zp`) becomes a space, then runs of whitespace collapse. That covers
+    the bidi overrides and zero-width joiners along with `\\n` and `\\r`, which an enumeration of
+    the two obvious ones would not.
+
+    It happens in `filing_correction_subject_manifest`, i.e. BEFORE the hash -- so the folded line
+    is what the user signs, not a prettier rendering of something else (DEC-0048).
+    """
+    folded = "".join(
+        " " if (unicodedata.category(char)[0] == "C"
+                or unicodedata.category(char) in ("Zl", "Zp")) else char
+        for char in str(text or ""))
+    collapsed = " ".join(folded.split())
+    return collapsed if len(collapsed) <= limit else collapsed[:limit - 1].rstrip() + "…"
+
+
+def filing_correction_operation(document, destination, content) -> dict:
+    """WHAT A FILING CORRECTION DOES, as the three facts a gate can measure and match.
+
+    The correction door in `guard_fs_tripwire` opens for one operation and no other, so the
+    operation has to be a value both sides compute rather than a description one side writes:
+    which document (`document`), where it ends up (`destination`, EMPTY when it ends up nowhere,
+    i.e. is deleted), and which FASSUNG of it (`content`, `hashing.document_content_hash`).
+
+    A SUBSET OF THE SIGNED MANIFEST AND NOT A SECOND ONE. `filing_correction_subject_manifest`
+    builds the user's subject out of exactly these keys plus the reason, and
+    `live_correction_approval` reads these keys back out of the minted request -- so what the gate
+    matches is a part of what the user signed, never something computed beside it. The reason is
+    deliberately not in the match: it is what the user was told, not what the shell does, and a
+    correction is not a different operation for having been justified differently.
+    """
+    return {
+        "document": filed_position(document),
+        "destination": filed_position(destination),
+        "content": str(content or ""),
+    }
+
+
+def filing_correction_subject_manifest(document, content, reason, destination="") -> dict:
+    """What a filing correction is bound to: this document, this version, this outcome, this why.
+
+    THE DEFAULT IS THE WALL AND THIS IS ITS ONLY DOOR (FR-0050). `guard_fs_tripwire` blocks every
+    delete under `inbox/` or `archive/` and every move that takes a document OUT of `archive/`,
+    which is right until a document is filed in the wrong place -- and then it was wrong for good,
+    because nothing inside the kit could correct it. What the user approves here is one correction:
+    one document, in the version they were shown, to one place or to none.
+
+    `destination` CARRIES THE DIFFERENCE BETWEEN THE TWO CORRECTIONS, and carries it as an absence
+    rather than as a word: a document either ends up somewhere, and the manifest says where, or it
+    ends up nowhere. That is why it is the parameter with a default -- `cli._line_manifest` reads
+    the builder's own signature to decide which subject keys a command line may leave out, so
+    omitting `--destination` is what asks for a deletion, and the question `_filing_correction_
+    target_form` renders says so in words nobody can misread.
+
+    WHAT IT COVERS, stated as the derivation and not as an outcome: THESE BYTES AT THIS POSITION,
+    WHILE THEY LIE THERE. `content` binds the document's bytes, so the approval applies exactly as
+    long as a file with those bytes is at `document` -- which is what makes the approved correction
+    stop being covered the moment it has run (nothing is left to hash), and equally what makes it
+    cover a file restored to that position with byte-identical content. Both halves are the same
+    sentence, and the earlier wording ("single-use") said only the first
+    (`tools/test_hooks.py::test_a_correction_approval_stops_matching_once_the_document_is_gone`,
+    `…::test_a_correction_approval_covers_the_bytes_again_when_they_are_put_back`). The question the
+    user signs says this in words -- "gilt nur für genau diese Fassung" -- and does not promise a
+    one-shot. A "used" marker would have been one more piece of writable state deciding an
+    enforcement question, which is the mistake the office ledger gate spent four rounds unlearning.
+
+    TWO REFUSALS BEFORE ANYTHING IS SIGNED, because a subject that cannot be shown honestly must not
+    reach a user: a position that is not a place inside this project (`is_project_position` -- an
+    absolute or climbing path would mint an approval the gate can never match, F5), and a
+    destination that was GIVEN and names no position at all (`.`, `/`, whitespace -- it would
+    silently become a DELETION request in the question, F7). Leaving `--destination` out entirely
+    stays the way to ask for a deletion; the empty string is the one spelling of that absence, and
+    it is accepted as the absence it is.
+    """
+    document_position = filed_position(document)
+    if not is_project_position(document_position):
+        raise ApprovalError(
+            "a filing correction names a document INSIDE this project, and %r is not one (an "
+            "absolute path, a climb out of the project, or a name carrying control characters). "
+            "The gate only ever produces project-relative positions, so an approval for this "
+            "spelling could never match anything. Remedy: name the document with its path relative "
+            "to the project root." % str(document or ""),
+            user_text="Es wurde keine Freigabe erteilt: der genannte Ablageort liegt nicht in "
+                      "diesem Projekt, deshalb könnte die Freigabe nie greifen. " + NEXT_START_OVER)
+    destination_position = filed_position(destination)
+    if destination and not destination_position:
+        raise ApprovalError(
+            "the destination %r names no position. Leaving the destination out is how a DELETION is "
+            "requested, and this value would have become one silently -- refused, because the user "
+            "would have been asked to sign a deletion nobody meant to request. Remedy: name where "
+            "the document should land, or leave the destination out to request the deletion "
+            "deliberately." % str(destination),
+            user_text="Es wurde keine Freigabe erteilt: das genannte Ziel ist kein Ablageort. "
+                      + NEXT_START_OVER)
+    if destination_position and not is_project_position(destination_position):
+        raise ApprovalError(
+            "a filing correction moves a document to a place INSIDE this project, and %r is not one. "
+            "Remedy: name the destination with its path relative to the project root."
+            % str(destination),
+            user_text="Es wurde keine Freigabe erteilt: das genannte Ziel liegt nicht in diesem "
+                      "Projekt. " + NEXT_START_OVER)
+    manifest = filing_correction_operation(document, destination, content)
+    manifest["reason"] = _one_line(reason)
+    return manifest
+
+
 LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest,
-                          "kit_update": kit_update_subject_manifest}
+                          "kit_update": kit_update_subject_manifest,
+                          "filing_correction": filing_correction_subject_manifest}
 
 # How long an approval minted from a command-line manifest stays valid. Every kind in this map is
 # in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
@@ -798,13 +977,49 @@ def _preset_target_form(manifest: dict) -> str:
                ", ".join(str(role) for role in (manifest.get("removes") or [])) or "keine"))
 
 
+def _filing_correction_target_form(manifest: dict) -> str:
+    """A filing correction as the person deciding it reads it: what happens to which document.
+
+    THE AUDIENCE IS BUG-0041's, and this is the question with the sharpest consequence any of these
+    forms carries -- the other side of it is a business document that is gone. So the two outcomes
+    are named as what they DO ("wird verschoben nach", "wird gelöscht und ist danach weg") and
+    never as the manifest key that distinguishes them (`destination`, empty or not), which would
+    ask a non-technical user to notice an absence.
+
+    EVERY HASHED KEY IS RENDERED, which is more than `_push_target_form` and `_preset_target_form`
+    manage and is the point of the form existing here at all: the document, the outcome, the reason
+    the user was given, the FASSUNG the approval binds (shortened by `_render_manifest_value` like
+    every other digest in this question), and the expiry the kernel put into the manifest itself.
+    So there is no sentence in this question the hash does not cover, and no key in the hash the
+    question does not show -- DEC-0048's rule, taken in its constructive direction.
+
+    The bracket states what the approval is worth and no more: it covers this version of this
+    document, and only until its clock runs out. It does NOT promise the command can be run only
+    once -- a command that FAILS leaves the document where it was, and there the approval still
+    stands. Everything after the outcome is inside ONE bracket because `build_question` puts this
+    text into the middle of two sentences of its own; a form built out of full stops read as
+    fragments in both of them.
+    """
+    document = manifest.get("document") or "?"
+    destination = manifest.get("destination") or ""
+    reason = manifest.get("reason") or "kein Grund angegeben"
+    outcome = ("wird verschoben nach »%s«" % destination if destination
+               else "wird GELÖSCHT und ist danach weg")
+    return ("eine Korrektur der Ablage: das Dokument »%s« %s (Grund: %s; die Freigabe gilt nur für "
+            "genau diese Fassung des Dokuments, Prüfsumme %s, und nur bis %s)"
+            % (document, outcome, reason,
+               _render_manifest_value("content", manifest.get("content")),
+               _render_manifest_value(EXPIRY_FIELD, manifest.get(EXPIRY_FIELD))))
+
+
 # WHICH KINDS GET A FORM BUILT FOR READING, keyed by kind because that is what such a form belongs
 # to: each of these manifests is a different subject, and the readable shape of one says nothing
 # about another. The generic branch in `build_question` renders the manifest's own keys and stays
 # the honest default for every kind with no entry here -- so an entry may only ever shorten the
 # distance between what the hash covers and what the user reads, never add to it.
 # `test_every_target_form_names_a_live_apr_kind` keeps an entry from outliving its kind.
-TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form}
+TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form,
+                "filing_correction": _filing_correction_target_form}
 
 
 def build_question(request: dict) -> dict:
@@ -988,23 +1203,22 @@ def _approval_of_request(state: ProjectState, request_id: str):
     return None
 
 
-def live_line_approval(state: ProjectState, kind: str, manifest: dict):
-    """A minted, unrevoked, unexpired approval of `kind` whose REQUEST carries exactly `manifest`.
+def _in_force_approvals(state: ProjectState, kind: str):
+    """(approval, its minted request) for every approval of `kind` that grants anything RIGHT NOW.
 
-    The one definition of "this line-manifest approval is in force", because there were two: the
-    push gate carried this scan and `set-preset` would have been the second copy of it, down to the
-    detail that decides whether a lapsed permission still works -- reading the expiry off the
-    HASH-COVERED side (`proven_expiry`) rather than off the APR file. `gate_push_token` now asks
-    this function.
+    THE ONE DEFINITION OF "IN FORCE" FOR A LINE KIND, because two readers ask it with different
+    follow-up questions: `live_line_approval` wants the one whose manifest matches EXACTLY, and
+    `live_correction_approval` the one whose OPERATION keys match while the reason beside them is
+    the user's business, not the shell's. Splitting the loop was how `gate_push_token` and
+    `set-preset` nearly ended up with two answers about whether a lapsed permission still works;
+    what differs between the two callers is the match, and only the match.
 
-    The APR file carries only the hash; coverage is read from the consumed REQUEST, which is where
-    the manifest lives and which `revoke` MOVES out of the way (`consumed_request`). So a
-    hand-written APR proves nothing, and a revoked one stops matching even though its file still
-    exists. The expiry is dropped from the STORED manifest before hashing because
-    `create_pending_request` puts it there and no caller can know the minute it was minted;
-    everything else must match key for key.
+    Three ways an approval that EXISTS grants nothing here, in the order they are cheap to check:
+    it was revoked; its provenance cannot be proven, because the APR file carries only the hash and
+    the manifest lives in the consumed REQUEST that `revoke` MOVES out of the way
+    (`consumed_request`); its clock -- read off the HASH-COVERED side (`proven_expiry`), never off
+    the APR file -- has run out.
     """
-    wanted_hash = subject_manifest_hash(dict(manifest))
     for apr in _stored_approvals(state):
         if apr.get("kind") != kind or apr.get("revoked"):
             continue
@@ -1013,14 +1227,87 @@ def live_line_approval(state: ProjectState, kind: str, manifest: dict):
             expires = proven_expiry(request)
         except ApprovalError:
             continue        # unprovable provenance or an unreadable expiry grants nothing
-        stored = dict(request.get("subject_manifest") or {})
-        stored.pop(EXPIRY_FIELD, None)
-        if subject_manifest_hash(stored) != wanted_hash:
-            continue
         if expires is not None and expires <= time.time():
             continue
-        return apr
+        yield apr, request
+
+
+def live_line_approval(state: ProjectState, kind: str, manifest: dict):
+    """A minted, unrevoked, unexpired approval of `kind` whose REQUEST carries exactly `manifest`.
+
+    The expiry is dropped from the STORED manifest before hashing because `create_pending_request`
+    puts it there and no caller can know the minute it was minted; everything else must match key
+    for key. Everything about whether the approval is in force at all is `_in_force_approvals`.
+    """
+    wanted_hash = subject_manifest_hash(dict(manifest))
+    for apr, request in _in_force_approvals(state, kind):
+        stored = dict(request.get("subject_manifest") or {})
+        stored.pop(EXPIRY_FIELD, None)
+        if subject_manifest_hash(stored) == wanted_hash:
+            return apr
     return None
+
+
+FILING_CORRECTION_KIND = "filing_correction"
+
+
+def correction_operation_key(document, destination, content) -> str:
+    """The lookup value of ONE correction operation -- computed identically on both sides.
+
+    THE COMPARISON GOES THROUGH `subject_manifest_hash` AND NOT THROUGH `==`, and that is not a
+    formality: a document called `Müller GmbH.pdf` reaches the request as the path a role typed and
+    the gate as the path a filesystem handed back, and unicode gives that name two byte spellings.
+    `canonical_json` NFC-normalises before hashing, so one filename is one operation -- which a
+    byte-wise dict comparison would not deliver
+    (`tools/test_hooks.py::test_a_correction_of_an_umlaut_document_is_one_operation_in_both_
+    normalisations`).
+
+    ONE function for both ends, and that is the point of it existing beside the builder: the stored
+    manifest is keyed through it and so is the gate's question, so the two cannot come to normalise
+    a position differently. `filed_position` is idempotent, so passing already-normalised values
+    through it again changes nothing.
+    """
+    return subject_manifest_hash(filing_correction_operation(document, destination, content))
+
+
+def live_correction_approvals(state: ProjectState) -> dict:
+    """{operation key: approval} for every filing correction in force RIGHT NOW -- one store read.
+
+    THE SHAPE IS A MAP BECAUSE THE CALLER ASKS ABOUT MANY OPERATIONS, and asking per operation was
+    a denial of service with a docstring over it (verifier finding F3). `_in_force_approvals` walks
+    the whole approval store and resolves each record back to its consumed request; called once per
+    operand of a command line, that is a full store scan per operand. Measured by the verifier:
+    300 operands against 204 approvals took 69.8 s, and an 8000-document `rm` took 114 s -- past the
+    60 s at which a provider kills a PreToolUse hook, and a killed hook is read as "carry on", i.e.
+    as a PASS on the very call the wall exists to refuse. One scan, then a dictionary lookup per
+    operation, makes the store size a constant instead of a factor.
+
+    The match itself is unchanged and is still a SUBSET of what the user signed: the operation keys
+    only. The reason sits beside them in the manifest and is deliberately not matched -- it is what
+    the user was told, not what the shell does, and a correction is not a different operation for
+    having been justified differently. The expiry, the revocation and the provenance are what
+    `_in_force_approvals` already decides.
+
+    First writer wins on a duplicate key: two live approvals for the identical operation authorise
+    the identical thing, so which of them is reported changes nothing but the id in the journal.
+    """
+    found = {}
+    for apr, request in _in_force_approvals(state, FILING_CORRECTION_KIND):
+        stored = request.get("subject_manifest") or {}
+        found.setdefault(correction_operation_key(stored.get("document"),
+                                                  stored.get("destination"),
+                                                  stored.get("content")), apr)
+    return found
+
+
+def live_correction_approval(state: ProjectState, operation: dict):
+    """The in-force approval for exactly this filing correction, or None.
+
+    `operation` is what `filing_correction_operation` builds. Kept beside the map above for the
+    single-operation caller (and for the tests): one question, one answer, and no second statement
+    of what the match is -- it is the map's own key.
+    """
+    return live_correction_approvals(state).get(correction_operation_key(**operation))
 
 
 def _gone_request_user_text(state: ProjectState, request_id: str) -> str:

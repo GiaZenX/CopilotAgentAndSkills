@@ -49,7 +49,8 @@ import subprocess
 import sys
 import time
 
-from . import approvals, board, checkpoints, dispatch, kitupdate, migrate, presets, report, staging
+from . import (approvals, board, checkpoints, dispatch, hashing, kitupdate, migrate, presets,
+               report, staging)
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -177,6 +178,24 @@ def manifest_parameters(builder) -> list:
     return list(inspect.signature(builder).parameters)
 
 
+def optional_manifest_parameters(builder) -> frozenset:
+    """The subject keys a command line may LEAVE OUT, read off the builder's own defaults.
+
+    Same derivation as `freeze_parameters`' required/optional split, and here it carries meaning
+    rather than convenience: for `filing_correction` the absent key IS the decision (no destination
+    means the document is deleted, `approvals.filing_correction_subject_manifest`), so the builder's
+    signature is where that fact belongs -- one statement, read by the parser, by `_line_manifest`
+    and by the question the user signs.
+
+    Empty for every builder that declares no default, which is all three of the older line kinds --
+    so `push`, `preset` and `kit_update` keep refusing an unanswered subject key exactly as before
+    (`tools/test_staging_cli.py::test_a_line_kind_without_a_defaulted_subject_key_still_demands_
+    every_one`).
+    """
+    return frozenset(name for name, parameter in inspect.signature(builder).parameters.items()
+                     if parameter.default is not inspect.Parameter.empty)
+
+
 def _worktree_head(state: ProjectState, _args) -> str:
     """The commit a push would publish, read from the worktree the state directory sits in.
 
@@ -237,7 +256,66 @@ def _kit_update_key(key):
     return resolve
 
 
+def _document_content(state: ProjectState, args) -> str:
+    """The FASSUNG of the document a filing correction names -- hashed here, never typed.
+
+    A role typing this would be typing the one value that decides whether the approval still covers
+    the document when the gate looks: `guard_fs_tripwire` recomputes it from the file on disk with
+    the same function, so a typed value could only differ from what the user was shown -- which is
+    the property `LINE_MANIFEST_RESOLVERS` exists for.
+
+    A document that cannot be hashed is refused HERE, with the path in the message, rather than
+    reported as a missing manifest key: the two causes a clerk actually hits are a mistyped path and
+    a file past `hashing.DOCUMENT_HASH_LIMIT`, and neither is helped by a remedy listing four flags.
+
+    THE SPELLING HAS TO ROUND-TRIP, and this is the half that was silent (verifier finding F5). It
+    is not enough that the named file lies inside the project: the typed spelling must BE the
+    project-relative position, because that is the only spelling `guard_fs_tripwire` can ever
+    produce. An absolute path to a file inside the project passed the earlier check, minted a real
+    approval -- and the same document named the way the gate names it was then refused, which is a
+    dead end handed over without a word. So the position is resolved and normalised back, and it has
+    to come out as what was typed (`tools/test_staging_cli.py::test_a_document_named_in_a_spelling_
+    the_gate_cannot_produce_is_refused_at_the_command_line`). `approvals.is_project_position` refuses
+    the same class one layer further in, over the subject the user signs; this one is the message
+    the clerk gets, with the path in it.
+
+    AND THE ROUND TRIP IS AGAINST THE FILESYSTEM, NOT AGAINST THE STRING (verifier round 2, R2).
+    Lexically, `ARCHIVE/…/x.pdf` round-trips perfectly -- and on a case-insensitive filesystem it is
+    the same file under a name the archive does not use, so the approval was minted and then matched
+    nothing. `hashing.on_disk_position` reads back the spelling the filesystem really carries, and a
+    deviating one is refused BY NAME rather than by the generic message: a user who answered a
+    question for nothing is worse off than one who was told to type the path again.
+    """
+    repo = os.path.dirname(os.path.abspath(state.root))
+    document = approvals.filed_position(getattr(args, "document", None))
+    absolute = os.path.abspath(os.path.join(repo, document)) if document else ""
+    inside = bool(document) and (os.path.normcase(absolute)
+                                 .startswith(os.path.normcase(repo) + os.sep))
+    round_trips = inside and approvals.filed_position(
+        os.path.relpath(absolute, repo)) == document
+    spelled = hashing.on_disk_position(repo, document) if round_trips else None
+    if spelled is not None and spelled != document:
+        raise UsageError(
+            "the document is called %s; %s names the same file but not by that name, and the gate "
+            "reads the position out of the command that touches it. An approval for a spelling the "
+            "archive does not use would be minted and would then match nothing -- a question the "
+            "user answers for nothing. Remedy: name it exactly as it lies there: `--document %s`."
+            % (spelled, document, spelled))
+    content = hashing.document_content_hash(absolute) if spelled is not None else None
+    if not content:
+        raise UsageError(
+            "a filing correction is bound to the document's own bytes, and %s could not be read as "
+            "a file inside %s under the name the gate uses (it lies outside the project, it is "
+            "spelled in a way the gate never produces -- absolute, or climbing -- or it is missing, "
+            "is a directory, is unreadable, or is larger than the %d MiB a gate may hash while "
+            "judging a call). Remedy: name the document with its path relative to the project root, "
+            "exactly as it lies there."
+            % (document or "an empty path", repo, hashing.DOCUMENT_HASH_LIMIT // (1024 * 1024)))
+    return content
+
+
 LINE_MANIFEST_RESOLVERS = {
+    "content": (_document_content, "hashed from the document named on this line"),
     "head": (_worktree_head, "read from the worktree this state directory sits in"),
     "roles": (_preset_roles, "read from the kit's own presets.yaml for the preset on this line"),
     "removes": (_preset_removes, "derived from what this installation owns and that preset"),
@@ -256,8 +334,26 @@ def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
     key the role must type means the question would not say what it releases. So a resolved key
     fails only when the resolver cannot answer at all (None), and a typed key fails on emptiness.
     `test_a_manifest_key_a_resolver_answers_with_nothing_is_still_an_answer` measures the pair.
+
+    ...AND EMPTY IS AN ANSWER WHEN THE BUILDER DECLARED A DEFAULT FOR IT
+    (`optional_manifest_parameters`). That is not a third leniency but the same rule read off the
+    one place that owns it: for `filing_correction` an absent `--destination` is what says the
+    document ends up nowhere, and the question the user signs spells that out as a deletion. A
+    builder that declares no default keeps demanding every key, which is all three older line kinds.
+
+    THE REMEDY IS DERIVED FROM THE SAME TWO STATEMENTS the loop decides on, and that is the fix to
+    verifier finding F8: it used to print EVERY manifest key as a flag to type, which named
+    `--content` (a resolver-owned key this very function refuses when typed) and `--destination` (a
+    key whose OMISSION is the documented way to request a deletion). A remedy that contradicts the
+    command it is the remedy for is worse than none, and `optional_manifest_parameters` having a
+    reader that disagrees with it is exactly the second statement this kernel keeps unlearning.
     """
     values = {}
+    optional = optional_manifest_parameters(builder)
+    typed = [key for key in manifest_parameters(builder) if key not in LINE_MANIFEST_RESOLVERS]
+    flags = " ".join(
+        ("[--%s <%s>]" if key in optional else "--%s <%s>")
+        % (key.replace("_", "-"), key) for key in typed)
     for name in manifest_parameters(builder):
         value = getattr(args, name, None)
         entry = LINE_MANIFEST_RESOLVERS.get(name)
@@ -269,16 +365,26 @@ def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
                     "the user was shown. Remedy: drop `--%s %s` and run the command again."
                     % (name, entry[1], name.replace("_", "-"), value))
             value = entry[0](state, args)
+        if name in optional and not value:
+            continue          # the builder's own default answers it -- see the paragraph above
         if value is None or (not value and entry is None):
             raise UsageError(
                 "a %s approval question must say what it releases, and %s is missing. Remedy: "
-                "`%s request-approval %s %s` -- the keys are the manifest the approval hashes, "
-                "so the gate can compare what was approved with what is being done."
-                % (kind, name, INVOCATION, kind,
-                   " ".join("--%s <%s>" % (key.replace("_", "-"), key)
-                            for key in manifest_parameters(builder))))
+                "`%s request-approval %s %s` -- these are the subject keys a line carries (a "
+                "bracketed one may be left out, and what its absence MEANS is in the question the "
+                "command prints); every other key of the manifest is derived by the command itself "
+                "and is refused when typed."
+                % (kind, name, INVOCATION, kind, flags))
         values[name] = value
-    return builder(**values)
+    try:
+        return builder(**values)
+    except approvals.ApprovalError as exc:
+        # A BUILDER THAT REFUSES ITS SUBJECT IS REFUSING THE LINE, and the role has to read one exit
+        # code for that. `filing_correction` is the first line kind whose builder can refuse (a
+        # position the gate could never produce, a destination that names no place); as an
+        # ApprovalError it came back as exit 1 -- "the kernel refused" -- beside exit 2 for the
+        # resolver's refusal about the very same flag. Same input, same fault, two codes.
+        raise UsageError(str(exc)) from None
 
 
 def build_parser() -> argparse.ArgumentParser:

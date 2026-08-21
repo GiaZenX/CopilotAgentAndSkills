@@ -296,7 +296,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "5ac434015b6e0507",
+        "digest": "eb5aa131b034cf12",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -379,7 +379,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "bcbbd073f500dd94",
+        "digest": "2e0af654a4f7295f",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",

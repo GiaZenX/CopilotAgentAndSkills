@@ -127,6 +127,13 @@ nicht fertig.
 
 **Kein Push ohne ausdrückliche Freigabe des Nutzers.** Commits sind Routine, Push nie.
 
+**Alle Arbeitsverzeichnisse außerhalb des Repos liegen unter
+`C:\Offline Repos\v2-testbed\_round-scratch\<TSK-ID>\`** — nicht auf der Laufwerkswurzel, nicht
+in `C:\tmp`, nicht im Home-Verzeichnis. Der Fall dahinter: Bis 2026-08-18 hatten Umsetzer und
+Prüfer über Wochen mehr als zwanzig Scratch-Verzeichnisse wild auf dem Laufwerk des Nutzers
+verteilt, weil die Aufträge nur „außerhalb des Repos" sagten. Jeder Auftrag an eine Rolle nennt
+den Pfad seither ausdrücklich; aufgeräumt wird beim Rundenabschluss.
+
 ## Der Zustand dieses Projekts
 
 `project_memory/` im Wurzelverzeichnis wird vom **Kernel** geführt (`team-kits/kernel`), direkt

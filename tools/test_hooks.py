@@ -8865,6 +8865,757 @@ def test_fs_tripwire_blocks_a_delete_spelled_from_inside_the_archive(tmp_path):
     assert _tripwire(tmp_path, "mv archive/1-Finanzen/x.pdf outbox/x.pdf") == 2
 
 
+# ---------------- FR-0050: the ONE approval-shaped door in that wall ----------------
+ARCHIVED = "archive/1-Finanzen/2026/x.pdf"
+
+
+def _office_documents(tmp_path, **documents):
+    """An office project with a kernel state directory and real bytes in its trays.
+
+    The bytes matter: a filing-correction approval binds the document's CONTENT
+    (`kernel.hashing.document_content_hash`), so a fixture of empty paths would measure the door
+    with the one thing that makes it single-use missing.
+    """
+    os.makedirs(os.path.join(str(tmp_path), "project_memory"), exist_ok=True)
+    for relative, text in (documents or {"archived": "rechnung\n"}).items():
+        write(os.path.join(str(tmp_path), *_office_path(relative).split("/")), text)
+    return tmp_path
+
+
+def _office_path(name):
+    return {"archived": ARCHIVED, "second": "archive/1-Finanzen/2026/y.pdf",
+            "scan": "inbox/a.pdf"}.get(name, name)
+
+
+def _grant_correction(tmp_path, document, destination=None, reason="falsch abgelegt",
+                      expires_in=None):
+    """Open the correction question through the SHIPPED CLI and mint it through the REAL hook.
+
+    Both halves on purpose. The request goes through `kernel.cli` because the flag surface IS what
+    a clerk is told to type in `records-clerk.md` and in both refusals of the guard — a fixture
+    calling the manifest builder would leave that route unmeasured. The mint goes through
+    `conftest.mint_via_hook`, the suite's one minting helper, because `approvals.mint` accepts no
+    other caller.
+
+    `expires_in` is the one thing the CLI cannot express (it always uses
+    `approvals.LINE_APPROVAL_VALIDITY`), so a lapsed approval is requested through the kernel with
+    the same manifest the CLI would have built.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import mint_via_hook
+    from kernel import approvals, cli, hashing
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    if expires_in is not None:
+        request = approvals.create_pending_request(
+            state, "filing_correction",
+            manifest=approvals.filing_correction_subject_manifest(
+                document,
+                hashing.document_content_hash(os.path.join(str(tmp_path), document)),
+                reason, destination or ""),
+            approval_expires=time.time() + expires_in)
+        mint_via_hook(state, request)
+        return approvals.build_question(request)
+    argv = ["--root", state.root, "request-approval", "filing_correction",
+            "--document", document, "--reason", reason]
+    if destination is not None:
+        argv += ["--destination", destination]
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        assert cli.main(argv) == 0
+    question = json.loads(printed.getvalue())
+    request_id = question["question"].split("[APR-REQ:")[1].split("]")[0]
+    mint_via_hook(state, approvals.pending_request(state, request_id))
+    return question
+
+
+def test_the_wall_still_refuses_every_correction_nobody_approved(tmp_path):
+    """The DEFAULT after FR-0050 is the default before it: nothing leaves, nothing is deleted.
+
+    The door is an approval and only an approval, so a project with a kernel state directory and no
+    approval in it must answer exactly as one with no state at all. Both are measured, because "the
+    approval lookup found nothing" and "there was nothing to look in" are two code paths and only
+    one of them existed before this round.
+    """
+    _office_documents(tmp_path, archived="rechnung\n", scan="scan\n")
+    refused = ["rm " + ARCHIVED, "rm inbox/a.pdf", "mv %s outbox/x.pdf" % ARCHIVED,
+               "mv %s outbox/" % ARCHIVED,
+               "cd archive/1-Finanzen/2026 && mv x.pdf ../../../outbox/"]
+    for command in refused:
+        assert _tripwire(tmp_path, command) == 2, command
+    shutil.rmtree(os.path.join(str(tmp_path), "project_memory"))
+    for command in refused:
+        assert _tripwire(tmp_path, command) == 2, command
+    # ...and the one thing that was never this rule stays allowed either way
+    assert _tripwire(tmp_path, "mv %s archive/1-Finanzen/ok/" % ARCHIVED) == 0
+
+
+def test_a_correction_the_user_approved_is_the_one_operation_the_tripwire_lets_through(tmp_path):
+    """FR-0050: the user's approval is the door, and it opens for the operation it names.
+
+    Measured before the door existed: all three spellings below are rc 2 with a minted approval
+    present, because nothing read one. The three are one operation — the folder spelling and the
+    `cd` spelling land the same document at the same place — and reading them as one is what
+    `_landing` and the resolved-position reading do; a door that only recognised the exact string a
+    clerk happened to type would send that clerk back to the user for a second approval of the same
+    correction.
+
+    The last line is the other end of that: a move that would land the document somewhere ELSE is
+    the same three spellings' opposite and stays refused, so "reads the spellings as one" never
+    became "reads any move of this document as approved".
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 2
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
+    assert _tripwire(tmp_path, "mv %s outbox/" % ARCHIVED) == 0
+    assert _tripwire(tmp_path, "cd archive/1-Finanzen/2026 && mv x.pdf ../../../outbox/") == 0
+    assert _tripwire(tmp_path, "cd archive/1-Finanzen/2026 && mv x.pdf ../../../inbox/") == 2
+
+
+def test_an_approved_deletion_is_the_half_that_has_no_destination(tmp_path):
+    """A duplicate scan has nowhere to go, and that absence IS the request (FR-0050).
+
+    Omitting `--destination` is what asks for a deletion — the builder's own default
+    (`approvals.filing_correction_subject_manifest`) — and the approval then covers the delete and
+    nothing else. The second half is the one that keeps the absence from becoming a blank cheque:
+    the same approval does not cover the same document being MOVED somewhere instead.
+    """
+    _office_documents(tmp_path, scan="scan\n")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 2
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan derselben Rechnung")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 0
+    assert _tripwire(tmp_path, "mv inbox/a.pdf outbox/a.pdf") == 0, (
+        "a move out of inbox/ was never this guard's rule, with or without an approval")
+    # ...and a second, unapproved document on the same `rm` is what keeps the approved one from
+    # carrying it through: the operands are asked about one by one (`deleted_documents`).
+    write(os.path.join(str(tmp_path), "inbox", "b.pdf"), "ein anderer scan\n")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf inbox/b.pdf") == 2
+    _office_documents(tmp_path, archived="rechnung\n")
+    assert _tripwire(tmp_path, "rm " + ARCHIVED) == 2
+
+
+def test_a_correction_approval_stops_matching_once_the_document_is_gone(tmp_path):
+    """SINGLE-USE, and derived rather than flagged — the push token's property (FR-0050).
+
+    The manifest hashes the document's BYTES, so after the approved move has really run there is no
+    file at the source path, `document_content_hash` answers None, and the same approval covers
+    nothing. No "used" marker in writable state has to be kept honest for that.
+
+    The limit is measured in the same test rather than left implied: while the document is still
+    there — the command was refused for another reason, or never ran — the approval keeps working.
+    That is the honest reading of "once", and a docstring claiming a hard one-shot would be the
+    protection this code does not build.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0, (
+        "the document has not moved yet, so the approval still covers it")
+    os.makedirs(os.path.join(str(tmp_path), "outbox"), exist_ok=True)
+    shutil.move(os.path.join(str(tmp_path), *ARCHIVED.split("/")),
+                os.path.join(str(tmp_path), "outbox", "x.pdf"))
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 2
+
+
+def test_a_correction_approval_covers_the_bytes_again_when_they_are_put_back(tmp_path):
+    """The other half of the derivation, so the docstring beside it stays the measured truth.
+
+    "Single-use" said only that the approval stops covering the document once it has moved. What the
+    code builds is narrower AND wider than that: it covers THESE BYTES AT THIS POSITION, WHILE THEY
+    LIE THERE. Put a byte-identical file back and the same approval applies again — which the
+    question the user signs says ("gilt nur für genau diese Fassung") and which a docstring
+    promising a one-shot would deny. Measured here so the sentence cannot drift back.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
+    os.makedirs(os.path.join(str(tmp_path), "outbox"), exist_ok=True)
+    shutil.move(os.path.join(str(tmp_path), *ARCHIVED.split("/")),
+                os.path.join(str(tmp_path), "outbox", "x.pdf"))
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 2
+    write(os.path.join(str(tmp_path), *ARCHIVED.split("/")), "rechnung\n")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0, (
+        "the same bytes at the same position are the subject the user signed")
+    write(os.path.join(str(tmp_path), *ARCHIVED.split("/")), "eine andere Rechnung\n")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 2
+
+
+@pytest.mark.parametrize("command,why", [
+    ("mv archive/1-Finanzen/2026/y.pdf outbox/y.pdf", "another document"),
+    ("mv archive/1-Finanzen/2026/x.pdf inbox/x.pdf", "another destination"),
+    ("rm archive/1-Finanzen/2026/x.pdf", "a deletion instead of the approved move"),
+    ("mv archive/1-Finanzen/2026/x.pdf outbox/x.pdf && "
+     "mv archive/1-Finanzen/2026/y.pdf outbox/y.pdf", "a second, unapproved document alongside"),
+    ("mv archive/1-Finanzen/2026/x.pdf archive/1-Finanzen/2026/y.pdf outbox/",
+     "two documents in ONE move, only one of them approved"),
+])
+def test_a_different_operation_is_not_covered_by_a_correction_approval(tmp_path, command, why):
+    """The hash binds the OPERATION (DEC-0048, constructive direction) — this is what that buys.
+
+    Each of these runs against a live approval for `archive/1-Finanzen/2026/x.pdf -> outbox/x.pdf`
+    and has to be refused anyway. The last one is the reason `deleted_documents` and
+    `moves_out_of_the_archive` group per operand instead of returning the first hit: an approved
+    document in the same command line must not carry an unapproved one through with it.
+    """
+    _office_documents(tmp_path, archived="rechnung\n", second="zweite rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, command) == 2, why
+
+
+def test_a_correction_approval_covers_one_version_of_the_document_and_not_a_path(tmp_path):
+    """What the user signed is a document, and in a business archive that is bytes, not a name.
+
+    Same source, same destination, other content: the approval no longer applies. Without the
+    `content` key in the operation this passes — the paths are identical — and the approval would
+    then cover whatever file happens to lie at that path when the command runs.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
+    write(os.path.join(str(tmp_path), *ARCHIVED.split("/")), "eine andere Fassung\n")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 2
+
+
+def test_a_revoked_correction_approval_opens_nothing(tmp_path):
+    """Revocation is the user taking the door back, and it has to reach this guard.
+
+    It works because `revoke` MOVES the minted request out of `approvals/consumed/`, so the
+    provenance the door reads is simply gone — flipping `revoked` back in the APR file would not
+    restore it (`approvals.consumed_request`).
+    """
+    _office_documents(tmp_path, scan="scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 0
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    approvals.revoke(state, "APR-0001")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 2
+
+
+def test_a_lapsed_correction_approval_opens_nothing(tmp_path):
+    """An unused permission to delete an archived document must not outlive its conversation.
+
+    `filing_correction` is in `EXPIRING_KINDS` for that reason, and the clock is read off the
+    HASH-COVERED side (`proven_expiry`), so it cannot be moved by editing one field. Measured with
+    an approval minted already past its expiry rather than by waiting: `mint` bounds the QUESTION's
+    life, the manifest bounds the APPROVAL's, and it is the second one this door reads.
+    """
+    _office_documents(tmp_path, scan="scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan", expires_in=-60)
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 2
+
+
+def test_a_document_too_large_to_bind_cannot_be_corrected_by_approval(tmp_path):
+    """A gate the provider KILLS is read as permission, so the hash has a bound — and it refuses.
+
+    `hashing.DOCUMENT_HASH_LIMIT` is what an approval can be given for; past it there is no hash, so
+    no approval can name the document and the wall stands. Measured at the boundary from both sides
+    with the limit lowered to a size a test can write, because the shipped 256 MiB is not something
+    to put on disk in a suite — the limit is a PARAMETER of `document_content_hash` for exactly this
+    reason, and the CLI's own refusal names it.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import hashing
+    _office_documents(tmp_path, archived="x" * 4096)
+    path = os.path.join(str(tmp_path), *ARCHIVED.split("/"))
+    assert hashing.document_content_hash(path, limit=4096) is not None
+    assert hashing.document_content_hash(path, limit=4095) is None
+    assert hashing.document_content_hash(path + ".missing") is None
+    assert hashing.document_content_hash(os.path.dirname(path)) is None
+
+
+def test_a_correction_of_an_umlaut_document_is_one_operation_in_both_normalisations(tmp_path):
+    """One filename, two unicode spellings — and it has to be ONE operation.
+
+    A business archive is full of names like `Müller GmbH.pdf`, and the two sides of this approval
+    have different producers: the request carries the path a role typed on a command line, the door
+    the path a filesystem handed back. Unicode gives that name two byte spellings, so the matcher is
+    made indifferent to the difference by comparing through `subject_manifest_hash`, which
+    NFC-normalises (`kernel.hashing._nfc`).
+
+    WHAT IS MEASURED IS THE MATCHER, NOT A PLATFORM. The approval below is minted for the DECOMPOSED
+    spelling and the door is asked with the COMPOSED one. Whether any filesystem this kit runs on
+    really hands back the decomposed form is neither measured nor claimed — NTFS stores the name as
+    it was given, so the end-to-end half at the bottom passes either way, and that half is here for
+    the plainer question of whether an umlaut document can be corrected at all. With a dict
+    comparison in `live_correction_approval` the FIRST assertion fails, which is what makes this a
+    property of the code rather than of today's host.
+
+    The decomposed spelling is DERIVED (`unicodedata.normalize`) and not typed: a literal would be
+    normalised back by the first editor that touched this file, and the test would then compare a
+    string with itself and prove nothing.
+    """
+    import unicodedata
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import mint_via_hook
+    from kernel import approvals
+    from kernel.state import ProjectState
+    composed = unicodedata.normalize("NFC", "archive/1-Finanzen/2026/Müller GmbH.pdf")
+    decomposed = unicodedata.normalize("NFD", composed)
+    assert composed != decomposed, "the two spellings are one string — nothing is being measured"
+
+    _office_documents(tmp_path, **{composed: "rechnung\n"})
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    digest = "0" * 64
+    mint_via_hook(state, approvals.create_pending_request(
+        state, "filing_correction",
+        manifest=approvals.filing_correction_subject_manifest(
+            decomposed, digest, "falsch abgelegt", "outbox/m.pdf"),
+        approval_expires=time.time() + 900))
+    assert approvals.live_correction_approval(
+        state, approvals.filing_correction_operation(
+            composed, "outbox/m.pdf", digest)) is not None
+
+    _grant_correction(tmp_path, composed, "outbox/m.pdf")
+    assert _tripwire(tmp_path, 'mv "%s" outbox/m.pdf' % composed) == 0
+
+
+def test_the_correction_door_is_journaled_and_the_note_claims_no_more_than_it_saw(tmp_path):
+    """Every passage through the door leaves a record naming the approval it rested on.
+
+    What the note may say is bounded by what a PreToolUse hook can know: the call was ALLOWED, under
+    which approval, for which document, to which place. It must not say the command succeeded — the
+    hook runs before it. The durable record is the minted request the kernel keeps under
+    `approvals/consumed/`; this line is the local trail beside it (`_audit`).
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/" % ARCHIVED) == 0
+    log = os.path.join(str(tmp_path), "project_memory", ".audit", "hook_events.jsonl")
+    notes = [json.loads(line) for line in open(log, encoding="utf-8")]
+    allowed = [note for note in notes if note["event"] == "correction-allowed"]
+    assert len(allowed) == 1, notes
+    assert "APR-0001" in allowed[0]["reason"]
+    assert "%s -> outbox/x.pdf" % ARCHIVED in allowed[0]["reason"]
+    assert "mv %s outbox/" % ARCHIVED in allowed[0]["reason"]
+
+
+def test_a_refused_call_leaves_no_note_claiming_a_correction_was_let_through(tmp_path):
+    """A journal entry for a passage that never happened is worse than no journal entry.
+
+    The two rules are judged in sequence, so a command that deletes an approved document AND moves
+    an unapproved one out is allowed by the first branch and refused by the second. Written inside
+    that first branch, the note said "allowed under APR-0001" for a call that ended rc 2.
+    """
+    _office_documents(tmp_path, archived="rechnung\n", scan="scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    result = run_hook_process(
+        "guard_fs_tripwire.py",
+        _bash(tmp_path, "rm inbox/a.pdf && mv %s outbox/x.pdf" % ARCHIVED),
+        tmp_path, hooks_dir=OFFICE_HOOKS)
+    assert result.returncode == 2
+    log = os.path.join(str(tmp_path), "project_memory", ".audit", "hook_events.jsonl")
+    notes = [json.loads(line) for line in open(log, encoding="utf-8")]
+    assert not [note for note in notes if note["event"] == "correction-allowed"], notes
+
+
+def test_a_refusal_names_the_document_that_is_missing_its_approval(tmp_path):
+    """A refusal that names the APPROVED document sends the role back for an approval it has.
+
+    Both halves, because both branches pick a representative out of a list that may now hold an
+    approved operation in front of the unapproved one. The delete refusal carries its document in
+    the AUDIT line rather than in the message the role reads, so that is where it is measured.
+    """
+    _office_documents(tmp_path, archived="rechnung\n", second="zweite rechnung\n", scan="scan\n")
+    write(os.path.join(str(tmp_path), "inbox", "b.pdf"), "ein anderer scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    deleting = run_hook_process(
+        "guard_fs_tripwire.py", _bash(tmp_path, "rm inbox/a.pdf inbox/b.pdf"),
+        tmp_path, hooks_dir=OFFICE_HOOKS)
+    assert deleting.returncode == 2
+    log = os.path.join(str(tmp_path), "project_memory", ".audit", "hook_events.jsonl")
+    blocks = [json.loads(line) for line in open(log, encoding="utf-8")]
+    refusal = [note for note in blocks if note["event"] == "block"][-1]["reason"]
+    assert "inbox/b.pdf" in refusal and "(inbox/a.pdf)" not in refusal, refusal
+    moving = run_hook_process(
+        "guard_fs_tripwire.py",
+        _bash(tmp_path, "mv %s outbox/x.pdf && mv archive/1-Finanzen/2026/y.pdf outbox/y.pdf"
+              % ARCHIVED),
+        tmp_path, hooks_dir=OFFICE_HOOKS)
+    assert moving.returncode == 2
+    assert "archive/1-Finanzen/2026/y.pdf" in moving.stderr
+    assert ARCHIVED not in moving.stderr.replace("archive/1-Finanzen/2026/y.pdf", "")
+
+
+@pytest.mark.parametrize("rider,why", [
+    ("python -c \"import os; os.remove('archive/1-Finanzen/2026/y.pdf')\"",
+     "a program that does its own file handling"),
+    ("tar -cf a.tar --remove-files archive/1-Finanzen/2026/y.pdf",
+     "a verb this guard does not read as a copy or a delete"),
+    ("rm $A", "an operand the shell rewrites before the command sees it"),
+    ("echo done", "an invocation this guard does not read at all"),
+])
+def test_an_approval_covers_its_correction_and_not_the_rest_of_the_line(tmp_path, rider, why):
+    """Verifier finding F1: the approval covered the LINE, not the operation it names.
+
+    "Every operation I recognised is approved" was the pass condition, so anything the reader did
+    NOT recognise rode through beside an approved one — each of these measured rc 0 where the wall
+    alone answers rc 2. None of them is newly SEEN; what changed is that an unplaced invocation
+    stops the door instead of being invisible to it.
+
+    The first assertion is the counterweight: the approved correction on a line of its own still
+    passes, so the fix did not become "refuse everything".
+    """
+    _office_documents(tmp_path, archived="rechnung\n", second="zweite rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    approved = "mv %s outbox/x.pdf" % ARCHIVED
+    assert _tripwire(tmp_path, approved) == 0
+    assert _tripwire(tmp_path, approved + " && " + rider) == 2, why
+
+
+def test_a_delete_approval_does_not_cover_an_operand_the_shell_rewrites(tmp_path):
+    """Verifier finding F2, and it was carried in this guard's own prose as "theoretical".
+
+    `rm inbox/a.pdf ~/archive/secret.pdf` measured rc 0 under an approval for the first operand:
+    `DELETE_RX` fires on the `archive/` in the text, the resolving reader places only the approved
+    operand, every operation it saw was approved — and the shell then expands `~` and deletes a file
+    in the user's home. Two readings now decide it: an operand whose TEXT is not the path leaves its
+    invocation unplaced, and a delete whose text names a tray of record while nothing in it could be
+    placed is unplaced too.
+    """
+    _office_documents(tmp_path, scan="scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 0
+    assert _tripwire(tmp_path, "rm inbox/a.pdf ~/archive/secret.pdf") == 2
+    assert _tripwire(tmp_path, "rm inbox/a.pdf $A") == 2
+    assert _tripwire(tmp_path, "rm ~/archive/secret.pdf") == 2
+
+
+def test_a_delete_approval_does_not_cover_an_operand_outside_this_project(tmp_path):
+    """The second sense of "placeable", and the one the shell-rewrite rule does not reach.
+
+    `../archive/x.pdf` and `/etc/passwd` are ordinary text: no `~`, no variable, no glob. They
+    simply name no position this guard can speak about, so they were DROPPED — and an approved
+    operand beside them made the line read as fully approved. Found while measuring the raw-text
+    rule's own red case, which is what that measurement is for.
+    """
+    _office_documents(tmp_path, scan="scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 0
+    assert _tripwire(tmp_path, "rm inbox/a.pdf ../archive/x.pdf") == 2
+    assert _tripwire(tmp_path, "rm inbox/a.pdf /etc/passwd") == 2
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf && mv report.txt ../out.txt" % ARCHIVED) == 2
+
+
+@pytest.mark.parametrize("command", [
+    "mv archive/fin/a.pdf /tmp/gone.pdf",
+    "cd archive/1-Finanzen && rm x.pdf $A",
+    "mv archive/1-Finanzen/2026/x.pdf ~/gone.pdf",
+])
+def test_an_operand_this_guard_cannot_place_never_hides_the_operation_beside_it(tmp_path, command):
+    """The WALL keeps everything it ever saw; only the DOOR consults what could not be placed.
+
+    My own rework broke this: an invocation carrying an unplaceable operand was skipped whole, so
+    the operations it DID place never reached the refusal. `mv archive/fin/a.pdf /tmp/gone.pdf` --
+    a move that empties the archive to a destination outside the project, the plainest case this
+    guard exists for -- went from rc 2 to rc 0. The pre-existing
+    `test_fs_tripwire_blocks_move_out_of_archive` caught it; these three keep the same mistake from
+    coming back on the delete side and behind a `cd`, where no older test looks.
+
+    No approval anywhere in this project, so what is measured is the WALL and not the door.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    assert _tripwire(tmp_path, command) == 2
+
+
+def test_the_two_delete_readings_disagreeing_keeps_the_line_shut(tmp_path):
+    """When the text says a tray of record and the resolver placed nothing, the text wins.
+
+    `rm outbox/archive-copy.txt` is an ordinary delete whose TEXT makes it look protected, and the
+    guard refuses the whole line rather than decide that its own two readings may disagree. That is
+    an over-refusal by construction — it costs a correction on that line, never a document — and it
+    is measured as such: the approved correction alone still passes, and only the disagreement shuts
+    the line.
+    """
+    _office_documents(tmp_path, scan="scan\n")
+    write(os.path.join(str(tmp_path), "outbox", "archive-copy.txt"), "Kopie\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 0
+    assert _tripwire(tmp_path, "rm inbox/a.pdf && rm outbox/archive-copy.txt") == 2
+    assert _tripwire(tmp_path, "rm inbox/a.pdf && rm outbox/kopie.txt") == 0, (
+        "an ordinary delete outside the trays is not this rule")
+
+
+def test_the_door_refuses_a_line_that_would_correct_more_than_it_may_decide_about(tmp_path):
+    """Verifier finding F3: deciding must not outlive the deadline, because a killed hook PASSES.
+
+    Every operation costs a file read, so an unbounded line made a REFUSAL take longer than the
+    provider's 60 s default — and a hook killed on that deadline is reported as "hook error, carry
+    on", i.e. as a pass on the call the wall exists to refuse. The bound is a REFUSAL: above
+    `CORRECTION_CAP` the door does not open and the wall answers as it always did.
+
+    Asserted on the CAP and on the refusal's own words rather than on a stopwatch — a wall-clock
+    assertion in a suite is a flake waiting for a loaded machine, and the numbers belong in the
+    round's report. The pair at the boundary is what makes it a cap and not a ceiling nobody
+    reaches: `CORRECTION_CAP` documents pass with their approvals, one more is refused.
+    """
+    tripwire = load_kit_module("guard_fs_tripwire",
+                              os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    cap = tripwire.CORRECTION_CAP
+    documents = ["inbox/cap%03d.pdf" % index for index in range(cap + 1)]
+    _office_documents(tmp_path, **{name: "scan %s\n" % name for name in documents})
+    for name in documents:
+        _grant_correction(tmp_path, name, reason="Doppelscan")
+    assert _tripwire(tmp_path, "rm " + " ".join(documents[:cap])) == 0
+    result = run_hook_process("guard_fs_tripwire.py",
+                              _bash(tmp_path, "rm " + " ".join(documents)),
+                              tmp_path, hooks_dir=OFFICE_HOOKS)
+    assert result.returncode == 2
+    assert "at most %d" % cap in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("chain,expected,why", [
+    ("mv %s outbox/x.pdf > inbox/b.pdf", 2, "a redirect truncating a document of record"),
+    ("mv %s outbox/x.pdf >> inbox/b.pdf", 2, "the appending spelling of the same thing"),
+    ("mv %s outbox/x.pdf > archive/1-Finanzen/2026/b.pdf", 2, "the archive half of it"),
+    ("mv %s outbox/x.pdf > $LOG", 2, "a redirect target the shell rewrites"),
+    ("mv %s outbox/x.pdf > /tmp/log.txt", 2, "a redirect target outside the project (V6)"),
+    ("mv %s outbox/x.pdf | tee inbox/b.pdf", 2, "a pipe into an invocation this guard cannot read"),
+    ("mv %s outbox/x.pdf > outbox/log.txt", 0, "a redirect outside the trays is ordinary work"),
+    ("mv %s outbox/x.pdf &> inbox/b.pdf", 2, "the both-streams spelling (V2)"),
+    ("> inbox/b.pdf mv %s outbox/x.pdf", 2, "the same redirect written FIRST (V2)"),
+    ("> outbox/log.txt mv %s outbox/x.pdf", 0,
+     "...and a leading redirect outside the trays still lets the correction run"),
+    ("mv %s outbox/x.pdf && > inbox/b.pdf", 2,
+     "an invocation that is NOTHING BUT a redirect into a tray"),
+    ("mv %s outbox/x.pdf && > outbox/log.txt", 0,
+     "...and the same shape outside the trays is ordinary work"),
+])
+def test_a_redirect_is_part_of_the_line_the_door_reads(tmp_path, chain, expected, why):
+    """Verifier round 2, R1: `>` is shell syntax, so no reader of OPERANDS could ever see it.
+
+    Measured with a living approval: `mv …/x.pdf outbox/x.pdf > inbox/b.pdf` was rc 0 for the whole
+    chain while the redirect TRUNCATED `inbox/b.pdf` to zero bytes — the class these trays exist
+    for. The module already read this surface (`_filing.redirect_targets`, which the ledger guard
+    has used since BUG-0003); the door did not.
+
+    A target in a tray is never an approvable operation either, and that is deliberate rather than
+    unfinished: a `filing_correction` binds bytes that EXIST at a position, and the bytes a redirect
+    is about to write do not exist when the user is asked. So it closes the door like anything else
+    this guard cannot place.
+
+    THE COUNTERWEIGHT IS NARROWER THAN "OUTSIDE THE TRAYS" (verifier round 3, V6): a redirect is
+    ordinary work when its target is a place INSIDE the project and outside the trays — first or
+    last on the line, both measured here. A target the guard cannot place at all (`$LOG`, or
+    anywhere outside the project) closes the door like any other unplaceable word, which is
+    over-refusal and consistent with the rule for operands rather than an exception to it.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
+    assert _tripwire(tmp_path, chain % ARCHIVED) == expected, why
+
+
+@pytest.mark.parametrize("command", [
+    "> outbox/log.txt rm archive/1-Finanzen/2026/y.pdf",
+    ">outbox/log.txt rm archive/1-Finanzen/2026/y.pdf",
+    "< outbox/log.txt rm archive/1-Finanzen/2026/y.pdf",
+    "> outbox/log.txt del archive/1-Finanzen/2026/y.pdf",
+    "> /tmp/x rm archive/1-Finanzen/2026/y.pdf",
+    "> outbox/log.txt mv archive/1-Finanzen/2026/y.pdf /tmp/gone.pdf",
+])
+def test_a_leading_redirect_does_not_hide_the_command_behind_it(tmp_path, command):
+    """Verifier round 3, V1/V2: `_tokens` ENDED the argument list at the first `<`/`>`.
+
+    A shell does no such thing — `> log.txt mv a b` runs `mv a b` with its output redirected — so
+    truncating there threw away every word after the operator, and a LEADING redirect hid the whole
+    command from every reader in `_filing`. Measured: each of these was rc 2 before this round's
+    door work and rc 0 after it, i.e. the WALL itself was switched off by a `>` in front. The reader
+    now cuts the redirect OUT of the argument list instead of ending it there, so the same commands
+    read the same whether the redirect comes first or last.
+
+    No approval exists in this project, so what is measured here is the wall.
+    """
+    _office_documents(tmp_path, archived="rechnung\n", second="zweite rechnung\n")
+    assert _tripwire(tmp_path, command) == 2
+
+
+def test_the_door_answers_an_empty_line_as_closed_not_as_open(tmp_path):
+    """Verifier round 3, V1's second half: `[] is not None`, so an empty answer read as ALLOW.
+
+    Asked of `open_the_door` DIRECTLY, and that is the honest place for it: after `_filing._tokens`
+    stopped ending the argument list at a redirect there is no command line left that produces this
+    shape — no operation placed and nothing unplaced — so a test pretending one does would be
+    asserting a chain that does not exist. What is measured is the function's own answer to the
+    shape that once walked past the caller's `is None`.
+
+    THE PROJECT HAS A STATE DIRECTORY on purpose. Without one, `correction_authority` answers None
+    and the function refuses for THAT reason instead — the assertion below would then hold with the
+    branch under test removed, which is a test passing for the wrong reason.
+    """
+    guard = load_kit_module("guard_fs_tripwire",
+                            os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    _office_documents(tmp_path, archived="rechnung\n")
+    os.environ["HARNESS_KERNEL_PATH"] = os.path.join(ROOT, "team-kits")
+    assert guard.correction_authority(str(tmp_path)) is not None, (
+        "the fixture must have a readable approval store, or this measures the wrong refusal")
+    honoured, refused, offender = guard.open_the_door(str(tmp_path), guard.Line([], [], None))
+    assert not honoured, "an empty line must never answer as a door that opened"
+    assert honoured is None and refused and offender is None, (honoured, refused)
+
+
+def test_a_journal_line_never_claims_a_passage_under_no_approval_at_all(tmp_path):
+    """Verifier round 3, V4 — the M13 class a third time, in its emptiest shape.
+
+    With no correction honoured the note read "allowed under user approval : " — an empty id list
+    and an empty operation list, which is a claim of a passage under an approval that does not
+    exist. Two locks now: the caller refuses on an empty answer rather than falling through
+    (`[] is not None` was the fall-through), and `record_corrections` writes nothing for one.
+    """
+    guard = load_kit_module("guard_fs_tripwire",
+                            os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    _office_documents(tmp_path, archived="rechnung\n", second="zweite rechnung\n")
+    log = os.path.join(str(tmp_path), "project_memory", ".audit", "hook_events.jsonl")
+    assert _tripwire(tmp_path, "> outbox/log.txt rm archive/1-Finanzen/2026/y.pdf") == 2
+    notes = [json.loads(line) for line in open(log, encoding="utf-8")]
+    assert not [note for note in notes if note["event"] == "correction-allowed"], notes
+    # ...and the function itself writes nothing for an empty list, whatever the caller does.
+    # CLAUDE_PROJECT_DIR is what `_audit` resolves the log through, so without it this call would
+    # write somewhere else and the assertion would pass for the wrong reason.
+    previous = os.environ.get("CLAUDE_PROJECT_DIR")
+    os.environ["CLAUDE_PROJECT_DIR"] = str(tmp_path)
+    try:
+        guard.record_corrections("rm archive/1-Finanzen/2026/y.pdf", [])
+    finally:
+        if previous is None:
+            del os.environ["CLAUDE_PROJECT_DIR"]
+        else:
+            os.environ["CLAUDE_PROJECT_DIR"] = previous
+    after = [json.loads(line) for line in open(log, encoding="utf-8")]
+    assert len(after) == len(notes), after[len(notes):]
+
+
+def test_a_redirect_into_a_tray_shuts_the_door_on_an_approved_delete_too(tmp_path):
+    """The same hole on the other rule, measured rc 0 by the verifier under a delete approval."""
+    _office_documents(tmp_path, scan="scan\n")
+    _grant_correction(tmp_path, "inbox/a.pdf", reason="Doppelscan")
+    assert _tripwire(tmp_path, "rm inbox/a.pdf") == 0
+    assert _tripwire(tmp_path, "rm inbox/a.pdf > inbox/b.pdf") == 2
+    assert _tripwire(tmp_path, "rm inbox/a.pdf >> inbox/b.pdf") == 2
+
+
+def test_the_cap_stays_inside_the_budget_it_exists_for(tmp_path):
+    """Verifier round 2, R3: the cap's own test derived its probe from the cap, so raising the cap
+    kept it green — and the property the cap exists for went unguarded.
+
+    The property is a BUDGET, not a number: a PreToolUse hook still deciding when the provider's
+    deadline passes is killed, and a killed hook is read as a pass. So the ceiling is recomputed
+    here from the two things it is made of — the deadline (`_compat.HOOK_DEADLINE_SECONDS`, the one
+    place that number lives) and what one correction is budgeted to cost — and the chosen cap has to
+    sit under it. Raise `CORRECTION_CAP` past what the budget supports and this goes red instead of
+    the timeout quietly coming back.
+
+    The lower bound is the other end: a cap of zero would "pass" the ceiling and close the door
+    altogether, which is not a bound but a removal.
+    """
+    guard = load_kit_module("guard_fs_tripwire",
+                            os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    compat = load_kit_module("_compat", os.path.join(OFFICE_HOOKS, "_compat.py"))
+    ceiling = int(compat.HOOK_DEADLINE_SECONDS * guard.CORRECTION_BUDGET_SHARE
+                  / guard.CORRECTION_COST_SECONDS)
+    assert guard.budget_cap() == ceiling, "the guard's own derivation and this one disagree"
+    assert 0 < guard.CORRECTION_CAP <= ceiling, (
+        "CORRECTION_CAP is %d but the budget supports at most %d (%.0f s deadline x %.2f share / "
+        "%.2f s per correction)" % (guard.CORRECTION_CAP, ceiling, compat.HOOK_DEADLINE_SECONDS,
+                                    guard.CORRECTION_BUDGET_SHARE, guard.CORRECTION_COST_SECONDS))
+
+
+def test_the_door_reads_the_approval_store_once_however_many_documents_a_line_names(tmp_path):
+    """The other half of F3, and the one a cap alone would not give: the cost PER OPERAND.
+
+    Asking the kernel per operand walked the whole approval store per operand, so the cost of a
+    refusal was operands × approvals — 300 × 204 measured 69.8 s, past the deadline at which a
+    killed hook is read as a pass. Counted rather than timed: a stopwatch in a suite is a flake
+    waiting for a loaded machine, and the property is a COUNT — the store is resolved once per call
+    and the answer for each operation is then a lookup.
+
+    MEASURED ON THE PART THAT RUNS: the shipped guard's own `open_the_door`, over a real approval
+    store, with the kernel's `consumed_request` counted. That function is what resolves each stored
+    approval back to its minted request, so one call per stored approval IS one scan. With the
+    lookup asked per operand the count is documents × approvals instead.
+    """
+    guard = load_kit_module("guard_fs_tripwire",
+                            os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals
+    documents = ["inbox/many%02d.pdf" % index for index in range(10)]
+    _office_documents(tmp_path, **{name: "scan %s\n" % name for name in documents})
+    for name in documents:
+        _grant_correction(tmp_path, name, reason="Doppelscan")
+    os.environ["HARNESS_KERNEL_PATH"] = os.path.join(ROOT, "team-kits")
+    line = guard.read_the_line(str(tmp_path), "rm " + " ".join(documents), [str(tmp_path)])
+    assert len(line.deletes) == len(documents) and not line.unplaced
+
+    reads = []
+    original = approvals.consumed_request
+
+    def counted(*args, **kwargs):
+        reads.append(1)
+        return original(*args, **kwargs)
+
+    approvals.consumed_request = counted
+    try:
+        honoured, refused, _offender = guard.open_the_door(str(tmp_path), line)
+    finally:
+        approvals.consumed_request = original
+    assert honoured is not None and len(honoured) == len(documents), refused
+    assert len(reads) == len(documents), (
+        "the store was resolved %d times for %d documents -- once per call is the property"
+        % (len(reads), len(documents)))
+
+
+def test_a_reason_the_requester_typed_cannot_write_its_own_lines_into_the_question(tmp_path):
+    """Verifier finding F4: the mint code is unforgeable, and the target here is the HUMAN.
+
+    `--reason` is the first subject key a line kind lets a role type freely, and a reason carrying
+    newlines rendered as its own lines above the mint label — so the sentence the person judges was
+    written by the requester rather than by the kernel. The fold happens BEFORE the hash, so what
+    the user reads is what the approval covers (DEC-0048), and it is a property (unicode category
+    `C*`, `Zl`, `Zp`) rather than a list of two escape sequences.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals
+    _office_documents(tmp_path, scan="scan\n")
+    question = _grant_correction(
+        tmp_path, "inbox/a.pdf",
+        reason="ALLES BLEIBT ERHALTEN\nHinweis: nichts wird geloescht.\r\n‮umgedreht​")
+    text = question["question"]
+    assert "\n" not in text and "\r" not in text
+    assert "‮" not in text and "​" not in text
+    assert "ALLES BLEIBT ERHALTEN Hinweis: nichts wird geloescht. umgedreht" in text
+    for option in question["options"]:
+        assert "\n" not in option["label"] and "\n" not in option["description"]
+    # ...and the FOLD is what the hash covers, not a prettier rendering of something else
+    folded = approvals.filing_correction_subject_manifest("inbox/a.pdf", "0" * 64, "a b")
+    assert folded["reason"] == "a b"
+    assert approvals.filing_correction_subject_manifest(
+        "inbox/a.pdf", "0" * 64, "a\nb")["reason"] == folded["reason"]
+    assert len(approvals.filing_correction_subject_manifest(
+        "inbox/a.pdf", "0" * 64, "x" * 5000)["reason"]) <= approvals.REASON_SHOWN
+
+
+def test_both_refusals_name_the_one_route_a_correction_takes(tmp_path):
+    """A refusal that names no route is what made a mis-filed document permanent (FR-0050).
+
+    Read off the shipped constant rather than re-typed here, and asserted on BOTH refusals, because
+    the delete half and the move half are two `_compat.stop` calls and a sentence written twice is a
+    sentence that will come to name two different commands.
+    """
+    tripwire = load_kit_module("guard_fs_tripwire",
+                               os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    _office_documents(tmp_path, archived="rechnung\n", scan="scan\n")
+    for command in ("rm inbox/a.pdf", "mv %s outbox/x.pdf" % ARCHIVED):
+        payload = {"tool_name": "Bash", "tool_input": {"command": command}, "cwd": str(tmp_path)}
+        result = run_hook_process("guard_fs_tripwire.py", payload, tmp_path,
+                                  hooks_dir=OFFICE_HOOKS)
+        assert result.returncode == 2
+        assert tripwire.CORRECTION_REMEDY.strip() in result.stderr, command
+
+
 # ---------------- audit regressions: reversal maths, re-book flow, year guard, CII id, budget edge ----------------
 def _reversal_ledger(tmp_path):
     assert _ledger_add(str(tmp_path), "--net", "100.00", "--vat-rate", "19", "--gross", "119.00").returncode == 0

@@ -612,6 +612,242 @@ def test_cli_request_approval_offers_exactly_the_kinds_a_manifest_builder_exists
         assert "invalid choice" in capsys.readouterr().err
 
 
+# -- FR-0050: the filing-correction request, from the command line the clerk is handed ----------
+
+def _document(state, relative, text="rechnung\n"):
+    """Put real bytes at a repo-relative path of this state's project — the approval binds them."""
+    path = os.path.join(os.path.dirname(state.root), *relative.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(text)
+    return path
+
+
+def _correction_question(state, capsys, *argv):
+    assert run_cli(state, "request-approval", "filing_correction", *argv) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_a_line_kind_without_a_defaulted_subject_key_still_demands_every_one(state, capsys):
+    """The optional-key rule is READ OFF THE BUILDER, so it widens nothing that was closed.
+
+    `cli.optional_manifest_parameters` is what lets `filing_correction` be requested without a
+    `--destination` (the absence is the deletion). This measures the other end of that derivation:
+    every older line kind declares no default, so it still refuses a subject key the line left out —
+    which is the property that makes a push question say what it releases.
+    """
+    for kind, builder in sorted(approvals.LINE_MANIFEST_BUILDERS.items()):
+        optional = cli.optional_manifest_parameters(builder)
+        assert optional <= set(cli.manifest_parameters(builder))
+        if kind != "filing_correction":
+            assert not optional, "%s grew a defaulted subject key without a measurement" % kind
+    assert cli.optional_manifest_parameters(
+        approvals.filing_correction_subject_manifest) == {"destination"}
+    assert run_cli(state, "request-approval", "push", "--remote", "origin") == 2
+    assert "branch is missing" in capsys.readouterr().err
+
+
+def test_a_filing_correction_question_says_in_words_what_happens_to_the_document(state, capsys):
+    """BUG-0041's audience decides this one, and it is the question with the sharpest consequence.
+
+    Both outcomes are named as what they DO, never as the manifest key that tells them apart: a
+    reader must not have to notice that `destination` is empty to learn that a document is about to
+    be destroyed. Everything the hash covers is in the sentence -- the document, the outcome, the
+    reason, the version, the expiry -- and the version is SHORTENED like every other digest in this
+    question (`_render_manifest_value`), because a 64-character hex string in the middle of it is
+    what made the `kit_update` question unreadable.
+    """
+    _document(state, "archive/1-Finanzen/2026/x.pdf")
+    moved = _correction_question(state, capsys, "--document", "archive/1-Finanzen/2026/x.pdf",
+                                 "--destination", "outbox/x.pdf", "--reason", "falsch abgelegt")
+    text = moved["question"]
+    assert "archive/1-Finanzen/2026/x.pdf" in text and "outbox/x.pdf" in text
+    assert "verschoben" in text and "falsch abgelegt" in text
+    assert "GELÖSCHT" not in text
+
+    _document(state, "inbox/a.pdf", "scan\n")
+    deleted = _correction_question(state, capsys, "--document", "inbox/a.pdf",
+                                   "--reason", "Doppelscan")
+    assert "GELÖSCHT" in deleted["question"] and "danach weg" in deleted["question"]
+    assert "destination" not in deleted["question"]
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                                    "team-kits"))
+    from kernel import hashing
+    digest = hashing.document_content_hash(
+        os.path.join(os.path.dirname(state.root), "inbox", "a.pdf"))
+    assert digest[:approvals.DIGEST_SHOWN] in deleted["question"]
+    assert digest not in deleted["question"], "the full digest makes the question unreadable"
+
+
+def test_a_document_the_kernel_cannot_hash_is_refused_where_the_clerk_types_it(state, capsys):
+    """"Which file?" is answered at the command line or nowhere.
+
+    The two causes a clerk really hits are a mistyped path and a document past
+    `hashing.DOCUMENT_HASH_LIMIT`, and neither is helped by the generic "a subject key is missing"
+    remedy that lists four flags. So the resolver refuses with the path it looked for.
+    """
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--document", "archive/nope.pdf", "--reason", "weg damit") == 2
+    error = capsys.readouterr().err
+    assert "archive/nope.pdf" in error and "bytes" in error
+
+
+def test_a_document_outside_the_project_is_refused_rather_than_bound_to_an_approval_that_cannot_match(
+        state, capsys, tmp_path):
+    """An approval nothing can ever match is a dead end handed over without a word.
+
+    `guard_fs_tripwire` asks only about positions relative to the project root, so a document named
+    absolutely — or one that climbs out — could be hashed and signed and would then cover nothing at
+    all. It is refused where the clerk types it, with the same message the missing-file case gets.
+    """
+    outside = tmp_path.parent / "elsewhere.pdf"
+    outside.write_text("nicht in diesem Projekt\n", encoding="utf-8")
+    for spelling in (str(outside), "../elsewhere.pdf"):
+        assert run_cli(state, "request-approval", "filing_correction",
+                       "--document", spelling, "--reason", "weg damit") == 2
+        assert "bytes" in capsys.readouterr().err, spelling
+
+
+def test_a_document_named_in_a_spelling_the_gate_cannot_produce_is_refused_at_the_command_line(
+        state, capsys):
+    """Verifier finding F5: the earlier check asked whether the FILE is inside, not the SPELLING.
+
+    An absolute path to a document that really lies inside the project passed it, minted a real
+    approval — and then the same document named the way `guard_fs_tripwire` names it was refused,
+    because the manifest carried a position the gate can never produce. That is the M15 dead end one
+    spelling further in. The typed spelling now has to round-trip: resolved against the project root
+    and normalised back, it must come out as what was typed.
+
+    Both directions, because a refusal that also refuses the legitimate spelling is the other defect.
+    """
+    document = _document(state, "archive/1-Finanzen/2026/x.pdf")
+    for dead_end in (document, os.path.abspath(document), "archive/../archive/../../x.pdf"):
+        assert run_cli(state, "request-approval", "filing_correction",
+                       "--document", dead_end, "--reason", "falsch abgelegt") == 2, dead_end
+        assert "bytes" in capsys.readouterr().err, dead_end
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--document", "./archive/1-Finanzen/../1-Finanzen/2026/x.pdf",
+                   "--reason", "falsch abgelegt") == 0
+    question = json.loads(capsys.readouterr().out)
+    assert "archive/1-Finanzen/2026/x.pdf" in question["question"]
+
+
+def test_a_document_named_in_the_wrong_case_is_refused_by_its_real_name(state, capsys):
+    """Verifier round 2, R2: the round-trip was lexical, so a case-flip minted a dead approval.
+
+    On a case-insensitive filesystem `ARCHIVE/…/x.pdf` opens the same file, resolves to the same
+    absolute path and normalises back to itself — it round-trips perfectly. The gate, though, reads
+    the position out of the command that touches the document, and the archive spells it
+    `archive/…`. So the user answered a question, an approval was minted, and it matched nothing:
+    a burned approval, which is worse than a refusal.
+
+    Measured on both ends: the deviant spelling is refused BY the real name (so the clerk can copy
+    it out of the message), and the real name still works.
+    """
+    _document(state, "archive/1-Finanzen/2026/x.pdf")
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--document", "ARCHIVE/1-Finanzen/2026/x.pdf", "--reason", "Doppelscan") == 2
+    error = capsys.readouterr().err
+    assert "archive/1-Finanzen/2026/x.pdf" in error and "ARCHIVE/" in error, error
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--document", "archive/1-Finanzen/2026/x.pdf", "--reason", "Doppelscan") == 0
+    assert "archive/1-Finanzen/2026/x.pdf" in json.loads(capsys.readouterr().out)["question"]
+
+
+@pytest.mark.parametrize("spelling", [".", "./", "/", "   ", "C:/elsewhere", "../out"])
+def test_a_destination_that_names_no_place_in_this_project_is_refused(state, capsys, spelling):
+    """Verifier finding F7: a destination that normalises empty became a DELETION, silently.
+
+    `--destination .` produced a question saying the document "wird GELÖSCHT und ist danach weg" —
+    the user would have signed a deletion nobody asked for. Leaving the flag OUT stays the way to
+    request one, because an absence is a decision and a mistyped path is not. The absolute and
+    climbing spellings are the same refusal one property further on: a destination the gate can
+    never produce would mint an approval that matches nothing (F5's half for the other key).
+    """
+    _document(state, "archive/1-Finanzen/2026/x.pdf")
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--document", "archive/1-Finanzen/2026/x.pdf",
+                   "--destination", spelling, "--reason", "falsch abgelegt") == 2
+    assert capsys.readouterr().err.strip(), spelling
+    # ...and the deliberate deletion, asked for by leaving the flag out, still works
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--document", "archive/1-Finanzen/2026/x.pdf", "--reason", "Doppelscan") == 0
+    assert "GELÖSCHT" in json.loads(capsys.readouterr().out)["question"]
+
+
+def test_the_missing_key_remedy_names_the_flags_this_command_really_takes(state, capsys):
+    """Verifier finding F8: the remedy contradicted the command it was the remedy for.
+
+    It printed EVERY manifest key as a flag to type, so it named `--content` — which this same
+    function refuses when typed — and `--destination` as required, whose omission is the documented
+    way to ask for a deletion. Derived now from the two statements the loop itself decides on, so a
+    fourth reader of `optional_manifest_parameters` cannot disagree with it.
+    """
+    assert run_cli(state, "request-approval", "filing_correction",
+                   "--destination", "outbox/x.pdf") == 2
+    error = capsys.readouterr().err
+    assert "--content" not in error, error
+    assert "--document <document>" in error and "[--destination <destination>]" in error, error
+    assert "--reason <reason>" in error, error
+
+
+def test_the_correction_hash_binds_the_operation_and_the_reason_beside_it(state):
+    """DEC-0048 in its constructive direction: the signature covers exactly what happens.
+
+    The user signs document + version + outcome + reason, so a changed reason is a different
+    subject and a different question. What the GATE matches is the operation alone
+    (`filing_correction_operation`) -- an approval is not for a different correction because its
+    justification was worded differently -- and every one of the three operation keys moves that
+    match, which is what makes the approval single-use and document-bound.
+    """
+    base = dict(document="archive/a.pdf", content="a" * 64, reason="falsch abgelegt",
+                destination="outbox/a.pdf")
+    signed = approvals.subject_manifest_hash(
+        approvals.filing_correction_subject_manifest(**base))
+    assert signed != approvals.subject_manifest_hash(
+        approvals.filing_correction_subject_manifest(**dict(base, reason="anderer Grund")))
+    operation = approvals.filing_correction_operation(
+        base["document"], base["destination"], base["content"])
+    assert approvals.subject_manifest_hash(operation) == approvals.subject_manifest_hash(
+        {key: approvals.filing_correction_subject_manifest(
+            **dict(base, reason="anderer Grund"))[key] for key in operation})
+    for changed in (dict(document="archive/b.pdf"), dict(destination="outbox/b.pdf"),
+                    dict(destination=""), dict(content="b" * 64)):
+        other = dict(base, **changed)
+        assert approvals.subject_manifest_hash(operation) != approvals.subject_manifest_hash(
+            approvals.filing_correction_operation(
+                other["document"], other["destination"], other["content"])), changed
+
+
+def test_one_position_has_one_spelling_on_both_sides_of_a_correction(state):
+    """The request side types a path and the gate side resolves one; they have to meet.
+
+    `approvals.filed_position` is where they meet, and it is one function for that reason -- a
+    Windows separator, a leading `./`, a `..` segment and a trailing slash are spellings of one
+    position, and two normalisations would make an approved correction match nothing. The empty
+    string stays empty, because that absence is what distinguishes a deletion from a move.
+
+    AN ABSOLUTE PATH STAYS ABSOLUTE, and that is the correction of verifier finding F5: it used to
+    be `strip("/")`, so `/etc/passwd` came back as the project-looking `etc/passwd`. Deciding
+    whether the result is a place this project HAS is `is_project_position`'s job, and it is a
+    separate function because the gate needs the normalisation without the verdict.
+    """
+    for spelling in ("archive/1-Finanzen/x.pdf", "archive\\1-Finanzen\\x.pdf",
+                     "./archive/1-Finanzen/x.pdf", "archive/2026/../1-Finanzen/x.pdf",
+                     "  archive/1-Finanzen/x.pdf  "):
+        assert approvals.filed_position(spelling) == "archive/1-Finanzen/x.pdf", spelling
+        assert approvals.is_project_position(spelling), spelling
+    for nothing in ("", None, ".", "./", "   "):
+        assert approvals.filed_position(nothing) == "", nothing
+        assert not approvals.is_project_position(nothing), nothing
+    assert approvals.filed_position("outbox/") == "outbox"
+    # ...and every spelling the GATE can never produce is a place this project does not have
+    for outside in ("/", "/etc/passwd", "C:/Windows/win.ini", "..", "../elsewhere.pdf",
+                    "archive/../../elsewhere.pdf", "archive/x\ny.pdf", "archive/x\u202ey.pdf"):
+        assert not approvals.is_project_position(outside), outside
+
+
 def test_the_installer_position_prints_utf8_whatever_the_console_codepage_is(state, tmp_path):
     """The PRE-INSTALL position is the one `_pin_utf8` saves, and this measures that position.
 
