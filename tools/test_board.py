@@ -1,13 +1,22 @@
-"""The kanban board the kernel writes beside its index (FR-0030, TSK-0071).
+"""The kanban board the kernel writes beside its index (FR-0030/TSK-0071, FR-0053/TSK-0079).
 
 EVERY CHECK HERE READS THE PAGE THAT SHIPS, parsed as HTML by `_Board` below, and the page is
 produced by a real kernel state write or by the shipped renderer itself. That is deliberate and it
 is the reason there is no JSON data block in the artefact: a test that read an embedded payload
 would measure something no browser renders, and the failure this whole feature exists against --
 a view that quietly stops showing an item -- lives in the DOM, not in a payload beside it.
+
+TSK-0079 ADDED A SCRIPT TO THE PAGE AND THE RULE ABOVE DID NOT MOVE. Which view is showing and
+which item detail is open are `hidden` attributes the RENDERER writes, so the tests below read the
+DOM state exactly as before; the script moves those attributes at a click and carries no item
+content at all (`test_the_page_script_carries_no_item_content_at_all`). What this suite does NOT
+measure is the click itself -- there is no browser in it. The round's report
+(`docs/reviews/2026-08-21-tsk0079-measurements.md`) records the browser run that does, and this
+sentence is the only place that limit is claimed.
 """
 import ast
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -23,7 +32,7 @@ TEAM_KITS = os.path.join(ROOT, "team-kits")
 sys.path.insert(0, TEAM_KITS)
 
 from conftest import approve, walk_to_status  # noqa: E402 -- the sanctioned walkers
-from kernel import board  # noqa: E402
+from kernel import backlog_tree, board  # noqa: E402
 from kernel.backlog_types import ACTIVE_DIRS, AUTOMATA  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
 
@@ -70,15 +79,40 @@ TSK_FIELDS = {
     "expected_outputs": ["code"],
     "dependencies": [],
 }
+SR_FIELDS = {
+    "title": "checkout contract",
+    "derives_from": "PR-0001",
+    "contract": "POST /checkout returns 201",
+    "affected_components": ["api"],
+}
+
+class _Unprintable:
+    """A field value that raises when it is rendered -- the CLASS the per-item guard exists
+    for, rather than one shape somebody thought of. No YAML file produces this one, which is
+    why it is handed to the renderer directly."""
+
+    def __str__(self):
+        raise ValueError("this value cannot be rendered")
+
+    __repr__ = __str__
+
+
+# Elements that never carry an end tag, so the parser below must not keep them on its stack.
+_VOID = ("br", "meta", "link", "img", "input", "hr", "source", "area", "base", "col")
 
 
 class _Board(HTMLParser):
     """The rendered page, read the way a browser reads it.
 
-    Sections, columns and cards are recovered from the DOM's own attributes, so a card that never
-    made it into the markup is a card this parser does not have -- which is exactly the failure the
-    tests below are about. `columns` keeps the ORDER the page puts them in, because a kanban board
-    whose columns are in a random order is not one.
+    Sections, columns, cards, tabs, views, tree nodes and item details are all recovered from the
+    DOM's own attributes, so a card that never made it into the markup is a card this parser does
+    not have -- which is exactly the failure the tests below are about. `columns` keeps the ORDER
+    the page puts them in, because a kanban board whose columns are in a random order is not one.
+
+    IT KEEPS AN ELEMENT STACK rather than a "what am I inside right now" flag. The page nests three
+    views, a tree, groups and a dialog, so which item a piece of text belongs to is an ANCESTOR
+    question -- and the flag version answered it with whatever element came last, which is how a
+    tree node's title would have been appended to its own card's.
     """
 
     def __init__(self, text):
@@ -87,61 +121,149 @@ class _Board(HTMLParser):
         self.columns = {}          # {type: [status, ...]} in page order
         self.cards = {}            # {(type, status): [item id, ...]}
         self.counts = {}           # {(type, status): the count the column CLAIMS}
-        self.warnings = []         # [(kind, type, text), ...]
-        self.titles = {}           # {item id: the title on the card's face}
-        self.folds = {}            # {item id: {field: text}}
-        self._type = self._status = self._item = None
-        self._sink = None          # where character data goes right now
+        self.warnings = []         # [[kind, type, text, view], ...]
+        self.titles = {}           # {item id: the title on its card's face}
+        self.details = {}          # {item id: {field: text}} -- the modal's field list
+        self.detail_ids = []       # every data-detail on the page, in order, duplicates included
+        self.detail_titles = {}
+        self.detail_status = {}
+        self.hidden = {}           # {item id: is its detail hidden in the markup}
+        self.views = {}            # {view key: is it hidden in the markup}
+        self.tabs = []             # [(view key, aria-selected, tag name), ...]
+        self.tab_counts = {}       # {view key: the number the tab CLAIMS}
+        self.nodes = {}            # {(view, id): {type, parent, depth, unassigned}}
+        self.node_titles = {}
+        self.groups = []           # [(view, parent id, type, count), ...]
+        self.refs = []             # [(detail id, id it links to), ...]
+        self.attributes = []       # [(tag, attribute, value), ...] -- everything, for the guards
+        self.elements = []         # [(tag, {attribute: value}), ...] -- element by element
+        self.tags = set()
+        self.element_ids = set()
+        self.hrefs = []
+        self.script = ""
+        self.archived = None
+        self.archived_text = ""
+        self.overlay_hidden = None
+        self._stack = []
         self._field = None
         self.feed(text)
 
+    # -- stack helpers ---------------------------------------------------------
+    def _enclosing(self, attribute):
+        for _tag, attrs in reversed(self._stack):
+            if attribute in attrs:
+                return attrs[attribute]
+        return None
+
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        self.tags.add(tag)
+        self.elements.append((tag, attrs))
+        for name, value in attrs.items():
+            self.attributes.append((tag, name, value or ""))
+        if "id" in attrs:
+            self.element_ids.add(attrs["id"])
+        if "href" in attrs:
+            self.hrefs.append(attrs["href"])
+        if tag not in _VOID:
+            self._stack.append((tag, attrs))
+        view = self._enclosing("data-view")
         if tag == "time" and "data-generated-at" in attrs:
             self.generated_at = attrs["data-generated-at"]
-        elif tag == "section" and "data-type" in attrs:
-            self._type = attrs["data-type"]
-            self.columns.setdefault(self._type, [])
-        elif tag == "div" and "data-status" in attrs:
-            self._status = attrs["data-status"]
-            self.columns[self._type].append(self._status)
-            self.cards.setdefault((self._type, self._status), [])
-            self.counts[(self._type, self._status)] = int(attrs["data-count"])
-        elif tag == "details" and "data-item" in attrs:
-            self._item = attrs["data-item"]
-            self.cards[(self._type, self._status)].append(self._item)
-            self.folds[self._item] = {}
-        elif tag == "li" and "data-warning" in attrs:
-            self.warnings.append([attrs["data-warning"], attrs["data-type"], ""])
-            self._sink = "warning"
-        elif tag == "span" and dict(attrs).get("class") == "title":
-            self._sink = "title"
-        elif tag in ("dt", "dd") and self._item:
-            self._sink = tag
+        if attrs.get("class") == "overlay":
+            self.overlay_hidden = "hidden" in attrs
+        if tag == "div" and "data-view" in attrs:
+            self.views[attrs["data-view"]] = "hidden" in attrs
+        if "data-tab" in attrs:
+            self.tabs.append((attrs["data-tab"], attrs.get("aria-selected"), tag))
+        if "data-archived" in attrs:
+            self.archived = int(attrs["data-archived"])
+        if tag == "section" and "data-type" in attrs:
+            self.columns.setdefault(attrs["data-type"], [])
+        if tag == "div" and "data-status" in attrs:
+            key = (self._enclosing("data-type"), attrs["data-status"])
+            self.columns[key[0]].append(key[1])
+            self.cards.setdefault(key, [])
+            self.counts[key] = int(attrs["data-count"])
+        if "data-open" in attrs:
+            column = self._enclosing("data-status")
+            detail = self._enclosing("data-detail")
+            if detail is not None:
+                self.refs.append((detail, attrs["data-open"]))
+            elif column is not None:
+                self.cards[(self._enclosing("data-type"), column)].append(attrs["data-open"])
+        if tag == "article" and "data-detail" in attrs:
+            self.detail_ids.append(attrs["data-detail"])
+            self.details.setdefault(attrs["data-detail"], {})
+            self.hidden[attrs["data-detail"]] = "hidden" in attrs
+        if tag == "li" and "data-node" in attrs:
+            self.nodes[(view, attrs["data-node"])] = {
+                "type": attrs["data-node-type"], "parent": attrs["data-parent"],
+                "depth": int(attrs["data-depth"]),
+                "unassigned": self._enclosing("data-unassigned") is not None}
+        if "data-group" in attrs:
+            self.groups.append((view, attrs["data-group-parent"], attrs["data-group"],
+                                int(attrs["data-count"])))
+        if tag == "li" and "data-warning" in attrs:
+            self.warnings.append([attrs["data-warning"], attrs["data-type"], "", view])
 
     def handle_endtag(self, tag):
-        if tag == "section":
-            self._type = None
-        elif tag == "details":
-            self._item = None
-        elif tag in ("li", "span", "dt", "dd"):
-            self._sink = None
+        for position in range(len(self._stack) - 1, -1, -1):
+            if self._stack[position][0] == tag:
+                del self._stack[position:]
+                return
 
     def handle_data(self, data):
-        if self._sink == "warning":
-            self.warnings[-1][2] += data
-        elif self._sink == "title" and self._item:
-            self.titles[self._item] = self.titles.get(self._item, "") + data
-        elif self._sink == "dt":
-            self._field = data
-        elif self._sink == "dd" and self._field is not None:
-            self.folds[self._item][self._field] = self.folds[self._item].get(self._field, "") + data
+        for tag, attrs in reversed(self._stack):
+            if attrs.get("class") == "count" and self._enclosing("data-tab"):
+                self.tab_counts[self._enclosing("data-tab")] = int(data)
+                return
+            if tag == "script":
+                self.script += data
+                return
+            if tag in ("dt", "dd"):
+                detail = self._enclosing("data-detail")
+                if tag == "dt":
+                    self._field = data
+                elif detail is not None and self._field is not None:
+                    self.details[detail][self._field] = (
+                        self.details[detail].get(self._field, "") + data)
+                return
+            if attrs.get("class") == "title":
+                detail = self._enclosing("data-detail")
+                if detail is not None:
+                    self.detail_titles[detail] = self.detail_titles.get(detail, "") + data
+                elif self._enclosing("data-status") is not None:
+                    card = self._enclosing("data-open")
+                    self.titles[card] = self.titles.get(card, "") + data
+                else:
+                    key = (self._enclosing("data-view"), self._enclosing("data-open"))
+                    self.node_titles[key] = self.node_titles.get(key, "") + data
+                return
+            if attrs.get("class") == "badge":
+                detail = self._enclosing("data-detail")
+                if detail is not None:
+                    self.detail_status[detail] = self.detail_status.get(detail, "") + data
+                return
+            if attrs.get("class") == "archived":
+                self.archived_text += data
+                return
+            if tag == "li" and "data-warning" in attrs:
+                self.warnings[-1][2] += data
+                return
 
+    # -- readers the tests use -------------------------------------------------
     def where(self, item_id):
         """(type, status) of the one card carrying this id -- KeyError if the page dropped it."""
         found = [key for key, ids in self.cards.items() if item_id in ids]
         assert len(found) == 1, "%s appears %d time(s) on the board" % (item_id, len(found))
         return found[0]
+
+    def kinds(self):
+        return [(kind, item_type) for kind, item_type, _text, _view in self.warnings]
+
+    def visible_views(self):
+        return sorted(key for key, hidden in self.views.items() if not hidden)
 
 
 def _read_board(state):
@@ -153,6 +275,13 @@ def _state(tmp_path, name="project_memory"):
     root = tmp_path / name
     root.mkdir()
     return ProjectState(str(root))
+
+
+def _write_item(state, item_type, stem, text):
+    """One item file straight into the store -- the shape the kernel would refuse to write."""
+    directory = os.path.join(state.root, *ACTIVE_DIRS[item_type].split("/"))
+    os.makedirs(directory, exist_ok=True)
+    open(os.path.join(directory, stem + ".yaml"), "w", encoding="utf-8").write(text)
 
 
 # ---------------- (a) the view cannot go stale: it is written where the index is ----------------
@@ -183,6 +312,7 @@ def test_every_state_write_leaves_a_board_as_fresh_as_the_index(tmp_path):
     page = _read_board(state)
     assert not any(pr["id"] in ids for ids in page.cards.values()), (
         "an archived item is still on the board")
+    assert pr["id"] not in page.details, "an archived item still has a detail on the page"
 
     # ...and the page is never OLDER than the index: one clock reading feeds both files
     index = yaml.safe_load(open(os.path.join(state.root, "generated", "index.yaml"),
@@ -224,46 +354,58 @@ def test_the_columns_of_a_type_are_its_own_automaton_in_chain_order(tmp_path):
             automaton.states - set(automaton.chain)), (item_type, shown)
 
 
-def test_every_field_of_an_item_is_on_its_card_exactly_once(tmp_path):
-    """Nothing an item records may be missing from its card, and nothing may be on it twice.
+def test_every_field_of_an_item_is_in_its_detail_exactly_once(tmp_path):
+    """Nothing an item records may be missing from its record on the page, and nothing twice.
 
-    THE EXPECTATION COMES FROM THE PAGE, NOT FROM `FACE_FIELDS`. The first cut of this test read
+    THE EXPECTATION COMES FROM THE PAGE, NOT FROM `HEADER_FIELDS`. The first cut of this test read
     `set(item) - set(board.FACE_FIELDS)`, i.e. it compared the constant with itself: the verifier
-    changed `FACE_FIELDS` to `("id", "title", "status", "priority")` and watched `priority` vanish
-    from the card entirely — the face renders only id and title — with the suite still green. That
-    is exactly the disappearance FR-0030 exists against.
+    widened the constant and watched a field vanish from the card entirely -- the face renders only
+    id and title -- with the suite still green. That is exactly the disappearance FR-0030 exists
+    against. So the three RENDERED PLACES are looked up in the parsed page and each one only counts
+    when it actually shows the item's value.
 
-    So the three RENDERED PLACES are looked up in the parsed page and each one only counts when it
-    actually shows the item's value: the card's own id, the title on the face, the column the card
-    sits in. Whatever they carry may not be in the fold, and everything else must be. Both
-    mutations then go red — a widened `FACE_FIELDS` drops a field from the card, a narrowed one
-    prints it twice.
+    TSK-0079 MOVED THE SURFACE and this test moved with it rather than being duplicated: the fold
+    inside the card is gone, the item's record is the detail the card opens, and its header is where
+    id, title and status are shown. The second half is new and is the reason the move is safe: the
+    item is on the board AND in both trees, and it still has exactly ONE record on the page. A
+    detail rendered per view would pass the field check and quietly triple the page.
     """
     state = _state(tmp_path)
     item = state.capture("PR", PR_FIELDS)
     page = _read_board(state)
-    _type, column = page.where(item["id"])
-    shown_elsewhere = {name for name, rendered in (("id", item["id"]),
-                                                   ("title", page.titles.get(item["id"], "")),
-                                                   ("status", column))
-                       if name in item and rendered == str(item[name])}
+    shown_elsewhere = {
+        name for name, rendered in (("id", item["id"]),
+                                    ("title", page.detail_titles.get(item["id"], "")),
+                                    ("status", page.detail_status.get(item["id"], "")))
+        if name in item and rendered == str(item[name])}
     assert shown_elsewhere == {"id", "title", "status"}, (
-        "a field the card is supposed to show on its face is not there: %s" % (shown_elsewhere,))
-    assert set(page.folds[item["id"]]) == set(item) - shown_elsewhere
+        "a field the detail is supposed to show in its header is not there: %s" % (shown_elsewhere,))
+    assert set(page.details[item["id"]]) == set(item) - shown_elsewhere
     # a nested value reads as text, not as a Python repr somebody has to decode
-    assert page.folds[item["id"]]["acceptance_criteria"] == "id: AC-1; text: order completes"
+    assert page.details[item["id"]]["acceptance_criteria"] == "id: AC-1; text: order completes"
+
+    assert page.where(item["id"]) == ("PR", "DRAFT")
+    assert ("product", item["id"]) in page.nodes and ("system", item["id"]) in page.nodes
+    assert page.detail_ids.count(item["id"]) == 1, (
+        "the item is shown in three views and carries %d records"
+        % page.detail_ids.count(item["id"]))
 
 
-def test_a_title_that_closes_the_card_element_does_not_break_the_page(tmp_path):
-    """A hand-written item is not the only source of a hostile title, and `</details>` in one would
-    end the card as far as any parser is concerned. The proof is that the PARSER still finds the
-    card and reads the title back whole."""
+def test_a_title_that_tries_to_close_the_elements_around_it_does_not_break_the_page(tmp_path):
+    """A hand-written item is not the only source of a hostile title, and every element the page
+    wraps an item in is one a title can try to close: the card is a `<button>`, the record an
+    `<article>`, and the script that opens the record ends at the first `</script>`. The proof is
+    that the PARSER still finds the card, the node and the record, and reads the title back whole.
+    """
     state = _state(tmp_path)
-    fields = dict(PR_FIELDS, title="fix </details><script>alert(1)</script> leak")
+    fields = dict(PR_FIELDS,
+                  title="fix </button></article></script><script>alert(1)</script> leak")
     item = state.capture("PR", fields)
     page = _read_board(state)
     assert page.where(item["id"]) == ("PR", "DRAFT")
     assert page.titles[item["id"]] == fields["title"]
+    assert page.detail_titles[item["id"]] == fields["title"]
+    assert page.node_titles[("product", item["id"])] == fields["title"]
 
 
 # ---------------- (b) every kit renders its own types ----------------
@@ -299,6 +441,18 @@ def test_each_kit_renders_the_types_its_own_template_ships(tmp_path, kit, captur
         assert page.cards[(item_type, AUTOMATA[item_type].initial)]
 
 
+@pytest.mark.parametrize("kit", ["dev-team", "office-team", "research-team"])
+def test_every_kit_ships_a_type_its_backlog_trees_can_hang_from(tmp_path, kit):
+    """The trees are rootless in a kit that ships no root type, and then both backlog tabs are one
+    long Unassigned list. `ROOT_TYPES` is derived from `ROOT_TYPE_BY_KIT` plus the office kit's
+    procedures, and this is the measurement that keeps that derivation honest against the trees the
+    kits actually install -- read off the state directory, not off the map it was derived from."""
+    state = _kit_state(tmp_path, kit)
+    present = set(board.types_present(state))
+    assert present & backlog_tree.ROOT_TYPES, (
+        "%s ships no type either backlog tree can hang from (%s)" % (kit, sorted(present)))
+
+
 # ---------------- (c) nothing a type does not describe is ever dropped ----------------
 
 def test_an_item_type_no_status_vocabulary_describes_still_appears_with_a_warning(tmp_path):
@@ -311,8 +465,7 @@ def test_an_item_type_no_status_vocabulary_describes_still_appears_with_a_warnin
     row = {"id": "ZZZ-0001", "type": "ZZZ", "title": "from a type nobody wired", "status": "WEIRD"}
     page = _Board(board.render(state, [(row, dict(row))], "2026-08-16T12:00:00"))
     assert page.where("ZZZ-0001") == ("ZZZ", "WEIRD")
-    assert [(kind, item_type) for kind, item_type, _text in page.warnings] == [
-        ("unknown-status", "ZZZ")]
+    assert page.kinds() == [("unknown-status", "ZZZ")]
 
 
 def test_a_status_off_its_types_vocabulary_still_appears_and_warns(tmp_path):
@@ -320,13 +473,11 @@ def test_a_status_off_its_types_vocabulary_still_appears_and_warns(tmp_path):
     hand-edited item file. The kernel refuses such a status on its own transitions, so the item
     only ever reaches the store by hand -- and that is precisely when a board must not hide it."""
     state = _state(tmp_path)
-    os.makedirs(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/")))
-    open(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/"), "BUG-0001.yaml"),
-         "w", encoding="utf-8").write("id: BUG-0001\ntitle: crash\nstatus: WAT\n")
+    _write_item(state, "BUG", "BUG-0001", "id: BUG-0001\ntitle: crash\nstatus: WAT\n")
     state.generate_index()
     page = _read_board(state)
     assert page.where("BUG-0001") == ("BUG", "WAT")
-    assert ("unknown-status", "BUG") in [(kind, item_type) for kind, item_type, _t in page.warnings]
+    assert ("unknown-status", "BUG") in page.kinds()
 
 
 def test_a_record_type_without_a_status_is_not_reported_as_a_defect(tmp_path):
@@ -349,13 +500,11 @@ def test_an_item_file_that_cannot_be_read_is_shown_rather_than_dropped(tmp_path)
     `corrupt`, and a board that skipped those rows would be reassuring about a state nobody can
     read."""
     state = _state(tmp_path)
-    os.makedirs(os.path.join(state.root, *ACTIVE_DIRS["SR"].split("/")))
-    open(os.path.join(state.root, *ACTIVE_DIRS["SR"].split("/"), "SR-0001.yaml"),
-         "w", encoding="utf-8").write("- this is a list, not an item\n")
+    _write_item(state, "SR", "SR-0001", "- this is a list, not an item\n")
     state.generate_index()
     page = _read_board(state)
     assert page.where("SR-0001") == ("SR", board.UNREADABLE)
-    assert ("unreadable", "SR") in [(kind, item_type) for kind, item_type, _t in page.warnings]
+    assert ("unreadable", "SR") in page.kinds()
 
 
 def test_a_self_referential_item_body_does_not_stop_the_state_write(tmp_path):
@@ -366,15 +515,13 @@ def test_a_self_referential_item_body_does_not_stop_the_state_write(tmp_path):
     in that project fail. The item still has to reach the board, so the bound may not simply drop it.
     """
     state = _state(tmp_path)
-    os.makedirs(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/")))
-    open(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/"), "BUG-0001.yaml"),
-         "w", encoding="utf-8").write("id: BUG-0001\ntitle: loops\nstatus: OPEN\n"
-                                      "repro: &loop\n  - step\n  - *loop\n")
+    _write_item(state, "BUG", "BUG-0001", "id: BUG-0001\ntitle: loops\nstatus: OPEN\n"
+                                          "repro: &loop\n  - step\n  - *loop\n")
     state.generate_index()                       # the write itself must survive it
     state.capture("PR", PR_FIELDS)               # ...and so must the next one
     page = _read_board(state)
     assert page.where("BUG-0001") == ("BUG", "OPEN")
-    assert page.folds["BUG-0001"]["repro"].startswith("step")
+    assert page.details["BUG-0001"]["repro"].startswith("step")
 
 
 # ---------------- the freshness claim, on the writers that did NOT regenerate ----------------
@@ -471,11 +618,11 @@ def test_a_revoked_approval_shows_as_revoked_on_the_board(tmp_path):
     state = _state(tmp_path)
     pr = state.capture("PR", PR_FIELDS)
     apr = approve(state, pr["id"], "scope")
-    assert _read_board(state).folds[apr["id"]]["revoked"] == "False"
+    assert _read_board(state).details[apr["id"]]["revoked"] == "False"
     sys.path.insert(0, TEAM_KITS)
     from kernel import approvals
     approvals.revoke(state, apr["id"])
-    assert _read_board(state).folds[apr["id"]]["revoked"] == "True"
+    assert _read_board(state).details[apr["id"]]["revoked"] == "True"
 
 
 def test_an_expired_lease_puts_the_task_back_on_the_board_as_ready(tmp_path):
@@ -508,10 +655,8 @@ def test_a_surrogate_in_an_item_does_not_stop_the_state_write(tmp_path):
     every later capture in that project, with the hand edit the gates refuse as the only apparent
     remedy."""
     state = _state(tmp_path)
-    os.makedirs(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/")))
-    open(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/"), "BUG-0001.yaml"),
-         "w", encoding="utf-8").write('id: BUG-0001\ntitle: lone half\nstatus: OPEN\n'
-                                      'observed: "\\uD800"\n')
+    _write_item(state, "BUG", "BUG-0001", 'id: BUG-0001\ntitle: lone half\nstatus: OPEN\n'
+                                          'observed: "\\uD800"\n')
     state.generate_index()
     item = state.capture("PR", PR_FIELDS)          # the NEXT write must go through as well
     page = _read_board(state)
@@ -562,11 +707,10 @@ def test_an_alias_bomb_cannot_stretch_a_state_write(tmp_path):
     wide += ["  - &w%d [%s]" % (n, ", ".join(["*w%d" % (n - 1)] * width)) for n in (2, 3)]
     wide.append("  - [%s]" % ", ".join(["*w3"] * width))
     lines = len(deep) + len(wide)                   # one card line per top-level element
-    os.makedirs(os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/")))
+    _write_item(state, "BUG", "BUG-0001",
+                "id: BUG-0001\ntitle: bomb\nstatus: OPEN\nrepro:\n%s\nobserved:\n%s\n"
+                % ("\n".join(deep), "\n".join(wide)))
     path = os.path.join(state.root, *ACTIVE_DIRS["BUG"].split("/"), "BUG-0001.yaml")
-    open(path, "w", encoding="utf-8").write(
-        "id: BUG-0001\ntitle: bomb\nstatus: OPEN\nrepro:\n%s\nobserved:\n%s\n"
-        % ("\n".join(deep), "\n".join(wide)))
 
     tracemalloc.start()
     started = time.time()
@@ -579,13 +723,13 @@ def test_an_alias_bomb_cannot_stretch_a_state_write(tmp_path):
     assert peak < 8 * 1024 * 1024, (
         "rendering a %d-byte item allocated %.1f MB" % (item_bytes, peak / 1024.0 / 1024))
     # the page bound is the BUDGET, read off `board`: one line per top-level element, each within
-    # VALUE_MAX_CHARS, plus room for the markup around a card
-    assert grew < lines * (board.VALUE_MAX_CHARS + 128) + 2048, (
+    # VALUE_MAX_CHARS, plus room for the markup around a card, a tree node and a warning
+    assert grew < lines * (board.VALUE_MAX_CHARS + 128) + 4096, (
         "the item added %d bytes to the board (item file: %d bytes)" % (grew, item_bytes))
     assert took < 30, "one item stretched a state write to %.1f s" % took
     page = _read_board(state)
     assert page.where("BUG-0001") == ("BUG", "OPEN")
-    assert board.NESTED_MARKER in page.folds["BUG-0001"]["repro"], (
+    assert board.NESTED_MARKER in page.details["BUG-0001"]["repro"], (
         "the container at the depth bound was unfolded instead of marked")
 
 
@@ -612,7 +756,7 @@ def test_a_board_that_cannot_be_written_does_not_fail_the_state_write(tmp_path, 
 
 
 def test_an_item_no_renderer_can_read_costs_its_own_card_and_nothing_else(tmp_path):
-    """The per-card guard, driven with a body no YAML file produces -- deliberately, because the
+    """The per-item guard, driven with a body no YAML file produces -- deliberately, because the
     guard exists for the CLASS (the body's shape is the file's decision, not this module's) and
     not for one shape somebody thought of. The neighbouring card must survive it, and the page has
     to NAME the id rather than quietly drop a row."""
@@ -621,12 +765,19 @@ def test_an_item_no_renderer_can_read_costs_its_own_card_and_nothing_else(tmp_pa
             {"id": "PR-0002", "title": "fine", "status": "DRAFT"})
     broken = ({"id": "PR-0001", "type": "PR", "title": "bad body", "status": "DRAFT"},
               ["not a mapping at all"])
-    page = _Board(board.render(state, [broken, good], "2026-08-16T12:00:00"))
+    # ...and the second half of the same guard: the CARD and the tree node are drawn outside
+    # `_detail`'s try, so a title nothing can render would cost the page rather than the item
+    titleless = ({"id": "PR-0003", "type": "PR", "title": _Unprintable(), "status": "DRAFT"},
+                 {"id": "PR-0003", "status": "DRAFT"})
+    page = _Board(board.render(state, [broken, good, titleless], "2026-08-16T12:00:00"))
     assert page.where("PR-0002") == ("PR", "DRAFT")
     assert page.where("PR-0001") == ("PR", "DRAFT")
+    assert page.where("PR-0003") == ("PR", "DRAFT")
     assert page.titles["PR-0002"] == "fine"
-    assert [(kind, item_type) for kind, item_type, _t in page.warnings] == [("unrenderable", "PR")]
-    assert "PR-0001" in page.warnings[0][2]
+    assert page.titles.get("PR-0003", "") == ""
+    assert ("system", "PR-0003") in page.nodes
+    assert page.kinds() == [("unrenderable", "PR"), ("unrenderable", "PR")]
+    assert "PR-0001" in page.warnings[0][2] and "PR-0003" in page.warnings[1][2]
 
 
 def test_every_column_counts_the_cards_it_actually_carries(tmp_path):
@@ -640,3 +791,580 @@ def test_every_column_counts_the_cards_it_actually_carries(tmp_path):
     for key, count in page.counts.items():
         assert count == len(page.cards[key]), key
     assert page.counts[("PR", "DRAFT")] == 3
+
+
+# ---------------- (d) three views in one file, one of them showing ----------------
+
+def test_the_page_shows_one_view_and_the_other_two_are_hidden_in_the_dom(tmp_path):
+    """FR-0053/2: real tabs, not anchors into one endless page.
+
+    WHAT IS MEASURED IS DOM STATE, because that is what the browser reads and what a test can read
+    without one: the two inactive views carry the `hidden` attribute the renderer wrote, so they are
+    not displayed by the browser's own stylesheet -- with no CSS and no script involved. The script
+    moves that attribute at a click; it cannot be what decides the page's initial state, or the file
+    would show three stacked views for the moment before it runs.
+
+    THE TABS ARE BUTTONS AND NOT LINKS, and that is the other half of the ask: an `<a href="#...">`
+    would scroll a long page instead of switching a view, which is exactly the shape FR-0053 was
+    written against. Every tab must name a view that exists, and the selected one must be the one
+    showing -- a tab pointing at a view the page does not have is a dead control.
+    """
+    state = _state(tmp_path)
+    state.capture("PR", PR_FIELDS)
+    page = _read_board(state)
+    assert set(page.views) == {"board", "product", "system"}, sorted(page.views)
+    assert page.visible_views() == ["board"], page.views
+    assert {key for key, _selected, _tag in page.tabs} == set(page.views)
+    assert {tag for _key, _selected, tag in page.tabs} == {"button"}, (
+        "a tab that is a link scrolls the page instead of switching the view")
+    selected = [key for key, mark, _tag in page.tabs if mark == "true"]
+    assert selected == page.visible_views(), (selected, page.visible_views())
+    # ...and every item detail starts hidden, or the page opens with 200 records unrolled
+    assert set(page.hidden.values()) == {True}
+    # ...and so does the overlay they sit in. It is `position: fixed; inset: 0`, so without the
+    # attribute it lies over the whole page from the first paint: nothing behind it can be clicked,
+    # including the tabs and every card. Measured in a browser for the round's report; here it is
+    # the attribute the renderer has to write.
+    assert page.overlay_hidden is True, "the modal backdrop covers the page from the start"
+    # the number beside a tab is a claim about what is behind it -- an unchecked counter is
+    # where a number quietly stops being true, and the column heads are checked for the same
+    # reason (`test_every_column_counts_the_cards_it_actually_carries`)
+    assert page.tab_counts["board"] == sum(len(ids) for ids in page.cards.values())
+    for view in ("product", "system"):
+        assert page.tab_counts[view] == len([key for key in page.nodes if key[0] == view]), (
+            view, page.tab_counts[view])
+
+
+def test_the_page_script_carries_no_item_content_at_all(tmp_path):
+    """The script is a CONSTANT, and that is the whole escaping argument for the new surface.
+
+    Nothing item-derived is interpolated into it, so a `</script>` in a title cannot end it early
+    and no second escaping layer (JS string, JSON, attribute-inside-JS) exists to get wrong. This
+    measures the property rather than the intention: two stores with nothing in common must produce
+    the same script, byte for byte. An embedded payload -- the shape a "just put the items in a
+    JSON blob" rewrite would take -- fails here on its first hostile character and on its first
+    benign one too.
+    """
+    first = _state(tmp_path, "one")
+    first.capture("PR", PR_FIELDS)
+    second = _state(tmp_path, "two")
+    root = second.capture("PR", dict(PR_FIELDS, title="</script>", goal="'; alert(2); //"))
+    second.capture("BUG", dict(BUG_FIELDS, related_pr=root["id"],
+                               title="</script><script>alert(1)</script>",
+                               observed="'; alert(2); //"))
+    one, two = _read_board(first), _read_board(second)
+    assert one.script.strip(), "the page carries no script at all"
+    assert one.script == two.script, "item content reached the page's script"
+
+
+def test_a_hostile_field_cannot_add_an_element_or_an_attribute_to_the_page(tmp_path):
+    """The new surfaces -- the modal, the tree labels, the reference buttons -- through the REAL
+    write path, with the attack aimed at each of them.
+
+    THE MEASURE IS A DIFF AND NOT A LIST OF FORBIDDEN STRINGS: an injection IS, by definition, an
+    element or an attribute that item content put into the page. So the same store is written twice,
+    once benignly and once with every string field hostile, and the SETS of tag names and attribute
+    names have to match. It costs nothing to keep true and it does not have to be told what the next
+    attack looks like -- an `onerror=` inside a title, a `data-open` a field invents, a `<script>`
+    an id closes the attribute for, all land as a new name in one of the two sets.
+
+    The ID is hostile too, and by hand: `capture` assigns ids, so the only way one reaches the page
+    is a file somebody wrote -- and that is the value that goes into `data-open`, `data-detail` and
+    `data-node`, i.e. into an attribute rather than into text.
+
+    THE FIXTURE IS DUMPED AS ONE DOCUMENT, and that is not a style choice. It was composed field by
+    field with `yaml.safe_dump(value).strip()`, and `safe_dump` of a scalar ends its document with
+    `...` -- which `strip()` does not remove, because it is not whitespace. The file was therefore a
+    broken multi-document stream, the item arrived as `(unreadable)`, and the hostile id and title
+    never reached the page at all: the escaping mutations this test exists for stayed GREEN. A
+    fixture that cannot deliver its attack is a test that cannot fail.
+    """
+    attack = '</article><img src=x onerror=alert(1)><a href="javascript:alert(2)">x</a>'
+    stores = {}
+    for kind, title, evil_id in (("benign", "checkout", "BUG-0002"),
+                                 ("hostile", attack, 'BUG-0002" onclick="alert(3)')):
+        state = _state(tmp_path, kind)
+        pr = state.capture("PR", dict(PR_FIELDS, title=title, problem=attack if kind else "x"))
+        state.capture("SR", dict(SR_FIELDS, title=title, derives_from=pr["id"],
+                                 contract=attack, affected_components=[attack]))
+        _write_item(state, "BUG", "BUG-0002", yaml.safe_dump(
+            {"id": evil_id, "title": title, "status": "OPEN", "related_pr": pr["id"]},
+            allow_unicode=True, default_flow_style=False))
+        state.generate_index()
+        stores[kind] = _read_board(state)
+
+    benign, hostile = stores["benign"], stores["hostile"]
+    # the fixture has to ARRIVE, or everything below passes on an empty page
+    assert hostile.details[evil_id]["related_pr"] == pr["id"], sorted(hostile.details)
+    assert hostile.detail_titles[evil_id] == attack
+    assert hostile.tags == benign.tags, hostile.tags ^ benign.tags
+    assert ({name for _tag, name, _value in hostile.attributes}
+            == {name for _tag, name, _value in benign.attributes}), (
+        "item content introduced an attribute: %s"
+        % ({name for _tag, name, _value in hostile.attributes}
+           ^ {name for _tag, name, _value in benign.attributes}))
+    # ...and the hostile text is still SHOWN -- escaping that drops the content is not a fix
+    assert attack in hostile.details[[key for key in hostile.details
+                                      if key.startswith("PR-")][0]]["problem"]
+
+
+def test_the_page_carries_no_event_handler_and_no_link_out_of_itself(tmp_path):
+    """Self-containment and the javascript:-URL class, as properties of every attribute on a page
+    rendered from hostile items.
+
+    Both halves are DEFINITIONS rather than lists of bad strings: an inline handler is an attribute
+    whose NAME starts with `on` (that is what the class is), and a link out of this file is an
+    attribute whose VALUE starts with a URL scheme or a slash. What is left is the page's own
+    anchors, and those must resolve inside it -- a fragment pointing at an id the page does not
+    carry is a dead link, which is how the type navigation would rot if a section were renamed.
+    """
+    state = _state(tmp_path)
+    pr = state.capture("PR", dict(PR_FIELDS, title='javascript:alert(1)',
+                                  problem='<a href="javascript:alert(2)">x</a>'))
+    state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"],
+                              observed="https://example.invalid/steal?c=1"))
+    page = _read_board(state)
+    handlers = sorted({(tag, name) for tag, name, _value in page.attributes
+                       if name.lower().startswith("on")})
+    assert not handlers, handlers
+    scheme = re.compile(r"\s*([A-Za-z][A-Za-z0-9+.\-]*:|//|/)")
+    outward = sorted({(tag, name, value) for tag, name, value in page.attributes
+                      if scheme.match(value)})
+    assert not outward, outward
+    assert page.hrefs, "the type navigation vanished -- this check would then prove nothing"
+    for href in page.hrefs:
+        assert href.startswith("#") and href[1:] in page.element_ids, href
+
+
+# ---------------- (e) the two trees, built from real links only ----------------
+
+def _dev_store(tmp_path, name="project_memory"):
+    """A PR with a system requirement, a bug and two tasks under it -- one task per link shape."""
+    state = _state(tmp_path, name)
+    pr = state.capture("PR", PR_FIELDS)
+    sr = state.capture("SR", dict(SR_FIELDS, derives_from=pr["id"]))
+    bug = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"]))
+    under_sr = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                         derives_from=sr["id"]))
+    under_root = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                           derives_from=pr["id"]))
+    return state, pr, sr, bug, under_sr, under_root
+
+
+def test_a_task_hangs_under_the_item_it_was_cut_from_and_not_under_the_root(tmp_path):
+    """FR-0053/3, the placement rule, measured on the rendered tree.
+
+    A `TSK` names TWO real parents -- `product_requirement` (the root it serves) and `derives_from`
+    (the item its criteria come from) -- so "the first link that resolves" is not a rule, it is a
+    coin toss that always lands on the root. The DEEPEST resolvable parent is the rule, and both
+    directions are here: the task cut from the SR sits under the SR at depth 2, the task cut from
+    the root itself sits under the root at depth 1. A renderer that took the first field would put
+    both at depth 1 and this goes red.
+    """
+    state, pr, sr, _bug, under_sr, under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    assert page.nodes[("system", under_sr["id"])]["parent"] == sr["id"]
+    assert page.nodes[("system", under_sr["id"])]["depth"] == 2
+    assert page.nodes[("system", under_root["id"])]["parent"] == pr["id"]
+    assert page.nodes[("system", under_root["id"])]["depth"] == 1
+    assert page.nodes[("system", sr["id"])]["parent"] == pr["id"]
+    assert page.nodes[("system", pr["id"])]["depth"] == 0
+
+
+def test_a_bug_stands_in_a_group_of_its_own_under_the_root_it_was_recorded_against(tmp_path):
+    """The bugs of a root do not belong between its system requirements: FR-0053 asks for a group,
+    and the renderer gives EVERY type one, so the ask needs no case of its own. Measured as the
+    groups the page actually draws under one parent, with their counts."""
+    state, pr, sr, bug, under_sr, _under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    under_pr = {(item_type, count) for view, parent, item_type, count in page.groups
+                if view == "system" and parent == pr["id"]}
+    assert under_pr == {("SR", 1), ("BUG", 1), ("TSK", 1)}, under_pr
+    assert page.nodes[("system", bug["id"])]["parent"] == pr["id"]
+    assert (("system", sr["id"], "TSK", 1)) in page.groups
+    assert page.nodes[("system", under_sr["id"])]["parent"] == sr["id"]
+
+
+def test_the_product_tree_carries_the_customer_types_and_never_a_task(tmp_path):
+    """FR-0053/3: the product backlog is the conversation with the user -- root, requests, change
+    requests -- and a task on it would be the work plan leaking into it. The counter-direction is
+    the point of the test: the same items ARE on the page, on the board tab and in the system tree,
+    so this measures curation and not disappearance."""
+    state, pr, sr, bug, under_sr, _under_root = _dev_store(tmp_path)
+    request = state.capture("FR", {"title": "make it faster", "request_text": "please",
+                                   "related_pr": pr["id"]})
+    change = state.capture("CR", {"title": "other checkout", "target_pr": pr["id"],
+                                  "target_revision": 1, "change_description": "swap it",
+                                  "acceptance_criteria": []})
+    page = _read_board(state)
+    product = {item_id: node for (view, item_id), node in page.nodes.items() if view == "product"}
+    assert set(product) == {pr["id"], request["id"], change["id"]}, sorted(product)
+    assert product[request["id"]]["parent"] == pr["id"]
+    assert product[change["id"]]["parent"] == pr["id"]
+    for absent in (sr["id"], bug["id"], under_sr["id"]):
+        assert absent not in product
+        assert absent in {item_id for (view, item_id) in page.nodes if view == "system"}
+        assert page.where(absent)                       # ...and on the board, as ever
+
+
+def test_a_procedure_that_names_another_one_is_still_a_root(tmp_path):
+    """The one place the tree leaves a real link unused, standing here so it rots visibly.
+
+    A `PROC` may carry `derives_from` (optional, spec II.2) and `ROOT_TYPES` counts it as a root
+    anyway: the office kit has no PR and is led by its procedures, so nesting one under another
+    would bury that kit's whole backlog a level down. If this ever stops being what we want, this
+    is the test that says so.
+    """
+    state = _state(tmp_path)
+    first = state.capture("PROC", PROC_FIELDS)
+    second = state.capture("PROC", dict(PROC_FIELDS, title="File a receipt",
+                                        derives_from=first["id"]))
+    page = _read_board(state)
+    for view in ("product", "system"):
+        assert page.nodes[(view, second["id"])]["parent"] == ""
+        assert page.nodes[(view, second["id"])]["depth"] == 0
+        assert not page.nodes[(view, second["id"])]["unassigned"]
+
+
+def test_an_item_the_tree_cannot_place_is_visible_with_the_reason(tmp_path):
+    """The FR-0030 nothing-vanishes property, carried into the trees (FR-0053/3).
+
+    An unplaceable item is the one a curated view would drop most naturally -- it belongs nowhere in
+    the hierarchy -- and dropping it is how a backlog view starts lying. So it is IN the page, in a
+    group that says what it is, and the view's banner says why it is there. Both are read off the
+    rendered page here; the reason itself is measured per case below.
+    """
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    homeless = state.capture("FR", {"title": "no home", "request_text": "please"})
+    page = _read_board(state)
+    assert page.nodes[("product", homeless["id"])]["unassigned"] is True
+    assert page.nodes[("product", homeless["id"])]["parent"] == ""
+    assert page.node_titles[("product", homeless["id"])] == "no home"
+    unassigned = [entry for entry in page.warnings
+                  if entry[3] == "product" and entry[0].startswith("unassigned-")]
+    assert len(unassigned) == 1, page.warnings
+    assert unassigned[0][1] == "FR" and "related_pr" in unassigned[0][2], unassigned
+    # the root beside it is placed as ever -- an Unassigned group that swallows everything is
+    # no better than one that swallows nothing
+    assert page.nodes[("product", pr["id"])]["unassigned"] is False
+
+
+def _refused_no_link(state):
+    """An FR whose `related_pr` its contract lets it omit -- and it did."""
+    state.capture("PR", PR_FIELDS)
+    return state.capture("FR", {"title": "no home", "request_text": "please"})["id"], "product"
+
+
+def _refused_missing_link(state):
+    """A TSK with none of the two bindings its contract REQUIRES -- a hand-written file, because
+    `capture` refuses it."""
+    state.capture("PR", PR_FIELDS)
+    _write_item(state, "TSK", "TSK-0001", "id: TSK-0001\ntitle: orphan\nstatus: DRAFT\n")
+    state.generate_index()
+    return "TSK-0001", "system"
+
+
+def _refused_off_view(state):
+    """An FR pointing at a BUG: a real item on this board, and one the product view does not
+    place."""
+    pr = state.capture("PR", PR_FIELDS)
+    bug = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"]))
+    return state.capture("FR", {"title": "sideways", "request_text": "please",
+                                "related_pr": bug["id"]})["id"], "product"
+
+
+def _refused_unknown_link(state):
+    """An FR pointing at an id no item carries -- an archived root, or a typo. Hand-written,
+    because `capture` refuses a binding it cannot resolve: this shape only ever arrives as a file
+    (an edited one, or a root that was archived under it), which is exactly when a view may not
+    quietly drop the item."""
+    state.capture("PR", PR_FIELDS)
+    _write_item(state, "FR", "FR-0001",
+                "id: FR-0001\ntitle: dangling\nstatus: NEW\nrequest_text: please\n"
+                "related_pr: PR-9999\n")
+    state.generate_index()
+    return "FR-0001", "product"
+
+
+def _refused_unreadable(state):
+    """A file no parser can read -- it still belongs to a type, so it still belongs in the view."""
+    state.capture("PR", PR_FIELDS)
+    _write_item(state, "BUG", "BUG-0001", "- a list, not an item\n")
+    state.generate_index()
+    return "BUG-0001", "system"
+
+
+_REFUSALS = {
+    backlog_tree.NO_LINK: _refused_no_link,
+    backlog_tree.MISSING_LINK: _refused_missing_link,
+    backlog_tree.OFF_VIEW: _refused_off_view,
+    backlog_tree.UNKNOWN_LINK: _refused_unknown_link,
+    backlog_tree.UNREADABLE: _refused_unreadable,
+}
+
+
+def test_every_reason_a_tree_can_refuse_an_item_is_one_a_store_can_produce():
+    """The tripwire on the reasons, from the dead end: a kind with no message would raise on the
+    page, and a kind no store can reach is a case nobody can trigger and nobody can fix."""
+    assert set(_REFUSALS) == set(backlog_tree.MESSAGES), (
+        set(_REFUSALS) ^ set(backlog_tree.MESSAGES))
+
+
+@pytest.mark.parametrize("kind", sorted(_REFUSALS))
+def test_the_reason_a_link_did_not_resolve_is_the_one_the_contract_gives(tmp_path, kind):
+    """Four ways a link can fail to resolve plus the unreadable file, each on the page with ITS OWN
+    reason -- because the remedies differ: a `TSK` without `derives_from` breaks its contract, an
+    `FR` without `related_pr` does not (spec II.2 declares it optional), an id that lands on an item
+    this view does not place is a third thing, and an id that lands nowhere at all is a fourth. One
+    warning for all of them would be one message nobody can act on.
+    """
+    state = _state(tmp_path, kind.replace("-", "_"))
+    item_id, view = _REFUSALS[kind](state)
+    page = _read_board(state)
+    assert page.nodes[(view, item_id)]["unassigned"] is True
+    mine = [entry for entry in page.warnings if entry[3] == view and entry[0] == kind]
+    assert len(mine) == 1, (kind, page.warnings)
+    assert item_id in mine[0][2], mine
+
+
+# ---------------- the tree may never fail the state write it is written by ----------------
+
+def test_a_link_that_points_at_itself_cannot_hang_the_state_write(tmp_path):
+    """A `derives_from` naming its own item is a legal file, and the placement loop is what such a
+    file attacks: an item waiting for itself is never ready, so a loop that waited would spin at the
+    end of every state write in that project. It resolves to a warning and the write goes on."""
+    state = _state(tmp_path)
+    state.capture("PR", PR_FIELDS)
+    _write_item(state, "SR", "SR-0001",
+                "id: SR-0001\ntitle: itself\nstatus: PROPOSED\nderives_from: SR-0001\n")
+    _write_item(state, "SR", "SR-0002",
+                "id: SR-0002\ntitle: the other one\nstatus: PROPOSED\nderives_from: SR-0003\n")
+    _write_item(state, "SR", "SR-0003",
+                "id: SR-0003\ntitle: and back\nstatus: PROPOSED\nderives_from: SR-0002\n")
+    state.generate_index()
+    item = state.capture("BUG", BUG_FIELDS)          # the NEXT write must go through as well
+    page = _read_board(state)
+    for stuck in ("SR-0001", "SR-0002", "SR-0003"):
+        assert page.nodes[("system", stuck)]["unassigned"] is True
+        assert page.where(stuck) == ("SR", "PROPOSED")
+    assert page.where(item["id"])[0] == "BUG"
+
+
+def test_a_long_chain_of_links_still_reaches_the_page(tmp_path):
+    """Depth is the items' own doing: a task deriving from a task deriving from a task is a legal
+    store, and this renderer runs at the END of every state write.
+
+    WHAT A RECURSIVE WALK COSTS HERE IS NOT AN ERROR, IT IS SILENCE, and that is why the depth is
+    worth a test of its own. The RecursionError lands inside `state._write_board`, which is
+    deliberately fail-soft: the state write goes through, one line reaches stderr, and the PAGE
+    keeps its previous content -- so the tree simply stops telling the truth from the day the chain
+    grew. The stack in `board._branches` is what makes the depth cost memory instead of frames. The
+    boundary was measured on the recursive version (it kept the page at a few hundred levels and
+    lost it a few hundred further on; the round's report carries both depths), and the chain built
+    here is past it.
+    """
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    depth = 1200
+    previous = pr["id"]
+    for number in range(1, depth + 1):
+        item_id = "SR-%04d" % number
+        _write_item(state, "SR", item_id,
+                    "id: %s\ntitle: link %d\nstatus: PROPOSED\nderives_from: %s\n"
+                    % (item_id, number, previous))
+        previous = item_id
+    state.generate_index()
+    page = _read_board(state)
+    assert page.nodes[("system", "SR-%04d" % depth)]["depth"] == depth
+    assert not page.nodes[("system", "SR-%04d" % depth)]["unassigned"]
+
+
+# ---------------- the modal's references, and what is not on this board ----------------
+
+def test_every_id_a_field_names_opens_that_item_and_an_id_the_board_lacks_does_not(tmp_path):
+    """FR-0053/1: linked items are CLICKABLE references, and clicking one opens that item.
+
+    WHICH VALUES BECOME REFERENCES IS A DEFINITION, not a list of fields: anything shaped like an
+    id that this board holds an item for. So `dependencies` and a mention inside prose link exactly
+    as `derives_from` does, and no field has to be added to a list the day it starts holding a
+    reference.
+
+    THE COUNTER-DIRECTION IS THE HALF THAT ROTS: `AC-1` is not an id and must stay text, and an id
+    whose item is not on this board -- archived, or a typo -- must stay text too, because a control
+    that opens nothing is worse than a plain reference.
+    """
+    state, pr, sr, _bug, under_sr, _under_root = _dev_store(tmp_path)
+    edited = state.update_item(under_sr["id"], {"dependencies": ["SR-9999", sr["id"]]})
+    assert edited["dependencies"] == ["SR-9999", sr["id"]]
+    page = _read_board(state)
+    linked = {ref for detail, ref in page.refs if detail == under_sr["id"]}
+    assert linked == {pr["id"], sr["id"]}, linked
+    fields = page.details[under_sr["id"]]
+    assert "SR-9999" in fields["dependencies"] and "SR-9999" not in linked
+    assert "AC-1" in fields["acceptance_refs"] and not any(
+        ref.startswith("AC-") for _detail, ref in page.refs)
+    # every reference the page draws opens a record that is really on the page
+    for _detail, ref in page.refs:
+        assert ref in page.details, ref
+
+
+def test_the_tab_strip_counts_what_the_archive_holds_and_the_board_does_not(tmp_path):
+    """FR-0053/2 asks the tabs to carry the archive counts, and the reason is the sentence beside
+    them: this board shows `active` items only, so a reader who has archived 77 tasks sees three and
+    has no way to tell whether the rest are gone or done. The count is taken from the archive tree
+    the kernel itself writes into (`state.archive_path`), so it moves with an archive, and only ids
+    of that type are counted -- the staging directories that retire into the same tree are not
+    items."""
+    state = _state(tmp_path)
+    state.generate_index()
+    assert _read_board(state).archived == 0
+    pr = state.capture("PR", PR_FIELDS)
+    state.transition(pr["id"], "REJECTED")
+    state.archive(pr["id"])
+    page = _read_board(state)
+    assert page.archived == 1, page.archived_text
+    assert "PR 1" in page.archived_text, page.archived_text
+    assert not any(pr["id"] in ids for ids in page.cards.values())
+
+    # THE COUNTER-DIRECTION, and the reason the walk reads `archive/<TYPE>/` rather than the whole
+    # archive: `staging.clear_staging` retires whole staging directories into `archive/staging/`,
+    # and a staged proposal is not an item. A file in there that LOOKS like an item -- which is
+    # exactly what a staged item proposal looks like -- may not move this number.
+    staged = os.path.join(state.archive_root(), "staging", "2026", "TSK-0001")
+    os.makedirs(staged, exist_ok=True)
+    open(os.path.join(staged, "PR-0002.yaml"), "w", encoding="utf-8").write(
+        "id: PR-0002\ntitle: a proposal, not an item\n")
+    state.generate_index()
+    page = _read_board(state)
+    assert page.archived == 1, (
+        "a staged proposal was counted as an archived item: %s" % page.archived_text)
+
+
+def test_an_alias_bomb_in_a_binding_field_cannot_stretch_a_state_write(tmp_path):
+    """The alias bomb again, one module along -- and the reason the first bomb test could not see it.
+
+    `test_an_alias_bomb_cannot_stretch_a_state_write` puts its bomb in `repro` and `observed`, i.e.
+    in fields only the RENDERER walks, where `board._Ink` and `VALUE_MAX_DEPTH` bound it. TSK-0079
+    gave the same YAML a second reader: `backlog_tree.parents_of` looks into the BINDING fields, and
+    it spelled `str(one)` with no budget around it -- one call that unfolds the whole alias graph,
+    which is precisely the defect `board._emit` exists against. Measured on the shipped code before
+    the fix: 97.77 s and 480 MB for ONE state write, against 0.02 s without the bomb.
+
+    The bomb sits in `derives_from`, so it is the placement that reads it, and the assertions are
+    the ones the older bomb test uses -- allocated memory, page growth and wall clock as the coarse
+    net. The item still has to REACH the page: a bound that dropped it would trade one failure for
+    the one FR-0030 exists against.
+    """
+    levels = 24
+    state = _state(tmp_path)
+    state.capture("PR", PR_FIELDS)
+    board_path = os.path.join(state.root, "generated", board.FILENAME)
+    before = os.path.getsize(board_path)
+
+    bomb = ["  - &l1 [xxxxxxxxxx, xxxxxxxxxx]"]
+    bomb += ["  - &l%d [*l%d, *l%d]" % (n, n - 1, n - 1) for n in range(2, levels + 1)]
+    bomb.append("  - [*l%d]" % levels)
+    _write_item(state, "SR", "SR-0001",
+                "id: SR-0001\ntitle: bound to a bomb\nstatus: PROPOSED\nderives_from:\n%s\n"
+                % "\n".join(bomb))
+    path = os.path.join(state.root, *ACTIVE_DIRS["SR"].split("/"), "SR-0001.yaml")
+
+    tracemalloc.start()
+    started = time.time()
+    state.generate_index()
+    took = time.time() - started
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+    assert peak < 8 * 1024 * 1024, (
+        "placing a %d-byte item allocated %.1f MB" % (os.path.getsize(path), peak / 1024.0 / 1024))
+    assert os.path.getsize(board_path) - before < 64 * 1024, "the item stretched the page"
+    assert took < 30, "one binding field stretched a state write to %.1f s" % took
+
+    page = _read_board(state)
+    assert page.where("SR-0001") == ("SR", "PROPOSED")
+    assert page.nodes[("system", "SR-0001")]["unassigned"] is True, (
+        "a binding that names no id is not a reason to drop the item")
+
+
+def test_a_value_cut_short_never_offers_a_reference_the_item_does_not_name(tmp_path):
+    """A display bound may not invent a link, and this one could.
+
+    `VALUE_MAX_CHARS` cuts wherever the budget runs out, and that can be INSIDE an id: an item
+    naming `PR-000199999` was rendered as `PR-0001…`, `_linked` recognised the fragment, and the
+    record offered a button that opens a DIFFERENT item -- one the item never named. The whole
+    point of the tree rules is that the board invents no link, and this was the same defect on the
+    other surface.
+
+    The counter-direction is in the same store: an id that the cut did NOT touch still links, so the
+    fix cannot be "stop linking in long values".
+
+    THE FILLER ENDS IN A SPACE, and that is load-bearing rather than cosmetic. `_REFERENCE` matches
+    on word boundaries, so a fragment glued to the filler (`xxxPR-0001`) is no match at all and the
+    first cut of this test could not fail -- it measured the boundary rule, not the budget. The
+    space is what puts the fragment where a reader, and the pattern, see an id.
+    """
+    state = _state(tmp_path)
+    victim = state.capture("PR", PR_FIELDS)                      # PR-0001, really on the board
+    assert victim["id"] == "PR-0001"
+    other = state.capture("PR", dict(PR_FIELDS, title="the second one"))
+    filler = "x" * (board.VALUE_MAX_CHARS - len("PR-0001") - 1) + " "
+    item = state.capture("BUG", dict(BUG_FIELDS, related_pr=other["id"],
+                                     observed=filler + "PR-000199999 is the one that broke",
+                                     expected="see %s" % other["id"]))
+    page = _read_board(state)
+    assert page.details[item["id"]]["observed"].endswith("…"), (
+        "the value was not cut short at all -- there is nothing here to invent a reference from")
+    linked = {reference for detail, reference in page.refs if detail == item["id"]}
+    assert victim["id"] not in linked, (
+        "the budget cut a longer id into a reference to another item: %s" % sorted(linked))
+    assert other["id"] in linked, "an id the cut never touched stopped linking"
+
+
+def test_every_attribute_the_page_script_acts_on_is_one_the_renderer_writes(tmp_path):
+    """The markup and the script are ONE mechanism written in two languages, and nothing else in
+    this file couples them: rename `data-open` in the renderer alone and every card goes dead while
+    all the other checks stay green -- the DOM is intact, the page just stops answering.
+
+    BOTH ENDS, READ OFF THE ARTEFACT. Every `data-` name the script mentions has to exist in the
+    page, and every element that LOOKS like a control -- a `<button>` -- has to carry at least one
+    name the script acts on. The second half is what makes this a definition rather than a list: a
+    dead control is a button the script cannot see, whatever it is called.
+
+    This does not EXECUTE the script; there is no browser in this suite (the module docstring says
+    where the click was measured instead). It measures the coupling, which is the half that rots
+    silently.
+    """
+    state, _pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    named = set(re.findall(r"data-[a-z-]+", page.script))
+    assert named, "the script names no attribute at all -- this check would prove nothing"
+    carried = {name for _tag, name, _value in page.attributes}
+    assert named <= carried, "the script acts on attributes the page does not write: %s" % (
+        sorted(named - carried),)
+    dead = [attrs for tag, attrs in page.elements
+            if tag == "button" and not (set(attrs) & named)]
+    assert not dead, "these controls carry nothing the script acts on: %s" % (dead[:3],)
+
+
+def test_every_type_that_moves_through_a_lifecycle_is_placed_by_a_backlog_view():
+    """The tripwire under the one list FR-0053 could not derive: which types belong in which view.
+
+    BOTH ENDS. A type named by a view that the kernel does not have is a dead entry, and a type
+    with an AUTOMATON that no view shows is an item that moves through states and appears in neither
+    backlog -- the two ways this curation rots. The automaton is the right side of the second half:
+    a type with one is a piece of living work by definition, while a record type (Evidence,
+    approvals, the frozen design revisions) has no lifecycle to show in a backlog and belongs on the
+    board tab alone.
+    """
+    named = set(backlog_tree.ROOT_TYPES)
+    for view in backlog_tree.VIEWS:
+        named.update(view.children)
+    assert named <= set(ACTIVE_DIRS), "a view names a type the kernel does not have: %s" % (
+        sorted(named - set(ACTIVE_DIRS)),)
+    assert set(AUTOMATA) <= named, (
+        "these types move through a lifecycle and no backlog view places them: %s"
+        % sorted(set(AUTOMATA) - named))
+    for item_type in named:
+        assert backlog_tree.label(item_type) != item_type, (
+            "%s is placed by a view and has no plain-language name" % item_type)

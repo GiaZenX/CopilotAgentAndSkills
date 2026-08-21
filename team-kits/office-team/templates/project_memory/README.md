@@ -31,11 +31,16 @@ generated/                         index.yaml, session_brief.yaml, board.html �
   ARE the current context and nothing has to be filtered out while reading.
 - **`generated/**` is never hand-edited and never committed.** It is rebuilt from the items; a
   hand-maintained summary is a second source of truth, which is what this structure ends.
-- **`generated/board.html` is the overview.** Every item of every type this project has, in columns
-  by status, with the card's fold carrying the item's own fields. The kernel rebuilds it together
-  with `index.yaml` on every state write it makes; a rebuild that cannot finish says so on the
-  error output of the command and leaves the page — and its timestamp — as it was. It reports and
-  never sets.
+- **`generated/board.html` is the overview.** Three views of the same items in one file: the board
+  (every item of every type, in columns by status), the product backlog and the system backlog (the
+  same items as a tree, each one under the item its OWN fields name — the page never invents a
+  link). A click on a card or a tree row opens that item's full record, and every id inside it that
+  this board holds opens in turn. What no link can place stands under Unassigned with the reason,
+  never dropped. Opened in a browser that runs no scripts it shows every view and every record at
+  once — the tabs and the click would do nothing there, so it stops hiding anything. The kernel
+  rebuilds it together with `index.yaml` on every
+  state write it makes; a rebuild that cannot finish says so on the error output of the command and
+  leaves the page — and its timestamp — as it was. It reports and never sets.
 - **History lives in git**, not as a changelog inside an active file.
 - **`approvals/pending/` belongs to the kernel.** An approval an agent could write is not one.
 

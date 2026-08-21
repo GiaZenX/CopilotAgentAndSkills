@@ -19,7 +19,17 @@ request_text: 'User steering 2026-08-18 with Azure-DevOps screenshots, confirmed
   FR-0050/FR-0049. Read-only stays absolute: the page renders state, never writes
   it; popup and tabs are client-side only (CSP-clean inline, no external resources
   -- same constraints TSK-0071 measured).'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-18T09:16:21'
+triage_result: 'wanted and DELIVERED by TSK-0079 (last pre-pilot round): card click
+  opens a full modal with clickable item references, real tabs show only the active
+  view, and the two hierarchical backlogs (product: PR->FR/CR; system: PR->SR->TSK
+  with BUGs grouped under their PR) derive from real links only -- orphans land visibly
+  in Unassigned with a warning. Click-through measured in a real browser by both roles;
+  hostile stores found no injection; the returned TSK-0071 alias-bomb property was
+  caught and re-closed in the new module. ONE open user question carried to the release
+  conversation: the page language is English (deliberate one-language choice) while
+  the audience rule is plain German. Two verifier rounds FAIL/PASS; report docs/reviews/2026-08-21-tsk0079-measurements.md.'
+closed_at: '2026-08-21T21:13:31'

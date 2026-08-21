@@ -1,4 +1,4 @@
-generated_at: '2026-08-21T13:41:31'
+generated_at: '2026-08-21T21:13:47'
 items:
 - id: BUG-0001
   type: BUG
@@ -982,6 +982,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0051
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1264,13 +1270,6 @@ items:
   type: FR
   title: Kit PMs answer target-state questions from the DECISIONS first, not from
     built files -- the same discipline the harness lead just adopted
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0053
-  type: FR
-  title: 'Board v2: card detail popup, real tabs instead of one endless page, and
-    two hierarchical backlog views (product and system) -- pre-pilot-4'
   status: OPEN
   revision: 1
   approval_ref: null

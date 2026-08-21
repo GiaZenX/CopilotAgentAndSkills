@@ -1,0 +1,69 @@
+id: TSK-0079
+product_requirement: PR-0002
+derives_from: FR-0053
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0053 (user design with Azure-DevOps screenshots, all three choices confirmed
+  via AskUserQuestion: (1) card click opens a MODAL with the full item -- title, id,
+  status, body fields, linked items as clickable references, dates -- no inline fold
+  as primary surface; (2) REAL TABS Board / Produkt-Backlog / System-Backlog + archive
+  counts, only the active view in the DOM visible, no anchor scrolling, still ONE
+  self-contained file; (3) hierarchical backlog views from REAL links only: product
+  = PR root, FR/CR beneath, no tasks; system = per PR its SRs, TSKs beneath their
+  derives_from (SR/BUG/CR), BUGs as own group under their related_pr; the board NEVER
+  invents a link)'
+- 'the delivered FR-0030 board is the base: team-kits/kernel/board.py (renderer, rebuilt
+  with the index on every state write via ProjectState._regenerate_index_locked, fail-soft
+  _write_board, VALUE_MAX_DEPTH/_Ink budgets, NO JavaScript so far); tools/test_board.py
+  (21 tests, HTMLParser over data-* attributes); the TSK-0071 constraints stand: read-only,
+  output only generated/board.html, no external resources, one file, the page may
+  now carry INLINE JavaScript for tabs/modal ONLY (no fetch, no external src, no state
+  mutation -- the CSP/self-containment line of the wishlist)'
+- 'link fields the hierarchy may use, derived not invented: backlog_types REQUIRED/OPTIONAL_FIELDS
+  -- TSK.derives_from, BUG.related_pr, CR.target_pr, FR.related_pr (optional), SR
+  derives from PR; items without a resolvable parent land in a visible Unassigned
+  group WITH a warning (the FR-0030 nothing-vanishes property carries over to the
+  tree views); FR-0054 (BUG->SR link) is POST-RELEASE -- do not build it'
+- 'performance and safety lessons from TSK-0071/0074/0075 rounds: budgets not wall-clock
+  in tests; hostile item bodies must not break the page or the state write (the fail-soft
+  stays); every new JS surface is a new attack surface -- escaping measured with hostile
+  titles/fields (script tags, onerror, javascript: URLs) through the REAL write path'
+expected_outputs:
+- 'STEP 1 MEASURE + DESIGN: the tab/modal mechanics as inline JS on the one page (no
+  dependency, works from file://); the two tree derivations from the real link fields;
+  the Unassigned rule; how archive counts render'
+- 'STEP 2 BUILD in kernel/board.py (or a sibling module it imports): tabs, modal with
+  all fields + clickable item references (click = open that items modal), product
+  and system trees, per-kit types as today (directories present), this repo renders
+  its own board too; fail-soft and budgets unchanged or extended with the same discipline'
+- 'STEP 3 TESTS red-without-fix in an outside clone: (a) tab structure present and
+  only-active-view semantics (parse the DOM state, not pixels); (b) tree placement
+  per link field incl. Unassigned-with-warning; (c) modal carries every field the
+  fold carried (the TSK-0071 every-field test evolves, not duplicates); (d) hostile
+  content escapes in the NEW surfaces (modal, tree labels) through the real write
+  path; (e) the existing 21 board tests keep passing or evolve with named reasons'
+- 'STEP 4 SHIP: bump_kit_version, mirrors, ruff, validate, ONE full pytest tools/
+  green with numbers, test_gates full (kernel moves), pins/sizes if kit prose moves;
+  report docs/reviews/2026-08-21-tsk0079-measurements.md; scratch ONLY under C:/Offline
+  Repos/v2-testbed/_round-scratch/TSK-0079/'
+dependencies:
+- FR-0053
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-21T13:42:09'
+closed_at: '2026-08-21T21:13:32'
