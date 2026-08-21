@@ -605,3 +605,132 @@ def test_the_qa_coverage_claim_matches_what_quality_py_measures():
     assert "gate_test_coverage" in block, (
         "the QA SKILL states the coverage floor without naming what DOES hold per source area — "
         "a reader then reads the silence as 'nothing', which is as wrong as the old over-claim")
+
+
+# ================================== 4. the filing pipeline's two artifacts (FR-0049)
+def _pipeline_schemas():
+    """(schema name, writer role, required per-entry keys) for every schema that names its writer.
+
+    DERIVED FROM THE SCHEMAS, not listed here: a schema declares `writer_role` when it describes an
+    artifact a ROLE produces, so a third pipeline artifact joins this check the day it names its
+    writer and a schema that describes something else (`result_envelope`, `session_brief`) stays out
+    without being excluded anywhere.
+    """
+    from kernel.schemas import _SCHEMA_DIR, load_schema
+    for name in sorted(os.listdir(_SCHEMA_DIR)):
+        if not name.endswith(".yaml"):
+            continue
+        schema = load_schema(name[:-5]) or {}
+        role = schema.get("writer_role")
+        if role:
+            yield name[:-5], role, schema
+
+
+def test_the_pipeline_texts_name_the_fields_their_own_schema_declares():
+    """A role told to write an artifact must be told its FIELDS -- from the schema, once.
+
+    THE DEFECT SHAPE THIS IS AGAINST is the one `test_every_specialist_skill_hands_back_the_whole_
+    result_envelope` was written for: six office SKILLs prescribed a hand-back shape the kernel
+    rejects, because the shape lived in prose beside the contract instead of being read off it. The
+    filing pipeline has the same structure twice over -- the clerk WRITES the proposal list and the
+    reviewer READS it, so a drift in either text is two roles describing different objects.
+
+    WHAT IS ASKED: the writer's own SKILL names every top-level field the schema requires and every
+    per-entry key of its list (`item_required`), each in a code span; and where the schema declares a
+    VOCABULARY for an entry key (`item_enums` -- the three verdicts), the SKILL names each word.
+    Nothing here asks for a sentence: a check on prose would start dictating it.
+
+    MEASURED RED in a copy of the tree outside this repo with the `filing_verdicts` step cut out of
+    the reviewer's SKILL: one offender, five missing names.
+    """
+    judged, offenders = 0, []
+    for name, role, schema in _pipeline_schemas():
+        paths = [path for path in glob.glob(os.path.join(TEAM_KITS, "*", "skills", role,
+                                                         "SKILL.md"))]
+        assert paths, "%s names %s as its writer and no kit ships that role's SKILL" % (name, role)
+        wanted = [field for field, spec in (schema.get("fields") or {}).items()
+                  if (spec or {}).get("required")]
+        for field, spec in (schema.get("fields") or {}).items():
+            wanted += list((spec or {}).get("item_required") or [])
+            for values in ((spec or {}).get("item_enums") or {}).values():
+                wanted += list(values)
+        assert len(wanted) >= 8, (name, wanted)
+        for path in paths:
+            with io.open(path, encoding="utf-8") as handle:
+                text = _reading_view(handle.read())
+            judged += 1
+            absent = [word for word in wanted if ("`%s`" % word) not in text]
+            if absent:
+                offenders.append("%s (%s): %s" % (role, name, ", ".join(sorted(set(absent)))))
+    assert not offenders, (
+        "these role texts prescribe an artifact whose contract they do not spell out, so the two "
+        "ends of the pipeline can drift apart (the contracts are team-kits/kernel/schemas/):\n  %s"
+        % "\n  ".join(offenders))
+    assert judged >= 2, "only %d pipeline SKILLs judged -- the derivation stopped matching" % judged
+
+
+def _question_tools(kit):
+    """The tools this kit registers its user-question guard on, off its own wiring.
+
+    Same derivation as `_settings_command_line_tools`: which tool ASKS THE USER is provider
+    knowledge, and the place this repo already writes it down is the registration that puts a guard
+    on that event. Reading it here means a provider's second question tool arrives with the rule
+    applied rather than with a list to update.
+    """
+    with io.open(os.path.join(kit, "settings", "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    found = set()
+    for group in settings["hooks"].get("PreToolUse", []):
+        if not any(os.path.basename(entry["command"].split()[-1].strip('"')) ==
+                   "guard_question_context.py" for entry in group["hooks"]):
+            continue
+        found.update(part for part in (group.get("matcher") or "").split("|") if part)
+    return found
+
+
+def test_no_role_text_names_a_user_question_tool_its_own_definition_denies():
+    """A role told to ask the user must BE able to ask the user (the BUG-0048 shape, one tool over).
+
+    MEASURED on the shipped tree before this round: ONE offender. `records-clerk.md` told the clerk
+    to "Relay the printed question VERBATIM with AskUserQuestion" for the FR-0050 correction door,
+    and that role's frontmatter grants `Read, Grep, Glob, Bash, Edit, Write` -- no question tool at
+    all. A subagent's reply reaches the MANAGER and not the user, so the instruction could not be
+    followed by any route: the correction the user is supposed to decide would have been decided by
+    a paraphrase, or not at all. Every kit's own constitution says the same thing from the other
+    side (one customer-facing role), which is exactly why the contradiction survived reading.
+
+    THE RULE IS "DOES NOT NAME IT", not "does not prescribe it", and that is deliberate over-strict:
+    telling a prescription from a description is a judgement about prose, and a text that needs to
+    describe the manager's half can say "the manager asks the user" instead. The cost is a wording;
+    the alternative is a predicate nobody can measure. The tool set comes from the kit's own
+    registration (`_question_tools`) and the grants from the role's frontmatter, so neither end is a
+    list in this file.
+    """
+    judged, offenders = 0, []
+    for kit in _kit_dirs():
+        tools = _question_tools(kit)
+        assert tools, "%s registers no user-question guard at all" % os.path.basename(kit)
+        for path in sorted(glob.glob(os.path.join(kit, "agents", "*.md"))):
+            role = os.path.basename(path)[:-3]
+            front, _body = _role_definition(kit, role)
+            granted = {str(name).strip() for name in (front.get("tools") or "").split(",")} \
+                if isinstance(front.get("tools"), str) else {str(name) for name
+                                                             in (front.get("tools") or [])}
+            texts = [path, os.path.join(kit, "skills", role, "SKILL.md")]
+            for text_path in texts:
+                if not os.path.isfile(text_path):
+                    continue
+                judged += 1
+                with io.open(text_path, encoding="utf-8") as handle:
+                    text = handle.read()
+                for tool in sorted(tools - granted):
+                    if re.search(r"\b%s\b" % re.escape(tool), text):
+                        offenders.append("%s/%s: %s names %s"
+                                         % (os.path.basename(kit), role,
+                                            os.path.basename(text_path), tool))
+    assert not offenders, (
+        "these role texts name a tool that ASKS THE USER, and the role's own definition grants no "
+        "such tool -- a subagent's reply reaches the lead, never the user, so the instruction "
+        "cannot be followed by any route. Either grant the tool or route the question through the "
+        "lead:\n  %s" % "\n  ".join(sorted(set(offenders))))
+    assert judged >= 20, "only %d role texts read -- the walk stopped matching" % judged

@@ -699,6 +699,20 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   (TSK-0076-Prüfrunde, gemessen rc 2): das `.*` im quotierten Muster wird als relativer Pfad
   gelesen und auf `..` über der Repo-Wurzel aufgelöst — H19-Familie (Vorfahren-Regel), kein Loch;
   Ausweg: Muster ohne `.*`-Präfix formulieren oder die Ausgabe erst in eine Datei leiten.
+- **Kernel-angehängte Aktenplan-Regeln tragen nie die optionalen Felder** (TSK-0078:
+  `required_metadata`, `collision_policy`, `examples` — `add-filing-rule` hängt die fünf
+  Pflichtfelder an, und kein späterer Weg ergänzt die optionalen; `filing.py` begründet es
+  ehrlich, die Folge steht hier: wer sie will, schreibt die Regel vor der Installation oder
+  wartet auf ein Änderungs-Kommando, das eine eigene Runde wäre).
+- **Die Naht Verdikt→Bewegung der Ablage-Kette ist Verfahrens-Prosa** (TSK-0078): nichts bindet
+  die zweite Clerk-Beauftragung mechanisch an die Verdikt-Datei — der Manager könnte
+  paraphrasieren. Die Texte weisen es als Verfahren aus; die Begrenzung ist `gate_filing`
+  (jede Bewegung wird trotzdem gegen den Plan geprüft) plus der Auditor.
+- **Zwei Antworten auf „welcher Modellwert ist portabel"** (TSK-0078-Prüfer):
+  `gen_provider_artifacts.py` hält die Spezialisten-Frontmatter an eine hartkodierte Menge,
+  während `tools/validate.py` dieselbe Frage seit FR-0051 aus `model_tiers.yaml` ableitet.
+  Nicht neu eingeführt, durch die Ableitung sichtbar geworden; Kandidat: der Generator fragt
+  dieselbe Ableitung.
 - **Zwei Bestandsreste der Office-Wand, an HEAD wie nach TSK-0077 identisch offen** (Prüfer,
   Runde 2-4, je gemessen rc 0): `A=archive/…; rm "$A"` — der Operand wird von der Shell aus einer
   Variablen derselben Zeile umgeschrieben, die der Wand-Leser nicht auflöst (dieselbe Klasse wie

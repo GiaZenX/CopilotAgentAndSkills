@@ -9,6 +9,15 @@
 # drops, deprecations). Changing a tier's model here re-tiers every project on the next restamp —
 # always a USER-approved proposal, never an automatic bump.
 #
+# WHY THERE IS A RUNG ABOVE `lead` AT ALL, and why the kits do not all reach it: `DEC-0034` records
+# the user-drafted escalation ladder (T0 sonnet-high floor / T1 opus-high / T2 opus-xhigh / T3
+# fable-high), and `DEC-0047` makes its ENDPOINTS per kit — dev/research climb to fable, office is
+# compressed with opus-high as its top rung and a sonnet-LOW reading floor for the filing pipeline.
+# This table is the vocabulary those decisions are written in; it does not enforce them, and the
+# mechanic that would (a dispatcher picking the rung from the state) is DEC-0034's open work item.
+# What is pinned today are two permanent seats out of `FR-0051`: dev/research `project-manager`
+# frontmatter says `fable`, office `office-manager` says `lead`.
+#
 # Price anchors (verified 2026-07, per 1M in/out tokens):
 #   claude: Opus-class $15/$75 · Sonnet 5 $3/$15 (intro $2/$10 until 2026-08-31) · Haiku 4.5 $1/$5
 #   openai: GPT-5.6 Sol $5/$30 · Terra $2.50/$15 · Luna $1/$6 (family GA 2026-07-09)
@@ -18,8 +27,12 @@ aliases:            # tier name -> canonical (claude) vocabulary used in model_m
   lead: opus
   worker: sonnet
   light: haiku
-# `fable` (Mythos-class, above opus) is also accepted as a Claude-side model_map pin (§11
-# escalation); Claude keeps it literally, every other provider maps it to its LEAD tier.
+# `fable` (Mythos-class, above opus) is also accepted as a Claude-side model_map pin and in a kit
+# source's agent frontmatter (§11 escalation, DEC-0034's T3 rung); Claude keeps it literally, every
+# other provider maps it to its LEAD tier. It has no `aliases:` entry on purpose — an alias names a
+# tier this table translates, and fable IS the translation on the reference platform. What decides
+# whether a kit source may carry a value is `gen_provider_artifacts.provider_neutral_model`, which
+# reads THIS file rather than a list of three names.
 
 tiers:
   claude:           # reference platform — model_map values pass through

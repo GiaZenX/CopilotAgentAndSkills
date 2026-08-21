@@ -329,7 +329,7 @@ entry point asks the shipped parser rather than matching text).
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
-`archive`, `sweep-leases`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`,
+`archive`, `sweep-leases`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`,
 `freeze-architecture`, `freeze-wireframe`, `freeze-design`,
 `migrate`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —

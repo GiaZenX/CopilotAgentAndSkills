@@ -42,17 +42,26 @@ and "no plan yet" is precisely when a mis-filing is cheapest to make and dearest
 WHERE THE PLAN COMES FROM, since the shipped template carries `rules: []` and this gate fails
 closed on that — a fresh office project blocks on its FIRST filing. The plan is a kit DOCUMENT
 (`kernel.layout.is_project_document`, like `project_config.yaml` and `product/masterplan.md`), not
-canonical item state: no kernel path builder can name it, so no kernel command writes it, and
-`gate_write_scope` refuses every tool write to it and says exactly that. That leaves ONE session in
-a project's life in which it can be written — the global entry gate's, which runs before the kit is
-installed; `user/claude/CLAUDE.md` and `user/codex/AGENTS.md` are told to fill it there from the
-confirmed onboarding answers, and `tools/test_hooks.py` DERIVES that obligation from this gate
-rather than from a list, so a document a gate blocks on can no longer be left out of them.
+canonical item state: no kernel path builder can name it, so `gate_write_scope` refuses every tool
+write to it and says exactly that. It is WRITTEN FIRST in the one session that runs before the kit
+is installed — the global entry gate's; `user/claude/CLAUDE.md` and `user/codex/AGENTS.md` are told
+to fill it there from the confirmed onboarding answers, and `tools/test_hooks.py` DERIVES that
+obligation from this gate rather than from a list, so a document a gate blocks on can no longer be
+left out of them.
+
+AND IT CAN GROW AFTERWARDS, which is FR-0049's step 5 and the correction to what this docstring
+said until 2026-08-21 ("no kernel command writes it"). `kernel.filing` APPENDS one rule to it on a
+minted `filing_rule` approval — the user decides the rule by answering the kernel's question, the
+kernel performs the write, and `kernel.layout.partial_writers` is what lets the write-scope gate's
+refusal name that route instead of denying it. The narrowness is the point: it only ever appends,
+only what the user approved, and it files nothing — this gate still judges every move against the
+plan as it stands when the move is made.
 
 WHAT THAT DOES NOT FIX, named rather than left to be re-diagnosed as "gate too strict": a project
-that was already installed with an empty plan. Nothing inside a session repairs it — the refusal
-below is honest about that and points at the user, not at a command. The block itself is correct in
-both cases; an unverifiable filing in a business archive is what this gate exists for.
+whose plan is EMPTY has no rule to file against and no document to correct into place, and the
+route above adds rules one user decision at a time rather than restoring a plan. The refusal below
+points at the user for that reason. The block itself is correct in both cases; an unverifiable
+filing in a business archive is what this gate exists for.
 """
 import os
 import sys
@@ -98,6 +107,30 @@ PLACEHOLDER_RX = re.compile(r"<[^<>/]+>")
 # session can act on, and reporting them as "only the user can fill this" would send a reader away
 # from the fix. The gate itself blocks on all four identically — fail-closed does not care why.
 NO_RULES_YET = "%s lists no rules yet" % PLAN
+
+
+def growth_route(root):
+    """The sentence naming HOW the plan grows, with the command ASKED of the module that has it.
+
+    Asked and not spelled, for the reason this gate's own docstring gives about `rules`: a second
+    statement of "which command writes the plan" is how a refusal comes to name a command that no
+    longer exists — and a remedy that denies a route the harness HAS is how a role learns to stop
+    reading remedies (`kernel.layout.partial_writers` is the same derivation one layer down).
+    Falls back to the route WITHOUT its command name when the kernel cannot be reached, which is
+    the honest shape: the route exists whether or not this process can name it, and a guessed
+    command name would be worse than none.
+    """
+    try:
+        module = _kernel.kernel_module("filing", root)
+        named = "`python scripts/harness.py request-approval %s …` and then `python "
+        named += "scripts/harness.py %s …` with the same values"
+        named = named % (module.KIND, module.COMMAND)
+    except BaseException:  # noqa: BLE001 — a message must never be the thing that fails
+        named = "the kernel's approval-and-append route for the filing plan (`--help` names it)"
+    return ("A NEW rule is not written by hand either: the USER decides it (name, location, "
+            "naming pattern, retention) by answering the kernel's approval question, and the "
+            "KERNEL appends it — %s. That adds one rule; it files nothing, and this gate judges "
+            "the move afterwards." % named)
 
 
 def rules(root):
@@ -206,13 +239,13 @@ def check(root, targets):
             "(spec II.9); without it a filing cannot be verified, and an unverifiable filing in a "
             "business archive is the failure this gate exists for."
             % ("/, ".join(directories) + "/", reason),
-            remedy="propose the missing %s rules to the USER and stop there. The plan is a kit "
-                   "document inside the write-locked state directory: no tool write reaches it "
-                   "and no kernel command writes it (gate_write_scope refuses it with that "
-                   "reason), so it is filled by the entry gate before the kit is installed, or "
-                   "by the user in an editor outside this session. Name the rules concretely — "
-                   "the fields one carries are stated in the plan's own header — and file "
-                   "nothing until the file the user saves has them." % PLAN)
+            remedy="propose the missing %s rules to the USER, one at a time, and file nothing "
+                   "until the plan carries them. The plan is a kit document inside the "
+                   "write-locked state directory, so no tool write reaches it (gate_write_scope "
+                   "refuses it with that reason) — the whole plan is written by the entry gate "
+                   "before the kit is installed. %s Name the rules concretely; the fields one "
+                   "carries are stated in the plan's own header."
+                   % (PLAN, growth_route(root)))
     unmatched = [d for d in directories
                  if not any(rule_matches(r.get(PATH_TEMPLATE), d) for r in found)]
     if unmatched:
@@ -222,10 +255,9 @@ def check(root, targets):
             "where it is, do not rename it, do not enter it anywhere."
             % (PLAN, ", ".join(sorted(unmatched))),
             remedy="ask the user with a CONCRETE proposal — either the existing rule this "
-                   "document belongs under, or a new rule for it — and file only after the user "
-                   "has saved the amended plan themselves; this session cannot write it (see the "
-                   "refusal above for why). Inventing a folder is how an Aktenplan stops "
-                   "describing the archive.")
+                   "document belongs under, or a new rule for it — and file only after the plan "
+                   "covers it. " + growth_route(root) + " Inventing a folder is how an Aktenplan "
+                   "stops describing the archive.")
 
 
 def main():

@@ -26,9 +26,12 @@ artifacts in **English** (source-document content stays original).
 - **Read `./AGENTS.md` §0 before the onboarding interview.** The entry point is installed and
   `python scripts/harness.py --help` is the authority on its surface: `capture` creates a `PROC`
   now, and `request-approval <kind> <ITEM-ID>` prints the approval question the kernel composed —
-  relay it VERBATIM; the USER mints by answering it. No command mints. What still has no writer: `business_profile.yaml` and `filing_plan.yaml`
-  are not typed items, and `scripts/proc_hash.py` / `scripts/process_doc.py` crash on the deleted V1
-  registry. Report those defects; never hand-write state or an `approved_hash`.
+  relay it VERBATIM; the USER mints by answering it. No command mints. What still has no writer:
+  `business_profile.yaml` is not a typed item and nothing writes it after the install, and
+  `scripts/proc_hash.py` / `scripts/process_doc.py` crash on the deleted V1 registry. `filing_plan.yaml`
+  is not a typed item either, but ONE part of it has a route — `add-filing-rule` appends a rule the
+  user approved, and nothing else in that file. Report the defects; never hand-write state or an
+  `approved_hash`.
 - **Nothing is ever sent/posted/published** — drafts land in `outbox/`, the user sends. Claude may
   deny `mcp__*`; Codex has no exact project-local wildcard deny, so refuse outbound calls and avoid
   every configured known mutation tool. Stronger enforcement needs external server/tool or admin policy.
@@ -38,6 +41,12 @@ artifacts in **English** (source-document content stays original).
   never select a built-in/generic role, and require each exact specialist to validate its work order.
 - Claude's per-agent `tools` frontmatter is not a Codex tool allowlist. Under Codex, never treat an
   exposed tool as permission; obey role boundaries, sandbox/permissions and blocking hooks.
+- **FILING IS A REVIEWED PIPELINE AND YOU DRIVE IT (§2.5).** Per sweep: dispatch `records-clerk` to
+  open every file individually and PROPOSE (nothing moves); dispatch `filing-reviewer` over that
+  proposal file; give the clerk the accepted entries to move; take every objection, partial and
+  unknown class to the USER yourself — you are the only role that can ask. A NEW class means name
+  AND location agreed with them, a `filing_rule` approval, the kernel appends it, then it is filed.
+  Never move a proposal the reviewer has not answered, and never answer one yourself.
 - **Booking a shell-less specialist's result in is YOUR half** (§6, BUG-0048): a role whose header
   said `hand_back: lead` cannot type a command, so it stages the envelope in `staging/<TSK-ID>/`
   and you run `python scripts/harness.py submit-result --task-id <TSK-ID> --from <NAME>`. Use

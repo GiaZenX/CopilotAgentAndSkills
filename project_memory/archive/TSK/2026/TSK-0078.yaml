@@ -1,0 +1,81 @@
+id: TSK-0078
+product_requirement: PR-0002
+derives_from: FR-0049
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0049 (user-designed pipeline, confirmed, pre-pilot-4: (1) the CLERK opens every
+  inbox file individually -- also inside a bulk drop -- reads the content and produces
+  a per-file move/naming PROPOSAL; (2) a REVIEWER subagent is spawned over the proposal
+  list, answers per file accept/object/partial; (3) accepted files move immediately
+  through gate_filing as today; (4) objected/uncertain goes through the OFFICE MANAGER
+  to the USER; (5) a NEW document class = name+location defined with the user, recorded
+  as a filing_plan rule, then approved and executed. REVIEW SUBSTANCE beyond destination:
+  content plausibility -- amounts readable, required fields (USt-ID on outgoing invoices),
+  INCOMING invoices addressed to the company (recipient name+address match business_profile,
+  delivery address may differ), GTIN changes flagged, product images properly named.
+  MODEL CASTING: clerk Sonnet effort LOW, reviewer Sonnet effort LOW -- the user-decided
+  per-kit ladder exception, DEC-0047)'
+- 'FR-0051 + DEC-0034 + DEC-0047 (the manager pins ride in this round: dev-team and
+  research-team project-manager pinned to fable effort high, office-manager stays
+  lead/opus high; MEASURE which source governs the FOREGROUND session model -- agent
+  frontmatter model: of the bound session agent vs the user model choice -- and build
+  what the measurement supports (frontmatter pin, documented user instruction, or
+  both); model_tiers.yaml gains the DEC-0034/DEC-0047 pointers per the CLAUDE.md pointer
+  rule)'
+- 'the shipped mechanics to build on, read before designing: filing_plan.yaml rules
+  + gate_filing destination check (unchanged, still the wall); the FR-0050 correction
+  door (TSK-0077) for fixing mis-filings AFTER the fact; the dispatch/hand_back mechanics
+  from TSK-0073 (the reviewer may be shell-less -- derive its return path, do not
+  invent one); guard_memory_budget/agent-memory conventions if the reviewer keeps
+  craft notes; the office kit ships NO reviewer role today (verifier N10 measured:
+  no quality-engineer/reviewer in office agents/)'
+- 'two small TSK-0077 residues ride along (same kit, one-liners): N1 _compat.py:65-66
+  bracket overclaims derivation (CAP is CHECKED against budget_cap, TOTAL_BUDGET derives
+  from nothing -- fix the bracket); N2 _filing REDIRECT_SPAN_RX does not span N>&M
+  so the door over-refuses 2>&1 with a token nobody typed and its docstring claims
+  the opposite -- span it or pull the sentence to the measured truth'
+expected_outputs:
+- 'STEP 1 MEASURE + DESIGN: the pipeline on the shipped mechanics -- who spawns whom
+  (manager dispatches clerk, clerk output = proposal list artifact, manager spawns
+  reviewer over it, reviewer verdict per file, manager executes accepted moves and
+  collects objections for the user); where each artifact lives (staging/outbox conventions,
+  no new state writer); how a NEW class becomes a filing_plan rule (the plan is a
+  kit document gate_write_scope refuses to tool-write -- design the sanctioned path
+  honestly or name the gap)'
+- 'STEP 2 BUILD: filing-reviewer role (office kit, sonnet effort low) with a review
+  rubric derived from business_profile (recipient match, required fields) not hard-coded
+  values; clerk role text carries the per-file duty and the proposal-list format;
+  office-manager text carries the objection->user half; constitutions/ENFORCEMENT
+  updated honestly; the FR-0051 manager pins with the measured frontmatter-vs-session
+  answer; model_tiers.yaml pointers'
+- 'STEP 3 TESTS red-without-fix in an outside office scaffold: the role-contract derivations
+  (reviewer shell-less path per TSK-0073 mechanics, memory duty only where memory:
+  exists), the proposal-list format contract, the plan-rule path; role texts measured
+  against what the hooks build (no overclaim) -- real hook processes, no free-text
+  judging'
+- 'STEP 4 SHIP: bump_kit_version, mirrors, ruff, validate, ONE full pytest tools/
+  green with numbers, test_gates full (kit hooks likely move), pins/sizes with the
+  intended tools; report docs/reviews/2026-08-21-tsk0078-measurements.md; scratch
+  ONLY under C:/Offline Repos/v2-testbed/_round-scratch/TSK-0078/'
+dependencies:
+- FR-0049
+- FR-0051
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-21T07:31:20'
+closed_at: '2026-08-21T13:41:18'

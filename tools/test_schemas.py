@@ -231,3 +231,71 @@ def test_all_shipped_schemas_load():
 def test_unknown_schema_raises():
     with pytest.raises(KeyError, match="unknown schema"):
         load_schema("no_such_contract")
+
+
+# -- an item VOCABULARY inside a list (item_enums, FR-0049) --------------------
+def make_verdict(**overrides):
+    verdict = {
+        "task_id": "TSK-0042",
+        "role": "filing-reviewer",
+        "reviewed": "TSK-0041",
+        "verdicts": [{"source": "inbox/a.pdf", "verdict": "accept",
+                      "reason": "Betrag lesbar, Empfaenger stimmt"}],
+    }
+    verdict.update(overrides)
+    return verdict
+
+
+def test_a_valid_verdict_file_passes():
+    validate(make_verdict(), "filing_verdict")
+
+
+def test_an_item_enum_refuses_a_word_the_schema_does_not_declare():
+    """The vocabulary of a per-entry key is the schema's, and `validate` is what refuses a fourth.
+
+    `item_enums` is the list-item counterpart of `enum`, and it was added for exactly one subject:
+    the filing reviewer's three answers, which the user named (FR-0049) and which the manager routes
+    on. Without this test the branch had no measurement at all -- ablated, the whole schema suite
+    stayed green -- and a schema key nothing exercises is a promise, not a check.
+
+    WHAT THIS DOES NOT SAY, because the schema's own header says it: nothing in the shipped tree
+    CALLS `validate` for a file of this shape, so this refusal happens where somebody asks for it
+    and nowhere else. The vocabulary's runtime hold is the role texts plus the review itself.
+    """
+    for invented in ("maybe", "ACCEPT", "", "accepted"):
+        with pytest.raises(SchemaError, match="enum"):
+            validate(make_verdict(verdicts=[{"source": "inbox/a.pdf", "verdict": invented,
+                                             "reason": "x"}]),
+                     "filing_verdict")
+
+
+def test_the_item_enum_reader_still_lets_every_declared_word_through():
+    """The floor under the test above: a reader that refused everything would look identical.
+
+    The three words come from the SCHEMA rather than from this file, so a vocabulary change moves
+    both halves at once.
+    """
+    declared = load_schema("filing_verdict")["fields"]["verdicts"]["item_enums"]["verdict"]
+    assert len(declared) >= 3, declared
+    for word in declared:
+        validate(make_verdict(verdicts=[{"source": "inbox/a.pdf", "verdict": word,
+                                         "reason": "geprueft"}]),
+                 "filing_verdict")
+
+
+def test_a_proposal_entry_owes_every_key_the_pipeline_reads():
+    """The sibling contract, same reason: the clerk's entry and the reviewer's entry are one object.
+
+    `item_required` is what makes an entry answerable at all -- a proposal without a `destination`
+    is one the reviewer cannot judge and the manager cannot execute.
+    """
+    whole = {"source": "inbox/a.pdf", "document_class": "incoming invoice",
+             "destination": "archive/finance/2026/2026-01-01_ACME.pdf", "rule_id": "FP-001",
+             "findings": ["Betrag 119,00 EUR"]}
+    validate({"task_id": "TSK-0041", "role": "records-clerk", "proposals": [whole]},
+             "filing_proposal")
+    for missing in sorted(whole):
+        partial = {key: value for key, value in whole.items() if key != missing}
+        with pytest.raises(SchemaError, match=missing):
+            validate({"task_id": "TSK-0041", "role": "records-clerk", "proposals": [partial]},
+                     "filing_proposal")

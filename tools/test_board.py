@@ -427,6 +427,9 @@ _WRITERS_THE_BOARD_DOES_NOT_RENDER = {
                                      "which regenerates",
     ("report.py", "generate_session_brief"): "generated/session_brief.yaml",
     ("presets.py", "record_preset"): "project_config.yaml -- a kit document, no card",
+    ("filing.py", "apply"): "filing_plan.yaml -- a kit document, no card (and nothing it writes "
+                            "is an item: the plan says where documents belong, the board shows "
+                            "what the project is working on)",
     ("presets.py", "_after_a_failed_install"): "a .claude marker file",
     ("kitupdate.py", "_ensure_restart_is_forced"): "a .claude marker file",
 }

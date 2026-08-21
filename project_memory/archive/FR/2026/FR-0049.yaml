@@ -21,7 +21,18 @@ request_text: 'User steering + detailed design 2026-08-17 (in-session, confirmed
   path; this FR records that insertion. The periodic read-only auditor stays as backstop.
   Original trigger: gate_filing checks only the destination against the plan; nobody
   per-filing checked classification, naming, or content plausibility.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-17T18:38:33'
+triage_result: 'wanted and DELIVERED by TSK-0078 (pre-pilot-4 per user decision):
+  the user-designed five-step chain built unchanged in his order -- clerk reads every
+  file individually and proposes per document, filing-reviewer (new role, sonnet low
+  per DEC-0047) judges accept/object/partial with content plausibility derived from
+  business_profile, manager moves the accepted (through gate_filing) and carries objections
+  to the user, and a NEW class grows the plan via the approval-bound add-filing-rule
+  command (built, not gap-reported). One half-built spot named in text and template:
+  optional billing_address means name-only recipient check, said per document. Two
+  verifier rounds FAIL/PASS; report docs/reviews/2026-08-21-tsk0078-measurements.md;
+  close-out staging/TSK-0078/close-out.md.'
+closed_at: '2026-08-21T13:41:02'

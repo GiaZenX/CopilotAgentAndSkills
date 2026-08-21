@@ -2433,10 +2433,16 @@ def gated_documents(state: ProjectState, repo_root: str) -> list:
     refusals = _recorded_refusals(state)
     entries = []
     for rel, who in sorted(walls.items()):
+        # ASKED, NOT ASSERTED. This field was the constant `None` for a round after `add-filing-rule`
+        # shipped, beside a note that said no command writes such a file -- so the one tool whose job
+        # is to report the state reported a dead end the harness had already left (BUG-0041's shape,
+        # for the very document FR-0049 step 5 serves). `layout.partial_writers` is the same
+        # derivation `gate_write_scope` and the SessionStart briefing ask, so all three move together.
+        writers = list(layout.partial_writers(rel))
         entries.append({
             "path": rel,
             "gate": who["hook"],
-            "kernel_writer": None,
+            "kernel_writer": writers or None,
             # per GATE, not per document: one refusal can name several of them, and the audit log
             # records the hook, not the finding. Named that way so no consumer reads it as "this
             # file was refused N times".
@@ -2444,11 +2450,15 @@ def gated_documents(state: ProjectState, repo_root: str) -> list:
             "note": (
                 "%s is registered, can refuse an operation, and addresses this file. The kernel "
                 "has no path builder that can name it, so no `python scripts/harness.py` command "
-                "writes it: the sessions that can fill it are the one that runs BEFORE the kit is "
-                "installed, and the user, in an editor outside the session. Whether it is "
-                "currently unfilled is that gate's own verdict and is not re-derived here -- the "
-                "SessionStart briefing asks the gate for it."
-                % who["audit_name"]),
+                "writes it AS A WHOLE: the sessions that can fill it are the one that runs BEFORE "
+                "the kit is installed, and the user, in an editor outside the session.%s Whether "
+                "it is currently unfilled is that gate's own verdict and is not re-derived here -- "
+                "the SessionStart briefing asks the gate for it."
+                % (who["audit_name"],
+                   "" if not writers else
+                   " ONE PART OF IT DOES HAVE A ROUTE: %s -- each on a user-minted approval."
+                   % ", ".join("`python scripts/harness.py %s` writes `%s`"
+                               % (entry["command"], entry["field"]) for entry in writers))),
         })
     return entries
 

@@ -4720,6 +4720,32 @@ def test_gen_accepts_fable_as_lead_tier_pin(tmp_path):
     assert checked.returncode == 0, checked.stderr
 
 
+def test_the_neutral_model_values_are_the_ones_the_generator_can_carry():
+    """Which model value a KIT SOURCE may carry is DERIVED from `model_tiers.yaml` (FR-0051).
+
+    THE ENUMERATION THIS REPLACED MET ITS NEXT CASE. `tools/validate.py` held kit-source frontmatter
+    to the literal tuple ("lead", "worker", "light"), and the day FR-0051 pinned the dev and research
+    PMs to `fable` — a value `gen_provider_artifacts` has carried since a real project map contained
+    it, and which `model_tiers.yaml` documents as the §11 escalation pin — the validator refused a
+    legitimate value. `provider_neutral_model` asks the tiers file instead.
+
+    BOTH ENDS, because either alone is a way to pass by accident: every ALIAS and `fable` must be
+    accepted (a reader that refuses everything would be "safe" and useless), and the reference
+    platform's own model names must be refused (a reader that accepts everything would let
+    `model: opus` into a kit source, which hands every non-Claude project a Claude model name at
+    install time — the whole point of the neutrality rule).
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    import gen_provider_artifacts as gen
+    tiers, aliases = gen.load_tiers()
+    for value in sorted(aliases) + ["fable"]:
+        assert gen.provider_neutral_model(value, tiers, aliases), value
+    concrete = set(tiers[gen.REFERENCE_PROVIDER].values()) & set(aliases.values())
+    assert concrete, (tiers, aliases)
+    for value in sorted(concrete) + ["gpt-5.6-sol", "", "made-up"]:
+        assert not gen.provider_neutral_model(value, tiers, aliases), value
+
+
 def test_gen_codex_frontmatter_overlay(tmp_path):
     # The divergence valve: a namespaced `codex:` frontmatter block (ignored by Claude) merges
     # Codex-only keys into the generated TOML; identity keys stay generator-owned.
@@ -5309,6 +5335,15 @@ STATE_FILES_NOT_SHIPPED = {
     "hook_events.jsonl": (ANY, "hook event log, created by notify_agent_events on its first write"),
     # deleted V1 stores the instruction text names in order to say what replaced them
     "filing_log.yaml": (KIT_ONLY, "deleted V1 log; named to say nothing writes one and no gate reads one"),
+    # KERNEL SCHEMAS, not state. `kernel/schemas/*.yaml` ships with the kernel and is installed
+    # under `.claude/kernel/`, so no state template can carry it — and the office role texts name
+    # these two on purpose: they are the ONE definition of the filing pipeline's two artifact
+    # shapes (FR-0049), which two roles have to describe identically. The artifacts themselves are
+    # written into `staging/<TSK-ID>/`, which is the proposal area and not templated either.
+    "filing_proposal.yaml": (KIT_ONLY, "kernel schema (team-kits/kernel/schemas/), not state -- the "
+                                       "clerk's per-document proposal contract"),
+    "filing_verdict.yaml": (KIT_ONLY, "kernel schema (team-kits/kernel/schemas/), not state -- the "
+                                      "filing-reviewer's per-document verdict contract"),
     # a placeholder in a note ABOUT glob semantics, not a file anyone is sent to
     "x.yaml": (ANY, "the `deploy/sub/x.yaml` example in research_guidelines.yaml, showing that `*` "
                     "crosses directory separators"),
@@ -6282,9 +6317,24 @@ def test_doctor_names_the_documents_that_wall_a_project_off(tmp_path):
     result = report.doctor(ProjectState(os.path.join(project, "project_memory")))
     walls = {row["path"]: row for row in result["gated_documents"]}
     assert set(walls) == {"product/masterplan.md", "project_config.yaml"}, sorted(walls)
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import layout
     for path, row in sorted(walls.items()):
         assert row["gate"] == "gate_memory_complete.py"
-        assert row["kernel_writer"] is None
+        # ASKED OF THE SAME DERIVATION THE GATE ASKS, never pinned to a constant. This assertion
+        # read `is None` for a round after `add-filing-rule` shipped, so the check itself held
+        # doctor to the dead end the harness had already left — for `project_config.yaml`, whose
+        # `project.preset` `set-preset` has owned since BUG-0041, the answer was already wrong
+        # here. Both directions are measured: a document with a partial writer must NAME it, and
+        # one without must claim none.
+        expected = list(layout.partial_writers(path)) or None
+        assert row["kernel_writer"] == expected, (path, row["kernel_writer"], expected)
+        for entry in expected or []:
+            assert entry["command"] in row["note"] and entry["field"] in row["note"], (
+                "%s: a command owns %s here and doctor's note does not say so — a role reading it "
+                "reports a dead end that is not one:\n%s" % (path, entry["field"], row["note"]))
+        if not expected:
+            assert "DOES HAVE A ROUTE" not in row["note"], (path, row["note"])
         assert row["gate_refusals_recorded"] == 1, (
             "%s: the gate recorded a block in this project's audit log and doctor counted %r"
             % (path, row["gate_refusals_recorded"]))
@@ -6353,6 +6403,32 @@ def test_session_start_says_a_wall_document_is_still_the_template(
     assert verdict in context, (
         "the briefing names the file but not what the GATE says is wrong with it — the sentence "
         "is being written here instead of quoted from the gate:\n%s" % context)
+    # ...AND WHETHER A COMMAND OWNS A FIELD OF IT, derived the same way `gate_write_scope` and
+    # `doctor` derive it. Measured 2026-08-21 against a fresh office scaffold, one round after
+    # `add-filing-rule` shipped: the briefing said "no `python scripts/harness.py` command writes
+    # it. Filling it is the USER's to do, in an editor outside this session" — for the very
+    # document that had just been given a route. That is BUG-0041's failure form (a role reports a
+    # dead end that is not one), and it is why both directions are asserted here.
+    #
+    # PER DOCUMENT, not over the whole paragraph: the briefing lists every wall in one sentence, so
+    # a check over the whole text would read a SIBLING's route as this file's. The clause is cut at
+    # the list separator the briefing itself joins on.
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import layout
+    routes = list(layout.partial_writers(document))
+    start = context.find(document + " (")
+    assert start >= 0, context
+    end = context.find("; ", start)
+    # For the LAST wall in the list this runs on into the paragraph's closing sentences; that is
+    # harmless for both assertions (the closing text names no command and carries no route clause)
+    # and it is stated here rather than papered over with a second separator rule.
+    clause = context[start:end if end >= 0 else len(context)]
+    for entry in routes:
+        assert entry["command"] in clause and ("`%s`" % entry["field"]) in clause, (
+            "a command owns %s in %s and the briefing does not say so:\n%s"
+            % (entry["field"], document, clause))
+    if not routes:
+        assert "HAS a route" not in clause, clause
 
     fill(project)
     after = run_hook_process("session_status.py", payload, project, hooks_dir=hooks_dir)
@@ -8338,6 +8414,112 @@ def _run_filing(payload, repo, extra_env=None):
                             extra_env=extra_env)
 
 
+def _grant_filing_rule(repo, **rule):
+    """Open the filing-rule question through the SHIPPED CLI and mint it through the REAL hook.
+
+    Both halves, for `_grant_correction`'s reasons: the flag surface IS what the manager is told to
+    type, and `approvals.mint` accepts no caller but the approval hook (`conftest.mint_via_hook`).
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    import yaml
+    from conftest import mint_via_hook
+    from kernel import cli
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    flags = []
+    for name, value in rule.items():
+        flags += ["--" + name.replace("_", "-"), value]
+    argv = ["--root", state.root, "request-approval", "filing_rule"] + flags
+    assert cli.main(argv) == 0, argv
+    pending = os.path.join(state.root, "approvals", "pending")
+    with open(os.path.join(pending, sorted(os.listdir(pending))[-1]), encoding="utf-8") as handle:
+        request = yaml.safe_load(handle)
+    mint_via_hook(state, request)
+    return flags
+
+
+def test_a_rule_the_user_approved_opens_this_gate_for_exactly_that_place(tmp_path):
+    """FR-0049 step 5, end to end through the SHIPPED gate: the plan can grow, and only there.
+
+    THE DEAD END THIS MEASURES THE END OF. A document of a class the plan does not know was refused
+    here — correctly — and nothing inside a session could add the rule: `filing_plan.yaml` is a kit
+    document, so no tool write reaches it, and until `kernel/filing.py` no command wrote it either.
+    The only advice left was "ask the user to open a text editor", which is the dead end BUG-0041
+    measured for the preset.
+
+    FOUR STATES IN ONE RUN, because each of the other three is what makes the middle one worth
+    something: refused before the rule, still refused with the approval merely REQUESTED, allowed
+    after the kernel appended it, and STILL refused for a destination the new rule does not cover.
+    The gate is a real hook process on a real project directory throughout; nothing here asserts on
+    the plan's text, only on what the gate does with it.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    root = os.path.join(str(tmp_path), "project_memory")
+    write(os.path.join(root, "filing_plan.yaml"), "rules: []\n")
+    covered = _filing_move(tmp_path, "mv inbox/a.pdf archive/finance/2026/2026-01-01_ACME.pdf")
+    invented = _filing_move(tmp_path, "mv inbox/a.pdf archive/erfunden/a.pdf")
+    assert _run_filing(covered, tmp_path).returncode == 2, "no plan, no filing"
+    flags = _grant_filing_rule(
+        tmp_path, rule_id="FP-009", path_template="archive/finance/<year>/",
+        document_types="invoice,credit_note",
+        filename_template="YYYY-MM-DD_<counterparty>", retention="8 Jahre",
+        reason="Lieferantenrechnungen hatten keine Regel")
+    assert _run_filing(covered, tmp_path).returncode == 2, (
+        "an approval the user granted is not a rule until the kernel has written it")
+    assert cli.main(["--root", root, "add-filing-rule"] + flags) == 0
+    assert _run_filing(covered, tmp_path).returncode == 0, "the approved place is now filable"
+    assert _run_filing(invented, tmp_path).returncode == 2, (
+        "and everywhere else is exactly as refused as before")
+
+
+def test_a_rule_that_starts_with_a_placeholder_would_open_the_whole_level(tmp_path):
+    """WHY the approval refuses a wildcard-first `path_template` — measured on the GATE, not argued.
+
+    `approvals.filing_rule_subject_manifest` refuses to build a subject whose first segment carries
+    a placeholder, and a refusal is only worth what the thing it prevents costs. So this writes such
+    a rule into the plan DIRECTLY -- the route through the approval no longer exists, which is the
+    point -- and asks the shipped gate what it then allows: every archive folder at that depth,
+    including ones no rule was ever written for. That is the wall gone for a whole level, signed by
+    a user who was shown a sentence that reads like the plan's own examples (the BUG-0041 reader).
+
+    The counterweight is the same plan with a literal first segment: the invented folder is refused
+    again, so what the wildcard removed was the check itself and not merely one path.
+    """
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"),
+          'rules:\n  - id: FP-042\n    path_template: "<Bereich>/<Jahr>/"\n')
+    invented = _filing_move(tmp_path, "mv inbox/rechnung.pdf archive/erfunden/x.pdf")
+    assert _run_filing(invented, tmp_path).returncode == 0, (
+        "a rule beginning with a placeholder is supposed to match everything at its depth — if this "
+        "is rc 2 the gate changed and the approval's refusal needs its reason re-measured")
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"),
+          'rules:\n  - id: FP-042\n    path_template: "archive/<Bereich>/<Jahr>/"\n')
+    assert _run_filing(invented, tmp_path).returncode == 2, (
+        "with a literal first segment the same plan refuses the invented folder again")
+
+
+def test_the_refusal_that_blocks_a_filing_names_the_route_that_grows_the_plan(tmp_path):
+    """A refusal that denies a route the harness HAS is how a role learns to stop reading them.
+
+    Both of this gate's refusals carry `gate_filing.growth_route`, which ASKS `kernel.filing` for
+    the kind and the command rather than carrying a copy of either name — so a rename moves the
+    message with it. Measured as the shipped hook's stderr, both branches: the empty plan and the
+    uncovered destination.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import filing
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), "rules: []\n")
+    empty = _run_filing(_filing_move(tmp_path, "mv inbox/a.pdf archive/finance/2026/a.pdf"),
+                        tmp_path)
+    write(str(tmp_path / "project_memory" / "filing_plan.yaml"), FILING_PLAN)
+    uncovered = _run_filing(_filing_move(tmp_path, "mv inbox/a.pdf archive/invented/a.pdf"),
+                            tmp_path)
+    for result in (empty, uncovered):
+        assert result.returncode == 2
+        assert filing.COMMAND in result.stderr, result.stderr
+        assert filing.KIND in result.stderr, result.stderr
+
+
 def test_gate_filing_blocks_while_the_plan_has_no_rules(tmp_path):
     """Fail-closed on an empty plan: with no rule there is nothing to file AGAINST, and a business
     archive is where an unverifiable filing is dearest to undo. Note that the shipped template IS
@@ -9408,6 +9590,59 @@ def test_a_redirect_is_part_of_the_line_the_door_reads(tmp_path, chain, expected
     _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
     assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
     assert _tripwire(tmp_path, chain % ARCHIVED) == expected, why
+
+
+@pytest.mark.parametrize("suffix,why", [
+    ("2>&1", "stderr onto stdout — the shape every shell habit adds"),
+    (">&2", "the other direction, with no file descriptor in front"),
+    ("2>&-", "bash's close-this-descriptor spelling"),
+    ("1>&2 2>&1", "two of them on one line"),
+])
+def test_the_door_reads_a_stream_redirect_as_the_one_word_it_is(tmp_path, suffix, why):
+    """A descriptor duplication names NO file, so it may not close the correction door (N2).
+
+    MEASURED BEFORE THE FIX against the shipped hook with a live approval, in a project outside this
+    repo: `mv archive/1-Finanzen/2026/x.pdf outbox/x.pdf 2>&1` came back rc 2, refusing because "this
+    command line also does something this guard could not place: an invocation this guard does not
+    read as a filing operation (1)". The `1` is not a word anybody typed as a command: `INVOCATION_RX`
+    split the line at the `&` of `2>&`, so the descriptor became an invocation of its own, and
+    `REDIRECT_SPAN_RX` cut only the `2>` off, leaving `&1` behind. Both readers now take the whole
+    construct (`_filing._DESCRIPTOR_RX`), so what the door decides on is the move alone.
+
+    THE COUNTERWEIGHT IS IN THE SIBLING TEST, not here: `>&` followed by a FILE is a redirect into a
+    real file and still closes the door when that file is in a tray of record.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf" % ARCHIVED) == 0
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf %s" % (ARCHIVED, suffix)) == 0, why
+
+
+def test_a_both_streams_redirect_names_the_file_it_writes(tmp_path):
+    """...and the same `>&` followed by a FILE is a write, judged as one — in BOTH readers.
+
+    `>&word` is a descriptor duplication when `word` is a descriptor and bash's
+    both-streams-to-a-file redirect otherwise, which is the one fact `_filing._DESCRIPTOR_RX`
+    encodes. Measured before this round against the shipped hooks: `echo x >&archive/…/y.pdf`
+    reached `gate_filing` as NOTHING — the line split at the `&`, no invocation carried a redirect,
+    and a file landing in the archive under no rule was not seen at all. The correction door refused
+    such a line even then, but for the wrong reason (a stray invocation it could not place), which
+    is why both halves are measured here rather than one standing in for the other.
+    """
+    _office_documents(tmp_path, archived="rechnung\n")
+    write(os.path.join(str(tmp_path), "project_memory", "filing_plan.yaml"),
+          'rules:\n  - id: FP-001\n    path_template: "archive/1-Finanzen/<year>/"\n')
+    covered = "echo Notiz >&archive/1-Finanzen/2026/notiz.txt"
+    invented = "echo Notiz >&archive/erfunden/notiz.txt"
+    assert run_hook("gate_filing.py", _bash(tmp_path, covered), tmp_path,
+                    hooks_dir=OFFICE_HOOKS) == 0
+    refused = run_hook_process("gate_filing.py", _bash(tmp_path, invented), tmp_path,
+                               hooks_dir=OFFICE_HOOKS)
+    assert refused.returncode == 2, "a `>&` into an uncovered archive folder is a filing"
+    assert "archive/erfunden" in refused.stderr
+    _grant_correction(tmp_path, ARCHIVED, "outbox/x.pdf")
+    assert _tripwire(tmp_path, "mv %s outbox/x.pdf >&inbox/b.pdf" % ARCHIVED) == 2, (
+        "a `>&` into a tray of record still closes the correction door")
 
 
 @pytest.mark.parametrize("command", [
@@ -13257,6 +13492,35 @@ def test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_do
     assert "harness.py validate" not in remedy, remedy
 
 
+def test_the_office_document_refusal_names_the_command_that_owns_a_field_of_it(tmp_path):
+    """The same measurement one document over — `filing_plan.yaml` and `add-filing-rule` (FR-0049).
+
+    THE TWIN IS NOT REDUNDANT. The sibling above runs the DEV gate over a dev state template, and
+    the office document is in neither: a writer declared for `filing_plan.yaml` could have been
+    unreachable from the gate — a module `layout._document_writes` never imports — and every
+    assertion up there would still have passed. This runs the OFFICE hook over the OFFICE template.
+
+    THE EXPECTATION COMES FROM THE SOURCE (`filing.DOCUMENT_WRITES`) and never from
+    `layout.partial_writers`, for the reason the sibling gives: that function is on the path under
+    test, so an expectation built from it moves with the defect and stays green.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import filing
+    writes = [entry for entry in filing.DOCUMENT_WRITES if entry["document"] == filing.PLAN]
+    assert len(writes) == 1, filing.DOCUMENT_WRITES
+    state = _state_template(tmp_path, kit="office-team")
+    capture_root_item(tmp_path, status=None)
+    result = run_hook_process("gate_write_scope.py",
+                              _write_payload(tmp_path, os.path.join(state, filing.PLAN)),
+                              tmp_path, hooks_dir=OFFICE_HOOKS)
+    assert result.returncode == 2
+    message = result.stdout + result.stderr
+    assert "kit DOCUMENT" in message, message
+    assert writes[0]["command"] in message and writes[0]["field"] in message, (
+        "a command owns %s in %s and the refusal does not say so — a role reading it reports a "
+        "dead end that is not one:\n%s" % (writes[0]["field"], filing.PLAN, message))
+
+
 def test_a_document_finding_and_a_validator_finding_get_different_remedies(tmp_path):
     """The remedy is BUILT from the findings that fired, which is why it can stop lying.
 
@@ -13747,3 +14011,52 @@ def test_a_session_start_inside_the_session_that_dispatched_leaves_its_own_child
     assert "ORPHANED DISPATCH" not in briefing, briefing
     assert state.read_item(task_id)["status"] == "IN_PROGRESS"
     assert os.path.exists(os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml"))
+
+
+def _staged_pipeline_write(repo, name, text):
+    """A PostToolUse payload for a specialist writing one pipeline artifact into its staging dir."""
+    target = os.path.join(str(repo), "project_memory", "staging", "TSK-0001", name)
+    write(target, text)
+    return {"tool_name": "Write", "hook_event_name": "PostToolUse", "cwd": str(repo),
+            "tool_input": {"file_path": target, "content": text}}
+
+
+def test_the_only_hook_that_reads_a_staged_pipeline_file_reads_it_for_well_formedness(tmp_path):
+    """What the filing pipeline's two artifacts are worth to the ENFORCEMENT layer: almost nothing.
+
+    THIS IS A CLAIM THREE SHIPPED TEXTS MAKE, so it is a test rather than a sentence (the schemas'
+    own headers, the office constitution §2.5 and `hooks/ENFORCEMENT.md` all say the pipeline is
+    procedure and the wall is `gate_filing`). Its first cut said "no hook reads either file", and
+    that was measured FALSE on 2026-08-21: `guard_yaml_valid` parses every `project_memory/**.yaml`
+    after a write, staging included, and refuses broken YAML. The three texts now say what is true
+    -- one hook, well-formedness only -- and this is what holds them to it.
+
+    BOTH HALVES, over every registered office hook as a real process:
+      * a well-formed file that VIOLATES the schema (no `proposals` at all, an invented verdict
+        word) passes every one of them -- so nothing enforces the contract, and a role must not
+        read the schema as a gate;
+      * broken YAML is refused by exactly ONE, and this test names which, so the day a second hook
+        starts reading these files the three texts go red with it.
+    """
+    capture_root_item(tmp_path, status=None)
+    hooks = sorted(name for name in os.listdir(OFFICE_HOOKS)
+                   if name.endswith(".py") and name.startswith(("gate_", "guard_")))
+    assert len(hooks) >= 10, hooks
+
+    off_contract = _staged_pipeline_write(
+        tmp_path, "filing_proposals.yaml",
+        "task_id: not-a-task-id\nrole: nobody\nvorschlaege: [{was: auch immer}]\n")
+    for hook in hooks:
+        result = run_hook_process(hook, off_contract, tmp_path, hooks_dir=OFFICE_HOOKS)
+        assert result.returncode == 0, (
+            "%s refuses a staged pipeline artifact that breaks its SCHEMA -- the shipped texts say "
+            "no hook enforces that contract:\n%s" % (hook, result.stderr))
+
+    broken = _staged_pipeline_write(tmp_path, "filing_verdicts.yaml",
+                                    "task_id: TSK-0001\nverdicts: [{{{\n")
+    refusing = [hook for hook in hooks
+                if run_hook_process(hook, broken, tmp_path,
+                                    hooks_dir=OFFICE_HOOKS).returncode != 0]
+    assert refusing == ["guard_yaml_valid.py"], (
+        "exactly one hook reads a staged pipeline file, and only for well-formedness; these did: %s"
+        % refusing)

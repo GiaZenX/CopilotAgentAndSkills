@@ -18,7 +18,17 @@ request_text: 'User steering 2026-08-17, REFINING DEC-0034 (the user-drafted T0-
   rung mechanics stay the DEC-0034 wishlist item and are NOT pulled forward by this
   FR. Any re-tiering is a user-approved restamp -- this FR records that approval for
   exactly the two manager pins.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-17T18:51:58'
+triage_result: 'wanted and DELIVERED by TSK-0078: dev-team and research-team project-manager
+  pinned to fable effort high (permanent T3 per DEC-0034/DEC-0047), office-manager
+  stays opus high per the user''s choice. The open measurement question answered with
+  real CLI probes (implementer and verifier independently): the bound session agent''s
+  frontmatter model: SETS the session model, an explicit user model choice overrides
+  it, and settings.json''s model key is only the fallback for roles without model:
+  (none ship). Settings values aligned to one answer; model_tiers.yaml carries the
+  DEC-0034/DEC-0047 pointers; validate.py derives portable model values from the tier
+  file. Report docs/reviews/2026-08-21-tsk0078-measurements.md.'
+closed_at: '2026-08-21T13:41:17'

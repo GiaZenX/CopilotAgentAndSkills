@@ -62,17 +62,21 @@ STDIN_LIMIT = 16 * 1024 * 1024
 # default for a hook registration that names no `timeout`, which is what every kit registration
 # does today -- and a KILLED hook is reported as "hook error, carry on", i.e. as a PASS on the very
 # call a gate was refusing. So this is not a performance figure: it is the budget inside which a
-# refusal has to become a refusal, and every bound that exists for that reason is derived from it
-# (`guard_fs_tripwire.CORRECTION_CAP`, `gate_ledger_valid.TOTAL_BUDGET`).
+# refusal has to become a refusal.
 #
-# WHAT ACTUALLY READS IT TODAY, stated exactly rather than generously: `guard_fs_tripwire` derives
-# its correction cap from this constant, and the test beside that cap recomputes the derivation. The
-# literal "60 s" ALSO still stands in prose in five comments of this file and in four of
-# `gate_ledger_valid`, and `gate_ledger_valid.TOTAL_BUDGET = 40` is a number that derives from
+# WHAT ACTUALLY READS IT TODAY, stated exactly rather than generously — and the bracket that used to
+# stand above named two bounds as DERIVED from this constant when neither is one:
+# `guard_fs_tripwire.budget_cap()` computes a CEILING from it, and `CORRECTION_CAP` is CHECKED
+# against that ceiling rather than derived from it: the cap is chosen for a reason about the WORK,
+# which its own comment carries, and `test_the_cap_stays_inside_the_budget_it_exists_for` (in
+# `tools/test_hooks.py`) recomputes the ceiling and requires the cap to sit under it.
+# That is the whole of what reads this constant. The literal "60 s" ALSO stands in prose in other
+# comments of this file and of `gate_ledger_valid`, and `gate_ledger_valid.TOTAL_BUDGET = 40` is a
+# number that derives from
 # nothing at all. Pointing those at this constant is a sweep of its own and is NOT done here
 # (verifier round 3, V5, correcting round 2's claim that they already point here); the residue is
 # named in docs/reviews/2026-08-18-tsk0077-measurements.md. What this constant buys today is that
-# the ONE bound built in this round is computed from the deadline instead of restating it.
+# the one CEILING built in that round is computed from the deadline instead of restating it.
 HOOK_DEADLINE_SECONDS = 60.0
 _OVERFLOW_MESSAGE = (
     "[team-kit guard] Hook payload exceeded the %d-byte stdin bound, so this call could not be "

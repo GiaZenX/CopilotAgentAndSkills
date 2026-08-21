@@ -49,12 +49,18 @@ ARCHIVE = "archive"
 # destination — and the working directory a preceding `cd` left behind — be read per command
 # instead of per line.
 #
-# A `|` that immediately follows a `>` is bash's noclobber-override REDIRECT (`>|`, `>>|`), NOT a
-# pipe, so it stays inside the invocation — without the lookbehind the split stripped the target off
-# `echo x >| ledger.csv` and the whole redirect went unseen (measured rc 0, file written). Real
-# pipes, `;` and `&` still separate. The write-scope gate reads `>|` as a redirect too
-# (`gate_write_scope._REDIRECT_RX`, `>>?\|?`), and this keeps the two rules from disagreeing on it.
-INVOCATION_RX = re.compile(r"(?:[^\n;|&]|(?<=>)\|)+")
+# A `|` or an `&` that immediately follows a `>` belongs to the REDIRECT, not to the line's
+# structure: `>|`/`>>|` is bash's noclobber override and `>&` is its descriptor side (`2>&1`,
+# `2>&-`, and the both-streams-to-a-file `>&log`). Without the `|` half the split stripped the
+# target off `echo x >| ledger.csv` and the whole redirect went unseen (measured rc 0, file
+# written). Without the `&` half `mv archive/…/x.pdf outbox/ 2>&1` was TWO invocations — the move,
+# and a bare `1` — and the correction door refused the line naming "an invocation this guard does
+# not read as a filing operation (1)", a token nobody typed (measured rc 2 against the shipped hook
+# with a live approval; `test_the_door_reads_a_stream_redirect_as_the_one_word_it_is`).
+# Real pipes, `;` and a backgrounding `&` still separate — neither follows a `>`. The write-scope
+# gate reads `>|` as a redirect too (`gate_write_scope._REDIRECT_RX`, `>>?\|?`), and this keeps the
+# two rules from disagreeing on it.
+INVOCATION_RX = re.compile(r"(?:[^\n;|&]|(?<=>)[|&])+")
 # Tokens, with quoted spans kept whole. Plain `.split()` was the first version and it fails on the
 # ONE filename shape a business archive is full of: `mv inbox/a.pdf "archive/2026/Müller GmbH.pdf"`
 # would have ended in the token `GmbH.pdf"`, which is not under archive/ — a silent pass.
@@ -67,21 +73,37 @@ TOKEN_RX = re.compile(r'"[^"]*"|\'[^\']*\'|\S+')
 _SHELL_WORD_RX = re.compile(r"[<>|&;]+|[^\s<>|&;]+")
 # An OUTPUT redirect operator, the shape `gate_write_scope._REDIRECT_RX` fixes: an optional file
 # descriptor or `&` (both streams), then `>`/`>>`, then bash's optional noclobber `|`. `>&`
-# (descriptor duplication, `2>&1`) is deliberately OUTSIDE it — its right-hand side is a stream
-# number, not a file anything lands in. Read with the same shape so the two rules cannot drift on
-# what counts as a redirect.
+# (the descriptor side) is deliberately OUTSIDE it, so the two rules cannot drift on what counts as
+# a redirect; the two constants below carry what `>&` needs instead.
 REDIRECT_OP_RX = re.compile(r"^(?:[0-9]*|&)>>?\|?$")
+# THE DESCRIPTOR SIDE OF A REDIRECT, and the one fact that decides what its right-hand side IS.
+# After `>&`/`<&` a run of digits (with bash's optional `-`) or a bare `-` names a STREAM — `2>&1`,
+# `2>&-` — and everything else is bash's both-streams-to-a-FILE spelling, the same redirect as
+# `&>log`. One definition, two readers, because reading it in only one of them cost both directions:
+# `REDIRECT_SPAN_RX` cuts the whole construct out of the argument list with it (without that, `2>&1`
+# left `&1` standing as a word nobody typed), and `_redirect_targets_in` decides with it whether the
+# word after `>&` is a file anything lands in (without that, `echo x >&archive/…/y.pdf` reached
+# `gate_filing` as nothing at all — measured 2026-08-21 against the shipped hook).
+_DESCRIPTOR_RX = re.compile(r"^(?:[0-9]+-?|-)$")
+_DUPLICATING_OP_RX = re.compile(r"^(?:[0-9]*|&)>>?\|?&$")
 # A token that is ALL shell metacharacters — a separator or an operator, never a filename. Used to
 # keep a `tee` operand reader from mistaking an input redirect `<` for a file `tee` writes.
 _METACHAR_RX = re.compile(r"^[<>|&;]+$")
-# ONE WHOLE REDIRECT — the operator AND the file it names — so `_tokens` can cut it out of the
-# argument list instead of ending the list at it (see `_tokens` for what ending it cost). The
-# operator side is `REDIRECT_OP_RX`'s shape with an input `<` added, because for THIS purpose the
-# direction does not matter: either way the word after it belongs to the shell and not to the
-# command. The target is read with `TOKEN_RX`'s alternation so a quoted name with spaces goes with
-# its operator rather than leaving half of itself behind as a word.
-REDIRECT_SPAN_RX = re.compile(r"(?:[0-9]*|&)>>?\|?\s*(?:\"[^\"]*\"|'[^']*'|[^\s<>|&;]+)?"
-                              r"|<\s*(?:\"[^\"]*\"|'[^']*'|[^\s<>|&;]+)?")
+# ONE WHOLE REDIRECT — the operator AND the word the SHELL takes off the line with it — so
+# `_tokens` can cut it out of the argument list instead of ending the list at it (see `_tokens` for
+# what ending it cost). The operator side is `REDIRECT_OP_RX`'s shape with an input `<` added,
+# because for THIS purpose the direction does not matter: either way what follows belongs to the
+# shell and not to the command.
+#
+# THE RIGHT-HAND SIDE HAS TWO SHAPES AND THE `&` DECIDES WHICH, which is the whole of this round's
+# N2: after `>&`/`<&` a run of digits (with bash's optional `-`) or a bare `-` is a DESCRIPTOR
+# (`2>&1`, `2>&-`) — it names no file, and cutting only the `2>` off it left `&1` standing as a word
+# nobody typed. Anything else after that `&` is bash's both-streams-to-a-FILE spelling (`>&log`), so
+# the file branch takes a leading `&` too. The file target is read with `TOKEN_RX`'s alternation so
+# a quoted name with spaces goes with its operator rather than leaving half of itself behind.
+_REDIRECT_FILE_RX = r"(?:\"[^\"]*\"|'[^']*'|[^\s<>|&;]+)?"
+REDIRECT_SPAN_RX = re.compile(r"(?:(?:[0-9]*|&)>>?\|?|[0-9]*<)"
+                              r"(?:&\s*(?:[0-9]+-?|-)|&?\s*%s)" % _REDIRECT_FILE_RX)
 # Copy/move commands, grouped by WHERE their calling convention puts the destination. `robocopy`
 # and `xcopy` take two directories and the destination is the SECOND token; the POSIX/PowerShell
 # family takes N sources and one destination, so it is the LAST. `install` is a copy that does not
@@ -277,9 +299,13 @@ def _tokens(invocation):
     `> log.txt mv inbox/a.pdf archive/…`. Removing the operator together with its target leaves
     exactly the words the command is given.
 
-    A file descriptor in front (`2>`), the both-streams `&>`, the noclobber `>|` and an input `<`
-    are all the same construct and are cut the same way; `2>&1` leaves its `&1` behind as an
-    ordinary word, which resolves to a position no tray matches and no rule reads.
+    A file descriptor in front (`2>`), the both-streams `&>`, the noclobber `>|`, the descriptor
+    side `2>&1`/`2>&-` and an input `<` are all the same construct and are cut the same way — WHOLE,
+    including whatever the shell takes with the operator (`_DESCRIPTOR_RX`). Cutting only the `2>`
+    off `2>&1` left `&1` behind, and because `INVOCATION_RX` had split the line at that `&` it was
+    not even a word but an INVOCATION: the correction door refused a line whose only other content
+    was an approved move, naming "an invocation this guard does not read as a filing operation (1)"
+    — a token nobody typed (`test_the_door_reads_a_stream_redirect_as_the_one_word_it_is`).
 
     THE MARKS HAVE TO BE GONE BEFORE ANY PATH COMPARISON, and this reader had the same gap the
     shell gate had — measured 2026-08-04 against the running `gate_filing` with a plan that covers
@@ -499,9 +525,11 @@ def rewritten_by_the_shell(token):
 def _redirect_targets_in(invocation):
     """[ShellWord] — the files an output redirect in THIS ONE invocation writes to.
 
-    Three forms, all read the way the shell hands them over (`_compat.shell_words`, quoting
+    Four forms, all read the way the shell hands them over (`_compat.shell_words`, quoting
     resolved): a `>`/`>>` redirect, its noclobber-override `>|`/`>>|` (with an optional fd or `&`),
-    and a `tee` operand. The operator is recognised by `REDIRECT_OP_RX`, the same shape the
+    the descriptor operator `>&` WHEN what follows it is not a descriptor (`_DUPLICATING_OP_RX` +
+    `_DESCRIPTOR_RX` — `>&log` is the same redirect as `&>log`, while `2>&1` names a stream and no
+    file), and a `tee` operand. The first two are recognised by `REDIRECT_OP_RX`, the same shape the
     write-scope gate uses, so a splice anywhere in the target — `led'g'er/x`, `"ledger"/x` — reads as
     the file it names, and `>|` is a redirect rather than a pipe the invocation split on.
     """
@@ -510,9 +538,13 @@ def _redirect_targets_in(invocation):
     out = []
     for index, word in enumerate(words):
         token = "" if getattr(word, "spliced", False) else str(word)
+        following = words[index + 1] if index + 1 < len(words) else None
         if REDIRECT_OP_RX.match(token):
-            if index + 1 < len(words):
-                out.append(words[index + 1])
+            if following is not None:
+                out.append(following)
+        elif _DUPLICATING_OP_RX.match(token):
+            if following is not None and not _DESCRIPTOR_RX.match(str(following)):
+                out.append(following)
         elif is_tee and index and not str(word).startswith("-") \
                 and not (token and _METACHAR_RX.match(token)):
             out.append(word)   # a positional operand of `tee` is a file it writes

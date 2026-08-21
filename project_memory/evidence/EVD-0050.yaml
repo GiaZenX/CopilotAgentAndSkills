@@ -1,0 +1,14 @@
+id: EVD-0050
+kind: review
+related:
+- TSK-0078
+result: pass
+summary: verifier PASS for diff:33a2d6233434a7f1949609dcba9cf4214da70fa5c2390b3e6bf203a1330247d9
+  -- TSK-0078 round 2 (B1-B4 closed as derivations, N1-N7 resolved, TSK-0077 door
+  non-regressed, stamps dev 2026.08.21-6 office -7 research -6, suite 2927+13, gates
+  243)
+artifact_refs:
+- staging/TSK-0078/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-21T13:41:31'

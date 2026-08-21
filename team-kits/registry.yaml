@@ -24,10 +24,15 @@
 # project: the kernel has no path builder that can name it, so no `harness.py` command writes such
 # a FILE, and the state directory is write-scoped against tools. The only sessions that can fill
 # one are the entry gate's — the session BEFORE the scaffold, which is why the fact belongs in the
-# routing table and not only in the kit — and the user's own editor. One single FIELD is the
-# exception and it is named where it lives (`project.preset`, below): `harness.py set-preset` owns
-# it, on a user-minted approval, because the roles a project may spawn otherwise had no route at
-# all after the install (BUG-0041). Everything else in these files still has none.
+# routing table and not only in the kit — and the user's own editor.
+#
+# WHERE A KERNEL COMMAND OWNS ONE FIELD of such a file, that is the exception, and it is DERIVED
+# rather than listed here: `kernel.layout.partial_writers` answers which command owns which field of
+# which document by asking the writing modules themselves, and the write-scope refusal, the
+# SessionStart briefing and `harness.py doctor` all print that answer beside the file. The reason
+# the exception exists at all is BUG-0041 — a route the harness HAS but denies is what sent a
+# non-technical user to a text editor she never found. A sentence here that named today's commands
+# would be the copy that outlives them; everything a command does NOT own still has no route.
 #
 # The set is DERIVED, not curated: `kernel.layout.gated_documents` answers it per kit from the
 # kit's registered, refusal-capable hooks and `kernel.layout.is_project_document`, and
@@ -172,6 +177,7 @@ teams:
     presets: [core, commerce, full]   # see team-kits/office-team/presets.yaml (authoritative)
     roles:                     # specialist subagents (./.claude/agents/)
       - records-clerk
+      - filing-reviewer
       - bookkeeper
       - product-editor
       - shop-curator

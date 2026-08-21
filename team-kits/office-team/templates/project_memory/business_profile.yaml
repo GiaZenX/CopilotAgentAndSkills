@@ -8,6 +8,16 @@
 
 business:
   name: ""                    # trading name
+  # THE ADDRESS AN INCOMING INVOICE MUST BE MADE OUT TO, and the ONLY reason this key exists: the
+  # filing-reviewer checks that a document dropped into the inbox is really addressed to THIS
+  # company (FR-0049), and it derives that check from this file rather than from anything written
+  # into a role text. OPTIONAL, and empty is a legitimate answer — read the PII warning above
+  # first: for an Einzelunternehmen the billing address IS the owner's private address, and this
+  # file is in git forever. Leave it empty (or "see user records") and the reviewer checks the NAME
+  # and says per document that the address was not checked; it never invents the comparison and
+  # never asks for the value. The DELIVERY address is deliberately not here — it may legitimately
+  # differ per shipment and is no part of "is this invoice ours".
+  billing_address: ""         # e.g. "Musterstr. 1, 12345 Musterstadt" — or "" / "see user records"
   legal_form: ""              # e.g. Einzelunternehmen / GbR / UG / GmbH
   country: "DE"
   markets: []                 # where products/services are sold, e.g. [DE, AT, EU]

@@ -250,6 +250,12 @@ def load_tiers():
     return tiers, aliases
 
 
+# The platform whose model vocabulary model_tiers.yaml uses as the canonical one; every other
+# provider's ids are looked up against its tier names. Named once because three readers below ask
+# "is this the reference platform" and a fourth spelling of the word would be the drift.
+REFERENCE_PROVIDER = "claude"
+
+
 def tier_of(model, aliases):
     """Canonical claude-vocabulary tier of a model_map/frontmatter value."""
     return aliases.get(model, model)  # lead->opus etc.; opus/sonnet/haiku pass through
@@ -263,9 +269,36 @@ def provider_model(model, provider, tiers, aliases):
     tier = rev.get(canon)
     if not tier:
         return model  # unknown/explicit model id — pass through untouched
-    if provider == "claude":
+    if provider == REFERENCE_PROVIDER:
         return model  # claude keeps the literal value (incl. fable)
     return tiers.get(provider, {}).get(tier, model)
+
+
+def provider_neutral_model(model, tiers=None, aliases=None):
+    """May a KIT SOURCE carry this model value — does it still resolve on every provider?
+
+    TWO WAYS TO QUALIFY, both read off `model_tiers.yaml` instead of listed. The value is a tier
+    ALIAS (`aliases:`), or it is no reference-platform model name of its own AND `provider_model`
+    still translates it for every other provider. The second half is what lets the §11 escalation
+    pin `fable` stand in a kit source — Claude keeps it literally, every other provider gets its
+    LEAD tier — while keeping the reference platform's own `opus`/`sonnet`/`haiku` out: those are
+    the aliases' TARGETS, and a kit source carrying one hands every non-Claude project a Claude
+    model name at install time.
+
+    `tools/validate.py` is the caller; the derivation lives here because this module is the one
+    that reads the tiers file, and the enumeration it replaces ("lead/worker/light") was a list
+    that refused a value the generator has carried since a real project map contained it.
+    """
+    if tiers is None or aliases is None:
+        tiers, aliases = load_tiers()
+    value = str(model)
+    if value in aliases:
+        return True
+    if value in set(tiers.get(REFERENCE_PROVIDER, {}).values()):
+        return False
+    others = [provider for provider in tiers if provider != REFERENCE_PROVIDER]
+    return bool(others) and all(
+        provider_model(value, provider, tiers, aliases) != value for provider in others)
 
 
 def providers_from_project_config(path):

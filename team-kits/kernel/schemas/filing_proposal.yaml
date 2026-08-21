@@ -1,0 +1,58 @@
+# The CLERK's half of the per-filing review pipeline (FR-0049 step 1): one proposal per inbox
+# document, written BEFORE anything moves.
+#
+# WHY THIS IS A SCHEMA AND NOT A PARAGRAPH IN TWO ROLE TEXTS. Two roles have to describe the same
+# object -- the clerk writes it, the filing-reviewer answers it per entry -- and the shape they
+# agree on is the thing that rots when it lives in prose twice. It lives here once;
+# `tools/test_role_contracts.py` holds both SKILLs to the field names this file declares.
+#
+# NOTHING VALIDATES A FILE AGAINST THIS SHAPE, and stating that precisely is the point: the first
+# cut of this header said "no hook reads it", which was measured false. The artifact is a PROPOSAL
+# in `project_memory/staging/<TSK-ID>/` (spec II.4's non-canonical proposal area, the one place a
+# specialist may write). ONE hook does read it -- `guard_yaml_valid` parses every
+# `project_memory/**.yaml` after a write, staging included, and refuses broken YAML -- and that is
+# well-formedness and nothing else: no hook checks a field declared here, and no gate decides
+# anything from what the file says. What still decides every move is `gate_filing`, against
+# `filing_plan.yaml`, at the moment the move is made. Held by
+# `tools/test_hooks.py::test_the_only_hook_that_reads_a_staged_pipeline_file_reads_it_for_well_formedness`.
+# What this contract buys is that the review pipeline is one object rather than two descriptions
+# of one.
+schema: filing_proposal
+# WHICH ROLE WRITES THIS FILE. Declared here rather than in a test, because it is what makes
+# the contract checkable at all: `tools/test_role_contracts.py` walks every schema carrying
+# this key and holds THAT role's shipped SKILL to the field names below. A third pipeline
+# artifact is covered the day it names its writer, and a schema that names none is simply
+# not part of that check.
+writer_role: records-clerk
+version: 1
+strict: true
+# Generous next to the result envelope's 4096: a bulk drop is many documents and each entry carries
+# the findings that make the review possible. A drop past this is a signal to sweep in batches, not
+# to shorten what is said about each document.
+max_serialized_bytes: 262144
+fields:
+  task_id:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  role:
+    type: str
+    required: true
+  proposals:
+    type: list
+    item_type: dict
+    required: true
+    # source            the document as it lies in the inbox, path relative to the project root --
+    #                   the spelling the move will use, so a bulk drop's nested files are named one
+    #                   by one and never as the folder they arrived in.
+    # document_class    what the clerk read the document to BE, in words (the class, not the rule).
+    # destination       the full archive path INCLUDING the filename the clerk proposes, or "" when
+    #                   the clerk can name none -- which is what `rule_id: NEW` means below.
+    # rule_id           the `filing_plan.yaml` rule whose path_template covers `destination`, or
+    #                   `NEW` when no rule does. `NEW` is the entry that goes to the user (FR-0049
+    #                   step 5) and never straight to a move.
+    # findings          what the clerk READ in the document, one string per fact (amount, date,
+    #                   counterparty, USt-ID, GTIN...). This is the substance the reviewer checks
+    #                   against `business_profile.yaml`; an empty list means the clerk opened the
+    #                   file and found nothing readable, which is itself a finding for the reviewer.
+    item_required: [source, document_class, destination, rule_id, findings]

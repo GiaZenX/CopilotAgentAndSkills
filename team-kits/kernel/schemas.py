@@ -175,10 +175,20 @@ def _check_field(value, spec, where, errors):
                         "%s: %r does not match pattern %s"
                         % (item_where, item, spec["item_pattern"])
                     )
-            if item_type == "dict" and spec.get("item_required"):
-                for key in spec["item_required"]:
+            if item_type == "dict":
+                for key in spec.get("item_required", ()):
                     if key not in item:
                         errors.append("%s: missing required key %r" % (item_where, key))
+                # A VOCABULARY INSIDE A LIST ITEM, the same thing `enum` is for a scalar field.
+                # Added for the filing verdicts, whose whole content is a three-word answer per
+                # document (`accept`/`object`/`partial`): without it the three words would have to
+                # be written into the clerk's text, the reviewer's text and a repo test, and the
+                # schema — the one file both roles are held against — would be the only place they
+                # were NOT (`tools/test_role_contracts.py` reads them off here).
+                for key, allowed in (spec.get("item_enums") or {}).items():
+                    if key in item and item[key] not in allowed:
+                        errors.append("%s.%s: %r not in enum %s"
+                                      % (item_where, key, item[key], list(allowed)))
     if spec["type"] == "dict":
         for key in spec.get("sub_required", ()):
             if key not in value:

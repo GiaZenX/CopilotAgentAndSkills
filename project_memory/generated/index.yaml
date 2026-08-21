@@ -1,4 +1,4 @@
-generated_at: '2026-08-21T07:30:38'
+generated_at: '2026-08-21T13:41:31'
 items:
 - id: BUG-0001
   type: BUG
@@ -976,6 +976,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0050
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1251,20 +1257,6 @@ items:
   type: FR
   title: Entry agent breaks the German-report rule itself -- fix user/claude/CLAUDE.md
     wording and roll out to the home directory (user approval required)
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0049
-  type: FR
-  title: 'Office filing: a REVIEW step per filing (not only the periodic auditor)
-    -- classification and naming checked before or right after the move'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0051
-  type: FR
-  title: 'Model casting: build on the DEC-0034 T0-T3 ladder -- PM permanently T3 (fable
-    high), office-manager permanently T1-class (opus high)'
   status: OPEN
   revision: 1
   approval_ref: null

@@ -3,6 +3,9 @@
 # blocks non-installed roles; Codex policy/self-validation does so while native built-ins remain.
 # Upgrading = user OK, then larger preset + session restart. Flat format, strictly YAML-parsed:
 # one preset per line, roles space-separated, `all` = all roles.
-core: records-clerk bookkeeper project-auditor
-commerce: records-clerk bookkeeper product-editor shop-curator project-auditor
+# `filing-reviewer` is in every preset that has a `records-clerk`, and that pairing is the design:
+# the clerk PROPOSES and the reviewer JUDGES before anything moves (FR-0049). A preset with the
+# clerk alone would install half a pipeline whose role texts describe the other half.
+core: records-clerk filing-reviewer bookkeeper project-auditor
+commerce: records-clerk filing-reviewer bookkeeper product-editor shop-curator project-auditor
 full: all

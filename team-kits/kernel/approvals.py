@@ -56,7 +56,7 @@ from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
-             "kit_update", "filing_correction")
+             "kit_update", "filing_correction", "filing_rule")
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
@@ -74,8 +74,11 @@ APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "
 # exist at all (FR-0050). It is already bound to the document's own bytes, so the clock only bounds
 # how long an UNUSED one lingers -- and an unused permission to delete an archived document that
 # outlives the conversation it was given in is exactly the standing permission this kit refuses.
+# `filing_rule` for the mirror-image reason: it authorises a WRITE into the one document that says
+# where every future document belongs (FR-0049 step 5, `kernel.filing`), so an unused one lingering
+# past the conversation is a standing permission to change the Aktenplan.
 EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update",
-                            "filing_correction"))
+                            "filing_correction", "filing_rule"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
 # approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
 # analysis/routine deliberately excluded and NOT because they authorise nothing:
@@ -471,9 +474,118 @@ def filing_correction_subject_manifest(document, content, reason, destination=""
     return manifest
 
 
+# A rule id, in the shape the shipped plan template uses for its examples (`FP-001`). Held to a
+# pattern rather than taken free-form because this value is the handle the user, the clerk and the
+# Verfahrensdokumentation all name a rule by: an id carrying whitespace or a control character
+# would make one rule unfindable under two spellings, and the question the user signs prints it.
+RULE_ID_RX = re.compile(r"\A[A-Za-z][A-Za-z0-9_-]{0,31}\Z")
+# THE SEPARATOR A COMMAND LINE PACKS A LIST INTO. `document_types` is a LIST in the plan and one
+# flag on the line, and the two need one conversion or the question shows something the file will
+# not carry. A comma, because that is what the plan's own examples read like
+# (`[invoice, credit_note]`) and because a document class name may legitimately contain a space.
+_LIST_SEPARATOR = ","
+
+
+def _typed_list(value) -> list:
+    """A command line's comma-separated value as the LIST the manifest hashes and the plan carries.
+
+    Idempotent over a real list, so a caller that already has one (a test, a future resolver) may
+    pass it: what comes back is always the normalised list, which is what makes the hash the same
+    whichever side built it.
+    """
+    items = value if isinstance(value, (list, tuple)) else str(value or "").split(_LIST_SEPARATOR)
+    return [_one_line(item, 120) for item in items if str(item).strip()]
+
+
+def filing_rule_subject_manifest(rule_id, path_template, document_types, filename_template,
+                                 retention, reason) -> dict:
+    """What a NEW Aktenplan rule is bound to: which documents, where, named how, kept how long, why.
+
+    THE SUBJECT IS THE RULE ITSELF, every field of it, because this approval does not authorise an
+    action on an existing thing -- it IS the content that gets written (`kernel.filing.apply`
+    re-derives this manifest and writes exactly `filing.rule_from` of it). So there is no key in
+    the hash the question does not show and no sentence in the question the hash does not cover,
+    which is DEC-0048's rule taken in its constructive direction, and it is why every one of them is
+    typed on the line rather than resolved: each is a decision the USER makes with the clerk
+    (FR-0049 step 5), not a fact the project already holds.
+
+    THE FIRST SEGMENT OF `path_template` MUST BE A LITERAL DIRECTORY NAME, and that refusal is the
+    correction of a measured hole rather than tidiness. `gate_filing` matches a rule by translating
+    each `<...>` into "a run of characters inside one segment", so a template that BEGINS with a
+    placeholder names no tray at all -- it matches every directory at its depth. Measured
+    2026-08-21 against the shipped gate: with `<a>/<b>` minted into the plan,
+    `mv inbox/rechnung.pdf archive/erfunden/x.pdf` went from rc 2 to rc 0, i.e. the wall was gone
+    for the whole level. The chain runs inside one session: a role proposes `<Bereich>/<Jahr>`, the
+    question renders it beside the plan's own examples, and the BUG-0041 reader signs a wildcard.
+
+    IT IS A DEFINITION AND NOT A SECOND PARSER OF THE PLACEHOLDER SYNTAX. What is required is that
+    the first segment be literal -- it may carry no `<` or `>` at all -- and every reading of every
+    syntax agrees about a segment that contains neither. So this does not become a second answer to
+    "what is a placeholder"; `gate_filing.PLACEHOLDER_RX` stays the only one, and the kernel still
+    does not need to know which directory is the archive.
+
+    WHAT IS STILL NOT CHECKED, said rather than implied: whether the literal first segment is the
+    filing tray. Which top-level directory that is remains the KIT's fact (`hooks/_filing.ARCHIVE`,
+    the kit's own `document_trays.txt`), and a rule naming another one simply matches nothing --
+    `gate_filing` only ever asks about a destination that lands in the archive. That is an unusable
+    rule, not an open wall.
+    """
+    identifier = _one_line(rule_id, 40)
+    if not RULE_ID_RX.match(identifier):
+        raise ApprovalError(
+            "a filing rule is named by an id like the plan's own examples (`FP-001`): a letter, "
+            "then up to 31 more letters, digits, `-` or `_`. %r is not one, and the id is what "
+            "the user, the clerk and the Verfahrensdokumentation all name this rule by. Remedy: "
+            "give the rule a plain id." % str(rule_id or ""),
+            user_text="Es wurde keine Freigabe erteilt: die Kennung der neuen Ablage-Regel ist "
+                      "nicht verwendbar. " + NEXT_START_OVER)
+    position = filed_position(path_template)
+    if not is_project_position(position):
+        raise ApprovalError(
+            "a filing rule says where documents live INSIDE this project, and %r is not such a "
+            "place (an absolute path, a climb out of the project, or a name carrying control "
+            "characters). Remedy: give the location relative to the project root, spelled the way "
+            "the filing plan's own commented examples spell one." % str(path_template or ""),
+            user_text="Es wurde keine Freigabe erteilt: der genannte Ablageort liegt nicht in "
+                      "diesem Projekt. " + NEXT_START_OVER)
+    if any(bracket in position.split("/", 1)[0] for bracket in "<>"):
+        raise ApprovalError(
+            "the FIRST part of a filing rule's location has to be a real directory name, and %r "
+            "starts with a placeholder. A rule that begins with one names no tray at all: the "
+            "filing gate reads a placeholder as 'any characters within this segment', so such a "
+            "rule matches EVERY directory at that depth and approving it would take the wall down "
+            "for the whole level instead of adding a place for one class of document. Remedy: name "
+            "the tray literally and put the placeholders below it."
+            % str(path_template or ""),
+            user_text="Es wurde keine Freigabe erteilt: der Ablageort beginnt mit einem "
+                      "Platzhalter und wuerde damit auf JEDEN Ordner dieser Ebene passen, nicht "
+                      "nur auf den gemeinten. " + NEXT_START_OVER)
+    types = _typed_list(document_types)
+    if not types:
+        raise ApprovalError(
+            "a filing rule says WHICH documents it covers, and no document type was given -- the "
+            "user would be asked to approve a location for nothing in particular. Remedy: name the "
+            "class, e.g. `--document-types \"invoice,credit_note\"`.",
+            user_text="Es wurde keine Freigabe erteilt: es wurde nicht gesagt, für welche "
+                      "Dokumente die neue Regel gilt. " + NEXT_START_OVER)
+    naming = _one_line(filename_template, 200)
+    kept = _one_line(retention, 200)
+    if not naming or not kept:
+        raise ApprovalError(
+            "a filing rule says how its documents are NAMED and how long they are KEPT; %s is "
+            "missing. Both are decisions the user makes -- a rule the kernel filled in for them "
+            "would be signed and not chosen. Remedy: name it on the line."
+            % ("the filename template" if not naming else "the retention"),
+            user_text="Es wurde keine Freigabe erteilt: zur neuen Ablage-Regel fehlt noch eine "
+                      "Angabe. " + NEXT_START_OVER)
+    return {"rule_id": identifier, "path_template": position, "document_types": types,
+            "filename_template": naming, "retention": kept, "reason": _one_line(reason)}
+
+
 LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest,
                           "kit_update": kit_update_subject_manifest,
-                          "filing_correction": filing_correction_subject_manifest}
+                          "filing_correction": filing_correction_subject_manifest,
+                          "filing_rule": filing_rule_subject_manifest}
 
 # How long an approval minted from a command-line manifest stays valid. Every kind in this map is
 # in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
@@ -1018,8 +1130,36 @@ def _filing_correction_target_form(manifest: dict) -> str:
 # the honest default for every kind with no entry here -- so an entry may only ever shorten the
 # distance between what the hash covers and what the user reads, never add to it.
 # `test_every_target_form_names_a_live_apr_kind` keeps an entry from outliving its kind.
+def _filing_rule_target_form(manifest: dict) -> str:
+    """A new Aktenplan rule as the person deciding it reads it: what lands where, named how, kept.
+
+    THE AUDIENCE IS BUG-0041's, and this question is the one that decides where every FUTURE
+    document of a class goes -- so it is written as what will happen ("werden ab jetzt … abgelegt")
+    rather than as the five manifest keys that say it. EVERY hashed key is rendered, including the
+    id (the handle an amendment later names) and the expiry the kernel put into the manifest
+    itself: no sentence here the hash does not cover, no key in the hash this does not show.
+
+    The bracket states what the approval is worth and no more: ONE rule ADDED to the plan. It does
+    not change an existing rule and it files no document -- `gate_filing` still decides every move
+    against the plan as it then stands, which is what makes this a small permission rather than a
+    standing one.
+    """
+    return ("eine neue Regel im Ablageplan (%s): %s werden ab jetzt unter »%s« abgelegt und nach "
+            "dem Muster »%s« benannt, Aufbewahrung: %s (Grund: %s; die Freigabe FÜGT diese eine "
+            "Regel HINZU, ändert keine bestehende und legt selbst kein Dokument ab, und sie gilt "
+            "nur bis %s)"
+            % (manifest.get("rule_id") or "?",
+               ", ".join(manifest.get("document_types") or []) or "Dokumente",
+               manifest.get("path_template") or "?",
+               manifest.get("filename_template") or "?",
+               manifest.get("retention") or "?",
+               manifest.get("reason") or "kein Grund angegeben",
+               _render_manifest_value(EXPIRY_FIELD, manifest.get(EXPIRY_FIELD))))
+
+
 TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form,
-                "filing_correction": _filing_correction_target_form}
+                "filing_correction": _filing_correction_target_form,
+                "filing_rule": _filing_rule_target_form}
 
 
 def build_question(request: dict) -> dict:

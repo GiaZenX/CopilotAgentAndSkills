@@ -2,7 +2,7 @@
   "dev-team": {
     "agents/project-manager.md": {
       "(preamble)": {
-        "digest": "d23ec620fb861ebf",
+        "digest": "2c828b5a0294e330",
         "hooks": []
       },
       "Delegation": {
@@ -45,7 +45,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "7df61e2712ba3b24",
+        "digest": "090043aa3bd79f32",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -57,7 +57,7 @@
         "hooks": []
       },
       "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
-        "digest": "2ba82344506b7f5b",
+        "digest": "c95abbb02200da49",
         "hooks": [
           "session_status"
         ]
@@ -265,7 +265,7 @@
         ]
       },
       "What you are and are not": {
-        "digest": "2af99db891027844",
+        "digest": "a4baf04572b7f1a1",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -279,7 +279,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "fafa30124665076b",
+        "digest": "3e59e35e003ef552",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -296,7 +296,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "eb5aa131b034cf12",
+        "digest": "e87b21b46ca2db6e",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -327,7 +327,7 @@
         "hooks": []
       },
       "4. Phase model": {
-        "digest": "933a60ccb4187b64",
+        "digest": "e1f81131215944a4",
         "hooks": [
           "gate_filing",
           "gate_proc_approved"
@@ -341,21 +341,22 @@
           "guard_question_context"
         ]
       },
-      "5. Roles (presets: `core` = records-clerk + bookkeeper; `commerce` adds product-editor +": {
-        "digest": "7bdf1cdf983ad004",
+      "5. Roles (presets: `core` = records-clerk + filing-reviewer + bookkeeper; `commerce` adds": {
+        "digest": "74ca23430f3a0f63",
         "hooks": [
           "gate_write_scope"
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "b760d04c7590584b",
+        "digest": "539af2c81eb666c0",
         "hooks": [
           "gate_subagent_output"
         ]
       },
       "7. Models & presets": {
-        "digest": "6264d426365f4375",
+        "digest": "71a45c5d9042e82b",
         "hooks": [
+          "gate_filing",
           "session_status"
         ]
       },
@@ -379,7 +380,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "2e0af654a4f7295f",
+        "digest": "142bcbaddb351279",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -437,7 +438,7 @@
   "research-team": {
     "agents/project-manager.md": {
       "(preamble)": {
-        "digest": "126b187ca3550069",
+        "digest": "ef4b131642d3e134",
         "hooks": []
       },
       "Delegation": {
@@ -477,7 +478,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "1e8fa655dc7f800b",
+        "digest": "b2befc4b5b517fa6",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -489,7 +490,7 @@
         "hooks": []
       },
       "11. Presets & models (full mechanics: PM skill \"Models & escalation\")": {
-        "digest": "475767967966e978",
+        "digest": "a270a4ca106bfdf0",
         "hooks": [
           "session_status"
         ]

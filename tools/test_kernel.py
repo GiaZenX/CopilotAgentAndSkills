@@ -944,3 +944,307 @@ def test_the_transition_refusal_names_a_command_that_walks_the_edge(tmp_path):
     assert named, "the refusal names no runnable command:\n%s" % exc.value
     mint_via_hook(state, approvals.create_pending_request(state, named.group(1), named.group(2)))
     assert state.read_item("EXP-0001")["status"] == "APPROVED"
+
+
+# ============================ growing a kit document: the filing plan (FR-0049 step 5)
+def _office_state(tmp_path):
+    return _template_state(tmp_path, kit="office-team")
+
+
+def _rule_flags(**overrides):
+    """The six values one filing rule carries, as the manifest builder's own parameter names."""
+    rule = {"rule_id": "FP-009", "path_template": "archive/finance/<year>/",
+            "document_types": "invoice,credit_note",
+            "filename_template": "YYYY-MM-DD_<counterparty>", "retention": "8 Jahre",
+            "reason": "Lieferantenrechnungen hatten keine Regel"}
+    rule.update(overrides)
+    return rule
+
+
+def _approved_rule(state, **overrides):
+    """Mint a filing_rule approval for exactly these values, through the REAL approval hook."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from conftest import mint_via_hook
+    from kernel import approvals
+
+    manifest = approvals.filing_rule_subject_manifest(**_rule_flags(**overrides))
+    mint_via_hook(state, approvals.create_pending_request(
+        state, "filing_rule", manifest=manifest,
+        approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY))
+    return manifest
+
+
+def test_every_kernel_module_that_writes_into_a_document_is_registered(tmp_path):
+    """The tripwire under `layout._DOCUMENT_WRITER_MODULES`, measuring BOTH of its ends.
+
+    That tuple is an unavoidable enumeration -- importing every module of the package to look for
+    the attribute would pull the whole import graph into a hook's hot path -- so it gets the
+    treatment this repo gives every enumeration: a walk of the package finds every module that
+    DECLARES `DOCUMENT_WRITES`, and the tuple must be exactly that set. A writer that ships without
+    being registered here would be invisible to `partial_writers`, and the write-scope refusal
+    would deny a route the harness has; an entry that has stopped writing is the same defect
+    mirrored. Both are one failure each.
+
+    The SHAPE of a declaration is checked too, because `partial_writers` indexes it by key: a
+    writer whose entries lack `document`, `field` or `command` would raise inside a GATE.
+    """
+    import importlib
+    import pkgutil
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    import kernel
+    from kernel import layout
+
+    declaring = set()
+    for info in pkgutil.iter_modules(kernel.__path__):
+        module = importlib.import_module("kernel." + info.name)
+        if getattr(module, "DOCUMENT_WRITES", None):
+            declaring.add(info.name)
+    assert declaring, "no kernel module declares DOCUMENT_WRITES -- the reader stopped matching"
+    assert set(layout._DOCUMENT_WRITER_MODULES) == declaring, (
+        "the registry and the writers disagree: registered-but-silent %s, writing-but-unregistered "
+        "%s" % (sorted(set(layout._DOCUMENT_WRITER_MODULES) - declaring),
+                sorted(declaring - set(layout._DOCUMENT_WRITER_MODULES))))
+    for entry in layout._document_writes():
+        assert set(entry) >= {"document", "field", "command"}, entry
+        assert layout.partial_writers(entry["document"]), entry
+
+
+def test_a_filing_rule_is_written_only_when_the_user_approved_exactly_it(tmp_path):
+    """What the user signs is what lands in the plan -- checked on the ways it could not be.
+
+    The approval binds the six rule fields as the manifest hashes them, and `filing.apply`
+    re-derives that manifest from what it is asked to write. So a rule differing in ANY field --
+    here the location, the strongest one -- is not covered by the approval for the other, and an
+    unapproved call must leave the file byte-identical.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals, filing
+    from kernel.state import ProjectState, StateError
+
+    root = _office_state(tmp_path)
+    state = ProjectState(root)
+    before = filing.read_text(filing.plan_path(state))
+
+    unapproved = approvals.filing_rule_subject_manifest(**_rule_flags())
+    with pytest.raises(StateError) as exc:
+        filing.apply(state, unapproved)
+    assert "no user approval" in str(exc.value)
+    assert filing.read_text(filing.plan_path(state)) == before, "a refusal must change nothing"
+
+    _approved_rule(state)
+    elsewhere = approvals.filing_rule_subject_manifest(
+        **_rule_flags(path_template="archive/anderswo/<year>/"))
+    with pytest.raises(StateError):
+        filing.apply(state, elsewhere)
+    assert filing.read_text(filing.plan_path(state)) == before
+
+    approved = approvals.filing_rule_subject_manifest(**_rule_flags())
+    result = filing.apply(state, approved)
+    assert result["rule"] == filing.rule_from(approved)
+    assert filing.existing_rules(state) == [filing.rule_from(approved)]
+    # ...and a SECOND run under the still-live approval does not double the id
+    with pytest.raises(StateError) as clash:
+        filing.apply(state, approved)
+    assert "already carries a rule with the id" in str(clash.value)
+    assert len(filing.existing_rules(state)) == 1
+
+
+def test_appending_a_rule_keeps_everything_else_in_the_plan(tmp_path):
+    """The plan is a kit DOCUMENT whose comments carry its field list and its retention defaults.
+
+    A `yaml.safe_dump` of a parsed copy would write back a valid file with all of that deleted --
+    the kernel silently destroying the one document in the project nothing else rewrites, which is
+    the reason `presets._with_preset` is a line edit too. So: every line the file had before is
+    still there afterwards, and a second rule appends beside the first instead of replacing it.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import filing
+    from kernel.state import ProjectState
+
+    root = _office_state(tmp_path)
+    state = ProjectState(root)
+    kept = [line for line in filing.read_text(filing.plan_path(state)).splitlines()
+            if line.strip() and line.strip() != "rules: []"]
+    first = _approved_rule(state)
+    filing.apply(state, first)
+    second = _approved_rule(state, rule_id="FP-010", path_template="archive/vertraege/<jahr>/")
+    filing.apply(state, second)
+    after = filing.read_text(filing.plan_path(state))
+    missing = [line for line in kept if line not in after]
+    assert not missing, ("the append deleted lines of a document nothing else can rewrite: %s"
+                         % missing)
+    assert filing.existing_rules(state) == [filing.rule_from(second), filing.rule_from(first)]
+
+
+def test_a_plan_this_kernel_cannot_append_to_is_refused_and_left_alone(tmp_path):
+    """Fail-closed on a shape the writer cannot place a rule in, rather than rewriting the file.
+
+    Two shapes stand for the class: no `rules:` key at all, and a NON-empty flow list -- legal YAML
+    this line editor cannot extend without re-emitting the whole value. In both the plan has to come
+    back byte-identical: a document the kernel half-understands is one it must not touch, and the
+    refusal points at the user rather than at a retry.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import filing
+    from kernel.state import ProjectState, StateError
+
+    root = _office_state(tmp_path)
+    state = ProjectState(root)
+    approved = _approved_rule(state)
+    for text in ("# an Aktenplan with no rules key at all\nretention: 8y\n",
+                 "rules: [{id: FP-001, path_template: archive/x/}]\n"):
+        with open(filing.plan_path(state), "w", encoding="utf-8", newline="") as handle:
+            handle.write(text)
+        with pytest.raises(StateError):
+            filing.apply(state, approved)
+        assert filing.read_text(filing.plan_path(state)) == text, text
+
+
+def test_the_question_a_filing_rule_asks_shows_every_field_the_hash_covers(tmp_path):
+    """DEC-0048 in its constructive direction: no key in the hash the question does not show.
+
+    The reader is BUG-0041's user, and this question decides where every FUTURE document of a class
+    goes -- so it is measured against the manifest itself rather than against a remembered wording:
+    every hashed value appears in the question text, and the question is deterministic from the
+    request (the approval gate rebuilds it and compares byte for byte).
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals
+    from kernel.state import ProjectState
+
+    root = _office_state(tmp_path)
+    state = ProjectState(root)
+    manifest = approvals.filing_rule_subject_manifest(**_rule_flags())
+    request = approvals.create_pending_request(
+        state, "filing_rule", manifest=manifest,
+        approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY)
+    question = approvals.build_question(request)["question"]
+    for key, value in (request.get("subject_manifest") or {}).items():
+        if key == approvals.EXPIRY_FIELD:
+            continue              # rendered as a date by `_render_manifest_value`, not as its float
+        for shown in (value if isinstance(value, list) else [value]):
+            assert str(shown) in question, (
+                "the hash covers %s=%r and the question does not show it:\n%s"
+                % (key, shown, question))
+    assert approvals.build_question(request)["question"] == question, "not deterministic"
+
+
+def test_a_write_that_does_not_produce_the_approved_rule_is_rolled_back(tmp_path, monkeypatch):
+    """The line edit is a TEXT operation, and the only proof it produced the approved rule is a parse.
+
+    TWO ABLATIONS, and the second is this round's B4. Making the RENDERER lie -- it drops one field
+    -- is the shape a quoting, indentation or line-ending bug really has. Mangling `rule_from` is
+    the shape the check could NOT see while it compared against that same function: the verifier's
+    `id + "-typo"` ablation left the suite green while the plan received a rule nobody signed. The
+    read-back now compares against `signed_rule(manifest)` -- the manifest's own values, through
+    `RULE_FIELDS`, with no transformation in it -- so both ablations are caught here.
+
+    What must happen is what `presets.record_preset` does one document over: the plan comes back
+    byte-identical and the command refuses, because a plan carrying a rule the user never saw is
+    worse than no rule at all.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import filing
+    from kernel.state import ProjectState, StateError
+
+    root = _office_state(tmp_path)
+    state = ProjectState(root)
+    approved = _approved_rule(state)
+    before = filing.read_text(filing.plan_path(state))
+    honest_rendered, honest_rule_from = filing._rendered, filing.rule_from
+    for what, patch in (
+            ("the renderer drops a field",
+             lambda: monkeypatch.setattr(
+                 filing, "_rendered",
+                 lambda rule: honest_rendered({k: v for k, v in rule.items()
+                                               if k != "retention"}))),
+            ("the builder mangles the id (verifier ablation, B4)",
+             lambda: monkeypatch.setattr(
+                 filing, "rule_from",
+                 lambda manifest: dict(honest_rule_from(manifest),
+                                       id=str(manifest["rule_id"]) + "-typo")))):
+        monkeypatch.undo()
+        patch()
+        with pytest.raises(StateError) as exc:
+            filing.apply(state, approved)
+        assert "did not produce a plan that carries exactly what the user approved" in str(exc.value), what
+        assert filing.read_text(filing.plan_path(state)) == before, (
+            "%s: the plan was left changed" % what)
+    monkeypatch.undo()
+    assert filing.apply(state, approved)["rule"] == filing.signed_rule(approved), (
+        "the honest path still writes the approved rule")
+
+
+@pytest.mark.parametrize("template,why", [
+    ("<Bereich>/<Jahr>/", "the shape a role really proposes"),
+    ("<x>", "a single placeholder segment"),
+    ("<a>/finance/2026/", "a placeholder first, literals below it"),
+    ("prefix<a>/2026/", "a placeholder anywhere IN the first segment"),
+])
+def test_a_rule_may_not_start_with_a_placeholder(tmp_path, template, why):
+    """A `path_template` that BEGINS with a placeholder names no tray and matches the whole level.
+
+    `gate_filing` translates every `<...>` into "a run of characters inside one segment", so a rule
+    whose FIRST segment is one matches every directory at that depth -- including the archive
+    folders no rule was ever written for. Measured 2026-08-21 against the shipped gate with `<a>/<b>`
+    minted into the plan: `mv inbox/rechnung.pdf archive/erfunden/x.pdf` went from rc 2 to rc 0, i.e.
+    the wall was gone for the whole level. That consequence is measured on the running gate by
+    `test_a_rule_that_starts_with_a_placeholder_would_open_the_whole_level` (in
+    `tools/test_hooks.py`), so this refusal's REASON cannot quietly stop being true either.
+
+    The chain runs inside ONE session, which is what makes this blocking rather than untidy: a role
+    proposes `<Bereich>/<Jahr>`, the approval question renders it beside the plan's own examples, and
+    the reader BUG-0041 describes signs a wildcard. So the refusal happens where the subject is
+    BUILT -- before a question exists at all -- and not at the write.
+
+    IT IS A DEFINITION, NOT A SECOND PARSER of the placeholder syntax: the first segment must carry
+    no `<` and no `>`, and every reading of every syntax agrees about a segment that contains
+    neither.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals
+
+    with pytest.raises(approvals.ApprovalError) as exc:
+        approvals.filing_rule_subject_manifest(**_rule_flags(path_template=template))
+    assert "placeholder" in str(exc.value), why
+    # ...and the German half the USER would have read, because that is the half BUG-0041 is about
+    assert "Platzhalter" in (exc.value.user_text or ""), why
+
+
+@pytest.mark.parametrize("template", [
+    "archive/finance/<year>/",           # the shipped example shape
+    "archive/<Modell>_<Prozessor>/",     # placeholders below a literal root
+    "outbox/<year>/",                    # a literal root that is NOT the archive
+])
+def test_a_literal_first_segment_is_accepted_however_deep_the_placeholders_go(tmp_path, template):
+    """The floor under the refusal above: it must not have become "no placeholders at all".
+
+    The third case is deliberate and is the honest limit of what the kernel checks: a rule rooted
+    somewhere other than the filing tray is ACCEPTED here, because which directory is the archive is
+    the KIT's fact and not the kernel's. Such a rule matches nothing -- `gate_filing` only asks its
+    question about a destination that lands in the archive -- so it is an unusable rule, not an open
+    wall, and the difference between those two is the whole point of the refusal above.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals
+
+    manifest = approvals.filing_rule_subject_manifest(**_rule_flags(path_template=template))
+    assert manifest["path_template"] == template.rstrip("/")

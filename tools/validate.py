@@ -26,6 +26,11 @@ sys.path.insert(0, os.path.join(ROOT, "team-kits"))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 from preset_config import UniqueKeyLoader, load_preset_catalog  # noqa: E402
 import lead_package  # noqa: E402  — the budget and its subject, defined once
+# The one reader of `model_tiers.yaml`, borrowed rather than re-implemented: which model values a
+# kit source may carry is a property of that file (see `provider_neutral_model`).
+from gen_provider_artifacts import load_tiers, provider_neutral_model  # noqa: E402
+
+_MODEL_TIERS, _MODEL_ALIASES = load_tiers()
 
 fails = []
 # THERE IS NO WARNING CHANNEL ANY MORE, and its removal is the point rather than tidying. It
@@ -184,17 +189,27 @@ for cfg in glob.glob(ROOT + "/team-kits/*/templates/project_memory/project_confi
         for field in ("model", "effort"):
             if field not in lfm:
                 fails.append("%s: session lead missing '%s:' frontmatter" % (rel(lp), field))
-    # kit SOURCES are provider-neutral: agent frontmatter must use tier aliases, never a concrete
-    # provider model name (the scaffold resolves aliases per provider at install time)
+    # kit SOURCES are provider-neutral: a value in agent frontmatter must be one that still
+    # resolves to a model on every provider. WHICH values those are is ASKED of `model_tiers.yaml`
+    # through the generator that reads it, not spelled out here: the three tier aliases plus any
+    # value the generator carries across providers without being a concrete reference-platform name
+    # of its own -- today that second half is `fable`, the §11 escalation pin the tiers file
+    # documents and `gen_provider_artifacts.provider_model` maps to every other provider's LEAD
+    # tier. The enumeration that stood here ("lead/worker/light") failed the day FR-0051 pinned the
+    # two PMs to fable: a legitimate, generator-supported value refused by a list that had never
+    # heard of it. `test_the_neutral_model_values_are_the_ones_the_generator_can_carry` (in
+    # `tools/test_hooks.py`) measures both ends of the derivation.
     for ap in glob.glob(os.path.join(kit_dir, "agents", "*.md")):
         try:
             afm = frontmatter(open(ap, encoding="utf-8").read()) or {}
         except Exception:
             continue
-        if "model" in afm and str(afm["model"]) not in ("lead", "worker", "light"):
-            fails.append("%s: model '%s' — kit sources must use the tier aliases "
-                         "lead/worker/light (model_tiers.yaml maps them per provider)"
-                         % (rel(ap), afm["model"]))
+        if "model" in afm and not provider_neutral_model(str(afm["model"]),
+                                                         _MODEL_TIERS, _MODEL_ALIASES):
+            fails.append("%s: model '%s' — a kit source carries a provider-NEUTRAL model value: a "
+                         "tier alias (%s) or a value model_tiers.yaml maps per provider without "
+                         "being one provider's own model name"
+                         % (rel(ap), afm["model"], "/".join(sorted(_MODEL_ALIASES))))
 
 # 9) kit VERSION stamps must match the kit content (forgetting a bump is a CI failure), and the
 #    constitution marker must sit on line 1 (session_status parses only the first line for the kit key —

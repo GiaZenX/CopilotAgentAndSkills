@@ -49,8 +49,8 @@ import subprocess
 import sys
 import time
 
-from . import (approvals, board, checkpoints, dispatch, hashing, kitupdate, migrate, presets,
-               report, staging)
+from . import (approvals, board, checkpoints, dispatch, filing, hashing, kitupdate, migrate,
+               presets, report, staging)
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -682,6 +682,22 @@ def build_parser() -> argparse.ArgumentParser:
         kitupdate.COMMAND,
         help="install the kit release staged on this machine over this project (needs a minted "
              "`%s` approval; refuses a downgrade and stops the session afterwards)" % kitupdate.KIND)
+    # THE THIRD DEAD END OF THE SAME FAMILY (FR-0049 step 5). An office project meeting a document
+    # class its Aktenplan does not know could not file it -- correctly -- and could not grow the
+    # plan either: `filing_plan.yaml` is a kit document, so no tool write reaches it and, until
+    # `kernel/filing.py`, no command wrote it. The flags are the manifest builder's own parameters,
+    # exactly as the approval request above renders them, so the line that ASKS and the line that ACTS
+    # cannot come to describe two different rules; `_line_manifest` builds the same manifest from
+    # them and `filing.apply` refuses unless a live approval carries it.
+    rule = sub.add_parser(
+        filing.COMMAND,
+        help="append a user-approved rule to %s (needs a minted `%s` approval; same flags as the "
+             "request that opened the question)" % (filing.PLAN, filing.KIND))
+    for name in manifest_parameters(approvals.LINE_MANIFEST_BUILDERS[filing.KIND]):
+        rule.add_argument("--" + name.replace("_", "-"), metavar=name.upper(),
+                          help="the approved rule's %s -- the approval is looked up by the "
+                               "manifest these flags build, so they are the ones the user was "
+                               "shown" % name)
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
@@ -1124,6 +1140,19 @@ def main(argv=None) -> int:
             # reported success and left the lead to discover that is the shape BUG-0016 named.
             print("RESTART REQUIRED: the new role set loads at the next session start. Tell the "
                   "user in their own words and stop deriving here.")
+            return 0
+        if args.command == filing.COMMAND:
+            builder = approvals.LINE_MANIFEST_BUILDERS[filing.KIND]
+            result = filing.apply(state, _line_manifest(state, filing.KIND, builder, args))
+            rule = result["rule"]
+            print("%s rule added: %s -> %s" % (filing.PLAN, rule["id"], rule["path_template"]))
+            # READ BACK OFF THE FILE, not off the plan of what to write: the count is what the
+            # plan now PARSES to, so a rule that did not arrive does not appear here either.
+            print("rules in the plan now: %d" % result["rules"])
+            # The plan grew; nothing moved. Said here because a role that reads "rule added" as
+            # "document filed" would report a filing that has not happened -- `gate_filing` judges
+            # the move when the move is made, against the plan as it then stands.
+            print("NOT done here: no document was filed. File it now; the plan covers it.")
             return 0
         if args.command == kitupdate.COMMAND:
             result = kitupdate.apply(state)

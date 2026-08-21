@@ -21,9 +21,13 @@ THE PROPERTY, not the three file names. The state directory holds two kinds of f
     ONE QUALIFICATION, and it is a qualification and not an exception: a kernel command may own a
     single FIELD inside such a document. `set-preset` writes `project.preset` and nothing else in
     `project_config.yaml`, because the roles a project has installed had no writer at all and the
-    only remaining route was a human with a text editor (BUG-0041). The document is still a
-    document -- everything above about scoping and about tool writes is unchanged -- and
-    `partial_writers` below is what lets a refusal say so instead of denying a route that exists.
+    only remaining route was a human with a text editor (BUG-0041); `add-filing-rule` APPENDS to
+    `filing_plan.yaml`'s `rules` and touches nothing else, for the same reason one document over
+    (FR-0049). Both write only what a USER minted an approval for. The document is still a document
+    -- everything above about scoping and about tool writes is unchanged -- and `partial_writers`
+    below is what lets a refusal say so instead of denying a route that exists. WHICH commands
+    those are is asked of the writing modules, never counted here: this paragraph names two today
+    and the sentence that counts them would be the one that rots.
 
 `kernel_written_subtrees` answers the first half by ASKING THE WRITERS' OWN PATH BUILDERS with a
 probe id, rather than by listing directories: `state.active_path`, `state.archive_path`,
@@ -162,20 +166,39 @@ def is_in_proposal_area(relative_path: str) -> bool:
     return bool(rel) and rel.split("/")[0] == STAGING_DIRNAME
 
 
+# THE MODULES THAT WRITE ONE FIELD OF A KIT DOCUMENT, by name. An enumeration, and unavoidable:
+# importing every module of the package to look for the attribute would pull the whole import graph
+# into a hook's hot path, and the graph is a tree on purpose. It carries a tripwire that measures
+# BOTH ends instead --
+# `tools/test_kernel.py::test_every_kernel_module_that_writes_into_a_document_is_registered` walks
+# the package for modules declaring `DOCUMENT_WRITES` and requires this tuple to be exactly them,
+# so an entry that has stopped writing and a writer that never arrived here are one failure each.
+_DOCUMENT_WRITER_MODULES = ("presets", "filing")
+
+
+def _document_writes() -> tuple:
+    """Every declared (document, field, command) a kernel command writes -- asked of the writers."""
+    import importlib                     # lazy: keeps the package's import graph a tree
+
+    found = []
+    for name in _DOCUMENT_WRITER_MODULES:
+        module = importlib.import_module("." + name, __package__)
+        found += list(getattr(module, "DOCUMENT_WRITES", ()))
+    return tuple(found)
+
+
 def partial_writers(relative_path: str) -> tuple:
     """({"field", "command"}, ...) a kernel COMMAND writes inside this kit document.
 
-    Asked of the modules that do the writing (`presets.DOCUMENT_WRITES`) rather than listed here,
+    Asked of the modules that do the writing (their own `DOCUMENT_WRITES`) rather than listed here,
     for the reason the module docstring gives: the refusal a role reads must not deny a route the
     harness has, and a second copy of "which command writes what" is how it would come to.
     Matched on the document's own path inside the state directory, case-folded like every other
     comparison in this module.
     """
-    from . import presets                # lazy: keeps the package's import graph a tree
-
     rel = str(relative_path or "").replace("\\", "/").strip("/").lower()
     return tuple({"field": entry["field"], "command": entry["command"]}
-                 for entry in presets.DOCUMENT_WRITES
+                 for entry in _document_writes()
                  if entry["document"].lower() == rel)
 
 

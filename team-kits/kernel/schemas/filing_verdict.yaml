@@ -1,0 +1,55 @@
+# The REVIEWER's half of the per-filing review pipeline (FR-0049 step 2): one verdict per proposal,
+# written before anything moves. Its sibling is `filing_proposal.yaml`; read that one's header for
+# why the contract lives in a schema and for what it does NOT claim (nothing validates either file
+# against its shape, one hook parses both for well-formedness, `gate_filing` decides every move).
+#
+# THE THREE ANSWERS ARE DECLARED HERE AND NOWHERE ELSE. `accept` / `object` / `partial` is the
+# user's own vocabulary (FR-0049) and what the manager routes on. WHAT HOLDS IT, stated exactly and
+# not generously, because the sentence that stood here said "enforced by the validator" while three
+# lines above said nothing validates these files -- and the second sentence is the true one:
+#   * the shipped ROLE TEXTS are held to these three words by `tools/test_role_contracts.py`, which
+#     reads them off this file, so the vocabulary lives in one place and the texts follow it;
+#   * `kernel.schemas.validate` refuses a fourth word WHEN IT IS ASKED (`item_enums`,
+#     `tools/test_schemas.py::test_an_item_enum_refuses_a_word_the_schema_does_not_declare`) --
+#     and nothing in the shipped tree asks it for a file of this shape. Measured 2026-08-21: a
+#     well-formed verdict file with an invented word passes every registered office hook, rc 0.
+# So at RUNTIME the vocabulary is discipline plus the review itself; the wall is `gate_filing`.
+schema: filing_verdict
+# WHICH ROLE WRITES THIS FILE. Declared here rather than in a test, because it is what makes
+# the contract checkable at all: `tools/test_role_contracts.py` walks every schema carrying
+# this key and holds THAT role's shipped SKILL to the field names below. A third pipeline
+# artifact is covered the day it names its writer, and a schema that names none is simply
+# not part of that check.
+writer_role: filing-reviewer
+version: 1
+strict: true
+max_serialized_bytes: 262144
+fields:
+  task_id:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  role:
+    type: str
+    required: true
+  reviewed:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  verdicts:
+    type: list
+    item_type: dict
+    required: true
+    # source    the same document spelling the proposal used -- the join between the two files.
+    # verdict   accept  : file it exactly as proposed.
+    #           object  : do NOT file it as proposed; `reason` says what is wrong.
+    #           partial : the destination is right and something else is not (a name, a missing
+    #                     field, an ambiguous GTIN), or the reverse -- `reason` says which half.
+    #           `object` and `partial` both go through the manager to the USER; only `accept` moves.
+    # reason    why, in one sentence a non-technical reader can act on. Required for every verdict
+    #           including `accept`, because "what was checked" is the record of the review having
+    #           happened at all -- an empty reason beside an accept is indistinguishable from a
+    #           document nobody opened.
+    item_required: [source, verdict, reason]
+    item_enums:
+      verdict: [accept, object, partial]

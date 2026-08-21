@@ -24,6 +24,10 @@ providers: [claude, codex]
 # install are inert until an upgrade installs them.
 model_map:
   records-clerk: worker
+  filing-reviewer: worker      # the second pair of eyes on every filing (FR-0049): it READS
+                               # documents and answers per file, so it needs the reading tier and
+                               # nothing above it — the wall (gate_filing) is what it stands in
+                               # front of, not what it replaces.
   bookkeeper: worker
   product-editor: worker
   shop-curator: worker
@@ -33,11 +37,16 @@ model_map:
                                # errors in its tools go uncaught, so it gets the strong tier.
   project-auditor: worker
 
-# Reasoning effort per specialist (low | medium | high | xhigh | max). All default high. FACTS
+# Reasoning effort per specialist (low | medium | high | xhigh | max). Default high. FACTS
 # (official effort doc, verified 2026-07): haiku has NO effort parameter; Sonnet 5 supports xhigh
 # AND max. Escalation ladder (user-confirmed): sonnet-high -> sonnet-xhigh -> opus-high -> opus-xhigh/max.
+# THE FILING PAIR IS THE ONE EXCEPTION AND IT IS A USER DECISION, not a saving found here: DEC-0047
+# gives the DEC-0034 ladder per-kit endpoints and puts the clerk+reviewer pipeline BELOW the dev
+# floor at `low`, because two roles read every document and gate_filing still refuses every move no
+# rule covers ("reine Auslese, kein starkes Modell noetig", FR-0049).
 effort_map:
-  records-clerk: high
+  records-clerk: low
+  filing-reviewer: low
   bookkeeper: high
   product-editor: high
   shop-curator: high
