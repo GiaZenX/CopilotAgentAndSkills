@@ -736,6 +736,15 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   (tar mit quell-löschendem Schalter als Löschung der genannten Operanden), was über den
   Bug-Auftrag hinausgeht. Begrenzung bis dahin: Löschen unter `archive/` per `rm`/`del` fängt die
   Delete-Regel bereits; nur der tar-interne Löschweg ist offen.
+- **Sechs office-eigene Inhaltsdokumente haben gar keinen Schreibweg** (TSK-0081, gemessen als
+  Ableitung über `layout.is_project_document` + `layout.partial_writers` gegen das ausgelieferte
+  Template-Verzeichnis): von 10 Kit-Dokumenten tragen 2 einen Teil-Schreibweg
+  (`filing_plan.yaml` über `add-filing-rule`, `project_config.yaml` über `set-preset`);
+  `business_profile`, `compliance_register`, `content_guidelines`, `marketing_plan`,
+  `master_data`, `product_catalog` haben keinen — sieben mit `product/masterplan.md` als
+  kit-übergreifendem Fall. Sie werden im Onboarding gefüllt oder bleiben leer; die
+  Bookkeeper-Texte sagen das seit TSK-0081 ehrlich. Ein echter Schreibweg nach dem
+  `add-filing-rule`-Muster wäre je Dokument eine eigene Runde.
 
 ### L10 — Was ohne einen Provider unprüfbar bleibt
 
@@ -746,6 +755,11 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
 - Ob `AskUserQuestion` im **interaktiven** Modus genau den Payload liefert, den `gate_approval`
   erwartet. Die Gates prägen korrekt, wenn der Payload kommt (viermal gemessen mit rekonstruiertem
   Payload) — die Form des echten Werkzeugaufrufs ist ungemessen.
+- Ob der Provider einen **nutzer-globalen `SessionStart`-Hook** (`kit_bridge_notice.py`,
+  TSK-0081) in eine Sitzung mit projekteigenen SessionStart-Hooks mischt und dessen
+  `additionalContext` zustellt. Gemessen sind Hook-Prozess und Registrierung; kommt die Notiz
+  nicht an, bleibt P4-1 für das betroffene Alt-Projekt unverändert (der menschliche Weg steht im
+  README-Abschnitt „Update"). Messpunkt des Live-Testlaufs.
 
 ### L11 — Laufzeit: nicht der Zustand, sondern die Prozessanzahl
 
@@ -2156,7 +2170,8 @@ H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
-TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080.
+TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
+H55–H57 mit TSK-0081.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -2202,6 +2217,9 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H52 | **offen**, nicht schließbar ohne Provider-Schlüssel (TSK-0080) | ohne `agent_id` wird verweigert statt geraten; ein Zombie-Dispatch hält damit rollengleiche id-lose Zuordnungen dauerhaft still. Begrenzung: der repo-eigene Messwert sagt, dass `SubagentStop` die Id trägt (der Zweig ist der Ausnahmefall), und die Verfassung verlangt gleichrollige Aufgaben sequenziell |
 | H53 | **offen**, Messung gehört zum Live-Lauf (TSK-0080) | die Lebensdauer von `stop_hook_active` ist ungemessen; die Fehlrichtung ist stumm, nie schleifend, und kein ausgelieferter Text behauptet mehr als „at most once per finding" |
 | H54 | **offen**, nicht blockierend (TSK-0080) | ein ungebunden LAUFENDES Kind wird nach Fensterablauf als „nichts hat diesen Lauf je verfolgt" gemeldet — die Aussage ist datensatz-wahr und die Meldung gewollt; begrenzt, weil Gate-Schicht 3 einem ungebundenen Kind ohnehin jeden Schreibzugriff verweigert, es also nichts liefern konnte, das verloren ginge |
+| H55 | **offen**, von innen nicht schließbar (TSK-0081) | die Update-Brücke im Alt-Bestand läuft auf ein gesprochenes Ja statt einer geminteten Freigabe, und auch ein SUBAGENT erreicht sie (Alt-Gate: bridge rc 0, scaffold rc 2) — die Brücke liest ihren Aufrufer nicht, weil ihr niemand eine Payload gibt. Begrenzung: nur Alt-Bestand (im gehobenen Projekt verweigert sie jedem, gemessen rc 2); keine Argumente, Richtungs- und Staging-Hash-Prüfung, Backups, `project_memory` unberührt (gemessen byte-identisch) |
+| H56 | **offen**, nicht blockierend — erholbar (TSK-0081) | ein mitten im Kopieren abgebrochener Brückenlauf lässt ein gemischtes Bündel ohne Rücknahme stehen (kernel_files 17→22, Stempel alt); der zweite Lauf hebt sauber (rc 0), `project_memory` unversehrt, kein Datenverlust gemessen — der Docstring der Brücke sagt „what a KILLED run leaves is not undone" |
+| H57 | **offen**, am Helfer nicht schließbar (TSK-0081) | ein quotiertes Heredoc an einen INTERPRETER (`python <<'EOF'`) ist vor `gate_ledger_valid` unsichtbar, seit es `_compat.literal_heredoc_free` übernimmt — der Schreibzugriff im Körper kann den Richter des Ledgers ersetzen, und danach fängt nichts mehr (die Commit-Prüfung fährt den Validator, der dasteht; gemessen rc 0 auf kaputtem Ledger). Was begrenzt: der Werkzeug-Weg auf den Validator ist für jeden doppelt verweigert (`guard_harness_selfmod`, `gate_write_scope`), die Zeile muss vom Agenten kommen, und der ersetzte Validator steht sichtbar im Commit-Diff; `_compat.py` benennt den Verlust seit TSK-0081 ehrlich |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -4424,6 +4442,65 @@ den Lauf wirklich nichts). Begrenzung des Schadens: Gate-Schicht 3 verweigert ei
 Kind ohnehin jeden Schreibzugriff; es konnte nichts liefern, das durch ein `FAILED` verloren
 ginge. Die Verfassungen sagen die Einschränkung seit dieser Runde ausdrücklich („A bound child
 that outlived its lease is none of those and is not named").
+
+### H55 — Die Alt-Bestand-Brücke läuft ohne gemintete Freigabe, und ein Subagent erreicht sie — offen (neu, TSK-0081)
+
+**Mechanismus:** Im Alt-Bestand (bis Kit 2026.08.14-9) existiert die Freigabeart `kit_update`
+nicht — es gibt nichts zu minten, und kein Hook dort kann erzwingen, dass der PM den Nutzer
+fragt. Die Brücke (`~/agents-and-skills/update_kit.py`) liest ihren Aufrufer nicht, weil ihre
+Eingabe keine Payload trägt; das Alt-`gate_write_scope` verweigert Subagenten nur die
+**ordnenden** Kommandos, und eine Bootstrap-Zeile ist keines.
+
+**Kette (gemessen 2026-08-22, Prüfer, alle acht Alt-Gates als echte Prozesse):** Scaffold-Zeile
+→ rc 2 (`gate_write_scope`); Bootstrap-Zeile, auch als SUBAGENT → **rc 0**. Ein Spezialist im
+Alt-Projekt kann damit die Durchsetzungsschicht neu installieren, ohne dass jemand gefragt
+wurde — vor dieser Runde war derselbe Weg über die Scaffold-Zeile verwehrt.
+
+**Urteil: offen, von innen nicht schließbar** — der Alt-Hooksatz ist fix, und eine
+Aufrufer-Prüfung in der Brücke bräuchte eine Payload, die sie nicht bekommt. Was begrenzt,
+je gemessen: die Brücke nimmt keine Argumente, prüft Richtung (Downgrade rc 2) und
+Staging-Hash (manipuliertes Staging rc 2), legt Backups an, lässt `project_memory`
+byte-identisch und **verweigert in jedem gehobenen Projekt** (rc 2 mit dem Freigabe-Weg) —
+der ungefragte Lauf kann also nur das tun, was die eine genehmigte Hebung auch getan hätte.
+
+### H56 — Ein abgebrochener Brückenlauf lässt ein gemischtes Bündel stehen — offen, erholbar (neu, TSK-0081)
+
+**Mechanismus:** Die Brücke fährt den Installer des gestagten Kits und nimmt bei einem Kill
+nichts zurück; der Scaffold rollt nur zurück, wenn er selbst verweigert.
+
+**Kette (gemessen 2026-08-22, Prüfer):** `taskkill /T` mitten im Kopieren → `kernel_files`
+17→22, `kitupdate` schon da, Stempel noch alt, kein Neustart-Marker. Danach: zweiter
+Brückenlauf **rc 0**, Hebung vollständig, `project_memory` unversehrt (20 Dateien).
+
+**Urteil: offen, nicht blockierend** — der Zustand ist erholbar und verliert nichts; der
+Docstring der Brücke sagt „what a KILLED run leaves is not undone". Schließrichtung, falls je
+nötig: Kopieren in ein Temporärverzeichnis mit atomarem Tausch — ein eigener Entwurf.
+
+### H57 — Ein Interpreter-Heredoc ist vor `gate_ledger_valid` unsichtbar (neu, Preis des TSK-0081-Fixes)
+
+**Mechanismus:** `_compat.literal_heredoc_free` entfernt den Körper eines **quotierten**
+Heredocs, bevor der Leser urteilt; stehen bleibt nur, was eine **Shell** parst
+(`_STDIN_PARSER_RX`). Ein Interpreter (`python`, `perl`), der sein Programm von der
+Standardeingabe liest, ist keine Shell — sein Heredoc-Körper verschwindet mitsamt dem
+Schreibzugriff darin. Für die Gates, die den Helfer schon nutzten, war das gemessen
+verlustfrei; `gate_ledger_valid` übernimmt ihn seit TSK-0081, und dort ist es das nicht.
+
+**Kette (gemessen 2026-08-22, drei Träger, echte Hook-Prozesse):**
+`python <<'EOF' … open('scripts/ledger_add.py','w') … EOF`, dasselbe mit `python3` und `perl` —
+je HEAD rc 2 → jetzt **rc 0**; das Ziel ist der Validator, den dieses Gate schützt.
+Kontrollen: `sh`/`bash -s`/`env bash <<'EOF'` mit echtem `cp` rc 2, unquotiertes `<<EOF` rc 2.
+
+**Urteil: offen, am Helfer nicht schließbar**, ohne dass er entscheidet, welche Programme ihre
+Standardeingabe ausführen — für Shells ist das eine geschlossene Menge, für Interpreter nicht
+(die H11-Klasse dieses Repos, am Kit-Gate). Was wirklich begrenzt, gemessen (Prüfer,
+Schlussschleife): der **Werkzeug**-Schreibzugriff auf den Validator ist für jeden Aufrufer
+doppelt verweigert (`guard_harness_selfmod` rc 2; für Subagenten zusätzlich `gate_write_scope`
+rc 2) — offen ist genau der Shell-/Interpreter-Weg, und **danach fängt nichts mehr**: die
+Commit-Prüfung fährt den Validator, der dann dasteht — ein ersetzter Richter sagt rc 0 auf
+einem kaputten Ledger (gemessen, Commit und Push rc 0). Der Rest der Begrenzung ist die
+H11-Klasse selbst: die Zeile muss vom Agenten kommen, und der ersetzte Validator steht sichtbar
+im Diff des Commits. `_compat.py` benennt den zweiten Leser und seinen Verlust seit dieser
+Runde ausdrücklich.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

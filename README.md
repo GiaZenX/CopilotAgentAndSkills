@@ -151,6 +151,7 @@ every provider.
 | User entry gate (Claude Code) | `~/.claude/CLAUDE.md` |
 | User entry gate (Codex CLI) | `$CODEX_HOME/AGENTS.md` (default `~/.codex`; created; `AGENTS.override.md` wins when present) |
 | Team kit staging (shared) | `~/.claude/team-kits/<team>/` (agents, constitution, templates) + scaffold scripts + `model_tiers.yaml` + `gen_provider_artifacts.py` |
+| One-time kit-update bootstrap (BUG-0059) | `~/agents-and-skills/update_kit.py` — deliberately outside `~/.claude`, so a project whose kit predates `update-kit` can still start it |
 | Project team (per repo, created on demand) | `./.claude/agents/*.md` + `./.claude/skills/` + `./AGENTS.md` + `./CLAUDE.md` import shim + `./.claude/settings.json`; Codex adds `./.codex/config.toml`, hooks/agents and `./.agents/skills/` |
 | Role skills (per repo, via scaffold) | Shared source: `./.claude/skills/<role>/`; Codex-native generated copy: `./.agents/skills/<role>/` |
 | VS Code prompts folder (legacy Copilot cleanup only) | Windows: `%APPDATA%\Code\User\prompts\` <br> macOS: `~/Library/Application Support/Code/User/prompts/` <br> Linux: `~/.config/Code/User/prompts/` |
@@ -329,7 +330,7 @@ entry point asks the shipped parser rather than matching text).
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
-`archive`, `sweep-leases`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`,
+`archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`,
 `freeze-architecture`, `freeze-wireframe`, `freeze-design`,
 `migrate`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
@@ -739,10 +740,19 @@ git pull
 
 Team kits are **versioned** (`team-kits/<kit>/VERSION`, content-hashed — `validate.py` fails if a kit changes
 without a bump). The scaffold stamps `./.claude/kit_version` into each project; at session start the
-`session_status` hook compares it with the staged kit and flags **KIT UPDATE AVAILABLE**. The PM then proposes
-the update (scaffold_team + init_project_memory — backup first, copy-if-absent, `project_memory/` content is
-never overwritten; the update adds missing typed directories, it never touches an existing item) and asks
-for a restart. `kit_trust_state` records in the uncommitted `.claude/kit_state.json` which hook bundle this
+`session_status` hook compares it with the staged kit and flags **KIT UPDATE AVAILABLE**. The PM then asks
+the user with `request-approval kit_update`, and on their answer runs `update-kit` — the kernel starts the
+kit's own installer (backup first, copy-if-absent, `project_memory/` content is never overwritten; the update
+adds missing typed directories, it never touches an existing item), refuses a downgrade, and stops the session
+so the new registration binds at the next start. **You type no shell commands for this.**
+
+**A project installed BEFORE that command existed (kits up to `2026.08.14-9`) cannot reach it** — its own
+kernel has no `update-kit`, and its own write-scope gate refuses the installer to anything inside the session.
+For that ONE lift the installer places a bootstrap outside the protected paths,
+`~/agents-and-skills/update_kit.py`, and a user-global SessionStart hook tells that project's PM about it; the
+PM asks you in the chat first and then runs it. It refuses to act in any project that already carries
+`update-kit`, because there the route that records your approval exists. If you ever want to run it yourself:
+`python "~/agents-and-skills/update_kit.py"` from the project folder, then restart the session. `kit_trust_state` records in the uncommitted `.claude/kit_state.json` which hook bundle this
 checkout has actually run, so a changed bundle shows up as `hooks_trust_required` rather than being assumed
 active. Under Codex the approved scaffold may need explicit filesystem
 permission escalation because harness/provider paths are read-only; never run the provider generator alone.
@@ -755,7 +765,8 @@ gate relays.
 ## Uninstall
 
 Delete the folders manually:
-- `~/.claude/team-kits/`, `~/.claude/CLAUDE.md`, `~/.claude/statusline.py`
+- `~/.claude/team-kits/`, `~/.claude/CLAUDE.md`, `~/.claude/statusline.py`, `~/.claude/hooks/`
+- `~/agents-and-skills/` (the one-time kit-update bootstrap)
 - `$CODEX_HOME/AGENTS.md` (default `~/.codex/AGENTS.md`)
 - In each project: generated `./.claude/`, `./.codex/`, role folders under `./.agents/skills/`,
   `./AGENTS.md`, and the `./CLAUDE.md` import shim (restore backups first when preserving prior files)

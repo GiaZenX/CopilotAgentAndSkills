@@ -1,0 +1,44 @@
+id: TSK-0081
+product_requirement: PR-0001
+derives_from: BUG-0059
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+- user/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+required_inputs:
+- BUG-0059
+- 'FR-0056 (small-fixes bundle riding this round: P4-5 Desktop claim, P4-6 reversibility
+  line in the team question, P4-8 SKILL vs freeze-architecture surface, P4-12 the
+  three self-reported office gaps; P4-11 may ride as documented honest boundary)'
+- 'docs/pilot/2026-08-22-pilot-4-befunde.md (P4-1 chain: old kit 2026.08.14-9 lacks
+  kitupdate.py/presets.py, PM hands the user two PowerShell lines, non-technical user
+  fails at them)'
+- the built update path (kernel kitupdate/presets, scaffold scripts, entry files user/claude+codex)
+  as the ist surface
+expected_outputs:
+- a measured bridge by which a project on the last pre-update-kit stock reaches the
+  current kit without the user typing shell commands -- or, where that is impossible
+  from inside the old stock, the honest one-time bridge named where the OLD PM actually
+  reads (measured against a real 2026.08.14-9 install), with a test red without the
+  fix
+- the FR-0056 items fixed or their spot named as honest boundary, each with its measurement
+- mirrors byte-identical or KIT_SPECIFIC_HOOKS names the reason; bump run; full pytest
+  tools/ green; gates suite only if the gates derivation surface moved
+dependencies:
+- BUG-0059
+- FR-0056
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-22T19:47:43'
+closed_at: '2026-08-23T00:29:04'

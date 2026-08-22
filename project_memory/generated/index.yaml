@@ -1,4 +1,4 @@
-generated_at: '2026-08-22T19:47:22'
+generated_at: '2026-08-23T00:29:21'
 items:
 - id: BUG-0001
   type: BUG
@@ -1041,6 +1041,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0054
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1336,13 +1342,6 @@ items:
 - id: FR-0055
   type: FR
   title: installer ships remoteControlAtStartup=false as a user-scope default
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0056
-  type: FR
-  title: 'P4 small fixes bundle: honest place names, reversible team question, SKILL
-    vs surface drift, office self-reported gaps'
   status: OPEN
   revision: 1
   approval_ref: null

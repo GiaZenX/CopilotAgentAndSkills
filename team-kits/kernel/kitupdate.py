@@ -27,7 +27,7 @@ process running this command has its own kernel deleted and re-copied underneath
 `.claude/kernel/hashing.py` absent for 5 ms, 1.58 s into a 3.4 s run), so every module a failure
 branch here needs is imported at module scope -- an import AFTER the installer starts is an import
 out of a tree the installer is replacing. `.claude/HANDOVER_PENDING` therefore has to exist when
-this command returns, whatever happened to the installer, and `_ensure_restart_is_forced` is what
+this command returns, whatever happened to the installer, and `ensure_restart_is_forced` is what
 makes that true by construction rather than by the installer having got that far.
 
 WHO READS THAT MARKER, named because a marker nothing reads is a comment in file form: the global
@@ -409,8 +409,13 @@ def _restart_marker_as_found(root: str) -> str:
             % HANDOVER_MARKER.replace(os.sep, "/"))
 
 
-def _ensure_restart_is_forced(root: str, kit: str) -> str:
+def ensure_restart_is_forced(root: str, kit: str) -> str:
     """Make the handover marker exist, and say what was found or written -- never claim it.
+
+    PUBLIC because a second caller lives outside this package: `user/bridge/update_kit.py`, the
+    bootstrap for a stock whose kernel predates this module (BUG-0059), runs the same installer and
+    owes the same stop sign. Vendoring the marker's path and text there would be a second answer to
+    "what stops a session whose kit changed underneath it".
 
     THE WINDOW THIS EXISTS FOR, measured 2026-08-16 against the real scaffold: between 2.4 s and
     3.4 s of a 3.4 s run the update was materially complete -- new stamp, new bundle, trust record
@@ -500,7 +505,7 @@ def _after_a_failed_install(root, kit, kit_dir, was, command, reason):
     except (OSError, subprocess.SubprocessError) as exc:
         repair_note = " (the completing run could not be completed: %s)" % exc
     repaired = _installed_state(root, kit_dir)
-    marker = _ensure_restart_is_forced(root, kit)
+    marker = ensure_restart_is_forced(root, kit)
     return StateError(
         "%s THE INSTALLATION HAD ALREADY MOVED: it was [%s], and after running the installer once "
         "more to complete it, it is [%s]%s. %s; %s. Remedy: report BOTH readings to the user and "
@@ -558,5 +563,5 @@ def apply(state: ProjectState) -> dict:
         now = _installed_state(root, kit_dir)
         return {"kit": plan["kit"], "from": _shown(plan["from"]), "to": _shown(plan["to"]),
                 "installed": _describe(now),
-                "marker": _ensure_restart_is_forced(root, plan["kit"]),
+                "marker": ensure_restart_is_forced(root, plan["kit"]),
                 "pending_templates": _pending_templates(root)}

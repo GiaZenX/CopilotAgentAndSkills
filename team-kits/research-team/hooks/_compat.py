@@ -762,10 +762,20 @@ def literal_heredoc_free(command):
     property `_SHELL_NAMES`/`_EVAL_NAMES` state above rather than a second list.
 
     WHAT IT DOES NOT COVER, named rather than implied: an INTERPRETER that reads its program from
-    standard input and is not a shell (`python <<'EOF'`). Its body is code in another language, and
-    what removing it costs is an incidental match on a shell word inside that source — measured
-    before this shipped, `python <<'EOF'` with a `git push --force` in a python string already
-    passed every registered Bash gate, so nothing that stood is given up here.
+    standard input and is not a shell (`python <<'EOF'`, `perl <<'EOF'`). Its body is code in
+    another language, and what removing it costs depends on WHO is reading. For the gates that
+    judge a shell command line it costs an incidental match on a shell word inside that source —
+    measured before this shipped, `python <<'EOF'` with a `git push --force` in a python string
+    already passed every registered Bash gate, so those gave nothing up.
+
+    FOR THE OFFICE KIT'S `gate_ledger_valid`, WHICH TOOK THIS READER UP IN TSK-0081, IT COSTS A REAL
+    REFUSAL, and that is measured rather than reasoned about: `python <<'EOF'` whose body opens
+    `scripts/ledger_add.py` for writing was exit 2 through that gate before it used this helper and
+    is exit 0 after it — the same for `python3` and `perl`. The gate's own subject is the ledger and
+    its judge, so a body it no longer sees is a write it no longer judges. That residue is OPEN, and
+    it is named as a hole rather than closed here: closing it would mean this helper deciding which
+    PROGRAMS execute their standard input, a question `_STDIN_PARSER_RX` answers only for shells and
+    only because their membership is a closed set.
     """
     text = command or ""
     out, index = [], 0

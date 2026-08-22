@@ -1,5 +1,5 @@
 {
-  "_comment": "agents-and-skills USER (~/.claude) defaults. The installer only adds top-level defaults missing from ~/.claude/settings.json; existing personal values (including theme and statusLine) always win. `permissions.allow`/`deny` are UNIONED without duplicates; existing values of all other permission sub-keys win. The `hooks` key is likewise UNIONED per event so the global BUG-0016 handover guard installs even for a user who already runs their own global hooks (see user/merge_settings.py). Deliberately NOT shipped (your machine, your call — set them yourself if wanted): permissions.defaultMode (bypassPermissions removes your veto GLOBALLY, against the official warning to use it only in isolated environments; the kits ship web-capable roles), remoteControlAtStartup, effortLevel (cost). The previous file is backed up under ~/.claude/backups/.",
+  "_comment": "agents-and-skills USER (~/.claude) defaults. The installer only adds top-level defaults missing from ~/.claude/settings.json; existing personal values (including theme and statusLine) always win. `permissions.allow`/`deny` are UNIONED without duplicates; existing values of all other permission sub-keys win. The `hooks` key is likewise UNIONED per event so the global BUG-0016 handover guard and the BUG-0059 kit-bridge notice install even for a user who already runs their own global hooks (see user/merge_settings.py). Both global hooks carry a `timeout`: a hook the host kills leaves no verdict, and for the SessionStart notice the budget also has to cover the one subprocess it runs (the project's own entry point, asked whether it carries `update-kit`). Deliberately NOT shipped (your machine, your call — set them yourself if wanted): permissions.defaultMode (bypassPermissions removes your veto GLOBALLY, against the official warning to use it only in isolated environments; the kits ship web-capable roles), remoteControlAtStartup, effortLevel (cost). The previous file is backed up under ~/.claude/backups/.",
   "statusLine": {
     "type": "command",
     "command": "python ~/.claude/statusline.py",
@@ -16,6 +16,17 @@
   "spinnerTipsEnabled": true,
   "cleanupPeriodDays": 14,
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python ~/.claude/hooks/kit_bridge_notice.py",
+            "timeout": 90
+          }
+        ]
+      }
+    ],
     "PreToolUse": [
       {
         "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Task|Agent|AskUserQuestion",

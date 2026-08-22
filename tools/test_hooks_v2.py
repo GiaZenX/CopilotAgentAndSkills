@@ -9346,6 +9346,86 @@ def test_inert_prose_is_still_prose(tmp_path, command):
     assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 0, command
 
 
+# The two carriers pilot 4 measured, verbatim in shape from the office manager's own transcript,
+# and the three shapes that must stay refused BECAUSE they are the same construct doing real work.
+# Kept as one table so the pair is read together: an exemption without its counter-case is how each
+# of this gate's earlier holes was written.
+_PROSE_ABOUT_THE_LEDGER = (
+    ("a commit message delivered as a quoted here-document",
+     'git commit -m "$(cat <<\'EOF\'\n'
+     'office: file the postage invoice and book it under PROC-0002\n\n'
+     '- TSK-0006: bookkeeper booked ledger entry L2025-0001 (6.19 EUR, shipping)\n'
+     'EOF\n)" 2>&1 | tail -10'),
+    ("an envelope piped into the entry point, naming the validator in its summary",
+     'cat <<\'EOF\' | python scripts/harness.py submit-result --from bookkeeper\n'
+     '{"task_id": "TSK-0006", "summary": "Booked L2025-0001 via ledger_add.py."}\nEOF'),
+    ("the same prose as an argument of the entry point",
+     'python scripts/harness.py submit-result --task-id TSK-0011 --role bookkeeper '
+     '--status-proposal FAILED --summary "ledger_add.py refused: 1,75 * 1,19 = 2,08 != 2,10"'),
+    # ...and the same line with an INTERPRETER OPTION in front of the script. `-B` is what a
+    # session that must not leave bytecode behind types, and the option class it fell outside of
+    # was a list of letters; `-E` is in that list and is here as its control.
+    ("the entry point behind an interpreter option",
+     "python -B scripts/harness.py submit-result --summary 'booked via ledger_add.py'"),
+    ("the entry point behind an option cluster",
+     "python -Bu scripts/harness.py submit-result --summary 'booked via ledger_add.py'"),
+    ("the validator's own validate run behind an interpreter option",
+     "python -B scripts/ledger_add.py --validate ledger/2026.csv"),
+)
+_WORK_ON_THE_LEDGER = (
+    ("a shell that EXECUTES its here-document body",
+     "bash <<'EOF'\nsed -i s/119.00/150.00/ ledger/2026.csv\nEOF\ngit commit -m x"),
+    ("an executed substitution inside the message",
+     'git commit -m "$(sed -i s/119.00/150.00/ ledger/2026.csv)"'),
+    ("the entry point with a redirect into the ledger",
+     "python scripts/harness.py doctor > ledger/2026.csv && git commit -m x"),
+    # THE STAGE BESIDE THE EXEMPT ONE, which is what the first cut of that exemption gave away:
+    # it dropped the whole SEGMENT, so a second pipeline stage rode along free. Three shapes, one
+    # property -- the write is not in the entry point's stage.
+    ("a write in the stage after the entry point",
+     "python scripts/harness.py doctor | tee scripts/ledger_add.py"),
+    ("a write onto the gate's own state file after the entry point",
+     "python scripts/harness.py doctor | tee .claude/ledger_state.json"),
+    ("a copy driven by xargs after the entry point",
+     "python scripts/harness.py doctor | xargs -I{} cp {} scripts/ledger_add.py"),
+    # ...and a decoy validator behind the same interpreter option the exemption now steps over.
+    ("a decoy validator behind an interpreter option, then a commit",
+     "python -B tools/ledger_add.py && git commit -m x"),
+)
+
+
+@pytest.mark.parametrize("what,command", _PROSE_ABOUT_THE_LEDGER)
+def test_prose_about_the_ledger_in_a_body_or_an_argument_is_not_a_write(tmp_path, what, command):
+    """P4-12: the office manager was refused a commit "on the word ledger", and was right.
+
+    MEASURED (pilot 4, half 3): `gate_ledger_valid` blocked four calls that wrote nothing. Two
+    carriers, both ordinary: a commit message handed over as `$(cat <<'EOF' … EOF)`, whose BODY
+    named a booked entry, and a `--summary` of the kernel's entry point naming `ledger_add.py`
+    because the work had. Each fragment of that prose was read as a command segment, and a segment
+    naming a ledger path whose first word is not a known read verb is a write here.
+
+    The fix is two definitions this kit already had, applied where they were missing: a
+    literally-quoted here-document body is not a pipeline (`_compat.literal_heredoc_free`, whose
+    own rule keeps the body a SHELL would parse), and the kernel's entry point is not a shell write.
+    """
+    ledger_repo(tmp_path)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 0, "%s was refused although it writes nothing:\n%s" % (
+        what, result.stderr)
+
+
+@pytest.mark.parametrize("what,command", _WORK_ON_THE_LEDGER)
+def test_the_same_constructs_still_refuse_a_real_write(tmp_path, what, command):
+    """The counter-half: each exemption above, doing real work, is still refused.
+
+    A body fed to a command PARSER is executed however its delimiter is quoted; a substitution is
+    executed whatever it stands in; and a redirect is judged before any verb exemption is reached,
+    so the entry point cannot carry one into the ledger.
+    """
+    ledger_repo(tmp_path)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, what
+
+
 def test_a_harmless_copy_out_does_not_disarm_the_cd_form(tmp_path):
     """`_LEDGER_PATH_RX` matching routed into the copy-out branch, and RETURNING from there skipped
     the working-directory check entirely — so one prepended read re-opened the `cd ledger && sed -i`

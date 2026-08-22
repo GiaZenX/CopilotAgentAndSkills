@@ -47,6 +47,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_CLAUDE_SRC="$REPO_ROOT/user/claude"
 USER_CODEX_SRC="$REPO_ROOT/user/codex"
 TEAM_KITS_SRC="$REPO_ROOT/team-kits"
+BRIDGE_SRC="$REPO_ROOT/user/bridge"
 MERGE_SCRIPT="$REPO_ROOT/user/merge_settings.py"
 
 CLAUDE_GLOBAL="$HOME/.claude"
@@ -54,6 +55,8 @@ CLAUDE_SKILLS="$HOME/.claude/skills"
 CLAUDE_AGENTS="$HOME/.claude/agents"
 CLAUDE_HOOKS="$HOME/.claude/hooks"
 CLAUDE_TEAM_KITS="$HOME/.claude/team-kits"
+# Deliberately NOT under `~/.claude`: see the bridge block below and `user/bridge/update_kit.py`.
+BRIDGE_DEST="$HOME/agents-and-skills"
 # Legacy Copilot destination — only referenced to REMOVE files older installs put there.
 COPILOT_SKILLS="$HOME/.copilot/skills"
 CODEX_GLOBAL="${CODEX_HOME:-$HOME/.codex}"
@@ -151,7 +154,7 @@ assert_no_symlink_tree "$TEAM_KITS_SRC"
 assert_no_symlink_components "$BACKUP_DIR"
 assert_no_symlink_components "$CLAUDE_GLOBAL"
 for path in "$CLAUDE_AGENTS" "$CLAUDE_SKILLS" "$CLAUDE_HOOKS" "$CLAUDE_TEAM_KITS" \
-            "$CLAUDE_GLOBAL/CLAUDE.md" "$CLAUDE_GLOBAL/settings.json" \
+            "$BRIDGE_DEST" "$CLAUDE_GLOBAL/CLAUDE.md" "$CLAUDE_GLOBAL/settings.json" \
             "$CLAUDE_GLOBAL/statusline.py"; do
     assert_no_symlink_tree "$path"
 done
@@ -270,6 +273,18 @@ if [[ -d "$TEAM_KITS_SRC" ]]; then
     [[ -e "$previous" ]] && rm -rf "$previous"
     trap - EXIT
     echo "  [ok]   team-kits -> ~/.claude/team-kits"
+fi
+
+# The ONE lift a project one release behind cannot perform for itself (BUG-0059). It belongs to the
+# staging half rather than to a provider, because it installs the release just staged above -- and it
+# lives OUTSIDE `~/.claude` on purpose: the old stock's `gate_write_scope` refuses a write-capable
+# command line that names `.claude` or `team-kits`, so a bootstrap under either name is one its PM
+# cannot start. `user/bridge/update_kit.py` carries the measurement.
+if [[ -d "$BRIDGE_SRC" ]]; then
+    for f in "$BRIDGE_SRC"/*.py; do
+        [[ -e "$f" ]] || continue
+        install_file "$f" "$BRIDGE_DEST/$(basename "$f")" "bridge: $(basename "$f") -> $BRIDGE_DEST"
+    done
 fi
 
 if [[ "$TARGET" == "both" || "$TARGET" == "claude" ]]; then

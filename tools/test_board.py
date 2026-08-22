@@ -578,7 +578,7 @@ _WRITERS_THE_BOARD_DOES_NOT_RENDER = {
                             "is an item: the plan says where documents belong, the board shows "
                             "what the project is working on)",
     ("presets.py", "_after_a_failed_install"): "a .claude marker file",
-    ("kitupdate.py", "_ensure_restart_is_forced"): "a .claude marker file",
+    ("kitupdate.py", "ensure_restart_is_forced"): "a .claude marker file",
 }
 
 

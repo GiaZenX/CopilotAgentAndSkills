@@ -701,6 +701,11 @@ def build_parser() -> argparse.ArgumentParser:
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
+    # ...and the same job for the OTHER store that only ever grew. An approval request that ran out
+    # of time is already inert everywhere it is read; what it was not, until this command, is
+    # removable -- see `approvals.sweep_expired_requests` for the measured occasion.
+    sub.add_parser("sweep-requests",
+                   help="delete approval requests whose clock ran out (they can never mint)")
     # THE V1 IMPORT (spec II.10). Two halves of one command rather than two commands, because the
     # second half is only sound as the continuation of the first: `--dry-run` reads and prints a
     # DIGEST over everything it read, and `--plan <digest>` refuses unless it re-derives the same
@@ -1209,6 +1214,22 @@ def main(argv=None) -> int:
             # resetting it silently, so a human sees the anomaly instead of the sweep papering over it.
             print("LEASED without a lease (report only): %s" % (
                 ", ".join(dispatch.leased_without_live_lease(state)) or "-"))
+            return 0
+        if args.command == "sweep-requests":
+            swept = approvals.sweep_expired_requests(state)
+            # WHAT WAS REMOVED, NAMED. A cleanup that prints a count is one nobody can check
+            # afterwards; these ids are the last trace the files leave.
+            print("deleted (expired, could never mint): %s" % (", ".join(
+                "%s %s%s" % (entry["request_id"], entry["kind"],
+                             " for %s" % entry["item"] if entry["item"] else "")
+                for entry in swept["removed"]) or "-"))
+            print("still open (answering one of these still mints): %s"
+                  % (", ".join(swept["kept"]) or "-"))
+            # ...and the third outcome, which is neither: a file this command could not judge is a
+            # file it did not touch, and saying so is the difference between a store that is clean
+            # and one that merely looks it.
+            print("left standing because they could not be read: %s"
+                  % (", ".join(swept["unreadable"]) or "-"))
             return 0
         if args.command == "migrate":
             field_map = migrate.parse_field_map(args.field_map)

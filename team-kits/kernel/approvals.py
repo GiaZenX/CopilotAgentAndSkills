@@ -1687,6 +1687,65 @@ def revoke(state: ProjectState, apr_id: str) -> dict:
         return apr
 
 
+def has_expired(request: dict) -> bool:
+    """Is this request past its clock -- the ONE definition of "can never mint again".
+
+    Two readers, and they may not disagree: `pending_request`, which refuses to hand out an expired
+    request, and `sweep_expired_requests`, which DELETES exactly what that refusal has made
+    permanent. A missing or unreadable stamp answers True by the same arithmetic the mint uses --
+    a request whose clock cannot be read never mints either, so calling it live would leave a file
+    that nothing can ever redeem and nothing may ever remove.
+    """
+    try:
+        return time.time() > float((request or {}).get("expires_at_epoch") or 0)
+    except (TypeError, ValueError):
+        return True
+
+
+def sweep_expired_requests(state: ProjectState) -> dict:
+    """Remove the pending requests that can never mint again. `{"removed", "kept", "unreadable"}`.
+
+    THE MEASURED GAP (pilot 4, `P4-12`): an office project ended with three requests in
+    `approvals/pending/` that nobody had answered. They were already inert -- `pending_request`
+    refuses an expired one, `open_requests` leaves it out and the session brief counts it under
+    `expired_requests` rather than listing it as open -- but the user asked what those files were,
+    and the honest answer was that the apparatus offers no command to clear them. A store that only
+    ever grows is one a user cannot keep, and `pending_request`'s own refusal already spoke of a
+    request that was "expired-and-cleaned".
+
+    WHAT IT MAY REMOVE is a property and not a judgement: `has_expired`, the same reader that makes
+    the request unusable in the first place. A live request is kept (answering it still mints), and
+    one that cannot be READ is kept and REPORTED -- deleting what you could not judge is how a
+    cleanup becomes a data loss. Nothing else is touched: `approvals/consumed/` is the provenance
+    every approval is checked against, and `approvals/revoked/` is the record that a permission was
+    taken back.
+    """
+    directory = _pending_dir(state)
+    removed, kept, unreadable = [], [], []
+    with state.lock:
+        names = sorted(os.listdir(directory)) if os.path.isdir(directory) else []
+        for name in names:
+            if not name.endswith(".yaml"):
+                continue
+            request_id = name[: -len(".yaml")]
+            try:
+                request = state._read_yaml(os.path.join(directory, name))
+            except Exception:                       # noqa: BLE001 -- unjudgeable, so untouched
+                unreadable.append(name)
+                continue
+            if not isinstance(request, dict):
+                unreadable.append(name)
+                continue
+            if not has_expired(request):
+                kept.append(str(request.get("request_id") or request_id))
+                continue
+            os.remove(_request_path(state, request_id))
+            removed.append({"request_id": str(request.get("request_id") or request_id),
+                            "kind": str(request.get("kind") or ""),
+                            "item": str(request.get("item") or "")})
+    return {"removed": removed, "kept": kept, "unreadable": unreadable}
+
+
 def pending_request(state: ProjectState, request_id: str) -> dict:
     """A PENDING approval request, or ApprovalError — the reader the hooks use.
 
@@ -1717,7 +1776,7 @@ def pending_request(state: ProjectState, request_id: str) -> dict:
             user_text="Es wurde keine Freigabe erteilt: die gespeicherte Freigabe-Anfrage hat "
                       "nicht die Form, die das Programm erwartet. " + NEXT_START_OVER
         )
-    if time.time() > float(request.get("expires_at_epoch") or 0):
+    if has_expired(request):
         raise ApprovalError(
             "approval request %s expired -- expired requests never mint. "
             "Remedy: create a fresh request and ask again." % request_id,

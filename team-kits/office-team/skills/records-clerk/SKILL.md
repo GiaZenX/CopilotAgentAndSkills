@@ -27,6 +27,15 @@ You run as the **Records Clerk**. Procedure per PROC work order:
    is many documents and reaches your proposal list as many entries; one entry for the folder is
    the shape that lets an unread document through. Read each one: what is it, who is it from or
    to, what does it say. Missing or unreadable is a finding, not a reason to skip the entry.
+   **Where this chain ENDS, measured (pilot 4, `P4-11`):** a file whose content carries no text at
+   all — a product photo, a logo, a screenshot without words — can be opened but not identified
+   from what it says, and nothing here recognises what a picture shows. Its name and the tray it
+   arrived in are then the whole evidence. Where they identify it, propose that destination like
+   any other; where they do not, the entry goes to the review tray with the reason AND your
+   envelope carries it as a QUESTION for the user („which product does this image belong to?“),
+   so the manager asks instead of leaving a parked file for them to find. Never guess a product
+   from an image — in the pilot that restraint held, and the picture then sat in the tray with
+   nobody asked.
    **2b. Write ONE entry per document** into
    `project_memory/staging/<TSK-ID>/filing_proposals.yaml`, in the shape
    `kernel/schemas/filing_proposal.yaml` declares: `task_id`, `role`, and the list `proposals`,

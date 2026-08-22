@@ -67,9 +67,11 @@ lands as a `CR` against the approved revision, plus a reported infrastructure ga
    from `normal` the designer draws it. Ask "Is everything in it? Is the split right?" in fast rounds. It is
    staged (`staging/<PR-id>/`, or the design task's key once one exists) and the **scope approval freezes it**
    into `design/wireframes/` with its hash in the scope manifest, so any later change invalidates that approval.
-   **Both halves are PROSE duties today:** no gate refuses a scope-APR for a missing wireframe, and the kernel's
-   freeze function has no command on the entry point's surface (constitution §0) — YOU are the only thing enforcing "no UI scope
-   approved without a wireframe". Waiving it needs an explicit user Decision item, never your own call.
+   **The DUTY is prose, the freeze is a command:** `freeze-wireframe` is on the entry point's surface (JSON
+   body on stdin; `--help` names its keys) and YOU run it once the user has decided — but no gate refuses a
+   scope-APR for a missing wireframe, and none refuses a freeze that names no approval, so YOU are the only
+   thing enforcing "no UI scope approved without a wireframe". Waiving it needs an explicit user Decision
+   item, never your own call.
    (a0) **The design AMBITION is the user's call — ask before any visual work:** full **exploration** (2–3
    directions to choose from) or a deliberately **minimal**/utilitarian UI? **NEVER decide this silently** or
    ship a single design / "document one as-built" without that confirmation (the synaipse failure mode).

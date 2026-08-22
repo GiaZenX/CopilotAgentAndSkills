@@ -1568,6 +1568,43 @@ def test_the_sweep_command_reports_a_claim_that_produced_no_child(state, capsys)
     assert state.read_item(task["id"])["status"] == "READY"
 
 
+def _pending(state, name):
+    return os.path.join(state.root, "approvals", "pending", name + ".yaml")
+
+
+def test_the_request_sweep_removes_what_can_never_mint_and_nothing_else(state, capsys):
+    """P4-12: three unanswered approval requests, no command to clear them.
+
+    MEASURED (pilot 4, half 3): an office project ended with three requests in
+    `approvals/pending/` that nobody had answered. They were already inert -- expired requests do
+    not mint, `open_requests` leaves them out -- but the user asked what those files were and the
+    apparatus had to say that nothing removes them.
+
+    THE THREE OUTCOMES ARE MEASURED IN ONE RUN, because the risk of a cleanup is what it takes with
+    it: the expired one goes, the LIVE one stays and still mints afterwards, and a file this
+    command cannot read is left standing AND named. Run through the entry point's parser, so the
+    command is measured on the surface a role types.
+    """
+    from kernel import cli
+    pr = state.capture("PR", dict(PR_FIELDS))
+    live = approvals.create_pending_request(state, "scope", pr["id"])
+    dead = approvals.create_pending_request(state, "scope", pr["id"], ttl_seconds=-1)
+    with open(_pending(state, "APR-REQ-broken"), "w", encoding="utf-8") as handle:
+        handle.write("this: [is not: yaml\n")
+
+    assert cli.main(["--root", state.root, "sweep-requests"]) == 0
+    output = capsys.readouterr().out
+    assert dead["request_id"] in output and live["request_id"] in output, output
+    assert "APR-REQ-broken.yaml" in output, output
+
+    assert not os.path.exists(_pending(state, dead["request_id"]))
+    assert os.path.exists(_pending(state, live["request_id"]))
+    assert os.path.exists(_pending(state, "APR-REQ-broken"))
+    # ...and the survivor is not merely a file: the answer to its question still mints.
+    mint_via_hook(state, live)
+    assert state.read_item(pr["id"])["approval_ref"], "the surviving request no longer mints"
+
+
 def test_the_reconciliation_does_not_undo_a_recorded_outcome(state):
     """`IN_PROGRESS` means PostToolUse already said the spawn started. A window that closed
     afterwards says nothing about that, and rolling the task back would contradict a measurement

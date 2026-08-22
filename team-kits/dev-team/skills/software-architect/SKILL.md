@@ -27,9 +27,13 @@ companion YAML, the active Decision items, and the project's `INV` items.
    You stage the file as `staging/<your task-id>/ARC-nnnn.drawio.svg`; on approval the KERNEL checks
    the embedded mxGraph XML for well-formedness (a malformed diagram blocks promotion, fail-closed),
    freezes the revision under `architecture/revisions/` and writes the active companion YAML
-   (`scope`, `derives_from`, `revision`, `diagram_hash`, `assets`, `packaging`). That freeze exists as kernel
-   code but has NO command on the entry point's surface yet (constitution §0), so today your diagram stops at the staged
-   file and you say so in your envelope instead of reporting a frozen revision. Modules, boundaries
+   (`scope`, `derives_from`, `revision`, `diagram_hash`, `assets`, `packaging`). That freeze IS on the entry
+   point's surface — the `freeze-architecture` command, which takes the operation's own parameters as ONE
+   JSON object on stdin — and the PM runs it, because your own definition grants no command-running tool
+   (your dispatch header's `hand_back`). **Nothing refuses a freeze that carries no approval**:
+   `approval_ref` is a key of that body, not a gate. So what you owe is unchanged — your diagram is the
+   STAGED file, you name that path in your envelope, and you report a frozen revision only when you saw
+   one produced. Modules, boundaries
    and data flow that used to sit in one architecture monolith now live where they are checkable:
    each as an `SR` contract, with the diagram showing how they relate. On an onboarded repo document
    the *actual* state first. For **every component** state `criticality` (low|med|high) and a

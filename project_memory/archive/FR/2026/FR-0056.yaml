@@ -12,7 +12,8 @@ request_text: 'Bundle of small pilot-4 findings for one round: P4-5 PM claims a 
   folder instead of product assignment) may ride along as a documented honest boundary
   if not fixed. Details: docs/pilot/2026-08-22-pilot-4-befunde.md P4 table.'
 source: TSK-0066 pilot 4 findings, user go for fix rounds 2026-08-22
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-22T13:57:11'
+closed_at: '2026-08-23T00:29:03'

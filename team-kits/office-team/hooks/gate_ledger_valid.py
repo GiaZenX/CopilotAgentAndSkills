@@ -163,8 +163,14 @@ _CD_LEDGER_RX = re.compile(r"(?:^|[;&|]|\bcd\s)\s*cd\s+\.?/?ledger\b", re.IGNORE
 # It is back, because `_SHELL_CODE_IN_TEXT_RX` now knows `[<>]\(` and the token no longer strips.
 # Without it, `git commit -m restore -- ledger/2026.csv` was refused: a ONE-WORD message that
 # happens to be a git write verb, conjoined with the path.
+# ...and the FLAG NAMES are case-SENSITIVE inside an otherwise case-insensitive pattern, because a
+# flag letter's case is what tells two different flags apart. Measured while widening the
+# interpreter-option rule below: `-b` matched `-B`, so `python -B tools/ledger_add.py && git commit`
+# had the span `-B tools/ledger_add.py` removed as if it were a commit MESSAGE -- the decoy
+# validator disappeared from the view before anything judged it. Nothing here needs the folding:
+# these are git's own flags, and git does not accept them in another case.
 _MESSAGE_ARG_RX = re.compile(
-    r"(?:-m|--message|--body|-b|--notes|--squash-message)(?:=|\s+)"
+    r"(?-i:(?:-m|--message|--body|-b|--notes|--squash-message))(?:=|\s+)"
     r"(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*'|[^\s;|&]+)", re.IGNORECASE)
 
 
@@ -275,8 +281,17 @@ _NEWLINE_AROUND_PIPE_RX = re.compile(r"\s*\n\s*\|\s*|\s*\|\s*\n\s*")
 
 
 def _normalise_pipeline(text):
-    """One shape for every way a shell can spell the same pipeline."""
-    text = _compat.join_line_continuations(text)
+    """One shape for every way a shell can spell the same pipeline.
+
+    THE BODY OF A LITERALLY-QUOTED HERE-DOCUMENT IS NOT A PIPELINE, and this gate was the last
+    reader in the kit that still judged it as one. `_compat.literal_heredoc_free` is that rule --
+    a quoted delimiter means POSIX expands nothing in the body, and a body handed to a command
+    PARSER (`sh <<'EOF'`) is kept for exactly that reason. Measured in pilot 4 (`P4-12`): the
+    office manager's `git commit -m "$(cat <<'EOF' … EOF)"` was refused because a line of its
+    MESSAGE read "bookkeeper booked ledger entry L2025-0001" -- a ledger path plus a word this
+    reader took for a verb. Nothing about that command touched a file.
+    """
+    text = _compat.join_line_continuations(_compat.literal_heredoc_free(text))
     text = _PIPE_AMP_RX.sub("|", text)
     text = _NEWLINE_AROUND_PIPE_RX.sub(" | ", text)
     # ...and a newline whose next line begins with a FLAG continues the same command. Splitting
@@ -295,9 +310,50 @@ _REDIRECT_INTO_RX = re.compile(r">>?\s*[\"']?(?P<target>[^\s\"';|&]+)")
 # `python /tmp/evil/ledger_add.py ledger/2026.csv && git commit` were waved through -- and
 # `guard_harness_selfmod` protects exactly `scripts/ledger_add.py`, so writing the decoy was
 # allowed. The exemption now names the same file the protection does.
+# WHICH INTERPRETER OPTIONS MAY STAND BETWEEN THE INTERPRETER AND ITS SCRIPT, as a property rather
+# than as the letters somebody had in mind: any option word that carries no `c`/`e`/`m` in it. Those
+# three are the ones that make the interpreter read its program from the COMMAND LINE instead of the
+# script, which is exactly what these patterns must never step over -- everything else (`-B`, `-E`,
+# `-S`, `-u`, `-I`, `-P`, a cluster like `-Bu`) only changes how the named script is run. The old
+# class `[EOSuvWx]` was a list, and `-B` was measured missing from it: `python -B scripts/harness.py
+# --summary '…ledger_add.py'` stayed refused while the same line without `-B` passed. Case-sensitive
+# on purpose (`(?-i:…)`) although the surrounding pattern is not: `-E` is an option, `-e` is a
+# payload flag, and folding them together would give up the one distinction this makes.
+_INTERPRETER_OPTIONS = r"(?:\s+(?-i:-(?![^\s]*[cem])[^\s]*))*"
 _LEDGER_ADD_RUN_RX = re.compile(
-    r"(?:^|[;&|(])\s*(?:python[0-9.]*|py)\b(?:\s+-[EOSuvWx][^\s]*)*\s+"
+    r"(?:^|[;&|(])\s*(?:python[0-9.]*|py)\b" + _INTERPRETER_OPTIONS + r"\s+"
     r"(?:\./)?scripts/ledger_add\.py\b(?![^\n]*\s-(?:c|e|m)\b)", re.IGNORECASE)
+# ...and the KERNEL'S OWN ENTRY POINT, which is not a shell write either. It carries an envelope,
+# a summary and a reason as ARGUMENTS -- prose that names the ledger and its validator whenever the
+# work did (measured, pilot 4 `P4-12`: `submit-result --summary "… via ledger_add.py …"` was refused
+# as a write to the judge, and the office manager reported a gate blocking a commit "on the word
+# ledger"). What it can reach is decided by the kernel and its own gates, not by this one: no
+# command of it names `ledger/*.csv`, and the one route it has to `scripts/ledger_add.py` is an
+# installer run (`update-kit`/`set-preset`, each on a user-minted approval), which is exactly how
+# this gate's own remedy says the validator legitimately changes. Anchored to the canonical path and
+# refused an inline payload for the same measured reason as the line above: a copy elsewhere is a
+# program nobody vouched for. A REDIRECT is judged before this exemption is reached, so the entry
+# point with its output sent into `ledger/2026.csv` is still a write.
+_ENTRY_POINT_RUN_RX = re.compile(
+    r"(?:^|[;&|(])\s*(?:python[0-9.]*|py)\b" + _INTERPRETER_OPTIONS + r"\s+"
+    r"(?:\./)?scripts/harness\.py\b(?![^\n]*\s-(?:c|e|m)\b)", re.IGNORECASE)
+
+
+def _stages_beside_the_entry_point(segment):
+    """The pipeline stages of `segment` that are NOT an entry-point invocation.
+
+    PER STAGE, and that is a correction of this same round rather than a refinement: the exemption
+    was first written as `if _ENTRY_POINT_RUN_RX.search(segment): continue`, which threw away the
+    whole segment as soon as the entry point appeared ANYWHERE in it -- so every other stage of the
+    pipeline came free with it. Measured: `python scripts/harness.py doctor | tee
+    scripts/ledger_add.py` was exit 2 before that exemption and exit 0 after it, and the same for
+    `| tee .claude/ledger_state.json` and an `xargs cp` in the second stage. What the exemption is
+    ABOUT is the prose an entry-point invocation carries in its own arguments, and that lives in
+    ITS stage; a neighbouring stage is a different command and is judged like any other
+    (`tools/test_hooks_v2.py::test_the_same_constructs_still_refuse_a_real_write`).
+    """
+    return [stage for stage in segment.split("|")
+            if stage.strip() and not _ENTRY_POINT_RUN_RX.search(stage)]
 
 
 def _verb_of(segment):
@@ -360,7 +416,10 @@ def _writes_protected(command):
         if redirect and (_PROTECTED_RX.search(redirect.group("target"))
                          or _PROTECTED_DIR_RX.search(redirect.group("target"))):
             return True
-        if all(_verb_only_reads(stage) for stage in segment.split("|") if stage.strip()):
+        # the kernel's entry point is not a shell write, so ITS stage is dropped -- and only its
+        # stage: every other one of the pipeline is judged below exactly as before.
+        stages = _stages_beside_the_entry_point(segment)
+        if not stages or all(_verb_only_reads(stage) for stage in stages):
             continue
         copy = _COPY_OUT_RX.search(segment)
         if (copy and _PROTECTED_RX.search(copy.group("src"))
@@ -396,10 +455,13 @@ def _writes_ledger(command):
     # typed from inside the directory — refusing either one blocks the remedy.
     inside_scripts = _CD_SCRIPTS_RX.search(text) is not None
     for segment in _SEGMENT_SPLIT_RX.split(text):
-        stripped = segment.strip()
-        if (not inside_scripts and _DECOY_VALIDATOR_RX.search(stripped)
-                and not all(_verb_only_reads(stage) for stage in stripped.split("|")
-                            if stage.strip())):
+        if inside_scripts:
+            break
+        # ...asked of the stages BESIDE the entry point, so a decoy path named in ITS arguments is
+        # prose while one in a neighbouring stage is still a decoy (`_stages_beside_the_entry_point`)
+        stages = _stages_beside_the_entry_point(segment.strip())
+        if (any(_DECOY_VALIDATOR_RX.search(stage) for stage in stages)
+                and not all(_verb_only_reads(stage) for stage in stages)):
             return True
     for segment in _SEGMENT_SPLIT_RX.split(text):
         segment = segment.strip()
@@ -415,7 +477,11 @@ def _writes_ledger(command):
             continue          # the canonical validator, run from inside its own directory
         if _LEDGER_ADD_RUN_RX.search(segment):
             continue                          # the validated write path vouches for itself
-        if all(_verb_only_reads(stage) for stage in segment.split("|") if stage.strip()):
+        # ...and the entry point's OWN stage is dropped for the reason `_stages_beside_the_entry_
+        # point` carries; what stands beside it is judged as before. A redirect was decided above,
+        # so nothing the entry point could carry into the ledger passes here.
+        stages = _stages_beside_the_entry_point(segment)
+        if not stages or all(_verb_only_reads(stage) for stage in stages):
             continue                          # every stage of the pipeline only reads
         copy = _COPY_OUT_RX.search(segment)
         if (copy and _LEDGER_PATH_RX.search(copy.group("src"))
@@ -447,7 +513,7 @@ _SHELL_WRITE_RX = re.compile(
 # --validate …` must stay allowed. ONLY that shape: an interpreter invoked with `-c`/`-e`/`-m`
 # carries its payload inline and is never exempt.
 _INTERPRETER_SCRIPT_RX = re.compile(
-    r"(?:^|(?<=[;&|(]))\s*(?:python[0-9.]*|py|perl|ruby|node)(?:\s+-[EOSuvWx][^\s]*)*"
+    r"(?:^|(?<=[;&|(]))\s*(?:python[0-9.]*|py|perl|ruby|node)" + _INTERPRETER_OPTIONS +
     r"\s+(\S+\.(?:py|pl|rb|js))\b", re.IGNORECASE | re.MULTILINE)
 _INLINE_CODE_RX = re.compile(r"(?:^|[;&|(])\s*(?:python[0-9.]*|py|perl|ruby|node)\s+"
                              r"[^\s]*-(?:c|e|m)\b", re.IGNORECASE | re.MULTILINE)

@@ -801,3 +801,224 @@ def test_a_lead_can_update_the_kit_end_to_end(tmp_path):
     assert canonical == {name: body for name, body in before.items()
                          if not name.startswith("approvals") and not name.startswith("generated")
                          and ".audit" not in name}, "the installer touched project state"
+
+
+# -- the bootstrap for a stock that predates this command (BUG-0059) -----------------------------
+
+BRIDGE = os.path.join(ROOT, "user", "bridge", "update_kit.py")
+NOTICE = os.path.join(ROOT, "user", "claude", "hooks", "kit_bridge_notice.py")
+
+
+def _load_bridge():
+    """The shipped bootstrap, imported by path -- it installs outside any package."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_bridge_under_test", BRIDGE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _notice(repo, home):
+    """The global notice as a process, in the environment a real session gives it.
+
+    NOT `_hook`, and the difference is the measurement: that helper exports
+    `HARNESS_KERNEL_PATH`, which makes a project's entry point resolve THIS repo's kernel instead
+    of its own -- so an old stock would answer `update-kit --help` with exit 0 and the notice would
+    correctly stay silent about a route the project does not have.
+    """
+    return subprocess.run(
+        [sys.executable, "-B", NOTICE],
+        input=json.dumps({"hook_event_name": "SessionStart", "source": "startup",
+                          "cwd": str(repo)}),
+        capture_output=True, text=True, encoding="utf-8", errors="replace", cwd=str(repo),
+        timeout=300,
+        env={key: value for key, value in
+             dict(os.environ, CLAUDE_PROJECT_DIR=str(repo), HOME=str(home),
+                  USERPROFILE=str(home)).items() if key != "HARNESS_KERNEL_PATH"})
+
+
+def _run_bridge(repo, environment):
+    return subprocess.run([sys.executable, "-B", BRIDGE], cwd=str(repo), capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", timeout=900,
+                          env=environment)
+
+
+def _make_it_old_stock(repo):
+    """The one property that defines the stock this bootstrap is for: no `update-kit` on ITS surface.
+
+    Taken by deleting the modules `2026.08.14-9` never had (`kitupdate`, `presets`) rather than by
+    editing a parser, so the entry point answers the way that release's really answered -- measured
+    against a real install of it, rebuilt from this repo's own history: exit 2 on
+    `update-kit --help`, while `.claude/kernel/` held neither module.
+    """
+    for name in ("kitupdate.py", "presets.py"):
+        path = os.path.join(str(repo), ".claude", "kernel", name)
+        if os.path.exists(path):
+            os.remove(path)
+
+
+def test_the_bridge_reads_the_route_off_the_projects_own_entry_point(tmp_path):
+    """`has_the_approved_route` asks the PARSER, and all three of its answers are measured.
+
+    Not the presence of `.claude/kernel/kitupdate.py`: a copied module is not a command on the
+    surface, and the surface is what a lead types. True on a project this repo's scaffold installed,
+    False once the modules that release never had are gone, None where there is no entry point at
+    all -- the third is its own answer because "no surface to ask" is not "asked and told no".
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    _home, repo, _environment = _scaffolded(tmp_path)
+    bridge = _load_bridge()
+    assert bridge.has_the_approved_route(str(repo), kitupdate.COMMAND) is True
+    _make_it_old_stock(repo)
+    assert bridge.has_the_approved_route(str(repo), kitupdate.COMMAND) is False
+    os.remove(os.path.join(str(repo), "scripts", "harness.py"))
+    assert bridge.has_the_approved_route(str(repo), kitupdate.COMMAND) is None
+
+
+def test_the_bridge_refuses_a_project_that_can_reach_the_approved_route(tmp_path):
+    """The refusal that keeps this a bootstrap rather than a back door.
+
+    The bootstrap mints nothing and reads no approval, so the one thing it may not be is an
+    alternative to `update-kit`. The project here is BEHIND (so the direction is not what refuses)
+    and carries the command -- and the refusal names the route that asks the user.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    _home, repo, environment = _scaffolded(tmp_path)
+    _write(str(repo / ".claude" / "kit_version"), _stamp(OLD, "a" * 64))
+    os.remove(str(repo / kitupdate.HANDOVER_MARKER))
+    refused = _run_bridge(repo, environment)
+    assert refused.returncode != 0, refused.stdout
+    assert kitupdate.COMMAND in refused.stderr and kitupdate.KIND in refused.stderr, refused.stderr
+    assert _read(str(repo / ".claude" / "kit_version")).startswith("version: %s" % OLD), (
+        "the bootstrap installed over a project that had the approved route")
+
+
+def test_a_stock_without_update_kit_is_lifted_by_the_bootstrap_and_told_about_it(tmp_path):
+    """BUG-0059 end to end: the lift a 2026.08.14-9 project cannot perform for itself.
+
+    ONE project, both halves, because they are one chain: the global SessionStart notice is what
+    tells that project's lead the bootstrap exists (its own briefing cannot -- it shipped with the
+    release that had no command), and the bootstrap is what performs the lift. Both run as
+    processes, against a project this repo's scaffold really installed and then stripped of the two
+    kernel modules that release never had.
+
+    WHAT THE SUITE CANNOT MEASURE, named rather than implied: that the provider merges a
+    USER-GLOBAL SessionStart hook into a session of a project that registers its own. That is
+    provider behaviour (`tools/provider_observations.json`), and it is why the bootstrap adds a
+    route without removing the one the old briefing describes.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    pytest.importorskip("yaml")
+    home, repo, environment = _scaffolded(tmp_path)
+    staged = _read(str(home / ".claude" / "team-kits" / "dev-team" / "VERSION"))
+    os.makedirs(str(home / "agents-and-skills"), exist_ok=True)
+    shutil.copy(BRIDGE, str(home / "agents-and-skills" / "update_kit.py"))
+    _write(str(repo / ".claude" / "kit_version"), _stamp(OLD, "a" * 64))
+    os.remove(str(repo / kitupdate.HANDOVER_MARKER))   # what a real restart would have cleared
+    before = _fingerprint(repo / "project_memory")
+
+    # ...with the command on its surface the notice says nothing: that project's own briefing
+    # offers the approved route, and a second voice there would be noise on a correct state.
+    quiet = _notice(repo, home)
+    assert quiet.returncode == 0 and not quiet.stdout.strip(), quiet.stdout
+
+    _make_it_old_stock(repo)
+    spoken = _notice(repo, home)
+    briefing = json.loads(spoken.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "update_kit.py" in briefing and kitupdate.COMMAND in briefing, briefing
+
+    lifted = _run_bridge(repo, environment)
+    assert lifted.returncode == 0, lifted.stderr + lifted.stdout
+    assert "RESTART REQUIRED" in lifted.stdout, lifted.stdout
+    assert _read(str(repo / ".claude" / "kit_version")) == staged
+    assert os.path.exists(str(repo / kitupdate.HANDOVER_MARKER)), (
+        "the session was not stopped after its kit changed underneath it")
+    assert _fingerprint(repo / "project_memory") == before, "the bootstrap touched project state"
+
+    # ...and afterwards the project has the approved route, so the notice goes quiet again.
+    silent = _notice(repo, home)
+    assert not silent.stdout.strip(), silent.stdout
+
+
+def test_the_notice_is_registered_globally_with_a_timeout_and_its_file_is_shipped():
+    """A hook the user's global settings do not register runs nowhere -- and one with no timeout is
+    a hook the host may kill mid-decision, which for this one means a lead that never hears about
+    the bootstrap. Read off the shipped settings, the file the installer merges into the user's."""
+    with open(os.path.join(ROOT, "user", "claude", "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    entries = [hook for group in settings["hooks"].get("SessionStart", [])
+               for hook in group.get("hooks", [])]
+    named = [hook for hook in entries if os.path.basename(NOTICE) in hook.get("command", "")]
+    assert named, "the global settings register no SessionStart hook for %s" % NOTICE
+    assert all(hook.get("timeout") for hook in named), named
+    assert os.path.isfile(NOTICE)
+
+
+def _gate(repo, command, kit="dev-team"):
+    """The kit's own write-scope gate, as a process, on one command line."""
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(repo),
+               "tool_input": {"command": command}}
+    return subprocess.run(
+        [sys.executable, "-B", os.path.join(TEAM_KITS, kit, "hooks", "gate_write_scope.py")],
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8",
+        errors="replace", cwd=str(repo), timeout=120,
+        env=dict(os.environ, CLAUDE_PROJECT_DIR=str(repo), HARNESS_KERNEL_PATH=TEAM_KITS))
+
+
+def test_the_installer_puts_the_bootstrap_where_a_locked_down_project_can_still_start_it(tmp_path):
+    """WHERE the bootstrap lives is the whole of why it works, so both halves are measured together.
+
+    `gate_write_scope` refuses a write-capable command line that NAMES `.claude` or `team-kits` --
+    which is why a project one release behind cannot start the installer itself, and why a
+    bootstrap installed under either name would be equally unreachable. The installer therefore
+    places it outside both, and this test measures that against the gate that runs: the line
+    starting the bootstrap passes, the line starting the scaffold does not.
+
+    Measured by hand once, against a real `2026.08.14-9` install rebuilt from this repo's history
+    (that release's own gate, every hook its settings register on `Bash`): exit 0 for the bootstrap
+    line, exit 2 for the scaffold. What runs here is today's gate over today's installed path, so a
+    release that starts protecting that directory breaks this rather than the pilot.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the PowerShell installer runs on Windows")
+    home = tmp_path / "home"
+    pythonpath = os.pathsep.join(path for path in sys.path if path)
+    installed = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         os.path.join(ROOT, "install.ps1"), "-Target", "claude", "-Force"],
+        cwd=str(ROOT), capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=900, env=dict(os.environ, USERPROFILE=str(home), HOME=str(home),
+                              CODEX_HOME=str(tmp_path / "codex"), PYTHONPATH=pythonpath))
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    bootstrap = home / "agents-and-skills" / "update_kit.py"
+    assert bootstrap.is_file(), (
+        "the installer registers a notice that names %s and did not place it" % bootstrap)
+
+    repo = tmp_path / "project"
+    _write(str(repo / ".claude" / "kit_version"), _stamp(OLD, "a" * 64))
+    passes = _gate(repo, 'python "%s"' % bootstrap)
+    assert passes.returncode == 0, (
+        "the bootstrap cannot be started in a project at all:\n%s" % passes.stderr)
+    refused = _gate(repo, 'powershell -File "%s" -Team dev-team'
+                    % (home / ".claude" / "team-kits" / "scaffold_team.ps1"))
+    assert refused.returncode == 2, (
+        "the installer line is no longer refused, so the bootstrap's whole reason is gone:\n%s"
+        % refused.stdout)
+
+
+def test_the_posix_installer_places_the_bootstrap_too(tmp_path):
+    """The twin, because a user on POSIX gets the same notice naming the same file."""
+    if os.name == "nt" or not shutil.which("bash"):
+        pytest.skip("POSIX installer integration runs on Unix CI")
+    home = tmp_path / "home"
+    home.mkdir()
+    pythonpath = os.pathsep.join(path for path in sys.path if path)
+    installed = subprocess.run(
+        ["bash", os.path.join(ROOT, "install.sh"), "--target", "claude", "--force"],
+        cwd=str(ROOT), capture_output=True, text=True, timeout=900,
+        env=dict(os.environ, HOME=str(home), PYTHONPATH=pythonpath))
+    assert installed.returncode == 0, installed.stdout + installed.stderr
+    assert (home / "agents-and-skills" / "update_kit.py").is_file(), installed.stdout

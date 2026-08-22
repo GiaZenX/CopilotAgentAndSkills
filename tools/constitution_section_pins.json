@@ -45,7 +45,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "090043aa3bd79f32",
+        "digest": "cfc6a638936a490b",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -69,7 +69,7 @@
         ]
       },
       "14. Behavior (all roles)": {
-        "digest": "2ffa661d4daefb4b",
+        "digest": "c630c560f3f29a18",
         "hooks": []
       },
       "14a. Loops & failures": {
@@ -241,7 +241,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "3e65fb31b9469158",
+        "digest": "7963d3058d35f706",
         "hooks": [
           "gate_dispatch",
           "gate_git"
@@ -280,7 +280,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "3e59e35e003ef552",
+        "digest": "d1d3c0eac9b67c8b",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -363,7 +363,7 @@
         ]
       },
       "8. Behavior": {
-        "digest": "fc6ecd489a51b381",
+        "digest": "b385c7fe092c0648",
         "hooks": []
       },
       "9. Git & data": {
@@ -480,7 +480,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "b2befc4b5b517fa6",
+        "digest": "8feb921a215991d9",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -504,7 +504,7 @@
         ]
       },
       "14. Behavior (all roles)": {
-        "digest": "e8dbc7e90cacf252",
+        "digest": "2488899f1f341929",
         "hooks": []
       },
       "14a. Loops & failures": {

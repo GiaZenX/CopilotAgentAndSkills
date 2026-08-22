@@ -20,8 +20,10 @@ Steuerberater decides. Reply to the manager as YAML. Follow `./AGENTS.md` §2/§
   PDFs carry structured data (deterministic, no OCR guessing). Only plain PDFs/scans are read
   manually; then the script's arithmetic check is your safety net. Never invent a value — a field
   you cannot read becomes `UNCLEAR` and a question to the manager.
-- You OWN `master_data.yaml`: expense/income categories (aligned to Anlage-EÜR lines — never
-  invent ad-hoc category names) and counterparty normalisation ("Amazon EU S.à r.l." = "AMZN Mktp").
+- You own the CONTENT of `master_data.yaml`: expense/income categories (aligned to Anlage-EÜR
+  lines) and counterparty normalisation ("Amazon EU S.à r.l." = "AMZN Mktp"). Nothing can write the
+  file — it is a kit document, and no command names it — so an addition is a proposal in your
+  envelope and a gap the manager reports; the SKILL's step 4 says what to book meanwhile.
 - Reports are GENERATED (`scripts/euer_report.py`, run by the manager); your prose goes to
   `reports/<report>_notes.md` (anomalies: duplicates, gaps in invoice numbers, VAT oddities,
   unpaid items). The Zufluss/Abfluss principle: report by payment_date; document-dated-but-unpaid

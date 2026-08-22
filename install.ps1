@@ -26,6 +26,7 @@ $repoRoot = $PSScriptRoot
 $userClaudeSrc    = Join-Path $repoRoot "user\claude"
 $userCodexSrc     = Join-Path $repoRoot "user\codex"
 $teamKitsSrc      = Join-Path $repoRoot "team-kits"
+$bridgeSrc        = Join-Path $repoRoot "user\bridge"
 $mergeScript      = Join-Path $repoRoot "user\merge_settings.py"
 
 $claudeGlobal   = Join-Path $env:USERPROFILE ".claude"
@@ -33,6 +34,8 @@ $claudeSkills   = Join-Path $claudeGlobal "skills"
 $claudeAgents   = Join-Path $claudeGlobal "agents"
 $claudeHooks    = Join-Path $claudeGlobal "hooks"
 $claudeTeamKits = Join-Path $claudeGlobal "team-kits"
+# Deliberately NOT under ~/.claude: see the bridge block below and user/bridge/update_kit.py.
+$bridgeDest     = Join-Path $env:USERPROFILE "agents-and-skills"
 # Legacy Copilot destinations — only referenced to REMOVE files older installs put there.
 $copilotSkills  = Join-Path $env:USERPROFILE ".copilot\skills"
 $vscodePrompts  = Join-Path $env:APPDATA "Code\User\prompts"
@@ -148,7 +151,7 @@ if ($Target -eq "both" -or $Target -eq "claude") {
 Assert-NoReparseTree $teamKitsSrc
 Assert-NoReparseComponents $backupDir
 Assert-NoReparseComponents $claudeGlobal
-foreach ($path in @($claudeAgents, $claudeSkills, $claudeHooks, $claudeTeamKits,
+foreach ($path in @($claudeAgents, $claudeSkills, $claudeHooks, $claudeTeamKits, $bridgeDest,
         (Join-Path $claudeGlobal "CLAUDE.md"), (Join-Path $claudeGlobal "settings.json"),
         (Join-Path $claudeGlobal "statusline.py"))) {
     Assert-NoReparseTree $path
@@ -297,6 +300,18 @@ if (Test-Path $teamKitsSrc) {
         if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
     }
     Write-Host "  [ok]   team-kits -> ~/.claude/team-kits" -ForegroundColor Green
+}
+
+# The ONE lift a project one release behind cannot perform for itself (BUG-0059). It belongs to the
+# staging half rather than to a provider, because it installs the release just staged above -- and it
+# lives OUTSIDE ~/.claude on purpose: the old stock's gate_write_scope refuses a write-capable
+# command line that names `.claude` or `team-kits`, so a bootstrap under either name is one its PM
+# cannot start. user/bridge/update_kit.py carries the measurement.
+if (Test-Path $bridgeSrc) {
+    Get-ChildItem -Path $bridgeSrc -Filter "*.py" | ForEach-Object {
+        Install-File -Src $_.FullName -Dest (Join-Path $bridgeDest $_.Name) `
+            -Label "bridge: $($_.Name) -> $bridgeDest"
+    }
 }
 
 if ($Target -eq "both" -or $Target -eq "claude") {

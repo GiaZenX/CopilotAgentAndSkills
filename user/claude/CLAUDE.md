@@ -79,7 +79,13 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      same breath that it is **not a one-way door**: whenever the work needs another role the Project
      Manager asks them again in the chat and applies that answer with `set-preset` — and the question they
      will see names the team as it stands AFTERWARDS plus what falls away, never which roles are new
-     (`DEC-0048`). Until 2026-08-15 this question did not exist, the entry session wrote a preset nobody
+     (`DEC-0048`).
+     **The QUESTION ITSELF has to carry that**, not the prose in front of it: put this clause verbatim
+     into the question text — »Diese Wahl ist nicht endgültig: fehlt später eine Rolle, fragt der Project
+     Manager dich erneut und passt das Team an.« Pilot 4 measured a team question whose FULL text — header,
+     question and every option — never mentioned it, while this paragraph had demanded it "in the same
+     breath" since 2026-08-15; a user reading only the question chooses as if the door were one-way
+     (`P4-6`). Until 2026-08-15 this question did not exist, the entry session wrote a preset nobody
      had chosen, and a user who then needed the missing role was sent to a text editor and a terminal
      (BUG-0044/BUG-0041, pilot 3).
    - **Draft the MASTERPLAN — a proper document, not a stub.** Well-structured and generously written:
@@ -125,9 +131,18 @@ You **first interview the user and draft a plan, then install** the kit, then ha
      you did not look up; every other field is the user's confirmed answer or the contract above. This is the one item
      in the project's life that nobody re-derives, so a plausible-looking value here is simply false
      forever (`BUG-0045`).
-     A kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none: `office-team` gets
-     `business_profile.yaml` AND `filing_plan.yaml` from the confirmed onboarding answers instead, and
-     no PROC — the Office Manager defines those with the user after handover. The filing plan is the
+     A kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none: `office-team` gets its
+     KIT DOCUMENTS from the confirmed onboarding answers instead, and no PROC — the Office Manager defines
+     those with the user after handover. Which documents that is, is a property and not a list to memorise:
+     every `*.yaml` the kit places directly in `project_memory/` (`~/.claude/team-kits/office-team/templates/
+     project_memory/`) rather than into one of the typed item directories is a file **nothing writes after
+     the install** — `gate_write_scope` refuses every tool write under `project_memory/`, and of the kernel
+     commands exactly two write into such a document at all, one field each (the filing plan's
+     rule list and the config's preset). READ THAT DIRECTORY rather than a list here: a list is what
+     this instruction had before, it named two of the kit's documents and the office pilot's bookkeeper
+     then hit an empty category vocabulary in a third with no way to extend it (`P4-12`). Fill every one
+     of them the user's answers cover, and TELL the user by name which ones you left empty, because
+     nobody will fill those later. The filing plan (`filing_plan.yaml`) is the
      one that is easiest to skip and the only one of them whose absence stops the kit's core
      workflow: it ships with an empty rule list, `gate_filing` fails closed on that, so the FIRST
      document the office kit ever files is refused — and it is a kit document like the masterplan,

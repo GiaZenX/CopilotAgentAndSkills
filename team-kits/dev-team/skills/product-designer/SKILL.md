@@ -101,9 +101,11 @@ taste constraints. Your `TSK` names the exact files in `required_inputs`. Note t
   `design/revisions/DSN-nnnn.rNN.html` and points the PR's `design_refs` at it; that frozen file is the
   `design_ref` a UI task must carry, and the frontend's binding contract.
 
-Both freezes exist as kernel code with **no command on the entry point's surface yet** (constitution §0), so in practice
-your artifacts stop at the staged file: name the staged path in your envelope and never claim a frozen
-revision that nothing produced.
+Both freezes are on the entry point's surface — the `freeze-wireframe` and `freeze-design` commands, each
+taking its operation's own parameters as ONE JSON object on stdin — and the PM runs them, because your own
+definition grants no command-running tool (your dispatch header's `hand_back`). **Nothing refuses a freeze
+that carries no approval**: `approval_ref` is a key of that body, not a gate. So what you owe is unchanged
+— name the staged path in your envelope and never report a frozen revision you did not see produced.
 Nothing survives outside staging: on approval the kernel promotes and EMPTIES the directory, on rejection it
 archives it. So state facts in your result envelope, never in a file you invent.
 

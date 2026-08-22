@@ -128,6 +128,12 @@ template default left standing as an unconfirmed placeholder. Say in the same br
 a one-way door**: whenever the work needs another role the installed lead asks them again and applies
 that answer with `set-preset` — and the question they will see names the team as it stands AFTERWARDS
 plus what falls away, never which roles are new (`DEC-0048`).
+**The QUESTION ITSELF has to carry that**, not the prose in front of it: put this clause verbatim
+into the question text — »Diese Wahl ist nicht endgültig: fehlt später eine Rolle, fragt der Project
+Manager dich erneut und passt das Team an.« Pilot 4 measured a team question whose FULL text — header,
+question and every option — never mentioned it, while this paragraph had demanded it "in the same
+breath" since 2026-08-15; a user reading only the question chooses as if the door were one-way
+(`P4-6`).
 
 ### 2. Detect greenfield versus existing repository - READ ONLY
 
@@ -237,8 +243,17 @@ the confirmed bootstrap draft, using the schemas shipped by the selected kit:
      project's life that nobody re-derives, so a plausible-looking value here is simply false forever
      (`BUG-0045`).
    - a kit **absent from `ROOT_TYPE_BY_KIT` has no root item** and you seed none. `office-team` is that
-     case: fill `project_memory/business_profile.yaml` AND `project_memory/filing_plan.yaml` from the
-     explicitly confirmed onboarding answers instead. The filing plan is the one that is easiest to skip
+     case: fill its KIT DOCUMENTS from the explicitly confirmed onboarding answers instead. Which ones
+     those are is a property rather than a list to memorise: every `*.yaml` the kit places directly in
+     `project_memory/` (see its `templates/project_memory/`) rather than into one of the typed item
+     directories is a file **nothing writes after the install** — `gate_write_scope` refuses every tool
+     write under `project_memory/`, and of the kernel commands exactly two write into such a document
+     at all, one field each (the filing plan's rule list and the config's preset). READ THAT DIRECTORY
+     rather than a list here: a list is what this instruction had before, it named two of the kit's
+     documents and the office pilot's bookkeeper then hit an empty category vocabulary in a third with
+     no way to extend it (`P4-12`). Fill every one the user's answers cover and TELL the user by name
+     which ones you left empty, because nobody fills those later. The filing plan (`filing_plan.yaml`)
+     is the one that is easiest to skip
      and the only one of them whose absence stops the kit's core workflow: it ships with an empty rule list,
      `gate_filing` fails closed on that, so the FIRST document the office kit ever files is refused — and
      it is a kit document like the masterplan, so after the install nothing writes it either. Give it at

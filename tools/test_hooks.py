@@ -5315,6 +5315,60 @@ def test_entry_restart_step_forbids_an_invented_trust_ceremony():
         "the explicit negative instruction, naming the ceremony, must stay in this step")
 
 
+# The two files an entry session runs on, one per provider. They are TWINS rather than mirrors --
+# different prose, same duties -- so what a test can hold them to is the parts that are meant to
+# reach the user WORD FOR WORD.
+ENTRY_FILES = (os.path.join(ROOT, "user", "claude", "CLAUDE.md"),
+               os.path.join(ROOT, "user", "codex", "AGENTS.md"))
+# A user-facing string an entry file prescribes verbatim, in the quotation marks these files use for
+# exactly that (the restart message is the older one). Read as a SHAPE, so the clause itself lives in
+# the instruction files and not a second time here.
+_VERBATIM_CLAUSE_RX = re.compile(r"»([^«»]+)«")
+
+
+def _team_size_blocks(text):
+    """The blocks of an entry file that instruct the TEAM SIZE question.
+
+    Blocks, not the whole file: the point of the check is that the clause stands WITH that question,
+    and a sentence four hundred lines away is the failure `_markdown_blocks` was written for.
+    """
+    return [block for block in _markdown_blocks(text) if "TEAM SIZE" in block]
+
+
+def test_both_entry_files_hand_the_team_question_the_same_verbatim_reversibility_clause():
+    """P4-6: the team question never told the user the choice can be undone -- although it can.
+
+    MEASURED (pilot 4, half 2): the full text of the team question -- header, question and every
+    option -- carried nothing about reversibility, while `set-preset` had been built for exactly
+    that (BUG-0041) and both entry files had demanded the sentence "in the same breath" since
+    2026-08-15. A duty phrased as "say it in the same breath" is satisfied by prose the user skims;
+    what reaches them is the question. So the files now prescribe a CLAUSE for the question text
+    itself, the way they already prescribe the restart message.
+
+    WHAT THIS TEST CAN AND CANNOT DO, because the difference matters: it reads the instruction, not
+    the session. That an entry agent really puts the clause into the question is measurable only in
+    a live run -- the same limit `test_entry_restart_step_forbids_an_invented_trust_ceremony` names
+    for its own subject. What it DOES buy is the property the pilot found broken twice over: the
+    clause exists, it sits in the team-size step, and the two provider twins say the SAME thing --
+    a drift between them is how one provider's users lose a duty the other keeps.
+    """
+    clauses = {}
+    for path in ENTRY_FILES:
+        with open(path, encoding="utf-8") as handle:
+            blocks = _team_size_blocks(handle.read())
+        assert blocks, "%s no longer instructs the TEAM SIZE question at all" % path
+        # whitespace-flattened, because the same clause is wrapped at a different column in each
+        # file -- what has to agree is the sentence the user hears, not the line breaks around it
+        found = {re.sub(r"\s+", " ", clause).strip() for block in blocks
+                 for clause in _VERBATIM_CLAUSE_RX.findall(block)}
+        assert found, (
+            "%s asks for the team size without prescribing the verbatim clause that tells the user "
+            "the choice is reversible (P4-6)" % os.path.relpath(path, ROOT))
+        clauses[os.path.relpath(path, ROOT)] = sorted(found)
+    assert len(set(map(tuple, clauses.values()))) == 1, (
+        "the two entry files prescribe DIFFERENT wording for the same question: %s" % clauses)
+
+
 # Where an exemption below is allowed to be used. ANY = the file genuinely has no template in V2, so
 # naming it is a true statement wherever it is written. KIT_ONLY = a DELETED V1 monolith that only
 # ONE kit's own text still has reason to name: inside that kit the name says what a store used to be
@@ -13030,6 +13084,95 @@ def test_every_span_that_presents_the_command_surface_names_all_of_it():
     assert seen >= 3, (
         "only %d surface-presenting span(s) found — the reader stopped matching rather than the "
         "documents stopping listing" % seen)
+
+
+# A DENIAL STANDING NEXT TO THE SURFACE, in either order and with a sentence's worth of words in
+# between. This is a formulation and not a concept, and that is deliberate: "no command" alone is
+# the corpus's ordinary way of saying that no command WRITES a file or MINTS an approval (measured:
+# ~50 sentences, all of them true), so what separates the false claim from the true ones is that it
+# denies the SURFACE. The other half of the rule is what makes such a denial checkable at all —
+# see the test.
+_SURFACE_DENIAL_RX = re.compile(
+    r"no\s+command\b[^.]{0,80}?entry point.{0,3}s surface"
+    r"|entry point.{0,3}s surface[^.]{0,80}?\bno\s+command\b", re.IGNORECASE | re.DOTALL)
+
+
+def _surface_denials(text):
+    """Every sentence of `text` that denies the entry point's surface a command."""
+    flat = re.sub(r"[ \t]*\n[ \t]*", " ", text)
+    return [sentence for sentence in re.split(r"(?<=[.!?])\s+", flat)
+            if _SURFACE_DENIAL_RX.search(sentence)]
+
+
+def _unbacked_surface_denials(text, surface):
+    """The denials in `text` that no reader could check: they name no absent command in backticks.
+
+    A denial that names its subject as a code span can be held against the parser -- `approve` is
+    such a claim, and it is TRUE, so a span that names only spellings the parser does not carry is
+    not an offence. One that names a spelling the parser DOES carry is the claim gone stale; one
+    that names no spelling at all is the same claim with nothing to go stale against, which is how
+    all three shipped instances survived a release that built their command.
+    """
+    offenders = []
+    for sentence in _surface_denials(text):
+        named = [span.strip() for span in re.findall(r"`([^`]+)`", sentence)]
+        if not named or any(span in surface for span in named):
+            offenders.append(sentence.strip()[:200])
+    return offenders
+
+
+# The three sentences the shipped kit carried while `freeze-architecture`, `freeze-wireframe` and
+# `freeze-design` were on the surface (pilot 4, P4-8): the architect's SKILL, the designer's and the
+# PM's. Kept verbatim as the CONTROL of the reader below -- the corpus assertion is vacuously true
+# once they are gone, and a reader nobody re-measures is how they survived in the first place.
+_MEASURED_SURFACE_DENIALS = (
+    "That freeze exists as kernel code but has NO command on the entry point's surface yet "
+    "(constitution §0), so today your diagram stops at the staged file.",
+    "Both freezes exist as kernel code with **no command on the entry point's surface yet** "
+    "(constitution §0), so in practice your artifacts stop at the staged file.",
+    "**Both halves are PROSE duties today:** no gate refuses a scope-APR for a missing wireframe, "
+    "and the kernel's freeze function has no command on the entry point's surface (constitution "
+    "§0) — YOU are the only thing enforcing it.",
+)
+
+
+def test_no_shipped_text_denies_the_entry_point_a_command_it_carries():
+    """A role that reads "this has no command yet" stops looking — so the sentence must be checkable.
+
+    THE MEASURED DEFECT (pilot 4, P4-8): three shipped dev-kit texts told their reader that the
+    architecture/wireframe/design freeze "has no command on the entry point's surface yet" while
+    `python scripts/harness.py --help` listed all three `freeze-*` commands. The PM relayed the
+    half that was false, and the artifacts stopped at the staged file for no reason.
+
+    WHAT MAKES A DENIAL CHECKABLE, which is the rule rather than the three sentences: it names the
+    command it says is missing, in backticks, so the SHIPPED PARSER can be asked. The constitutions'
+    `approve` sentence is exactly that shape and stays true by being asked. A denial that names
+    nothing cannot go red when the command arrives, and none of the three did.
+
+    Both directions are measured: the shipped corpus carries no such denial, and the reader is run
+    over the three historical sentences (`_MEASURED_SURFACE_DENIALS`) plus a true one, so a reader
+    that has stopped matching fails here rather than passing quietly.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import cli
+    surface = set(cli.build_parser()._subparsers._group_actions[0].choices)
+
+    offenders = []
+    for where, text in _shipped_texts():
+        offenders += ["%s: %s" % (where, sentence)
+                      for sentence in _unbacked_surface_denials(text, surface)]
+    assert not offenders, (
+        "these sentences deny the entry point a command without naming one the parser lacks — "
+        "either name the missing command in backticks, or correct the sentence against "
+        "`--help`:\n  " + "\n  ".join(offenders))
+
+    for sentence in _MEASURED_SURFACE_DENIALS:
+        assert _unbacked_surface_denials(sentence, surface), (
+            "the reader no longer sees the shape it was written for: %r" % sentence)
+    true_denial = ("Of spec II.4's twelve only `approve` has no command on the entry point's "
+                   "surface, and it is SPLIT rather than missing.")
+    assert not _unbacked_surface_denials(true_denial, surface), (
+        "a denial that names a command the parser really lacks is not an offence")
 
 
 # ---------------- the kit checkers that had no caller ----------------
