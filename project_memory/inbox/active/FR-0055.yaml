@@ -1,0 +1,16 @@
+id: FR-0055
+title: installer ships remoteControlAtStartup=false as a user-scope default
+request_text: 'User 2026-08-21: Remote Control soll nirgends standardmaessig aktiv
+  sein, wo der Harness installiert. Gemessen: ~/.claude/settings.json des Nutzers
+  traegt bereits remoteControlAtStartup: false; user/claude/settings.json liefert
+  den Schluessel absichtlich NICHT aus (Kommentar fuehrt ihn unter ''deliberately
+  NOT shipped''). Wunsch: die ausgelieferten User-Scope-Defaults tragen remoteControlAtStartup:
+  false, vom Installer nur ergaenzt wenn der Schluessel fehlt (persoenliche Werte
+  gewinnen weiter, user/merge_settings.py-Semantik), damit eine frische Installation
+  aus ist statt Provider-Default. Betrifft user/claude/settings.json samt Kommentar;
+  faehrt mit dem FR-0048-Halb-2-Home-Rollout mit.'
+source: user request 2026-08-21 (in-session, pilot-4 window)
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-22T11:01:58'
