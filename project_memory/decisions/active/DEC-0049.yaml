@@ -1,0 +1,16 @@
+id: DEC-0049
+title: Board page and office archive folder names stay ENGLISH
+context: Pilot 4 measured German-speaking users against an English board page (TSK-0079
+  named deviation) and English archive folder names in the office kit (P4-10). Both
+  were release-conversation questions.
+decision: 'The user decided 2026-08-22: English is okay -- the board page and the
+  generated archive folder names remain English. No localisation work is scheduled;
+  a later change request would be a new FR.'
+consequences: TSK-0079's named deviation is closed by user decision; P4-10 needs no
+  fix round. User-facing PM prose stays German as before -- this decision covers generated
+  artifact names and the board page only.
+source: user answer 2026-08-22 (release conversation, point 2)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-22T13:57:25'

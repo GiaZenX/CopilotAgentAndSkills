@@ -200,6 +200,7 @@
     ],
     "SubagentStop": [
       {
+        "_comment": "ONE chained command, and gate_dispatch is LAST because the gate ahead of it can turn this stop into a CONTINUATION: gate_subagent_output exits 2 for a final message without its output contract, and the child then keeps working. gate_dispatch records the child's END here (BUG-0058), and a record written ahead of that refusal would report a specialist that is still running as idle at the lead's next turn-end. _gate.py runs the chain in one process and stops at the first refusal, which is exactly what makes the order carry the meaning.",
         "hooks": [
           {
             "type": "command",
@@ -207,7 +208,7 @@
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py gate_dispatch.py"
           }
         ]
       }
@@ -236,7 +237,7 @@
     ],
     "Stop": [
       {
-        "_comment": "The way back for a dispatch lease that was spent on a spawn nobody ever started. `PermissionDenied` used to carry that job and was removed here: measured 2026-08-02, it fired in NONE of twelve real headless sessions, on either a hook refusal or a permission refusal, while PostToolUseFailure from this same file did fire. Stop fired in all twelve, including after four refused tool calls. gate_dispatch never exits 2 on this event - see handle_stop.",
+        "_comment": "The way back for a dispatch lease that was spent on a spawn nobody ever started. `PermissionDenied` used to carry that job and was removed here: measured 2026-08-02, it fired in NONE of twelve real headless sessions, on either a hook refusal or a permission refusal, while PostToolUseFailure from this same file did fire. Stop fired in all twelve, including after four refused tool calls. gate_dispatch DOES exit 2 here, for one thing and no other: a dispatch whose own records say no child is on it, which the lead was about to leave unmentioned for another turn (BUG-0058). A Stop that exits 2 does not end the turn, which is the right answer to that and the wrong one to a rollback - so the reconciliation beside it stays silent. It refuses at most once per finding and never on a stop the provider marks as one a hook already blocked - see handle_stop and _name_the_dispatches_the_records_say_nobody_is_on.",
         "hooks": [
           {
             "type": "command",

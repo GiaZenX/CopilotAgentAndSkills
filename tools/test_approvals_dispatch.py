@@ -3442,3 +3442,275 @@ def test_a_handwritten_checkpoint_that_measures_nothing_is_absent(state, tmp_pat
     assert not verdict.adoptable
     assert "names no artefact at all" in " ".join(verdict.reasons)
     assert "TREATED AS ABSENT" in verdict.summary
+
+
+# -- the dispatch nobody is working on any more (BUG-0058, pilot 4 P4-2) --------
+
+def _with_a_bound_child(state, agent_id="child-1"):
+    """A dispatch in the state pilot 4 measured: IN_PROGRESS, live lease, a child bound to it."""
+    task = _dispatched(state, SESSION_A)
+    dispatch.bind_agent(state, task["id"], agent_id)
+    return task
+
+
+def _another_dispatch(state, agent_id=None, prompt_id="prompt-2"):
+    """A SECOND dispatch of the same role under the same root, through the real lifecycle.
+
+    `agent_id=None` leaves it UNBOUND -- the shape whose child no record can identify, which is a
+    different thing from a dispatch nobody has spawned against yet.
+    """
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
+    state.transition(task["id"], "READY")
+    lease = dispatch.create_lease(state, task["id"])
+    header = dispatch.parse_header(dispatch.dispatch_header(lease))
+    dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"], claim=True,
+                               prompt_id=prompt_id, session_id=SESSION_A)
+    dispatch.spawn_outcome(state, task["id"], ok=True, session_id=SESSION_A)
+    if agent_id:
+        dispatch.bind_agent(state, task["id"], agent_id)
+    return task
+
+
+def test_a_dispatch_whose_child_ended_is_named_and_a_running_one_is_not(state):
+    """The pilot's central finding, both directions (BUG-0058 AC-1).
+
+    RED without the fix: nothing in the kernel distinguishes "IN_PROGRESS with a child on it" from
+    "IN_PROGRESS with a child that stopped and handed nothing back", so the lead's only source is
+    the status -- which read IN_PROGRESS through all nine waiting turns.
+
+    The counter-direction is the half that makes the finding worth anything: while the child is
+    running there is no finding at all, so this cannot be satisfied by naming every dispatch.
+    """
+    task = _with_a_bound_child(state)
+    assert dispatch.idle_dispatches(state) == []
+
+    assert dispatch.record_child_end(state, agent_id="child-1") == task["id"]
+    findings = dispatch.idle_dispatches(state)
+    assert [row["task_id"] for row in findings] == [task["id"]]
+    assert "no result was booked" in " ".join(findings[0]["reasons"])
+    assert findings[0]["status"] == "IN_PROGRESS"
+    # REPORTED, never moved: what to do about it is the lead's judgement, and the record names the
+    # edge the task's own automaton offers instead of taking it
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+    assert findings[0]["no_progress_status"] == dispatch.no_progress_status("IN_PROGRESS")
+
+
+def test_a_child_that_hands_its_result_back_leaves_no_finding(state):
+    """The other way a dispatch stops being idle, and the one that must not be reported: a child
+    that ended AND booked its result has moved the task out of every lease-bearing status, so the
+    term this rests on is the STATUS and not the recorded end."""
+    task = _with_a_bound_child(state)
+    dispatch.record_child_end(state, agent_id="child-1")
+    dispatch.submit_result(state, {"task_id": task["id"], "role": TSK_FIELDS["assigned_role"],
+                                   "status_proposal": "SUBMITTED", "summary": "done",
+                                   "outputs": ["src/x.py"], "evidence": [],
+                                   "scope_touched": ["src/x.py"], "followups": []})
+    assert dispatch.idle_dispatches(state) == []
+
+
+def _age_the_lease(state, task_id, seconds=None):
+    """Push a lease's start back so its TTL has passed -- the only thing a test can do about a
+    clock. Returns the lease as it now stands on disk."""
+    path = os.path.join(state.root, "tasks", "leases", task_id + ".lease.yaml")
+    lease = state._read_yaml(path)
+    lease["created_epoch"] = time.time() - float(
+        seconds if seconds is not None else lease["ttl"] + 1)
+    state._write_yaml_atomic(path, lease)
+    return lease
+
+
+def test_a_bound_child_that_outlived_its_lease_is_not_reported_as_idle(state):
+    """THE FALSE POSITIVE THAT WAS MEASURED HERE AND ITS CHAIN RAN TO WORK LOSS.
+
+    A running child may legitimately hold IN_PROGRESS past its lease's expiry -- the lifecycle says
+    so at `dispatch.LEASE_MINTED_STATUS` -- so "no lease in force" is not a statement about whether
+    anybody is working. Reported as idle, the remedy that travels with the finding takes the task
+    to FAILED, which drops the lease: `task_for_agent` then resolves nothing, gate layer 3 refuses
+    the child's writes and `submit_result` refuses its envelope. The child works on and its result
+    can no longer be booked.
+
+    Both halves are asserted, because the second is what the first is FOR: no finding, and the
+    dispatch is still intact enough to hand its result back.
+    """
+    task = _with_a_bound_child(state)
+    _age_the_lease(state, task["id"])
+    assert not dispatch.lease_in_force(state, task["id"])
+    assert dispatch.idle_dispatches(state) == []
+    assert dispatch.task_for_agent(state, "child-1")["id"] == task["id"]
+    dispatch.submit_result(state, {"task_id": task["id"], "role": TSK_FIELDS["assigned_role"],
+                                   "status_proposal": "SUBMITTED", "summary": "late but done",
+                                   "outputs": ["src/x.py"], "evidence": [],
+                                   "scope_touched": ["src/x.py"], "followups": []})
+    assert state.read_item(task["id"])["status"] == "SUBMITTED"
+
+
+def test_a_window_that_ran_out_with_no_child_bound_is_named_without_any_stop_event(state):
+    """The second term, and every one of its three conditions is load-bearing.
+
+    It is a POSITIVE record and not the absence of one: the lease is still there, it names no
+    `agent_id`, and its window has passed -- so nothing was ever bound to this dispatch and nothing
+    here was ever tracking a run on it. That is decidable without any event, which is what makes it
+    the one case a missing `SubagentStop` cannot hide.
+
+    The counter-direction is the missing lease: once the TTL sweep has taken it away, whether a
+    child was ever bound is no longer answerable, and a term that produces a refusal has to read
+    that as "we cannot say".
+    """
+    task = _dispatched(state, SESSION_A)
+    assert dispatch.idle_dispatches(state) == []
+    _age_the_lease(state, task["id"])
+    findings = dispatch.idle_dispatches(state)
+    assert [row["task_id"] for row in findings] == [task["id"]]
+    assert "no child was ever bound to it" in " ".join(findings[0]["reasons"])
+
+    os.remove(os.path.join(state.root, "tasks", "leases", task["id"] + ".lease.yaml"))
+    assert dispatch.idle_dispatches(state) == []
+
+
+def test_an_idle_finding_is_reported_once_and_again_only_when_it_changes(state):
+    """The bound that keeps a refusal from repeating itself every turn -- and its counter-half.
+
+    The caller refuses the END OF A TURN, which the assistant answers by continuing, so a finding
+    that stayed unreported after being said would refuse the next stop of the same continuation.
+    Comparing the REASONS is what makes "again" mean "something happened since" rather than
+    "another turn went by".
+
+    The reachable change: a dispatch reported for never having had a child gets one bound late
+    (`bind_agent` runs at PostToolUse and asks nothing about the clock), and that child then stops.
+    """
+    task = _dispatched(state, SESSION_A)
+    _age_the_lease(state, task["id"])
+    finding = dispatch.idle_dispatches(state)[0]
+    assert dispatch.mark_idle_reported(state, finding) is True
+    assert dispatch.mark_idle_reported(state, dispatch.idle_dispatches(state)[0]) is False
+
+    dispatch.bind_agent(state, task["id"], "child-late")
+    assert dispatch.idle_dispatches(state) == []            # a child on it is not a finding
+    assert dispatch.record_child_end(state, agent_id="child-late") == task["id"]
+    changed = dispatch.idle_dispatches(state)[0]
+    assert changed["why"] != finding["why"]
+    assert dispatch.mark_idle_reported(state, changed) is True
+
+
+def test_a_new_lease_clears_what_the_previous_runs_child_left_behind(state):
+    """A retry must not be reported as idle before its own child has even been asked for.
+
+    RED without the clear in `create_lease`: the FAILED -> READY -> LEASED path leaves
+    `child_ended` standing from the run that failed, so the next turn-end names the fresh dispatch
+    -- and `mark_idle_reported` finds its own previous answer, so the real finding later would be
+    swallowed as "already said".
+    """
+    task = _with_a_bound_child(state)
+    dispatch.record_child_end(state, agent_id="child-1")
+    dispatch.mark_idle_reported(state, dispatch.idle_dispatches(state)[0])
+    state.transition(task["id"], "FAILED")
+    state.transition(task["id"], "READY", approved_retry=True)
+    dispatch.create_lease(state, task["id"])
+    stored = state.read_item(task["id"])
+    assert dispatch.CHILD_ENDED not in stored and dispatch.IDLE_REPORTED not in stored
+    assert dispatch.idle_dispatches(state) == []
+
+
+def test_a_child_stop_the_kernel_cannot_attribute_is_refused_rather_than_guessed(state):
+    """The platform limit at the OTHER end of `bind_agent_by_role`'s: a stop that carries no
+    agent_id can only be matched by ROLE, and two dispatches of one role are two candidates.
+
+    Recording the end against the wrong one would report a specialist that is still working as
+    idle and refuse the lead's turn over it. Zero candidates is not an error either way -- every
+    subagent stop reaches this, including those of helpers the harness never dispatched.
+    """
+    first = _with_a_bound_child(state, "child-1")
+    second_task = _another_dispatch(state, "child-2")
+
+    with pytest.raises(dispatch.AmbiguousBinding) as refusal:
+        dispatch.record_child_end(state, agent_type=TSK_FIELDS["assigned_role"])
+    assert first["id"] in str(refusal.value) and second_task["id"] in str(refusal.value)
+    assert dispatch.idle_dispatches(state) == []
+    assert dispatch.record_child_end(state, agent_id="a-child-of-nobody") is None
+    # the id, however, is unambiguous even while both run
+    assert dispatch.record_child_end(state, agent_id="child-2") == second_task["id"]
+    assert [row["task_id"] for row in dispatch.idle_dispatches(state)] == [second_task["id"]]
+
+
+def test_a_stop_with_no_id_is_refused_while_an_unbound_dispatch_of_the_role_could_own_it(state):
+    """The misattribution that WAS measured: an unbound child's stop landed on a running dispatch.
+
+    A dispatch whose child the kernel never bound is exactly the one no record can identify, so a
+    role-matched stop looks the same whether it came from that child or from the bound one beside
+    it. Counting only the bound dispatch left one candidate and the guess was made -- and the
+    dispatch it was written onto was still working, which is the false idle report this whole
+    mechanism must not produce.
+
+    The counter-direction is in the same measurement: with the unbound dispatch gone from the
+    picture (its task off the lease-bearing statuses), the guess is single-owner again and lands.
+    """
+    running = _with_a_bound_child(state, "child-1")
+    unbound = _another_dispatch(state, agent_id=None)
+
+    with pytest.raises(dispatch.AmbiguousBinding) as refusal:
+        dispatch.record_child_end(state, agent_type=TSK_FIELDS["assigned_role"])
+    assert unbound["id"] in str(refusal.value) and running["id"] in str(refusal.value)
+    assert dispatch.CHILD_ENDED not in state.read_item(running["id"])
+    assert dispatch.idle_dispatches(state) == []
+
+    state.transition(unbound["id"], "FAILED")
+    assert dispatch.record_child_end(state, agent_type=TSK_FIELDS["assigned_role"]) == running["id"]
+
+
+def test_a_dispatch_whose_end_is_recorded_stops_competing_for_the_next_stop(state):
+    """The corpse must not switch the mechanism off for its role.
+
+    A dispatch whose child's end is already recorded cannot be the owner of a NEW stop, and without
+    that term it stays a possible owner for as long as the task stands -- so every later
+    role-matched stop of that role is refused as ambiguous and nothing is ever recorded again. The
+    task is still IN_PROGRESS here (nobody has acted on the finding yet), which is precisely the
+    state the lead is in while it reads the refusal.
+    """
+    first = _with_a_bound_child(state, "child-1")
+    dispatch.record_child_end(state, agent_id="child-1")
+    assert state.read_item(first["id"])["status"] == "IN_PROGRESS"
+    second = _another_dispatch(state, "child-2")
+
+    assert dispatch.record_child_end(state, agent_type=TSK_FIELDS["assigned_role"]) == second["id"]
+    assert [row["task_id"] for row in dispatch.idle_dispatches(state)] == sorted(
+        [first["id"], second["id"]])
+
+
+def test_a_long_running_dispatch_still_counts_as_a_possible_owner_of_a_role_matched_stop(state):
+    """WHY THE POSSIBLE OWNERS ARE NOT NARROWED BY THE CLOCK, measured against the shape that was
+    proposed to fix the corpse above.
+
+    A child may outlive its lease (`dispatch.LEASE_MINTED_STATUS`), so an expired lease says
+    nothing about whether its child is the one that just stopped. Drop the expired dispatch from
+    the count and this stop -- which may well be that long-running child's -- lands on the FRESH
+    dispatch of the same role instead, and reports a specialist that started seconds ago as idle.
+    Refusing is the direction that cannot end a live run.
+    """
+    long_running = _with_a_bound_child(state, "child-old")
+    _age_the_lease(state, long_running["id"])
+    fresh = _another_dispatch(state, "child-new")
+
+    with pytest.raises(dispatch.AmbiguousBinding) as refusal:
+        dispatch.record_child_end(state, agent_type=TSK_FIELDS["assigned_role"])
+    assert long_running["id"] in str(refusal.value) and fresh["id"] in str(refusal.value)
+    assert dispatch.CHILD_ENDED not in state.read_item(fresh["id"])
+    assert dispatch.idle_dispatches(state) == []
+
+
+def test_the_idle_finding_says_what_the_run_staged(state):
+    """The lead cannot answer honestly without knowing whether anything came of the run, and
+    staging is the one place a dispatched specialist may write with its own tools (spec II.4). The
+    pilot's own observation was this measurement made by hand: no file, empty staging.
+
+    A count and no judgement -- whether what is there carries the work forward is
+    `checkpoint-status`'s answer, which is what every message built on this points at.
+    """
+    task = _with_a_bound_child(state)
+    dispatch.record_child_end(state, agent_id="child-1")
+    assert "nothing was staged for it" in dispatch.idle_dispatches(state)[0]["staged"]
+    staged = staging.staging_dir(state, task["id"])
+    os.makedirs(staged, exist_ok=True)
+    with open(os.path.join(staged, "notes.md"), "w", encoding="utf-8") as handle:
+        handle.write("half a thought\n")
+    said = dispatch.idle_dispatches(state)[0]["staged"]
+    assert "1 entry" in said and "staging/%s" % task["id"] in said

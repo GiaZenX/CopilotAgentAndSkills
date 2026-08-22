@@ -1,0 +1,37 @@
+id: TSK-0080
+product_requirement: PR-0001
+derives_from: BUG-0058
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+required_inputs:
+- BUG-0058
+- docs/pilot/2026-08-22-pilot-4-befunde.md (P4-2 mechanism + half-2 transcripts under
+  v2-testbed/_round-scratch/TSK-0066/half2/)
+- kits dispatch/lease machinery (kernel state, dispatch guard, PM constitution + skill)
+  as the built surface
+expected_outputs:
+- a measured mechanism by which an idle dispatched specialist is surfaced to the PM
+  instead of staying IN_PROGRESS silently -- kit-side (lease/staging progress visibility
+  on the PM's answer path), with a test red without the fix
+- PM duty text aligned with the mechanism (no prose claiming protection the code does
+  not build)
+- mirrors byte-identical or KIT_SPECIFIC_HOOKS names the reason; bump_kit_version
+  run; full pytest tools/ green; gates suite if derivation surface moved
+dependencies:
+- BUG-0058
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-22T14:04:17'
+closed_at: '2026-08-22T19:47:21'

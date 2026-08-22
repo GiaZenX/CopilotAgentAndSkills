@@ -2561,6 +2561,206 @@ def test_the_retry_after_a_reconciled_claim_is_told_what_to_do(tmp_path):
     assert state.read_item(task["id"])["status"] == "READY"
 
 
+# -- the dispatch nobody is working on any more (BUG-0058, pilot 4 P4-2) ------
+
+def _stop(tmp_path, **extra):
+    return dict({"hook_event_name": "Stop", "cwd": str(tmp_path)}, **extra)
+
+
+def _child_stop(tmp_path, message="summary: nothing came of it", **extra):
+    return dict({"hook_event_name": "SubagentStop", "cwd": str(tmp_path),
+                 "agent_id": "child-1", "agent_type": "backend-developer",
+                 "last_assistant_message": message}, **extra)
+
+
+def _running_dispatch(tmp_path):
+    """The state pilot 4 half 2 measured: IN_PROGRESS, live lease, a background child bound to it.
+
+    Driven through the real hook processes, because the whole finding is about what the LEAD is
+    handed at the end of its turn and every step of that is a hook: the spawn claims, the
+    `async_launched` response — the shape a background spawn really reports — binds and starts.
+    """
+    state, task, header = dispatched_repo(tmp_path)
+    assert run_dispatch(tmp_path, spawn_payload(tmp_path, header)).returncode == 0
+    started = spawn_payload(tmp_path, header, event="PostToolUse",
+                            tool_response={"status": "async_launched", "agentId": "child-1"})
+    assert run_dispatch(tmp_path, started).returncode == 0
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+    return state, task
+
+
+def test_the_turn_end_is_refused_for_a_dispatch_whose_child_stopped(tmp_path):
+    """BUG-0058 / pilot 4 P4-2, driven through the events the provider really delivers.
+
+    THE MEASURED FAILURE: the dispatched specialist made two tool calls, produced no file and
+    stopped; the task stayed IN_PROGRESS with a live lease and an empty staging directory, and the
+    lead answered NINE consecutive user turns with waiting phrases without one follow-up call.
+    Nothing in the apparatus asked whether anything was still behind that status.
+
+    RED without the fix: the second Stop exits 0 with an empty stderr, exactly like the first —
+    the lead ends the turn with nothing in front of it and says "I will let you know" again.
+
+    The control is the FIRST stop: while the child is running the turn ends untouched, so this
+    cannot be satisfied by refusing every turn that has a dispatch open. And the task is not
+    MOVED by any of it: the finding is reported, and what to do about it stays the lead's.
+    """
+    state, task = _running_dispatch(tmp_path)
+    while_running = run_dispatch(tmp_path, _stop(tmp_path))
+    assert while_running.returncode == 0, while_running.stderr
+    assert task["id"] not in while_running.stderr
+
+    assert run_dispatch(tmp_path, _child_stop(tmp_path)).returncode == 0
+    refused = run_dispatch(tmp_path, _stop(tmp_path))
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert task["id"] in refused.stderr
+    assert "no result was booked" in refused.stderr
+    assert "nothing was staged for it" in refused.stderr
+    # the way out is named, and it is the automaton's own edge rather than a status typed here
+    assert dispatch.no_progress_status("IN_PROGRESS") in refused.stderr
+    assert "checkpoint-status" in refused.stderr and "submit-result" in refused.stderr
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+
+
+def test_a_turn_that_ends_over_a_child_which_outlived_its_lease_is_not_refused(tmp_path):
+    """THE FALSE POSITIVE AT THE LAYER THE LEAD MEETS IT, and its chain ran to work loss.
+
+    A running child may hold IN_PROGRESS past its lease's expiry -- `dispatch.LEASE_MINTED_STATUS`
+    says so -- and an earlier cut of this gate refused the turn-end over exactly that, with a
+    remedy that takes the task to FAILED. Following it drops the lease, `task_for_agent` then
+    resolves nothing, and the child's own `submit-result` is refused: the work of a specialist that
+    was still going is what the refusal would have cost.
+
+    Measured through the real Stop process, and the second assertion is what the first is for: the
+    dispatch is untouched and its result can still be booked.
+    """
+    state, task = _running_dispatch(tmp_path)
+    path = os.path.join(state.root, "tasks", "leases", task["id"] + ".lease.yaml")
+    lease = state._read_yaml(path)
+    lease["created_epoch"] = time.time() - float(lease["ttl"]) - 1.0
+    state._write_yaml_atomic(path, lease)
+    assert not dispatch.lease_in_force(state, task["id"])
+
+    result = run_dispatch(tmp_path, _stop(tmp_path))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert task["id"] not in result.stderr
+    assert dispatch.task_for_agent(state, "child-1")["id"] == task["id"]
+    assert state.read_item(task["id"])["status"] == "IN_PROGRESS"
+
+
+def test_the_same_idle_finding_refuses_only_one_turn_end(tmp_path):
+    """A refused stop is answered by CONTINUING, and the condition outlives the refusal — so a
+    finding that could refuse twice would hold the session in a loop with no way out.
+
+    Both bounds are measured, because either alone is one provider change away from being nothing:
+    the harness's own record (`dispatch.mark_idle_reported`), and `stop_hook_active`, the key the
+    provider sets on a continuation a stop hook caused — the same one `gate_subagent_output` has
+    relied on since BUG-0049.
+    """
+    _state, task = _running_dispatch(tmp_path)
+    run_dispatch(tmp_path, _child_stop(tmp_path))
+    assert run_dispatch(tmp_path, _stop(tmp_path)).returncode == 2
+    again = run_dispatch(tmp_path, _stop(tmp_path))
+    assert again.returncode == 0, again.stderr
+    assert task["id"] not in again.stderr
+
+    # ...and the other bound, measured on a finding that has NOT been said yet
+    second = tmp_path.parent / (tmp_path.name + "-b")
+    _state2, task2 = _running_dispatch(second)
+    run_dispatch(second, _child_stop(second))
+    held = run_dispatch(second, _stop(second, stop_hook_active=True))
+    assert held.returncode == 0, held.stderr
+    assert task2["id"] not in held.stderr
+    # standing down is not forgetting: the next ordinary stop still says it
+    assert run_dispatch(second, _stop(second)).returncode == 2
+
+
+def test_a_reconciled_claim_does_not_swallow_the_idle_finding_beside_it(tmp_path):
+    """TWO THINGS CAN BE TRUE OF ONE TURN-END, and the reconciliation used to eat the other one.
+
+    `Stop` does two jobs: it gives back a claim that never produced a child, and it names the
+    dispatches nothing is working on. The first reports through `_report`, which exits — so a turn
+    in which BOTH happened ended silently on the second, and the finding waited for a turn in which
+    no claim needed reconciling. Measured here with both in one Stop: the claim goes back to READY,
+    and the idle dispatch beside it is still refused over.
+    """
+    state, running = _running_dispatch(tmp_path)
+    never_started = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
+    state.transition(never_started["id"], "READY")
+    header = dispatch.dispatch_header(dispatch.create_lease(state, never_started["id"]))
+    assert run_dispatch(tmp_path, spawn_payload(tmp_path, header)).returncode == 0
+    _close_the_bind_window(state, never_started["id"])
+    run_dispatch(tmp_path, _child_stop(tmp_path))
+
+    result = run_dispatch(tmp_path, _stop(tmp_path))
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "returned to READY" in result.stderr and never_started["id"] in result.stderr
+    assert running["id"] in result.stderr, (
+        "the reconciliation reported and the idle dispatch beside it was never named: %s"
+        % result.stderr)
+    assert state.read_item(never_started["id"])["status"] == "READY"
+
+
+def _registered_chain_command(claude_dir, tmp_path, event, gate):
+    """The command line settings.json registers for `event` that runs `gate` — READ, not built.
+
+    The ORDER of that chain is the whole subject of the test below, so a test that assembled its
+    own command line would be measuring itself. Same reader as `registered_hooks`
+    (`kernel.report._invoked_scripts`), for the reason that one gives.
+    """
+    settings = json.load(open(os.path.join(claude_dir, "settings.json"), encoding="utf-8"))
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.report import _invoked_scripts
+    found = [hook["command"] for entry in settings["hooks"][event]
+             for hook in entry.get("hooks") or []
+             if gate in _invoked_scripts(hook.get("command", ""))]
+    assert len(found) == 1, "expected ONE %s command running %s, got %d" % (event, gate,
+                                                                           len(found))
+    parts = found[0].replace("${CLAUDE_PROJECT_DIR}", str(tmp_path)).replace('"', "").split()
+    assert parts[0].startswith("python"), parts
+    return [sys.executable] + parts[1:]
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_a_child_told_to_continue_is_not_recorded_as_having_ended(tmp_path, kit):
+    """WHY THE RECORDER IS LAST IN THE SubagentStop CHAIN, measured on the shipped registration.
+
+    `gate_subagent_output` exits 2 on a final message without its output contract, and the child
+    then KEEPS WORKING — so that stop is not an end. A recorder in front of it would write one
+    anyway, and the lead's next turn-end would be refused over a specialist that is still running:
+    the mechanism would produce the false alarm that teaches a lead to ignore it.
+
+    Both directions through the SHIPPED command line, so the property belongs to the registration
+    and not to this test: the blocked stop records nothing, and the same chain on a
+    contract-honouring stop records the end.
+    """
+    claude = _install_enforcement_bundle(tmp_path, kit)
+    state, task, header = dispatched_repo(tmp_path)
+    run_dispatch(tmp_path, spawn_payload(tmp_path, header))
+    run_dispatch(tmp_path, spawn_payload(tmp_path, header, event="PostToolUse",
+                                         tool_response={"status": "async_launched",
+                                                        "agentId": "child-1"}))
+    command = _registered_chain_command(claude, tmp_path, "SubagentStop", "gate_dispatch.py")
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    env.pop("HARNESS_KERNEL_PATH", None)          # the installed bundle carries its own kernel
+
+    def child_stops(message):
+        return subprocess.run(command, input=json.dumps(_child_stop(tmp_path, message)),
+                              capture_output=True, text=True, env=env, timeout=180)
+
+    blocked = child_stops("I did not manage anything, sorry.")
+    assert blocked.returncode == 2, blocked.stdout + blocked.stderr
+    assert "output-contract" in blocked.stderr
+    assert dispatch.CHILD_ENDED not in state.read_item(task["id"]), (
+        "%s: the child was told to keep working and its dispatch was recorded as ended anyway "
+        "— the recorder runs in front of the gate that can refuse this stop" % kit)
+    assert run_dispatch(tmp_path, _stop(tmp_path)).returncode == 0
+
+    honoured = child_stops("summary: nothing came of it")
+    assert honoured.returncode == 0, honoured.stdout + honoured.stderr
+    assert state.read_item(task["id"]).get(dispatch.CHILD_ENDED), (
+        "%s: a stop the chain let through recorded no end, so the finding can never arise" % kit)
+
+
 def _install_enforcement_bundle(tmp_path, kit, roles=("project-manager", "backend-developer")):
     """Put a kit's hooks, kernel, settings and agent files where a scaffolded project has them.
 
@@ -2605,14 +2805,65 @@ def _registered_spawn_command(claude_dir, tmp_path):
     return [sys.executable] + parts[1:]
 
 
-def _chain_gates(claude_dir, tmp_path):
-    """[(gate filename, argv to run that gate ALONE through the shipped launcher)], in order."""
-    command = _registered_spawn_command(claude_dir, tmp_path)
+def _chain_gates(command, project_dir):
+    """[(gate filename, argv to run that gate ALONE through the shipped launcher)], in order.
+
+    `command` is a registered command line, `${CLAUDE_PROJECT_DIR}` and all — read off a
+    settings.json, never assembled here (see `_registered_spawn_command` for why that matters).
+    """
+    command = command.replace("${CLAUDE_PROJECT_DIR}", str(project_dir)).replace('"', "").split()
+    assert command[0].startswith("python"), command
+    command = [sys.executable] + command[1:]
     scripts = [index for index, token in enumerate(command) if token.endswith(".py")]
     assert len(scripts) >= 2, command          # the launcher plus at least one gate
     prefix, launcher = command[:scripts[0]], command[scripts[0]]
     return [(os.path.basename(command[index]),
              prefix + [launcher, command[index]]) for index in scripts[1:]]
+
+
+def _multi_gate_chains(kit):
+    """[(event, command)] for every registration of `kit` that runs MORE THAN ONE gate.
+
+    Read off the shipped settings, so a chain added on a new event is in the subject of the rule
+    below the day it ships rather than the day somebody remembers it.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.report import _invoked_scripts
+    path = os.path.join(TEAM_KITS, kit, "settings", "settings.json")
+    settings = json.load(open(path, encoding="utf-8"))
+    return [(event, hook["command"])
+            for event, entries in (settings.get("hooks") or {}).items()
+            for entry in entries
+            for hook in entry.get("hooks") or []
+            if len(_invoked_scripts(hook.get("command", ""))) > 2]      # launcher + >= 2 gates
+
+
+def _a_spawn_the_chain_accepts(root):
+    """A project with a leased task, and the PreToolUse(Agent) call its spawn chain accepts."""
+    state, _task, header = dispatched_repo(root)
+    return state, {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(root),
+                   "tool_input": {"subagent_type": "backend-developer",
+                                  "run_in_background": False,
+                                  "prompt": "objective: do it\n%s\noutput: a result" % header}}
+
+
+def _a_child_stop_the_chain_accepts(root):
+    """A project with a running dispatch, and the SubagentStop its chain lets through.
+
+    The final message honours the output contract on purpose: a stop the first gate REFUSES is a
+    continuation and not an end, so it would measure the wrong thing here (that half is
+    `test_a_child_told_to_continue_is_not_recorded_as_having_ended`).
+    """
+    state, _task = _running_dispatch(root)
+    return state, _child_stop(root)
+
+
+# The payload that reaches the mutating step of a chain, per EVENT — a fixture list, and the test
+# below refuses a chain it has none for, so a new multi-gate chain cannot join the tree unmeasured.
+_CHAIN_PAYLOADS = {
+    "PreToolUse": _a_spawn_the_chain_accepts,
+    "SubagentStop": _a_child_stop_the_chain_accepts,
+}
 
 
 def _canonical_state(root):
@@ -2638,19 +2889,26 @@ def _canonical_state(root):
 
 @pytest.mark.parametrize("kit", KITS)
 def test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refuse(tmp_path, kit):
-    """THE PROPERTY, DERIVED BY RUNNING IT — not a filename asserted to be last.
+    """THE PROPERTY, DERIVED BY RUNNING IT — not a filename asserted to be last, and not one event.
 
-    The rule behind the chained registration is: a gate that CHANGES the project state must not
-    decide before every gate that could still refuse the same call has spoken, because a PreToolUse
-    sibling's exit 2 does not stop it (measured 2026-08-02). Written as "gate_dispatch is the last
-    token" that rule covered exactly one file and exactly today: a SECOND gate that started
-    mutating, or an existing one that grew a write, would walk straight past it.
+    The rule behind every chained registration is: a gate that CHANGES the project state must not
+    decide before every gate that could still refuse the same call has spoken, because a sibling's
+    exit 2 does not stop it (measured 2026-08-02). Written as "gate_dispatch is the last token"
+    that rule covered exactly one file and exactly today: a SECOND gate that started mutating, or
+    an existing one that grew a write, would walk straight past it.
 
-    So membership is measured instead of named. Each gate of the registered chain is run ALONE,
-    as a real process through the shipped launcher, against its own restored copy of one project
-    state, on a spawn payload the chain as a whole accepts. A gate is MUTATING when the canonical
-    state differs afterwards. The verdict the gate returns is not part of the question — a gate
-    that refuses AND writes is exactly the case being hunted.
+    AND IT IS NOT A RULE ABOUT PreToolUse EITHER, which is what this used to measure. The kits ship
+    a second chain — `SubagentStop`, where `gate_subagent_output` can turn the stop into a
+    continuation and `gate_dispatch` records the child's end (BUG-0058) — and it was covered by
+    nothing but a filename order in a settings comment. Every registration that runs more than one
+    gate is now the subject (`_multi_gate_chains`), and a chain on an event this file has no
+    payload for FAILS rather than being skipped, so a new one cannot join the tree unmeasured.
+
+    Membership is measured instead of named. Each gate of a chain is run ALONE, as a real process
+    through the shipped launcher, against its own restored copy of one project state, on a payload
+    the chain as a whole accepts. A gate is MUTATING when the canonical state differs afterwards.
+    The verdict the gate returns is not part of the question — a gate that refuses AND writes is
+    exactly the case being hunted.
 
     Two assertions follow from the rule, and they are the whole of it:
       * at most ONE gate of a chain may mutate, because a second mutating gate necessarily stands
@@ -2659,45 +2917,52 @@ def test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refu
     The control is the third assertion: some gate must have mutated, or the fixture never reached
     the code under test and the two above are vacuous.
 
-    WHAT IT STILL CANNOT SEE, named rather than implied: a gate that mutates only on an input this
+    WHAT IT STILL CANNOT SEE, named rather than implied: a gate that mutates only on an input the
     fixture does not produce reads as non-mutating here. The measurement is as good as the payload,
-    which is why the payload is the same accepted spawn the chain test above uses.
+    which is why each payload is one the chain really accepts.
     """
-    claude = _install_enforcement_bundle(tmp_path, kit)
-    state, _task, header = dispatched_repo(tmp_path)
-    gates = _chain_gates(claude, tmp_path)
-    payload = json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Agent",
-                          "cwd": str(tmp_path),
-                          "tool_input": {"subagent_type": "backend-developer",
-                                         "run_in_background": False,
-                                         "prompt": "objective: do it\n%s\noutput: a result"
-                                                   % header}})
-    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
-    env.pop("HARNESS_KERNEL_PATH", None)
+    chains = _multi_gate_chains(kit)
+    assert chains, "%s: no chained registration at all — the rule below has no subject" % kit
+    unmeasurable = sorted({event for event, _command in chains} - set(_CHAIN_PAYLOADS))
+    assert not unmeasurable, (
+        "%s registers a multi-gate chain on %s and this test has no payload that reaches its "
+        "mutating step. Add one to _CHAIN_PAYLOADS; a chain nobody can drive is a chain whose "
+        "order nothing checks." % (kit, unmeasurable))
 
-    pristine = os.path.join(str(tmp_path), "pristine")
-    shutil.copytree(state.root, pristine)
-    mutating = []
-    for gate, argv in gates:
+    for event, command in chains:
+        root = tmp_path / event
+        _install_enforcement_bundle(root, kit)
+        state, payload_data = _CHAIN_PAYLOADS[event](root)
+        gates = _chain_gates(command, root)
+        payload = json.dumps(payload_data)
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root))
+        env.pop("HARNESS_KERNEL_PATH", None)      # the installed bundle carries its own kernel
+
+        pristine = os.path.join(str(root), "pristine")
+        shutil.copytree(state.root, pristine)
+        mutating = []
+        for gate, argv in gates:
+            shutil.rmtree(state.root)
+            shutil.copytree(pristine, state.root)       # every gate meets the SAME state
+            before = _canonical_state(root)
+            subprocess.run(argv, input=payload, capture_output=True, text=True, env=env,
+                           timeout=180)
+            if _canonical_state(root) != before:
+                mutating.append(gate)
         shutil.rmtree(state.root)
-        shutil.copytree(pristine, state.root)           # every gate meets the SAME state
-        before = _canonical_state(tmp_path)
-        subprocess.run(argv, input=payload, capture_output=True, text=True, env=env, timeout=180)
-        if _canonical_state(tmp_path) != before:
-            mutating.append(gate)
-    shutil.rmtree(state.root)
-    shutil.copytree(pristine, state.root)
+        shutil.copytree(pristine, state.root)
 
-    names = [gate for gate, _argv in gates]
-    assert mutating, (
-        "%s: no gate of the spawn chain %s changed the state on an accepted spawn — the fixture "
-        "never reached the mutating step, so this measurement proves nothing" % (kit, names))
-    assert len(mutating) == 1, (
-        "%s: %s both mutate the state on one call, so the earlier one pays for a spawn the later "
-        "one can still refuse. Chain order: %s" % (kit, mutating, names))
-    assert mutating[0] == names[-1], (
-        "%s: %s changes the state and is not last in the chain %s — every gate after it can still "
-        "exit 2, and nothing gives back what it wrote." % (kit, mutating[0], names))
+        names = [gate for gate, _argv in gates]
+        where = "%s %s chain %s" % (kit, event, names)
+        assert mutating, (
+            "%s: no gate changed the state on a call the chain accepts — the fixture never "
+            "reached the mutating step, so this measurement proves nothing" % where)
+        assert len(mutating) == 1, (
+            "%s: %s both mutate the state on one call, so the earlier one pays for a call the "
+            "later one can still refuse" % (where, mutating))
+        assert mutating[0] == names[-1], (
+            "%s: %s changes the state and is not last — every gate after it can still exit 2, and "
+            "nothing gives back what it wrote" % (where, mutating[0]))
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -2830,7 +3095,9 @@ def test_the_longest_registered_chain_runs_all_four_gates_on_one_payload(tmp_pat
                                        "roles": ["backend-developer"]})
     procedure = walk_to_status(state, procedure, "APPROVED")
     command = _registered_spawn_command(claude, tmp_path)
-    assert len(_chain_gates(claude, tmp_path)) == 4, command
+    spawn_chain = [line for event, line in _multi_gate_chains(kit) if event == "PreToolUse"]
+    assert len(spawn_chain) == 1, spawn_chain
+    assert len(_chain_gates(spawn_chain[0], tmp_path)) == 4, command
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
     env.pop("HARNESS_KERNEL_PATH", None)
     payload = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(tmp_path),
@@ -12719,9 +12986,16 @@ def test_the_dispatch_gate_sees_the_whole_spawn_lifecycle(kit):
     `Stop` replaced `PermissionDenied` here, and that is the point of the row rather than a
     cosmetic swap: the old pair of failure events was the only way back from a spent lease, and
     one of the two was measured never to fire. Stop needs no cooperation from the failing call —
-    see `test_a_claim_whose_child_never_arrived_returns_the_task_to_ready_at_stop`."""
+    see `test_a_claim_whose_child_never_arrived_returns_the_task_to_ready_at_stop`.
+
+    `SubagentStop` is the sixth, and it carries the other half of BUG-0058: the END of a child is
+    an event delivered to nobody who acts on it, so it is recorded there and read at the lead's
+    next turn-end. Without this registration `dispatch.idle_dispatches` has only its lease term
+    left and the pilot's nine waiting turns pass unnoticed for a whole TTL —
+    `test_the_turn_end_is_refused_for_a_dispatch_whose_child_stopped` is that chain."""
     events = set(registered_hooks(kit).get("gate_dispatch.py", {}))
-    for event in ("PreToolUse", "SubagentStart", "PostToolUse", "PostToolUseFailure", "Stop"):
+    for event in ("PreToolUse", "SubagentStart", "PostToolUse", "PostToolUseFailure",
+                  "SubagentStop", "Stop"):
         assert event in events, "%s: gate_dispatch missing %s" % (kit, event)
 
 

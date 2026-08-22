@@ -131,8 +131,9 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "926e89b5e773c11c",
+        "digest": "cc31eaf843e20d79",
         "hooks": [
+          "gate_dispatch",
           "gate_subagent_output",
           "gate_test_coverage"
         ]
@@ -159,7 +160,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "554f65abe0b3ae6e",
+        "digest": "526e46208a9ee8b7",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -348,8 +349,9 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "539af2c81eb666c0",
+        "digest": "5e916809cbf63bb6",
         "hooks": [
+          "gate_dispatch",
           "gate_subagent_output"
         ]
       },
@@ -380,7 +382,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "142bcbaddb351279",
+        "digest": "7e7eb26130341350",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -570,8 +572,9 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "c52dc9ca854b4939",
+        "digest": "cb16545959ced747",
         "hooks": [
+          "gate_dispatch",
           "gate_subagent_output"
         ]
       },
@@ -597,7 +600,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "3076fe31c1792fa4",
+        "digest": "6609ddeab6b127d2",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",

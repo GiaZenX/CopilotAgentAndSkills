@@ -42,6 +42,7 @@ from .backlog_types import (
     field_elements,
     parse_id,
 )
+from .lock import ext_path
 from .schemas import validate
 from .state import ProjectState, StateError, _now_iso
 
@@ -259,6 +260,11 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
         state._write_yaml_atomic(lease_path, lease)
         task["status"] = LEASE_MINTED_STATUS
         task["leased_at"] = _now_iso()
+        # A NEW LEASE IS A NEW DISPATCH, so what the PREVIOUS run's child did stops being evidence
+        # about this task here. Left standing, the records would report a retry as idle before its
+        # child has even been asked for -- see `idle_dispatches` and `CHILD_ENDED`.
+        task.pop(CHILD_ENDED, None)
+        task.pop(IDLE_REPORTED, None)
         state._write_yaml_atomic(state.active_path(task_id), task)
         state._regenerate_index_locked()
         return lease
@@ -1201,6 +1207,271 @@ def sweep_orphaned_dispatches(state: ProjectState, session_id: str):
         record.setdefault("why", "no dispatching session is recorded for it, so whether a child was "
                                  "ever asked for by another session cannot be decided here")
     return swept, left
+
+
+# -- the dispatch nobody is working on any more (BUG-0058) --------------------------------------
+
+# WHERE THE END OF A CHILD IS RECORDED, and it is the TASK for the reason DISPATCHING_SESSION also
+# rides on it: the lease is the record that goes away FIRST (`sweep_expired_leases` drops it while
+# leaving an IN_PROGRESS task standing), while this fact is read at the end of a LATER turn --
+# arbitrarily long after the child stopped. `create_lease` clears it, because a new lease is a new
+# dispatch and the previous run's child says nothing about this one.
+CHILD_ENDED = "child_ended"
+
+# WHAT THE LEAD WAS LAST TOLD about this dispatch: the sentence itself, not a counter and not a
+# digest. `idle_dispatches` composes it and `mark_idle_reported` compares against it, so the
+# surfacing speaks at most once per FINDING rather than once per turn -- and again the moment the
+# finding changes. Kept readable in the item on purpose: a task file that says what was surfaced
+# needs no second store to explain a refusal somebody met an hour ago. ONE STRING and not the list
+# of reasons, because a list on an item is a shape other readers have a rule about
+# (`backlog_types.REFERENCE_LIST_FIELDS`, and BUG-0038 is what a scalar read as a sequence costs);
+# what is stored here holds prose and no references, so it stays a scalar.
+IDLE_REPORTED = "idle_reported"
+
+
+def _lease_bearing_dispatches_locked(state: ProjectState):
+    """(task_id, task, lease) for every lease whose task still stands in a lease-bearing status.
+
+    The caller holds the lock. Everything that asks "which dispatch does this belong to" starts
+    here and narrows from it, so the narrowing terms stay visible at their own call site instead of
+    being baked into the walk.
+    """
+    for lease in _iter_leases(state):
+        task_id = str(lease["task_id"])
+        try:
+            task = state.read_item(task_id)
+        except StateError:
+            continue
+        if task.get("status") in LEASE_BEARING_STATUSES:
+            yield task_id, task, lease
+
+
+def _dispatches_a_stop_could_belong_to(state: ProjectState):
+    """The dispatches whose child could be the one that just stopped. The caller holds the lock.
+
+    ONE narrowing, and it is the only thing that can be said with certainty about a stop: a
+    dispatch whose child's end is ALREADY RECORDED cannot be the owner of a NEW one. Everything
+    else stays in -- an UNBOUND dispatch belongs here because its child is precisely the one no
+    record can identify, and an EXPIRED lease belongs here because a child may outlive its lease
+    (`LEASE_MINTED_STATUS`), so its window running out says nothing about whether its child is the
+    one that stopped.
+
+    Both were measured rather than reasoned into place. Without the recorded-end term the corpse of
+    pilot 4 stays a possible owner for every later stop of the same role forever, and the ambiguity
+    refusal in `record_child_end` then turns the whole mechanism off for that role
+    (`test_a_dispatch_whose_end_is_recorded_stops_competing_for_the_next_stop`). With an EXPIRY
+    term added on top -- the shape a review proposed against exactly that poison -- a stop of a
+    long-running child lands on the fresh same-role dispatch beside it, which is the misattribution
+    this whole function exists to avoid
+    (`test_a_long_running_dispatch_still_counts_as_a_possible_owner_of_a_role_matched_stop`).
+    """
+    for task_id, task, lease in _lease_bearing_dispatches_locked(state):
+        if not task.get(CHILD_ENDED):
+            yield task_id, task, lease
+
+
+def record_child_end(state: ProjectState, agent_id: str = None, agent_type: str = None):
+    """Record that a dispatch's child has STOPPED; returns the task id, or None when this stop
+    belongs to no dispatch this kernel can name.
+
+    WHY IT IS WRITTEN DOWN AT ALL: the end of a child is an EVENT, and the party that has to know
+    about it -- the lead, at the end of one of its own later turns -- is not the party the event is
+    delivered to. Without a record, "is anything still working on this task?" is a question no
+    reader can answer, which is the state pilot 4 measured (BUG-0058; see `idle_dispatches`).
+
+    TWO ATTRIBUTIONS, AND THEY ARE NOT THE SAME KIND OF ANSWER:
+      * `agent_id` is an IDENTITY. The lease that names it IS this child's dispatch; nothing is
+        matched and nothing is guessed.
+      * the ROLE is a GUESS, taken only when the payload carries no id, and it is made ONLY when
+        exactly one dispatch of that role could be the owner at all -- counting every one this
+        kernel cannot rule out (`_dispatches_a_stop_could_belong_to`), the UNBOUND ones included.
+        An unbound dispatch's child is exactly the one no record can identify, so leaving it out of
+        the count is what wrote the stop of an unbound child onto a RUNNING same-role dispatch
+        beside it -- measured, and the counter-direction is
+        `test_a_stop_with_no_id_is_refused_while_an_unbound_dispatch_of_the_role_could_own_it`.
+        Where the single possible owner is itself unbound, there is nothing to record: no record
+        ties that child to that dispatch, and writing one would be the same guess in one step.
+
+    Zero candidates is None and not an error: every subagent stop reaches this, including those of
+    helpers the harness never dispatched, and including a second stop of a child whose end is
+    already recorded.
+
+    WHAT IT CANNOT SEE: a child whose lease is already GONE (the TTL sweep drops it while the task
+    stays IN_PROGRESS) has no `agent_id` mapping left, so its end is unattributable here -- and
+    `idle_dispatches` does not carry that case either, since a running child is indistinguishable
+    from a dead one once every record of it is gone. It is a hole with a name, not a covered case.
+    """
+    with state.lock:
+        possible = list(_dispatches_a_stop_could_belong_to(state))
+        if agent_id:
+            candidates = [row for row in possible
+                          if str(row[2].get("agent_id")) == str(agent_id)]
+        elif agent_type:
+            owners = [row for row in possible
+                      if str(row[1].get("assigned_role")) == str(agent_type)]
+            if len(owners) > 1:
+                raise AmbiguousBinding(
+                    "%d dispatches of the role %r could own this stop (%s) and it carries no "
+                    "agent_id -- refusing to guess which of them ended, because recording the end "
+                    "against the wrong task reports a specialist that is still working as idle. "
+                    "Remedy: dispatch tasks of the SAME role sequentially; different roles in "
+                    "parallel are unaffected."
+                    % (len(owners), agent_type, ", ".join(sorted(row[0] for row in owners))))
+            candidates = [row for row in owners if row[2].get("agent_id")]
+        else:
+            candidates = []
+        if not candidates:
+            return None
+        task_id, task, _lease = candidates[0]
+        task[CHILD_ENDED] = _now_iso()
+        state._write_yaml_atomic(state.active_path(task_id), task)
+        state._regenerate_index_locked()      # see `mark_idle_reported` -- a task is a board card
+        return task_id
+
+
+def _window_ran_out_with_no_child(state: ProjectState, task_id: str) -> bool:
+    """Is there a lease for this task that names no child and whose window has passed?
+
+    The caller holds the lock. All three terms are read off the ONE record that can carry them, and
+    a MISSING lease answers False on purpose: once the TTL sweep has taken the lease away, whether
+    a child was ever bound is not a question this kernel can still answer, and False is what "we
+    cannot say" has to mean for a term that produces a refusal.
+    """
+    if not os.path.exists(_lease_path(state, task_id)):
+        return False
+    try:
+        lease = _read_lease(state, task_id)
+    except DispatchError:
+        return False
+    return not lease.get("agent_id") and _expired(lease)
+
+
+def staged_progress(state: ProjectState, task_id: str) -> str:
+    """One sentence about what this dispatch has PUT ON DISK, measured rather than assumed.
+
+    The top level of the task's staging directory, which is the one place a dispatched specialist
+    may write with its own tools (spec II.4) -- so "nothing there" is the same observation the
+    pilot made by hand about the run that produced no file. A COUNT and no judgement: whether what
+    is there carries the work forward is what `checkpoint-status` answers, and every message built
+    on this points at that command instead of pretending to have asked it.
+    """
+    directory = os.path.join(state.staging_root(), task_id)
+    where = os.path.relpath(directory, state.root).replace(os.sep, "/")
+    try:
+        entries = os.listdir(ext_path(directory))
+    except OSError:
+        return "nothing was staged for it (%s does not exist)" % where
+    if not entries:
+        return "nothing was staged for it (%s is empty)" % where
+    return "%d entr%s under %s" % (len(entries), "y" if len(entries) == 1 else "ies", where)
+
+
+def idle_dispatches(state: ProjectState) -> list:
+    """Every dispatch this kernel has a RECORD saying no child is on it, with what it staged.
+
+    THE FAILURE THIS MAKES VISIBLE, measured in pilot 4 half 2 (BUG-0058, P4-2 in
+    docs/pilot/2026-08-22-pilot-4-befunde.md): a dispatched specialist made two tool calls,
+    produced no file and stopped; the lead then answered NINE consecutive user turns with waiting
+    phrases and made not one follow-up call, while the task sat in IN_PROGRESS with a live lease
+    and an empty staging directory. Nothing asked whether anything was still behind that status.
+
+    WHAT A FINDING IS -- a POSITIVE record, never the absence of one, and the difference is the
+    whole correction this function has behind it:
+      * its child's end is recorded (`CHILD_ENDED`, written at that child's SubagentStop), or
+      * NOTHING WAS EVER BOUND to it and its dispatch window has run out: the lease is still there,
+        it names no `agent_id`, and its TTL has passed. Nobody was ever tracking a run on it.
+    A task in a lease-bearing status that matches neither is silent here.
+
+    THE TERM THAT IS DELIBERATELY ABSENT, because it was WRONG and its chain ran to work loss: "no
+    lease in force" on its own. A running child may legitimately outlive its lease -- that is a
+    documented property of this lifecycle, stated at `LEASE_MINTED_STATUS` -- so that term reported
+    specialists that were still working; measured, and the remedy it carried (take the task to the
+    no-progress status) would have unbound a live child and made its `submit-result` refusable.
+    `test_a_bound_child_that_outlived_its_lease_is_not_reported_as_idle` is the counter-direction,
+    and it goes red the moment the term comes back.
+
+    A finding is REPORTED, never moved: what to do about it is the lead's judgement (book a
+    handed-back envelope, adopt a checkpoint, or take the task onto the automaton's no-progress
+    edge), and a kernel that decided it would be guessing at work it cannot see. `no_progress_status`
+    rides along so the reader that prints this does not have to name a status the automaton might
+    not offer.
+
+    WHAT THIS DOES NOT SEE, and both are holes with names rather than covered cases: a BOUND child
+    whose SubagentStop never arrives is indistinguishable here from one that is still working, for
+    as long as the task stands; and once the TTL sweep has removed the lease of such a task, no
+    record of it is left at all. What this DOES report about a run nobody stopped is the unbound
+    case above -- and an unbound child, if one is running, is one gate layer 3 refuses every write
+    from, so what is reported there is a dispatch that can produce nothing either way.
+    """
+    findings = []
+    with state.lock:
+        for stem, _path in state.iter_active_items("TSK"):
+            try:
+                task = state.read_item(stem)
+            except StateError:
+                continue
+            status = task.get("status")
+            if status not in LEASE_BEARING_STATUSES:
+                continue
+            reasons = []
+            ended = task.get(CHILD_ENDED)
+            if ended:
+                reasons.append("its child stopped at %s and no result was booked" % ended)
+            if _window_ran_out_with_no_child(state, stem):
+                reasons.append("no child was ever bound to it and its dispatch window of %d s has "
+                               "run out, so nothing here was ever tracking a run on it"
+                               % DEFAULT_LEASE_TTL)
+            if not reasons:
+                continue
+            findings.append({"task_id": stem,
+                             "status": status,
+                             "assigned_role": task.get("assigned_role"),
+                             "reasons": reasons,
+                             # THE FINDING AS ONE SENTENCE, composed once: `mark_idle_reported`
+                             # compares this against what was last said and the reader that prints
+                             # it prints this, so "the same finding" cannot come to mean two
+                             # things -- which is what deciding it twice would eventually buy.
+                             "why": "; ".join(reasons),
+                             "no_progress_status": no_progress_status(status),
+                             "staged": staged_progress(state, stem)})
+    return sorted(findings, key=operator.itemgetter("task_id"))
+
+
+def mark_idle_reported(state: ProjectState, finding: dict) -> bool:
+    """Record that the lead was told THIS finding; True when it had not been told this one before.
+
+    THE BOUND ON A REFUSAL THAT WOULD OTHERWISE REPEAT ITSELF. The caller refuses the end of a turn
+    (`gate_dispatch.handle_stop`), and the assistant answers a refused stop by CONTINUING -- so a
+    condition that survives being reported would refuse the next stop of the same continuation, and
+    the one after that. What is compared is the REASONS: unchanged means the lead has already been
+    handed this exact fact and a second refusal adds nothing; changed means something happened
+    since -- a child bound late to a dispatch that had already been reported as never having had
+    one, and then stopping, is the reachable case
+    (`test_an_idle_finding_is_reported_once_and_again_only_when_it_changes`).
+
+    This is the kernel-side bound and it is deliberately not the only one -- the caller also stands
+    down for a stop the provider marks as one a stop hook already blocked. Two bounds because the
+    second is the provider's word and this one is the harness's own; only this one is measured
+    here, which is why no text in the kits promises that the refusal arrives, only that it does not
+    repeat.
+    """
+    task_id = finding["task_id"]
+    said = finding["why"]
+    with state.lock:
+        try:
+            task = state.read_item(task_id)
+        except StateError:
+            return False
+        if str(task.get(IDLE_REPORTED) or "") == said:
+            return False
+        task[IDLE_REPORTED] = said
+        state._write_yaml_atomic(state.active_path(task_id), task)
+        # THE RECORD LANDS ON THE TASK, and a task is a card on the board, so an unregenerated
+        # write leaves the board showing the item as it was before it. The rule and its two
+        # measured defects are in
+        # `test_board.test_no_kernel_writer_of_a_rendered_file_leaves_the_board_behind`.
+        state._regenerate_index_locked()
+        return True
 
 
 def release_lease_for_status_locked(state: ProjectState, task_id: str, status: str) -> bool:

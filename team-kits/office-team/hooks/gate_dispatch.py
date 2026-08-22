@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dispatch gate — gate layer 2 of spec II.4. Registered on FIVE events, because the dispatch
+Dispatch gate — gate layer 2 of spec II.4. Registered on SIX events, because the dispatch
 lifecycle is one story and splitting it across files would let the halves drift:
 
   PreToolUse(Agent|Task)        reconcile claims that never produced a child; refuse while the
@@ -15,8 +15,13 @@ lifecycle is one story and splitting it across files would let the halves drift:
                                 together), and move the task to IN_PROGRESS
   PostToolUseFailure(Agent|Task) the spawn did NOT start: return the task to READY at once and
                                 close the bind window — an ACCELERATOR, not the guarantee
+  SubagentStop()                record that this dispatch's child has STOPPED, so the end of a
+                                later turn has a RECORD to read where it otherwise has only a
+                                status that says IN_PROGRESS either way (BUG-0058)
   Stop()                        reconcile again at the end of the turn, so a claim that produced
-                                no child does not wait for the next spawn attempt to be noticed
+                                no child does not wait for the next spawn attempt to be noticed —
+                                and refuse ONE turn-end per dispatch the records say has no
+                                child on it
 
 WHAT THIS GATE PARSES: the header, and only the header (spec II.4). Free prompt prose is never
 evidence of anything — the V1 `guard_agent_spawn` keyword check is exactly the "looks approved"
@@ -25,12 +30,17 @@ that is not leased to it is refused.
 
 WHICH EVENTS CAN ACTUALLY REFUSE (hooks reference, exit-code-2 table — this decides the whole
 design, so it is written down rather than assumed): PreToolUse blocks. PostToolUse,
-PostToolUseFailure and SubagentStart do NOT — their stderr is shown and the action stands. Stop
-does block, but this gate never refuses there: a Stop that exits 2 forces the assistant to keep
-going, which is not what "a lease was returned to READY" should do. So PREVENTION lives in
-PreToolUse alone. In the later events this gate protects the only thing it still can: it REFUSES
-TO MUTATE STATE on anything it cannot verify, and says so on stderr. Calling that a "block" would
-be theatre, and theatre is what V2 is removing.
+PostToolUseFailure, SubagentStart and SubagentStop do NOT stop what they are about — their stderr
+is shown and the action stands. Stop does block: exit 2 there makes the assistant keep going
+rather than end its turn, and this gate uses it for exactly ONE thing, the one thing "keep going"
+is the right answer to — a dispatch whose own records say no child is on it, which the lead was
+about to leave unmentioned for another turn (BUG-0058,
+`_name_the_dispatches_the_records_say_nobody_is_on`). It does NOT use it for the
+reconciliation beside it: "a lease was returned to READY" is no reason to refuse
+somebody's turn. So prevention of a TOOL CALL still lives in PreToolUse alone. In the later events
+this gate protects the only thing it still can: it REFUSES TO MUTATE STATE on anything it cannot
+verify, and says so on stderr. Calling that a "block" would be theatre, and theatre is what V2 is
+removing.
 
 THE ROLLBACK DOES NOT DEPEND ON ANY EVENT, and it used to. Measured 2026-08-02 across twelve real
 headless sessions with an observer on eleven events: `PermissionDenied` fired NOT ONCE — neither
@@ -222,18 +232,24 @@ def handle_pre_tool_use(data):
     sys.exit(0)
 
 
-def _report(message):
+def _report(message, and_stop=True):
     """Say something WITHOUT claiming to have prevented anything, and audit it.
 
     Deliberately not `_kernel.block`. Every event this gate uses it on is one where a refusal
-    would be a lie of a different kind: on PostToolUse, PostToolUseFailure and SubagentStart exit
-    2 does not block at all (the action stands and only stderr is shown), and on Stop it blocks
-    something nobody asked about — the assistant finishing its turn. The real protection on the
-    first three is that we DID NOT MUTATE state; on Stop it is that the mutation is a rollback.
+    would be a lie of a different kind: on PostToolUse, PostToolUseFailure, SubagentStart and
+    SubagentStop exit 2 does not stop what the event is about (the action stands and only stderr
+    is shown), and on Stop a refusal about a ROLLBACK would block something nobody asked about.
+    The real protection on the others is that we DID NOT MUTATE state; on Stop it is that the
+    mutation is a rollback.
+
+    `and_stop=False` for the ONE caller that has something to say afterwards: `handle_stop` reports
+    its reconciliation and then still has to look at the idle dispatches. Exiting here used to
+    swallow that second half whenever a claim happened to be reconciled in the same turn.
     """
     _kernel.record_note(HOOK, message)
     sys.stderr.write("[team-kit %s] %s\n" % (HOOK, message))
-    sys.exit(0)
+    if and_stop:
+        sys.exit(0)
 
 
 def handle_subagent_start(data):
@@ -357,17 +373,48 @@ def handle_spawn_failure(data):
     sys.exit(0)
 
 
+def handle_subagent_stop(data):
+    """A child stopped: record it against its dispatch, so a later turn-end can see it.
+
+    WHY A RECORD RATHER THAN A REPORT HERE. The party that has to know a specialist is over is the
+    LEAD, and it needs to know at the end of one of its OWN turns — which is a different event,
+    possibly minutes later. This event is where the fact exists; `dispatch.idle_dispatches` is
+    where it is read (BUG-0058).
+
+    WHY THIS GATE RUNS LAST IN THE SubagentStop CHAIN, and it is registration, not tidiness: the
+    gate ahead of it can turn this stop into a CONTINUATION (`gate_subagent_output` exits 2 for a
+    final message without its output contract, and the child then keeps working). A record written
+    ahead of that refusal would say the child ended while it had just been told to carry on, and
+    the lead's next turn-end would be refused over a specialist that is still running.
+
+    Nothing is refused here: SubagentStop's exit 2 is the OTHER gate's mechanism for making a
+    child continue, and this one has nothing to ask of it.
+    """
+    state = _state_for_recording(data)
+    if state is None:
+        sys.exit(0)
+    dispatch = _kernel.kernel_module("dispatch")
+    try:
+        dispatch.record_child_end(state, data.get("agent_id"), data.get("agent_type"))
+    except dispatch.DispatchError as exc:
+        _report("this subagent's stop was not attributed to a dispatch, so the end of the turn "
+                "will not name that task as idle.\n%s" % exc)
+    sys.exit(0)
+
+
 def handle_stop(data):
-    """End of the turn: return every claim that produced no child to READY.
+    """End of the turn: return every claim that produced no child to READY, then name every
+    dispatch whose records say no child is on it.
 
     WHY THIS EVENT. It is the one that was MEASURED to arrive: `Stop` fired in all twelve real
     headless sessions of 2026-08-02, including the ones that ended after four refused tool calls,
     while `PermissionDenied` fired in none of them. A reconciliation that runs here therefore
-    needs no cooperation from the failure path it is cleaning up after.
+    needs no cooperation from the failure path it is cleaning up after. It is also the ONE place
+    the harness gets a word in on the lead's answer path: the turn the lead is about to finish is
+    the turn in which it would otherwise say "it is running" again.
 
-    It never refuses. Stop CAN block (exit 2 makes the assistant continue), and using that here
-    would turn "a task went back to READY" into "you may not stop" — a refusal nobody asked for,
-    on an event where the tool call it would be about is long over.
+    The RECONCILIATION never refuses — see the module docstring. The refusal below is the other
+    half and belongs to a different question.
     """
     state = _state_for_recording(data)
     if state is None:
@@ -378,8 +425,82 @@ def handle_stop(data):
         _report("returned to READY — dispatched, but no subagent ever started for %s. A spawn "
                 "that the permission layer or the provider refused delivers no hook event, so "
                 "this is measured by the bind window closing empty, not reported by anything."
-                % ", ".join(released))
+                % ", ".join(released), and_stop=False)
+    _name_the_dispatches_the_records_say_nobody_is_on(data, state, dispatch)
     sys.exit(0)
+
+
+def _finding_line(finding):
+    """One dispatch, as the lead has to read it: what it is, what the record says about its child,
+    what it left on disk, and the status its own automaton offers for a run that produced
+    nothing."""
+    return ("%s (%s, role %s): %s. What the run left: %s. The no-progress status its automaton "
+            "offers is %s."
+            % (finding["task_id"], finding["status"], finding.get("assigned_role"),
+               finding["why"], finding["staged"],
+               finding["no_progress_status"] or "none — this one has to be decided by hand"))
+
+
+def _name_the_dispatches_the_records_say_nobody_is_on(data, state, dispatch):
+    """Refuse ONE turn-end per finding, so a dispatch the records say has no child on it reaches
+    the lead before it answers with another waiting phrase.
+
+    WHAT IS AND IS NOT CLAIMED HERE: `dispatch.idle_dispatches` reports a dispatch its own RECORDS
+    speak against -- a recorded child end, or a window that ran out with nothing ever bound. It
+    does not observe processes, so "nothing is running" is not what this says and must not be what
+    the text says either; a bound child that outlived its lease is deliberately absent from it.
+
+    THE MEASURED FAILURE (BUG-0058, pilot 4 half 2 / P4-2): the dispatched specialist produced no
+    file and stopped, the task stayed IN_PROGRESS with a live lease and an empty staging directory,
+    and the lead answered NINE consecutive user turns with waiting phrases without one follow-up
+    call. Nothing in the apparatus put the question in front of it.
+
+    WHY A REFUSAL AND NOT A NOTE. On this event a note reaches nobody: exit-0 stderr was measured
+    to reach neither the user nor the model (tools/provider_observations.json, hook_output_channels
+    — measured on PostToolUse, and it is the same channel). Exit 2 is the event's documented
+    contract: the assistant does not end its turn and is handed this stderr. That the provider
+    honours it on Stop is the hooks reference's exit-code table, which `_kernel.BLOCKING_EVENTS`
+    transcribes — this repo has measured that Stop FIRES, not what its exit 2 does, and a live run
+    on the shipped lead is where that half is measured (BUG-0058 AC-2).
+
+    TWO BOUNDS AGAINST A LOOP, because a refused stop is answered by CONTINUING and the condition
+    outlives the refusal: `dispatch.mark_idle_reported` speaks at most once per FINDING (the
+    harness's own record), and `stop_hook_active` stands down for a cycle a stop hook already
+    blocked (the provider's word, and the same key `gate_subagent_output` relies on). Neither is
+    decoration — with one of them gone the other still holds, which is why there are two. How
+    LONG the provider keeps that key set is not measured here, and the direction it fails in is
+    the safe one: a key that stayed set would make this silent, never repetitive, so what a
+    sticky one costs is the finding arriving at all — which is why nothing in this file or in
+    the kits' texts promises that it does.
+
+    Every finding is AUDITED whether or not it is refused over, so "it was reported once and
+    ignored" stays readable afterwards.
+    """
+    findings = dispatch.idle_dispatches(state)
+    if not findings:
+        return
+    for finding in findings:
+        _kernel.record_note(HOOK, "idle dispatch — %s" % _finding_line(finding))
+    if data.get("stop_hook_active"):
+        return
+    fresh = [finding for finding in findings if dispatch.mark_idle_reported(state, finding)]
+    if not fresh:
+        return
+    _kernel.block(
+        HOOK,
+        "this turn was about to end while the records say no child is on %d dispatch(es):\n%s"
+        % (len(fresh), "\n".join("  " + _finding_line(finding) for finding in fresh)),
+        event="Stop",
+        remedy="find out what really happened before you answer again. Read what the run left and "
+               "ask whether it can be resumed (`python scripts/harness.py checkpoint-status "
+               "<TSK-ID>`); book a handed-back envelope if one is staged (`python "
+               "scripts/harness.py submit-result --task-id <TSK-ID> --from <NAME>`); otherwise "
+               "take the task "
+               "to the no-progress status named above (`python scripts/harness.py transition "
+               "<TSK-ID> <STATUS>`), whose way back is the user's approved retry, and TELL THE "
+               "USER what happened. Reporting the task as running is the failure this refusal is "
+               "named after (BUG-0058). It comes AT MOST once per finding — this stop is "
+               "not blocked again for the same one.")
 
 
 HANDLERS = {
@@ -387,6 +508,7 @@ HANDLERS = {
     "SubagentStart": handle_subagent_start,
     "PostToolUse": handle_post_tool_use,
     "PostToolUseFailure": handle_spawn_failure,
+    "SubagentStop": handle_subagent_stop,
     "Stop": handle_stop,
 }
 

@@ -2156,7 +2156,7 @@ H1–H10 entsprechen R1–R10 des Prüfberichts zu TSK-0003, H11–H15 kamen mit
 mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, H30 mit TSK-0017,
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
-TSK-0063, H46 und H47 mit TSK-0070.
+TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -2197,6 +2197,11 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H47 | **OFFEN, blockierend** — Schließrichtung (a) zu messen | dieselbe Klasse wie H46, aber die **Variablen**-Variante: Gate 1 leiht den Ziel-Leser des Kits, nicht dessen Zeilen-Zuweisungskarte, also ist `F=team-kits/kernel/state.py; echo x > $F` am Repo-Gate rc 0 (am Kit-Gate seit B2 rc 2). Vorbestehend, von TSK-0070 sichtbar gemacht. Schließrichtung (a): Auflösung in den geteilten Leser ziehen → Kit-Fix heilt mit; (b): Gate 1 baut die Karte selbst → Fix außerhalb der Sitzung. Welche greift, ist zu messen; der Nutzer entscheidet danach |
 | H48 | **OFFEN**, nicht blockierend — bewusster Tausch (TSK-0071) | keine Angriffskette auf Zustand oder Durchsetzung: eingefroren ist nur die Anzeige. An die Stelle des Schutzes tritt die bedingte Frischezusage an allen fünf Prosastellen plus der Zeitstempel auf der Seite als Kontrolle (die Seitenfußnote nennt ihn ausdrücklich); Schließrichtung, falls die Klasse im Alltag auftritt: eine Sitzungsbrief-Zeile „Board älter als Index" |
 | H49 | **offen**, nicht schließbar mit den Mitteln dieses Ereignisses (TSK-0075) | an die Stelle des Schutzes treten drei Begrenzungen: die erste Verletzung wird blockiert und präzise angeleitet; der Durchlass ist zustandsgenau protokolliert (`gave_up` vs `retry_delivered`), sodass die PM-Retro den Fall zählt statt ihn zu verlieren; die `ENFORCEMENT.md`-Zeile aller drei Kits nennt den Durchlass. Ein Zähler wäre beschreibbarer Zustand über eine Durchsetzungsfrage — bewusst nicht gebaut |
+| H50 | **OFFEN als bewusster Tausch** (TSK-0080) | Preis des F1-Fixes: ein gebundenes Kind, dessen `SubagentStop` nie ankommt, ist nach dem TTL-Sweep für den Untätigkeits-Melder unsichtbar. An die Stelle des Schutzes tritt `sweep_orphaned_dispatches` beim nächsten Sitzungsstart (DEC-0044, gemessen: Waise → `FAILED`); innerhalb der laufenden Sitzung deckt nichts, und der Eintrag sagt das. Die Gegenrichtung — melden — hat einen gemessenen Fehlalarm gekostet, dessen Abhilfe einen laufenden Lauf beendet hätte |
+| H51 | **offen**, nicht schließbar ohne Schleifenrisiko (TSK-0080) | die Verweigerung des Zugendes kommt höchstens einmal je Befund; danach tragen `idle_reported` auf dem Item, die Board-Karte und der Verfassungstext — die Audit-Zeile jedes weiteren Stops erreicht nach repo-eigener Messung weder Nutzer noch Modell |
+| H52 | **offen**, nicht schließbar ohne Provider-Schlüssel (TSK-0080) | ohne `agent_id` wird verweigert statt geraten; ein Zombie-Dispatch hält damit rollengleiche id-lose Zuordnungen dauerhaft still. Begrenzung: der repo-eigene Messwert sagt, dass `SubagentStop` die Id trägt (der Zweig ist der Ausnahmefall), und die Verfassung verlangt gleichrollige Aufgaben sequenziell |
+| H53 | **offen**, Messung gehört zum Live-Lauf (TSK-0080) | die Lebensdauer von `stop_hook_active` ist ungemessen; die Fehlrichtung ist stumm, nie schleifend, und kein ausgelieferter Text behauptet mehr als „at most once per finding" |
+| H54 | **offen**, nicht blockierend (TSK-0080) | ein ungebunden LAUFENDES Kind wird nach Fensterablauf als „nichts hat diesen Lauf je verfolgt" gemeldet — die Aussage ist datensatz-wahr und die Meldung gewollt; begrenzt, weil Gate-Schicht 3 einem ungebundenen Kind ohnehin jeden Schreibzugriff verweigert, es also nichts liefern konnte, das verloren ginge |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -4326,6 +4331,99 @@ heißt, die Sperre hat gewirkt —, sodass die Retro des PM den Fall zählen kan
 Rauschen von acht Fehlmeldungen zu verlieren; (c) ein Zähler pro Subagentenlauf wäre
 beschreibbarer Zustand, der eine Durchsetzungsfrage entscheidet, und ist deshalb bewusst nicht
 gebaut. Die `ENFORCEMENT.md`-Zeile aller drei Kits nennt den Durchlass seit derselben Runde.
+
+### H50 — Ein gebundenes Kind ohne `SubagentStop` ist nach dem TTL-Sweep unsichtbar — OFFEN als bewusster Tausch (neu, TSK-0080)
+
+**Mechanismus:** Der Untätigkeits-Melder (`kernel.dispatch.idle_dispatches`) urteilt nur aus
+positiven Datensätzen: dem vermerkten Kind-Ende (`SubagentStop`) oder einer vorliegenden Lease,
+die nie ein Kind gebunden hat und deren Fenster ablief. Stirbt ein **gebundenes** Kind, ohne dass
+der Provider je ein `SubagentStop` liefert, existiert kein Datensatz, der es von einem
+arbeitenden unterscheidet — und nach `sweep_expired_leases` ist auch die Lease weg. Von da an
+meldet nichts mehr.
+
+**Kette (gemessen 2026-08-22, Prüfer Runde 2, echte Hook-Prozesse, Projekt außerhalb des
+Repos):** gebundenes Kind, nie ein `SubagentStop` → `Stop` nach der TTL **rc 0** →
+`sweep_expired_leases` räumt die Lease → Status `IN_PROGRESS`, Lease weg → jeder weitere `Stop`
+**rc 0**, `idle_dispatches()` leer. Das ist die BUG-0042-Sackgasse; die Zwischenfassung dieser
+Runde fing sie nach einer TTL — und kostete dafür einen gemessenen Fehlalarm auf ein
+**laufendes** Kind, dessen Remedy (`FAILED`) den Lauf unbuchbar machte (`task_for_agent` → None,
+`submit_result` verweigert).
+
+**Urteil: OFFEN als bewusster Tausch.** Melden ohne Datensatz heißt raten, und die geratene
+Meldung hat nachweislich einen lebenden Lauf beendet. Was an die Stelle des Schutzes tritt:
+`sweep_orphaned_dispatches` beim nächsten Sitzungsstart (DEC-0044) stellt die Waise ehrlich auf
+`FAILED` (gemessen, Prüfer proj-h50c) — **innerhalb der laufenden Sitzung deckt nichts**; die
+Verfassungspflicht des Absatzes greift erst auf einen Befund, und dieser Fall erzeugt keinen.
+Schließrichtung, falls die Klasse im Alltag auftritt: ein Lebenszeichen-Kanal
+des Providers (Prozess-Handle oder Heartbeat), den dieses Repo heute nicht hat.
+
+### H51 — Nach der einen Verweigerung schweigt der Melder für denselben Befund — offen (neu, TSK-0080)
+
+**Mechanismus:** `gate_dispatch` verweigert das Zugende höchstens **einmal je Befund**
+(`mark_idle_reported` vergleicht die gespeicherte Begründung; bei `stop_hook_active` hält es
+still) — ein verweigerter Stop wird vom Provider mit Weitermachen beantwortet, ohne die Schranke
+wäre es eine Schleife. Ein Lead, der die Verweigerung liest und trotzdem weiter wartet, wird
+nicht erneut angehalten.
+
+**Kette (gemessen 2026-08-22, Umsetzer und Prüfer unabhängig):** Stop #1 rc 2 mit Befund →
+Stop #2 rc 0, stderr leer → fünf weitere Zugenden rc 0, Task bleibt `IN_PROGRESS`. Die
+Audit-Zeile jedes weiteren Stops läuft, erreicht aber nach dem repo-eigenen Messwert
+(`tools/provider_observations.json`, `hook_output_channels`: exit-0-stderr) weder Nutzer noch
+Modell.
+
+**Urteil: offen, nicht schließbar ohne Schleifenrisiko.** Was stattdessen begrenzt: der Befund
+steht als `idle_reported` dauerhaft im Item und auf der Board-Karte, und der Verfassungstext
+trägt die Pflicht, ihm nachzugehen.
+
+### H52 — Ein Zombie-Dispatch hält rollengleiche id-lose Zuordnungen dauerhaft still — offen (neu, TSK-0080)
+
+**Mechanismus:** Ein `SubagentStop` ohne `agent_id` wird nur zugeordnet, wenn **genau ein**
+Dispatch der Rolle als Eigentümer in Frage kommt (`_dispatches_a_stop_could_belong_to`;
+gebundene, ungebundene und fristüberschrittene zählen alle mit — der Ausschluss Abgelaufener
+öffnete die gemessene spiegelbildliche Fehlzuordnung auf den frischen Dispatch). Ein gebundenes
+Kind, das nie stoppt (H50-Fall), bleibt darum für immer möglicher Eigentümer: jede spätere
+id-lose Meldung derselben Rolle ist mehrdeutig und wird verweigert — als exit-0-stderr, also
+faktisch nur eine Audit-Zeile.
+
+**Kette (gemessen 2026-08-22, Prüfer Runde 2):** Zombie-Dispatch + zwei Folgerunden mit frischen
+gleichrolligen Dispatches → `attributed=[]` in beiden Runden, Stop rc 0; fremde Rolle
+unbetroffen.
+
+**Urteil: offen, nicht schließbar ohne Provider-Schlüssel** (dieselbe Plattformgrenze wie
+`bind_agent_by_role`): Verweigern statt Raten ist die Richtung, die keinen laufenden Lauf trifft.
+Begrenzung: der repo-eigene Messwert (`docs/reviews/evidence/2026-07-24-spike-payloads.md`) sagt,
+dass `SubagentStop` die Id trägt — der id-lose Zweig ist der Ausnahmefall —, und die Verfassung
+verlangt gleichrollige Aufgaben sequenziell.
+
+### H53 — Die Lebensdauer von `stop_hook_active` ist ungemessen — offen (neu, TSK-0080)
+
+**Mechanismus:** Der Melder hält still, wenn der Provider den Stop als bereits blockiert
+markiert. Ob dieser Schlüssel nur die unmittelbar ausgelöste Fortsetzung trägt oder länger
+steht, ist hier nicht gemessen (`provider_observations.json` führt ihn nicht). Bliebe er
+sitzungslang stehen, schwiege der Melder für **alle** weiteren Befunde derselben Sitzung.
+
+**Kette (gemessen 2026-08-22):** gemessen ist nur das Hook-Verhalten — Stop mit
+`stop_hook_active: true` → rc 0. Die Provider-Seite braucht eine echte Sitzung.
+
+**Urteil: offen, Messung gehört zum Live-Lauf** (BUG-0058 AC-2). Die Fehlrichtung ist stumm, nie
+schleifend, und kein ausgelieferter Text behauptet mehr als „at most once per finding" — die
+Zusage, die auch beim klebrigen Schlüssel wahr bleibt.
+
+### H54 — Ein ungebunden laufendes Kind wird als „nie verfolgt" gemeldet — offen, nicht blockierend (neu, TSK-0080)
+
+**Mechanismus:** Der Waisen-Term meldet eine Lease, die nie ein Kind gebunden hat und deren
+Fenster ablief. Ein Kind, das gestartet, aber nie gebunden wurde (Antwortform ohne `agentId`),
+läuft dann noch — und der Befund nennt seinen Dispatch trotzdem, mit dem Satz „nothing here was
+ever tracking a run on it".
+
+**Kette (gemessen 2026-08-22, Prüfer Runde 2):** ungebunden laufendes Kind, Fenster abgelaufen →
+Stop **rc 2** mit genau diesem Wortlaut.
+
+**Urteil: offen, nicht blockierend — die Meldung ist gewollt und datensatz-wahr** (verfolgt hat
+den Lauf wirklich nichts). Begrenzung des Schadens: Gate-Schicht 3 verweigert einem ungebundenen
+Kind ohnehin jeden Schreibzugriff; es konnte nichts liefern, das durch ein `FAILED` verloren
+ginge. Die Verfassungen sagen die Einschränkung seit dieser Runde ausdrücklich („A bound child
+that outlived its lease is none of those and is not named").
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 
