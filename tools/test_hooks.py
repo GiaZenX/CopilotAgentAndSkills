@@ -2825,6 +2825,139 @@ def test_shared_kit_files_identical():
                      KIT_SPECIFIC_SCRIPTS)
 
 
+def _registered_entries(kit):
+    """(event, matcher, hook dict) for every hook entry a kit's settings.json REGISTERS.
+
+    The shipped file, parsed — this is the thing the provider reads, so a claim about "the
+    registrations" is only about it. Same walk `gen_provider_artifacts` does when it generates the
+    Codex counterpart, which is why an extra key in an entry cannot hide from either of them.
+    """
+    with open(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json"),
+              encoding="utf-8") as handle:
+        data = json.load(handle)
+    for event, groups in data.get("hooks", {}).items():
+        for group in groups:
+            for hook in group.get("hooks", []):
+                yield event, str(group.get("matcher") or ""), hook
+
+
+def _own_child_limit(kit, gate_name):
+    """The longest a gate lets one of its OWN children run, read off the code that runs, or None.
+
+    AST rather than a number here (house rule: a check reads the part that RUNS). Every `timeout=`
+    keyword the module passes to a call is a bound this gate imposes on something it started;
+    module-level numeric constants are resolved, so `timeout=VALIDATE_TIMEOUT` counts as its value.
+    The largest of them is what the gate can still be waiting for when the window closes.
+
+    WHAT IT DOES NOT SEE, said rather than implied, because it decides how far the rule below
+    reaches: time a gate spends inside its OWN process (a long loop, a slow filesystem) is bounded
+    by nothing this can read -- `_compat.HOOK_DEADLINE_SECONDS` is the budget the hooks give
+    themselves and nothing enforces it. And a call that takes `run_captured`'s default (60 s)
+    passes no keyword, so it is not counted; measured 2026-08-23 as real processes, the slowest of
+    the office kit's 28 registered entries answered in 0.405 s, which is what makes that omission
+    harmless today rather than by argument.
+    """
+    path = os.path.join(ROOT, "team-kits", kit, "hooks", gate_name)
+    if not os.path.isfile(path):
+        return None
+    with open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=path)
+    constants = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)                 and isinstance(node.value.value, (int, float)):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    constants[target.id] = float(node.value.value)
+    limits = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "timeout":
+                continue
+            value = keyword.value
+            if isinstance(value, ast.Constant) and isinstance(value.value, (int, float)):
+                limits.append(float(value.value))
+            elif isinstance(value, ast.Name) and value.id in constants:
+                limits.append(constants[value.id])
+    return max(limits) if limits else None
+
+
+def _chained_gates(command):
+    """The gate file names one registered `_gate.py` command runs, in order."""
+    _launcher, _sep, tail = command.partition("_gate.py")
+    return re.findall(r"\S+\.py", tail.replace('"', " "))
+
+
+def test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default():
+    """A `timeout` is a KILL WINDOW, and a killed gate is a silent allow — so it is neither always
+    wrong nor always right, and this measures the property that decides it.
+
+    THE MEASUREMENT, read out of `tools/provider_observations.json` -> `hook_deadlines` rather than
+    restated (2026-08-23, claude.exe 2.1.239, real headless sessions against a scratch project):
+    an entry naming `timeout: 5` whose hook needed 20 s was killed and the refused command RAN,
+    with nothing on the user's channel to say so. An entry naming NO timeout survived 310 s and
+    560 s and WAS killed at 900 s, marker file present — so a default window exists too. Both
+    halves matter, and the first cut of this round had only the first: it read "no kill was
+    reached" out of a 310 s run and forbade every window, which would have taken `gate_pipeline`'s
+    away — the one gate whose own child limit (1500 s) is longer than the default.
+
+    THE RULE, therefore, over every entry that runs `_gate.py` (which is what that launcher is for,
+    by its own contract):
+      * a registered window is allowed exactly when the gate refuses BEFORE it — i.e. it has an own
+        child limit and that limit is smaller than the window;
+      * an entry with no window is allowed exactly when no gate of its chain can still be running
+        when the default window closes, and the EARLIEST the default was seen to close is what
+        that is judged against (the longest run that survived), not the run that was killed.
+    A comfort hook — a briefing, a notifier — is not judged here: a kill there loses a message and
+    not a refusal.
+
+    RED IN THREE DIRECTIONS, measured in a clone outside the repo, one per branch of the rule:
+    give a window to a gate that bounds NOTHING of its own (`gate_write_scope`, `timeout: 60`) and
+    this fails; take `gate_pipeline`'s 1800 away and it fails; raise its child limit past that
+    window and it fails. A window over a gate that DOES bound its own child stays green by design
+    and is not a red direction — `gate_push_token` waits at most 15 s, so a 60 s window is a window
+    it beats. An earlier wording of this paragraph named that one as the red case; it was measured
+    green, which is what the middle branch below actually says.
+    """
+    with open(os.path.join(ROOT, "tools", "provider_observations.json"), encoding="utf-8") as fh:
+        measured = json.load(fh)["hook_deadlines"]
+    stated = measured["timeout_key"]
+    assert stated["registered_timeout_seconds"] < stated["hook_needed_seconds"],         "the measurement no longer describes a hook that outran its stated window"
+    default = measured["no_timeout_key"]
+    earliest_kill = float(default["longest_run_that_was_not_killed_seconds"])
+    assert earliest_kill < float(default["shortest_run_that_was_killed_seconds"]), default
+
+    offenders = []
+    for kit in KITS:
+        for event, matcher, hook in _registered_entries(kit):
+            command = str(hook.get("command") or "")
+            if "_gate.py" not in command:
+                continue
+            limits = [_own_child_limit(kit, gate) for gate in _chained_gates(command)]
+            limits = [one for one in limits if one is not None]
+            own = max(limits) if limits else None
+            window = hook.get("timeout")
+            where = "%s %s(%s): %s" % (kit, event, matcher, " ".join(_chained_gates(command)))
+            if window is None:
+                if own is not None and own >= earliest_kill:
+                    offenders.append(
+                        "%s waits up to %gs for its own child but names NO window, and the "
+                        "default was seen to close as early as %gs — it would be killed while "
+                        "deciding, and the call it was refusing would go through"
+                        % (where, own, earliest_kill))
+            elif own is None:
+                offenders.append(
+                    "%s names a window of %ss although it bounds nothing of its own, so the "
+                    "window can only ever kill it mid-decision" % (where, window))
+            elif own >= float(window):
+                offenders.append(
+                    "%s names a window of %ss while waiting up to %gs for its own child — the "
+                    "kill arrives first and the refusal never does" % (where, window, own))
+    assert not offenders, (
+        "%s\n  %s" % (stated["verdict"], "\n  ".join(offenders)))
+
+
 # ---------------- kit_checks: file budget (the anti-monolith gate) ----------------
 def test_file_budget_blocks_monolith(tmp_path):
     pytest.importorskip("yaml")
@@ -6342,6 +6475,80 @@ def _installed_kit(tmp_path, kit):
     shutil.copytree(os.path.join(TEAM_KITS, kit, "templates", "project_memory"),
                     os.path.join(project, "project_memory"))
     return project
+
+
+# The half-3 persona's own answer set, in her words (screenplay
+# `v2-testbed/_round-scratch/TSK-0066/half3/DREHBUCH-haelfte3.md`, "Die fünf großen Fächer"). It is
+# the fixture because BUG-0061 is about THIS list: she named five drawers and the plan that came
+# out of the interview had rules for one of them.
+HALF3_SOURCES = [
+    ("Prüfen — was ihr nicht zuordnen könnt, will ich selbst sehen", "unclassified"),
+    ("Finanzen — Rechnungen und Kontoauszüge", "invoice"),
+    ("Lieferanten und Einkauf", "supplier_invoice"),
+    ("Vertrieb und Marketing — Angebote und Partner", "offer"),
+    ("Alles was die Firma selbst betrifft — Behörden, Recht, Branding", "company_record"),
+]
+
+
+def _office_project_with(tmp_path, covered_types):
+    """An installed office project whose profile carries the half-3 sources and whose plan files
+    exactly `covered_types` -- everything else comes from the kit as it ships."""
+    project = _installed_kit(tmp_path, "office-team")
+    profile = os.path.join(project, "project_memory", "business_profile.yaml")
+    with open(profile, "a", encoding="utf-8") as handle:
+        handle.write("\ndocument_sources:\n")
+        for what, doctype in HALF3_SOURCES:
+            handle.write("  - what: \"%s\"\n    document_types: [%s]\n" % (what, doctype))
+    rules = "".join(
+        "  - id: FP-%03d\n    path_template: \"archive/%s/\"\n    document_types: [%s]\n"
+        "    filename_template: \"YYYY-MM-DD_<counterparty>_<doctype>\"\n"
+        "    retention: \"8y\"\n" % (index + 1, doctype, doctype)
+        for index, doctype in enumerate(covered_types))
+    write(os.path.join(project, "project_memory", "filing_plan.yaml"),
+          "rules:\n%s" % rules if rules else "rules: []\n")
+    return project
+
+
+def test_the_office_start_names_the_drawers_the_business_has_and_the_plan_does_not(tmp_path):
+    """BUG-0061, as the shipped office SessionStart hook really runs it.
+
+    THE MEASUREMENT IT COMES FROM: in pilot 4's half 3 the persona's answers named five drawers,
+    and the plan the onboarding produced covered them only after she demanded suppliers, a
+    deletion rule, sales+company and the review folder herself — one refused document at a time.
+    The interview text is where that is prevented (the two office templates and the registry entry
+    carry the questions); what NO test here can measure is the interview itself, because it is a
+    conversation. What this measures is the half that is machine-readable: the answers she gave and
+    the plan that came out of them are two lists in two files, and the project is told at every
+    session start where they disagree.
+
+    RUN AS A REAL HOOK PROCESS from the project's OWN installed hooks, and read out of the JSON on
+    stdout — the channel the provider reads.
+
+    Both directions, because the second is what kills the "always print it" mutant: with a rule for
+    every source the paragraph is gone.
+    """
+    pytest.importorskip("yaml")
+    payload_of = lambda project: {"hook_event_name": "SessionStart", "cwd": project}  # noqa: E731
+
+    project = _office_project_with(tmp_path / "gap", ["invoice"])
+    result = run_hook_process("session_status.py", payload_of(project), project,
+                              hooks_dir=os.path.join(project, ".claude", "hooks"))
+    assert result.returncode == 0, result.stderr
+    context = json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "PAPER THIS BUSINESS HAS AND THE FILING PLAN DOES NOT" in context, context
+    for what, doctype in HALF3_SOURCES:
+        if doctype == "invoice":
+            assert what not in context, ("a covered source is named as a gap", context)
+            continue
+        assert what in context and doctype in context, (what, context)
+    assert "add-filing-rule" in context, context
+
+    full = _office_project_with(tmp_path / "covered", [d for _what, d in HALF3_SOURCES])
+    covered = run_hook_process("session_status.py", payload_of(full), full,
+                               hooks_dir=os.path.join(full, ".claude", "hooks"))
+    assert covered.returncode == 0, covered.stderr
+    assert "PAPER THIS BUSINESS HAS" not in json.loads(covered.stdout)[
+        "hookSpecificOutput"]["additionalContext"]
 
 
 def test_doctor_names_the_documents_that_wall_a_project_off(tmp_path):
@@ -14083,6 +14290,39 @@ def _session_start(repo, session_id):
          "session_id": session_id}, repo)
     assert result.returncode == 0, result.stderr
     return json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"]
+
+
+def test_the_session_start_names_work_booked_as_finished_that_nothing_measured(tmp_path):
+    """BUG-0060, as the shipped SessionStart hook really runs it.
+
+    The drawer stayed empty across two dev pilots and NOTHING said so: the merge gate asks at a
+    merge a solo project never runs, and the confirming status was reached by no task in any
+    measured population (pilot 3: 11 accepted, 0 confirmed; this repository: 81 archived tasks,
+    all CANCELLED). A finding inside `validate` alone would repeat that, because the session brief
+    carries the COUNT of warnings and not their text -- so this asserts the sentence on the surface
+    a lead reads at every start, and asserts it disappears once the verdicts exist.
+
+    RED WITHOUT THE FIX: the briefing had no such paragraph and the start was silent about it.
+    """
+    state, task_id = _dispatch_in_session(tmp_path, BREAK_SESSION_A)
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.backlog_types import QA_EVIDENCE_KINDS
+
+    for status in ("SUBMITTED", "DONE"):
+        state.transition(task_id, status)
+
+    briefing = _session_start(tmp_path, BREAK_SESSION_A)
+    assert "WORK BOOKED AS FINISHED THAT NOTHING MEASURED" in briefing, briefing
+    assert task_id in briefing, briefing
+    for kind in QA_EVIDENCE_KINDS:
+        assert kind in briefing, (kind, briefing)
+    assert "harness.py evidence" in briefing, briefing
+
+    for kind in QA_EVIDENCE_KINDS:
+        state.capture("EVD", {"kind": kind, "result": "pass", "related": [task_id],
+                              "summary": "ran it",
+                              "artifact_refs": ["staging/%s/run.log" % task_id]})
+    assert "WORK BOOKED AS FINISHED" not in _session_start(tmp_path, BREAK_SESSION_A)
 
 
 def test_the_session_start_sweeps_a_dispatch_no_child_of_this_session_can_be_behind(tmp_path):

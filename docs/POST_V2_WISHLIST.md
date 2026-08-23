@@ -745,6 +745,17 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   kit-übergreifendem Fall. Sie werden im Onboarding gefüllt oder bleiben leer; die
   Bookkeeper-Texte sagen das seit TSK-0081 ehrlich. Ein echter Schreibweg nach dem
   `add-filing-rule`-Muster wäre je Dokument eine eigene Runde.
+- **Ein Hook-Eintrag ohne `timeout` wird vom Provider bei ≈600 s getötet, und der Kill ist ein
+  stiller Durchlass** (TSK-0082, beide Rollen unabhängig in echten Provider-Sitzungen gemessen,
+  claude.exe 2.1.239: 310 s und 560 s überleben mit gehaltener Verweigerung, 900 s wird getötet
+  und der verweigerte Aufruf läuft — Klammer 560/900, Sitzungsdauer datiert den Kill auf
+  ~600 s; ein GESETZTES `timeout` tötet exakt an seiner Zahl, gemessen bei 5 s). Konsequenz
+  gebaut statt gemerkt: die Kits registrieren kein `timeout` mehr (die BEOBACHTETE Laufzeit aller
+  28 office-Einträge liegt ≤0,405 s; die größte EIGENE Kindgrenze eines Gates außer
+  `gate_pipeline` ist 20 s — beides Messwerte, keine Schranken), außer wo ein Hook eine EIGENE,
+  kleinere Verweigerungs-Grenze trägt — dann
+  muss das Fenster echt darüber liegen (`gate_pipeline` 1800 über seiner 1500-s-Kindgrenze);
+  ein Test hält die Eigenschaft, `tools/provider_observations.json` trägt die Messung.
 
 ### L10 — Was ohne einen Provider unprüfbar bleibt
 
@@ -2171,7 +2182,7 @@ mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, 
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
-H55–H57 mit TSK-0081.
+H55–H57 mit TSK-0081, H58–H61 mit TSK-0082.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -2220,6 +2231,10 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H55 | **offen**, von innen nicht schließbar (TSK-0081) | die Update-Brücke im Alt-Bestand läuft auf ein gesprochenes Ja statt einer geminteten Freigabe, und auch ein SUBAGENT erreicht sie (Alt-Gate: bridge rc 0, scaffold rc 2) — die Brücke liest ihren Aufrufer nicht, weil ihr niemand eine Payload gibt. Begrenzung: nur Alt-Bestand (im gehobenen Projekt verweigert sie jedem, gemessen rc 2); keine Argumente, Richtungs- und Staging-Hash-Prüfung, Backups, `project_memory` unberührt (gemessen byte-identisch) |
 | H56 | **offen**, nicht blockierend — erholbar (TSK-0081) | ein mitten im Kopieren abgebrochener Brückenlauf lässt ein gemischtes Bündel ohne Rücknahme stehen (kernel_files 17→22, Stempel alt); der zweite Lauf hebt sauber (rc 0), `project_memory` unversehrt, kein Datenverlust gemessen — der Docstring der Brücke sagt „what a KILLED run leaves is not undone" |
 | H57 | **offen**, am Helfer nicht schließbar (TSK-0081) | ein quotiertes Heredoc an einen INTERPRETER (`python <<'EOF'`) ist vor `gate_ledger_valid` unsichtbar, seit es `_compat.literal_heredoc_free` übernimmt — der Schreibzugriff im Körper kann den Richter des Ledgers ersetzen, und danach fängt nichts mehr (die Commit-Prüfung fährt den Validator, der dasteht; gemessen rc 0 auf kaputtem Ledger). Was begrenzt: der Werkzeug-Weg auf den Validator ist für jeden doppelt verweigert (`guard_harness_selfmod`, `gate_write_scope`), die Zeile muss vom Agenten kommen, und der ersetzte Validator steht sichtbar im Commit-Diff; `_compat.py` benennt den Verlust seit TSK-0081 ehrlich |
+| H58 | **offen**, Semantik-Entscheidung des Nutzers (TSK-0082) | die Kante `TSK DONE → VALIDATED` fordert keine Evidence (`state.CONFIRMING_EVIDENCE` kennt nur BUG); die Einzeiler-Regel dort säße auf einer in drei Populationen nie begangenen Kante und machte den V1-Import `("TSK","VALIDATED")` unmöglich. Was stattdessen steht: die Validator-Warnung + das Sitzungsstart-Briefing sagen jeden abgenommenen Task ohne Verdikt an |
+| H59 | **offen**, begrenzt durch die neue Ansage (TSK-0082) | nichts treibt ein Projekt in die Phasen 6–9 — der Merge ist der einzige gebaute Forderer der evidence-Schublade, und ein Solo-Projekt auf `main` merged nie (Pilot 3: 11 DONE/0 Evidence; Pilot 4 H2: 0). Die Leere ist seit TSK-0082 bei jedem Sitzungsstart GESAGT statt unsichtbar; ob das reicht, misst der Live-Testlauf |
+| H60 | **offen**, begrenzt durch `gate_filing` fail-closed (TSK-0082) | `document_sources` erzwingt nichts: kein Gate liest die Liste, ein nicht begangenes Interview sieht aus wie „nichts zu melden" — aber ein leerer Plan verweigert das erste Dokument ohnehin geschlossen, und die Deckungslücke wird jedem office-Sitzungsstart angesagt |
+| H61 | **offen**, Schließrichtung im Repo gebaut (TSK-0082) | kein Kit-Hook merkt selbst, dass sein Fenster abläuft — jede Grenze in einem Kit-Hook ist ein Versprechen des Hooks, keine Durchsetzung; die Konstruktion, die schließt, existiert im Harness (`.claude/hooks/_harness.py::Deadline` liest die registrierte Frist und verweigert DAVOR) und fehlt in den Kits. Begrenzt: alle beobachteten Gate-Laufzeiten ≤0,405 s und die größte eigene Kindgrenze außer gate_pipeline 20 s, beides weit unter dem ≈600-s-Fenster — als Messung, nicht als Schranke |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -4501,6 +4516,79 @@ einem kaputten Ledger (gemessen, Commit und Push rc 0). Der Rest der Begrenzung 
 H11-Klasse selbst: die Zeile muss vom Agenten kommen, und der ersetzte Validator steht sichtbar
 im Diff des Commits. `_compat.py` benennt den zweiten Leser und seinen Verlust seit dieser
 Runde ausdrücklich.
+
+### H58 — `TSK DONE → VALIDATED` fordert keine Evidence — offen als Semantik-Entscheidung (neu, TSK-0082)
+
+**Mechanismus:** `state.CONFIRMING_EVIDENCE = {"BUG": "test"}` — für TSK ist die bestätigende
+Kante ungewacht, obwohl Verfassung §4/Phase 9 und die QE-SKILL das Verdikt versprechen.
+`transition TSK-nnnn VALIDATED` läuft ohne jede Evidence durch; der Status behauptet
+„QA bestätigt", niemand hat gemessen.
+
+**Kette (gemessen 2026-08-23, Umsetzer):** die Kante wurde in DREI Populationen praktisch nie
+begangen (V1-Felddaten 422 DONE : 1 VALIDATED; Pilot 3: 11 DONE, 0 VALIDATED; dieses Repo:
+81 archivierte TSK, alle CANCELLED). Die Einzeiler-Regel (`CONFIRMING_EVIDENCE["TSK"]`) machte
+den V1-Import `("TSK","VALIDATED")` unmöglich (`state.migration_writable_statuses` sagt es
+selbst voraus, der Wächter-Test wird rot).
+
+**Urteil: offen — eine Semantik-Entscheidung des Nutzers, keine Reparatur.** Was stattdessen
+steht (TSK-0082, beide Richtungen gemessen): `report.accepted_without_a_verdict` warnt je
+abgenommenem Task ohne bestandenes Lieferverdikt (Kante abgeleitet über `confirming_edge`,
+office über `ROOT_TYPE_BY_KIT` ausgenommen, wo das Verdikt unerfüllbar wäre), und das
+Sitzungsstart-Briefing der dev/research-Kits sagt denselben Satz.
+
+### H59 — Nichts treibt ein Projekt in die Phasen 6–9 — offen, die Leere ist jetzt gesagt (neu, TSK-0082)
+
+**Mechanismus:** Die evidence-Schublade hat zwei Forderer, und beide sitzen hinter Stellen, die
+ein kleines Projekt nie erreicht: `gate_git` fordert beim MERGE (ein Solo-Projekt auf `main`
+merged nie), und die `DONE → VALIDATED`-Kante wird nicht begangen (H58). Kein Gate zwingt den
+PM zum QA-Schritt.
+
+**Kette (gemessen, Piloten):** Pilot 3 endete mit 11 DONE-Tasks und 0 Evidence bei laufendem
+Produkt; Pilot 4 Hälfte 2 ohne existierendes evidence-Verzeichnis. Die Schublade ist
+UNERREICHT, nicht tot (54 Datensätze in diesem Repo; `gate_git`, `report.qa_verdicts` und der
+project-auditor lesen sie).
+
+**Urteil: offen.** Begrenzt durch die TSK-0082-Ansage: die Warnung des Validators und das
+Sitzungsstart-Briefing machen die Leere sichtbar statt still. Ob die Ansage ein Projekt
+wirklich in die QA-Phase bewegt, ist der Messpunkt des Live-Testlaufs.
+
+### H60 — `document_sources` erzwingt nichts — offen, doppelt begrenzt (neu, TSK-0082)
+
+**Mechanismus:** Die neue Ableitung (Interview-Richtungen → `business_profile.document_sources`
+→ Deckungsvergleich gegen die Planregeln) hat keinen erzwingenden Leser: kein Gate liest die
+Liste, und ein nicht begangenes Interview hinterlässt eine leere Liste, die aussieht wie
+„nichts zu melden".
+
+**Kette:** Onboarding füllt die Liste nicht → `filing_coverage_briefing` schweigt → der erste
+Vorfall ist wieder ein von `gate_filing` gestopptes Dokument (die Pilot-4-H3-Form).
+
+**Urteil: offen.** Doppelt begrenzt, beides gemessen: `gate_filing` scheitert bei leerem Plan
+ohnehin GESCHLOSSEN (das erste Dokument wird verweigert, mit eigener Meldung und dem
+`request-approval filing_rule`-Ausweg), und die Deckungslücke einer GEFÜLLTEN Liste wird jedem
+office-Sitzungsstart angesagt (echter Hook-Prozess, beide Richtungen, Fixture = der
+Hälfte-3-Antwortsatz).
+
+### H61 — Kein Kit-Hook merkt, dass sein Fenster abläuft — offen, Schließrichtung gebaut (neu, TSK-0082)
+
+**Mechanismus:** Weder das ≈600-s-Default-Fenster noch ein registriertes `timeout` wird von
+irgendeinem Kit-Hook zur Laufzeit bemerkt — die ganze TSK-0082-Konstruktion ruht darauf, dass
+jede Gate-Laufzeit weit unter dem Fenster bleibt. Das ist heute gemessen wahr und wird von
+nichts erzwungen: ein Gate, dessen Aufwand mit fremdem Input wächst (die Wrapper-Options-Kurve
+in `_compat.py` nennt 65 s bei 26 Wörtern), läuft in genau dieses Fenster, und ein Kill dort
+ist ein stiller Durchlass (L9-Messung).
+
+**Kette (gemessen 2026-08-23, beide Rollen, echte Provider-Sitzungen):** Hook ohne `timeout`
+schläft 900 s → getötet, der verweigerte Aufruf läuft, die Sitzung meldet Erfolg — nichts im
+Hook und nichts in den Kits hat den Ablauf bemerkt oder gemeldet.
+
+**Urteil: offen, mit gebauter Schließrichtung.** Dieses Repo besitzt die Konstruktion bereits:
+`.claude/hooks/_harness.py::Deadline` liest die eigene registrierte Frist und verweigert
+BEVOR sie abläuft (`_the_budget_is_spent` läuft neben jeder Entscheidung). In die Kits ist sie
+nicht übernommen — eine eigene Runde, wenn gewollt. Bis dahin begrenzen die Messwerte
+(beobachtete Laufzeiten ≤0,405 s, größte eigene Kindgrenze außer `gate_pipeline` 20 s, beides
+≪ 560 s) und der Eigenschaftstest, der die Relation Kindgrenze↔Fenster statisch hält —
+Messwerte, keine Laufzeit-Schranken, und die Quellstellen (`_compat`-Konstante,
+Beobachtungsdatei `what_follows_for_the_kits`) sagen genau das.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

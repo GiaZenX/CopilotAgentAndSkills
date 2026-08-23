@@ -324,6 +324,12 @@ def main():
         orphan_briefing = _kernel.orphaned_dispatch_briefing(cwd, data.get("session_id"))
         if orphan_briefing:
             parts.append(orphan_briefing)
+        # THE DRAWERS THE BUSINESS HAS AND THE PLAN DOES NOT (BUG-0061). Also in `_kernel`, and
+        # for the same reason: the comparison is the kernel's, so this briefing and `doctor`
+        # cannot answer it differently.
+        coverage_briefing = _kernel.filing_coverage_briefing(cwd)
+        if coverage_briefing:
+            parts.append(coverage_briefing)
     except BaseException:
         pass
 

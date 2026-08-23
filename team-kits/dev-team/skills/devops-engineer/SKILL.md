@@ -65,8 +65,9 @@ knobs that live there).
      own partial-run banner and the gate always runs flag-less.
    - **Container-parity gating (heavyweight, only when native deps pin the Python ABI):** run the
      Python tier of quality.py INSIDE the canonical app container (compose overlay) instead of
-     silently falling back to a drifted host interpreter; keep the inner timeout BELOW the
-     gate hook's (1500s) so a timeout blocks instead of silently passing a killed hook.
+     silently falling back to a drifted host interpreter; keep the inner timeout below the one
+     `gate_pipeline` gives its own child, so a hanging container becomes a refusal there rather
+     than a session that never comes back.
    - **CSP/asset truth needs the real server:** `vite preview` sends no CSP header — to verify
      CSP-gated assets (self-hosted fonts!), serve the SAME dist through the real backend
      container, register a `securitypolicyviolation` listener via an init-script added BEFORE

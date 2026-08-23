@@ -160,11 +160,11 @@ CORRECTION_BUDGET_SHARE = 0.1
 def budget_cap():
     """The most corrections the door could consider and still decide inside its budget.
 
-    THE DEADLINE IS `_compat.HOOK_DEADLINE_SECONDS` and is not restated here (R4): a PreToolUse hook
-    still deciding when it passes is KILLED, and the provider reports that as "hook error, carry
-    on", i.e. as a PASS on the very call this guard exists to refuse. Measured before any bound
-    existed (verifier finding F3): one `rm` naming 8000 archive documents took 114 s where the wall
-    alone took 0.54 s.
+    THE BUDGET IS `_compat.HOOK_DEADLINE_SECONDS` and is not restated here (R4). What passing it
+    costs is no longer a kill -- BUG-0062 measured that away, and that constant carries the finding
+    -- but a door that decides for two minutes is a session that stands still for two minutes with
+    the user watching. Measured before any bound existed (verifier finding F3): one `rm` naming 8000
+    archive documents took 114 s where the wall alone took 0.54 s.
 
     This is a CEILING, not the cap. `CORRECTION_CAP` is smaller and is chosen for a product reason;
     what this function exists for is that the choice cannot quietly drift past what the budget
@@ -422,10 +422,10 @@ def correction_authority(root):
     ONCE PER CALL, NOT ONCE PER OPERAND, and that is verifier finding F3 rather than an optimisation.
     Opening the state and scanning the approval store per operand made a REFUSAL cost time
     proportional to the line: 8000 documents on one `rm` took 114 s where the wall alone took 0.54 s.
-    The registration carries no `timeout`, so the deadline `_compat.HOOK_DEADLINE_SECONDS` names
-    applies, a killed hook is read as "hook error, carry on" — and the mass deletion this guard
-    exists to refuse would have run unrefused. The store is read once into a map here; the door then
-    does dictionary lookups.
+    That was written when a kill at the registration's deadline was believed to be what came next;
+    BUG-0062 measured that no registration of this kit names one and none is killed, so what 114 s
+    really buys is a session frozen on one command with no sign of why. The store is read once into
+    a map here; the door then does dictionary lookups.
 
     ANY failure is None on purpose — no kernel, no state directory, an unreadable store. "I could
     not check" and "there is no approval" have to be one answer in a guard, and it is the one that

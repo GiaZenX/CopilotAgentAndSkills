@@ -55,6 +55,14 @@ KIND = "filing_rule"
 COMMAND = "add-filing-rule"
 PLAN = "filing_plan.yaml"
 RULES = "rules"
+# The names `uncovered_document_sources` compares across: the profile document and its list of what
+# the business receives and produces. `RULE_TYPES` is the field BOTH sides of that comparison
+# spell -- a rule declares the `document_types` it files, a source declares the ones it produces --
+# and it is written here once, so `RULE_FIELDS` below and the coverage reader cannot come to spell
+# it differently.
+PROFILE = "business_profile.yaml"
+SOURCES = "document_sources"
+RULE_TYPES = "document_types"
 
 # THE ONE PART OF A KIT DOCUMENT THIS COMMAND WRITES, declared where the writing happens -- the
 # same contract `presets.DOCUMENT_WRITES` declares for `project_config.yaml`, and read by
@@ -72,7 +80,7 @@ DOCUMENT_WRITES = ({"document": PLAN, "field": RULES, "command": COMMAND},)
 # built, and a second copy of it lived here for one round and had already drifted ({1,31} against
 # {0,31}) without a single caller noticing -- which is exactly what a dead second answer does.
 RULE_FIELDS = (("id", "rule_id"), ("path_template", "path_template"),
-               ("document_types", "document_types"),
+               (RULE_TYPES, RULE_TYPES),
                ("filename_template", "filename_template"), ("retention", "retention"))
 # The top-level `rules:` key of the plan, and the two shapes an APPEND has to tell apart: the
 # shipped template's empty FLOW list (`rules: []`, which a block item cannot be appended to) and a
@@ -138,6 +146,59 @@ def existing_rules(state: ProjectState) -> list:
             "%s's `%s:` is %s and not a list -- refused, nothing was changed. Remedy: report the "
             "gap and name the file." % (PLAN, RULES, type(found).__name__))
     return found
+
+
+def uncovered_document_sources(state: ProjectState) -> list:
+    """[(what the user called it, [document type, ...])] the plan carries no rule for.
+
+    THE DERIVATION, and it is the plan's own vocabulary on both sides: `business_profile.yaml`'s
+    `document_sources:` names every kind of paper the business has WITH the `document_types` it
+    produces, and a rule declares the `document_types` it files. A source is covered when every one
+    of its types stands in some rule's list. Nothing here knows a drawer name, a business shape or
+    a document class -- the two lists are the user's, and this only compares them.
+
+    WHY IT EXISTS -- BUG-0061. In pilot 4 the onboarding interview asked about company, channels,
+    assortment, tax and revenue sources and never about what the business RECEIVES or keeps about
+    itself, so the initial plan had no supplier, sales, company or review rule and the owner had to
+    demand each one after the fact. The interview text is where that is fixed (the two templates
+    carry it); this is what makes the result CHECKABLE afterwards rather than trusted. ONE caller
+    asks it today -- the office kit's SessionStart briefing, `_kernel.filing_coverage_briefing` --
+    so a project whose sessions never start is told nothing, and no gate refuses anything over it.
+
+    A PROFILE THAT NAMES NO SOURCES YIELDS NOTHING, and that is the honest answer rather than a
+    silent pass: an empty list is a profile nobody walked, which is a fact about the INTERVIEW and
+    not about the plan -- `gate_filing` already fails closed on a plan with no rules, so the
+    project with neither is stopped by that, at the first document, with its own message.
+
+    NEVER RAISES: both files may be missing, unparseable or shaped differently in a project this
+    kernel did not write. A comparison that cannot be made is no finding -- the callers are a
+    briefing and a report, and neither may turn an unreadable file into an accusation.
+    """
+    try:
+        profile = yaml.safe_load(read_text(os.path.join(state.root, PROFILE))) or {}
+        sources = profile.get(SOURCES) or []
+        rules = yaml.safe_load(read_text(plan_path(state))) or {}
+        rules = rules.get(RULES) or []
+    except Exception:  # noqa: BLE001 -- see the contract above
+        return []
+    if not isinstance(sources, list) or not isinstance(rules, list):
+        return []
+    filed = set()
+    for rule in rules:
+        if isinstance(rule, dict):
+            declared = rule.get(RULE_TYPES) or []
+            declared = declared if isinstance(declared, list) else [declared]
+            filed.update(str(one) for one in declared)
+    uncovered = []
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        wanted = source.get(RULE_TYPES) or []
+        wanted = [str(one) for one in (wanted if isinstance(wanted, list) else [wanted])]
+        missing = [one for one in wanted if one not in filed]
+        if missing:
+            uncovered.append((str(source.get("what") or "").strip() or "(unnamed source)", missing))
+    return uncovered
 
 
 def rule_from(manifest: dict) -> dict:

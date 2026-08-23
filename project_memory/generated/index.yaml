@@ -1,4 +1,4 @@
-generated_at: '2026-08-23T00:29:21'
+generated_at: '2026-08-23T05:40:55'
 items:
 - id: BUG-0001
   type: BUG
@@ -1042,6 +1042,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0054
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0055
   type: EVD
   title: null
   status: null

@@ -255,7 +255,8 @@ def _check_docker(root, command):
             "this command names docker and is %d bytes — past the %d the shell readers can finish "
             "in a PreToolUse budget, so this gate cannot tell whether it stops or destroys "
             "anything. A command it cannot read is not one it may call harmless (spec II.4 is "
-            "fail-closed; a killed hook is an ALLOW)."
+            "fail-closed, and a gate that reads for minutes decides nothing while the session "
+            "waits)."
             % (len(command), _compat.GIT_READ_LIMIT),
             remedy="run the docker step as its own short command; put the bulk (a generated list, "
                    "a here-doc payload) in a file and pass the file.")

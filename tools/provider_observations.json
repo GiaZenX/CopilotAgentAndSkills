@@ -1,6 +1,5 @@
 {
   "_comment": "WHAT REAL SESSIONS SHOWED. This file is a MEASUREMENT RECORD, not a specification. Nothing in this repo can make a provider emit a hook event or assemble a context window, so no test can re-derive what is written here; what the tests DO is hold the kits and the tooling to it, which is the step that was missing when a rollback was registered on an event nobody had seen and a budget counted a file nobody had measured. Re-measuring means running real sessions again and rewriting this file WITH its provenance.",
-
   "hook_events": {
     "measurement": {
       "date": "2026-08-02",
@@ -31,12 +30,39 @@
       "PermissionRequest"
     ],
     "_not_measured_comment": "Events the twelve sessions gave no occasion to trigger. Absence here means UNKNOWN, not absent - a kit that wants to register one of these has to measure it first, which is what `observed` is for.",
-
     "also_measured": {
       "sibling_hooks_of_one_event_all_run": "Every PreToolUse hook of an event runs to completion even when another exits 2: all five Edit|Write gates started within 52 ms of each other and all eight Bash gates started, on a call one of them refused. This is why a gate that CONSUMES state is registered last in one chained command rather than as a process of its own."
     }
   },
-
+  "hook_deadlines": {
+    "measurement": {
+      "date": "2026-08-23",
+      "provider": "claude.exe",
+      "provider_version": "2.1.239",
+      "mode": "headless (-p, --dangerously-skip-permissions, --model haiku)",
+      "method": "a scratch project outside this repo with ONE PreToolUse(Bash) hook that logs its start to a FILE, sleeps a configured number of seconds, logs its wake to the same file and then exits 2 with stderr. The session was asked to run `echo hi > marker.txt`; whether the hook was killed is read off the MISSING wake line, and whether its refusal held is read off the presence of marker.txt. The hook's stdout is deliberately not the evidence - a killed process writes none.",
+      "location": "C:/Offline Repos/v2-testbed/_round-scratch/TSK-0082/deadline-rig",
+      "occasion": "BUG-0062 - 5 of 28 registered office hook entries carried a `timeout`, on the assumption that a registration without one is killed at a 60 s provider default",
+      "runs_and_who_made_them": "310 s survived (WOKE line, refusal held) and 900 s killed (no WOKE line, marker.txt written, the session reporting the file as created): implementer, rig above; in the 900 s run the hook started at t+6.9 s and the whole session ended 612 s after it was launched, so the kill landed around 600 s and not at the 900 s the hook had asked to sleep. 560 s survived and 900 s killed: verifier, own rig and own session, same day and same provider version, having reproduced the implementer's 310 s run first; his session lasted 611 s. Two rigs, two sessions, the same bracket and the same date on the kill."
+    },
+    "no_timeout_key": {
+      "control_0s": "hook returned at once, exit 2: the call was REFUSED and marker.txt was not written",
+      "longest_run_that_was_not_killed_seconds": 560,
+      "shortest_run_that_was_killed_seconds": 900,
+      "kill_dated_at_seconds_from_session_duration": 600,
+      "verdict": "a registration that names NO `timeout` is NOT killed at 60 s - the figure the kits assumed - but a default window DOES exist: the hook woke and its refusal held at 310 s and at 560 s, and at 900 s it never woke while marker.txt was written. The verifier's session lasted 611 s, which dates the kill at about 600 s. The window is therefore bracketed, not pinned; everything that judges against it uses the LONGEST SURVIVING run, because that is the earliest the kill may already have come.",
+      "what_the_first_reading_got_wrong": "a single 310 s run was read as 'no kill is reached by any realistic gate runtime' and every registered window was removed on the strength of it - which would have taken `gate_pipeline`'s 1800 s away, the one kit hook whose own child limit (1500 s) sits ABOVE this default. An absence measured at one point is not an absence.",
+      "session_seconds_of_the_killed_run": 612
+    },
+    "timeout_key": {
+      "registered_timeout_seconds": 5,
+      "hook_needed_seconds": 20,
+      "verdict": "the hook was KILLED (no wake line) and the tool call WENT THROUGH -- marker.txt exists. So a stated `timeout` is a kill window like the default one, only earlier, and a kill on either turns a refusal into an allow.",
+      "what_the_user_saw": "nothing about a killed gate: the session answered `Done. The file marker.txt has been created`. The passthrough is silent on the user's channel as well as on the model's."
+    },
+    "what_follows_for_the_kits": "The kits have no in-process deadline: nothing in `_compat` stops a gate before it is killed, on either window. So a registered `timeout` is neither always right nor always wrong - it is right exactly where the gate's OWN bound is smaller than it, and required where that bound is larger than the default window. `gate_pipeline` is the only shipped hook in that second case (child limit 1500 s, registered window 1800 s); every other registered entry answered in at most 0.405 s as a real process. `tools/test_hooks.py::test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default` holds that rule against the shipped settings and against each gate's own code. A hook that spends the time INSIDE its own process is bounded by nothing here; that is what the harness's own construction closes (`.claude/hooks/_harness.py::Deadline`, which reads its registered window and refuses before it) and what no kit hook does.",
+    "not_measured": "events other than PreToolUse; where between 560 s and 900 s the default window really lies; and the Codex counterpart (.codex/hooks.json), whose timeout semantics nobody here has run"
+  },
   "hook_output_channels": {
     "measurement": {
       "date": "2026-08-15",
@@ -58,7 +84,6 @@
     },
     "_consequence": "Two audiences need two keys, and neither of them is stderr. `gate_approval._announce` writes both; tools/test_hooks_v2.py::test_the_approval_hook_speaks_on_the_channels_this_record_measured holds the hook to the two names above, so a re-measurement that moved them cannot leave the hook talking to nobody."
   },
-
   "agent_identity": {
     "measurement": {
       "date": "2026-08-03",
@@ -82,7 +107,6 @@
     "re_delegation": "OBSERVED, and this is the fact that made the spawn rule necessary: the subagent `echo-one` spawned `echo-two` in the same run, its own PreToolUse(Agent) carrying `agent_id`/`agent_type` of echo-one, followed by a SubagentStart for echo-two. Three agent levels under one session. Re-delegation was refused by the platform up to 2.1.219 and is allowed again.",
     "consequence": "`_compat.calling_subagent` is this measurement in code; `guard_agent_spawn` and `gate_write_scope` rule 4 are its two callers. It asks whether the payload names an agent OTHER than the role `settings.json` binds. THE FAILURE DIRECTION IS NOT ONE-SIDED, and the sentence that stood here said it was (`a missed refusal, never a lead locked out`): that was measurably false in the reassuring direction, and a test could not catch it because it repeated the same sentence. Both directions are live - a provider that stopped naming the caller would let a subagent through, and a provider whose session payload named something other than the bound role would refuse the lead. The function's docstring names what the lead exemption specifically gives up."
   },
-
   "session_context": {
     "measurement": {
       "date": "2026-08-02",
@@ -90,7 +114,10 @@
       "provider_version": "2.1.220",
       "mode": "headless",
       "runs": 3,
-      "kits": ["dev-team", "office-team"],
+      "kits": [
+        "dev-team",
+        "office-team"
+      ],
       "method": "a control word appended at the end of each candidate file, then `--tools \"\"` so the session had no way to read any file back; the session was asked to reproduce each control word",
       "location": "a scaffolded testbed project outside this repo"
     },

@@ -43,3 +43,36 @@ privacy:
 revenue_sources: []           # company-specific — WHERE income data comes from, e.g.
 #   - kind: shop_export       #   [shop_export, psp_export, bank_statement, manual]
 #     detail: "Shopify order export CSV, monthly"
+
+# EVERY KIND OF PAPER THIS BUSINESS HAS, in the owner's own words, with the names the filing plan
+# will use for it. This is the list `filing_plan.yaml` is DERIVED from: a source named here whose
+# `document_types` no rule carries is a drawer the business has and the plan does not, and
+# `kernel.filing.uncovered_document_sources` is what names it, in the briefing an installed
+# project prints at every session start. Nothing refuses work over it: an uncovered source becomes
+# visible there, and as a document `gate_filing` will not file when one of that kind arrives.
+#
+# WHY THIS KEY EXISTS AT ALL (BUG-0061). The keys above ask about SELLING — markets, channels,
+# products, tax, where the money comes from — and an onboarding that walks them learns nothing
+# about what the business RECEIVES, what it keeps about itself, or what it does with a document it
+# cannot place. Measured in pilot 4: the interview asked company, channels, assortment, tax and
+# revenue sources, and the resulting plan had no supplier drawer, no sales drawer, no company
+# drawer, no review folder and no deletion rule — the owner had to demand all four herself, one by
+# one, after the fact.
+#
+# HOW TO FILL IT, and this is the part the interview walks rather than guesses: paper enters a
+# business from a small number of DIRECTIONS, and each direction is a question to the user in their
+# own words, not a drawer to propose.
+#   * what COMES IN, and from whom — suppliers, purchasing, imports, service providers;
+#   * what GOES OUT, and to whom — customers, offers, orders, marketplaces, marketing;
+#   * what the MONEY does — invoices in and out, bank and payment-provider statements, tax;
+#   * what the business IS — legal form, authorities, contracts, insurance, branding;
+#   * what happens to a document NOBODY can place — the tray the user looks at themselves;
+#   * and what happens to a document that MAY go one day — kept, collected for review, or neither;
+#     nothing in this kit deletes anything, so "delete" is never an answer it may give itself.
+# A direction the user says they do not have is an ANSWER and gets no entry. A direction nobody
+# asked about is the defect above.
+document_sources: []
+#   - what: "Rechnungen von meinen Lieferanten"   # the owner's words, not a category name
+#     document_types: [supplier_invoice]          # the names `filing_plan.yaml` rules carry
+#   - what: "Sachen, die ich nicht zuordnen kann — die will ich selbst sehen"
+#     document_types: [unclassified]

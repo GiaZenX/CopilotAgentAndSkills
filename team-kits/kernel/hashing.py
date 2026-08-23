@@ -696,10 +696,11 @@ def subject_manifest_hash(manifest) -> str:
 
 
 # HOW MUCH OF A DOCUMENT `document_content_hash` WILL READ, and why there is a bound at all. The
-# hash is computed inside a PreToolUse guard, and a guard the provider KILLS on its deadline is
-# read as "hook error, carry on" -- i.e. as permission, on the one call the guard exists to refuse.
-# So an unbounded read would turn a large file in the archive into a way past the wall rather than
-# into a slow refusal. Measured on this host 2026-08-18, warm cache, 1 MiB chunks: 16 MiB in
+# hash is computed inside a PreToolUse guard, so an unbounded read lets the SIZE OF A FILE decide
+# how long the session stands still on one command -- and, past the window such a guard is killed
+# at, whether it is checked at all: a killed hook is read as a pass, which for a large enough file
+# would put the wall's own door on the attacker's side. The kits' `_compat.HOOK_DEADLINE_SECONDS`
+# carries what was measured about those windows. Measured on this host 2026-08-18, warm cache, 1 MiB chunks: 16 MiB in
 # 0.021 s, 64 MiB in 0.050 s, 256 MiB in 0.217 s.
 # What a document past the bound gets is a REFUSAL, not a pass: no hash means no approval can name
 # it, and every caller here treats "cannot be hashed" as "not covered" (see

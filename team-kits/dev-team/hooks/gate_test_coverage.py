@@ -127,8 +127,9 @@ def main():
 INVARIANTS_DIR = ("invariants", "active")
 
 # The same two caps as `guard_guidelines` and `scripts/kit_checks.py`, for the reason spelled out
-# at length in the first of those: this reader runs on a BLOCKING PreToolUse hook, the host kills
-# such a hook at 60 s, and a killed hook is an ALLOW. Measured ~0.23 s per MB of invariant store.
+# at length in the first of those: this reader runs on a BLOCKING PreToolUse hook, and the size of
+# the store it reads may not decide how long that hook takes to answer. Measured ~0.23 s per MB of
+# invariant store.
 # Pinned across the readers by `test_the_two_readers_of_a_governed_source_area_agree`.
 INVARIANT_MAX_BYTES = 2_000_000
 INVARIANT_SCAN_MAX_BYTES = 8_000_000

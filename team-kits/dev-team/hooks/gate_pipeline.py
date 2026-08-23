@@ -5,7 +5,12 @@ PreToolUse(Bash|PowerShell) — run the REAL quality pipeline before merge/push 
 This is the deterministic teeth behind the Definition of Done. Instead of trusting a `result: pass`
 string in a YAML, it executes `scripts/quality.py` (ruff/mypy/pytest+coverage, eslint/tsc/tests, secret/
 dep scan) and blocks the merge/push on a non-zero exit. A missing pipeline is itself a block — the
-pipeline MUST exist. Give this hook a generous `timeout` in settings.json (it runs tests).
+pipeline MUST exist. Its registration names a LARGE `timeout`, and BUG-0062 is why the number is
+not free: a hook is killed at the window that governs it and a killed hook lets the refused call
+through, so the window has to sit ABOVE this hook's own child limit -- which is the only kit hook
+whose limit exceeds the provider's default (`_compat.HOOK_DEADLINE_SECONDS`). Bigger is not safer
+either: the child limit is what turns a hanging suite into a refusal, and it only does so while it
+is the smaller of the two.
 
 Only fires on `git push`/`git merge`, only when real work exists (a PRD). Hook-execution errors (could
 not even launch) -> exit 0 (never brick the repo on infra trouble); a RED pipeline -> exit 2.
@@ -97,8 +102,14 @@ def main():
             pass
 
     try:
-        # subprocess limit is BELOW the hook's settings.json timeout, so we time out first and can BLOCK
-        # rather than letting Claude Code kill a slow hook (a killed hook would NOT block — a silent pass).
+        # THE BOUND THAT MUST ARRIVE FIRST. This gate is the one hook of any kit whose own child
+        # may outlive the provider's default window (measured ~600 s -- see
+        # `_compat.HOOK_DEADLINE_SECONDS`), so its registration names a LARGER window on purpose
+        # and this number has to stay under it: past the window the hook is killed, and a killed
+        # gate lets the push it was refusing through, silently. Timing the child out HERE is what
+        # turns a hanging pipeline into a refusal instead of that.
+        # `tools/test_hooks.py::test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default`
+        # reads this number off the running code and requires the registered window above it.
         # stdin=DEVNULL: the child must not inherit the hook's consumed payload pipe (node
         # tooling probes stdin). cwd comes from find_repo_root, which normalizes the Windows
         # drive-letter case — a lowercase c:\ cwd broke vite/rollup ONLY in this hook chain.

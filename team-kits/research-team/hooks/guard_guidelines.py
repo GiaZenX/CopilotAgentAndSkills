@@ -63,9 +63,9 @@ INVARIANTS_DIR = ("invariants", "active")
 # repo script does. `scripts/kit_checks.py` carried a per-file cap with its reason ("a multi-MB
 # config would stall the BLOCKING hook path") while the hooks that actually block carried none —
 # the inversion is the defect. Measured on this reader: ~0.23 s per MB of invariant store
-# (10 MB 4.80 s, 99 MB 22.84 s, 199 MB 46.82 s), so somewhere past 250 MB the 60 s at which the
-# host kills a PreToolUse hook is reached — and a killed hook is an ALLOW, i.e. the guard would be
-# disarmed by the size of the store it reads.
+# (10 MB 4.80 s, 99 MB 22.84 s, 199 MB 46.82 s), so a store of a few hundred MB is a minute in
+# which this guard has decided nothing and the session cannot move: the size of the store it reads
+# would be setting the cost of every Write (`_compat.HOOK_DEADLINE_SECONDS`).
 #
 # TWO CAPS, because one of them does not bound the other: a per-ITEM cap says nothing about ten
 # thousand items, and a whole-SCAN cap says nothing about the first file being 200 MB. The values

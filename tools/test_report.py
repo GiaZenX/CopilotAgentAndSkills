@@ -15,11 +15,15 @@ TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 REPO_ROOT = os.path.dirname(TEAM_KITS)
 sys.path.insert(0, TEAM_KITS)
 
-from conftest import mint_via_hook, walk_to_status  # noqa: E402 -- ONE mint helper for the suite
+from conftest import drive_task_to, mint_via_hook, walk_to_status  # noqa: E402 -- ONE mint helper for the suite
 from kernel import approvals, dispatch, report, staging  # noqa: E402
 from kernel.hashing import hook_bundle_hash  # noqa: E402 -- THE definition of the bundle hash
 from kernel import state as kernel_state  # noqa: E402 -- the module, for its naming rule
-from kernel.backlog_types import PARENT_FIELDS, REQUIRED_FIELDS  # noqa: E402
+from kernel.backlog_types import (  # noqa: E402
+    PARENT_FIELDS,
+    QA_EVIDENCE_KINDS,
+    REQUIRED_FIELDS,
+)
 from kernel.state import ProjectState  # noqa: E402
 
 
@@ -759,6 +763,97 @@ def test_qa_verdicts_breaks_a_same_second_tie_by_id(state):
     evd(state, result="fail", created=stamp)
     newer = evd(state, result="pass", created=stamp)
     assert report.qa_verdicts(state, "PR-0001")["test"]["id"] == newer
+
+
+def test_a_task_accepted_without_a_qa_verdict_is_reported(state):
+    """BUG-0060: work booked as finished with nothing in the project that measured it.
+
+    THE MEASUREMENT THIS EXISTS FOR: the evidence drawer was empty after both dev pilots, and
+    the two moments that ask for a verdict were never reached -- pilot 3 ended with 11 tasks at
+    the accepted status and none confirmed, and this repository's own 81 archived tasks are
+    CANCELLED to the last one. So the drawer's emptiness was never SAID anywhere. This asserts
+    that it is now said, on the status the runs really reach, per missing kind, and that it is a
+    warning rather than an error -- standing here is what a task does between the handback and QA.
+
+    RED WITHOUT THE FIX: `validate_state` produced no finding for such a task at all.
+
+    The negative half is the one that keeps this from being satisfiable by warning always: with a
+    passing verdict of EVERY delivery kind, the finding is gone.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    task = make_task(state, root["id"], bug["id"])
+    drive_task_to(state, task["id"], "DONE")
+
+    found = [f for f in warnings_of(report.validate_state(state)) if f["item"] == task["id"]]
+    assert len(found) == 1, found
+    assert not errors(report.validate_state(state))
+    for kind in QA_EVIDENCE_KINDS:
+        assert kind in found[0]["message"], (kind, found[0])
+    assert "harness.py evidence" in found[0]["remedy"], found[0]
+
+    for kind in sorted(QA_EVIDENCE_KINDS)[:-1]:
+        evd(state, kind=kind, result="pass", related=(task["id"],))
+    still = [f for f in warnings_of(report.validate_state(state)) if f["item"] == task["id"]]
+    assert len(still) == 1 and sorted(QA_EVIDENCE_KINDS)[-1] in still[0]["message"], still
+
+    evd(state, kind=sorted(QA_EVIDENCE_KINDS)[-1], result="pass", related=(task["id"],))
+    assert not [f for f in warnings_of(report.validate_state(state)) if f["item"] == task["id"]]
+
+
+def test_a_failing_verdict_does_not_count_as_one_and_an_unaccepted_task_is_not_asked(state):
+    """The two boundaries of the rule above, both of which a laxer or a louder cut would miss.
+
+    A `fail` is a verdict that was recorded, and reading it as coverage would let the one shape
+    this check exists for -- work called finished that nothing supports -- pass on a measurement
+    that says the opposite. And a task that has NOT been accepted yet owes nothing: asking for a
+    verdict at SUBMITTED would put the finding on every task the moment it is handed back.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    early = make_task(state, root["id"], bug["id"])
+    drive_task_to(state, early["id"], "SUBMITTED")
+    assert not [f for f in warnings_of(report.validate_state(state)) if f["item"] == early["id"]]
+
+    task = make_task(state, root["id"], bug["id"])
+    drive_task_to(state, task["id"], "DONE")
+    for kind in QA_EVIDENCE_KINDS:
+        evd(state, kind=kind, result="fail", related=(task["id"],))
+    found = [f for f in warnings_of(report.validate_state(state)) if f["item"] == task["id"]]
+    assert len(found) == 1, found
+    for kind in QA_EVIDENCE_KINDS:
+        assert kind in found[0]["message"], (kind, found[0])
+
+
+def test_a_task_of_a_kit_that_produces_no_delivery_verdict_is_not_asked_for_one(state):
+    """The office case, and the reason this check carries a term for it at all.
+
+    MEASURED on the shipped kit: `grep -rn "harness.py evidence" team-kits/office-team/` finds one
+    producing role, the project-auditor, and it records `--kind audit` — which is no delivery
+    verdict (`QA_EVIDENCE_KINDS` excludes it). That kit creates tasks like every other, so without
+    the root-type term every completed office task would carry a debt nothing in the kit can pay.
+
+    The property is `ROOT_TYPE_BY_KIT`: a project of that kit hangs from no PR/RQ, so its tasks
+    hang from something else. Here the same task shape is built under a PROC root and under a PR
+    root, and only the second is asked.
+
+    RED WITHOUT THE FIX: the first half reports a warning an office project can never clear.
+    """
+    proc = state.capture("PROC", {"title": "file the inbox", "steps": ["read it"],
+                                  "roles": ["records-clerk"]})
+    task = state.capture("TSK", {
+        "product_requirement": proc["id"], "root_revision": proc.get("revision"),
+        "derives_from": [proc["id"]], "type": "implementation", "assigned_role": "records-clerk",
+        "acceptance_refs": ["AC-1"], "required_inputs": [], "allowed_scope": ["inbox/"],
+        "forbidden_scope": [], "expected_outputs": ["filed"], "dependencies": []})
+    drive_task_to(state, task["id"], "DONE")
+    assert not [f for f in warnings_of(report.validate_state(state)) if f["item"] == task["id"]]
+
+    root = state.capture("PR", dict(PR_FIELDS))
+    delivered = make_task(state, root["id"], make_bug(state, root["id"])["id"])
+    drive_task_to(state, delivered["id"], "DONE")
+    assert [f for f in warnings_of(report.validate_state(state))
+            if f["item"] == delivered["id"]], "the PR-rooted task is the control and must be asked"
 
 
 def test_qa_verdicts_ignores_audit_evidence_and_other_items(state):

@@ -157,6 +157,19 @@ teams:
           where each lives, how it is named, what metadata it carries and how long it is kept (the
           plan's own header states the fields of one rule). This kit is functionless from
           installation without it.
+
+          THE PLAN IS DERIVED, NOT INVENTED, and the derivation is checkable: the interview fills
+          `business_profile.yaml`'s `document_sources:` — every kind of paper the business has, in
+          the owner's own words, with the `document_types` each produces — and every one of those
+          types belongs to at least one rule of the plan. That template's own header carries the
+          questions the interview walks to get the list (the directions paper comes from: what
+          comes in, what goes out, what the money does, what the business is, what happens to a
+          document nobody can place, and what happens to one that may go). An installed project is
+          told at every session start which sources its plan does not cover
+          (`kernel.filing.uncovered_document_sources`); no gate refuses anything over it, so the
+          check is a report and the interview is where the gap is prevented. BUG-0061 is the
+          measurement: an interview that asked only about selling produced a plan with no supplier,
+          sales, company or review rule, and the owner had to demand each one after the fact.
     intents:
       - office
       - back-office

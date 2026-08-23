@@ -59,6 +59,7 @@
       },
       {
         "matcher": "Bash|PowerShell",
+        "_comment": "A `timeout` ON A REGISTRATION IS A KILL WINDOW, and a killed gate is a silent allow -- so an entry may name one only where the hook refuses BEFORE it, and must name one where the hook cannot finish inside the default. Measured 2026-08-23 on claude.exe 2.1.239 (tools/provider_observations.json -> hook_deadlines): an entry with `timeout: 5` whose hook needed 20 s was KILLED and the refused command RAN, with nothing on the user's channel to say a gate had been killed; an entry naming NO timeout survived 310 s and 560 s and was killed at 900 s, so a default window exists too and sits near 600 s. Three entries here carried 60/120 on the assumption that a window HELPS a gate that has no bound of its own -- it does the opposite, and they lost it. `gate_pipeline` is the one that KEEPS a window: it bounds its own child at 1500 s and that is longer than the default kill, so without a larger registered window a long suite would be killed at ~600 s and the refused push would go through -- 1800 > 1500 is what makes its own refusal arrive first. `tools/test_hooks.py::test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default` measures the rule off the shipped file and off each gate's own code. What no window buys back is a hook that hangs inside its own process: nothing in `_compat` notices a deadline, so `_compat.HOOK_DEADLINE_SECONDS` is a budget the hooks give themselves and not one anything enforces.",
         "hooks": [
           {
             "type": "command",
@@ -87,13 +88,11 @@
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py",
-            "timeout": 60
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py"
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py",
-            "timeout": 60
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py"
           }
         ]
       },

@@ -82,13 +82,14 @@ LEDGER_DIR = "ledger"
 # with the reversed id made a reversal of a booking the report never sees validate clean, and the
 # quarter then reported a negative total. A stray `2026 - Kopie.csv` does it by accident.
 YEAR_FILE_RX = re.compile(r"^[0-9]{4}\.csv$", re.IGNORECASE)
-# 20s, not 60: the platform's default per-hook budget IS 60s, so a 60s validator timeout could
-# never fire — the hook was killed first and left no verdict at all. A ledger CSV validates in
-# milliseconds; 20s already means something is badly wrong.
+# A ledger CSV validates in milliseconds; 20s already means something is badly wrong. The number
+# used to be argued from the platform's per-hook default, which BUG-0062 measured away (see
+# `_compat.HOOK_DEADLINE_SECONDS`): no registration of this gate names a `timeout` any more, so
+# nothing outside this process bounds it, and these two constants are the whole bound there is.
 VALIDATE_TIMEOUT = 20
-# ...and a cap for the WHOLE run, comfortably inside the host's 60s per-hook budget. The settings
-# entry also declares a timeout, but the hook must not depend on that being honoured: being killed
-# is the one outcome it cannot turn into a refusal.
+# ...and a cap for the WHOLE run, so one broken file cannot turn a gate into a hung session. It is
+# the process's own promise and it does not derive from anything: being killed is the one outcome
+# this hook cannot turn into a refusal, and not being killed is the one thing it cannot arrange.
 TOTAL_BUDGET = 40
 
 # The follow-on operations II.9 names: "Dispatch, Commit, Merge und Reports". `git add` stays
@@ -637,9 +638,10 @@ def judge(root):
     party could write whether the guarded party had broken anything.
 
     A TOTAL budget, not just a per-file one: 12 ledger files each taking the full per-file cap is
-    241s, and the host's per-hook budget is 60s — so the hook was KILLED before it could exit 2,
-    and a killed hook is a non-blocking error, i.e. the commit went through. Running out of budget
-    is itself a finding, because "we did not get to look" is not "it is fine".
+    241s of a session standing still on one `git add`. Running out of budget is itself a finding,
+    because "we did not get to look" is not "it is fine" — and it is a finding this gate can still
+    report, which is the difference between a bound it keeps itself and one imposed from outside
+    (`_compat.HOOK_DEADLINE_SECONDS` carries what was measured about those).
     """
     verdicts, unreached = {}, []
     started = time.monotonic()
@@ -647,9 +649,9 @@ def judge(root):
     for absolute in targets:
         rel = os.path.relpath(absolute, root).replace("\\", "/")
         # room for a FULL per-file timeout, not merely "budget left": checking `elapsed >
-        # TOTAL_BUDGET` before starting let a file begin at 39.9s and run to 59.9s, which is the
-        # host's own 60s budget with no margin for interpreter startup -- measured at 52.5s for
-        # 5 files x a 13s validator. The guaranteed bound is now TOTAL_BUDGET.
+        # TOTAL_BUDGET` before starting let a file begin at 39.9s and run to 59.9s -- measured at
+        # 52.5s for 5 files x a 13s validator, i.e. half again over the cap this line exists to
+        # keep. The guaranteed bound is now TOTAL_BUDGET.
         if time.monotonic() - started > TOTAL_BUDGET - VALIDATE_TIMEOUT:
             unreached.append(rel)
             continue
@@ -715,8 +717,9 @@ def _refuse_if_invalid(root, what):
               "`python %s --validate <file>` shows the detail." % VALIDATOR)
     if unreached:
         remedy += (" For the unchecked files, validate them one at a time — a ledger that needs "
-                   "more than %ds is a defect in its own right, and the whole-ledger budget has "
-                   "to stay under the host's hook timeout." % VALIDATE_TIMEOUT)
+                   "more than %ds is a defect in its own right, and this gate stops looking at "
+                   "its own budget rather than leaving the session standing still."
+                   % VALIDATE_TIMEOUT)
     _kernel.block(
         HOOK,
         # The headline still says INVALID when something IS invalid: splitting "broken" from

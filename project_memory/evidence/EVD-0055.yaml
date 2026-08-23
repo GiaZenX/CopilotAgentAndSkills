@@ -1,0 +1,27 @@
+id: EVD-0055
+kind: review
+related:
+- TSK-0082
+result: pass
+summary: 'verifier PASS for diff:b46cc7f357b2ebfe58709808a58313bdf1adbe114a33c6c1499d014f5e486cfa
+  -- two loops (FAIL C1/C2 then PASS on the prescribed docstring-example fix, implementer-measured
+  red/green, plus the lead''s H58-H61+L9 entries). His sentence: measured 2026-08-23
+  against kits 2026.08.23-3: the provider deadline independently re-driven in own
+  sessions (claude.exe 2.1.239) -- without timeout 90 s and 560 s survive with the
+  refusal held, 900 s is killed and the refused call runs silently (session 611 s,
+  kill ~600 s), with timeout: 5 the provider kills exactly there; registrations carry
+  exactly two windows, both gate_pipeline (1800 over its own 1500 s child bound),
+  confirmed by his own AST derivation table over all registered hooks, and the property
+  test was seen red in four directions incl. two verifier-built mutations proving
+  it reads running code; BUG-0060 measured in three directions as a real session_status
+  process, this repo''s population recounted (81 archived TSK all CANCELLED, 0 active
+  evidence, 54 records); BUG-0061 checked as a real derivation over two user lists;
+  H58-H60 and the L9 point read against his own measurements; mirrors, bump --check,
+  validate, ruff green and the full suite without regression. Accident excluded from
+  the commit: 8 untracked office template files in project_memory/ await user deletion
+  from an outside shell'
+artifact_refs:
+- staging/TSK-0082/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-23T05:40:54'

@@ -248,6 +248,12 @@ def main():
         orphan_briefing = _kernel.orphaned_dispatch_briefing(cwd, data.get("session_id"))
         if orphan_briefing:
             parts.append(orphan_briefing)
+        # THE WORK BOOKED AS FINISHED THAT NOTHING MEASURED (BUG-0060). Also in `_kernel`, and for
+        # the same reason: the decision is the kernel's, so this briefing and `validate` cannot
+        # answer it differently.
+        verdict_briefing = _kernel.unverified_delivery_briefing(cwd)
+        if verdict_briefing:
+            parts.append(verdict_briefing)
     except BaseException:
         pass
 

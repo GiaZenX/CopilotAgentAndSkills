@@ -58,11 +58,17 @@ for _stream in (sys.stdout, sys.stderr):
 # greppably via tolerate_overflow=True.
 STDIN_LIMIT = 16 * 1024 * 1024
 
-# THE DEADLINE A HOOK IS KILLED AT, in the one place it may be written down. It is the provider's
-# default for a hook registration that names no `timeout`, which is what every kit registration
-# does today -- and a KILLED hook is reported as "hook error, carry on", i.e. as a PASS on the very
-# call a gate was refusing. So this is not a performance figure: it is the budget inside which a
-# refusal has to become a refusal.
+# THE BUDGET ONE HOOK PROCESS GIVES ITSELF, in the one place it may be written down. It is NOT the
+# window the provider kills at -- BUG-0062 measured that one and it is an order of magnitude away:
+# on claude.exe 2.1.239 a PreToolUse registration naming no `timeout` survived 310 s and 560 s and
+# was killed at 900 s, its session dating the kill near 600 s, while one naming `timeout: 5` was
+# killed at 5 s and the refused command ran with nothing said to the user
+# (tools/provider_observations.json -> `hook_deadlines`; the settings files carry the rule that
+# follows, where the entries live). Two consequences for anything written here: 60 s is comfortably
+# INSIDE the provider's window, so a hook that keeps this budget is never killed -- and nothing in
+# this module notices either window arriving, so keeping it is a promise the hooks make and not one
+# anything enforces. The reason to keep it is the one that survives that: a gate that is still
+# deciding is a session standing still, with the user looking at it.
 #
 # WHAT ACTUALLY READS IT TODAY, stated exactly rather than generously — and the bracket that used to
 # stand above named two bounds as DERIVED from this constant when neither is one:
@@ -70,13 +76,11 @@ STDIN_LIMIT = 16 * 1024 * 1024
 # against that ceiling rather than derived from it: the cap is chosen for a reason about the WORK,
 # which its own comment carries, and `test_the_cap_stays_inside_the_budget_it_exists_for` (in
 # `tools/test_hooks.py`) recomputes the ceiling and requires the cap to sit under it.
-# That is the whole of what reads this constant. The literal "60 s" ALSO stands in prose in other
-# comments of this file and of `gate_ledger_valid`, and `gate_ledger_valid.TOTAL_BUDGET = 40` is a
-# number that derives from
-# nothing at all. Pointing those at this constant is a sweep of its own and is NOT done here
+# That is the whole of what reads this constant. `gate_ledger_valid.TOTAL_BUDGET = 40` is a number
+# that derives from nothing at all; pointing it here is a sweep of its own and is NOT done here
 # (verifier round 3, V5, correcting round 2's claim that they already point here); the residue is
 # named in docs/reviews/2026-08-18-tsk0077-measurements.md. What this constant buys today is that
-# the one CEILING built in that round is computed from the deadline instead of restating it.
+# the one CEILING built in that round is computed from the budget instead of restating it.
 HOOK_DEADLINE_SECONDS = 60.0
 _OVERFLOW_MESSAGE = (
     "[team-kit guard] Hook payload exceeded the %d-byte stdin bound, so this call could not be "
@@ -501,10 +505,12 @@ _QUOTED_SPAN = r'\$?(\\?"((?:\\.|[^"\\])*)\\?"|\\?\'((?:\\.|[^\'\\])*)\\?\')'
 # Each ambiguity doubles the work per option when the overall match FAILS, and the pattern this
 # replaces had the first one. Measured on `echo bash --a-b×N ; git push --force origin main`,
 # medians of three: 0.020 s at 14 options, 0.270 s at 18, 4.011 s at 22, 65.550 s at 26 — a
-# factor of ~15 per four options, and 65.5 s is already PAST the host's 60 s kill, where a killed
-# hook is an ALLOW rather than a refusal (spec II.4). That line was a complete bypass with no
-# quoting trick in it. Unambiguous, the same input costs 0.0000 s at 26 options and 0.0009 s at
-# four thousand.
+# factor of ~15 per four options: 26 words buy a minute in which this reader answers nothing, 30
+# would buy a quarter of an hour, and past the window the provider does kill at (measured near
+# 600 s -- `HOOK_DEADLINE_SECONDS`) the line is not slow but ALLOWED, because a killed hook is a
+# pass. So the length of a command line decided first how long the session froze and then whether
+# it was checked at all; neither is an outcome a word count may choose. Unambiguous, the same
+# input costs 0.0000 s at 26 options and 0.0009 s at four thousand.
 _WRAPPER_OPTION = r'[-/]{1,2}[\w:.][\w:.-]*(?:\s+[^\s"\'/-][^\s"\']*)?\s+'
 _WRAPPER_RX = re.compile(
     r'((?:' + _SHELL_NAMES + r'\s+(?:' + _WRAPPER_OPTION + r')*'
@@ -622,8 +628,10 @@ def _lift_piped_payloads(text):
     never closes cost it the rest of the line. Medians of five on `bash -c "…\\"…\\""` repeated,
     with ZERO matches found: 0.165 s at 13 KB, 0.688 s at 26 KB, 3.609 s at 52 KB — a factor of
     ~4.2 for every doubling, which puts the reader's own bound (`GIT_READ_LIMIT`, 512 KiB) in the
-    minutes. The host kills a hook at 60 s and a killed hook is an ALLOW rather than a refusal
-    (spec II.4), so a bound that only bounds the READING does not bound anything.
+    minutes -- minutes in which the session stands still on one command and this reader has said
+    nothing, and past the window the provider kills at (measured near 600 s, see
+    `HOOK_DEADLINE_SECONDS`) it has not said anything and the call goes through. So a bound that
+    only bounds the READING does not bound anything.
 
     This scan, same shapes and same medians: 0.001 s at 13 KB, 0.002 s at 26 KB, 0.004 s at
     52 KB, 0.041 s at the full 512 KiB — and 0.058 s at that size on text that really IS piped,
@@ -661,9 +669,9 @@ def _lift_piped_payloads(text):
 
 
 # How often a payload may be a wrapper again before this reader stops unwrapping. A bound, not a
-# depth claim: the host kills a hook at 60 s and a killed hook is an ALLOW (`GIT_READ_LIMIT` exists
-# for the same reason), so an unbounded loop over attacker-chosen text is not something a
-# fail-closed gate may run. Measured after the scan above replaced the quadratic pattern, medians
+# depth claim: an unbounded loop over attacker-chosen text is not something a gate may run whatever
+# it decides at the end of it, because the length of the text then decides how long the session is
+# frozen (`HOOK_DEADLINE_SECONDS`; `GIT_READ_LIMIT` exists for the same reason). Measured after the scan above replaced the quadratic pattern, medians
 # of five at the full 512 KiB: 0.494 s for nested wrappers, 0.474 s for the escaped-quote shape
 # that is the worst case for the span pattern. Three rounds is already one more than any spelling
 # anyone has written down; five is the budget, not a depth claim.
@@ -1293,7 +1301,8 @@ def _scan_views(command, lower=True):
     """Every reading of `command` an ordinary shell could produce — see `_ESCAPE_CHARS`.
 
     Memoised because `gate_git` alone asks for the same view five times per call and the scan is
-    the expensive part of a hook that has a 60 s budget it cannot detect being killed at."""
+    the expensive part of a hook whose budget is `HOOK_DEADLINE_SECONDS` and which has no way of
+    noticing it run out."""
     views = [_argument_scan(command, lower, _ESCAPE_CHARS[0])]
     if any(char in (command or "") for char in _ESCAPE_CHARS):
         other = _argument_scan(command, lower, _ESCAPE_CHARS[1])
@@ -1429,8 +1438,9 @@ UNRESOLVED_SUBCOMMAND = _UnresolvedVerb()
 # 8 MiB Write payload is ordinary, an 8 MiB shell COMMAND is not, and the git reading is per-word
 # work a line that size makes unaffordable. Measured as real hook processes before this bound and
 # before the quadratic tail-copy below was removed: 120 KB of `git ` words took `gate_git` 125.7 s
-# and `gate_push_token` 59.6 s, i.e. past the host's 60 s kill — and a killed hook is an ALLOW, not
-# a refusal (spec II.4; `gate_ledger_valid.TOTAL_BUDGET` exists for the same reason). Over the
+# and `gate_push_token` 59.6 s, i.e. one and two minutes of a session standing still, bought with
+# 120 KB of one word repeated (`HOOK_DEADLINE_SECONDS`; `gate_ledger_valid.TOTAL_BUDGET` exists for
+# the same reason). Over the
 # bound the answer is ONE unresolved invocation: "this could be any git command", which every gate
 # reads as applicable.
 #

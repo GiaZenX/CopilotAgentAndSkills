@@ -66,6 +66,7 @@
       },
       {
         "matcher": "Bash|PowerShell",
+        "_comment": "A `timeout` ON A REGISTRATION IS A KILL WINDOW, and a killed gate is a silent allow -- so an entry may name one only where the hook refuses BEFORE it, and must name one where the hook cannot finish inside the default. Measured 2026-08-23 on claude.exe 2.1.239 (tools/provider_observations.json -> hook_deadlines): an entry with `timeout: 5` whose hook needed 20 s was KILLED and the refused command RAN, with nothing on the user's channel to say a gate had been killed; an entry naming NO timeout survived 310 s and 560 s and was killed at 900 s, so a default window exists too and sits near 600 s. Three entries here carried 60/120 on the assumption that a window HELPS a gate that has no bound of its own -- it does the opposite, and they lost it. No entry here needs one: the slowest of the 28 measured 0.405 s as a real process, and the only gate that bounds a child at all (`gate_ledger_valid`) stops itself at `TOTAL_BUDGET`, far inside the default. `tools/test_hooks.py::test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default` measures the rule off the shipped file and off each gate's own code. What no window buys back is a hook that hangs inside its own process: nothing in `_compat` notices a deadline, so `_compat.HOOK_DEADLINE_SECONDS` is a budget the hooks give themselves and not one anything enforces.",
         "hooks": [
           {
             "type": "command",
@@ -73,8 +74,7 @@
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py",
-            "timeout": 120
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py"
           },
           {
             "type": "command",
@@ -82,24 +82,21 @@
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py",
-            "timeout": 60
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_push_token.py"
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py",
-            "timeout": 60
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py"
           }
         ]
       },
       {
         "matcher": "Agent|Task",
-        "_comment": "ONE chained command, and gate_dispatch is LAST because it is the only one here that SPENDS something (the task's dispatch lease). Measured 2026-08-02: every PreToolUse hook of an event runs to completion even when a sibling exits 2, so registered separately this gate paid for spawns the gates beside it were refusing in the same 52 ms. _gate.py runs the chain in one process and stops at the first refusal. The timeout is the whole chain's, so it carries the largest the separate registrations carried.",
+        "_comment": "ONE chained command, and gate_dispatch is LAST because it is the only one here that SPENDS something (the task's dispatch lease). Measured 2026-08-02: every PreToolUse hook of an event runs to completion even when a sibling exits 2, so registered separately this gate paid for spawns the gates beside it were refusing in the same 52 ms. _gate.py runs the chain in one process and stops at the first refusal. A chain is also why a `timeout` here would be the worst of the file: one deadline for four gates, and a kill on it lets the spawn through unjudged -- see the Bash|PowerShell entry above for the measurement that took it out.",
         "hooks": [
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py gate_proc_approved.py gate_ledger_valid.py gate_dispatch.py",
-            "timeout": 120
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" guard_agent_spawn.py gate_proc_approved.py gate_ledger_valid.py gate_dispatch.py"
           }
         ]
       },
@@ -147,11 +144,11 @@
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|Bash|PowerShell",
+        "_comment": "This entry carried `timeout: 120` and no longer does -- see the Bash|PowerShell entry above for the measurement. What a kill costs HERE is a different thing and is worth stating: PostToolUse cannot deny, so this is the early warning that the ledger was just broken, and a killed one loses that warning rather than a refusal. It is dropped for the same reason all the same: nothing in this hook can notice it is about to be killed, so the only bound it keeps is its own (`gate_ledger_valid.TOTAL_BUDGET`).",
         "hooks": [
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py",
-            "timeout": 120
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py"
           }
         ]
       },

@@ -309,8 +309,9 @@ def handle_post_tool_use(data):
                           "hast. " + approvals.NEXT_ASK_AGAIN)
     request_id = ids.pop()
     # Re-run the exact-match on the PLATFORM's echo of what was asked. PreToolUse is where this
-    # gets PREVENTED, but a hook timeout there is a non-blocking error, and this event is the one
-    # that moves state — so it must not mint on trust alone. No echo means nothing to verify
+    # gets PREVENTED, but this event is the one that MOVES STATE, and a gate that mints on the
+    # strength of a sibling event having run is a gate that trusts a process it never saw — so it
+    # must not mint on trust alone. No echo means nothing to verify
     # against, which is a refusal rather than a shrug (and on a provider that does not echo, that
     # correctly forces approval_provenance to `unverified` instead of quietly claiming it).
     try:

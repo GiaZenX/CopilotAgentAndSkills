@@ -386,9 +386,9 @@ def bundle_trust(repo_root=None):
     subtrees, not what the kit shipped — an earlier line here claimed the latter and was simply
     false. Measured with a 512 MB stranger dropped in: 0.54 s, and past what fits in memory
     `_hash_subtrees` raises, which lands in the `actual is None` branch above, i.e. fail-closed.
-    So the unbounded direction ends in a REFUSAL rather than in a timeout that would allow, which
-    is why no cap is needed here while `guard_guidelines`, whose oversize case must not block
-    every write, carries two.
+    So the unbounded direction ends in a REFUSAL rather than in an answer, which is why no cap is
+    needed here while `guard_guidelines`, whose oversize case must not block every write, carries
+    two.
     """
     repo_root = repo_root or find_repo_root()
     claude_dir = os.path.join(repo_root, ".claude")
@@ -577,6 +577,75 @@ def kit_update_verdict(repo_root, kit):
             "at least one of the two stamps carries no readable version")
 
 
+def unverified_delivery_briefing(repo_root=None):
+    """The SessionStart sentence about work booked as finished that nothing measured, or None.
+
+    ONE text, three kits, for the reason `gated_document_briefing` gives above. The DECISION is
+    `kernel.report.accepted_without_a_verdict`, which is also what the state validator turns into
+    findings -- so the briefing and `validate` cannot answer this differently.
+
+    WHY A SESSION START IS THE PLACE. BUG-0060: across two dev pilots the evidence drawer stayed
+    empty, and nothing anywhere said so -- the only two moments that ask for a verdict lie behind
+    a merge and behind the confirming status, and neither run reached either. A validator finding
+    alone would repeat that: the session brief carries the COUNT of warnings, not their text. This
+    is the surface a lead reads whether or not it asks.
+
+    NEVER RAISES AND NEVER BLOCKS -- same contract as the two briefings around it.
+    """
+    repo_root = repo_root or find_repo_root()
+    try:
+        report = kernel_module("report", repo_root)
+        state = open_state(repo_root)
+        with state.lock:
+            owed = report.accepted_without_a_verdict(state)
+    except BaseException:  # noqa: BLE001 -- see the contract above
+        return None
+    if not owed:
+        return None
+    listed = "; ".join("%s owes %s" % (task_id, ", ".join(kinds))
+                       for task_id, kinds in sorted(owed.items()))
+    return (
+        "WORK BOOKED AS FINISHED THAT NOTHING MEASURED: %s. Those tasks stand at the status that "
+        "means the work is done and not yet confirmed, and the project holds no passing Evidence "
+        "of the named kinds for them. This is a DEBT, not a refusal -- it blocks nothing here; the "
+        "merge gate asks the same question for itself, at the merge. What clears it is the quality "
+        "role's run recorded through `python scripts/harness.py evidence`. Say it in your first "
+        "paragraph if the user is about to be told the work is done." % listed)
+
+
+def filing_coverage_briefing(repo_root=None):
+    """The SessionStart sentence about paper the business has and the plan does not, or None.
+
+    ONE text, three kits, for the reason `gated_document_briefing` gives above; it produces
+    nothing in a project whose profile carries no `document_sources`, which is every project of a
+    kit that has no such document. The DECISION is `kernel.filing.uncovered_document_sources` --
+    see it for the derivation and for why an unwalked interview is not reported as a broken plan.
+
+    WHY A SESSION START (BUG-0061): the plan is written before the kit is installed, by a session
+    that is over by the time anyone could notice a gap, and the gap only shows itself as a refused
+    filing weeks later. In pilot 4 the owner found four of them herself, one document at a time.
+
+    NEVER RAISES AND NEVER BLOCKS -- same contract as the briefings around it.
+    """
+    repo_root = repo_root or find_repo_root()
+    try:
+        filing = kernel_module("filing", repo_root)
+        uncovered = filing.uncovered_document_sources(open_state(repo_root))
+    except BaseException:  # noqa: BLE001 -- see the contract above
+        return None
+    if not uncovered:
+        return None
+    listed = "; ".join("%s (no rule for %s)" % (what, ", ".join(types))
+                       for what, types in uncovered)
+    return (
+        "PAPER THIS BUSINESS HAS AND THE FILING PLAN DOES NOT: %s. Those came from the owner's own "
+        "answers in `business_profile.yaml`; a document of one of those kinds reaches `gate_filing` "
+        "and stops there, unfiled, because no rule covers it. The way to close one is the ordinary "
+        "one: propose the rule to the user and let them sign it -- `python scripts/harness.py "
+        "add-filing-rule`. Name this in your first paragraph rather than waiting for the document."
+        % listed)
+
+
 def orphaned_dispatch_briefing(repo_root=None, session_id=None):
     """Sweep the dispatches no child of THIS session can be behind, and say what was measured.
 
@@ -739,7 +808,7 @@ def block(hook, message, event="PreToolUse", remedy=None):
 def fail_closed(hook, event="PreToolUse"):
     """Integrity-gate body guard: ANY internal error becomes a block, never a silent pass.
 
-    Catches BaseException, not Exception: KeyboardInterrupt (a hook timeout, a Ctrl-C) and
+    Catches BaseException, not Exception: KeyboardInterrupt (a Ctrl-C, a cancelled call) and
     MemoryError are exactly the "everything is already going wrong" moments where an unblocked
     call is worst, and they exit 1 or 3221225786 — both of which Claude Code reads as ALLOW.
     SystemExit passes through untouched; that is how allow (0) and block (2) are signalled.

@@ -74,8 +74,8 @@ TRAYS_FILE = "document_trays.txt"
 STATE_DIRNAME = "project_memory"
 # WHAT THIS READER WILL SPEND. It runs on EVERY `Write`, so an unbounded read here is the shape
 # `guard_guidelines` carries two caps against. Measured 2026-08-01 on this reader: 0 MB 0.45 s,
-# 15 MB 1.21 s, 63 MB 3.11 s — the 60 s at which a host kills a PreToolUse hook is ~1.2 GB away,
-# and a killed hook is an ALLOW. The cap is here anyway because the asymmetry with the guard next
+# 15 MB 1.21 s, 63 MB 3.11 s — a minute of this reader is ~1.2 GB away, so nothing here comes near
+# the budget `_compat.HOOK_DEADLINE_SECONDS` names. The cap is here anyway because the asymmetry with the guard next
 # door is not worth defending, and because this file is written by a scaffold rather than by a
 # project: a record past it is not a record this harness produced. Past the cap the answer is the
 # same as for no record at all, which is NO exemption.

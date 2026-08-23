@@ -130,9 +130,10 @@ _ITEM_ID_RX = re.compile(r"\b(" + _ID + r")\b", re.ASCII | re.IGNORECASE)
 # the documents full of inline code, so that is not a corner case, it is most of them.
 _FOREIGN_RX = re.compile(
     # BOUNDED. `\S*` backtracks per start position, so one whitespace-free run of concatenated
-    # links was quadratic: 42 KB took 5.1s and 200 KB exceeded the host's hook timeout entirely.
-    # A killed PreToolUse hook is a non-blocking error, so the write then proceeds UNCHECKED --
-    # fail-closed degrading to fail-open, and `fail_closed()` cannot catch a host kill.
+    # links was quadratic: 42 KB took 5.1s and 200 KB took minutes -- on EVERY Write, with the
+    # session standing still for as long as one pasted line is long, and, once that outgrows the
+    # window the provider kills at (`_compat.HOOK_DEADLINE_SECONDS`), with the write going through
+    # unchecked. `fail_closed()` catches neither: nothing goes wrong, it just never finishes.
     #
     # 1000, not 300: at 300 a realistic 363-character Azure DevOps work-item URL with query
     # parameters was NOT exempt, and signed S3/SAS links, Grafana permalinks and JQL URLs are

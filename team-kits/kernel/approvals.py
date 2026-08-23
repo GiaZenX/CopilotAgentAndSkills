@@ -1417,10 +1417,11 @@ def live_correction_approvals(state: ProjectState) -> dict:
     a denial of service with a docstring over it (verifier finding F3). `_in_force_approvals` walks
     the whole approval store and resolves each record back to its consumed request; called once per
     operand of a command line, that is a full store scan per operand. Measured by the verifier:
-    300 operands against 204 approvals took 69.8 s, and an 8000-document `rm` took 114 s -- past the
-    60 s at which a provider kills a PreToolUse hook, and a killed hook is read as "carry on", i.e.
-    as a PASS on the very call the wall exists to refuse. One scan, then a dictionary lookup per
-    operation, makes the store size a constant instead of a factor.
+    300 operands against 204 approvals took 69.8 s, and an 8000-document `rm` took 114 s -- one and
+    two minutes in which the wall has said nothing and the session cannot move, bought by writing a
+    longer command line (what a deadline does and does not do to a hook here is measured in
+    `_compat.HOOK_DEADLINE_SECONDS`). One scan, then a dictionary lookup per operation, makes the
+    store size a constant instead of a factor.
 
     The match itself is unchanged and is still a SUBSET of what the user signed: the operation keys
     only. The reason sits beside them in the manifest and is deliberately not matched -- it is what

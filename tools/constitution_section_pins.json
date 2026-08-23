@@ -382,7 +382,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "7e7eb26130341350",
+        "digest": "4942d9659eae0544",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",

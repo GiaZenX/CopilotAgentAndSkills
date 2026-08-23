@@ -51,6 +51,8 @@ from .backlog_types import (
     PARENT_FIELDS,
     QA_EVIDENCE_KINDS,
     REFERENCE_LIST_FIELDS,
+    ROOT_TYPE_BY_KIT,
+    confirming_edge,
     field_elements,
     parse_id,
     single_value_offences,
@@ -481,6 +483,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_consumed_requests_diff_clean(state))
     findings.extend(_check_approval_expiry_agrees(state, active_items))
     findings.extend(_check_task_origins(state, active_items))
+    findings.extend(_check_accepted_tasks_carry_a_verdict(state, active_items))
     findings.extend(_check_experiment_reports(active_items))
     findings.extend(_check_premise_recheck(state, active_items))
     findings.extend(_check_fr_result_link(state, active_items))
@@ -742,9 +745,12 @@ def _check_dispatch_approval_presented(state: ProjectState, active_items: dict) 
     `gate_memory_complete` on every Bash call, and the shape this very round creates is the bad
     one: a routine approval is per root and is re-minted WEEKLY, so the store grows linearly while
     those roots permanently present a non-dispatching approval. Measured over 400 approvals and
-    300 items: 1 affected item 0.20 s, 5 -> 1.34 s, 20 -> 5.33 s, 50 -> 13.23 s, 300 -> 87.97 s --
-    past the 60 s hook timeout, and a killed hook is an ALLOW. One pass over the directory into
-    `{item id: [approval, ...]}` makes it O(approvals + items) with the same verdicts.
+    300 items: 1 affected item 0.20 s, 5 -> 1.34 s, 20 -> 5.33 s, 50 -> 13.23 s, 300 -> 87.97 s, and
+    this runs on EVERY Bash call -- a minute and a half of a frozen session per command, growing
+    with the store, and a store a few times that size outgrows the window the calling hook is
+    killed at (the kits' `_compat.HOOK_DEADLINE_SECONDS`), which is where a slow validator becomes
+    an unrun one. One pass over the directory into `{item id: [approval, ...]}` makes it
+    O(approvals + items) with the same verdicts.
     """
     findings = []
     approvals_dir = os.path.join(state.root, "approvals")
@@ -1113,6 +1119,102 @@ def _check_task_origins(state: ProjectState, active_items: dict) -> list:
                     "product_requirement or derives_from",
                 ))
     return findings
+
+
+def _root_type_of(item: dict) -> str:
+    """The TYPE of the item a task hangs from, read off its id, or "".
+
+    The id rather than a lookup: a root that has been archived is out of `active_items` and would
+    read as "no root", which would silence the check for exactly the tasks that ran longest. An id
+    carries its type, and `capture` refuses a `product_requirement` that names nothing.
+    """
+    try:
+        return parse_id(str(item.get("product_requirement") or ""))[0]
+    except Exception:  # noqa: BLE001 -- a malformed reference is the reference checks' finding
+        return ""
+
+
+def accepted_without_a_verdict(state: ProjectState, active_items: dict = None) -> dict:
+    """{task id: [missing kind, ...]} for tasks whose work was accepted with no QA verdict on it.
+
+    `active_items` is the map `validate_state` has already built ({id: (type, item)}); a caller
+    that has none passes nothing and this reads the active items itself. Two callers, one answer:
+    the validator's finding and the SessionStart briefing (`_kernel.unverified_delivery_briefing`)
+    are the same question asked in two places, and answering it twice is how they would drift.
+
+    WHICH STATUS "ACCEPTED" IS, derived and not typed: `confirming_edge("TSK")` is the edge on
+    which a task is closed as CONFIRMED, and the status it leaves FROM is the one that means the
+    work is finished but not yet confirmed. Rename `DONE` and this moves with it.
+
+    WHY THIS EXISTS -- BUG-0060, and the measurement is the whole argument. The evidence drawer
+    was empty after two dev pilots, and the two moments that ask for a verdict are the merge
+    (`gate_git`) and the confirming edge itself. Neither was reached: pilot 3 ended with 11 tasks
+    at the accepted status and none confirmed, pilot 4's half 2 never got that far, and this
+    repository's own 81 archived tasks are CANCELLED to the last one. So the absence was never
+    stated anywhere -- a drawer nobody fills looks exactly like a project that owes nothing. This
+    is what states it, on the status the runs really reach.
+
+    A WARNING AND NOT AN ERROR, deliberately: standing here is what a task DOES between the
+    developer's handback and QA, so this is a debt, not a defect. It blocks nothing on its own --
+    the merge is `gate_git`'s question and it asks it for itself.
+
+    ONLY WHERE THE VERDICT IS OWED, and that is derived rather than assumed of every kit. A task
+    is asked for one when it hangs from the item type a project of its kit hangs from --
+    `backlog_types.ROOT_TYPE_BY_KIT`, whose values are the roots whose kits' shipped texts promise
+    the delivery kinds (`gate_git` demands the same three at the merge). A kit absent from that map
+    has no such root, and the office kit is the measured case: it creates tasks like any other, and
+    the only Evidence any of its roles produces is `kind: audit`, which is no delivery verdict at
+    all. Without this term every completed office task would carry a debt nothing in that kit can
+    pay -- a warning that can only be ignored, which is how a validator stops being read.
+
+    NARROWER THAN `qa_verdicts`, said rather than implied: `qa_verdicts_by_subject` is one pass
+    over the store and groups by the ids an Evidence WRITES, without the reference walk. Evidence
+    recorded about something that hangs from the task is therefore not counted here, while
+    `qa_verdicts` would count it. The one pass is the reason -- this runs inside `validate_state`,
+    which `gate_memory_complete` runs on every Bash call, and a per-task walk over the store is the
+    shape `_check_approval_expiry_agrees` documents as having turned a validate into a blocked
+    push.
+    """
+    edge = confirming_edge("TSK")
+    if edge is None:
+        return {}
+    accepted_status = edge[0]
+    if active_items is None:
+        active_items = {str(item.get("id") or stem): (item_type, item)
+                        for item_type, stem, item, _path, exc in _iter_active(state)
+                        if not exc and isinstance(item, dict)}
+    delivery_roots = set(ROOT_TYPE_BY_KIT.values())
+    tasks = sorted(item_id for item_id, (item_type, item) in active_items.items()
+                   if item_type == "TSK" and item.get("status") == accepted_status
+                   and _root_type_of(item) in delivery_roots)
+    if not tasks:
+        return {}
+    by_subject = qa_verdicts_by_subject(state)
+    owed = {}
+    for task_id in tasks:
+        verdicts = by_subject.get(task_id, {})
+        missing = sorted(kind for kind in QA_EVIDENCE_KINDS
+                         if (verdicts.get(kind) or {}).get("result") != "pass")
+        if missing:
+            owed[task_id] = missing
+    return owed
+
+
+def _check_accepted_tasks_carry_a_verdict(state: ProjectState, active_items: dict) -> list:
+    """The finding `accepted_without_a_verdict` produces -- see it for the derivation."""
+    return [
+        _finding(
+            "warning", task_id,
+            "%s with no passing QA Evidence of kind(s) %s -- the work is booked as finished and "
+            "nothing in the project measured it"
+            % (active_items[task_id][1].get("status"), ", ".join(missing)),
+            "run the quality role and record its run: `python scripts/harness.py evidence --kind "
+            "<%s> --result <pass|fail> --related %s --summary ... --artifact-ref <staged proof>`; "
+            "the same records are what open the merge and what carry the task to its confirmed "
+            "status" % ("|".join(missing), task_id),
+        )
+        for task_id, missing in sorted(accepted_without_a_verdict(state, active_items).items())
+    ]
 
 
 def _check_experiment_reports(active_items: dict) -> list:

@@ -1,0 +1,51 @@
+id: TSK-0082
+product_requirement: PR-0001
+derives_from: BUG-0060
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+- user/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+required_inputs:
+- BUG-0060 (evidence drawer never written -- 0 entries across pilot 3 with 13 tasks
+  and pilot 4 half 2 with 4 tasks; either a completed kit task leaves evidence or
+  the kits stop shipping a drawer they never write)
+- BUG-0061 (filing plan does not fully emerge from onboarding -- four drawers had
+  to be user-demanded in pilot 4 half 3; the interview walks the document classes
+  the business actually has)
+- BUG-0062 (5 of 28 registered office hook entries carry a timeout; a hook killed
+  at the provider default reads as passthrough; whether kit-side deadline enforcement
+  covers the other 23 is unverified)
+- docs/pilot/2026-08-22-pilot-4-befunde.md + half-3 verbatims under v2-testbed/_round-scratch/TSK-0066/half3/
+  (onboarding chain)
+expected_outputs:
+- 'BUG-0060 resolved one way or the other, measured: a completed kit task writes an
+  evidence record on its real acceptance path (test red without it), OR the drawer
+  is removed from the kit contract with every shipped text aligned -- no dead drawer
+  survives'
+- 'BUG-0061: the onboarding interview derives the initial filing plan from the business
+  profile answers so the half-3 answer set yields supplier/finance/sales/company/review
+  coverage without user-demanded additions (measured against the half-3 screenplay)'
+- 'BUG-0062: a measurement per office hook entry saying what deadline governs it and
+  what a kill at that deadline does; passthrough entries get a timeout or a named
+  exception where the entries live'
+- mirrors byte-identical or KIT_SPECIFIC_HOOKS names the reason; bump run; full pytest
+  tools/ green; gates suite only if the gates derivation surface moved
+dependencies:
+- BUG-0060
+- BUG-0061
+- BUG-0062
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-23T00:29:42'
+closed_at: '2026-08-23T05:40:24'
