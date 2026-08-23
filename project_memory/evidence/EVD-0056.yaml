@@ -1,0 +1,13 @@
+id: EVD-0056
+kind: review
+related:
+- BUG-0059
+result: pass
+summary: 'live test run 2026-08-23 (three real provider sessions, shipped kits 2026.08.23-3,
+  no model override): BUG-0059 and BUG-0061 acceptance criteria met end to end, BUG-0058/0060
+  mechanisms measured at the hook, findings doc only -- verifier PASS for diff:1276fbda038ce31f971af7ebac1ad46797efab33665be43aa7a514f0a93b4750'
+artifact_refs:
+- ../docs/pilot/2026-08-23-live-testlauf-befunde.md
+revision: 1
+approval_ref: null
+created: '2026-08-23T09:55:24'
