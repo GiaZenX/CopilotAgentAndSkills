@@ -1,0 +1,43 @@
+id: TSK-0084
+product_requirement: PR-0001
+derives_from: BUG-0066
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- user/**
+required_inputs:
+- BUG-0066
+- team-kits/*/hooks/gate_write_scope.py line 1298 (the join_line_continuations + replace
+  newline preparation) and every other kit gate that uses the same preparation
+- the measured F3 fix in team-kits/office-team/hooks/gate_ledger_valid.py (_normalise_pipeline
+  rewrites CR after the continuation join) as the shape that already passed measurement
+- C:/Offline Repos/v2-testbed/_round-scratch/TSK-0083/rework7/ (m_scope_probe.py,
+  m_cr_scope_chain.py, m_shells.py, the F3-M2 counter-measurement)
+expected_outputs:
+- 'the CR chain is closed in all three kits: gate rc 2 with a file witness that nothing
+  was written'
+- the split follows the property (every character a target shell honours as a statement
+  separator), derived and measured against real shell processes, not enumerated
+- a test red without the fix, red seen in a clone outside the repo, plus the counter-direction
+  test that a command is not torn from its own flag
+- the same question answered for every other kit gate using that preparation, as a
+  property over the callers
+- mirrors byte-identical across the three kits or KIT_SPECIFIC_HOOKS names the reason;
+  bump run; affected suites green (the full suite is the lead's at delivery, DEC-0050)
+dependencies:
+- BUG-0066
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-24T16:45:00'
+closed_at: '2026-08-25T07:21:25'

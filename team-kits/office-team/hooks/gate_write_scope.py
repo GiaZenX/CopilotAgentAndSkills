@@ -1291,11 +1291,17 @@ def handle_shell(data):
     # bound to the VERB (`_MESSAGE_ARG_RX` is `_VerbBoundMessageRemoval`): a quoted span behind a
     # `-f`/`-b`/`-F` is prose after `git commit`/`gh`, but the FILE after `rm`/`cp`/`mv` (BUG-0020).
     code_view = _HEREDOC_RX.sub(" ", _MESSAGE_ARG_RX.sub(" ", command))
-    # a continued line is ONE command; every other newline is a command separator that shlex
-    # would otherwise swallow as whitespace. The continuation is removed, not spaced — this hook
-    # kept its own copy of that rule and its own copy of the bug, so `echo x >
-    # project_mem\<newline>ory/approvals/APR-0001.yaml` read as two words and named no state path.
-    code_view = _compat.join_line_continuations(code_view).replace("\n", " ; ")
+    # a continued line is ONE command; every break the shell honours is a command separator that
+    # shlex would otherwise swallow as whitespace. WHICH characters those are, and that the
+    # continuation is removed rather than spaced, both come from the shared preparation — this hook
+    # kept its own copy of the continuation rule and its own copy of the bug (`echo x >
+    # project_mem\<newline>ory/approvals/APR-0001.yaml` read as two words and named no state path),
+    # and it then kept its own copy of the SEPARATOR rule and the next one: the `\n` below was the
+    # only break it rewrote, so a break spelled CR stayed whitespace and the write behind it was
+    # judged as an argument of the harmless verb in front (BUG-0066, and `_compat` carries the
+    # measurement).
+    code_view = _compat.join_line_continuations(
+        code_view, tool=data.get("tool_name")).replace("\n", " ; ")
     # DEPTH, not a boolean: assigning a flag on every `cd` could not tell "left the tree" from
     # "went deeper into it", so `cd project_memory && cd approvals && echo x > a.yaml` wiped the
     # very flag that should have blocked it.

@@ -84,6 +84,7 @@ _stdlib_guard.install((_HOOKS_DIR,))
 import contextlib  # noqa: E402 -- after the guard on purpose (see above)
 import importlib  # noqa: E402
 import json  # noqa: E402
+import re  # noqa: E402
 import time  # noqa: E402
 import traceback  # noqa: E402
 
@@ -723,6 +724,36 @@ def _checkpoint_briefing(repo_root, task_ids):
 
 _PAYLOAD_CACHE = []
 
+# WHAT A COMMAND LINE LOSES BEFORE ITS SHELL PARSES IT — the one thing that makes a gate's whole
+# reading worthless, because the text it judges is then not the text that runs. Measured 2026-08-24
+# by having each gated shell print a string back and comparing the BYTES, over every C0 control
+# character, DEL, U+0085, U+2028 and U+2029: exactly ONE character of that class does not arrive,
+# the CARRIAGE RETURN on the `Bash` rail. PowerShell keeps all of them. A CR that is part of a CRLF
+# is not in this class of trouble: it is dropped and the LF that follows it stays the break it was,
+# so the gate's reading and the shell's agree — measured, `A<CRLF>B` arrives as `A<LF>B`.
+#
+# WHO DELETES IT IS THE SHELL'S OWN INPUT READER, not the tool — and this line used to say the
+# opposite, which hid a PLATFORM BINDING. Measured with no tool involved at all: `bash -c <line>`,
+# the line on stdin with and without `-s`, and a script FILE all print `AB`, while a CR that bash
+# BUILDS itself survives as `A<CR>B`. That was msys bash 5.2.37 on Windows, which is the only bash
+# this host has; the scaffold also installs on macOS and Linux, where a POSIX bash keeps a bare CR
+# as an ordinary character of a word. THE REFUSAL IS RIGHT ON BOTH, for two different reasons, and
+# only the first is measured here: where the CR is deleted, two words WELD (`project_mem<CR>ory/...`
+# is one canonical path to that bash and two harmless words to this reader — rc 0 through the whole
+# registered chain, rc 0 from bash, the item overwritten); where it is kept, this reader still ends
+# a statement at it and the shell does not, so the two disagree the other way round. On such a
+# platform the entry is an OVER-refusal rather than a closed weld, and the key is the TOOL because
+# that is what says which shell receives the line.
+#
+# WHY THIS IS A REFUSAL AND NOT A REPAIR. Deleting the CR here would give this reader that bash's
+# view and lose PowerShell's, and it cannot be had both ways in one text, because a weld crosses a
+# WORD boundary — the second reading would be a second tokenisation of the whole line, which is a
+# change in the gates and not in this door. A bare CR in a command line is also not a thing a person
+# writes: it is not how any editor spells a line end. So the honest answer is that the call could
+# not be inspected — the same door, one step further in, that `payload` already refuses an
+# unreadable payload through.
+_EATEN_IN_FLIGHT = {"Bash": re.compile(r"\r(?!\n)")}
+
 
 def payload(hook, event="PreToolUse"):
     """Bounded, normalized hook payload for an integrity gate.
@@ -754,7 +785,31 @@ def payload(hook, event="PreToolUse"):
               event=event,
               remedy="run `python scripts/harness.py doctor`; a provider sending a payload this hook cannot parse "
                      "is a harness defect worth reporting, not something to work around.")
+    eaten = _eaten_in_flight(data)
+    if eaten:
+        block(hook,
+              "this command line carries a character its shell will never see (%s), so what this "
+              "hook can read is not what would run — refused rather than waved through "
+              "(spec II.4 fail-closed)." % eaten,
+              event=event,
+              remedy="write the line without that character. It is not how any editor spells a "
+                     "line end; a command in several steps is spelled with a real newline or with "
+                     "`;`, `&&`, `||`.")
     return data
+
+
+def _eaten_in_flight(data):
+    """How the character this call's tool deletes on the way to its shell reads, or "".
+
+    A property of the TOOL, not of the text: `_EATEN_IN_FLIGHT` carries which characters those are
+    and the measurement behind them. Answers "" for every payload without a shell command, so an
+    `Edit` or a spawn passes through untouched.
+    """
+    rx = _EATEN_IN_FLIGHT.get(_compat.gated_shell(data.get("tool_name")))
+    if rx is None:
+        return ""
+    match = rx.search(str((data.get("tool_input") or {}).get("command") or ""))
+    return "" if match is None else "U+%04X" % ord(match.group()[0])
 
 
 def record_note(hook, message):

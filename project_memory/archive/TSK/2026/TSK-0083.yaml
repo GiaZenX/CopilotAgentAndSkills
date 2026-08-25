@@ -1,0 +1,38 @@
+id: TSK-0083
+product_requirement: PR-0001
+derives_from: BUG-0063
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0001
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- user/**
+required_inputs:
+- BUG-0063
+- team-kits/office-team/hooks/gate_ledger_valid.py lines 304-341 (the two exemption
+  patterns, _INTERPRETER_OPTIONS, head comments)
+- tools/test_hooks_v2.py tests around the P4-12 exemption and test_the_same_constructs_still_refuse_a_real_write
+expected_outputs:
+- Both exemption patterns no longer read a post-script -c/-e/-m argument word as an
+  interpreter payload; the guard is carried by the interpreter-option position or
+  a bounded construction, and the head comment says which and why
+- 'Both directions measured with a test red without the fix (red seen in a clone outside
+  the repo): the BUG-0063 repro line passes; python -c/-e/-m payload forms and python
+  -m scripts.harness stay refused; redirects into ledger targets stay refused'
+- Mirrors byte-identical across kits or KIT_SPECIFIC_HOOKS names the reason; python
+  tools/bump_kit_version.py run; full pytest tools/ green
+dependencies:
+- BUG-0063
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-23T10:35:27'
+closed_at: '2026-08-25T07:21:24'

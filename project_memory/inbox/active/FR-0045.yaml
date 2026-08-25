@@ -4,23 +4,29 @@ title: Claude-Design-Buendelformat als Designer-Vertragsschema festschreiben -- 
 request_text: 'User reminder 2026-08-16: is the Claude Design feature still on the
   list -- and the user offered to export a real design so we can see what it actually
   produces. Answer: it lives as prose in POST_V2_WISHLIST section 1b, never migrated
-  to an item. The plan there: do NOT embed claude.ai/design (hosted, interactive login,
-  canvas an agent cannot use), but ADOPT its handover BUNDLE format so a hand-exported
-  bundle drops in unchanged and the designer role produces the same triple offline:
-  design.html (self-contained, CSS/JS inline), screenshots/ (one image per state),
-  design-notes.md (target stack, conventions). The wishlist itself names the open
-  pre-condition VERBATIM: ''before freezing as a contract schema: export one real
-  bundle once and verify the filenames -- the composition so far comes from secondary
-  sources.'' The designer role is the dev-team product-designer (installed via the
-  preset work); its staging output shape (staging/<task-id>/ per section 1b) is what
-  this schema fixes, and it ties to the freeze_design / DSN item type in the kernel
-  (design/revisions/DSN-*.html) plus the wireframe gap BUG-0055. NEXT ACTION carried
-  by this item: the USER exports one real Claude Design bundle and places it on the
-  local filesystem; the lead reads design.html (as text) and the screenshots (viewable
-  images) and verifies the actual filenames/structure against the assumed triple,
-  then the schema can be frozen. Content skill stays the Apache-2.0 anthropics/skills
-  frontend-design (~12 lines). Post-release per DEC-0045; folds the 1b prose into
-  a tracked item. Source: user 2026-08-16; POST_V2_WISHLIST 1b (2026-07-27).'
+  to an item. The plan there: do NOT embed claude.ai/design (hosted, interactive,
+  account-gated), but freeze its EXPORT bundle as the designer contract schema. Composition
+  so far came from secondary sources only.
+
+
+  MEASURED 2026-08-23 -- the user delivered a real export (Synaipse Design System.zip,
+  184 entries, ~2 MiB, inspected read-only in v2-testbed/_round-scratch/FR-0045/):
+  the community-claimed triple (design.html + screenshots/ + design-notes.md) is WRONG
+  for a design-system export. The real shape is a SKILL: SKILL.md with frontmatter
+  (name, description, user-invocable: true) that instructs reading readme.md; readme.md
+  (~20 KB, brand voice, provenance of every asset, licensing caveats); _ds_manifest.json
+  (namespace, 33 components, 30 cards, 309 tokens, 6 themes, 14 fonts, source: spa);
+  tokens/*.css (9 files); components/<group>/<Name>.jsx + .d.ts + .prompt.md per component
+  plus a <group>.card.html per group; guidelines/*.card.html + harness-definition.md;
+  ui_kits/{desktop,remote,website}/ full JSX views + index.html + README; assets/
+  (fonts woff2, logo/favicon svg); uploads/ (user-pasted reference images); tmp/,
+  .thumbnail, styles.css, thumbnail.html, _ds_bundle.js, _adherence.oxlintrc.json
+  (a lint config for brand adherence). Consequence for the contract: the export IS
+  directly consumable as a Claude Code skill by the product-designer role (drop-in,
+  SKILL.md is the entry point); the schema to freeze is SKILL.md + readme.md + _ds_manifest.json
+  as the machine-readable spine, not an invented triple. Open: whether a PROTOTYPE/handoff
+  export (as opposed to a design-system export) has a different shape -- only this
+  one kind was measured.'
 status: OPEN
 revision: 1
 approval_ref: null

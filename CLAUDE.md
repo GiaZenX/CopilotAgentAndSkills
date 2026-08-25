@@ -125,6 +125,19 @@ blinder Spiegel hat einmal 119 Zeilen gelöscht.
 **Erst `python tools/bump_kit_version.py`, dann urteilen.** Ein Paket ohne Versionsstempel ist
 nicht fertig.
 
+**Der Testumfang einer Runde richtet sich nach dem, was sie berührt** (`DEC-0050`). Während einer
+Runde laufen die betroffenen Suiten; die volle Suite ist ein **Lieferkriterium** und läuft
+**einmal** — nach der letzten Nacharbeit, vor Stempel und Commit. Der Prüfer fährt sie gar nicht:
+seine Aufgabe ist die Messung gegen den laufenden Code, nicht die Wiederholung eines Laufs, den
+der Umsetzer protokolliert hat; nachrechnen muss er. Der rote Test bleibt Pflicht für **jeden**
+blockierenden Fix — gekürzt wird die Wiederholung, nie die Strenge. Der Fall dahinter ist
+gemessen: an `TSK-0083` lief die volle Suite in sechs Runden mit, 35 bis 39 Minuten je Lauf, rund
+vier Stunden, und **kein einziger Befund einer Runde kam aus ihr** — alle kamen aus dem Messrig
+und den Mutationsläufen. Ein Auftrag, der „volle Suite" ohne diesen Zeitpunkt verlangt, ist ein
+Auftragsfehler des Sitzungsagenten und wird als solcher benannt; genau der ist dort passiert.
+Durchsetzen kann das hier kein Gate — die Stelle, die es messen könnte, liegt in `.claude/` und
+ist dem Sitzungsagenten verschlossen. Dieselbe Frage auf der Kit-Seite trägt `FR-0057`.
+
 **Kein Push ohne ausdrückliche Freigabe des Nutzers.** Commits sind Routine, Push nie.
 
 **Alle Arbeitsverzeichnisse außerhalb des Repos liegen unter

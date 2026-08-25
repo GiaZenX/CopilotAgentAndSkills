@@ -1,0 +1,68 @@
+id: DEC-0050
+title: Der Testumfang einer Runde richtet sich nach dem, was sie beruehrt -- die volle
+  Suite ist ein Lieferkriterium, kein Rundenritual
+context: 'DEC-0022 hat die Beweislast nach Schaden getrennt (Produkt voll streng,
+  Werkbank nur bei gemessener Kette). Ungeregelt blieb der UMFANG des Testlaufs je
+  Runde. Gemessen an TSK-0083 (2026-08-23/24): sechs Umsetzer-Pruefer-Runden an einem
+  einzigen Kit-Hook. Volle Suite 3384 bis 3444 Tests, gemessen 2071 s, 2312 s, 1901
+  s -- also rund 35 bis 39 Minuten je Lauf. Sie lief in jeder Runde einmal beim Umsetzer
+  und in Runde 4 zusaetzlich beim Pruefer: rund vier Stunden reine Wiederholung, und
+  kein einziger Befund einer Runde kam aus ihr. Alle Befunde kamen aus dem Messrig
+  (echte Hook-Prozesse gegen selbst gebaute Projekte) und aus den Mutationslaeufen.
+  Der Pruefer musste die volle Suite ausserdem zweimal als Nicht-Befund abschreiben,
+  weil sein Klon keine git-Historie hatte und tools/test_migrate.py darum 96 Fehler
+  warf -- ein Rig-Artefakt, das jedes Mal neu erklaert werden musste. Der Nutzer hat
+  den Punkt von sich aus gestellt: er erinnerte die Regel als ''nur die betroffenen
+  Tests, volle Suite bei Releases'' und lag damit naeher am Beschlossenen als die
+  Auftraege, die der Lead geschrieben hatte. Die Formulierung ''full pytest tools/
+  green'' stand in den expected_outputs der TSK-Items -- also in einer Zeile, die
+  der Lead selbst geschrieben hat, nicht in einer Regel. DEC-0030 haelt denselben
+  Denkfehler schon einmal fest: Kit-Zwang und Entwicklungsgewohnheit vermischt.'
+decision: 'Der Umfang eines Testlaufs richtet sich nach dem, was die Aenderung beruehrt,
+  nicht nach der Gewohnheit.
+
+
+  1. WAEHREND einer Runde laufen die betroffenen Suiten. Betroffen ist, was die geaenderten
+  Dateien importieren oder messen; im Zweifel die Datei, die den Gegenstand testet,
+  plus die Nachbarn, die ihn mitbenutzen.
+
+
+  2. Die VOLLE Suite ist ein Lieferkriterium und laeuft EINMAL: nach der letzten Nacharbeit,
+  vor Stempel und Commit. Sie erfuellt expected_output 3 zum Lieferzeitpunkt -- das
+  ist der Zeitpunkt, den die Zeile meint.
+
+
+  3. Der PRUEFER faehrt die volle Suite gar nicht. Seine Aufgabe ist die Messung gegen
+  den laufenden Code, nicht die Wiederholung eines Laufs, den der Umsetzer protokolliert
+  hat. Er darf sie stichprobenartig nachrechnen (Arithmetik der Testzahlen) und muss
+  widersprechen, wenn sie nicht aufgeht.
+
+
+  4. Rot-Beweise (der Test, der ohne den Fix rot wird) bleiben Pflicht fuer jeden
+  BLOCKIERENDEN Punkt, und zwar unveraendert streng: Defekt im Klon ausserhalb des
+  Repos wiederherstellen, Rot SEHEN, zuruecksetzen. Fuer nicht-blockierende Punkte
+  genuegt die Messung ohne eigenen Mutationsklon. Gekuerzt wird die Wiederholung,
+  nie die Strenge.
+
+
+  5. Der Auftragstext sagt das ausdruecklich. Ein Auftrag, der ''volle Suite'' ohne
+  diesen Zeitpunkt verlangt, ist ein Auftragsfehler des Leads und wird als solcher
+  benannt.'
+consequences: 'Gespart werden je Runde rund 35 bis 39 Minuten beim Umsetzer und bis
+  zu 32 beim Pruefer. Der Preis ist benannt: ein Bruch, den nur eine unbeteiligte
+  Suite sieht, faellt erst am Ende auf statt in der Runde, die ihn verursacht hat
+  -- akzeptiert, weil zwischen den Runden nicht ausgeliefert wird und der Endlauf
+  vor dem Stempel steht. Was diese Entscheidung NICHT aufweicht: die Zwei-Agenten-Schleife,
+  Gate 3, DEC-0022 Punkt 1 (volle Strenge fuer alles, was ausgeliefert wird), und
+  die Pflicht zum roten Test bei jedem blockierenden Fix. Offen und getrennt gefuehrt:
+  dieselbe Frage auf der Kit-Seite -- die Rolle quality-engineer sagt nur ''run the
+  tests'' ohne Mass, und gate_test_coverage erzwingt nur, DASS ein Bereich Tests hat,
+  nie einen Vollauf. In einem grossen Nutzerprojekt kann daraus dieselbe Explosion
+  werden; das traegt ein eigenes FR-Item.'
+source: Nutzerfrage 2026-08-24 waehrend TSK-0083 Runde 6 ('wieso muss die ganze Testsuite
+  erneut laufen?'); gemessene Laufzeiten aus den Abschlussberichten TSK-0083 Runden
+  4 bis 6; DEC-0022; DEC-0030
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-24T13:44:28'

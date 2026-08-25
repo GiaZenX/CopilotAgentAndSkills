@@ -1,0 +1,31 @@
+id: FR-0057
+title: Die QS-Rolle der Kits kennt kein Mass fuer den Testumfang -- in einem grossen
+  Nutzerprojekt wird daraus dieselbe Explosion wie in TSK-0083
+source: 'docs/POST_V2_WISHLIST.md (neu anzulegender Abschnitt); Anlass: Nutzerfrage
+  2026-08-24 waehrend TSK-0083 Runde 6, Messung siehe DEC-0050'
+acceptance_criteria:
+- 'Gemessen statt vermutet: ein Lauf oder eine Nachbildung, die zeigt, WAS die QS-Rolle
+  heute bei einer kleinen Aenderung in einem Projekt mit langer Testsuite tatsaechlich
+  startet'
+- 'Die Rolle traegt ein Mass, das dieselbe Trennung macht wie DEC-0050: betroffene
+  Tests waehrend der Arbeit, voller Lauf einmal vor der Abnahme bzw. vor dem Merge'
+- Das Mass steht dort, wo es wirkt, und nicht nur in Prosa -- entweder als Regel in
+  der Verfassung, die ein Hook liest, oder als Zeile im QS-Ablauf, deren Fehlen auffaellt
+- Kein Kommentar und keine Rollenbeschreibung behauptet danach eine Deckung, die der
+  Ablauf nicht baut
+request_text: 'Gemessen im Repo, 2026-08-24: gate_test_coverage der Kits erzwingt
+  nur, DASS jeder Quellbereich ueberhaupt Tests hat, und das nur bei git push oder
+  git merge; jede Unsicherheit endet mit exit 0. Einen Vollauf verlangt kein Kit-Hook.
+  Das Mass fehlt aber auch: die Rolle quality-engineer sagt in ihrer description schlicht
+  ''run the tests'', ohne Umfang, ohne Zeitpunkt, ohne Unterscheidung zwischen der
+  Runde und der Lieferung. In einem kleinen Projekt ist das folgenlos. In einem gewachsenen
+  Projekt faehrt die QS dann bei jeder Aufgabe alles -- genau die Wiederholung, die
+  in diesem Repo an TSK-0083 rund vier Stunden gekostet hat, nur diesmal im Projekt
+  des Nutzers und auf seine Kosten. Der Nutzer hat die Frage selbst gestellt (''kann
+  es beim harness auch ausarten?''), bevor irgendjemand danach gesucht hat. Ungemessen
+  ist bisher, wie sich die QS-Rolle in einem Projekt mit langer Suite tatsaechlich
+  verhaelt -- kein Pilot hat ein Projekt gross genug werden lassen.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-24T13:45:04'

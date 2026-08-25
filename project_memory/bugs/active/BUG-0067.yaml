@@ -1,0 +1,38 @@
+id: BUG-0067
+title: A measuring run wrote office-kit TEMPLATES into this repo's own project_memory
+  -- same family as BUG-0052, different mechanism
+related_pr: PR-0001
+observed: 'Found by the TSK-0084 verifier (Hinweis an den Lead, 2026-08-24) and confirmed
+  by the lead: eight untracked office-kit template files and one directory sit in
+  this repo''s own state tree since 2026-08-23 01:03 -- business_profile.yaml, compliance_register.yaml,
+  content_guidelines.yaml, filing_plan.yaml, marketing_plan.yaml, master_data.yaml,
+  product_catalog.yaml and procedures/. They are the kit''s UNFILLED template forms
+  (header: ''owned by: Manager'', ''Filled ONCE in the onboarding interview''), so
+  an init/scaffold run was pointed at the repo root instead of a throwaway project
+  outside it. This repo runs no kit and its state is dev-shaped, so office forms here
+  are contamination, not state. Measured consequences: kernel validate stays 0 error(s)
+  (they are not items), but a git add -A before a commit would have carried them into
+  history -- which is exactly what the verifier flagged before the delivery commit.'
+expected: 'A measuring run leaves this repo''s project_memory untouched: whatever
+  seeds a project_memory tree is pointed at a throwaway root outside the repo, and
+  the round''s protocol names where it wrote. Neighbour with the same direction but
+  another mechanism: BUG-0052 (the tools/ suite appends audit lines to the repo''s
+  canonical hook_events.jsonl on every run).'
+repro: git status --short project_memory/ | grep '^??' in a clean checkout shows the
+  eight names; their headers are the shipped office templates verbatim.
+severity: low
+acceptance_criteria:
+- id: AC-1
+  text: 'the seeding path a round uses cannot default to the repo root (red-without-fix:
+    run it without an explicit root and watch it refuse or land outside)'
+- id: AC-2
+  text: the eight leftover files are removed from the working tree by a route that
+    is allowed to touch project_memory (the kernel or a hand outside the session),
+    and the removal is recorded
+- id: AC-3
+  text: measured with BUG-0052 in one stroke where the mechanism allows -- both are
+    'a run writes the workshop's own state'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-25T06:50:59'

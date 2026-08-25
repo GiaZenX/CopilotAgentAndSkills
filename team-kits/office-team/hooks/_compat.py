@@ -134,6 +134,29 @@ def last_command():
     return str((data.get("tool_input") or {}).get("command") or "")
 
 
+def last_tool():
+    """The tool name of the payload this process read, or "" — see `_LAST_PAYLOAD`.
+
+    The same move `last_command` makes, for the same reason and with the same limit: WHICH SHELL
+    will run a command line decides how the line is read (`_CONTINUATION_BY_TOOL`), and threading
+    that answer down would be the nine-call-site thread `_ESCAPE_CHARS` documents someone
+    forgetting. A caller that HAS the payload should still pass its tool explicitly; this is the
+    floor under the ones that do not.
+    """
+    data = _LAST_PAYLOAD[0] if _LAST_PAYLOAD else {}
+    return str(data.get("tool_name") or "")
+
+
+def gated_shell(tool=None):
+    """The gated shell tool a command text will run under — the caller's word, else the payload's.
+
+    Normalised through `_TOOL_ALIASES`, so a provider that spells the tool in lower case does not
+    silently fall out of every per-shell rule and into the union.
+    """
+    name = str(tool or last_tool() or "")
+    return _TOOL_ALIASES.get(name.lower(), name)
+
+
 def load(stream=None, limit=None, tolerate_overflow=False):
     """Read + normalize the hook payload from stdin. Returns {} on garbage.
 
@@ -535,7 +558,61 @@ _HERESTRING_RX = re.compile(
 # reader below decides "which part of this line is this command" with a pattern that stops at a
 # newline — correctly, an unescaped newline really does end a command — so the continuation has to
 # be resolved before that pattern ever runs.
+#
+# WHICH character continues, and WHICH break it continues over, are properties of the SHELL, so
+# the union below is only what a reader that does not know its shell may use. Both halves measured
+# 2026-08-24 against a real `bash.exe` and a real `powershell.exe`, by asking whether
+# `echo one<PAIR>echo two` ran ONE command or two:
+#
+#   pair            bash                            PowerShell
+#   `\` + LF        continues                       does NOT — prints `one\`, then `two`
+#   `\` + CRLF      continues (the CR is gone       does NOT
+#                   before bash parses, below)
+#   backtick + LF   opens a substitution, error     continues — the LF is escaped, one command
+#   backtick + CRLF error                           does NOT — the backtick escapes the CR and the
+#                                                   LF still ends the statement
+#
+# The union therefore REMOVES a break the named shell honours, and that is a hole rather than a
+# nicety: with `tool_name: PowerShell`, `Get-Content README.md \<LF>Set-Content -Path
+# .claude/settings.json -Value POISONED` was gate rc 0, `powershell.exe` rc 0 and the file — the one
+# the provider reads to learn WHICH hooks run — overwritten, measured with a file witness in the dev
+# and office kits. `\`+CRLF the same. Which entries exist is pinned to the tools the gates are
+# registered on, from both ends
+# (`tools/test_hooks_v2.py::test_every_gated_shell_tool_has_its_own_continuation_rule`).
+_CONTINUATION_BY_TOOL = {"Bash": re.compile(r"\\\r?\n"), "PowerShell": re.compile("`\n")}
+# The union — the answer for a text whose shell is not one of the two gated ones. NOT the empty
+# pattern, because leaving a continuation standing is a hole of its own: without the join
+# `echo x >> led\<newline>ger/x.csv` split at the newline and its target was lost (measured rc 0).
+#
+# WHO ENDS UP HERE, corrected twice and now measured in both directions. It is wider than "outside
+# the kits": EVERY payload whose tool is not `Bash` or `PowerShell` takes this branch — `Edit`,
+# `Write`, `Task`, a provider's `apply_patch` — plus a process that read no payload at all, which
+# today means a test or the CLI. Without consequence, because such a payload carries no `command`
+# for these readers to prepare.
+# `.claude/hooks/_harness.py` IS NOT ONE OF THEM, and listing it here was the over-alarming half of
+# the same mistake — a sentence that gave this repo's own enforcement a weakness it does not have.
+# It calls with one argument, but it reads its payload through `load()` in this module, so
+# `gated_shell()` answers with the real tool and those gates take the per-shell branch. Measured as
+# real gate processes against `project_memory/decisions/active/DEC-0001.yaml`: with `PowerShell`,
+# two statements rc 2 and `\`+LF rc 2 while the backtick continuation is rc 0; with `Bash` the
+# mirror image, backtick rc 2 and `\`+LF rc 0.
 _CONTINUATION_RX = re.compile(r"[\\`]\r?\n")
+
+# WHERE A STATEMENT ENDS — asked of the SHELLS, over the whole class a line break could be spelled
+# in, rather than assumed to be the one character everybody types. Probed 2026-08-24 against a real
+# `bash.exe` and a real `powershell.exe` with `echo one<CH>echo two`, judged on the RAW bytes by
+# whether the second `echo` ran as a command: of every C0 control character, DEL, U+0085, U+2028 and
+# U+2029, exactly LF (both shells) and CR (PowerShell only) end a statement. Everything else in that
+# class is an ordinary character or mere WORD separation — a tab, U+000B, U+000C, U+0085, U+2028 and
+# U+2029 all leave the second `echo` standing in the output as an ARGUMENT, which is the reading
+# that makes them look like separators from the outside and is what a first, line-based probe of the
+# same question got wrong.
+# A character ONE gated shell honours is honoured here, because `tool_name` is the caller's choice:
+# a CR was ordinary whitespace to `shlex` and a statement end to PowerShell, so a write to
+# `.claude/settings.json` behind one rode into the view of the harmless verb in front of it and all
+# three kits answered rc 0 (BUG-0066, measured end to end: gate rc 0, powershell rc 0, file
+# poisoned). `\r\n` stays ONE break rather than becoming two.
+_STATEMENT_BREAK_RX = re.compile(r"\r\n?")
 
 # WHAT ENDS A SHELL WORD **IN LITERAL TEXT** — and that qualifier is the whole of what the
 # previous version of this comment got wrong. Outside a quoted span a word ends at whitespace or at
@@ -710,14 +787,39 @@ def unwrap_shell_payload(command):
     return text
 
 
-def join_line_continuations(text):
-    """`\\`+newline (backtick+newline in PowerShell) removed the way the SHELL removes it.
+def join_line_continuations(text, tool=None):
+    """`text` with its line continuations removed and every statement break spelled `\\n`.
 
     Single home for the rule, because three hooks kept their own copy and all three joined with a
     SPACE — see `_CONTINUATION_RX` for what that costs. Exported rather than private so a reader
     that must keep quotes and case (`gate_write_scope`) can share the rule instead of the bug.
+
+    WHICH continuation is removed depends on the SHELL, and `tool` is how a caller says which one
+    (`_CONTINUATION_BY_TOOL` carries the table and the measurement). A caller that names none is
+    answered from the payload this process read (`gated_shell`), which is what keeps this from
+    being the nine-call-site thread; only a process that read no payload at all falls back to the
+    union.
+
+    THE TWO REWRITES ARE ONE CALL because a caller must not be able to take the join without the
+    break normalisation. `gate_write_scope` took exactly that half and then rewrote `\\n` itself, so
+    a break spelled CR was invisible to it in all three kits (`_STATEMENT_BREAK_RX` carries the
+    chain). Nothing here enumerates the callers; what they share is that they all decide "which
+    part of this line is this command", and none of them can decide it on a text whose breaks are
+    not all spelled the same
+    (`tools/test_hooks_v2.py::test_the_shared_preparation_spells_every_statement_break_as_a_newline`).
+
+    THE ORDER IS THE SHELL'S, and it BUYS NOTHING TODAY — said that way round because the sentence
+    here used to claim it decided a refusal. It follows the shell: a token the shell puts back
+    together must not then be cut by the break that join leaves behind. What it no longer decides
+    is any verdict this repo can measure: with the continuation tool-dependent above and a line the
+    Bash tool mangles refused outright (`_kernel._EATEN_IN_FLIGHT`), the four lines that used to
+    separate the two orders are rc 2 under BOTH of them, measured against a real gate process. The
+    order therefore stays because it is right, not because something falls over without it — and
+    the text-level property it does carry is
+    `tools/test_hooks_v2.py::test_a_continuation_is_joined_before_a_break_is_normalised`.
     """
-    return _CONTINUATION_RX.sub("", text or "")
+    continuation = _CONTINUATION_BY_TOOL.get(gated_shell(tool), _CONTINUATION_RX)
+    return _STATEMENT_BREAK_RX.sub("\n", continuation.sub("", text or ""))
 
 
 # A HERE-DOCUMENT opener: the operator, an optional `-` (tab-stripping form), and the DELIMITER,

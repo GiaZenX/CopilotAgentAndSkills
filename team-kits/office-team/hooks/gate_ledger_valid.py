@@ -69,7 +69,16 @@ SPAWN_TOOLS = ("Agent", "Task")
 # guard_harness_selfmod's blocked list anyway, because a stale "everything is fine" note is still
 # a lie the next reader believes.
 STATE = os.path.join(".claude", "ledger_state.json")
-VALIDATOR = os.path.join("scripts", "ledger_add.py")
+# ...spelled with a FORWARD slash, in the one place both the filesystem and the refusal text read
+# it from. `os.path.join` put a backslash here on Windows, and this gate prints the path into its
+# own remedy (`python <VALIDATOR> --validate <file>`) beside a findings list that names the ledger
+# with forward slashes. That mixed line is one this gate REFUSES: a backslash is consumed by the
+# POSIX reading of the word (`_readings_of`), the canonical path is gone in that reading, and what
+# is left is a ledger path with an unvouched interpreter run beside it -- measured rc 2 while both
+# uniform spellings were rc 0. A remedy has to be safe under EVERY reading, and that is what the
+# forward slash is (`tools/test_hooks_v2.py::test_the_remedy_this_gate_prints_is_one_it_accepts`).
+# `os.path.join(root, …)` takes it unchanged on both platforms.
+VALIDATOR = "scripts/ledger_add.py"
 # THE canonical ledger: `ledger/*.csv` at the repo root, nothing else. An earlier cut matched any
 # path with a `ledger` component, which meant a bank export dropped in `inbox/ledger/` was judged
 # against the accounting schema and blocked the whole project — and the enforcing sweep and the
@@ -112,15 +121,52 @@ _PROTECTED_RX = re.compile(r"ledger_add\.py|ledger_state\.json", re.IGNORECASE)
 # protected FILE, so the file-level pattern saw nothing while the extraction replaced the
 # validator — the same directory-destination blind spot the ledger path had in round 7, in the
 # other half of the gate. Only used by `_writes_protected`, where a verb has already been judged
-# non-reading, so `python scripts/ledger_add.py --validate` is unaffected.
+# non-reading, so `python scripts/ledger_add.py --validate` is unaffected. That claim held for the
+# BARE line and not for the same line inside a substitution until `BUG-0065`; what makes it true
+# for both is `_WORD_END` below
+# (`tools/test_hooks_v2.py::test_a_closing_paren_ends_a_word_for_this_reader_too`).
 # ...as a DESTINATION, not as a mention. Matching any path under `scripts/` refused `ruff check
 # scripts/`, `bash scripts/setup.sh` and `chmod +x scripts/tool.sh` — none of which writes the
 # validator. A destination is the bare directory after an extraction/output flag, after a copy or
 # move, or as a redirect target; everything else is somebody doing ordinary work in that folder.
+# WHERE A SHELL WORD ENDS, written once instead of at each closer that needs it. A word ends at
+# whitespace or at a shell METACHARACTER; the two closers below enumerated the metacharacters that
+# had come up so far, and `)` was not among them — so `echo "$(tar -xf evil.tar -C scripts/)" &&
+# git commit` unpacked over the validator's directory and committed, exit 0 (`BUG-0065`). The
+# substitution's OPENING becomes a segment separator (`_SUBSTITUTION_OPEN_RX`) while its CLOSING
+# paren stays glued to the target word, so the word this reader saw was `scripts/)`. The BACKTICK
+# is here for the same reason and was measured missing from the first cut of this line: it opens
+# and closes the older command substitution, so `echo "`tar -xf evil.tar -C scripts/`" && git
+# commit` left the word as `scripts/` followed by a backtick and stayed exit 0 while the `$(…)`
+# spelling of the same attack refused.
+#
+# THIS SET IS HAND-WRITTEN. It is NOT derived from anything, and a previous version of this line
+# said it was `_compat._SYNTAX_CHARS` — which it is not (that set is `&|;#\n\r`: no quotes, no
+# parens, no redirection, and it carries a `#` this one does not). Saying "derived" turned the very
+# enumeration that was the defect into a claimed definition. What it has instead of a derivation is
+# the tripwire CLAUDE.md asks of an unavoidable enumeration, measuring both ends:
+# `tools/test_hooks_v2.py::test_every_word_end_character_is_needed_and_no_other_ends_the_word`
+# states the set a SECOND time, independently, so dropping an entry here and adding one both show
+# up as a disagreement. What it does NOT do is ask a shell whether the set is right; that
+# comparison is not built, and this line is hand-written for exactly that reason.
+#
+# WHAT IT CANNOT SEE, measured rather than argued: a destination word the shell only BUILDS by
+# expansion. `cp evil.py scripts/$f` with `f` unset copies into the bare directory — filesystem
+# witness, the file lands in `scripts/` — while this reader sees the word `scripts/$f` and no
+# destination. Adding `$` to the set does not fix that: it would read `scripts/$f` as the bare
+# directory even when `f` names a file, and the word the shell finally builds is not in the text at
+# all. The gap is the expansion and not the character, and it is OPEN: nothing below closes it and
+# no test here claims it is closed.
+_WORD_END_CHARS = r"\s\"'`;|&()<>"
+_WORD_END = r"(?=[" + _WORD_END_CHARS + r"]|$)"
+# ...and the same set as a plain match, for the one reader that asks whether such a character sits
+# INSIDE a word instead of after it (`_as_one_word`). Derived from the class above rather than
+# written twice, so the two cannot drift apart; the class itself keeps the tripwire named there.
+_A_WORD_END_CHAR_RX = re.compile("[" + _WORD_END_CHARS + "]")
 _PROTECTED_DIR_RX = re.compile(
-    r"(?:-C|-d|--directory|-o|-O|--output|>|>>)\s*[\"']?(?:\./)?scripts/?(?=[\s\"';|&]|$)"
-    r"|\b(?:cp|mv|copy-item|move-item|rsync|install)\b[^\n;|&]*?\s(?:\./)?scripts/?"
-    r"(?=[\s\"';|&]|$)", re.IGNORECASE)
+    r"(?:-C|-d|--directory|-o|-O|--output|>|>>)\s*[\"']?(?:\./)?scripts/?" + _WORD_END +
+    r"|\b(?:cp|mv|copy-item|move-item|rsync|install)\b[^\n;|&]*?\s(?:\./)?scripts/?" + _WORD_END,
+    re.IGNORECASE)
 # A SECOND file called `ledger_add.py` outside `scripts/` has no legitimate reason to exist: the
 # canonical one is protected, so a decoy is how you get a validator nobody guards.
 _DECOY_VALIDATOR_RX = re.compile(
@@ -128,7 +174,22 @@ _DECOY_VALIDATOR_RX = re.compile(
 # ...unless the command stepped INTO the directory first. `cd scripts && python ledger_add.py
 # --validate …` is the sanctioned way out of a block, typed from inside the folder, and reading
 # the bare name there as a decoy refused the remedy itself.
-_CD_SCRIPTS_RX = re.compile(r"(?:^|[;&|])\s*cd\s+\.?/?scripts\b", re.IGNORECASE)
+# THE WORD HAS TO BE THAT DIRECTORY, and `\b` does not say so — it is satisfied by `-`, `.` and `/`
+# alike, so `cd scripts-evil`, `cd scripts.bak` and `cd scripts/../evil` each bought the exemption
+# for a directory nobody guards, and the bare `ledger_add.py` there is the attacker's own program
+# (measured rc 0 through the registered chain; at HEAD the same lines were refused only because the
+# decoy check stood in front of the exemption, which is the over-refusal `BUG-0064` removed —
+# `tools/test_hooks_v2.py::test_only_the_validators_own_directory_forgives_the_bare_name`).
+_CD_SCRIPTS_RX = re.compile(r"(?:^|[;&|])\s*cd\s+\.?/?scripts/?" + _WORD_END, re.IGNORECASE)
+# ...and that is ALL it forgives: a validator path with no directory part. In `scripts/` the BARE
+# name is the canonical file; `tools/ledger_add.py` and `../tools/ledger_add.py` name a different
+# file from every working directory there is. The exemption used to be asked of the whole COMMAND
+# and then ended the decoy loop outright, so one `cd scripts` anywhere disarmed the rule for every
+# segment — `python tools/ledger_add.py && cd "scripts" && git commit` ran a validator nobody
+# guards and committed, exit 0, and the quote spelling reached that state only because
+# `_readings_of` produced the `cd scripts` the raw text did not have
+# (`tools/test_hooks_v2.py::test_stepping_into_the_validators_directory_forgives_only_the_bare_name`).
+_ANY_VALIDATOR_PATH_RX = re.compile(r"(?<![\w/.-])(?:[^\s;|&]*/)?ledger_add\.py", re.IGNORECASE)
 # A command that writes the ledger AND commits it in one breath. Validating synchronously cannot
 # help here: the verdict is already stale when the same command rewrites the file afterwards, and
 # the PostToolUse warning arrives after the commit is in HEAD. So this shape is refused outright,
@@ -145,8 +206,15 @@ _LEDGER_PATH_RX = re.compile(
     r"\bledger/[^\s;|&]*"
     # ...and the directory named WITHOUT a trailing slash, which `cp file ledger` also writes into.
     # Bounded so it is a whole path token: `(?<![\w/.-])` keeps `/tmp/ledger` and `ledger_add.py`
-    # out (`_` is a word character, so there is no boundary inside `ledger_add`), and this only
-    # ever matters when `_SHELL_WRITE_RX` has already matched somewhere in the same command.
+    # out (`_` is a word character, so there is no boundary inside `ledger_add`).
+    #
+    # THIS PATTERN ANSWERS "WHICH PATH", NEVER "IS THIS A WRITE". Until TSK-0083 the line above
+    # named a write DENYLIST as its precondition -- a constant no code path read any more, the
+    # read-only allowlist below having taken that question over. The reader was told this rule was
+    # held on a leash that did not exist. What decides whether a segment naming a ledger path
+    # WRITES it is `_verb_only_reads`, asked in `_a_reading_writes_the_ledger` of the stages beside
+    # the vouched runs (and of the whole segment in the `cd ledger` fallback at its end), plus the
+    # redirect targets of that segment.
     r"|(?<![\w/.-])ledger(?=[\s;|&]|$)", re.IGNORECASE)
 # ...plus the working-directory form. `gate_write_scope` in this kit already tracks `cd` carry-over
 # and directory-form stars; this rule needs only the narrow case, because it decides ONE question:
@@ -274,9 +342,18 @@ _SUBSTITUTION_OPEN_RX = re.compile(r"\$\(|<\(|>\(|`")
 # the next: a backslash-newline continuation (which is simply how a long command is FORMATTED), a
 # newline after the pipe, a newline inside the first stage, and `|&`. Each is the same pipeline
 # written differently, so the answer is to make them one shape first — the same move that ended
-# the path and verb enumerations two rounds ago. The continuation itself comes from
-# `_compat.join_line_continuations` — this hook's own copy joined with a SPACE, so a continuation
-# INSIDE a token (`led\<newline>ger/2026.csv`) split the very path the rule is about.
+# the path and verb enumerations two rounds ago. The continuation AND the break spelling both come
+# from `_compat.join_line_continuations` — this hook's own copy of the continuation joined with a
+# SPACE, so a continuation INSIDE a token (`led\<newline>ger/2026.csv`) split the very path the
+# rule is about, and its own copy of the break rule was a second place for the same rule to rot.
+# What that preparation buys this gate: a CARRIAGE RETURN is a break here too, unread it left a
+# vouched run and the write behind it in ONE stage — `python scripts/ledger_add.py --validate
+# ledger/2026.csv<CR>Set-Content -Path ledger/2026.csv …<CR>git commit -am poisoned` was rc 0 from
+# this gate, rc 0 from powershell, and poisoned books in git HEAD, one gated call, one session. It
+# arrives spelled `\n` rather than as a case in `_SEGMENT_SPLIT_RX`, so the two rules below that put
+# a newline back together (the pipe and the flag continuation) go on seeing it
+# (`tools/test_hooks_v2.py::test_a_carriage_return_ends_a_stage_the_way_powershell_ends_a_statement`,
+# `tools/test_hooks_v2.py::test_a_carriage_return_does_not_tear_a_command_off_its_own_flag`).
 _PIPE_AMP_RX = re.compile(r"\|&")
 _NEWLINE_AROUND_PIPE_RX = re.compile(r"\s*\n\s*\|\s*|\s*\|\s*\n\s*")
 
@@ -302,15 +379,119 @@ def _normalise_pipeline(text):
 
 
 _NEWLINE_BEFORE_FLAG_RX = re.compile(r"\s*\n\s+(?=-)")
-_REDIRECT_INTO_RX = re.compile(r">>?\s*[\"']?(?P<target>[^\s\"';|&]+)")
-# `python scripts/ledger_add.py …` is the VALIDATED write path: it refuses bad data before it
-# writes, so a row it produces is valid by construction. Every other interpreter invocation --
-# another script, or any inline `-c`/`-e`/`-m` payload -- is a write this gate cannot vouch for.
-# ...and the exemption is anchored to the CANONICAL path. Matching `\S*ledger_add\.py` granted it
-# by BASENAME, so `python tools/ledger_add.py && git commit` and even
-# `python /tmp/evil/ledger_add.py ledger/2026.csv && git commit` were waved through -- and
-# `guard_harness_selfmod` protects exactly `scripts/ledger_add.py`, so writing the decoy was
-# allowed. The exemption now names the same file the protection does.
+# A redirection and the word it opens. `>|` is bash's CLOBBER OVERRIDE and redirects exactly like
+# `>`; without the `\|?` the target after it was invisible here, and the docstring below said
+# EVERY. It cost nothing to measure and nothing to fix, so it is fixed rather than excused
+# (`tools/test_hooks_v2.py::test_every_redirect_target_of_a_segment_is_read`). `>&` keeps no target
+# on purpose: `2>&1` duplicates a descriptor and writes no file, and `&` stays out of the target
+# class for that reason.
+_REDIRECT_INTO_RX = re.compile(r">>?\|?\s*[\"']?(?P<target>[^\s\"';|&]+)")
+
+
+def _as_one_word(word, reading):
+    """`reading`, spelled so a word boundary stands only where the shell puts one.
+
+    QUOTE REMOVAL MOVES BOUNDARIES, and that is the price of resolving it. Every character
+    `_WORD_END` reads as the end of a word is a legal FILENAME character on Windows and on POSIX,
+    and inside a quoted span it is data: `python "scripts/ledger_add.py evil.py" ledger/2026.csv`
+    is two argv words, and the sibling in the first of them ran and rewrote the ledger while this
+    gate vouched for it — exit 0 through the registered chain, filesystem witness on the sibling
+    (`tools/test_hooks_v2.py::test_a_quoted_word_end_character_does_not_end_the_word`). `(`, `>`,
+    `<`, `'` and a plain space each spell the same hole.
+
+    So a value the shell BUILT — quote marks removed, or a backslash consumed — keeps a quote mark
+    around it whenever it carries such a character. A value the text spells literally is passed
+    through untouched: there the characters ARE the shell's own separators, and quoting them here
+    would hide a real segment break.
+
+    WHAT THIS BUYS IS THE ANCHORS THAT VOUCH, and it does it at the START of the word rather than
+    at its end. `_WORD_END` goes on treating the quoted metacharacter as a boundary -- the quote
+    mark this wrapper adds is itself in `_WORD_END_CHARS`, so the reader still stops there. What
+    changes is that the word now BEGINS with a quote mark, and the two anchors that hand out an
+    exemption leave no room for one: `_canonical_run` ends on `\\s+(?:\\./)?<directory><script>`
+    and `_CD_SCRIPTS_RX` on `cd\\s+\\.?/?scripts`, both with the path pressed straight against the
+    whitespace. A word the shell BUILT therefore cannot be read as the vouched path, whatever it
+    carries inside it.
+
+    SO DO NOT "TIDY UP" AN OPTIONAL QUOTE INTO EITHER ANCHOR. `_PROTECTED_DIR_RX`, which reads the
+    same wrapped words, does carry a `[\"']?` in that position -- it is a REFUSING reader, where
+    accepting a quote can only add refusals. Copying that into a vouching anchor reopens the hole
+    this function closes, and both directions are pinned rather than left to this paragraph
+    (`tools/test_hooks_v2.py::test_a_quoted_word_end_character_does_not_end_the_word`,
+    `tools/test_hooks_v2.py::test_a_quoted_directory_name_does_not_forgive_the_bare_validator`).
+
+    `_SEGMENT_SPLIT_RX` and the `|` split in
+    `_stages_beside_the_vouched_runs` are plain text splits and still cut at a quoted `;` or `|` --
+    measured, `--summary "reversed; see scripts/ledger_add.py"` and `--note "a|b"` are rc 2 with
+    this in place exactly as they were without it. That direction is over-refusal and it is
+    fail-closed by construction: a spurious cut can only make MORE segments, and the half that ends
+    up with the path gets a verb no read-only table knows. Making those two splits quote-aware is
+    NOT done here, because `_SUBSTITUTION_OPEN_RX` deliberately injects a separator INSIDE what is
+    then a quoted span (`"$(cp evil.py scripts/)"`), and a quote-aware split would swallow it and
+    reopen `BUG-0065`.
+
+    The mark is one the value does not itself contain, so it cannot be mistaken for the value. When
+    the value contains both, the wrapper repeats a character already inside it, which can only make
+    a reader stop EARLIER than the word ends — refusals, never permissions.
+    """
+    if not (getattr(word, "spliced", False) or reading != str(word)):
+        return reading
+    if not _A_WORD_END_CHAR_RX.search(reading):
+        return reading
+    return "'%s'" % reading if "'" not in reading else '"%s"' % reading
+
+
+def _readings_of(command):
+    """`command` as each shell this kit gates would read it — one entry per reading.
+
+    THE VIEW THE PATH READERS WORK ON, and the only place quoting is resolved: `_canonical_run`
+    and `_DECOY_VALIDATOR_RX` both decide what a PATH TOKEN is, and a shell removes quote marks
+    character by character while this gate did not. Measured through the registered chain:
+    `python scripts/ledger_add.py'.bak' ledger/2026.csv && git commit` was exit 0 — the sibling
+    was vouched for as the canonical validator because `.py` was followed by a quote, which no
+    character class of a path can call a continuation. It cuts both ways, which is why one view
+    fixes both: `python tools/ledger_add".py"` escaped the decoy rule, and the quoted CANONICAL
+    path was refused as a stranger
+    (`tools/test_hooks_v2.py::test_quoting_inside_a_word_does_not_change_which_file_it_names`).
+
+    A LIST, one entry per reading, because the two shells this kit gates disagree about the
+    backslash (`_compat.shell_readings`) and each caller judges each reading SEPARATELY. Joining
+    them into one text and judging that was a refusal-REMOVING construction: `_CD_SCRIPTS_RX`
+    matched in the POSIX reading of `echo start ; c\\d scripts ; python ledger_add.py --validate
+    ledger/2026.csv ; git commit` and the exemption it granted covered the PowerShell reading too,
+    where no `cd` ever happened and the bare name is a validator of the attacker's own — exit 0
+    through the registered chain, and PowerShell's `;` runs the rest whatever the failed `cd` did
+    (`tools/test_hooks_v2.py::test_a_second_shell_reading_can_only_add_refusals`).
+
+    Backslashes become `/` here rather than in each caller: it is a PATH normalisation and it must
+    happen AFTER the readings are taken, since one of the two readings is the one that consumes the
+    backslash.
+
+    Quote marks only. Redirection is NOT resolved here: `_compat.git_argument_text` drops the word
+    after a `>` (it answers a different question — which words reach the program), and reading the
+    ledger path out of a redirect target is exactly what `_redirect_targets` must still do.
+    """
+    words = _compat.shell_words(_normalise_pipeline(command or ""),
+                                lambda chunk: re.split(r"(\s+)", chunk))
+    readings = []
+    for index in (0, -1):
+        joined = "".join(_as_one_word(word, _compat.shell_readings(word)[index])
+                         for word in words).replace("\\", "/")
+        if joined not in readings:
+            readings.append(joined)
+    return readings
+
+
+def _redirect_targets(segment):
+    """EVERY file this segment redirects into, not just the first one.
+
+    A command may carry more than one redirection and a shell opens (and truncates) all of them:
+    `cat ledger/2026.csv > /tmp/a > ledger/2026.csv && git commit` emptied the books and committed
+    them, exit 0, because both readers asked `_REDIRECT_INTO_RX.search(...)` and stopped at the
+    harmless target. Sequence, not existence, is what a single `search` answers
+    (`tools/test_hooks_v2.py::test_every_redirect_target_of_a_segment_is_read`).
+    """
+    return [match.group("target") for match in _REDIRECT_INTO_RX.finditer(segment)]
 # WHICH INTERPRETER OPTIONS MAY STAND BETWEEN THE INTERPRETER AND ITS SCRIPT, as a property rather
 # than as the letters somebody had in mind: any option word that carries no `c`/`e`/`m` in it. Those
 # three are the ones that make the interpreter read its program from the COMMAND LINE instead of the
@@ -321,9 +502,87 @@ _REDIRECT_INTO_RX = re.compile(r">>?\s*[\"']?(?P<target>[^\s\"';|&]+)")
 # on purpose (`(?-i:…)`) although the surrounding pattern is not: `-E` is an option, `-e` is a
 # payload flag, and folding them together would give up the one distinction this makes.
 _INTERPRETER_OPTIONS = r"(?:\s+(?-i:-(?![^\s]*[cem])[^\s]*))*"
-_LEDGER_ADD_RUN_RX = re.compile(
-    r"(?:^|[;&|(])\s*(?:python[0-9.]*|py)\b" + _INTERPRETER_OPTIONS + r"\s+"
-    r"(?:\./)?scripts/ledger_add\.py\b(?![^\n]*\s-(?:c|e|m)\b)", re.IGNORECASE)
+
+
+# WHAT MAY STAND IN FRONT OF A VOUCHED RUN, as a property of the CUT rather than as a list: a stage
+# keeps the whitespace the split left in front of it, and a `(` at the start of a stage is the
+# subshell spelling of the same command. A LINE BREAK is not in it -- it is what ENDS a stage
+# (`_SEGMENT_SPLIT_RX`, plus the carriage return `_normalise_pipeline` rewrites into one), so no
+# caller can hand this pattern a stage that begins with one. Accepting it anyway is not free: the
+# acceptance is what a property test then pins, and pinning `\r` as a legal opener is pinning the
+# very reading of it that let a PowerShell statement separator pass for argument text. The quantifier
+# is `*` and not `?` because openings COMBINE -- `((python …))` and an indented stage are the same
+# run (`tools/test_hooks_v2.py::test_only_a_group_opening_stands_in_front_of_a_vouched_run`,
+# `tools/test_hooks_v2.py::test_stage_openings_stack_in_front_of_a_vouched_run`).
+_STAGE_OPENING = r"(?:[^\S\r\n]|\()*"
+
+
+# WHERE AN INLINE PAYLOAD CAN STAND IS A POSITION, NOT A SPELLING, and both patterns below used to
+# say it twice: each ended in a negative lookahead for a whitespace-preceded `-c`/`-e`/`-m` word
+# that scanned everything up to the next newline. An interpreter reads its program from the command
+# line only while it is still reading OPTIONS, i.e. before the script argument -- and there
+# `_INTERPRETER_OPTIONS` already refuses those letters. After the script name the same letters are
+# an argument the script's own parser owns. So the tail added nothing IN FRONT of the script that
+# the option class does not already refuse
+# (`tools/test_hooks_v2.py::test_a_real_interpreter_payload_before_the_script_is_still_refused`),
+# while re-refusing the very shape the exemption exists for: `BUG-0063` measured
+# `--summary "fixed the -m flag handling in scripts/ledger_add.py"` back to refused
+# (`tools/test_hooks_v2.py::test_prose_about_the_ledger_in_a_body_or_an_argument_is_not_a_write`).
+# BEHIND the script it did catch one real direction, by accident and only for those three letters:
+# a pipeline NEIGHBOUR of the validator, whose exemption was still segment-wide. That direction is
+# now carried where it belongs, by `_stages_beside_the_vouched_runs`, for every neighbour and not
+# only the ones that spell a payload letter.
+def _canonical_run(script, directory="scripts/"):
+    """`python [interpreter options] <directory><script>` — the interpreter running one of OURS.
+
+    ONE construction for all three exemptions, because the defect the tail carried was in both of
+    the first two: a second copy of a pattern is a second place for the next correction to miss.
+    `directory` is what the third one varies — from INSIDE `scripts/` the guarded program is the
+    bare name — and nothing else about "the interpreter runs this file" may vary with it.
+
+    A VOUCHED RUN IS THE BEGINNING OF THE STAGE IT VOUCHES FOR. Every reader of these patterns is
+    handed ONE pipeline stage (`_stages_beside_the_vouched_runs`, `_only_the_bare_validator`), and
+    by then `;`, `&` and every line break are gone with `_SEGMENT_SPLIT_RX` -- a carriage return
+    among them, since `_normalise_pipeline` has made it one -- and `|` with the stage split.
+    The prefix used to be the class `[;&|(]`, which therefore carried only its `(` -- and a `(` may
+    stand ANYWHERE in a stage, quoted argument prose included, which is exactly the text these
+    exemptions exist to allow. So the writing stage could BE the vouched one instead of standing
+    beside it: `cd scripts && tee ledger_add.py '(python ledger_add.py --validate ../ledger/2026.csv)'`
+    left `_stages_beside_the_vouched_runs` with an empty list and was rc 0 through the registered
+    chain, truncating the ledger's own judge, after which the refused commit went through. Measured
+    against `tee`, `rm`, `sed -i` and `curl -o`, at the judge and at the ledger, on all three
+    vouched runs. So the anchor is the stage START: a run spelled anywhere else in the stage is
+    that stage's own argument text, and argument text does not vouch.
+
+    LEADING `(` STAYS, and it is the only thing besides the whitespace a cut can leave there that
+    may (`_STAGE_OPENING`): at the START of a stage a paren is the subshell/group spelling of the
+    same command, and `(python scripts/…)` is a run this gate vouches for as much as the bare
+    spelling. Both ends are measured rather than argued -- which characters may open a vouched
+    stage, and that no other character in that position vouches
+    (`tools/test_hooks_v2.py::test_a_vouched_run_is_the_start_of_the_stage_it_frees`,
+    `tools/test_hooks_v2.py::test_only_a_group_opening_stands_in_front_of_a_vouched_run`).
+
+    THE NAME ENDS WHERE THE PATH TOKEN ENDS, and `\\b` does not say that: a word boundary is
+    satisfied by the `.` of `.bak`, so `python scripts/ledger_add.py.bak ledger/2026.csv && git
+    commit` and `scripts/harness.py-evil` were vouched for as the canonical files and ran with
+    their prose unread (measured exit 0, both, before TSK-0083's second round). A sibling in the
+    same directory is a program nobody guards, exactly as a copy under another path is
+    (`tools/test_hooks_v2.py::test_quoting_inside_a_word_does_not_change_which_file_it_names`).
+    """
+    return re.compile(
+        r"^" + _STAGE_OPENING + r"(?:python[0-9.]*|py)\b" + _INTERPRETER_OPTIONS +
+        r"\s+(?:\./)?" + re.escape(directory) + re.escape(script) + _WORD_END, re.IGNORECASE)
+
+
+# `python scripts/ledger_add.py …` is the VALIDATED write path: it refuses bad data before it
+# writes, so a row it produces is valid by construction. Every other interpreter invocation --
+# another script, or any inline `-c`/`-e`/`-m` payload -- is a write this gate cannot vouch for.
+# ...and the exemption is anchored to the CANONICAL path. Matching `\S*ledger_add\.py` granted it
+# by BASENAME, so `python tools/ledger_add.py && git commit` and even
+# `python /tmp/evil/ledger_add.py ledger/2026.csv && git commit` were waved through -- and
+# `guard_harness_selfmod` protects exactly `scripts/ledger_add.py`, so writing the decoy was
+# allowed. The exemption now names the same file the protection does.
+_LEDGER_ADD_RUN_RX = _canonical_run("ledger_add.py")
 # ...and the KERNEL'S OWN ENTRY POINT, which is not a shell write either. It carries an envelope,
 # a summary and a reason as ARGUMENTS -- prose that names the ledger and its validator whenever the
 # work did (measured, pilot 4 `P4-12`: `submit-result --summary "… via ledger_add.py …"` was refused
@@ -331,30 +590,112 @@ _LEDGER_ADD_RUN_RX = re.compile(
 # ledger"). What it can reach is decided by the kernel and its own gates, not by this one: no
 # command of it names `ledger/*.csv`, and the one route it has to `scripts/ledger_add.py` is an
 # installer run (`update-kit`/`set-preset`, each on a user-minted approval), which is exactly how
-# this gate's own remedy says the validator legitimately changes. Anchored to the canonical path and
-# refused an inline payload for the same measured reason as the line above: a copy elsewhere is a
-# program nobody vouched for. A REDIRECT is judged before this exemption is reached, so the entry
-# point with its output sent into `ledger/2026.csv` is still a write.
-_ENTRY_POINT_RUN_RX = re.compile(
-    r"(?:^|[;&|(])\s*(?:python[0-9.]*|py)\b" + _INTERPRETER_OPTIONS + r"\s+"
-    r"(?:\./)?scripts/harness\.py\b(?![^\n]*\s-(?:c|e|m)\b)", re.IGNORECASE)
+# this gate's own remedy says the validator legitimately changes. A REDIRECT is judged before this
+# exemption is reached, so the entry point with its output sent into `ledger/2026.csv` is still a
+# write.
+_ENTRY_POINT_RUN_RX = _canonical_run("harness.py")
+# ...and the SAME validator addressed the way it is addressed from inside its own directory, which
+# is the only place a bare `ledger_add.py` names the guarded file.
+_BARE_VALIDATOR_RUN_RX = _canonical_run("ledger_add.py", directory="")
 
 
-def _stages_beside_the_entry_point(segment):
-    """The pipeline stages of `segment` that are NOT an entry-point invocation.
+def _only_the_bare_validator(stage):
+    """Does this pipeline stage RUN `ledger_add.py` by its bare name, and name it no other way?
 
-    PER STAGE, and that is a correction of this same round rather than a refinement: the exemption
+    A RUN, not a mention, and that distinction is the whole exemption. Asking only whether the name
+    appears without a directory part freed every stage that carries the bare name as a TARGET:
+    `cd scripts && cp ../evil.py ledger_add.py` replaced the ledger's judge with a stub and was
+    exit 0 through the registered chain, after which the same refused commit went through — the
+    heaviest chain this gate knows. `rm`, `mv`, `curl -o`, `tee`, `sed -i` and `install` reached it
+    the same way, and so did a LEDGER write standing beside the bare name
+    (`tools/test_hooks_v2.py::test_the_step_inside_forgives_a_run_and_not_a_target`).
+
+    Both halves are needed, and the example that used to stand here for the first one was refuted
+    by the caller: `python ledger_add.py && rm ledger_add.py` is never asked as one unit, because
+    `&&` splits it into two segments long before this reader sees either. The half earns its place
+    on a stage a split cannot separate -- `python ledger_add.py --validate ../ledger/2026.csv
+    ../tools/ledger_add.py` runs the canonical file and hands a decoy to it in the same breath, and
+    without the no-directory half the vouching covers the decoy too (measured rc 2, and rc 0 with
+    that half removed). The no-directory half alone is the target defect above
+    (`tools/test_hooks_v2.py::test_the_step_inside_asks_for_a_run_and_not_for_a_mention`,
+    `tools/test_hooks_v2.py::test_a_validator_with_a_directory_part_loses_the_step_inside`).
+
+    A LEADING `./` IS NOT A DIRECTORY PART -- `./x` and `x` name the same file from every working
+    directory, and the run pattern accepts both. Without this the two halves disagreed and the
+    `./` spelling of the remedy was refused while the run pattern vouched for it, which is a dead
+    branch reading as a handled case. `../ledger_add.py` does NOT start with `./` and stays a
+    different file.
+    """
+    names = [name[2:] if name.startswith("./") else name
+             for name in _ANY_VALIDATOR_PATH_RX.findall(stage)]
+    if not names or any("/" in name for name in names):
+        return False
+    return _BARE_VALIDATOR_RUN_RX.search(stage) is not None
+
+
+def _stages_beside_the_vouched_runs(segment, inside_scripts):
+    """The pipeline stages of `segment` that are NOT one of this kit's own guarded programs.
+
+    PER STAGE, and that is a correction of an earlier cut rather than a refinement: the exemption
     was first written as `if _ENTRY_POINT_RUN_RX.search(segment): continue`, which threw away the
     whole segment as soon as the entry point appeared ANYWHERE in it -- so every other stage of the
     pipeline came free with it. Measured: `python scripts/harness.py doctor | tee
     scripts/ledger_add.py` was exit 2 before that exemption and exit 0 after it, and the same for
     `| tee .claude/ledger_state.json` and an `xargs cp` in the second stage. What the exemption is
-    ABOUT is the prose an entry-point invocation carries in its own arguments, and that lives in
-    ITS stage; a neighbouring stage is a different command and is judged like any other
-    (`tools/test_hooks_v2.py::test_the_same_constructs_still_refuse_a_real_write`).
+    ABOUT is the prose an invocation carries in its own arguments, and that lives in ITS stage; a
+    neighbouring stage is a different command and is judged like any other.
+
+    ALL THREE VOUCHED RUNS ARE DROPPED HERE, and that is the whole reason this function exists as
+    one place. Each exemption that arrived later repeated the segment-wide mistake one round after
+    it had been corrected for the one before it: the canonical validator still read `if
+    _LEDGER_ADD_RUN_RX.search(segment): continue`, and the bare name read `if inside_scripts and
+    _only_the_bare_validator(segment): continue` at three call sites. A segment holds a WHOLE
+    pipeline (`|` is deliberately not a separator in `_SEGMENT_SPLIT_RX`), so each time the
+    neighbour rode along free -- `cd scripts && python ledger_add.py --validate ../ledger/2026.csv
+    | tee ledger_add.py && git commit` truncated the ledger's own judge to zero bytes and then
+    committed, exit 0 through the registered chain. The property that has to hold for a fourth
+    exemption too is that vouching frees the STAGE it stands in and never its neighbours
+    (`tools/test_hooks_v2.py::test_a_vouched_run_frees_its_own_stage_and_not_its_neighbours`).
+
+    `inside_scripts` has no default on purpose: it is the caller's finding about the whole command
+    (`_CD_SCRIPTS_RX`), and a caller that forgot to pass it would silently lose the remedy or
+    silently widen the exemption -- the two failures this parameter is here to prevent.
+
+    WHAT VOUCHING BUYS AND WHAT PAYS FOR IT: the words in a vouched stage stop being read as
+    commands, so `--note "cp backup.py scripts/"` is prose here as it already was for the entry
+    point. What keeps that from freeing an attacker's stage is where the run has to STAND: it is
+    the stage's own opening word (`_canonical_run`), so a run spelled in the argument text of a
+    stage that WRITES does not free it. A write into the validator from any OTHER stage is left
+    in this list for the callers to judge
+    (`tools/test_hooks_v2.py::test_prose_about_the_ledger_in_a_body_or_an_argument_is_not_a_write`,
+    `tools/test_hooks_v2.py::test_the_same_constructs_still_refuse_a_real_write`,
+    `tools/test_hooks_v2.py::test_a_vouched_run_frees_its_own_stage_and_not_its_neighbours`,
+    `tools/test_hooks_v2.py::test_a_vouched_run_is_the_start_of_the_stage_it_frees`).
+
+    AND WHAT IT DOES NOT BUY, written down rather than left to be discovered: inside a stage this
+    list drops, a DECOY path is prose too. `python scripts/ledger_add.py --validate ledger/2026.csv
+    tools/ledger_add.py` hands a second, unguarded validator to the canonical run in its own
+    arguments and is rc 0 -- the segment has no stage left to judge. In a NEIGHBOURING stage the
+    decoy survives as long as that stage only reads AND the segment names no ledger path (`…
+    --help | cat tools/ledger_add.py`, rc 0). What is refused there is measured, and the two halves
+    are NOT the same refusal: a neighbour that WRITES the decoy is refused whatever else the line
+    does, because `_writes_protected` is asked of every shell line (`… --help | tee
+    tools/ledger_add.py`, rc 2 with and without a commit). A neighbour that only RUNS it is refused
+    ONLY once a blocked operation stands in the same line -- running is not writing, so the sole
+    reader that sees it is the decoy check in `_a_reading_writes_the_ledger`, and
+    `handle_pre_tool_use` asks that one under `blocked_op`: `… --help | python
+    tools/ledger_add.py` is rc 0, and rc 2 with `&& git commit` behind it. A reading neighbour goes
+    the same way once a ledger path brings that check into play
+    (`tools/test_hooks_v2.py::test_a_decoy_run_beside_a_vouched_run_is_refused_only_with_a_blocked_op`).
+    `_only_the_bare_validator` is stricter for its
+    OWN exemption -- every validator mention on that stage must be bare
+    (`tools/test_hooks_v2.py::test_a_validator_with_a_directory_part_loses_the_step_inside`) -- and
+    the other two runs have no such half. Announced price of `H62`, not a protection built here.
     """
     return [stage for stage in segment.split("|")
-            if stage.strip() and not _ENTRY_POINT_RUN_RX.search(stage)]
+            if stage.strip() and not (_ENTRY_POINT_RUN_RX.search(stage)
+                                      or _LEDGER_ADD_RUN_RX.search(stage)
+                                      or (inside_scripts and _only_the_bare_validator(stage)))]
 
 
 def _verb_of(segment):
@@ -401,25 +742,29 @@ def _verb_only_reads(segment):
 
 
 def _writes_protected(command):
-    """Does this command WRITE the validator or the state file (rather than read or run them)?"""
-    text = _SUBSTITUTION_OPEN_RX.sub(
-        " ; ", _normalise_pipeline(command or "").replace("\\", "/"))
+    """Does this command WRITE the validator or the state file (rather than read or run them)?
+
+    ANY reading refuses, and each reading is judged on its own (`_readings_of`).
+    """
+    return any(_a_reading_writes_protected(reading) for reading in _readings_of(command))
+
+
+def _a_reading_writes_protected(reading):
+    text = _SUBSTITUTION_OPEN_RX.sub(" ; ", reading)
     # ...and `cd scripts && python ledger_add.py --validate …` runs the CANONICAL validator from
-    # inside its own directory, which is the sanctioned way out of a block.
+    # inside its own directory, which is the sanctioned way out of a block. Which STAGE that buys
+    # is `_stages_beside_the_vouched_runs`'s question, not a `continue` here.
     inside_scripts = _CD_SCRIPTS_RX.search(text) is not None
     for segment in _SEGMENT_SPLIT_RX.split(text):
         segment = segment.strip()
-        if inside_scripts and re.search(r"ledger_add\.py", segment, re.IGNORECASE)                 and not _REDIRECT_INTO_RX.search(segment):
-            continue
         if not (_PROTECTED_RX.search(segment) or _PROTECTED_DIR_RX.search(segment)):
             continue
-        redirect = _REDIRECT_INTO_RX.search(segment)
-        if redirect and (_PROTECTED_RX.search(redirect.group("target"))
-                         or _PROTECTED_DIR_RX.search(redirect.group("target"))):
+        if any(_PROTECTED_RX.search(target) or _PROTECTED_DIR_RX.search(target)
+               for target in _redirect_targets(segment)):
             return True
-        # the kernel's entry point is not a shell write, so ITS stage is dropped -- and only its
-        # stage: every other one of the pipeline is judged below exactly as before.
-        stages = _stages_beside_the_entry_point(segment)
+        # each of this kit's own guarded programs is not a shell write, so ITS stage is dropped --
+        # and only its own: every other stage of the pipeline is judged below.
+        stages = _stages_beside_the_vouched_runs(segment, inside_scripts)
         if not stages or all(_verb_only_reads(stage) for stage in stages):
             continue
         copy = _COPY_OUT_RX.search(segment)
@@ -439,8 +784,14 @@ def _writes_ledger(command):
 
     Slashes are collapsed first (`ledger//2026.csv` is the same path) and the working-directory
     form is handled separately, because `cd ledger && sed -i 2026.csv` names no `ledger/` path.
+
+    PER READING as well as per segment, and each reading on its own (`_readings_of`).
     """
-    text = re.sub(r"/{2,}", "/", _normalise_pipeline(command or "").replace("\\", "/"))
+    return any(_a_reading_writes_the_ledger(reading) for reading in _readings_of(command))
+
+
+def _a_reading_writes_the_ledger(reading):
+    text = re.sub(r"/{2,}", "/", reading)
     # Without this, ALL of `git commit -m "$(sed -i … ledger/2026.csv)"` is one segment whose verb
     # is `git commit` — read-only as far as the ledger goes — and the `sed -i` inside it is never
     # examined. That is the round-6 bypass reappearing through the round-9 rewrite, which is
@@ -450,17 +801,17 @@ def _writes_ledger(command):
     # at all: `python tools/ledger_add.py && git commit` runs a script this gate cannot vouch for
     # and commits whatever it did. The canonical one is protected precisely so that it CAN be
     # vouched for; a second copy elsewhere is how you get one that nobody guards.
-    # ...but only in a segment that does something OTHER than read it, and not when the command
-    # has stepped into `scripts/` first. `cat ledger_add.py && git commit` reads it, and
-    # `cd scripts && python ledger_add.py --validate …` is the sanctioned way out of a block,
-    # typed from inside the directory — refusing either one blocks the remedy.
+    # ...but only where something OTHER than a read happens to it. `cat ledger_add.py && git
+    # commit` reads it, and after a step into `scripts/` the bare name IS the canonical file, so
+    # `cd scripts && python ledger_add.py --validate …` is the sanctioned way out of a block —
+    # refusing either one blocks the remedy. That step is a finding about the whole command and is
+    # taken here; which STAGE it vouches for is `_stages_beside_the_vouched_runs`'s question.
     inside_scripts = _CD_SCRIPTS_RX.search(text) is not None
     for segment in _SEGMENT_SPLIT_RX.split(text):
-        if inside_scripts:
-            break
-        # ...asked of the stages BESIDE the entry point, so a decoy path named in ITS arguments is
-        # prose while one in a neighbouring stage is still a decoy (`_stages_beside_the_entry_point`)
-        stages = _stages_beside_the_entry_point(segment.strip())
+        # ...asked of the stages BESIDE the vouched runs, so a decoy path named in THEIR arguments
+        # is prose while one in a neighbouring stage is still a decoy
+        # (`_stages_beside_the_vouched_runs`)
+        stages = _stages_beside_the_vouched_runs(segment.strip(), inside_scripts)
         if (any(_DECOY_VALIDATOR_RX.search(stage) for stage in stages)
                 and not all(_verb_only_reads(stage) for stage in stages)):
             return True
@@ -469,19 +820,14 @@ def _writes_ledger(command):
         if not segment or not _LEDGER_PATH_RX.search(segment):
             continue
         # a redirect INTO a ledger path is a write whatever the verb in front of it
-        redirect = _REDIRECT_INTO_RX.search(segment)
-        if redirect and _LEDGER_PATH_RX.search(redirect.group("target")):
+        if any(_LEDGER_PATH_RX.search(target) for target in _redirect_targets(segment)):
             return True
-        if _DECOY_VALIDATOR_RX.search(segment):
+        # Each of this kit's own guarded programs vouches for its OWN stage only, for the reason
+        # `_stages_beside_the_vouched_runs` carries. A redirect was decided above, so nothing any
+        # of them could carry into the ledger passes here.
+        stages = _stages_beside_the_vouched_runs(segment, inside_scripts)
+        if any(_DECOY_VALIDATOR_RX.search(stage) for stage in stages):
             return True                       # a second `ledger_add.py` is a validator nobody guards
-        if inside_scripts and re.search(r"\bledger_add\.py\b", segment, re.IGNORECASE):
-            continue          # the canonical validator, run from inside its own directory
-        if _LEDGER_ADD_RUN_RX.search(segment):
-            continue                          # the validated write path vouches for itself
-        # ...and the entry point's OWN stage is dropped for the reason `_stages_beside_the_entry_
-        # point` carries; what stands beside it is judged as before. A redirect was decided above,
-        # so nothing the entry point could carry into the ledger passes here.
-        stages = _stages_beside_the_entry_point(segment)
         if not stages or all(_verb_only_reads(stage) for stage in stages):
             continue                          # every stage of the pipeline only reads
         copy = _COPY_OUT_RX.search(segment)
@@ -495,27 +841,23 @@ def _writes_ledger(command):
             if re.search(r"\.csv\b", segment, re.IGNORECASE) and not _verb_only_reads(segment):
                 return True
     return False
-_SHELL_WRITE_RX = re.compile(
-    r"\b(?:sed|tee|cp|mv|rm|del|dd|truncate|install|patch|shred|ren|rename|mklink|ln)\b"
-    r"|>>?|\bset-content\b|\badd-content\b|\bout-file\b|\bcopy-item\b|\bremove-item\b"
-    r"|\bmove-item\b|\brename-item\b|\bnew-item\b|\bclear-content\b"
-    # git can WRITE a working-tree file, which no verb list thinks of as a write
-    r"|\bgit\b[^\n]*\b(?:checkout|restore|stash)\b"
-    # interpreter write idioms. An earlier cut traded the blunt `perl|ruby|node` verbs for this
-    # list and lost six routes with them (`perl -i -pe`, `appendFileSync`, `copyFileSync`,
-    # `os.rename`, `os.replace`, `ruby -i`), so BOTH are here now: the verbs below catch the
-    # in-place flag, the idioms catch an inline payload that spells the write out.
-    r"|\b(?:perl|ruby|node|python[0-9.]*|py)\b[^\n]*\s-[a-z]*i\b"
-    r"|\bopen\s*\([^)]*['\"][wax+]|\b(?:write|append|copy|rename)filesync\b"
-    r"|\bos\.(?:remove|unlink|rename|replace|truncate|rmdir)\b|\bshutil\.\w+"
-    r"|\bpathlib\b|\bunlinksync\b|\bwrite_text\b|\bwrite_bytes\b|\brenamesync\b",
-    re.IGNORECASE)
+
+
 # RUNNING the validator is how the agent gets out of the block, so `python scripts/ledger_add.py
 # --validate …` must stay allowed. ONLY that shape: an interpreter invoked with `-c`/`-e`/`-m`
 # carries its payload inline and is never exempt.
+# THE SCRIPT ARGUMENT ENDS WHERE A SHELL WORD ENDS, and `\S+` does not say that. This pattern only
+# ever REMOVES text from the pre-filter's view, so a token that runs on past the word swallows
+# whatever follows it: `python scripts/ledger_add.py>scripts/ledger_add.py` is one `\S+` run, both
+# the run and the REDIRECT TARGET disappeared from `scanned`, no protected path was left in it, and
+# the branch that refuses a write to the judge was never reached -- rc 0 from this gate for a line
+# that truncates the judge, while the same line with a space around the `>` is rc 2. The word end
+# is `_WORD_END`, the same one `_canonical_run` uses, so the two cannot drift
+# (`tools/test_hooks_v2.py::test_the_prefilter_sees_everything_the_decision_sees`).
 _INTERPRETER_SCRIPT_RX = re.compile(
     r"(?:^|(?<=[;&|(]))\s*(?:python[0-9.]*|py|perl|ruby|node)" + _INTERPRETER_OPTIONS +
-    r"\s+(\S+\.(?:py|pl|rb|js))\b", re.IGNORECASE | re.MULTILINE)
+    r"\s+([^" + _WORD_END_CHARS + r"]+\.(?:py|pl|rb|js))" + _WORD_END,
+    re.IGNORECASE | re.MULTILINE)
 _INLINE_CODE_RX = re.compile(r"(?:^|[;&|(])\s*(?:python[0-9.]*|py|perl|ruby|node)\s+"
                              r"[^\s]*-(?:c|e|m)\b", re.IGNORECASE | re.MULTILINE)
 
@@ -764,8 +1106,20 @@ def handle_pre_tool_use(data):
             _refuse_if_invalid(root, "this command (commit/push/merge/report)")
         # a shell write to the judge itself. An interpreter running a SCRIPT is exempt (that is how
         # `--validate` gets run); an interpreter with an inline `-c`/`-e`/`-m` payload never is.
-        scanned = raw if _INLINE_CODE_RX.search(raw) else _INTERPRETER_SCRIPT_RX.sub(
-            lambda m: m.group(0)[:m.start(1) - m.start(0)], raw)
+        # ...asked of the SAME VIEWS the decision below works on, and that is what a cheap
+        # pre-filter owes: one narrower than the decision it guards is a hole, not a saving. It read
+        # the raw text only, where a quote mark can stand between a copy verb and its destination --
+        # and `_PROTECTED_DIR_RX`'s copy branch has nowhere to put one. `cp -r evil/. "scripts/" &&
+        # git commit`, `rsync -a evil/ "scripts/"` and `mv evil.py "scripts/"` therefore never
+        # reached the branch that would have refused them: rc 0 at HEAD and before this line
+        # existed, with `_writes_protected` answering True all along
+        # (`tools/test_hooks_v2.py::test_the_prefilter_sees_everything_the_decision_sees`). Adding
+        # views can only make the branch RUN more often; what it refuses is still the decision's
+        # answer.
+        scanned = "\n".join(
+            view if _INLINE_CODE_RX.search(view) else _INTERPRETER_SCRIPT_RX.sub(
+                lambda m: m.group(0)[:m.start(1) - m.start(0)], view)
+            for view in [raw] + _readings_of(raw))
         # SAME allowlist decision as `_writes_ledger`. This branch kept the old write DENYLIST
         # for one round longer, so the very verbs just removed from it still worked here:
         # `curl -o scripts/ledger_add.py` installs a WORKING stub and releases the block outright

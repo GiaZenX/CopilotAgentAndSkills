@@ -2151,6 +2151,66 @@ ist eine eigene Abwägung Nutzen gegen Wartungslast, keine offene Naht dieser Ru
 Rückhalt gegen lead-geschriebenen Code bleibt gemessen `gate_pipeline` bei Merge/Push (urteilt
 über Qualität, nicht Autorschaft) — so benannt, nicht als Autorschaftsriegel behauptet.
 
+### L44 — Ein Zeichen, das die Shell nie sieht, und eine Fortsetzung, die sie nicht kennt — GESCHLOSSEN (TSK-0084)
+
+**Mechanismus, zwei Hälften derselben Ursache:** ein Leser urteilt über einen Text, den die
+*benannte* Shell so nie bekommt.
+
+1. **Das Bash-Werkzeug löscht ein blankes CR**, bevor bash parst. Gemessen 2026-08-24, indem jede
+   Shell eine Zeichenkette zurückschreibt und die **Bytes** verglichen werden, über jedes
+   C0-Steuerzeichen, DEL, U+0085, U+2028 und U+2029: genau **ein** Zeichen der Klasse überlebt den
+   Weg nicht, das CR auf der `Bash`-Schiene, und zwar auf beiden Wegen (`bash -c <zeile>` und die
+   Zeile auf stdin). Ein Backslash davor schützt damit das Zeichen **hinter** dem CR, und zwei
+   Wörter **verschweißen** zu einem Pfad.
+2. **`_compat._CONTINUATION_RX` war die Vereinigung beider Fortsetzungszeichen** und trug keinen
+   Werkzeugnamen, entfernte also unter `tool_name: PowerShell` einen Umbruch, den PowerShell
+   honoriert. PowerShell setzt über einen **Backtick** fort, nicht über einen Backslash — gemessen
+   an echten Prozessen.
+
+**Gemessene Ketten — vorher offen, jetzt zu.** In echten, außerhalb des Repos aufgesetzten
+Projekten, jeweils mit Dateizeugen:
+
+| Zeile | tool | vorher | nachher |
+|---|---|---|---|
+| `echo poison > project_mem\<CR>ory/approvals/APR-0001.yaml` | Bash | Gate rc 0 → bash rc 0 → das kanonische Item enthält `poison` | **Gate rc 2**, Item unverändert |
+| `Get-Content README.md \<LF>Set-Content -Path .claude/settings.json -Value POISONED` | PowerShell | Gate rc 0 → `powershell.exe` rc 0 → Datei überschrieben | **Gate rc 2**, Datei unverändert |
+| dieselbe Zeile mit `\`+CRLF | PowerShell | Gate rc 0 → rc 0 → Datei überschrieben | **Gate rc 2** |
+
+Die volle Familie — 9 Umbruch-Schreibweisen × 2 Werkzeuge × 2 Kits, 36 Zeilen — zeigt nachher
+**kein** einziges `POISONED`: entweder rc 2, oder rc 0 mit einer Shell, die dann nachweislich nichts
+schreibt (bash führt `echo hello tee .claude/settings.json` als **einen** Befehl aus, PowerShell
+antwortet auf `Get-Content README.md `<LF>Set-Content …` mit rc 1).
+
+**Wie geschlossen.**
+
+- Hälfte 1 als **Verweigerung**, nicht als Reparatur: `_kernel._EATEN_IN_FLIGHT` nennt pro Werkzeug
+  die Zeichen, die dessen Transport löscht, und `_kernel.payload` — die eine Tür, durch die jedes
+  blockierende Gate geht — verweigert eine Zeile, die eines davon trägt, mit dem Grund und einer
+  Abhilfe für den Nutzer. Reparieren ginge nicht: das CR löschen hätte bash' Lesart und PowerShells
+  verloren, und eine Verschweißung überquert eine Wortgrenze, wäre also eine zweite
+  **Tokenisierung** der ganzen Zeile.
+- Hälfte 2 als **werkzeugabhängige Fortsetzung**: `_compat._CONTINUATION_BY_TOOL` (`Bash` →
+  Backslash + Umbruch, `PowerShell` → Backtick + LF), voreingestellt aus dem Werkzeugnamen der
+  Nutzlast, die dieser Prozess gelesen hat (`_compat.gated_shell`) — dieselbe Antwort auf
+  „nicht durch neun Aufrufstellen fädeln“, die `_LAST_PAYLOAD` für die Befehlszeile schon gibt.
+
+**Kosten der Verweigerung, gemessen:** über alle 22 Test-Module und alle Hook-Dateien der drei Kits
+(111 Dateien, geparst) trägt **keine** legitime Befehlszeile ein blankes CR. Die acht, die eines
+tragen, sind ausnahmslos Angriffsformen, die ohnehin rc 2 erwarten; die übrigen Treffer sind
+Zeichenklassen im Code. Ein **CRLF** wird ausdrücklich **nicht** verweigert — sein CR fällt weg und
+der LF dahinter bleibt der Umbruch, den er war —, und dasselbe blanke CR auf der
+**PowerShell**-Schiene ebenfalls nicht, weil PowerShell es wirklich bekommt.
+
+**Urteil: geschlossen, in der sicheren Richtung, mit Rot-Beweis.** Laufende Behauptungen:
+`tools/test_hooks_v2.py::test_a_line_carrying_a_character_its_shell_never_sees_is_refused` und
+`tools/test_hooks_v2.py::test_a_continuation_the_named_shell_does_not_honour_is_not_joined`.
+
+**Was bleibt, benannt.** Die vier `PreToolUse`-Gates **dieses** Repos (`.claude/hooks/`) erben die
+werkzeugabhängige Fortsetzung, weil `_harness` die Nutzlast durch dasselbe `_compat` liest — die
+CR-**Verweigerung** aber nicht, denn die sitzt in `_kernel.payload`, und `_harness` ruft
+`_compat.load` direkt. `.claude/**` ist verbotener Bereich für den Umsetzer; gemessen wird das vom
+Prüfer read-only.
+
 ## 12. Löcherliste der vier Repo-Gates (Stand 2026-08-05, aus der Prüfung von TSK-0003)
 
 Andere Baustelle als Abschnitt 11: dort geht es um die **ausgelieferten Kits**, hier um die vier
@@ -2182,7 +2242,8 @@ mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, 
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
-H55–H57 mit TSK-0081, H58–H61 mit TSK-0082.
+H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H70 mit
+TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -2214,7 +2275,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
 | H39 | **Ausnahme, Abnahme offen** | kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung: DEC-0041 trägt die Bedeutung von `CANCELLED`, und die Bugliste bleibt sichtbar statt leergelogen; ein Münzweg wäre eine eigene Runde mit eigener Sicherheitsabwägung |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
-| H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute zehn Vorkommen — sieben aus dem H43-, drei aus dem H44-Eintrag —, alle von Hand aufgelöst |
+| H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute elf Vorkommen — sieben aus dem H43-, drei aus dem H44- und einer aus dem H70-Eintrag —, alle von Hand aufgelöst |
 | H42 | **GESCHLOSSEN** (TSK-0060, `DEC-0043`), mit benannten Resten | der Vertrag ist entschieden statt normalisiert: `INV.scope` regiert genau einen Bereich, `backlog_types.SINGLE_VALUE_FIELDS` deklariert das, `state._assert_single_value_fields` verweigert die Mehrere-Dinge-Form an beiden Türen in den aktiven Zustand und `report._check_single_value_fields` meldet sie als Fehler (gemessen: capture/update verweigert, `validate` 0 → 1 Fehler, `gate_memory_complete` rc 0 → rc 2). Die vier Leser sind unverändert. Reste: ein schon geschriebenes Item wird gemeldet statt geheilt, die Archiv-Tür nimmt die Form weiter an (DEC-0009), die Deklaration ist nicht abgeleitet, und im `office-team` schützt sie keinen Leser |
 | H43 | **GESCHLOSSEN** (TSK-0059, `BUG-0038`), mit benannten Resten | die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS` nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde). Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt — je im Eintrag |
 | H44 | **Rest**, keine Angriffskette | vier gemessene Grenzen der Amendment-Ableitung aus TSK-0062, je im Eintrag: die Kriterien eines ANGEWENDETEN Änderungsantrags zählen nicht mehr (Über-Verweigerung, per Test festgehalten); die Zugehörigkeit (`target_pr`) ist nicht signiert (durch den Kernel geschlossen, offen nur vorbei an ihm — und diese Sitzungstür hält Gate 1 zu); `target_revision` wird nie als Wert verglichen (leiht ausschließlich nutzersignierten Inhalt); Hop 1 bleibt für Nicht-Amendments ohne Freigabeterm (Design, H39 — die Amendment-Hälfte ist seit dieser Runde zu) |
@@ -2235,6 +2296,15 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H59 | **offen**, begrenzt durch die neue Ansage (TSK-0082) | nichts treibt ein Projekt in die Phasen 6–9 — der Merge ist der einzige gebaute Forderer der evidence-Schublade, und ein Solo-Projekt auf `main` merged nie (Pilot 3: 11 DONE/0 Evidence; Pilot 4 H2: 0). Die Leere ist seit TSK-0082 bei jedem Sitzungsstart GESAGT statt unsichtbar; ob das reicht, misst der Live-Testlauf |
 | H60 | **offen**, begrenzt durch `gate_filing` fail-closed (TSK-0082) | `document_sources` erzwingt nichts: kein Gate liest die Liste, ein nicht begangenes Interview sieht aus wie „nichts zu melden" — aber ein leerer Plan verweigert das erste Dokument ohnehin geschlossen, und die Deckungslücke wird jedem office-Sitzungsstart angesagt |
 | H61 | **offen**, Schließrichtung im Repo gebaut (TSK-0082) | kein Kit-Hook merkt selbst, dass sein Fenster abläuft — jede Grenze in einem Kit-Hook ist ein Versprechen des Hooks, keine Durchsetzung; die Konstruktion, die schließt, existiert im Harness (`.claude/hooks/_harness.py::Deadline` liest die registrierte Frist und verweigert DAVOR) und fehlt in den Kits. Begrenzt: alle beobachteten Gate-Laufzeiten ≤0,405 s und die größte eigene Kindgrenze außer gate_pipeline 20 s, beides weit unter dem ≈600-s-Fenster — als Messung, nicht als Schranke |
+| H62 | **offen**, aber **veraltet**: die Belegzeilen tragen nicht mehr (rc 0 seit TSK-0083 Runde 5), der Mechanismus ist ungemessen — siehe zweiten Nachtrag im Eintrag | die Köder-Prüfung des Ledger-Gates (`_DECOY_VALIDATOR_RX`) urteilt noch über das ganze Segment, während dieselbe Frage seit TSK-0083 sonst je Stufe gestellt wird — ehrliche Argument-Prosa eines verbürgten Laufs, die einen Köder-Pfad nennt, wird verweigert, sobald das Segment auch das Ledger nennt. Der Ein-Zeilen-Kandidat wurde gemessen und NICHT genommen: er befreit zwei von drei Über-Verweigerungen, lässt die nutzersichtbare stehen (BUG-0064) und lockert zugleich die einzige Regel zwischen dem Gate und einem unbewachten Validator |
+| H63 | **GESCHLOSSEN** (TSK-0083, `BUG-0064`) | das Gate verweigerte die Remedy, die sein eigener Text bewirbt. Geschlossen, indem die Ausnahme im Validator-Verzeichnis auf ihren Grund verengt wurde: dort ist der **blanke Name** die kanonische Datei, und befreit wird nur ein **Lauf** davon, nicht seine Nennung. `cd scripts && python ledger_add.py --validate ../ledger/2026.csv && git commit -m x` HEAD rc 2 → jetzt rc 0, gemessen an beiden Zwillingen; die Schließung selbst hat drei Löcher aufgemacht, die in derselben Runde geschlossen wurden (Prüfbericht Runde 4, V1–V3) |
+| H64 | **offen**, Über-Verweigerung, bewusster Preis des Umleitungs-Fixes (TSK-0083) | `gate_ledger_valid` liest seit dem F3-Fix JEDES `>` eines Segments als Umleitung — auch in quotierter Argument-Prosa, auch in den Argumenten eines verbürgten Laufs, weil die Redirect-Prüfung vor der Stufenausnahme steht und die gelesene Sicht den Inhalt quotierter Spannen behält. Verweigert wird nur, wenn das Folgewort zugleich Ledger-Pfad oder geschützte Datei ist (`--note "row > ledger/2026.csv"` rc 0→rc 2; `--note "net > gross"` bleibt rc 0). Schließen hieße zu wissen, welches `>` die Shell ausführt — dieselbe Grenze wie H34s Familie, in die sichere Richtung aufgelöst |
+| H65 | **offen**, Loch, vorbestehend (benannt TSK-0083) | ein Zielwort, dessen Pfad die Shell erst durch Expansion **herstellt oder beendet** (`$f`, `${…}`, `${X:-…}`, Glob), steht so nicht im Text — dieser Leser sieht nur die Schreibweise, nicht das Wort, das die Shell baut. `cp evil.py scripts/${n:-ledger_add.py}` ersetzt den Validator, rc 0. Nicht schließbar ohne den Zustand der Shell; begrenzt durch den Kit-Wächter derselben Zeile und dadurch, dass der Angreifer die Variable selbst setzen muss |
+| H66 | **offen**, Loch, vorbestehend (benannt TSK-0083) | `_compat.shell_readings` sagt „jede Lesart, die eine gewöhnliche Shell dem Text geben könnte" zu und liefert nur die POSIX-Backslash-Lesart; PowerShells Backtick als Fluchtzeichen wird von keiner Lesart aufgelöst. `copy-item evil.py scr` + Backtick + `ipts/ ; git commit -m x` ist rc 0, die Kontrolle ohne Backtick rc 2. Betrifft jedes Gate, das über `shell_readings` urteilt, nicht nur das Ledger-Gate |
+| H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
+| H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
+| H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H70 | **Rest**, Messlücke des Instruments, `H10`/`H41`-Klasse (TSK-0083/TSK-0084) | der Vollständigkeits-Draht des Ledger-Gates fragt nach **Mustern** (zwei Leser, Vereinigung), also sieht er eine vierte Ausnahme nicht, die **gar kein** `re.Pattern` befragt — gemessen von Umsetzer und Prüfer unabhängig (`stage.strip().startswith("deno ")` befreit die Stufe, beide Leser grün, im Klon 1 passed), vom Lead ausdrücklich **nicht** nachgemessen. Keine offene Kette im Produkt: der Draht bewacht eine künftige Änderung. Die Frage, die es fangen müsste, ist „welche Stufe wird frei" — im Docstring benannt, als eigene Runde zurückgestellt |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -3850,7 +3920,9 @@ Form `` `tools/test_report.py::test_x` `` wird damit von niemandem nachgeschlage
 Text `set()` zurück — er sucht keinen davon. Alle sieben lösen heute auf (einzeln im AST der
 genannten Datei nachgeschlagen), das ist aber Handarbeit und kein Draht. Mit dem H44-Eintrag kamen
 2026-08-15 **drei** dazu, alle in `tools/test_approvals_dispatch.py`, von Hand aufgelöst (Zeilen
-2841, 2858, 2930) — Bestand damit **zehn**, alle aufgelöst, weiter Handarbeit. Dieselbe Klasse wie
+2841, 2858, 2930); mit dem H70-Eintrag 2026-08-24 **einer** mehr, in `tools/test_hooks_v2.py`
+(Zeile 10505), ebenfalls von Hand aufgelöst — Bestand damit **elf**, alle aufgelöst, weiter
+Handarbeit. Dieselbe Klasse wie
 (a) und wie **H40**: was außerhalb der Reichweite eines Wächters zitiert wird, sammelt sich an.
 
 **Urteil: Rest, keine Angriffskette** — die Produktionsdateien sind AST-identisch, keine Grenze
@@ -4589,6 +4661,307 @@ nicht übernommen — eine eigene Runde, wenn gewollt. Bis dahin begrenzen die M
 ≪ 560 s) und der Eigenschaftstest, der die Relation Kindgrenze↔Fenster statisch hält —
 Messwerte, keine Laufzeit-Schranken, und die Quellstellen (`_compat`-Konstante,
 Beobachtungsdatei `what_follows_for_the_kits`) sagen genau das.
+
+### H62 — Die Köder-Prüfung des Ledger-Gates urteilt segmentweit — offen, Kandidat gemessen und zurückgestellt (neu, TSK-0083)
+
+**Mechanismus:** Seit TSK-0083 stellt `gate_ledger_valid` die Frage „schreibt diese Zeile?" je
+Pipeline-**Stufe** (`_stages_beside_the_vouched_runs`), die Köder-Frage aber weiter je
+**Segment** (`_DECOY_VALIDATOR_RX` in `_writes_ledger`): nennt die Argument-Prosa eines
+verbürgten Laufs einen Pfad, der nur so **aussieht** wie der Validator (`tools/ledger_add.py`),
+wird das ganze Segment verweigert, sobald es auch das Ledger nennt.
+
+**Kette (gemessen 2026-08-23, Prüfer und Umsetzer unabhängig, echte Hook-Prozesse):**
+`python scripts/ledger_add.py --validate ledger/2026.csv --note "see tools/ledger_add.py"` und
+`python scripts/harness.py evidence --summary "see tools/ledger_add.py for ledger/2026.csv"` —
+je rc 2; die Kontrolle ohne Ledger-Nennung im Segment rc 0. Der Ein-Zeilen-Kandidat (die
+Köder-Prüfung ebenfalls über die verbürgten Stufen stellen) wurde im Klon **angewandt und
+vermessen**, nicht geraten: er befreit die beiden Zeilen oben, ließ damals die
+nutzersichtbare Über-Verweigerung stehen (`H63`) und nimmt zugleich der Köder-Regel ihre
+Reichweite in genau den Stufen, die seit dieser Runde als verbürgt gelten.
+
+**Nachtrag 2026-08-24 (TSK-0083, Runden 3/4):** `H63` ist auf einem anderen Weg geschlossen —
+nicht über die Köder-Reichweite, sondern über den Grund der Ausnahme im Validator-Verzeichnis.
+
+**Zweiter Nachtrag 2026-08-24 (Prüfer, TSK-0084): die beiden Belegzeilen oben tragen nicht mehr.**
+Beide sind auf dem gelieferten Stand **rc 0** (HEAD rc 2 → jetzt rc 0), mit und ohne
+`&& git commit`, bei gültigem wie ungültigem Ledger — die Köder-Frage wird seit Runde 5 je
+**Stufe** gestellt, und der Docstring von `_stages_beside_the_vouched_runs` sagt selbst, dass ein
+Köderpfad in der Prosa einer verbürgten Stufe Prosa ist. **Ungemessen ist, ob der Mechanismus in
+einer anderen Schreibweise überlebt**; nur die Belegzeilen sind nachgemessen. Der Eintrag steht
+darum als **veraltet, nicht als geschlossen** — ein Eintrag ohne tragende Kette ist so wenig wert
+wie eine Kette ohne Eintrag, und ihn stillschweigend abzuhaken wäre dieselbe Unehrlichkeit in die
+andere Richtung. Wer ihn schließen will, misst zuerst den Mechanismus, nicht die zwei Zeilen.
+
+**Urteil: offen, Über-Verweigerung, kein Loch.** Nichts geht verloren — die Zeilen sind
+lästig verweigert, nicht still durchgelassen. Eine Lösung, die alle drei Über-Verweigerungen
+zusammen behebt, gehört in die Runde von `BUG-0064`, nicht als Nebeneffekt hierher; die
+F4-Messtabelle liegt im Abnahmeprotokoll `staging/TSK-0083/`.
+
+### H63 — Das Ledger-Gate verweigert seine eigene beworbene Remedy — GESCHLOSSEN (TSK-0083, `BUG-0064`)
+
+**Geschlossen am 2026-08-24.** Der Wortlaut unten beschreibt den Befund; wie er geschlossen
+wurde und was die Schließung gekostet hat, steht direkt darunter.
+
+**Mechanismus:** In `_writes_ledger` läuft die Köder-Prüfung **vor** der
+`inside_scripts`-Ausnahme. Ein blankes `ledger_add.py` nach `cd scripts` beginnt nicht mit
+`scripts/` und zählt darum als Köder — genau die Aufrufform, die der Kommentar des Gates
+selbst „the sanctioned way out of a block" nennt und deren Richtung die Verweigerung
+(„fix the ledger rows instead") dem Nutzer empfiehlt.
+
+**Kette (gemessen 2026-08-23, Umsetzer, echter Hook-Prozess, identisch am HEAD — also
+vorbestehend, nicht Preis der Runde):**
+`cd scripts && python ledger_add.py --validate ../ledger/2026.csv && git commit -m x` → rc 2.
+Kontrollen: die kanonische Schreibweise vom Projektstamm
+(`python scripts/ledger_add.py --validate ledger/2026.csv`) rc 0; der echte Köder
+(`python tools/ledger_add.py …`) rc 2.
+
+**Urteil: GESCHLOSSEN** (2026-08-24, TSK-0083 Runden 3/4) — der Befund und der Weg dorthin
+stehen unten, weil die Schließung selbst drei Löcher aufgemacht hat und das die Lehre ist.
+
+**Der Befund damals war: offen, Über-Verweigerung mit eigenem Item.** Ein Büro-Nutzer, der in einer
+Ledger-Sperre steckt, kann den beworbenen Ausweg nicht tippen — das ist die
+Pilot-3-`BUG-0039`-Klasse (eine Verweigerung, deren Rat nicht begehbar ist), darum trägt sie
+`BUG-0064` mit Abnahmekriterien statt nur dieser Zeile.
+
+**Wie geschlossen (2026-08-24, TSK-0083 Runden 3/4):** nicht dadurch, dass die Ausnahme
+weiter gefasst wurde, sondern dadurch, dass sie auf ihren **Grund** verengt wurde. Im
+Verzeichnis des Validators ist der **blanke Name** die kanonische Datei — `tools/ledger_add.py`
+dagegen ist aus jedem Arbeitsverzeichnis eine andere Datei. Befreit wird darum nur ein **Lauf**
+des blanken Namens, geprüft mit derselben Konstruktion, die den kanonischen Lauf vom
+Projektstamm erkennt (`_canonical_run` mit leerem Verzeichnis), nicht seine bloße **Nennung**.
+Gemessen: `cd scripts && python ledger_add.py --validate ../ledger/2026.csv && git commit -m x`
+HEAD rc 2 → jetzt rc 0, mit eigenem Test; die kanonische Schreibweise vom Projektstamm bleibt
+rc 0, der echte Köder `python tools/ledger_add.py …` bleibt rc 2.
+
+**Was die Schließung gekostet hat, und warum das hier steht:** die erste Fassung dieser
+Ausnahme fragte nach der Nennung statt nach dem Lauf und öffnete damit ein Loch, das der Prüfer
+bis zum Ende durchgespielt hat — im Validator-Verzeichnis war danach **jede** Operation auf dem
+blanken Namen frei, bis hin zu `cd scripts && cp ../evil.py ledger_add.py`, also dem Ersetzen
+des Richters durch eine Attrappe, die immer „in Ordnung" sagt; der zuvor verweigerte Commit
+lief danach rc 0 durch. Dazu kamen zwei weitere geöffnete Löcher (ein quotiertes Metazeichen im
+Dateinamen als Wortende gelesen; `cd` in **irgendein** Verzeichnis mit dem Präfix `scripts`).
+Alle drei sind in derselben Runde geschlossen und mit rot gesehenen Tests belegt (Prüfbericht
+Runde 4, V1–V3). Der Eintrag bleibt als Geschichte stehen: eine Über-Verweigerung zu beheben
+ist eine Lockerung, und eine Lockerung ist der teuerste Änderungstyp an einem Wächter.
+
+### H64 — Jedes `>` eines Segments ist dem Ledger-Gate eine Umleitung, auch quotierte Prosa — offen, Über-Verweigerung als bewusster Preis (neu, TSK-0083)
+
+**Mechanismus:** Der F3-Fix der Runde (`_redirect_targets`, `finditer`) liest **alle**
+Umleitungsziele eines Segments, und zwar auf einer Sicht, die den Inhalt quotierter Spannen
+behält; die Redirect-Prüfung steht vor der Stufenausnahme der verbürgten Läufe. Ein `>` in
+ehrlicher Argument-Prosa ist damit von einem echten Redirect nicht unterscheidbar — verweigert
+wird, sobald das Folgewort ein Ledger-Pfad oder eine geschützte Datei ist.
+
+**Kette (gemessen 2026-08-23, Umsetzer, echte Hook-Prozesse, HEAD → jetzt):**
+`python scripts/ledger_add.py add --note "net > gross and row > ledger/2026.csv" && git commit -m x`
+rc 0 → **rc 2**; Kontrolle `--note "net > gross"` (Folgewort kein geschützter Pfad) bleibt rc 0;
+ein einzelnes `>` vor einem Ledger-Pfad war schon vor der Runde rc 2.
+
+**Urteil: offen, Über-Verweigerung, kein Loch — und bewusst so herum.** Schließen hieße zu
+entscheiden, welches `>` die Shell ausführt und welches Prosa bleibt; genau diese
+Unterscheidung entfernt die Kit-Vorverarbeitung (die H34-Familie), und die Gegenrichtung —
+quotierte Redirect-Ziele **nicht** zu lesen — war das Datenverlust-Loch, das F3 geschlossen
+hat (Ledger geleert, Commit rc 0). Der Ausweg für den getroffenen Nutzer steht in der
+Verweigerung selbst: den Satz ohne das wörtliche Pfad-Nachwort formulieren.
+
+### H65 — Ein Wort, das die Shell erst durch Expansion herstellt, sieht dieser Leser nicht — offen, Loch, vorbestehend (benannt TSK-0083)
+
+**Mechanismus:** Jeder Pfadleser dieses Gates urteilt über den **Text**, den der Nutzer
+geschrieben hat. Stellt die Shell das Zielwort erst her — `$f`, `${…}`, `${X:-…}`, ein Glob —,
+dann steht das Wort, auf das die Operation wirkt, nirgends im Text. Das ist keine Frage der
+Zeichenklasse und nicht durch ein weiteres Zeichen im Muster zu beheben: es fehlt der Zustand
+der Shell, und den hat ein `PreToolUse`-Hook nicht. Bis zur Korrektur in TSK-0083 begründete
+der Kopfkommentar des Gates das Gegenteil (`scripts/$X` sei sonst „das nackte Verzeichnis") —
+bei ungesetzter Variable **ist** es das nackte Verzeichnis, die Begründung war von der Messung
+widerlegt.
+
+**Kette (gemessen 2026-08-23, Prüfer, Dateisystem-Zeuge in einer Sandbox mit `evil.py` und
+`scripts/ledger_add.py`; am HEAD identisch, also vorbestehend):**
+
+```
+cp evil.py scripts/${f}                      rc 0   scripts/ = [evil.py, ledger_add.py]
+cp evil.py ${X:-scripts/}                    rc 0   scripts/ = [evil.py, ledger_add.py]
+cp evil.py scripts/$f                        rc 0   scripts/ = [evil.py, ledger_add.py]
+n=led; cp evil.py scripts/${n}ger_add.py     rc 0   Validator danach: EVIL
+```
+
+Ebenso `tar -xf evil.tar -C scripts/$d` und `mv evil.py scripts/$f`, je mit `&& git commit -m x`
+rc 0. Die letzte Zeile ist die schwere: sie ersetzt den Validator selbst.
+
+**Korrektur 2026-08-24 (Prüfer, TSK-0084):** Die vierte Zeile stand hier zuerst als
+`cp evil.py scripts/${n:-ledger_add.py}` — **falsch, das ist rc 2**. Der Vorgabewert einer
+Ersetzung **buchstabiert** den Namen, und `_PROTECTED_RX` liest den Text; die Zeile wird also
+genau dort verweigert, wo der Mechanismus dieses Eintrags gerade **nicht** greift. Sie ist
+ersetzt durch eine, die den Namen nie buchstabiert. Der Mechanismus stimmte, das Beispiel
+widerlegte ihn — genau der Fehler, den dieser Eintrag bei anderen misst.
+
+**Urteil: offen, nicht schließbar an dieser Stelle.** Was stattdessen begrenzt: der Angreifer
+muss die Variable im selben Aufruf selbst setzen oder auf eine ungesetzte bauen — beides steht
+sichtbar in der Zeile, die der Nutzer freigibt; und die Zeile durchläuft weiterhin die übrigen
+Wächter derselben Kette. Der Kopfkommentar des Gates benennt die Lücke seit TSK-0083 als offen,
+ohne einen Grund zu behaupten, den die Messung widerlegt.
+
+### H66 — `shell_readings` sagt „jede Lesart" zu und liefert nur die POSIX-Lesart — offen, Loch, vorbestehend (benannt TSK-0083)
+
+**Mechanismus:** `_compat.shell_readings` verspricht im eigenen Kommentar „EVERY reading an
+ordinary shell could give the text" und führt `_ESCAPE_CHARS = ('\\', '`')`. Gebaut ist nur die
+POSIX-Backslash-Lesart. PowerShells Fluchtzeichen — der Backtick — wird von keiner Lesart
+aufgelöst, also sieht jeder Leser, der auf `shell_readings` aufsetzt, einen Pfad, den die Shell
+so nie zusammensetzt. Das betrifft **jedes** Gate, das über diese Funktion urteilt, nicht nur
+das Ledger-Gate; sichtbar wurde es dort.
+
+**Kette (gemessen 2026-08-23, Prüfer, `tool_name: "PowerShell"` über die volle registrierte
+Kette; am HEAD identisch):** `copy-item evil.py scr` + Backtick + `ipts/ ; git commit -m x` →
+rc 0. Kontrolle ohne Backtick (`copy-item evil.py scripts/ ; git commit -m x`) → rc 2.
+
+**Urteil: offen.** Die Behauptung ist das eigentliche Problem — ein Kommentar, der Deckung
+zusagt, die der Code nicht baut. Zu schließen ist es in beide Richtungen: die Backtick-Lesart
+bauen, oder die Zusage auf das Gebaute stellen und die Lücke hier führen. Bis dahin begrenzt:
+die POSIX-Lesart deckt den Weg, den `Bash` nimmt, und Windows-Nutzer erreichen dieselben
+Operationen über die geprüfte Schreibweise; der Angriff verlangt eine bewusst gesetzte
+Fluchtsequenz mitten im Pfad.
+
+### H67 — Köder und Geschwister werden nur befragt, wenn dieselbe Zeile schon blockiert — offen, Loch, vorbestehend (benannt TSK-0083)
+
+**Mechanismus:** Die Prüfung, ob eine Zeile einen **Zwilling** des Validators oder einen
+Köderpfad benutzt, wird im Ledger-Gate nur dann gestellt, wenn dieselbe Zeile ohnehin eine
+blockierte Operation trägt (ein Commit, ein Schreibzugriff aufs Ledger, ein Schreibzugriff auf
+eine geschützte Datei). Eine Zeile, die den unbewachten Zwilling nur **laufen lässt**, wird
+nicht befragt. **Halbiert seit TSK-0083:** der Geschwister-Fall (ein Nachbarname wie
+`ledger_add.py.bak`) ist zu, weil der Wortende-Anker dort greift; offen ist nur noch der Köder
+mit **eigenem Verzeichnis**, den kein Anker vom kanonischen Pfad unterscheidet, solange nichts
+in der Zeile die Frage überhaupt stellt.
+
+**Kette (gemessen 2026-08-23/24, Prüfer und Umsetzer unabhängig, an beiden Zwillingen
+identisch — also nicht Preis einer Runde):** `python tools/ledger_add.py …` rc 0. Die Zeile
+nennt weder einen Ledger-Pfad in schreibender Stellung noch eine geschützte Datei, also
+erreicht sie die Entscheidung nicht.
+
+**Korrektur 2026-08-24 (Prüfer, TSK-0084): die zweite Hälfte dieses Eintrags ist zu.** Hier
+standen zuerst zwei weitere Beispiele, und eines davon trägt nicht mehr:
+`python scripts/ledger_add.py.bak ledger/2026.csv` ist HEAD rc 0 → **jetzt rc 2** — der
+Geschwister-Anker aus `TSK-0083` greift dort. Offen ist nur noch der **Köder mit eigenem
+Verzeichnis** (`tools/…`), also die Zeile oben. Die Liste ist entsprechend gekürzt: ein
+Beispiel, das die Behauptung nicht mehr trägt, ist genau die Aufzählung, vor der die Hausregel
+warnt.
+
+**Urteil: offen, mit begrenzter Wirkung.** Der Gewinn des Angreifers wird erst mit einer
+**zweiten** Zeile wirksam, und die wird geprüft: der eigentliche Schaden (ein Commit auf einem
+kaputten Ledger, ein Schreibzugriff auf den Validator) trägt dann die blockierte Operation und
+wird befragt. Was hier durchläuft, ist der Lauf allein. Zu schließen wäre es, indem die
+Zwillingsfrage unabhängig von der blockierten Operation gestellt wird — das ist eine
+Verschärfung und gehört gemessen in eine eigene Runde, nicht als Nebeneffekt hierher.
+
+### H68 — Zwei Schreibweisen, die verweigert werden, ohne zu schreiben — offen, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083)
+
+**Mechanismus:** Das Ledger-Gate urteilt über **alle** Lesarten, die die Vorverarbeitung dem
+Text geben kann, und verweigert, sobald **irgendeine** davon „schreibt" sagt. Das ist die
+gebaute Richtung und die sichere. Sie trifft zwei harmlose Schreibweisen mit:
+
+1. **Handgetippter Backslash im Validatorpfad.** Eine der beiden Lesarten verbraucht den
+   Backslash, aus `scripts\ledger_add.py` wird `scriptsledger_add.py` — kein kanonischer Lauf
+   mehr, also fällt die Verbürgung weg und der Ledger-Pfad in derselben Zeile zählt als
+   Schreibzugriff. Gemessen: `python scripts\ledger_add.py --validate ledger/2026.csv && git commit -m x`
+   HEAD rc 0 → jetzt rc 2; beide Pfade mit Backslash bzw. beide mit Schrägstrich bleiben rc 0.
+   Nicht mehr enthalten ist der schlimmere Teil dieses Befunds: das Gate **bewarb** diese
+   Schreibweise in seiner eigenen Verweigerung, weil es den Validatorpfad plattformabhängig
+   zusammensetzte. Der Pfad ist jetzt fest in Schrägstrich-Schreibweise, und ein Test leitet
+   die geprüfte Zeile aus dem **gedruckten** Text der Verweigerung ab statt aus einer zweiten
+   Handabschrift.
+2. **Quotiertes `;` oder `|` in Argument-Prosa** schneidet weiterhin Segment bzw.
+   Pipeline-Stufe: `--summary "reversed; see scripts/ledger_add.py"` und `--note "a|b"` sind
+   rc 2, vor der Runde wie danach.
+3. **Quotierte Argument-Prosa mit einem Wagenrücklauf**, seit `TSK-0083`/`TSK-0084` — dieselbe
+   Ursache, derselbe Preis: `--summary "reversed<CR>see scripts/ledger_add.py" && git commit`
+   ist rc 2, und ohne Commit geht dieselbe Zeile von rc 0 auf rc 2. Der Wagenrücklauf **musste**
+   ein Trenner werden, weil PowerShell ihn als einen behandelt und ein einziger Aufruf sonst das
+   Kassenbuch vergiftete (`BUG-0066`); dass er dabei auch in quotierter Prosa schneidet, ist der
+   bewusst gewählte, sichere Ausgang derselben Abwägung wie in den beiden Fällen darüber.
+
+**Warum nicht geschlossen:** Der naheliegende Fix — quotierungsbewusst trennen — ist
+**gemessen falsch**. Er schluckt genau den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich
+**in** eine quotierte Spanne injiziert, um eine Kommandoersetzung sichtbar zu machen, und macht
+damit `BUG-0065` wieder auf (eine Ersetzung schmuggelt einen Schreibzugriff ins
+Validator-Verzeichnis). Diese Begründung steht als Docstring am Ort der Entscheidung, nicht nur
+hier.
+
+**Urteil: offen, Über-Verweigerung, kein Loch.** Nichts geht verloren; der getroffene Nutzer
+formuliert den Satz ohne das wörtliche Pfad- oder Trennzeichen-Nachwort, und die kanonischen
+Schreibweisen funktionieren alle. Dieselbe Familie wie `H64` und `H34`: die Grenze ist, dass
+niemand ohne den Zustand der Shell weiß, welches Zeichen sie ausführt und welches sie liest.
+
+### H69 — Die Gates dieses Repos erben die halbe CR-Härtung der Kits — offen, Werkbank, `DEC-0022` (TSK-0084)
+
+**Mechanismus:** `TSK-0084` hat zwei verschiedene Defekte derselben Zeichenfamilie geschlossen.
+Die Gates dieses Repos teilen sich mit den Kits die Vorbereitung (`_compat`), aber nicht die Tür,
+an der die zweite Hälfte hängt:
+
+1. **Geerbt und damit zu:** der Wagenrücklauf als **Anweisungstrenner** unter PowerShell. Die
+   Normalisierung sitzt in `_compat`, also greift sie hier mit — gemessen rc 0 → rc 2.
+2. **Nicht geerbt und damit offen:** die **Verschweißung** unter dem Bash-Werkzeug. Die
+   Verweigerung dafür sitzt in `_kernel.payload`, und `_harness` liest die Nutzlast direkt über
+   `_compat.load`, geht also nicht durch diese Tür.
+
+**Kette (gemessen 2026-08-24, Prüfer, read-only in einer Kopie außerhalb des Repos, am
+HEAD-Zwilling identisch — also vorbestehend):**
+`echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → bash rc 0 → `index.yaml`
+von 37 318 auf 7 Byte, Inhalt `poison`. Der Wagenrücklauf verschwindet im Eingabeleser dieser
+bash, bevor sie parst; zwei Wörter verschweißen zu einem Pfad, den kein Leser des Gates je zu
+sehen bekam.
+
+**Urteil: offen, und bewusst NICHT gebaut.** Die Kette läuft in einer Sitzung durch, aber
+`DEC-0022` trennt die Beweislast nach Schaden, und für die Werkbank gilt dort: der einzige
+Akteur ist ein Agent, der Anweisungen folgt, und **sein Irrtum nimmt den geradeaus naheliegenden
+Weg**. Ein unsichtbares Steuerzeichen mitten in einem Pfad ist kein naheliegender Irrtum, sondern
+ein absichtlich gebauter — und wer hier absichtlich baut, ist der Sitzungsagent selbst, dem der
+Zweck der Fessel gerade nicht abhandengekommen ist. Der Nutzer hat genau das eingewandt
+(„wieso solltest du angreifen? das macht man ja nicht absichtlich"), und der Einwand ist nach
+unserer eigenen Entscheidung richtig; die zuerst geplante Handback-Zeile ist daraufhin
+zurückgezogen worden. **Was begrenzt:** der Schaden ist eine Datei, die aus der
+Versionsverwaltung zurückkommt; die getroffene Datei ist erzeugt und aus den Items neu
+herstellbar; und in den **ausgelieferten** Kits — wo ein echter Angreifer existiert, nämlich ein
+Inhalt, den der Agent liest und der als Anweisung getarnt ist — sind **beide** Hälften zu. Der
+einzige nicht-absichtliche Weg hierher ist Text mit Windows-Zeilenenden, der in eine
+Befehlszeile kopiert wird; auch der endet an der Versionsverwaltung.
+
+### H70 — Der Vollständigkeits-Draht des Ledger-Gates fragt nach MUSTERN, also sieht er eine Ausnahme ohne Muster nicht — offen, Messlücke des Instruments (TSK-0083/TSK-0084)
+
+**Mechanismus, als Klasse und nicht als Schreibweise:**
+`tools/test_hooks_v2.py::test_every_vouching_run_pattern_is_named_here`
+soll verhindern, dass eine vierte Ausnahme in `_stages_beside_the_vouched_runs` eine Stufe befreit,
+ohne in der geführten Liste zu stehen. Er fragt das über **Muster**: `_patterns_consulted_by` folgt
+Namen durch den geparsten Quelltext (alle Pfade, nur auflösbare Namen), `_patterns_called_by`
+instrumentiert jedes modulweite `re.Pattern` und zeichnet auf, welche beim Laufen wirklich gefragt
+werden (alle Namen, nur die Pfade der Sonden); der Test nimmt die **Vereinigung**. Eine Ausnahme,
+die **gar kein** `re.Pattern` befragt, wird von beiden Fragen nicht erfasst — sie befreit die Stufe
+und der Draht bleibt grün. Dasselbe gilt für ein Muster, das nur bei einer Eingabe **außerhalb** des
+Sondenkorpus gefragt würde.
+
+**Kette — FREMDE Messung, von beiden Rollen unabhängig gefahren, vom Lead nicht nachgemessen:**
+Umsetzer (Durchgang 4, `rework3/m_fd2.py`, beide Leser aus der ausgelieferten Datei geparst) und
+Prüfer messen dieselbe Zeile: eine Ausnahme, geschrieben als
+`stage.strip().startswith("deno ")`, befreit die Stufe, Namensleser grün, laufender Leser grün,
+Vereinigung grün. Mit echtem pytest im Klon gepflanzt: **1 passed** — der Draht schweigt. Die vier
+Muster-Konstruktionen daneben (direkt benannt, Tupel von Mustern, modulweites Lambda, über
+`globals()`, Tupel von Prädikats-Funktionen) sind je **1 failed**, der Draht trägt dort also.
+**Der Lead hat den Fall NICHT selbst nachgemessen**, und der Versuch gehört zum Befund: vier
+Anläufe mit einer selbstgebauten Sonde meldeten „blind" auch für die Formen, die beide Rollen
+übereinstimmend als rot gemessen hatten — die Sonde war falsch, nicht der Code. Das ist der Grund,
+warum hier die fremde Messung steht und keine eigene: ein fünfter Anlauf hätte das Instrument
+noch einmal neu gebaut, das bereits zweimal unabhängig gebaut dasteht.
+
+**Urteil: Rest, Messlücke des INSTRUMENTS, keine offene Kette im Produkt.** Dieselbe Klasse wie
+`H10` (Codehälften ohne rote Mutation) und `H41` (die Grenzen des Zeiger-Wächters): der Draht
+bewacht eine **künftige** Änderung, und seine Blindstelle wird erst zur Lücke, wenn jemand eine
+Ausnahme ohne Muster schreibt und niemand es bemerkt. Was an seiner Stelle steht, ist im Docstring
+von `_patterns_called_by` benannt und ist die andere Frage: **welche Stufe wird frei** — die die
+Verhaltenstests für die von ihnen aufgezählten Verben stellen. Die Schließrichtung wäre, genau
+diese Frage zu automatisieren (eine Ausnahme, die eine schreibende Stufe befreit, muss rot werden,
+unabhängig davon, womit sie entscheidet); das ist eine eigene Runde und war es nicht wert, sie an
+das Ende dieser zu hängen. **Warum überhaupt ein Eintrag:** der Draht hat in zwei Prüfrunden
+**dreimal** eine Vollständigkeit behauptet, die er nicht baute — jedes Mal, weil die Antwort eine
+Aufzählung von Schreibweisen war. Der Docstring sagt das jetzt; dieser Eintrag ist die Stelle, an
+der es beim nächsten Lesen der offenen Lücken auffällt.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

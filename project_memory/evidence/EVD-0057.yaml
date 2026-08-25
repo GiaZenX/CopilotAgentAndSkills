@@ -1,0 +1,35 @@
+id: EVD-0057
+kind: review
+related:
+- TSK-0083
+- TSK-0084
+- BUG-0063
+- BUG-0064
+- BUG-0065
+- BUG-0066
+result: pass
+summary: 'delivery verdict for diff:571b33e3399aadf1ad1b5f278b66aee012618f8267ef8824be09a63a7c436e16
+  -- TSK-0084 verifier PASS twice (REPORT-FINAL, REPORT-FD: behaviour re-measured
+  against real gate processes and correct). TSK-0083 verifier FAIL in the same report
+  on exactly ONE blocking finding (F-D2: the completeness tripwire claimed a completeness
+  it did not have) with the acceptance condition stated IN ADVANCE (''the fix is ONE
+  sentence -- name the class or make the reader definitional; no suite re-run needed
+  if only the docstring changes''); the implementer took BOTH named routes (class
+  named in the docstring AND _patterns_called_by built, the test taking the union).
+  Lead verified the condition against the RUNNING code: the second reader is provably
+  alive (test_hooks_v2.py:10533 fails if it recorded nothing -- green), the docstrings
+  state the class instead of completeness, tripwire and neighbours 304 passed. Not
+  measured by the lead and named as foreign in H70: the residue that an exemption
+  asking no pattern at all stays invisible (measured independently by implementer
+  and verifier). Delivery suite 3842 passed / 14 skipped / 1 failed, the one failure
+  being that test''s OWN noise guard on a host fresh from a crash (0.187 s signal
+  vs 0.041 s jitter, factor-5 bar), re-measured green three times in a row; prose
+  written during the run re-measured with the suites that read it (46 + 41 + 7 passed).
+  Stamps current, kernel validate 0 errors'
+artifact_refs:
+- staging/TSK-0084/lead-delivery.md
+- staging/TSK-0083/acceptance.md
+- staging/TSK-0084/acceptance.md
+revision: 1
+approval_ref: null
+created: '2026-08-25T07:23:20'

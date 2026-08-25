@@ -49,3 +49,20 @@ project_memory/.audit/
 # refuse to run against a state directory that holds items but no index — the board has no such
 # consumer. Enforced by the same tools/test_repo_hygiene.py rule (tracked ∩ ignored must be empty).
 project_memory/generated/board.html
+
+# Office-kit TEMPLATE forms that a measuring run wrote into THIS repo's own state tree on
+# 2026-08-23 (BUG-0067). This repo runs no kit and its state is dev-shaped, so an office
+# onboarding form here is contamination, not state -- and the TSK-0084 verifier caught it as
+# exactly the thing a `git add -A` before a delivery commit would carry into history. Ignored
+# rather than deleted because project_memory/ has one writer (the kernel) and these are no
+# items, so no route inside a session may remove them; BUG-0067 AC-2 carries the removal and
+# AC-1 the seeding path that must stop defaulting to the repo root. Untracked from the start,
+# so the rule is live immediately (tracked minus ignored stays empty -- tools/test_repo_hygiene.py).
+project_memory/business_profile.yaml
+project_memory/compliance_register.yaml
+project_memory/content_guidelines.yaml
+project_memory/filing_plan.yaml
+project_memory/marketing_plan.yaml
+project_memory/master_data.yaml
+project_memory/product_catalog.yaml
+project_memory/procedures/
