@@ -1,0 +1,25 @@
+id: EVD-0059
+kind: review
+related:
+- TSK-0085
+- FR-0058
+result: pass
+summary: 'verifier PASS (round 2) for diff:a6c3230f03420d3265c892a60723608b67a0c89639bed0deeb235d656ffab03e
+  -- TSK-0085: the derivation closed_by_delivery is built definitionally (an item
+  is closed when the CURRENT delivery verdict of every kind that names it passes),
+  printed BESIDE the findings and carried by doctor, costing the hook path nothing
+  (instrumented: 0 calls); the inventory read 65 active bugs and 46 active wishes
+  against the RUNNING code rather than their titles. Two verifier blockers closed:
+  FR-0013 keeps its closure only with a verbatim replacement text carrying the measured
+  residue (the second spelling its own request_text names is rc 0 through the full
+  chain), and the docstring''s reader-equality claim was narrowed to what the code
+  builds -- the walk would close a whole product requirement because one of its tasks
+  passed, so the cheaper definition was kept and the follow-up work recomputed from
+  38 to 16. Both re-measured by the verifier, who retracted his own FR-0013 position;
+  M8/M9 red in his clone; the 16 names match his independent count exactly. Kits 2026.08.25-4,
+  925 + 2927 tests green'
+artifact_refs:
+- ../docs/reviews/2026-08-25-tsk0085-measurements.md
+revision: 1
+approval_ref: null
+created: '2026-08-25T11:39:34'

@@ -1,0 +1,56 @@
+id: TSK-0085
+product_requirement: PR-0003
+derives_from: FR-0058
+type: analysis
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0058 (the measured proof: FR-0035 carries the user''s verbatim four-eyes requirement
+  and sits ACTIVE while TSK-0078 built exactly that under FR-0049 -- same mechanism,
+  different number, NO name match connects them)'
+- 'DEC-0051 (the user''s two-stage decision: derive ''done'' from the EVIDENCE now,
+  retrofit the approval path in the workshop later as the goal; the derivation is
+  the truth about the state until then, not the status field)'
+- 'the running automata, measured: FR reaches MERGED (honestly closable, nobody did
+  it); BUG from OPEN reaches only DUPLICATE/REJECTED/TRIAGED, and VERIFIED needs APPROVED
+  which needs a mint this workshop has not (H39)'
+- 'the evidence store itself: every delivery records which items it closed (EVD-0057
+  names BUG-0063/0064/0065/0066) -- that is the fact the derivation must read'
+expected_outputs:
+- 'STEP 1 BUILD: a DERIVATION in the kernel that answers ''which items has a delivery
+  closed'' from the EVIDENCE records, not from the status field -- exposed where a
+  reader can use it (rollup/report surface), with a red-without-fix test in a clone
+  outside the repo. Definitional, not a list: what closes an item is that an active
+  EVD with result pass names it, and the derivation says so for BUG and FR alike'
+- 'STEP 2 MEASURE, and this is the round''s real product: read EVERY active FR and
+  BUG against WHAT IS BUILT -- the running code and the commit record -- never against
+  its title. FR-0035 is the shape that matters: its cover came from a FOREIGN number,
+  so a name match would have missed it. Produce a verdict list, one line per item:
+  delivered (with the item/commit that delivered it), partly delivered (with what
+  is left), or genuinely open'
+- 'STEP 3 REPORT the verdict list in a form the LEAD can execute through the kernel
+  (the implementer never writes project_memory): per FR the target status, per BUG
+  whether the derivation now shows it closed. Name every case where you could NOT
+  decide from the running code and say what would decide it'
+- 'STEP 4 SHIP: bump_kit_version if kit content moved, ruff, validate, the affected
+  suites per DEC-0050 (the full run is the lead''s delivery criterion); report file:line,
+  residues named'
+dependencies:
+- FR-0058
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-25T08:19:15'
+closed_at: '2026-08-25T11:39:17'

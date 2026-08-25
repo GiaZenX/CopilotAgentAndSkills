@@ -21,9 +21,11 @@ request_text: 'docs/POST_V2_WISHLIST.md hat elf Abschnitte, und niemand kann sag
 
 
   Dazu: docs/office-kit-from-field.md als Abschnitt 12 verlinken.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:59:51'
 triage_result: 'wanted: wishlist sections 1-10 still have no thin FR items; the section-11
   BUG/DEC split happened only partially via DEC-0036 (assessment TSK-0055)'
+resulting_item: FR-0036
+closed_at: '2026-08-25T11:38:33'

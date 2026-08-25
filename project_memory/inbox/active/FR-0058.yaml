@@ -1,0 +1,41 @@
+id: FR-0058
+title: 'Der Bestand luegt nach oben: gelieferte Wuensche und reparierte Fehler stehen
+  weiter als offen -- eine Bestandsaufnahme plus ein ableitbarer Erledigt-Begriff'
+request_text: 'User challenged the lead''s own overview on 2026-08-25 (''sicher dass
+  alle punkte davon noch offen sind? das 4-Augen-Prinzip haben wir doch schon eingebaut'')
+  and was RIGHT -- the lead had read status fields instead of measuring, the same
+  shortcut it had just criticised for BUGs. MEASURED PROOF: FR-0035 carries the user''s
+  verbatim four-eyes requirement (''ein Hook der das Verschieben sperrt bis ... ein
+  zweiter unabhaengiger Agent nicht auf dasselbe Ergebnis kommt'') and sits ACTIVE,
+  while TSK-0078 (commit 5ee0f26, headline ''judged by a second pair of eyes'') built
+  exactly that under FR-0049 -- per-file proposal by the clerk, a REVIEWER subagent
+  answering accept/object/partial per file, only accepted files moved, everything
+  objected routed through the manager to the user. Same mechanism, different item
+  number, and NO name match connects them -- so a name-based sweep would miss it.
+  TWO DIFFERENT DEFECTS, measured against the running automata: (1) FR CAN be closed
+  honestly -- states are CONVERTED, MERGED, OPEN, REJECTED, TRIAGED, so a delivered
+  wish reaches MERGED; nobody moved them, that is pure bookkeeping debt and needs
+  no decision. Known name-matched candidates: FR-0013 (closed in TSK-0070''s headline),
+  FR-0004 and FR-0048 (each half delivered); FR-0035 is the read-only kind. (2) BUG
+  CANNOT be closed honestly -- from OPEN only DUPLICATE, REJECTED and TRIAGED are
+  legal, and VERIFIED is reachable only through APPROVED, which needs a minted approval
+  this workshop does not have (it runs no kit, so no gate_approval). A repaired bug
+  therefore has NO honest terminal; calling it REJECTED or DUPLICATE would be a lie
+  in the record. That is H39, and it now costs the user a backlog that overstates
+  its own open work by roughly 26 of 66 bug entries plus an unmeasured share of the
+  47 wishes. WANTED, two halves: (a) a bookkeeping sweep that READS each active FR
+  and BUG against what is built (not against its title) and closes what is delivered
+  -- FRs to MERGED, BUGs by whatever half (b) decides; (b) an honest ERLEDIGT concept
+  for bugs. The lead''s recommendation for (b), stated as a proposal and not as a
+  decision: DERIVE it instead of inventing a state -- every delivery already records
+  which items it closed in an EVD (EVD-0057 names BUG-0063/0064/0065/0066), so ''is
+  this bug repaired'' is already a fact in the store and a rollup can answer it without
+  touching the automaton, without a mint and without a migration. Alternatives to
+  weigh: make the mint reachable in the workshop, or add a terminal that needs no
+  approval. Neighbours: H39 (the reachability gap), FR-0003 (every wish gets a state),
+  FR-0036 (prose-to-item reconciliation), BUG-0067/BUG-0052 (the other bookkeeping
+  defects). Source: user 2026-08-25, lead measurement the same day.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-25T08:11:06'

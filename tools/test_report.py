@@ -907,6 +907,225 @@ def test_qa_verdicts_by_subject_files_evidence_under_every_item_it_names(state):
     assert by_subject["PR-0002"]["test"]["id"] == later
 
 
+# -- what a delivery has already closed (DEC-0051 / FR-0058) -------------------
+
+def test_a_passing_delivery_closes_every_item_it_names(state):
+    """The derivation DEC-0051 decided on: "closed" is read off the evidence, not off the status.
+
+    The measured occasion is FR-0058: the store said 26 of 66 bug entries were open work that had
+    shipped, because a status field is set by hand and a delivery verdict is written by the kernel.
+    One delivery names several items -- the task it judged AND the bug and the wish it closed -- so
+    all of them are closed by it, which is what "for BUG and FR alike" means.
+
+    RED WITHOUT THE FIX: `report.closed_by_delivery` did not exist, and no surface answered the
+    question at all.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    wish = state.capture("FR", {"title": "wish", "request_text": "please add X"})
+    task = make_task(state, root["id"], bug["id"])
+    verdict = evd(state, kind="review", result="pass",
+                  related=(task["id"], bug["id"], wish["id"]))
+
+    closed = report.closed_by_delivery(state)
+    for item_id in (task["id"], bug["id"], wish["id"]):
+        assert closed.get(item_id) == [verdict], (item_id, closed)
+    assert root["id"] not in closed, "a delivery closes what it NAMES, nothing else"
+
+
+def test_a_later_fail_reopens_what_an_earlier_pass_had_closed(state):
+    """"Any pass wins" is the reading this must not have: a regression re-opens the item.
+
+    Which of several verdicts counts is `_newest_per_kind`, the same supersession the merge gate
+    reads -- so a FAIL recorded after a PASS closes the gate again there and un-closes the item
+    here. The second half is the other direction of the same rule: a fail of ANOTHER kind, recorded
+    at any time, means not every kind that judged the item passed.
+
+    RED WITHOUT THE FIX: a derivation asking "does any passing Evidence name it" keeps the item
+    closed in both halves.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    evd(state, kind="review", result="pass", related=(bug["id"],),
+        created="2026-01-01T00:00:00")
+    assert bug["id"] in report.closed_by_delivery(state)
+
+    evd(state, kind="review", result="fail", related=(bug["id"],),
+        created="2026-02-01T00:00:00")
+    assert bug["id"] not in report.closed_by_delivery(state)
+
+    other = make_bug(state, root["id"])
+    evd(state, kind="review", result="pass", related=(other["id"],))
+    evd(state, kind="test", result="fail", related=(other["id"],))
+    assert other["id"] not in report.closed_by_delivery(state)
+
+
+def test_a_task_verdict_does_not_close_the_item_the_task_hangs_from(state):
+    """The two readers of one store reach different sets, and the difference is the SUBJECT.
+
+    `closed_by_delivery` groups by the ids an Evidence WRITES; `gate_git` asks `qa_verdicts`, which
+    walks the reference graph (`evidence_covers` -> `_hangs_from`) and therefore travels from a task
+    up to BOTH items it hangs from -- the item its criteria came from AND the root it is filed
+    under. Putting this derivation on that walk would close a whole product requirement because one
+    of its tasks passed; measured against this repository's own store, the walk reports four such
+    items green that no delivery closed. So both ends are asserted here: the walk really does reach
+    the root (or this test would prove nothing about a difference), and the derivation really does
+    not.
+
+    RED WITHOUT THE FIX: with `closed_by_delivery` put on `qa_verdicts`/`evidence_covers`, the two
+    `not in` assertions fail -- the root and the origin are closed by a verdict about the task.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    task = make_task(state, root["id"], bug["id"])
+    for kind in QA_EVIDENCE_KINDS:
+        evd(state, kind=kind, result="pass", related=(task["id"],))
+
+    closed = report.closed_by_delivery(state)
+    assert task["id"] in closed, "the item the verdict NAMES is closed"
+    assert root["id"] not in closed, "a task's verdict may not close the root it is filed under"
+    assert bug["id"] not in closed, "nor the item its criteria were cut from"
+
+    for other in (root["id"], bug["id"]):
+        verdicts = report.qa_verdicts(state, other)
+        assert {entry["result"] for entry in verdicts.values()} == {"pass"}, (
+            "the merge gate's reader must reach %s, or there is no difference to measure" % other)
+
+
+def test_archiving_a_verdict_reopens_the_item_it_had_closed(state):
+    """`_delivery_evidence` reads ACTIVE Evidence only, so retiring a verdict un-closes its item.
+
+    Spec II.2 retires a superseded verdict by archiving it, which is exactly right when a newer run
+    replaced it -- and surprising when the archive is housekeeping on a verdict that still stands.
+    The behaviour is inherited rather than chosen here, so it is pinned instead of described: a
+    reader who plans follow-up Evidence records (the closure route this derivation was built for)
+    has to know that the same route can be undone by an archive.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    verdict = evd(state, kind="review", result="pass", related=(bug["id"],))
+    assert report.closed_by_delivery(state).get(bug["id"]) == [verdict]
+
+    state.archive(verdict)
+    assert bug["id"] not in report.closed_by_delivery(state)
+    assert bug["id"] not in report.delivered_but_open(state)
+
+
+def test_a_verdict_that_judges_no_lifecycle_closes_nothing(state):
+    """Two subjects that carry no story to close, both dropped by ONE condition.
+
+    `audit` judges the project (II.10a) and is no delivery verdict at all -- `_delivery_evidence`
+    never yields it. And an Evidence that names another EVIDENCE names a record: a record type has
+    no automaton, so "closed" is not a thing it can be. The second half is what keeps the answer
+    from filing evidence under itself, which `qa_verdicts_by_subject` does by design for a record
+    that names no item.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    evd(state, kind="audit", result="pass", related=(bug["id"],))
+    assert bug["id"] not in report.closed_by_delivery(state)
+
+    judged = evd(state, kind="review", result="pass", related=(bug["id"],))
+    evd(state, kind="review", result="pass", related=(judged,))
+    assert judged not in report.closed_by_delivery(state)
+    assert bug["id"] in report.closed_by_delivery(state), "the control half"
+
+
+def test_an_item_already_in_a_terminal_status_is_not_reported_as_open(state):
+    """`delivered_but_open` is the DIFFERENCE between the two readings, so a closed item leaves it.
+
+    An item standing in a terminal already carries `validate_state`'s own "awaiting archive"
+    warning, and reporting it a second time as a bookkeeping debt would be an entry nothing clears.
+    """
+    wish = state.capture("FR", {"title": "wish", "request_text": "please add X"})
+    evd(state, kind="review", result="pass", related=(wish["id"],))
+    assert wish["id"] in report.delivered_but_open(state)
+
+    state.update_item(wish["id"], {"triage_result": "delivered under another number"})
+    state.transition(wish["id"], "TRIAGED")
+    state.transition(wish["id"], "REJECTED")
+    assert wish["id"] in report.closed_by_delivery(state)
+    assert wish["id"] not in report.delivered_but_open(state)
+
+
+def test_the_closing_route_of_a_bug_names_both_guards_between_it_and_verified(state):
+    """H39, made visible: a repaired BUG passes a MINTED approval and a PASSING test Evidence.
+
+    Both guards are read from the maps the transition path itself consults, and both are measured
+    against the running kernel here rather than against the route text: the mint is what walks
+    TRIAGED -> APPROVED (`state.transition` refuses that edge outright), and FIXED -> VERIFIED is
+    refused while no `test` verdict covers the bug. A workshop that can produce neither has no
+    honest terminal for a repaired bug, which is why the derivation above is the truth about its
+    state and the status field is not.
+    """
+    route = report.closing_route("BUG", "OPEN")
+    assert [edge["to"] for edge in route["steps"]] == ["TRIAGED", "APPROVED", "FIXED", "VERIFIED"]
+    assert route["choices"] == [], "VERIFIED ends the chain, so nothing is left to choose"
+    guards = {edge["to"]: (edge["approvals"], edge["evidence"]) for edge in route["steps"]}
+    assert guards["APPROVED"] == (("scope",), None)
+    assert guards["VERIFIED"] == ((), "test")
+    assert guards["TRIAGED"] == ((), None) and guards["FIXED"] == ((), None)
+
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    state.transition(bug["id"], "TRIAGED")
+    with pytest.raises(Exception) as unapproved:
+        state.transition(bug["id"], "APPROVED")
+    assert "approval" in str(unapproved.value).lower(), unapproved.value
+
+    walk_to_status(state, state.read_item(bug["id"]), "FIXED")
+    with pytest.raises(Exception) as unproven:
+        state.transition(bug["id"], "VERIFIED")
+    assert "'test' Evidence" in str(unproven.value), unproven.value
+    evd(state, kind="test", result="pass", related=(bug["id"],))
+    assert state.transition(bug["id"], "VERIFIED")["status"] == "VERIFIED"
+
+
+def test_the_closing_route_of_a_request_offers_the_terminals_it_may_become(state):
+    """An FR's chain does NOT end in a terminal, so the route offers rather than picks.
+
+    Which of MERGED, CONVERTED and REJECTED a delivered wish takes is a judgement no automaton
+    makes -- the route may not invent it, and a route function that only knew a confirming chain
+    (BUG, TSK) would have said nothing at all about the type this round is mostly about.
+    """
+    route = report.closing_route("FR", "OPEN")
+    assert [edge["to"] for edge in route["steps"]] == ["TRIAGED"]
+    assert sorted(edge["to"] for edge in route["choices"]) == ["CONVERTED", "MERGED", "REJECTED"]
+    assert all(edge["from"] == "TRIAGED" for edge in route["choices"])
+    assert report.closing_route("FR", "MERGED") == {"steps": [], "choices": []}
+    assert report._route_sentence("FR", "MERGED") == ""
+
+
+def test_the_delivery_rollup_is_printed_beside_the_findings_and_is_none_of_them(state, tmp_path):
+    """The rollup is COVERAGE: it must reach a reader, and it must not become a finding.
+
+    A finding is something a project can clear. A repaired BUG in a project that cannot mint an
+    approval carries this row for good (the test above measures both guards), so as an error it
+    would block every merge for ever and as a warning it would be an alarm nobody can leave. Both
+    halves are asserted against what RUNS: the finding list of `validate_state`, and the real
+    `kernel.cli validate` process, whose stdout is where a reader meets it.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    verdict = evd(state, kind="review", result="pass", related=(bug["id"],))
+
+    assert not [f for f in report.validate_state(state) if f["item"] == bug["id"]]
+    rows = {row["item"]: row for row in report.delivery_closure_rollup(state)}
+    assert rows[bug["id"]]["evidence"] == [verdict]
+    assert rows[bug["id"]]["status"] == "OPEN"
+    assert "VERIFIED (needs a passing 'test' Evidence)" in rows[bug["id"]]["route"]
+
+    environment = dict(os.environ, PYTHONPATH=TEAM_KITS, PYTHONIOENCODING="utf-8")
+    run = subprocess.run([sys.executable, "-B", "-m", "kernel.cli", "--root", state.root,
+                          "validate"], capture_output=True, text=True, encoding="utf-8",
+                         errors="replace", env=environment, cwd=str(tmp_path), timeout=300)
+    assert run.returncode == 0, run.stderr
+    printed = [line for line in run.stdout.splitlines() if bug["id"] in line]
+    assert len(printed) == 1, run.stdout
+    assert verdict in printed[0] and "VERIFIED" in printed[0], printed
+    assert "[WARNING]" not in printed[0] and "[ERROR]" not in printed[0], printed
+
+
 def test_evidence_against_a_system_requirement_covers_the_root_it_derives_from(state):
     """The hop `_parents_of` did not have, and an `SR` is the natural subject of a review.
 

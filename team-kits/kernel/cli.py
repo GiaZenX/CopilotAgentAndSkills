@@ -992,6 +992,25 @@ def main(argv=None) -> int:
                   % (len(coverage["searched"]), len(coverage["not_searched"]), len(deposits)))
             for entry in coverage["not_searched"]:
                 print("  NOT SEARCHED %s: %s" % (entry["path"], entry["why"]))
+            # WHAT A DELIVERY HAS ALREADY CLOSED WHILE THE STATUS FIELD STILL READS OPEN
+            # (DEC-0051), printed with the findings and not among them for the reason
+            # `report.delivery_closure_rollup` gives: a row a project cannot clear -- and a BUG
+            # whose route needs a mint the project has no way to run is exactly that -- would be a
+            # finding nobody can act on. Without this line the difference between "open" and
+            # "delivered, and nobody moved it" is a difference no surface shows.
+            rollup = report.delivery_closure_rollup(state)
+            # THE HEADLINE SAYS "ALL", not "a passing", and that is not editorial: the derivation
+            # closes an item only when EVERY current verdict naming it passes, so a line reading
+            # "a passing delivery Evidence names it" taught the reader the one rule
+            # `closed_by_delivery` does not have -- the "any pass wins" reading its own regression
+            # test exists to red. The docstring was precise and this line was not, which is the
+            # half a reader actually meets.
+            print("Delivered but still open: %d item(s) whose delivery verdicts ALL pass while "
+                  "their status still reads otherwise" % len(rollup))
+            for row in rollup:
+                print("  %s %s (%s): %s" % (row["item"], row["status"],
+                                            ", ".join(row["evidence"]),
+                                            row["route"] or "no route on this type's chain"))
             return 1 if errors else 0
         if args.command == "generate-index":
             # Both paths, for the reason the subparser's help gives: the index is what the machines

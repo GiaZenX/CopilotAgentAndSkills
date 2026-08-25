@@ -1,0 +1,47 @@
+id: DEC-0051
+title: Erledigt wird vorerst aus den Nachweisen ABGELEITET; der Freigabe-Weg in der
+  Werkstatt bleibt das Ziel
+context: 'Der Nutzer hat am 2026-08-25 die Uebersicht des Leads widerlegt: FR-0035
+  (seine woertliche Vier-Augen-Forderung) stand als offen, obwohl TSK-0078 genau das
+  unter FR-0049 gebaut hat -- gleiche Mechanik, andere Nummer, kein Namensbezug. Daraufhin
+  gemessen, an den laufenden Automaten: ein FR erreicht MERGED und ist ehrlich schliessbar
+  (niemand hat es getan -- reine Buchfuehrungsschuld); ein BUG erreicht VERIFIED nur
+  ueber APPROVED, und APPROVED verlangt eine gemintete Freigabe, die es in dieser
+  Werkstatt nicht gibt (sie faehrt kein Kit, also keinen gate_approval). Ein reparierter
+  Fehler hat hier also KEINEN ehrlichen Endzustand; REJECTED oder DUPLICATE waeren
+  eine Luege im Datensatz. Das ist H39, und es kostet den Nutzer eine Liste, die ihre
+  eigene offene Arbeit deutlich ueberzeichnet. ZUSAETZLICH GEMESSEN, auf Frage des
+  Nutzers, ob dasselbe seinen Projekten droht: in einem KIT ist der Weg erreichbar
+  (der Mint laeuft dort, in Pilot 3 sauber gemessen) UND die Regel steht geschrieben
+  (dev-team skills/project-manager/SKILL.md:230: ''Evidence for that test is what
+  moves the bug FIXED -> VERIFIED; you never set it on a claim''). Die Blockade ist
+  also werkstatt-spezifisch. Was in den Projekten dennoch gemessen schiefging: der
+  Nachweis-Ordner blieb in ZWEI dev-Piloten leer (BUG-0060, offen) -- wo kein Nachweis
+  entsteht, bewegt sich auch kein Item. Andere Ursache, gleiche Richtung: der Datensatz
+  sagt weniger, als geschehen ist.'
+decision: 'Zweistufig, vom Nutzer so entschieden: (1) JETZT wird ''erledigt'' aus
+  den NACHWEISEN abgeleitet statt als Status erfunden -- jede Lieferung schreibt ohnehin
+  auf, welche Nummern sie geschlossen hat (EVD-0057 nennt BUG-0063/0064/0065/0066),
+  also ist die Tatsache bereits im Speicher und eine Auswertung kann sie ausrechnen.
+  Kein Eingriff in den Automaten, kein Mint, keine Migration. (2) ZIEL bleibt, den
+  Freigabe-Weg in der Werkstatt nachzuruesten, damit der normale Weg bis zum Ende
+  geht (''freigabe weg nachruesten waere schon das ziel''). Das ist eine eigene Runde
+  mit eigener Sicherheitsabwaegung und wird NICHT nebenbei gemacht. Bis dahin ist
+  die Ableitung die Wahrheit ueber den Stand, nicht das Status-Feld.'
+consequences: 'Die Bestandsaufnahme (FR-0058) laeuft SOFORT als naechste Runde --
+  vom Nutzer so gewaehlt, damit er sich nicht an Punkten abarbeitet, die laengst gebaut
+  sind. Sie liest jeden aktiven Punkt gegen das Gebaute, nicht gegen seinen Titel:
+  FRs werden auf MERGED gesetzt und archiviert, Fehler ueber die Ableitung als erledigt
+  ausgewiesen. Der FR-0035-Fall zeigt die Grenze jedes Namensabgleichs -- die Deckung
+  kam von einer FREMDEN Nummer, also muss gelesen werden. Fuer die Kit-Seite folgt
+  daraus kein Umbau: dort ist der Weg offen und die Regel geschrieben; was dort fehlt,
+  ist der Nachweis selbst (BUG-0060), und das ist bereits erfasst. Solange (2) aussteht,
+  traegt jede Uebersicht an den Nutzer den Hinweis, dass das Status-Feld die offene
+  Arbeit ueberzeichnet.'
+source: Nutzerentscheidung 2026-08-25 in der Sitzung (zwei Fragen, beide beantwortet);
+  Lead-Messungen desselben Tages an den Automaten, am Pilotspeicher und am ausgelieferten
+  Kit; Nachbarn H39, FR-0058, FR-0003, BUG-0060
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-25T08:18:39'

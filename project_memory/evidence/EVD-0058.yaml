@@ -1,0 +1,39 @@
+id: EVD-0058
+kind: review
+related:
+- BUG-0001
+- BUG-0003
+- BUG-0006
+- BUG-0008
+- BUG-0009
+- BUG-0012
+- BUG-0027
+- BUG-0028
+- BUG-0029
+- BUG-0030
+- BUG-0043
+- BUG-0045
+- BUG-0048
+- BUG-0050
+- BUG-0061
+- BUG-0062
+result: pass
+summary: 'TSK-0085 follow-up record: these 16 bugs were delivered in earlier rounds
+  and NO reader of this store could reach that fact -- no active Evidence named them
+  and no task cut from them carries a verdict, so neither closed_by_delivery nor the
+  transitive qa_verdicts path saw them. This line carries the fact forward; it invents
+  nothing. The per-bug proof is in the artifact: docs/reviews/2026-08-25-tsk0085-measurements.md
+  section 4a names, for each, the commit and the running code or test that carries
+  the fix, and 47 of 48 delivered lines rest on two independent proofs. Deliberately
+  NOT written for the 22 bugs the kernel already reaches through derives_from (that
+  would be work for no new information) nor for the 10 an Evidence already names.
+  Two limits stated rather than implied: archiving this record re-opens all 16 in
+  the derivation (_delivery_evidence reads only ACTIVE evidence, held by test_report.test_archiving_a_verdict_reopens_the_item_it_had_closed),
+  and a review verdict brings a bug into the derivation but NOT closer to VERIFIED
+  -- that needs a test verdict plus a minted approval this workshop cannot serve (H39,
+  DEC-0051 stage 2)'
+artifact_refs:
+- ../docs/reviews/2026-08-25-tsk0085-measurements.md
+revision: 1
+approval_ref: null
+created: '2026-08-25T11:39:00'

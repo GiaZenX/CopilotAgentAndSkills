@@ -9,6 +9,10 @@
   staging orphans, id uniqueness, budgets, lease/request hygiene. Returns
   findings; gates block on any severity=error finding.
 - doctor: read-only activation/diagnosis report (II.4) -- never writes state.
+- closed_by_delivery / delivered_but_open / delivery_closure_rollup: what a delivery has already
+  closed, DERIVED from the Evidence records rather than read off the status field (DEC-0051), the
+  part of that answer the status field has not caught up with, and that part as rows. Printed
+  BESIDE the findings by `validate` and carried in `doctor`'s payload -- never as a finding.
 
 Language convention (II.10a parity rule "Deutsch zum User / Englisch in
 Artefakten"): code, comments and identifiers are English; USER-FACING strings
@@ -38,6 +42,7 @@ from .approvals import (
     assert_apr_in_force,
     consumed_request,
     item_subject_manifest,
+    required_approval_kinds,
 )
 from .backlog_types import (
     ACTIVE_DIRS,
@@ -60,7 +65,7 @@ from .backlog_types import (
 from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
 from .lock import LOCK_SCHEMA_VERSION, ext_path
 from .schemas import validate
-from .state import STAGING_DIRNAME, ProjectState, _now_iso
+from .state import CONFIRMING_EVIDENCE, STAGING_DIRNAME, ProjectState, _now_iso
 
 ITEM_MAX_BYTES = 12 * 1024   # spec II.5: active item <= 200 lines / 12 KB
 ITEM_MAX_LINES = 200
@@ -1070,6 +1075,222 @@ def qa_verdicts_by_subject(state: ProjectState) -> dict:
     return {subject: _newest_per_kind(records) for subject, records in groups.items()}
 
 
+# -- what a delivery has already closed (DEC-0051) -----------------------------
+
+def _active_map(state: ProjectState) -> dict:
+    """{id: (type, item)} over the readable ACTIVE items -- the map `validate_state` hands around.
+
+    ONE spelling for every reader that needs the map without being `validate_state`, because two
+    spellings of "what is active" are two answers waiting to differ. An unreadable item file is
+    dropped here rather than by each caller: it is a finding of `validate_state` and of nobody else,
+    and a caller that invented its own answer for it would be a second verdict on the same file.
+    """
+    return {str(item.get("id") or stem): (item_type, item)
+            for item_type, stem, item, _path, exc in _iter_active(state)
+            if not exc and isinstance(item, dict)}
+
+
+def closed_by_delivery(state: ProjectState) -> dict:
+    """{item id: [EVD id, ...]} -- every item a DELIVERY has already closed, read from the evidence.
+
+    THE OCCASION is `DEC-0051`: a status field is set by hand and a delivery verdict is written by
+    the kernel, so the two disagree the moment nobody moves an item, and the store then reads as
+    though work that shipped is still open. The decision is to DERIVE the answer from the records
+    that already exist rather than to invent a status for it.
+
+    THE DEFINITION, and it is a property rather than a list of ids: an item is closed when the
+    CURRENT delivery verdict of every kind that NAMES it says `pass`, and at least one kind does. A
+    FAIL recorded after a PASS therefore REOPENS the item, which "any pass wins" could not express:
+    `test_report.test_a_later_fail_reopens_what_an_earlier_pass_had_closed`.
+
+    WHAT IS SHARED WITH THE MERGE GATE AND WHAT IS NOT -- exactly, because the wider claim stood
+    here for one round and is measurably false. SHARED: which files are delivery verdicts
+    (`_delivery_evidence`) and which of several supersedes (`_newest_per_kind`). NOT SHARED: the
+    SUBJECT. This groups by the ids an Evidence WRITES (`qa_verdicts_by_subject`, one pass, no
+    walk), while `gate_git` asks `qa_verdicts` -> `evidence_covers` -> `_hangs_from`, which walks
+    the reference graph transitively. The two therefore reach different sets, deliberately: the
+    walk travels from a task's verdict up to BOTH items the task hangs from, the root it is filed
+    under included, so putting this derivation on it would close a whole product requirement
+    because one of its tasks passed. That is the right reading for "may this merge proceed" and the
+    wrong one for "is this item done".
+    `test_report.test_a_task_verdict_does_not_close_the_item_the_task_hangs_from` measures the
+    difference from both ends, so neither reading can quietly become the other; what the gap costs
+    in a real store is counted once, in `docs/reviews/2026-08-25-tsk0085-measurements.md`, and not
+    a second time here.
+
+    WHICH SUBJECTS IT ANSWERS FOR -- those whose type has an automaton, i.e. whose story has an end
+    to reach. That one condition also drops the record types (`EVD`, the frozen companions) and with
+    them the evidence that names no item at all, which `qa_verdicts_by_subject` files under its own
+    id; a second condition for that case would be a second place to keep in step.
+
+    AN ARCHIVED VERDICT COUNTS FOR NOTHING, so archiving one RE-OPENS what it had closed.
+    `_delivery_evidence` reads active Evidence only -- spec II.2's way of retiring a superseded
+    verdict visibly -- and this inherits it, which is right for a superseded verdict and surprising
+    for a housekeeping archive of an old but still-current one.
+    `test_report.test_archiving_a_verdict_reopens_the_item_it_had_closed` holds that half so it
+    stays a known property rather than a discovery.
+
+    WHAT IT PROVES AND WHAT IT DOES NOT, measured rather than hedged. It proves that a passing
+    delivery verdict NAMED the item -- not that everything the item asks for has been built. The
+    measured case is `FR-0004` in this repository's own store (2026-08-25): `EVD-0041` passes and
+    names it, while the delivery it records closed that request in part by its own commit headline.
+    So for a wish a project delivers in parts this reads as closed one part early, and a reader who
+    needs the whole answer reads the item against the built code -- which is what
+    `docs/reviews/2026-08-25-tsk0085-measurements.md` did, per item, for the store behind that
+    measurement.
+    """
+    closed = {}
+    for subject, verdicts in qa_verdicts_by_subject(state).items():
+        try:
+            subject_type, _number = parse_id(subject)
+        except ValueError:
+            continue
+        if subject_type not in AUTOMATA:
+            continue
+        results = {(entry or {}).get("result") for entry in verdicts.values()}
+        if results == {"pass"}:
+            closed[subject] = sorted(str((entry or {}).get("id")) for entry in verdicts.values())
+    return closed
+
+
+def delivered_but_open(state: ProjectState, active_items: dict = None) -> dict:
+    """{item id: [EVD id, ...]} for the items `closed_by_delivery` names whose STATUS still reads open.
+
+    The difference between the two answers IS the bookkeeping debt `FR-0058` measured: an item the
+    evidence has closed and the status has not. `active_items` is the map `validate_state` has
+    already built ({id: (type, item)}); a caller with none passes nothing and this reads the store
+    itself through `_active_map`, exactly as `accepted_without_a_verdict` does.
+
+    A TERMINAL item is not in this answer -- it is closed in both readings, and the "awaiting
+    archive" warning of `validate_state` is already about it.
+    """
+    if active_items is None:
+        active_items = _active_map(state)
+    open_items = {}
+    for item_id, evidence_ids in closed_by_delivery(state).items():
+        entry = active_items.get(item_id)
+        if entry is None:
+            continue
+        item_type, item = entry
+        auto = AUTOMATA.get(item_type)
+        if auto is None or item.get("status") in (auto.terminals or ()):
+            continue
+        open_items[item_id] = evidence_ids
+    return open_items
+
+
+def _guarded_edge(item_type: str, source: str, target: str) -> dict:
+    """One edge with everything that stands in front of it: {from, to, approvals, evidence}.
+
+    `approvals` are the kinds whose mint walks the edge (`approvals.required_approval_kinds`),
+    `evidence` the Evidence kind the edge demands (`state.CONFIRMING_EVIDENCE` on the type's
+    `backlog_types.confirming_edge`) or None. Both are read from the maps `state._transition_locked`
+    itself consults, so a route printed to a reader and a route the kernel allows cannot become two
+    answers.
+    """
+    return {
+        "from": source,
+        "to": target,
+        "approvals": tuple(sorted(required_approval_kinds(item_type, source, target))),
+        "evidence": (CONFIRMING_EVIDENCE.get(item_type)
+                     if (source, target) == confirming_edge(item_type) else None),
+    }
+
+
+def closing_route(item_type: str, status: str) -> dict:
+    """How this type gets from `status` to a CLOSED status, and what guards every step of it.
+
+    {"steps": [edge, ...], "choices": [edge, ...]} -- `steps` walks the type's own chain from
+    `status` to the end of it, `choices` are the terminal edges leaving that last chain status when
+    the chain does not already end in a terminal. Both entries are `_guarded_edge`.
+
+    THE TWO SHAPES ARE THE AUTOMATON'S, not a case distinction made here: `BUG` and `TSK` end their
+    chain in the terminal that means CONFIRMED, so they have no choice left to make; `FR` ends its
+    chain at `TRIAGED` and the three ways out of it -- what the wish BECAME -- are a judgement no
+    automaton makes, so they are offered rather than picked. Which of them a delivered wish takes,
+    and what that terminal then owes, is `_check_fr_result_link`'s question, not this one's.
+
+    WHY A READER NEEDS IT AT ALL: it is what makes an unreachable close VISIBLE instead of
+    surprising. `H39` is the measured case -- a repaired BUG passes a minted `scope` approval AND a
+    passing `test` Evidence before `VERIFIED`, so where neither can be produced the derivation above
+    is what says the work is done and the status field cannot. Both guards are measured in
+    `test_report.test_the_closing_route_of_a_bug_names_both_guards_between_it_and_verified`, and the
+    offered end of an `FR` in
+    `test_report.test_the_closing_route_of_a_request_offers_the_terminals_it_may_become`.
+    """
+    auto = AUTOMATA.get(item_type)
+    if auto is None or status not in auto.chain:
+        return {"steps": [], "choices": []}
+    chain = list(auto.chain)
+    steps = [_guarded_edge(item_type, source, target)
+             for source, target in zip(chain[chain.index(status):], chain[chain.index(status) + 1:])]
+    last = chain[-1]
+    choices = ([] if last in auto.terminals else
+               [_guarded_edge(item_type, last, terminal)
+                for terminal in sorted(auto.terminals)
+                if (last, terminal) in auto.allowed])
+    return {"steps": steps, "choices": choices}
+
+
+def _needs(edge: dict) -> str:
+    """" (needs ...)" for one `_guarded_edge`, or "" when nothing stands in front of it."""
+    needed = ["a %r approval" % kind for kind in edge["approvals"]]
+    if edge["evidence"]:
+        needed.append("a passing %r Evidence" % edge["evidence"])
+    return " (needs %s)" % " and ".join(needed) if needed else ""
+
+
+def _route_sentence(item_type: str, status: str) -> str:
+    """`closing_route` as one line a person can act on.
+
+    A status the type's chain does not carry (a side state, or a terminal) yields "" -- there is no
+    walk to describe from there, and a sentence invented for that case would be the one claim this
+    module cannot derive.
+    """
+    route = closing_route(item_type, status)
+    if not (route["steps"] or route["choices"]):
+        return ""
+    parts = [status] + ["%s%s" % (edge["to"], _needs(edge)) for edge in route["steps"]]
+    sentence = " -> ".join(parts)
+    if route["choices"]:
+        sentence += " -> one of %s" % ", ".join(
+            "%s%s" % (edge["to"], _needs(edge)) for edge in route["choices"])
+    return sentence
+
+
+def delivery_closure_rollup(state: ProjectState) -> list:
+    """`delivered_but_open` as rows a reader can act on: {item, type, status, evidence, route}.
+
+    COVERAGE, NOT A FINDING, and the reason is the same one `record_scan_coverage` carries one
+    screen up -- with one addition that is specific to this answer and is the whole argument for
+    the shape. A finding is something a project can CLEAR. Here it is measurably not: a repaired
+    `BUG` reaches `VERIFIED` only through a minted approval and a passing `test` Evidence
+    (`closing_route`), so a project that cannot mint carries the row for good. As an error that
+    would block every merge it can never pass; as a warning it would be an alarm about a state
+    nobody can leave, which is how a validator stops being read. So this is printed BESIDE the
+    findings, with no severity and no exit code, by `kernel.cli`'s `validate` and in `doctor`'s
+    payload -- the same two surfaces the record-scan coverage uses.
+    `test_report.test_the_delivery_rollup_is_printed_beside_the_findings_and_is_none_of_them`
+    holds it out of the findings; `H39` is the gap it reports around.
+
+    NOT ON THE HOOK PATH, deliberately. `validate_state` runs from `gate_memory_complete` on every
+    Bash call in the dev and research kits, and this is one more pass over the Evidence directory
+    -- so it hangs off the two commands a person types, and the gate path pays nothing for it.
+    """
+    active_items = _active_map(state)
+    rows = []
+    for item_id, evidence_ids in sorted(delivered_but_open(state, active_items).items()):
+        item_type, item = active_items[item_id]
+        rows.append({
+            "item": item_id,
+            "type": item_type,
+            "status": item.get("status"),
+            "evidence": evidence_ids,
+            "route": _route_sentence(item_type, item.get("status")),
+        })
+    return rows
+
+
 def _check_task_origins(state: ProjectState, active_items: dict) -> list:
     """A TSK's `derives_from` must belong to its ROOT's tree, and not be stale.
 
@@ -1180,9 +1401,7 @@ def accepted_without_a_verdict(state: ProjectState, active_items: dict = None) -
         return {}
     accepted_status = edge[0]
     if active_items is None:
-        active_items = {str(item.get("id") or stem): (item_type, item)
-                        for item_type, stem, item, _path, exc in _iter_active(state)
-                        if not exc and isinstance(item, dict)}
+        active_items = _active_map(state)
     delivery_roots = set(ROOT_TYPE_BY_KIT.values())
     tasks = sorted(item_id for item_id, (item_type, item) in active_items.items()
                    if item_type == "TSK" and item.get("status") == accepted_status
@@ -2315,6 +2534,10 @@ def doctor(state: ProjectState, kit: str = None, kit_version: str = None) -> dic
     # SR-0001 record scan could look at is a fact `validator.errors` cannot carry, because a file
     # nobody can make readable may not be an error.
     report["record_scan_coverage"] = record_scan_coverage(state)
+    # ...and, for the same reason, what a delivery has already closed while the status field still
+    # reads open (DEC-0051): a row whose route needs a mint the project cannot run is not something
+    # `validator.warnings` may carry, because nothing a project does would clear it.
+    report["delivery_closure"] = delivery_closure_rollup(state)
     repo_root = os.path.dirname(state.root)
     holes, holes_source = _known_hole_capabilities()
     matrix, reasons = capability_matrix(state, repo_root, (holes, holes_source))

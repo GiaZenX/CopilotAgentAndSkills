@@ -37,10 +37,30 @@ request_text: 'GEMESSEN am laufenden Code, 2026-08-10: team-kits/dev-team/settin
   -- vielleicht ist die 95%-Grenze mit einem ehrlichen Loecherlisten-Eintrag im Kit
   die guenstigere Antwort als eine zweite Kopie des Bash-Apparats. Das ist eine Nutzen-gegen-Wartungslast-Frage
   und keine reine Baufrage.'
-status: TRIAGED
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-10T10:12:03'
-triage_result: 'wanted: team-kits/dev-team/settings/settings.json still registers
-  guard_pm_scope only on Edit|Write|MultiEdit|NotebookEdit, not on Bash|PowerShell
-  -- the docstring''s own named gap (assessment TSK-0055)'
+triage_result: 'delivered by TSK-0070 (EVD-0042, commit bccaf81) on this item''s OWN
+  option (c) -- bind what a command line can decide, name and tripwire the rest, rather
+  than copy the shell apparatus into the kits. What was built: the shell half lives
+  in gate_write_scope.handle_shell, the file property in guard_pm_scope.production_code()
+  -- one answer, two doors. guard_pm_scope itself stays registered on Edit|Write|MultiEdit|NotebookEdit
+  alone; that is the split, not the gap. MEASURED 2026-08-25 as real hook processes
+  against the shipped kit, 31 cases: refused rc 2 are the redirect spellings including
+  ''echo pwned > services/pay.py'', ''>>'', ''>|'', ''&>'', ''>&'', a heredoc, a quoted
+  target, ''cd services && echo ... > pay.py'', ''~/...'', ''~+/...'' and a variable
+  assigned on the same line. NAMED RESIDUE, rc 0: a write a tool performs from INSIDE
+  its own language or arguments -- python -c open(...).write(...) (the second spelling
+  this request_text names), sed -i, tee, cp, mv, rm -f -- plus a redirect target built
+  by an expansion the gate cannot resolve (> $(...), an unassigned $F), plus the PowerShell
+  Out-File/Set-Content/Add-Content/Tee-Object cmdlets. Refusing those needs the verb
+  list L4 calls the wrong shape of check, which is why option (c) was taken and not
+  (a)/(b). The residue is held from BOTH ends -- it reddens if a later round closes
+  one of them -- by tools/test_hooks.py::test_the_shell_writes_no_command_line_can_decide_stay_the_named_residue
+  and ::test_a_powershell_cmdlet_write_is_the_named_residue_too, and it is stated
+  in each kit''s hooks/ENFORCEMENT.md. (This field previously read ''still registers
+  guard_pm_scope only on Edit|Write|MultiEdit|NotebookEdit'' and described the gap
+  as if it still stood.)'
+resulting_item: TSK-0070
+closed_at: '2026-08-25T11:38:32'
