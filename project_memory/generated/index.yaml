@@ -1,4 +1,4 @@
-generated_at: '2026-08-25T11:39:34'
+generated_at: '2026-08-28T21:06:27'
 items:
 - id: BUG-0001
   type: BUG
@@ -445,6 +445,13 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: BUG-0068
+  type: BUG
+  title: After update-kit the repo-template refresh lands in the USER's terminal --
+    and the pending list overstates what differs (live finding, real BuyPlugGo update)
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -770,6 +777,13 @@ items:
   type: DEC
   title: Erledigt wird vorerst aus den Nachweisen ABGELEITET; der Freigabe-Weg in
     der Werkstatt bleibt das Ziel
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0052
+  type: DEC
+  title: 'Arbeitsfolge nach dem Rollout: BUG-0068, dann die acht halb gelieferten
+    Wuensche, dann Block 1, dann DEC-0051 Stufe 2'
   status: VALID
   revision: 1
   approval_ref: null
@@ -1122,6 +1136,12 @@ items:
   revision: 1
   approval_ref: null
 - id: EVD-0059
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0060
   type: EVD
   title: null
   status: null

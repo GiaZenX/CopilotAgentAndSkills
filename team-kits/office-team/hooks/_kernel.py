@@ -578,6 +578,25 @@ def kit_update_verdict(repo_root, kit):
             "at least one of the two stamps carries no readable version")
 
 
+def pending_merge_backlog(repo_root):
+    """{suffix: [entries that still differ]} for the kit-update merge backlog, or None.
+
+    THE DECISION IS THE KERNEL'S (`kitupdate.outstanding_pending`), for the reason
+    `kit_update_verdict` gives above and one more that is specific to this list: the report
+    `update-kit` prints reads the same function, so the command's count and the briefing's nag
+    cannot disagree about how much work is left.
+
+    None means the question could not be ASKED -- no kernel to reach. The caller then nags on the
+    file as WRITTEN, which is the behaviour that existed before this reader and is the fail-closed
+    direction: a project whose kernel is damaged keeps its backlog rather than losing it.
+    """
+    try:
+        kitupdate = kernel_module("kitupdate", repo_root)
+        return kitupdate.outstanding_pending(repo_root)
+    except BaseException:  # noqa: BLE001 -- no kernel is an answer, not silence (see above)
+        return None
+
+
 def unverified_delivery_briefing(repo_root=None):
     """The SessionStart sentence about work booked as finished that nothing measured, or None.
 

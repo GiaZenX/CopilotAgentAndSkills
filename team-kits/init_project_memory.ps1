@@ -117,6 +117,19 @@ function Get-FileSha256 {
     } finally { $sha.Dispose() }
 }
 
+function Get-NormalizedSha256 {
+    param([string]$Path)
+    # SHA256 over the file's bytes with every CR (0x0D) removed, so a copy that differs from the kit
+    # template ONLY in line-ending style is not read as a divergence (BUG-0068). The twin in
+    # scaffold_team.ps1 and the reader kernel.kitupdate._same_but_for_line_endings strip the same.
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $filtered = [System.Collections.Generic.List[byte]]::new($bytes.Length)
+    foreach ($b in $bytes) { if ($b -ne 0x0D) { $filtered.Add($b) } }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($filtered.ToArray())) -replace '-', '') }
+    finally { $sha.Dispose() }
+}
+
 $copied = 0; $kept = 0
 $keptTooling = @()
 $templateFiles | ForEach-Object {
@@ -127,7 +140,11 @@ $templateFiles | ForEach-Object {
         # TOOLING files (generator/templates/assets — NOT the user's filled YAML state) may lag behind a
         # newer kit: make that visible so the PM can propose the delta. Filled YAMLs always differ — silent.
         if ($rel -match '\.py$|\.template\.|\.tex$|^reports[\\/]assets[\\/]') {
-            if ((Get-FileSha256 $target) -ne (Get-FileSha256 $_.FullName)) {
+            # LINE-ENDING STYLE IS NOT A DIVERGENCE (BUG-0068, same rule as scaffold_team's
+            # Get-NormalizedSha256 and as the reader that re-checks these entries,
+            # kernel.kitupdate._same_but_for_line_endings): a Windows/OneDrive checkout drifts
+            # LF->CRLF, and comparing raw bytes then listed content-identical tooling as differing.
+            if ((Get-NormalizedSha256 $target) -ne (Get-NormalizedSha256 $_.FullName)) {
                 Write-Host "  [kept] $rel (tooling differs from the kit template - review/merge manually)" -ForegroundColor Yellow
                 $keptTooling += ($rel -replace '\\', '/')
             }

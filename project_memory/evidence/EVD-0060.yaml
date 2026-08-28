@@ -1,0 +1,27 @@
+id: EVD-0060
+kind: review
+related:
+- TSK-0086
+- BUG-0068
+result: pass
+summary: 'verifier PASS round 3 for diff:79da4bb67ca97e66b8ae2289ef21203135943badb596daafec295dbf4424fb65
+  -- TSK-0086: the update follow-up step, from the user''s LIVE finding on his real
+  office project. Five defects closed, two of them created by the fixes for the first
+  three: EOL drift listed unchanged files; the guarded ledger judge was listed but
+  unmergeable from a session (BUG-0041 family) and is now installer-refreshed with
+  the owned set as DATA plus a tripwire asking the RUNNING guard over every shipped
+  template; the list never re-validated; the re-check assurance was printed where
+  nothing was compared; an UNREADABLE list counted as resolved and was DELETED. Root
+  of both follow-on defects: ''differs'' and ''could not be read'' were one answer
+  -- now three (equal/different/not compared), and every sentence to the user hangs
+  on a real comparison. Verifier measured the deny case both directions, attacked
+  the split with a directory, a dangling symlink, a mid-read vanish and undecodable
+  bytes, and confirmed the test helper reds when its ACL command fails. Kits 2026.08.28-4;
+  delivery suite 3856 passed / 14 skipped / 1 failed, the failure being the lead''s
+  own journal count (emission sites 20 -> 21 after the new UNREADABLE briefing), corrected
+  with its reason and test_shortening_net re-run 35 passed; residues carried as H71'
+artifact_refs:
+- staging/TSK-0086/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-28T21:06:26'

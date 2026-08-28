@@ -1,0 +1,29 @@
+id: DEC-0052
+title: 'Arbeitsfolge nach dem Rollout: BUG-0068, dann die acht halb gelieferten Wuensche,
+  dann Block 1, dann DEC-0051 Stufe 2'
+context: 'Nach dem Rollout (globaler Speicher 2026.08.25-4) und dem Live-Test des
+  Nutzers am echten BuyPlugGo (Update sauber, aber der Folge-Schritt schickte ihn
+  mit cp-Zeilen ins Terminal und die Abgleich-Liste war irrefuehrend -- BUG-0068)
+  hat der Lead vier Richtungen vorgelegt. Der Nutzer entschied am 2026-08-26: ''Alles
+  nacheinander'' -- in der vorgelegten Reihenfolge.'
+decision: 'Gebundene Folge, jede Runde durch die Zwei-Rollen-Schleife: (1) BUG-0068
+  -- der Update-Folge-Schritt: keine byte-identischen Dateien auf der Abgleich-Liste,
+  die bewachten Prueferdateien ueber einen sanktionierten Weg statt Nutzer-Terminal,
+  Prosa verspricht nur, was die Gates erlauben. (2) Die acht halb gelieferten Wuensche,
+  je als kleine Rest-Runde: FR-0002, FR-0004, FR-0011, FR-0014, FR-0035 (der Vier-Augen-HOOK),
+  FR-0048, FR-0052, FR-0058. (3) Block 1 Ausrollen absichern: FR-0041 (Pin+Rollback),
+  FR-0044 (Bestands-Erkennung), FR-0055 (Fernsteuerung aus), FR-0046 (Feldtest an
+  den Kopien von synaipse und portfoliomanaigement). (4) DEC-0051 Stufe 2: Freigabe-Weg
+  PLUS Test-Urteile in der Werkstatt nachruesten -- eigene Sicherheitsabwaegung, nie
+  nebenbei. Autonomie und Budget unveraendert nach DEC-0045 (voll autonom, 100 USD
+  je Sitzung, Push je Lieferung wie etabliert).'
+consequences: Der Lead arbeitet die Folge ohne Rueckfragen ab; zum Nutzer kommen nur
+  echte Produktfragen, Freigaben ausserhalb der Vollmacht und Pilot-/Livebefunde.
+  Die uebrigen Bloecke (Buero-Ausbau, Sicht, Anbieter, Team, Ordnung) bleiben dahinter
+  in der Registerreihenfolge, bis der Nutzer neu priorisiert.
+source: Nutzerantwort 2026-08-26 ('Alles nacheinander') auf die Vier-Wege-Frage; Nachbarn
+  DEC-0045, DEC-0051, BUG-0068, Register-Artefakt vom 25.08.
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-28T17:54:54'

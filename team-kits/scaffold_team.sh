@@ -620,18 +620,27 @@ trap - EXIT
 # Diverged files additionally land in .claude/kit_update_pending.repo: printed [kept] lines were shown
 # but never acted on in a real project (kit fixes silently never arrived) -- session_status now reminds
 # the PM until every line is merged or consciously skipped and the file is DELETED.
+#
+# WHICH repo scripts the KIT owns (always overwritten, never copy-if-absent, never pending) is DATA,
+# not a list in this file: `repo_kit_owned.txt` beside this script, read by BOTH scaffold twins so
+# the .sh and .ps1 sets cannot drift. It holds the guarded enforcement scripts (guard_harness_selfmod
+# refuses in-session writes to them, so no other route can deliver a kit fix -- leaving the ledger
+# judge copy-if-absent handed the non-developer user `cp` lines for a file nobody may write, BUG-0068)
+# plus the entry point and the check tooling. See that file's header for the property.
+kit_owned="|"
+if [ -f "$KITS_ROOT/repo_kit_owned.txt" ]; then
+  while IFS= read -r owned || [ -n "$owned" ]; do
+    owned="${owned%$CR}"
+    case "$owned" in ''|'#'*) continue;; esac
+    kit_owned="$kit_owned$owned|"
+  done < "$KITS_ROOT/repo_kit_owned.txt"
+fi
 kept_list=()
 if [ -d "$KIT/templates/repo" ]; then
   while IFS= read -r rel; do
     rel="${rel#./}"
     dst="$REPO/$rel"
-    # scripts/kit_checks.py + kit_browser_checks.py + harness.py are KIT-OWNED: always overwritten
-    # (like the hooks), never pending — kit-level fixes reach even heavy quality.py forks.
-    # harness.py is the entry point every fail-closed remedy names; a project keeping an old copy
-    # would keep an old bridge into the enforcement layer, which is a security question, not a
-    # comfort one (kernel/cli.py ENTRY_POINT).
-    if [ "$rel" = "scripts/kit_checks.py" ] || [ "$rel" = "scripts/kit_browser_checks.py" ] \
-       || [ "$rel" = "scripts/harness.py" ]; then
+    if [ "${kit_owned#*"|$rel|"}" != "$kit_owned" ]; then
       mkdir -p "$(dirname "$dst")"
       cp -f "$KIT/templates/repo/$rel" "$dst"
       echo "  [ok] repo (kit-owned, always updated): $rel"
@@ -641,7 +650,11 @@ if [ -d "$KIT/templates/repo" ]; then
       mkdir -p "$(dirname "$dst")"
       cp "$KIT/templates/repo/$rel" "$dst"
       echo "  [ok] repo: $rel"
-    elif ! cmp -s "$KIT/templates/repo/$rel" "$dst"; then
+    # DIVERGENCE IGNORES LINE-ENDING STYLE: a Windows/OneDrive checkout drifts LF->CRLF, and comparing
+    # raw bytes then read EVERY script as "differs" and sent it to the pending list though its content
+    # was the kit's own (BUG-0068). Strip CR from both sides before comparing (the .ps1 twin's
+    # Get-NormalizedSha256 does the same).
+    elif ! cmp -s <(tr -d "$CR" < "$KIT/templates/repo/$rel") <(tr -d "$CR" < "$dst"); then
       # copy-if-absent keeps the project's version — but say so, or a kit fix (e.g. quality.py)
       # silently never reaches existing projects while the update reads as "applied".
       echo "  [kept] repo: $rel (differs from the kit template - review/merge manually)"
@@ -655,7 +668,7 @@ STATE="$REPO/.claude/kit_update_pending.state"
 if [ ${#kept_list[@]} -gt 0 ]; then
   mkdir -p "$REPO/.claude"
   {
-    echo "# Repo templates that DIFFER from kit $TEAM $(no_cr head -n 1 "$KIT/VERSION" 2>/dev/null) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone."
+    echo "# Repo templates this project customised that ALSO changed in kit $TEAM $(no_cr head -n 1 "$KIT/VERSION" 2>/dev/null) (line-ending style ignored) -- the PM works each through the normal loop: merge the wanted kit fix, or record a conscious skip as a decision item (decisions/active/), then DELETE this file. session_status reminds every session until it is gone. Only PROJECT-CUSTOMISABLE templates appear here; the kit's own guarded enforcement and entry scripts (guard_harness_selfmod's protected set, e.g. scripts/ledger_add.py, and scripts/harness.py) are refreshed by the installer on every run and never land on this list, so nothing here needs a route a session forbids (BUG-0068)."
     printf -- "- %s\n" "${kept_list[@]}"
   } > "$PEND"
   # fresh REAL update -> fresh nag counter; a same-version re-run must NOT reset the

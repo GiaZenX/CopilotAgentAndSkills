@@ -410,15 +410,71 @@ def main():
         pass
 
     # kit-update follow-through: escalating nag until the pending backlog is worked through.
+    # ...and the list is RE-VALIDATED here rather than believed: an entry whose file matches its kit
+    # template again is not reported, and a list with no entry left is DELETED. Measured on the
+    # user's real office project (BUG-0068): four scripts stayed on it while being byte-identical to
+    # the template, so the nag sent a non-technical user to the terminal for files that already
+    # matched. Which entries are still true is `kernel.kitupdate.outstanding_pending`, reached
+    # through `_kernel.pending_merge_backlog`; a project whose kernel cannot be reached answers None
+    # and nags on the file as WRITTEN, so a damaged project loses no backlog.
+    # THE IMPORT STANDS IN ITS OWN try, and that is not tidiness: inside the one below, a kernel
+    # shim that cannot be imported took the WHOLE nag with it (measured: no backlog reported at all
+    # while the pending file stood), which is the opposite of what `pending_merge_backlog` promises
+    # for a damaged project. Unreachable means `backlog = None`, which nags on the file as WRITTEN.
+    backlog = None
     try:
-        pend_lines, pend_files = [], []
+        import _kernel
+        backlog = _kernel.pending_merge_backlog(cwd)
+    except Exception:
+        backlog = None
+    try:
+        pend_lines, pend_files, resolved, unreadable = [], [], [], []
+        # ...and this stays True only while every reported entry was really held against a template
+        # this process could open. `backlog is not None` means the kernel ANSWERED, which is not the
+        # same thing and must never be read as it.
+        really_checked = backlog is not None
         for suffix in ("repo", "memory"):
             p = os.path.join(cwd, ".claude", "kit_update_pending." + suffix)
-            if os.path.isfile(p):
+            if not os.path.isfile(p):
+                continue
+            if backlog is not None and suffix in backlog:
+                if not backlog[suffix]["read"]:
+                    # EXISTS and could not be opened: what it asks for is UNKNOWN, never "nothing".
+                    # Reading the empty entry list as "resolved" deleted a real backlog (BUG-0068).
+                    unreadable.append(p)
+                    really_checked = False
+                    continue
+                entries = backlog[suffix]["entries"]
+                really_checked = really_checked and backlog[suffix]["checked"]
+            else:
+                try:
+                    with open(p, encoding="utf-8", errors="ignore") as fh:
+                        entries = [ln.strip()[2:] for ln in fh if ln.strip().startswith("- ")]
+                except Exception:
+                    unreadable.append(p)
+                    really_checked = False
+                    continue
+                really_checked = False
+            if entries:
                 pend_files.append(suffix)
-                with open(p, encoding="utf-8", errors="ignore") as fh:
-                    pend_lines += [ln.strip()[2:] for ln in fh if ln.strip().startswith("- ")]
+                pend_lines += entries
+            else:
+                resolved.append(p)
+        for p in resolved:
+            try:
+                os.remove(p)  # READ, and nothing left to merge — the file is the nag, so it goes
+            except Exception:
+                pass
         state_p = os.path.join(cwd, ".claude", "kit_update_pending.state")
+        if unreadable:
+            parts.append(
+                "KIT MERGE BACKLOG UNREADABLE: %s exists and could NOT be opened here, so what it "
+                "still asks for is unknown — it was NOT resolved and was NOT deleted. Do not read "
+                "the absence of a file list as an empty backlog: open the file yourself, or tell "
+                "the user this project carries a pending kit-merge file the session cannot read (a "
+                "permission denial and a cloud placeholder that is not downloaded both look like "
+                "this). Name it in the FIRST paragraph of your reply to the user."
+                % "; ".join(os.path.relpath(p, cwd).replace(os.sep, "/") for p in unreadable))
         if pend_lines:
             # resumes/compactions are NOT new sessions: post-limit resumes inflated the counter to
             # "3rd session" before the PM ever saw the notice once (forensics) — the scolding text
@@ -445,19 +501,27 @@ def main():
                        " OPEN SINCE %s — this is the %d. session that sees it. Work through at least ONE "
                        "entry NOW (or record a conscious skip as a decision item) before feature work; "
                        "acknowledging it once and moving on is the documented failure mode." % (first, sessions))
+            # the CLAIM is made only where a comparison really HAPPENED — not merely where the
+            # kernel answered. Hanging it on the answer printed "each entry was re-checked" over a
+            # project whose staged kit is not on this machine at all, where nothing had been opened.
+            checked = (" Each entry was re-checked against the kit template at this session start."
+                       if really_checked else
+                       " NOT re-checked here (the kit templates could not be read — an unreachable "
+                       "kernel, or the kit is not staged on this machine), so an entry may already "
+                       "match its kit template again — diff before you merge.")
             parts.append(
                 "KIT MERGE BACKLOG (%s) — the kit VERSION is already current; do NOT run the "
                 "scaffold again because of these (it cannot resolve them). %d "
                 "project file(s) still diverge from the kit templates (%s%s) — diff each against "
                 "the kit template, merge the kit's fixes via the owning role (or record a "
-                "conscious skip as a decision item), then DELETE the pending file(s). Name "
+                "conscious skip as a decision item), then DELETE the pending file(s).%s Name "
                 "this backlog in the FIRST paragraph of your reply to the user.%s"
                 % ("+".join(pend_files), len(pend_lines), "; ".join(pend_lines[:5]),
-                   " …" if len(pend_lines) > 5 else "", urgency)
+                   " …" if len(pend_lines) > 5 else "", checked, urgency)
             )
-        elif os.path.isfile(state_p):
+        elif not unreadable and os.path.isfile(state_p):
             try:
-                os.remove(state_p)  # backlog cleared -> reset the counter
+                os.remove(state_p)  # backlog CLEARED -> reset the counter; unknown is not cleared
             except Exception:
                 pass
     except Exception:

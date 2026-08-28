@@ -1,0 +1,24 @@
+# Repo-template scripts the SCAFFOLD OWNS: it overwrites them on every run (like the hooks) instead
+# of keeping a project's copy, so a kit fix to one of them reaches every installed project and none
+# of them ever lands on .claude/kit_update_pending.repo. Read by BOTH scaffold twins
+# (scaffold_team.sh / scaffold_team.ps1), so the two lists cannot drift; a file listed here that a
+# kit does not ship is simply never matched (harmless).
+#
+# WHY A FILE MUST BE HERE is a PROPERTY, not a taste: a repo script the enforcement layer refuses
+# in-session writes to (guard_harness_selfmod.BLOCKED_REPO_PATHS -- the ledger judge, the entry
+# point) can receive a kit fix by NO other route. The PM may not merge it, and leaving it
+# copy-if-absent kept the project's forked copy forever while the pending list handed the
+# non-developer user `cp` lines for the one file nobody in the session may write (BUG-0068). So
+# every guarded repo script is owned here. harness.py and the kit-check tooling are owned for the
+# neighbouring reason -- they are the entry point and the checks every fail-closed remedy runs.
+#
+# A file NOT here is copy-if-absent: the project may customise it, and the pending list reports a
+# real content divergence (line-ending style ignored) for the PM to work through the normal loop.
+#
+# The invariant "every guarded repo script is owned here" is pinned against the running guard by
+# tools/test_kitupdate.py::test_every_guarded_repo_script_is_refreshed_by_the_scaffold; add a guarded
+# repo path without a line here and that test goes red.
+scripts/harness.py
+scripts/kit_checks.py
+scripts/kit_browser_checks.py
+scripts/ledger_add.py

@@ -63,6 +63,20 @@ function Get-FileSha256 {
     } finally { $sha.Dispose() }
 }
 
+function Get-NormalizedSha256 {
+    param([string]$Path)
+    # SHA256 over the file's bytes with every CR (0x0D) removed, so a project copy that differs from
+    # the kit template ONLY in line-ending style is not read as a divergence: a Windows/OneDrive
+    # checkout drifts LF->CRLF and every script then read as "differs" and landed on the pending list
+    # though its content was the kit's own (BUG-0068). Matches the .sh twin's `tr -d '\r'`.
+    $bytes = [IO.File]::ReadAllBytes($Path)
+    $filtered = [System.Collections.Generic.List[byte]]::new($bytes.Length)
+    foreach ($b in $bytes) { if ($b -ne 0x0D) { $filtered.Add($b) } }
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { return ([BitConverter]::ToString($sha.ComputeHash($filtered.ToArray())) -replace '-', '') }
+    finally { $sha.Dispose() }
+}
+
 function Assert-SafeRepoPath {
     param([string]$Path)
     $repoFull = [IO.Path]::GetFullPath($repo).TrimEnd('\', '/')
@@ -582,18 +596,24 @@ if (Test-Path $cfg) {
 # Diverged files additionally land in .claude/kit_update_pending.repo: printed [kept] lines were shown
 # but never acted on in a real project (kit fixes silently never arrived) -- session_status now reminds
 # the PM until every line is merged or consciously skipped and the file is DELETED.
+# WHICH repo scripts the KIT owns (always overwritten, never copy-if-absent, never pending) is DATA,
+# not a list in this file: `repo_kit_owned.txt` beside this script, read by BOTH scaffold twins so
+# the .ps1 and .sh sets cannot drift. It holds the guarded enforcement scripts (guard_harness_selfmod
+# refuses in-session writes to them, so no other route can deliver a kit fix -- leaving the ledger
+# judge copy-if-absent handed the non-developer user `cp` lines for a file nobody may write, BUG-0068)
+# plus the entry point and the check tooling. See that file's header for the property.
+$kitOwned = @()
+$kitOwnedFile = Join-Path $kitsRoot "repo_kit_owned.txt"
+if (Test-Path $kitOwnedFile) {
+    $kitOwned = Get-Content $kitOwnedFile | ForEach-Object { $_.Trim() } | Where-Object { $_ -and -not $_.StartsWith('#') }
+}
 $keptList = @()
 $repoTplSrc = Join-Path $kit "templates\repo"
 if (Test-Path $repoTplSrc) {
     Get-ChildItem -Path $repoTplSrc -Recurse -File -Force | Where-Object { $_.FullName -notmatch '__pycache__|\.ruff_cache|\.mypy_cache|\.pytest_cache' } | ForEach-Object {
         $rel = $_.FullName.Substring($repoTplSrc.Length).TrimStart('\', '/')
         $dst = Join-Path $repo $rel
-        # scripts/kit_checks.py + kit_browser_checks.py + harness.py are KIT-OWNED: always
-        # overwritten (like the hooks), never pending — kit-level fixes reach even heavy
-        # quality.py forks. harness.py is the entry point every fail-closed remedy names; a
-        # project keeping an old copy would keep an old bridge into the enforcement layer,
-        # which is a security question, not a comfort one (kernel/cli.py ENTRY_POINT).
-        if (($rel -replace '\\', '/') -in @('scripts/kit_checks.py', 'scripts/kit_browser_checks.py', 'scripts/harness.py')) {
+        if (($rel -replace '\\', '/') -in $kitOwned) {
             $dstDir = Split-Path $dst
             if ($dstDir -and -not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
             Copy-Item $_.FullName $dst -Force
@@ -605,7 +625,10 @@ if (Test-Path $repoTplSrc) {
             if ($dstDir -and -not (Test-Path $dstDir)) { New-Item -ItemType Directory -Force -Path $dstDir | Out-Null }
             Copy-Item $_.FullName $dst -Force
             Write-Host "  [ok] repo: $rel" -ForegroundColor Green
-        } elseif ((Get-FileSha256 $dst) -ne (Get-FileSha256 $_.FullName)) {
+        # DIVERGENCE IGNORES LINE-ENDING STYLE (Get-NormalizedSha256): a Windows/OneDrive checkout
+        # drifts LF->CRLF, and comparing raw bytes then read EVERY script as "differs" and sent it to
+        # the pending list though its content was the kit's own (BUG-0068).
+        } elseif ((Get-NormalizedSha256 $dst) -ne (Get-NormalizedSha256 $_.FullName)) {
             # copy-if-absent keeps the project's version — but say so, or a kit fix (e.g. quality.py)
             # silently never reaches existing projects while the update reads as "applied".
             Write-Host "  [kept] repo: $rel (differs from the kit template - review/merge manually)" -ForegroundColor Yellow
@@ -616,7 +639,7 @@ if (Test-Path $repoTplSrc) {
 $pendFile = Join-Path $repo ".claude\kit_update_pending.repo"
 $stateFile = Join-Path $repo ".claude\kit_update_pending.state"
 if ($keptList.Count -gt 0) {
-    $lines = @("# Repo templates that DIFFER from kit $Team $((Get-Content (Join-Path $kit 'VERSION') -TotalCount 1 -ErrorAction SilentlyContinue)) -- the PM reviews each against the kit template, merges the kit's fixes (or records a conscious skip as a decision item (decisions/active/)), then DELETES this file. session_status reminds every session until it is gone.")
+    $lines = @("# Repo templates this project customised that ALSO changed in kit $Team $((Get-Content (Join-Path $kit 'VERSION') -TotalCount 1 -ErrorAction SilentlyContinue)) (line-ending style ignored) -- the PM works each through the normal loop: merge the wanted kit fix, or record a conscious skip as a decision item (decisions/active/), then DELETE this file. session_status reminds every session until it is gone. Only PROJECT-CUSTOMISABLE templates appear here; the kit's own guarded enforcement and entry scripts (guard_harness_selfmod's protected set, e.g. scripts/ledger_add.py, and scripts/harness.py) are refreshed by the installer on every run and never land on this list, so nothing here needs a route a session forbids (BUG-0068).")
     $lines += ($keptList | ForEach-Object { "- $_" })
     Set-Content -Path $pendFile -Value $lines -Encoding utf8
     # fresh REAL update -> fresh nag counter; a same-version re-run must NOT reset the

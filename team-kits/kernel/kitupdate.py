@@ -45,7 +45,7 @@ import os
 import re
 import subprocess
 
-from . import approvals, presets
+from . import approvals, presets, trays
 from .hashing import BundleSourceMissing, hook_bundle_hash, kit_hash, modified_bundle_files
 from .state import ProjectState, StateError
 
@@ -62,7 +62,17 @@ STAGED_VERSION_FILE = presets.STAGED_VERSION_FILE       # VERSION
 # What `.claude/kit_update_pending.repo` is: the repo templates a scaffold found DIVERGED and kept.
 # Reported after a run rather than acted on -- merging them is the lead's work, and the session
 # briefing nags until the file is gone.
-PENDING_TEMPLATES = os.path.join(".claude", "kit_update_pending.repo")
+PENDING_PREFIX = os.path.join(".claude", "kit_update_pending.")
+PENDING_TEMPLATES = PENDING_PREFIX + "repo"
+
+# THE TWO PENDING LISTS AN INSTALL CAN LEAVE, and where each entry's kit template lives -- so no
+# reader composes that path for itself. An entry names a file relative to `project` (repo root for
+# the scaffold's list, the state directory for `init_project_memory`'s), and the template it was
+# compared against sits at `<kit>/templates/<template>/<entry>`.
+PENDING_LISTS = {
+    "repo": {"template": "repo", "project": ""},
+    "memory": {"template": trays.STATE_DIRNAME, "project": trays.STATE_DIRNAME},
+}
 
 # THE MARKERS A SESSION START CONSUMES, which is the property rather than a list of file names: an
 # installer writes one, a SessionStart hook removes it, so its presence proves that no session has
@@ -454,17 +464,185 @@ _MARKER_TEXT = (
     "# A SessionStart(startup) hook clears this file on the next real restart.\n")
 
 
-def _pending_templates(root: str) -> str:
-    """The diverged repo templates the run recorded, if any -- the lead's follow-up work."""
-    path = os.path.join(root, PENDING_TEMPLATES)
+def pending_entries(path: str):
+    """The `- <path>` lines of a pending list, in order. [] no such list -- None NOT READABLE.
+
+    One reader for both installers' output, because both write the same record
+    (`printf -- "- %s\\n"` / `"- $_"`) and three readers used to slice it three ways.
+
+    THE THIRD ANSWER IS THE POINT, exactly as in `_same_but_for_line_endings` and from the same
+    defect one layer up: with `[]` for both, a list that EXISTS and could not be opened was
+    indistinguishable from one with nothing left in it, so the caller read it as resolved, said so,
+    and DELETED it. Measured with a real hook against a genuine unmerged divergence and read access
+    denied by ACL: no nag, and the file gone -- a kit fix dropped out together with its own record,
+    which is the expensive direction. (Before the re-validation existed the same denial produced no
+    nag either, but the file SURVIVED, so this was a regression of that round and not an old hole.)
+    `FileNotFoundError` is separated from the rest rather than probed with `os.path.exists`, so the
+    two answers cannot swap under a race.
+    """
     try:
-        with open(path, encoding="utf-8-sig") as handle:
-            lines = [line.strip() for line in handle if line.strip().startswith("-")]
+        with open(path, encoding="utf-8-sig", errors="ignore") as handle:
+            return [line.strip()[2:].strip() for line in handle if line.strip().startswith("- ")]
+    except FileNotFoundError:
+        return []                 # no such list -- nothing is pending
     except OSError:
+        return None               # it EXISTS and could not be read -- unknown, never "empty"
+
+
+def _same_but_for_line_endings(one: str, other: str):
+    """True equal / False differs / None NOT COMPARED -- ignoring line-ending style.
+
+    THE THIRD ANSWER IS THE POINT, and its absence was the defect this signature exists for: with a
+    bare True/False, "these two files differ" and "one of them could not be opened at all" were the
+    same answer, and the caller then signed a sentence saying every entry had been held against its
+    template while nothing had been read (measured with the staged kit removed -- see
+    `outstanding_pending`). None keeps the entry exactly as False does; what it changes is what the
+    caller may CLAIM about it.
+
+    THE SAME COMPARISON THE INSTALLERS DECIDE AN ENTRY WITH -- `scaffold_team.ps1`'s
+    `Get-NormalizedSha256` and the `.sh` twin's `tr -d '\\r'` both drop EVERY carriage return, so
+    this drops every one too: a reader that normalised only CRLF PAIRS would call a file different
+    that the writer called equal, and the entry would nag forever. (`hashing.kit_hash` normalises
+    the pair instead; that value is a release stamp, not this question.)
+
+    WHAT MATCHING THE WRITER COSTS, stated because the paragraph above only said it was consistent:
+    dropping every CR is not "line-ending style" for a file that is not line-oriented text. Two files
+    differing ONLY by a lone CR inside a line compare EQUAL here, and so does a BINARY template
+    (a `.woff2`) that gained or lost a 0x0D byte -- this rule is applied to whatever a pending list
+    names, not only to source. Both are over-DROPPING, i.e. a kit fix that consists of nothing but
+    such a byte would stop being reported. Nothing here narrows that: narrowing it would mean this
+    reader and the two installers disagreeing about the same file, which is the failure that put
+    four matching scripts on the user's list in the first place.
+    """
+    try:
+        with open(one, "rb") as handle:
+            left = handle.read().replace(b"\r", b"")
+    except OSError:
+        return None
+    try:
+        with open(other, "rb") as handle:
+            right = handle.read().replace(b"\r", b"")
+    except OSError:
+        return None
+    return left == right
+
+
+def outstanding_pending(root: str, kit: str = None) -> dict:
+    """{suffix: {"entries": [...], "checked": bool, "read": bool}} per pending list found on disk.
+
+    RE-VALIDATED AGAINST THE TREE, NOT TRUSTED AS WRITTEN, and that is the half BUG-0068 kept open.
+    Measured 2026-08-26 on the user's real office project: all four scripts named in
+    `.claude/kit_update_pending.repo` were RAW byte-identical to the template the project had been
+    updated from, three of them with mtimes older than the update -- so the list did not correct
+    itself, and the nag went on sending a non-developer user to the terminal for files that already
+    matched. Nothing rewrites such a list between installer runs, so the list is a snapshot from one
+    moment and the tree is the fact.
+
+    `checked` IS THE HALF THAT MAKES THE CALLER'S SENTENCE TRUE, and it is separate from `entries`
+    because the two answer different questions. `entries` is what to report; `checked` says whether
+    EVERY entry of that list was really held against a template this process could open. It is False
+    the moment one entry was kept without a comparison -- an unresolvable kit (no
+    `.claude/team_kit_roles.txt`), a staging that is not on this machine, a template or project file
+    that cannot be read, an entry naming a path outside its own tree. Measured with
+    `~/.claude/team-kits/office-team` removed, which is the ordinary state on a second machine and
+    before the harness install: every entry comes back kept, the answer is a NON-EMPTY dict, and a
+    caller that inferred "compared" from "the kernel answered" then signed a nag with "each entry was
+    re-checked" while nothing had been opened
+    (`tools/test_kitupdate.py::test_a_backlog_that_could_not_be_re_checked_says_so`).
+
+    WHY THE COMPARISON IS AGAINST THE STAGED TEMPLATE rather than against a hash recorded when the
+    entry was written: a recorded hash would have to be added by a future installer run, so it could
+    do nothing for the list a project ALREADY carries -- which is the only list the user has. The
+    staged template is also the sharper question: it is the content the project would have to track
+    today, so a project that merged forward is released and one that never merged keeps nagging.
+
+    THE DIRECTION IS TOWARDS NAGGING, in every branch: everything that is not a read-and-equal keeps
+    the entry. A stale nag costs a sentence; a silent skip costs the kit fix.
+
+    `read` IS THE OTHER HALF, and it is what makes DELETING a list safe. A list that exists and could
+    not be opened has no entries to report, and a caller that read "no entries" as "nothing left to
+    merge" said so and removed the file -- measured with a real hook against a genuine unmerged
+    divergence with read access denied by ACL: no nag, and the record gone. `read` is False there,
+    `entries` is empty because it is UNKNOWN rather than because it is nothing, and no caller may
+    resolve or delete such a list (`tools/test_kitupdate.py::test_a_pending_list_that_cannot_be_read
+    _is_never_called_resolved`). Reachable through an ACL denial and through a cloud placeholder that
+    is not hydrated -- the user's real project lives in OneDrive.
+
+    A list that exists, was READ, and has no outstanding entry answers with an empty `entries` and
+    `read` True, which is how a caller tells "resolved, delete me" from both "no such list" (absent
+    from the answer entirely) and "cannot say".
+    """
+    answer = {}
+    for suffix in PENDING_LISTS:
+        path = os.path.join(root, PENDING_PREFIX + suffix)
+        if not os.path.isfile(path):
+            continue
+        entries = pending_entries(path)
+        answer[suffix] = {"entries": [] if entries is None else entries,
+                          "checked": entries is not None,
+                          "read": entries is not None}
+    if not answer:
+        return answer
+    try:
+        kit = kit or presets.installation(root)["kit"]
+        templates = os.path.join(presets.staging_root(), kit, "templates")
+    except (StateError, OSError):
+        # NOTHING was compared: which kit this project runs, or where its templates are, could not
+        # be established. Every entry stays AND every list says so.
+        for found in answer.values():
+            found["checked"] = found["read"] and not found["entries"]
+        return answer
+    for suffix, found in answer.items():
+        if not found["read"]:
+            continue        # nothing to compare, and `checked` must not be reset to True below
+        spec = PENDING_LISTS[suffix]
+        outstanding, checked = [], True
+        for entry in found["entries"]:
+            parts = [part for part in str(entry).replace("\\", "/").split("/") if part]
+            if not parts or ".." in parts:
+                outstanding.append(entry)   # not a path inside its own tree -- kept, not compared
+                checked = False
+                continue
+            template = os.path.join(templates, spec["template"], *parts)
+            project = os.path.join(root, spec["project"], *parts) if spec["project"] \
+                else os.path.join(root, *parts)
+            verdict = _same_but_for_line_endings(project, template)
+            if verdict is None:
+                outstanding.append(entry)   # one side could not be opened -- kept, not compared
+                checked = False
+            elif not verdict:
+                outstanding.append(entry)
+        found["entries"], found["checked"] = outstanding, checked
+    return answer
+
+
+def _pending_templates(root: str) -> str:
+    """The diverged repo templates the run recorded, if any -- the lead's follow-up work.
+
+    Counted through `outstanding_pending`, so this report and the session briefing's nag cannot
+    disagree about how much work is left (they did: this one counted the written lines).
+    """
+    if not os.path.isfile(os.path.join(root, PENDING_TEMPLATES)):
         return ""
-    return ("%d repo template(s) differ from the new kit's and were KEPT; they are listed in %s, "
-            "and the session briefing nags until that file is worked through and deleted"
-            % (len(lines), PENDING_TEMPLATES.replace(os.sep, "/")))
+    found = outstanding_pending(root).get("repo")
+    where = PENDING_TEMPLATES.replace(os.sep, "/")
+    if found is None or not found["read"]:
+        # UNKNOWN, and it must not borrow either of the two sentences below: an unopenable list has
+        # no entries to count and is not one that "already matches" (`pending_entries`).
+        return ("%s was left by the run and could NOT be READ from here, so what it still asks for "
+                "is unknown -- it is neither resolved nor removed on that ground. Report it and "
+                "name the file; a permission denial and a cloud placeholder that is not downloaded "
+                "both look like this" % where)
+    if not found["entries"]:
+        return ("%s was left by the run and every entry in it already matches the new kit's "
+                "template, so there is nothing to merge; the next session start removes the file"
+                % where)
+    # ...and the count is qualified where it was not measured, for `outstanding_pending`'s reason.
+    return ("%d repo template(s) are listed in %s as differing from the new kit's and were KEPT%s; "
+            "the session briefing nags until that file is worked through and deleted"
+            % (len(found["entries"]), where, "" if found["checked"] else
+               " (they could NOT be re-checked against the kit templates from here, so the count is "
+               "the file's own and an entry may already match again)"))
 
 
 def _after_a_failed_install(root, kit, kit_dir, was, command, reason):

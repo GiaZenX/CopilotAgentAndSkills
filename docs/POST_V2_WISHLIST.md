@@ -2242,7 +2242,8 @@ mit TSK-0008, H19–H23 mit TSK-0011, H24–H28 mit TSK-0013, H29 mit TSK-0015, 
 H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit TSK-0055, H40 mit
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
-H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H70 mit
+H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
+TSK-0086, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2304,6 +2305,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H71 | **Rest**, keine Angriffskette (TSK-0086) | vier gemessene Grenzen des Lesers der Merge-Rückstandsliste, je im Eintrag: ein Eintrag, den `open()` mit etwas anderem als `OSError` ablehnt, bricht `update-kit` nach erfolgreichem Installerlauf ab (Hook abgesichert, Kommando nicht — Einzeiler benannt); eine gelesene Liste, die zu keinem erkennbaren Eintrag dekodiert, gilt als leer und wird gelöscht (UTF-16 gemessen, so nicht ausgeliefert); der Vergleich entfernt JEDES `CR`, also auch eines mitten in der Zeile oder in einer Binärvorlage (Über-Verwerfen; Verengen brächte Leser und Installer über dieselbe Datei in Streit — genau der Bruch, der die Liste des Nutzers erzeugte); und zwei Zustände nörgeln absichtlich weiter statt zu schweigen. Der Blocker der Runde — eine **unlesbare** Liste galt als erledigt und wurde gelöscht — ist geschlossen: `unlesbar`, `leer` und `verglichen` sind seither drei Antworten |
 | H70 | **Rest**, Messlücke des Instruments, `H10`/`H41`-Klasse (TSK-0083/TSK-0084) | der Vollständigkeits-Draht des Ledger-Gates fragt nach **Mustern** (zwei Leser, Vereinigung), also sieht er eine vierte Ausnahme nicht, die **gar kein** `re.Pattern` befragt — gemessen von Umsetzer und Prüfer unabhängig (`stage.strip().startswith("deno ")` befreit die Stufe, beide Leser grün, im Klon 1 passed), vom Lead ausdrücklich **nicht** nachgemessen. Keine offene Kette im Produkt: der Draht bewacht eine künftige Änderung. Die Frage, die es fangen müsste, ist „welche Stufe wird frei" — im Docstring benannt, als eigene Runde zurückgestellt |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
@@ -4962,6 +4964,55 @@ das Ende dieser zu hängen. **Warum überhaupt ein Eintrag:** der Draht hat in z
 **dreimal** eine Vollständigkeit behauptet, die er nicht baute — jedes Mal, weil die Antwort eine
 Aufzählung von Schreibweisen war. Der Docstring sagt das jetzt; dieser Eintrag ist die Stelle, an
 der es beim nächsten Lesen der offenen Lücken auffällt.
+
+### H71 — Was der Leser der Merge-Rückstandsliste NICHT entscheiden kann — offen, vier gemessene Grenzen (TSK-0086)
+
+**Anlass, und er ist der beste Grund für einen Eintrag:** `BUG-0068` kam aus dem **Live-Gebrauch**
+des Nutzers an seinem echten Büro-Projekt. Er aktualisierte es selbst, bekam vom Manager
+`cp`-Zeilen fürs Terminal gereicht und fragte nach, ob das so richtig sei. Es war es nicht — und
+aus der einen Rückfrage wurden **fünf** Reparaturen, von denen **zwei erst durch die Fixes für die
+ersten drei entstanden**. Was danach an Grenzen bleibt, steht hier, damit die nächste Runde nicht
+wieder bei null anfängt.
+
+**(a) Ein Eintrag, den `open()` mit etwas anderem als `OSError` ablehnt, reißt den Kommandolauf
+ab.** Mechanismus als Eigenschaft, nicht als Schreibweise: der Vergleich baut aus jedem Eintrag
+einen Pfad, und ein Wert, der schon beim Öffnen an einer **anderen** Ausnahme scheitert, läuft an
+`except OSError` vorbei. Der Hook ist abgesichert (`_kernel.pending_merge_backlog` fängt
+`BaseException` → `None` → Datei-Fallback, Nag da, Datei bleibt — gemessen), **`_pending_templates`
+nicht**: `update-kit` endet dann nach einem **erfolgreichen** Installerlauf mit einer Ausnahme und
+meldet ein geglücktes Update als Fehlschlag. Gemessen 2026-08-28 (Prüfer, NUL-Byte in einem
+Eintrag): `rc 1`, `ValueError: embedded null character`. Neue Fläche dieser Runde — vorher wurde
+aus einem Eintrag nie ein Pfad gebaut. Schließrichtung ist ein Einzeiler
+(`except (OSError, ValueError)`), bewusst nicht mehr an das Ende dieser Runde gehängt.
+
+**(b) Eine gelesene Liste, die zu keinem erkennbaren Eintrag dekodiert, gilt als leer und wird
+gelöscht.** Schärfer als die frühere Formulierung „von Hand geleert": es genügt, dass die Datei
+**lesbar** ist und ihr Inhalt für diesen Leser nach nichts aussieht, was mit `- ` beginnt.
+Gemessen an einer UTF-16-Liste, die gelöscht wird. Beide Installer schreiben UTF-8, die Form ist
+also **nicht ausgeliefert**; die Grenze steht trotzdem hier, weil „lesbar" und „verstanden" zwei
+verschiedene Fragen sind und der Code heute nur die erste stellt.
+
+**(c) Der Vergleich entfernt JEDES `CR`, nicht nur Zeilenenden.** Zwei Dateien, die sich nur durch
+ein einzelnes `CR` **innerhalb** einer Zeile unterscheiden, gelten als gleich; eine **binäre**
+Vorlage (`.woff2`), die ein `0x0D` gewinnt oder verliert, ebenso. Richtung ist
+Über-**Verwerfen**: eine Kit-Reparatur, die aus nichts als so einem Byte bestünde, würde nicht mehr
+gemeldet. Warum nichts das verengt, steht im Docstring von `_same_but_for_line_endings` und ist
+gemessen: verengte man es, wären dieser Leser und die beiden Installer sich über **dieselbe Datei**
+uneins — genau der Bruch, der die vier passenden Skripte auf die Liste des Nutzers gebracht hat.
+
+**(d) Zwei Zustände, die absichtlich nörgeln, statt zu schweigen.** `update-kit` löscht eine
+vollständig aufgelöste Liste **nicht selbst**, sondern sagt, dass der nächste Sitzungsstart sie
+entfernt — der Prozess, der gerade sein eigenes Kit ersetzt hat, ist der schlechteste Ort für diese
+Löschung. Und ein alter Eintrag nörgelt weiter, wenn die Ablage inzwischen auf eine **neuere**
+Version gerückt ist, auch wenn er zur damaligen Vorlage passte; dann liegt wirklich eine
+Kit-Reparatur an, und `session_status` meldet im selben Atemzug „KIT UPDATE AVAILABLE".
+
+**Urteil: Rest, keine Angriffskette, drei davon Über-Verwerfen und einer ein Abbruch.** Keiner
+verliert stillschweigend eine Kit-Reparatur ohne Spur — das war der Blocker dieser Runde
+(eine **unlesbare** Liste galt als erledigt und wurde gelöscht) und ist geschlossen: `unlesbar`,
+`leer` und `verglichen` sind seither drei verschiedene Antworten, eine ungelesene Liste erreicht
+`resolved` auf keinem Weg, und der Eskalationszähler wird für sie nicht zurückgesetzt. Was
+bleibt, ist (a) als lauter Abbruch und (b)/(c)/(d) als Rauschen bzw. Über-Vorsicht.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

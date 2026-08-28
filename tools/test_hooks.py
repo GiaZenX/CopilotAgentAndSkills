@@ -7859,13 +7859,27 @@ def test_both_installers_own_the_entry_point_like_the_other_kit_scripts():
     executed here, so its half is read — but neither the installers nor the branch is a list. EVERY
     installer this repo ships is asked (`_installer_scripts`, which is an install POSITION rather
     than four paths), and the ones that HAVE an always-overwrite branch are the ones that owe an
-    answer: the branch is located by the file that has been in it longest (`scripts/kit_checks.py`),
-    and the question is whether `cli.ENTRY_POINT` sits in the same expression. Copy-if-absent is
-    the wrong class for it: a project keeping an old entry point keeps an old bridge into the
-    enforcement layer, and every shipped remedy names that path.
+    answer. Copy-if-absent is the wrong class for the entry point: a project keeping an old one
+    keeps an old bridge into the enforcement layer, and every shipped remedy names that path.
+
+    WHERE THE BRANCH IS READ MOVED, and the floor below is what caught it (BUG-0068): the owned set
+    used to be typed into each installer, so this test located the branch by the file that had been
+    in it longest and asked whether `cli.ENTRY_POINT` stood in the same expression. It is now DATA
+    both installers read (`team-kits/repo_kit_owned.txt`), because a repo script the enforcement
+    layer refuses in-session writes to can be delivered by no other route. So the question splits in
+    two and neither half is weaker: the manifest must NAME the entry point, and an installer that
+    owns repo templates at all must decide it FROM the manifest rather than from a list of its own.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel import cli
+    manifest_rel = "team-kits/repo_kit_owned.txt"
+    with open(os.path.join(ROOT, *manifest_rel.split("/")), encoding="utf-8") as handle:
+        owned = {line.strip() for line in handle
+                 if line.strip() and not line.strip().startswith("#")}
+    assert cli.ENTRY_POINT in owned, (
+        "%s decides which repo templates are always overwritten and does not name %s, so a project "
+        "that already has an old entry point keeps it forever: %s"
+        % (manifest_rel, cli.ENTRY_POINT, sorted(owned)))
     checked = []
     for rel in _installer_scripts():
         with open(os.path.join(ROOT, *rel.split("/")), encoding="utf-8") as handle:
@@ -7874,15 +7888,15 @@ def test_both_installers_own_the_entry_point_like_the_other_kit_scripts():
         # backtick, and a reader that stops at the newline would report a name on the second half
         # as absent — which is how a list of one condition becomes a list of one LINE.
         text = re.sub(r"[\\`]\r?\n\s*", " ", text)
-        owning = [line for line in text.splitlines()
-                  if "scripts/kit_checks.py" in line and not line.lstrip().startswith("#")]
-        if not owning:
-            continue        # this installer has no always-overwrite branch, so it owes nothing
+        if "templates/repo" not in text and "templates\\repo" not in text:
+            continue        # this installer places no repo templates, so it owes nothing
         checked.append(rel)
-        assert any(cli.ENTRY_POINT in line for line in owning), (
-            "%s decides which repo templates are always overwritten without naming %s, so a "
-            "project that already has an old one keeps it forever:\n%s"
-            % (rel, cli.ENTRY_POINT, "\n".join(owning)))
+        reading = [line for line in text.splitlines()
+                   if os.path.basename(manifest_rel) in line
+                   and not line.lstrip().startswith("#")]
+        assert reading, (
+            "%s places repo templates without reading %s, so its owned set is a second list that "
+            "can drift from the one the other installer reads" % (rel, manifest_rel))
     # One per platform. A floor rather than an equality, so a third installer gaining the branch is
     # covered too — but zero would mean the reader stopped matching, not that nothing owes it.
     assert len(checked) >= 2, (

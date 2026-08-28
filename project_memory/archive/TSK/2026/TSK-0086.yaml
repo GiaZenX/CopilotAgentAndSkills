@@ -1,0 +1,62 @@
+id: TSK-0086
+product_requirement: PR-0003
+derives_from: BUG-0068
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'BUG-0068 (live finding on the user''s REAL BuyPlugGo update: the update itself
+  ran clean, but the follow-up repo-template refresh listed four scripts that are
+  byte-identical to the installed template -- three older than the update -- and promised
+  the PM would merge files it may NOT write from a session (the ledger judge files,
+  guarded by the TSK-0083 hardening), so it handed the non-developer user cp lines
+  for the terminal)'
+- the update-kit flow (TSK-0067, kernel/kitupdate.py) and where kit_update_pending.repo
+  is written -- find the differ that builds that list and measure why identical files
+  appear on it (mtime vs content? no comparison at all?)
+- 'the guarded-write reality: which repo-template files a session may NOT write (the
+  ledger judge scripts_/ set), and the sanctioned routes that CAN (the installer half
+  that scaffold runs, or an approval-gated kernel command like set-preset/update-kit)
+  -- the fix must refresh those files through a route that already has the right,
+  not through the user''s shell'
+- the office kit's session_status nag that reminds every session while kit_update_pending.repo
+  stands -- so a stale or wrongly-populated list nags forever until a PM acts
+expected_outputs:
+- 'STEP 1 MEASURE: against a scaffolded OLD-stock office project outside the repo,
+  run the PM-driven update and capture what kit_update_pending.repo contains and how
+  it was computed; reproduce the two defects -- identical files listed, and a guarded
+  file the PM cannot merge from a session'
+- 'STEP 2 FIX: (a) the differ compares BYTES against the installed template so an
+  identical file never lands on the list (red-without-fix with a staged identical
+  file); (b) the guarded judge files are refreshed by a sanctioned route -- the installer
+  half that already may write them, or an approval-gated kernel step -- never user-typed
+  cp; (c) the pending-list prose promises only what the gates allow and names any
+  real user-hand case WITH its reason'
+- 'STEP 3 TESTS: red-without-fix in a clone outside the repo for each half; the end-to-end
+  refresh measured on an old-stock copy -- guarded files updated through the sanctioned
+  route, list empties honestly, session_status stops nagging'
+- 'STEP 4 SHIP: bump_kit_version if kit content moves, ruff, validate, the affected
+  suites per DEC-0050 (the full run is the lead''s); mirrors byte-identical unless
+  KIT_SPECIFIC_HOOKS names the reason; report file:line, the design chosen and why,
+  residues named'
+dependencies:
+- BUG-0068
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-28T17:55:23'
+closed_at: '2026-08-28T21:06:10'

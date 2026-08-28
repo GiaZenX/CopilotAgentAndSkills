@@ -1022,3 +1022,308 @@ def test_the_posix_installer_places_the_bootstrap_too(tmp_path):
         env=dict(os.environ, HOME=str(home), PYTHONPATH=pythonpath))
     assert installed.returncode == 0, installed.stdout + installed.stderr
     assert (home / "agents-and-skills" / "update_kit.py").is_file(), installed.stdout
+
+
+# -- BUG-0068: the repo-template refresh must not dead-end the user or overstate divergence --------
+
+KIT_OWNED_MANIFEST = os.path.join(TEAM_KITS, "repo_kit_owned.txt")
+
+
+def _owned_repo_scripts():
+    """The repo paths the scaffold OWNS (always overwrites) -- the manifest both scaffold twins read."""
+    owned = set()
+    with open(KIT_OWNED_MANIFEST, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                owned.add(line)
+    return owned
+
+
+TRANSIENT_TEMPLATE_DIRS = ("__pycache__", ".ruff_cache", ".mypy_cache", ".pytest_cache")
+
+
+def _repo_templates(kit):
+    """Every file `<kit>/templates/repo` ships, repo-relative -- what a scaffold places in a project.
+
+    The transient directories both scaffold twins prune are pruned here too, for the same reason:
+    nothing ships them, so nothing may demand anything of them.
+    """
+    base = os.path.join(TEAM_KITS, kit, "templates", "repo")
+    for directory, dirnames, filenames in os.walk(base):
+        dirnames[:] = [name for name in dirnames if name not in TRANSIENT_TEMPLATE_DIRS]
+        for name in filenames:
+            yield os.path.relpath(os.path.join(directory, name), base).replace(os.sep, "/")
+
+
+def _guard_refuses(kit, repo, rel):
+    """Does THIS kit's `guard_harness_selfmod` refuse a tool write to `rel` in an installed project?
+
+    ASKED OF THE PROCESS, not of a constant: the guard decides on FOUR sources at once
+    (`BLOCKED_REPO_PATHS`, `BLOCKED_PROVIDER_PREFIXES`, `BLOCKED`, `BLOCKED_FILES`) plus the
+    constitution pair, and a reader that parsed one of them answered for one of them. Measured: a
+    repo template at `templates/repo/.codex/notes.md` is refused (rc 2, "part of the ENFORCEMENT
+    LAYER") while a `BLOCKED_REPO_PATHS` reader saw nothing -- the enumeration-instead-of-property
+    shape this round removed on the manifest side, still standing on the test side.
+    """
+    payload = {"tool_name": "Write", "cwd": str(repo),
+               "tool_input": {"file_path": os.path.join(str(repo), *rel.split("/"))}}
+    result = subprocess.run(
+        [sys.executable, "-B", os.path.join(TEAM_KITS, kit, "hooks", "guard_harness_selfmod.py")],
+        input=json.dumps(payload), capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=120, env=dict(os.environ, CLAUDE_PROJECT_DIR=str(repo)))
+    return result.returncode == 2
+
+
+def test_every_guarded_repo_template_is_refreshed_by_the_scaffold(tmp_path):
+    """A repo template the guard refuses in-session writes to MUST be scaffold-owned (BUG-0068).
+
+    Otherwise a kit fix to it reaches the project by NO route: the PM may not merge it, copy-if-absent
+    keeps the fork forever, and the pending list hands the non-developer user `cp` lines for a file
+    nobody in the session may write -- the ledger judge, measured live on the real BuyPlugGo update.
+
+    THE SUBJECT IS EVERY SHIPPED REPO TEMPLATE, asked of the RUNNING guard, because "guarded" is a
+    property of that guard's whole decision and not of one of its four constants. A file only this
+    kit ships is only this kit's question, so the walk is per kit; the owned set is DATA
+    (`team-kits/repo_kit_owned.txt`, read by both scaffold twins).
+
+    The floor is here for the reason every derived reader in this repo carries one: zero refusals
+    would mean the payload stopped reaching the guard, not that nothing is guarded. Measured today:
+    39 templates across the three kits, 2.9 s, four of them refused.
+    """
+    owned = _owned_repo_scripts()
+    (tmp_path / ".claude").mkdir(parents=True)      # what `_root.find_repo_root` anchors on
+    refused = []
+    for kit in KITS:
+        for rel in _repo_templates(kit):
+            if not _guard_refuses(kit, tmp_path, rel):
+                continue
+            refused.append((kit, rel))
+            assert rel in owned, (
+                "%s guards %s from in-session writes but the scaffold does not own it, so a kit fix "
+                "to it reaches the project by no route (BUG-0068). Add it to %s."
+                % (kit, rel, os.path.relpath(KIT_OWNED_MANIFEST, ROOT)))
+    assert len(refused) >= 2, (
+        "only %s were refused; the reader stopped reaching the guard rather than finding nothing "
+        "guarded" % refused)
+
+
+def test_a_guarded_script_is_refreshed_and_a_line_ending_drift_is_not_pending(tmp_path):
+    """BUG-0068 end to end on a REAL office scaffold: both live defects, in one re-scaffold.
+
+    Restores both in a copy: the project's `scripts/ledger_add.py` is forked (a content change no
+    in-session route may make, which the old flow handed the user as `cp` lines) and a copy-if-absent
+    script is drifted to CRLF (content-identical, which the byte differ read as 'differs' and put on
+    the pending list). The re-scaffold must overwrite the guarded judge back to the kit's copy and
+    leave NEITHER file on `.claude/kit_update_pending.repo`.
+
+    Red without the fix: the judge stays forked (copy-if-absent) and the CRLF drift is listed.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    pytest.importorskip("yaml")
+    home, repo, environment = _scaffolded(tmp_path, kit="office-team")
+    template = (home / ".claude" / "team-kits" / "office-team" / "templates" / "repo" / "scripts")
+    judge = repo / "scripts" / "ledger_add.py"
+    drifted = repo / "scripts" / "euer_report.py"
+    # a real fork of the guarded judge -- a change no in-session route may make
+    with open(judge, "a", encoding="utf-8") as handle:
+        handle.write("\n# LOCAL FORK\n")
+    # a copy-if-absent script drifted to CRLF: content-identical, bytes differ
+    drifted.write_bytes(drifted.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+
+    result = subprocess.run(
+        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+         os.path.join(str(home / ".claude" / "team-kits"), "scaffold_team.ps1"),
+         "-Team", "office-team"],
+        cwd=str(repo), capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=900, env=environment)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # the guarded judge is refreshed to the kit's copy -- the sanctioned installer route, fork gone
+    assert judge.read_bytes().replace(b"\r\n", b"\n") == \
+        (template / "ledger_add.py").read_bytes().replace(b"\r\n", b"\n")
+    assert b"LOCAL FORK" not in judge.read_bytes()
+
+    # THE ENTRIES, not the file's TEXT: the pending header names `scripts/ledger_add.py` itself, as
+    # the example of what never lands on such a list, so a substring test over the whole file held
+    # only while the fixture produced no pending file at all. Measured: with one real divergence in
+    # the tree the ledger assertion was False although the judge WAS correctly refreshed, and in the
+    # EOL-only red tree the test failed on that line instead of on `euer_report.py` -- a red
+    # pointing at the wrong defect. `pending_entries` is the reader this round introduced for it.
+    pending = str(repo / ".claude" / "kit_update_pending.repo")
+    listed = kitupdate.pending_entries(pending)
+    assert "scripts/ledger_add.py" not in listed, listed   # guarded -> refreshed, never pending
+    assert "scripts/euer_report.py" not in listed, listed  # CRLF-only drift is not a divergence
+
+
+def _session_start(repo, home):
+    """The kit's OWN installed `session_status.py`, as the process a real session start runs.
+
+    The project's staging is the fake HOME's, because that is where the kernel looks for the kit
+    template an entry must be re-checked against (`presets.staging_root`).
+    """
+    return _hook(os.path.join(str(repo), ".claude", "hooks", "session_status.py"),
+                 {"hook_event_name": "SessionStart", "source": "startup", "cwd": str(repo)},
+                 repo, env={"HOME": str(home), "USERPROFILE": str(home)})
+
+
+def test_a_pending_entry_that_matches_again_stops_nagging_and_a_resolved_list_goes(tmp_path):
+    """The merge backlog is re-validated against the tree, not believed as written (BUG-0068).
+
+    THE MEASURED CASE, on the user's real office project 2026-08-26: `kit_update_pending.repo` named
+    four scripts that were RAW byte-identical to the installed template, three with mtimes older than
+    the update -- and the nag fired every session until a PM deleted the file by hand, which is how a
+    non-developer user ends up in the terminal for files that already match.
+
+    BOTH DIRECTIONS, because a reader that reports nothing proves nothing: an entry whose file really
+    still differs must go on nagging, and the list must survive while it does. Only when every entry
+    matches again does the nag fall silent and the file go.
+
+    Red without the fix: the matching entries are reported and the file stays, in both halves.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    pytest.importorskip("yaml")
+    home, repo, _ = _scaffolded(tmp_path, kit="office-team")
+    template = home / ".claude" / "team-kits" / "office-team" / "templates" / "repo"
+    pending = repo / ".claude" / "kit_update_pending.repo"
+    really = repo / "requirements-office.txt"
+    drifted = repo / "scripts" / "proc_hash.py"
+
+    # one entry that really differs, one untouched (matches), one that differs only in line endings
+    with open(really, "a", encoding="utf-8") as handle:
+        handle.write("local-extra-package==1.0\n")
+    drifted.write_bytes(drifted.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
+    _write(str(pending), "# written by an installer run\n- requirements-office.txt\n"
+                         "- scripts/euer_report.py\n- scripts/proc_hash.py\n")
+
+    nagging = _session_start(repo, home)
+    assert "KIT MERGE BACKLOG" in nagging.stdout, nagging.stdout + nagging.stderr
+    assert "requirements-office.txt" in nagging.stdout          # really differs -> still nags
+    assert "euer_report.py" not in nagging.stdout               # matches the template -> dropped
+    assert "proc_hash.py" not in nagging.stdout                 # line endings only -> dropped
+    assert pending.is_file(), "a list with work left in it must survive"
+    # ...and here the assurance IS earned: every entry was held against a readable template
+    assert "Each entry was re-checked" in nagging.stdout, nagging.stdout
+
+    # ...and once the one real divergence is merged, the whole list is resolved
+    shutil.copyfile(str(template / "requirements-office.txt"), str(really))
+    quiet = _session_start(repo, home)
+    assert "KIT MERGE BACKLOG" not in quiet.stdout, quiet.stdout
+    assert not pending.exists(), "a list with nothing left in it is the nag, so it goes"
+
+
+def test_a_backlog_that_could_not_be_re_checked_says_so(tmp_path):
+    """With no staged kit to compare against, the nag must NOT sign itself "re-checked" (BUG-0068).
+
+    THE MEASURED FALSE CLAIM: hanging the assurance on "the kernel answered" rather than on "a
+    comparison happened" printed `Each entry was re-checked against the kit template` over a project
+    whose staged kit is not on this machine -- naming two files as diverging that are RAW
+    byte-identical to the kit template, with nothing opened to decide it. That is the BUG-0068
+    symptom plus an assurance the round before this one did not even make, and by this hook's own
+    instruction it lands in the FIRST paragraph of the reply to a non-technical user.
+
+    TWO WAYS TO LOSE THE COMPARISON, both real and both measured here: the staged kit is gone (a
+    second machine, a project synced through OneDrive, or simply before the harness install), and
+    the ownership manifest that says WHICH kit this is cannot be read. The entries must still be
+    reported -- losing the backlog is the other failure -- and the sentence must say it did not
+    check them.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    pytest.importorskip("yaml")
+    home, repo, _ = _scaffolded(tmp_path, kit="office-team")
+    pending = repo / ".claude" / "kit_update_pending.repo"
+    # both entries are UNTOUCHED, so with a readable staging both would be dropped as matching
+    _write(str(pending), "# written by an installer run\n"
+                         "- scripts/euer_report.py\n- scripts/proc_hash.py\n")
+
+    staged = home / ".claude" / "team-kits" / "office-team"
+    shutil.rmtree(str(staged))
+    gone = _session_start(repo, home)
+    assert "KIT MERGE BACKLOG" in gone.stdout, gone.stdout + gone.stderr
+    assert "euer_report.py" in gone.stdout, "the backlog must not be lost when it cannot be checked"
+    assert "NOT re-checked here" in gone.stdout, gone.stdout
+    assert "Each entry was re-checked" not in gone.stdout, gone.stdout
+    assert pending.is_file(), "an unjudged list must never be deleted"
+
+    # ...and the same when it is the OWNERSHIP MANIFEST that cannot be read: which kit's templates
+    # these entries belong to is then unknown, so nothing can be compared either.
+    shutil.copytree(str(home / ".claude" / "team-kits" / "dev-team"), str(staged),
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    os.remove(str(repo / ".claude" / "team_kit_roles.txt"))
+    unknown = _session_start(repo, home)
+    assert "KIT MERGE BACKLOG" in unknown.stdout, unknown.stdout + unknown.stderr
+    assert "NOT re-checked here" in unknown.stdout, unknown.stdout
+    assert "Each entry was re-checked" not in unknown.stdout, unknown.stdout
+
+
+def _deny_read(path, allow=False):
+    """Deny (or restore) READ on `path` for the current user -- the narrowest real unreadable file.
+
+    An ACL denial is the reachable shape the fix is for: the same state a locked file or a OneDrive
+    placeholder that is not hydrated presents to `open()`, and the user's real project lives in
+    OneDrive. `icacls` rather than a chmod, because on Windows the read bit is an ACE.
+
+    `RD` (read DATA) and not the simple right `R`: `R` also denies READ_CONTROL, after which icacls
+    cannot read the DACL to take the deny back off -- measured `Zugriff verweigert`, rc 5, on a file
+    under `%TEMP%`, where the inherited grant is Modify and carries no WRITE_DAC of its own. `RD` is
+    also the narrower statement: what this test needs is a file `open()` refuses, nothing more.
+    """
+    who = "{}\\{}".format(os.environ.get("USERDOMAIN", ""), os.environ.get("USERNAME", ""))
+    argv = ["icacls", str(path)] + (["/remove:d", who] if allow else ["/deny", "%s:(RD)" % who])
+    # CHECKED, because an ACL command that quietly did nothing turns this whole test into air --
+    # and in the other direction leaves a denied file behind for pytest's own cleanup to trip on.
+    result = subprocess.run(argv, capture_output=True, text=True, encoding="utf-8",
+                            errors="replace", timeout=120)
+    assert result.returncode == 0, (argv, result.stdout, result.stderr)
+
+
+def test_a_pending_list_that_cannot_be_read_is_never_called_resolved(tmp_path):
+    """A list that EXISTS and cannot be opened is unknown -- not empty, not resolved, not deleted.
+
+    THE DEFECT THIS ROUND INTRODUCED, and the expensive direction of it: `pending_entries` answered
+    `[]` for "no such file" AND for "could not be read", so a genuinely unmerged backlog behind an
+    ACL denial came back with zero entries, the caller read that as "nothing left to merge", and the
+    hook DELETED the file -- the kit fix dropped out together with the record of it. Before the
+    re-validation existed the same denial produced no nag either, but the file SURVIVED, so this was
+    a regression rather than an old hole.
+
+    BOTH DIRECTIONS, because a reader that never deletes proves nothing: the readable list that
+    really is resolved must still go.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    pytest.importorskip("yaml")
+    home, repo, _ = _scaffolded(tmp_path, kit="office-team")
+    template = home / ".claude" / "team-kits" / "office-team" / "templates" / "repo"
+    pending = repo / ".claude" / "kit_update_pending.repo"
+    diverged = repo / "scripts" / "euer_report.py"
+
+    # a GENUINE unmerged divergence, so a deletion here really would lose a kit fix
+    with open(diverged, "a", encoding="utf-8") as handle:
+        handle.write("\n# project fork\n")
+    _write(str(pending), "# written by an installer run\n- scripts/euer_report.py\n")
+
+    _deny_read(pending)
+    try:
+        with pytest.raises(OSError):
+            open(str(pending), "rb").close()   # the denial really denies, or this test measures air
+        denied = _session_start(repo, home)
+        assert pending.is_file(), "an unreadable list was DELETED -- the backlog is gone with it"
+        assert "UNREADABLE" in denied.stdout, denied.stdout + denied.stderr
+        assert "kit_update_pending.repo" in denied.stdout, denied.stdout
+        # ...and nothing anywhere in the briefing may call it resolved
+        assert "already match" not in denied.stdout, denied.stdout
+        assert "Each entry was re-checked" not in denied.stdout, denied.stdout
+    finally:
+        _deny_read(pending, allow=True)
+
+    # COUNTER-DIRECTION: readable again and really resolved -> the list still goes
+    with open(str(pending), "rb") as handle:      # the restore restored, or the rest measures air
+        handle.read()
+    shutil.copyfile(str(template / "scripts" / "euer_report.py"), str(diverged))
+    quiet = _session_start(repo, home)
+    assert "KIT MERGE BACKLOG" not in quiet.stdout, quiet.stdout
+    assert not pending.exists(), "a readable, resolved list must still be deleted"

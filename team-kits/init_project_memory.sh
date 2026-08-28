@@ -94,7 +94,11 @@ for rel in "${template_files[@]}"; do
     # newer kit: make that visible so the PM can propose the delta. Filled YAMLs always differ — silent.
     case "$rel" in
       *.py|*.template.*|*.tex|reports/assets/*)
-        if ! cmp -s "$SRC/$rel" "$target"; then
+        # LINE-ENDING STYLE IS NOT A DIVERGENCE (BUG-0068, same rule as scaffold_team.sh and as the
+        # reader that re-checks these entries, kernel.kitupdate._same_but_for_line_endings): a
+        # Windows/OneDrive checkout drifts LF->CRLF, and comparing raw bytes then listed
+        # content-identical tooling as differing.
+        if ! cmp -s <(tr -d '\r' < "$SRC/$rel") <(tr -d '\r' < "$target"); then
           echo "  [kept] $rel (tooling differs from the kit template - review/merge manually)"
           kept_tooling+=("$rel")
         fi ;;
