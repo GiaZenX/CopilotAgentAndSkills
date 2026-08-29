@@ -685,6 +685,207 @@ def test_the_pipeline_texts_name_the_fields_their_own_schema_declares():
         "narrowed: %s" % (len(total), sorted(set(total))))
 
 
+# ============================ 5. the answering rule, and where it has to stand (FR-0052)
+def _markdown_sections(text):
+    """The `##` sections of a markdown text, heading included, as raw slices.
+
+    Raw and not a reading view: the two texts below are compared BYTE for byte across kits, and a
+    whitespace-flattened slice would call two differently wrapped copies the same block.
+    """
+    starts = [match.start() for match in re.finditer(r"(?m)^##\s", text)]
+    return [text[start:(starts[index + 1] if index + 1 < len(starts) else len(text))]
+            for index, start in enumerate(starts)]
+
+
+def _answering_sections(path, names):
+    """The sections of the file at `path` that name every string in `names`.
+
+    WHICH SECTION IS "THE RULE" is decided by the two artifacts the rule sends the reader to -- the
+    brief's decision field and the decisions directory -- and both spellings come from running code
+    (the session_brief schema and `backlog_types.ACTIVE_DIRS`). So a renamed field or a moved
+    directory makes this reader go looking for a block that no longer exists, rather than quietly
+    matching a heading whose text drifted.
+    """
+    if not os.path.isfile(path):
+        return []
+    with io.open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    return [block for block in _markdown_sections(text)
+            if all(name in block for name in names)]
+
+
+def _rule_anchors():
+    """(brief decision field, decisions directory) -- the two names the rule must send a reader to."""
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import backlog_types
+    from kernel.schemas import load_schema
+    field = "standing_decisions"
+    assert field in (load_schema("session_brief").get("fields") or {}), (
+        "the session brief no longer carries a `%s` field. The answering rule in every kit's lead "
+        "texts points at it by name, so the rename has to move both." % field)
+    return field, backlog_types.ACTIVE_DIRS["DEC"]
+
+
+def _enforcement_words(kit):
+    """The words that name this kit's enforcement layer, off its own wiring rather than typed here.
+
+    Two sources, both running: the provider's registration key in `settings/settings.json` (`hooks`),
+    and the prefix carried by more than one of the hook FILES that key registers (`gate_…`,
+    `guard_…`). A one-off prefix is dropped because it names a single mechanism rather than the
+    apparatus -- `session_status` is not a word a text uses to claim enforcement. A kit that renames
+    its mechanisms moves this vocabulary with it.
+    """
+    with io.open(os.path.join(kit, "settings", "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    words = {key[:-1].lower() for key, value in settings.items()
+             if key.endswith("s") and isinstance(value, dict)}
+    prefixes = {}
+    for groups in settings.get("hooks", {}).values():
+        for group in groups:
+            for entry in group.get("hooks", []):
+                base = os.path.basename(entry["command"].split()[-1].strip('"'))
+                if "_" in base:
+                    prefixes[base.split("_")[0].lower()] = prefixes.get(
+                        base.split("_")[0].lower(), 0) + 1
+    words.update(name for name, count in prefixes.items() if count > 1)
+    return words
+
+
+_NEGATION_RX = re.compile(r"\b(?:no|not|never|nothing|none|cannot|can't|invisible|without)\b",
+                          re.IGNORECASE)
+# Where a clause ends. The run-up in front of a mention is cut here, so a negation belonging to
+# ANOTHER sentence cannot excuse it.
+_CLAUSE_END = ".;:\n"
+
+
+def _enforcement_claims(block, words):
+    """(affirmed, negated) mentions of the enforcement apparatus inside `block`.
+
+    A mention is NEGATED when its OWN CLAUSE carries a negation, and AFFIRMED when it does not --
+    the shape `test_the_qa_coverage_claim_matches_what_quality_py_measures` uses for the same
+    question one subject over.
+
+    THE RUN-UP IS CUT AT A CLAUSE BOUNDARY AND NOT AFTER N CHARACTERS, and that correction is why
+    this docstring exists. A fixed 90-character window was measured dead against the block it
+    guards: the delivered text is saturated with negation words, so from the second line on every
+    window already contains one, and an overclaim sentence inserted anywhere below the first line
+    classified as NEGATED. Measured 2026-08-29 on the shipped dev SKILL block with the honesty
+    sentences REPLACED by "A gate refuses an answer that skipped this step.": affirmed=0, negated=1
+    -- the check passed over exactly the claim it exists to catch. With the boundary cut the same
+    text is affirmed=1, negated=0.
+    """
+    affirmed, negated = [], []
+    for word in sorted(words):
+        for match in re.finditer(r"\b%s\b" % re.escape(word), block, re.IGNORECASE):
+            head = block[:match.start()]
+            cut = max(head.rfind(char) for char in _CLAUSE_END)
+            run_up = head[cut + 1:]
+            (negated if _NEGATION_RX.search(run_up) else affirmed).append(
+                run_up + match.group(0))
+    return affirmed, negated
+
+
+def test_every_kit_lead_is_told_to_answer_from_the_decisions_before_the_code():
+    """FR-0052: a WHY/target question is answered from the record first -- in every kit, and in the
+    text that actually LOADS.
+
+    TWO SURFACES, both derived. `lead_package.on_demand_files` is the lead SKILL, which the item
+    asks for; `lead_package.files` is what a session loads and never unloads -- measured 2026-08-02,
+    the SKILL is registered and NOT injected, so a rule that stood only there would not be in front
+    of the lead at the moment a user asks. Both must carry the rule, and one copy of it must be
+    identical across kits: skills are not mirrored files and no `KIT_SPECIFIC` mechanism covers them,
+    so that identity IS the mirror for this block.
+
+    WHAT IS ASKED IS AN INTERSECTION, NOT A COUNT, and that is the correction of 2026-08-29. Demanding
+    EXACTLY ONE matching section per surface forced more than this round decided: the day any kit's
+    constitution names both anchors in a section of its own -- a legitimate thing for a later round to
+    do -- this test went red with a message about the lead SKILL. Asked as "the kits share a block",
+    an extra kit-specific section is none of this test's business and a missing or drifted rule still
+    is.
+
+    MEASURED RED before this round, over the shipped tree: six offenders, one per kit per surface.
+    Nothing in any lead SKILL, lead agent file or constitution directed a decisions-first lookup --
+    every "question" and "answer" in them is about the lead ASKING the user or about the user
+    answering an approval.
+
+    WHAT THIS CANNOT DO, and the second sentence is sharper than the one that stood here. It reads
+    PROSE, so it cannot tell whether the lead obeyed the rule -- NO HOOK CAN: free text is invisible
+    to every gate. And of the block's CONTENT it reads only the two anchors: measured 2026-08-29, the
+    rule INVERTED in all six texts ("the code before the decisions", limit sentence kept) passes this
+    test and its sibling, because both anchors are still named and direction is not something either
+    of them asks about.
+    """
+    anchors = _rule_anchors()
+    loaded, on_demand = {}, {}
+    for kit in _kit_dirs():
+        name = os.path.basename(kit)
+        skill = {block for path in lead_package.on_demand_files(kit)
+                 for block in _answering_sections(path, anchors)}
+        package = {block for path in lead_package.files(kit)
+                   for block in _answering_sections(path, anchors)}
+        assert skill, (
+            "%s: no section of its lead SKILL names both %s and %s -- the answering rule is not "
+            "there" % (name, anchors[0], anchors[1]))
+        assert package, (
+            "%s: no section of the LOADED package (%s) names both %s and %s. The lead SKILL is "
+            "registered, not injected, so a rule that stands only in it is not in front of the lead "
+            "when the user asks" % (name,
+                                    ", ".join(os.path.basename(p) for p in lead_package.files(kit)),
+                                    anchors[0], anchors[1]))
+        on_demand[name], loaded[name] = skill, package
+    assert set.intersection(*on_demand.values()), (
+        "the kits' lead SKILLs share no identical answering rule -- one copy has drifted: %s"
+        % sorted(on_demand))
+    assert set.intersection(*loaded.values()), (
+        "the kits' loaded lead texts share no identical answering rule -- one copy has drifted: %s"
+        % sorted(loaded))
+    assert len(on_demand) >= 3, sorted(on_demand)
+
+
+def test_the_answering_rule_claims_no_enforcement_it_does_not_have():
+    """The rule is about honest answering, so the rule itself may not overclaim (FR-0052).
+
+    THE HONEST LIMIT IS THE SUBJECT: no hook can enforce search-before-answer, because free text
+    never reaches a gate. A block that named a gate as its backing would be exactly the failure this
+    repo is built against, and a block that dropped the limit would leave the next reader to assume
+    one. So both halves are asked: every mention of the apparatus stands in a CLAUSE that negates it,
+    and at least one such mention is there.
+
+    MEASURED RED 2026-08-29 in a clone outside this repo, four runs, both surfaces and both shapes an
+    overclaim can take. Honesty sentences REPLACED by "A gate refuses an answer that skipped this
+    step.": SKILL affirmed=1/negated=0, agent file affirmed=1/negated=0. The same sentence merely
+    ADDED, the honesty kept -- the harder shape, because the block still reads honest: SKILL
+    affirmed=1/negated=2, agent affirmed=1/negated=2. Honesty sentences cut without replacement:
+    negated=0 on both. The shipped blocks are affirmed=0/negated=2 in the same run.
+
+    THE RESIDUE, because the vocabulary is derived and therefore finite: an overclaim phrased without
+    naming the apparatus -- "the harness refuses an answer that skipped this" -- carries no word
+    `_enforcement_words` yields and is not caught here. Nor is one caught by the sibling test, which
+    asks only that the three copies AGREE; what makes such an edit visible at all is
+    `test_shortening_net.test_no_section_of_a_pinned_instruction_file_disappears_unnoticed`, whose
+    digest over this section then demands a re-pin with a written note. That is visibility, not a
+    refusal, and the difference is the whole point of this docstring.
+    """
+    anchors = _rule_anchors()
+    judged = 0
+    for kit in _kit_dirs():
+        words = _enforcement_words(kit)
+        assert words, "%s registers no hooks -- the vocabulary came out empty" % kit
+        for path in lead_package.files(kit) + lead_package.on_demand_files(kit):
+            for block in _answering_sections(path, anchors):
+                judged += 1
+                affirmed, negated = _enforcement_claims(block, words)
+                assert not affirmed, (
+                    "%s/%s: the answering rule names the enforcement layer without a negation, and "
+                    "nothing enforces search-before-answer -- free text reaches no gate:\n  %s"
+                    % (os.path.basename(kit), os.path.basename(path), "\n  ".join(affirmed)))
+                assert negated, (
+                    "%s/%s: the answering rule states no limit at all. A reader then assumes a "
+                    "mechanism behind it, and there is none" % (os.path.basename(kit),
+                                                                os.path.basename(path)))
+    assert judged >= 6, "only %d rule blocks judged -- the reader stopped finding them" % judged
+
+
 def _question_tools(kit):
     """The tools this kit registers its user-question guard on, off its own wiring.
 

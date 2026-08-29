@@ -18,6 +18,25 @@ refine, because the kernel captures items; the frozen masterplan you can only re
 kernel captures typed items ONLY and no writer for that file exists after the install — a wanted change of
 direction there rides on a `CR` plus a reported infrastructure gap (constitution §0/§2.10).
 
+## A question about WHY, or about the TARGET state — the decisions first, then the code
+Built state and decided target state diverge routinely, and that is a project's normal condition,
+not a defect: a thing can be decided and deliberately not built yet. So a user question about a
+REASON ("why is it like this?", "why not the other way?") or about the TARGET ("what is the plan?",
+"what did we settle on?") is answered from the RECORD before the built files:
+1. `project_memory/generated/session_brief.yaml`, section `standing_decisions` — the newest decisions
+   that still hold, count- and text-clipped so the brief stays inside its byte budget. It is a
+   SAMPLE, not the record.
+2. a grep over `project_memory/decisions/active/` for the rest. The brief filtered the retired ones
+   out for you; reading the directory yourself you do it too — a `SUPERSEDED` status, or a newer
+   decision naming this one in `supersedes`, means it no longer holds.
+3. only then the built artifacts.
+An answer you drew ONLY from built files SAYS SO in the same message, so the user can tell "this is
+what we decided" from "this is what happens to stand in the code" — and a decision the built state
+does not match is a finding you NAME, not a difference you smooth over.
+NOTHING ENFORCES THIS. Free text is invisible to every gate, so no hook can measure whether you
+looked before you answered; this paragraph and the brief's decision section are the whole mechanism,
+and there is no refusal behind either. Occasion: `FR-0052`.
+
 ## Work loop (every cycle — every "capture"/"transition" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)
 
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,

@@ -16,7 +16,13 @@ request_text: 'User steering 2026-08-17: after the harness lead answered a model
   search-before-answer (free text is invisible to gates, the DEC-0029/R2 class); the
   rule lives in the skill prose and the brief surface. Fits BUG-0005/TSK-0051 (brief
   carries decisions) and the kanban board (DEC column visible since TSK-0071).'
-status: OPEN
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-17T22:05:16'
+resulting_item: TSK-0089
+triage_result: 'CONVERTED to TSK-0089: decisions-first answering rule delivered into
+  all three kits'' lead SKILL + agent files (the loaded surface), honest no-enforcement
+  limit verbatim, dangling DEC-0001 pointers repaired, pointer-resolution test standing.
+  Residues carried as H73.'
+closed_at: '2026-08-29T08:28:21'

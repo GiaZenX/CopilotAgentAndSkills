@@ -2246,7 +2246,7 @@ H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit 
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
-TSK-0086, H72 mit TSK-0087, H70 mit
+TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2308,6 +2308,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H73 | **Rest** (TSK-0089) | vier gemessene Grenzen der Entscheidungs-zuerst-Runde, je im Eintrag: jede Id in einem Begrenzer, der länger ist als sie selbst, bleibt ungeprüft (16 der 22 gequoteten Spannen sind Text, den jemand liest — 13 Kernel-Meldungen + 3 Handover-Literale; Schließrichtung benannt, eigene Runde); der Regel-Test liest nur die zwei Anker, nicht die Richtung (die Regel umgekehrt passiert ihn, gemessen); eine Überbehauptung ohne Apparat-Wort fällt nicht auf — sichtbar macht sie nur der Abschnitts-Digest, nicht die Byte-Identität; und der Klausel-Schnitt des Wächters liest `,` nicht und `.`/`:` immer als Grenze — beide Fehlrichtungen gemessen, keine trifft den heutigen Text |
 | H72 | **Rest** (TSK-0087) | gemessene Grenzen der Vier-Augen-Wand, je im Eintrag: die Aufräum-Ausnahme vergleicht Vorlage+Dateiname statt Ort (ein Platzhalterwechsel läuft ohne Lesung, K7/K8 — Verschärfung wäre eine Nutzerentscheidung); Überschreiben eines Inbox-Dokuments ist frei (die Folge ist per Byte-Bindung geschlossen, der Verlust sichtbar); drei benannte Über-Verweigerungen; und die Verfahrens-Grenze (Blindheit, fremde Programme, Lead als Zweitleser). Keine Kette erreicht mehr das Geschlossene: ein fremdes/getauschtes Dokument unter doppelt gelesenem Namen |
 | H71 | **Rest**, keine Angriffskette (TSK-0086) | vier gemessene Grenzen des Lesers der Merge-Rückstandsliste, je im Eintrag: ein Eintrag, den `open()` mit etwas anderem als `OSError` ablehnt, bricht `update-kit` nach erfolgreichem Installerlauf ab (Hook abgesichert, Kommando nicht — Einzeiler benannt); eine gelesene Liste, die zu keinem erkennbaren Eintrag dekodiert, gilt als leer und wird gelöscht (UTF-16 gemessen, so nicht ausgeliefert); der Vergleich entfernt JEDES `CR`, also auch eines mitten in der Zeile oder in einer Binärvorlage (Über-Verwerfen; Verengen brächte Leser und Installer über dieselbe Datei in Streit — genau der Bruch, der die Liste des Nutzers erzeugte); und zwei Zustände nörgeln absichtlich weiter statt zu schweigen. Der Blocker der Runde — eine **unlesbare** Liste galt als erledigt und wurde gelöscht — ist geschlossen: `unlesbar`, `leer` und `verglichen` sind seither drei Antworten |
 | H70 | **Rest**, Messlücke des Instruments, `H10`/`H41`-Klasse (TSK-0083/TSK-0084) | der Vollständigkeits-Draht des Ledger-Gates fragt nach **Mustern** (zwei Leser, Vereinigung), also sieht er eine vierte Ausnahme nicht, die **gar kein** `re.Pattern` befragt — gemessen von Umsetzer und Prüfer unabhängig (`stage.strip().startswith("deno ")` befreit die Stufe, beide Leser grün, im Klon 1 passed), vom Lead ausdrücklich **nicht** nachgemessen. Keine offene Kette im Produkt: der Draht bewacht eine künftige Änderung. Die Frage, die es fangen müsste, ist „welche Stufe wird frei" — im Docstring benannt, als eigene Runde zurückgestellt |
@@ -5067,6 +5068,56 @@ getauschtes Dokument unter einem doppelt gelesenen Namen abzulegen. (a) und (b) 
 Restwege mit benannter Begrenzung und je einer Schließrichtung, die eine eigene Entscheidung
 verlangt; (c) ist Über-Vorsicht; (d) ist die ehrlich ausgewiesene Grenze zwischen Mechanismus und
 Verfahren.
+
+### H73 — Was die Entscheidungs-zuerst-Runde NICHT misst — offen, drei gemessene Grenzen (TSK-0089)
+
+**Anlass:** `FR-0052` bringt die Regel „erst die Entscheidungen, dann der Code" in die Lead-Texte
+aller drei Kits — auf die Fläche, die beim Antworten wirklich geladen ist, mit dem ehrlichen Satz,
+dass kein Hook das erzwingen kann (Freitext ist für Gates unsichtbar, `DEC-0029`/R2-Klasse). Der
+Prüfer hat den Wächter der Runde blind erwischt (ein 90-Zeichen-Fenster las fast jede
+Überbehauptung als verneint — geschlossen: Klauselgrenze statt Byte-Zahl, vier Rot-Formen
+gemessen); was danach bleibt, jede Grenze gemessen:
+
+**(a) Jede Id in einem Begrenzer, der länger ist als sie selbst, bleibt ungeprüft.** Der
+Zeiger-Leser (`tools/test_repo_hygiene.py`) urteilt über 126 DEC-Verweise in ausgelieferten
+Kit-Dateien und lässt gequotete Spannen aus, weil dieser Korpus auch beleidigende Prosa und
+gemessene Kommandozeilen zitiert. Gemessen: 22 doppelt gequotete Spannen tragen eine Id, 6 davon
+sind gewollte Daten — die anderen **16 sind Text, den jemand liest**: 13
+Kernel-Verweigerungs-/Briefing-Meldungen (`cli.py:602/777/905`, `migrate.py` ×7,
+`state.py:1382`, `dispatch.py:1019`, `checkpoints.py:296`) und 3 Handover-Marker-Literale
+(`scaffold_team.sh`/`.ps1`, `kitupdate.py:461`). Eine dort verrottende Id liest der **Nutzer** im
+Moment einer Verweigerung. Schließrichtung: die Meldungs-Literale als eigene Klasse lesen
+(String-Literal in Python-Quelle ≠ Prosazitat in Markdown) — eine eigene Runde, nicht dieser
+Rest angehängt.
+
+**(b) Der Regel-Test liest vom Inhalt nur die zwei Anker, nicht die Richtung.** Die Regel
+**umgekehrt** hingeschrieben („erst der Code, dann die Entscheidungen") passiert beide Tests —
+gemessen, in allen sechs Kopien. Was er hält: der Block existiert auf der geladenen Fläche, die
+drei Kopien sind byte-identisch, und keine Überbehauptung im Apparat-Vokabular überlebt. Was er
+nicht hält: Richtung und Gehorsam — Gehorsam kann kein Text-Test halten, Richtung könnte einer,
+wenn er die Reihenfolge der Anker im Satz läse; nicht gebaut, weil der Satzbau dafür stabil sein
+müsste und die Regel dann am Test klebt statt der Test an der Regel.
+
+**(c) Eine Überbehauptung, die den Apparat nicht benennt, fällt nicht auf.** Der
+Ehrlichkeits-Wächter prüft Erwähnungen von `gate`/`guard`/`hook`/`notify`/`permission` auf
+verneinende Klauseln; „die Harness verweigert eine Antwort ohne Nachschlag" nennt keines dieser
+Wörter und bliebe grün. Was eine umgeschriebene Regel heute **sichtbar** macht (nicht verweigert):
+der Abschnitts-Digest von `test_shortening_net.py` erzwingt ein Neu-Anheften mit schriftlicher
+Notiz; die Byte-Identität der drei Kopien schweigt, wenn alle drei gleich geändert werden.
+
+**(d) Der Klausel-Schnitt des Ehrlichkeits-Wächters liest `,` nicht als Grenze und `.`/`:` immer
+als eine** (`tools/test_role_contracts.py`, Schnitt an `.;:\n`). Beide Fehlrichtungen vom Prüfer
+gemessen, keine trifft den ausgelieferten Text: ein Komma-verbundener Nachsatz reitet auf der
+Verneinung davor mit („no hook measures this, and a gate refuses…" bleibt grün) — eine zweite
+unfangbare Form neben (c); und umgekehrt schneidet jeder Punkt oder Doppelpunkt aus Abkürzung
+(„e.g."), Code-Span oder Abschnittsnummer („§2.5") den Vorlauf und meldet einen ehrlichen Satz
+als Überbehauptung — Über-Verweigerung, die laut scheitert und einen späteren ehrlichen
+Umschreiber zur Umformulierung schickt.
+
+**Urteil: Rest.** (a) ist die eine echte Lücke mit Leserichtung zum Nutzer und trägt ihre
+Schließrichtung; (b), (c) und (d) sind die ehrlich ausgewiesenen Grenzen eines Prosa-Tests — die
+Alternative wäre die Behauptung, ein Text-Test könne Verhalten messen, und genau die Behauptung
+verbietet dieses Repo sich.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

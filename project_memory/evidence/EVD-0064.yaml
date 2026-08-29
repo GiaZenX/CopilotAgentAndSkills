@@ -1,0 +1,27 @@
+id: EVD-0064
+kind: review
+related:
+- TSK-0089
+- FR-0052
+- FR-0059
+result: pass
+summary: 'verifier PASS round 2 for diff:f8ca6cb1f6efc71aff5dafca7a2f9f54808d4784398c7cbd181d72036c3745d5
+  -- TSK-0089: the decisions-first answering rule in every kit''s lead SKILL + agent
+  file (the surface that LOADS at answer time, per lead_package''s measured load model),
+  honest no-enforcement limit verbatim, 7 dangling DEC-0001 pointers repaired and
+  a resolution test standing (126 pointers, 38 files). Verifier round 1 FAIL: the
+  honesty tripwire''s 90-char window was BLIND (both overclaim forms affirmed=0 in
+  the SKILL -- a ''gate refuses'' claim would have shipped); fixed with the verifier''s
+  measured sketch (clause-boundary cut), six mutations red in round 2 incl. his round-1
+  cases; apostrophe alternative dropped from the pointer reader (model_tiers.yaml:31
+  read again, new floor pins it); latent over-demand removed (extra constitution section
+  no longer reds, drift still does). Verifier PASS round 2 with all claims replayed;
+  his fourth measured boundary (comma-join / abbreviation cut) carried into H73(d).
+  Full suite 3890 passed / 14 named skips / 0 failed. RIDES ALONG, honestly named:
+  docs/reviews/2026-08-29-cd-rebinding-research.md (FR-0059 research, sourced, no
+  code change) -- the durable-home lesson from TSK-0088''s F2 applied the same day'
+artifact_refs:
+- staging/TSK-0089/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-29T09:03:02'

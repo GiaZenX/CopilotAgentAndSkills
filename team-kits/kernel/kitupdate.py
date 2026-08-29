@@ -1,6 +1,7 @@
 """Updating the KIT an installed project runs -- and stopping the session that ran the update.
 
-THE FLOW THIS RESTORES (FR-0006, DEC-0001). V1 told the lead "on the user's OK, run the scaffold".
+THE FLOW THIS RESTORES (FR-0006, whose own decision record this store no longer holds -- it is
+the canonical item BUG-0020 deleted). V1 told the lead "on the user's OK, run the scaffold".
 V2 turned that into "ASK THE USER TO RUN it -- you cannot run either yourself", which was a SIDE
 EFFECT of `gate_write_scope` refusing every write-capable command line that names the enforcement
 layer, not a decision about the update flow. Measured 2026-08-16 against a project scaffolded

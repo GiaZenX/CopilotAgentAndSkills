@@ -1,4 +1,4 @@
-generated_at: '2026-08-29T06:56:20'
+generated_at: '2026-08-29T09:03:02'
 items:
 - id: BUG-0001
   type: BUG
@@ -1166,6 +1166,18 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0063
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0064
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1423,13 +1435,6 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
-- id: FR-0052
-  type: FR
-  title: Kit PMs answer target-state questions from the DECISIONS first, not from
-    built files -- the same discipline the harness lead just adopted
-  status: OPEN
-  revision: 1
-  approval_ref: null
 - id: FR-0054
   type: FR
   title: 'Kernel contract: optional BUG->SR link (related_sr) so software bugs can
@@ -1454,6 +1459,13 @@ items:
   type: FR
   title: 'Der Bestand luegt nach oben: gelieferte Wuensche und reparierte Fehler stehen
     weiter als offen -- eine Bestandsaufnahme plus ein ableitbarer Erledigt-Begriff'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0059
+  type: FR
+  title: 'Claude Code 2.1.246: /cd binds the target project''s settings/hooks/MCP/skills/agents
+    IMMEDIATELY -- measure what that does to the restart model and the gate story'
   status: OPEN
   revision: 1
   approval_ref: null

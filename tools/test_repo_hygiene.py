@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Repo hygiene: git must not TRACK a file it also IGNORES, a file name must not lie about whose
-report it holds, a test must not leave its `sys.path` entry to the next test, and a PowerShell
-launcher must not be started where nobody asked whether this host has one.
+report it holds, a test must not leave its `sys.path` entry to the next test, a PowerShell
+launcher must not be started where nobody asked whether this host has one, and a shipped kit file
+must not point at a decision this store no longer holds.
 
 WHY THIS IS THE RIGHT SUBJECT, and not "is ModuleAnalysisCache absent". A `.gitignore` rule has no
 effect on a path git already tracks, so a tool trace that was committed once (a PowerShell module
@@ -336,6 +337,141 @@ def test_no_powershell_launch_in_this_suite_runs_without_asking_the_host_for_one
         "they could not measure (BUG-0069). Remedy: `test_hooks_v2.powershell_or_skip()`, or a "
         "`shutil.which(\"powershell\")` / `os.name` clause in the test or its callers:\n  "
         + "\n  ".join(offenders))
+
+
+# =================== a shipped text may not point at a decision this store does not hold (FR-0052)
+_DEC_ID_RX = re.compile(r"\bDEC-\d{4}\b")
+# A delimited literal: a code span, or a double-quoted span. Pairing is positional, the way
+# CommonMark pairs a code span; `guard_memory_budget._CODE_SPAN_RX` pairs backticks only, and the
+# double quote is added here because this corpus quotes offending PROSE as well as code.
+#
+# NO SINGLE-QUOTE ALTERNATIVE, and it is not an oversight. It was here for one round: in English
+# prose `'…'` pairs ordinary APOSTROPHES, so a possessive opens a span that runs to the next
+# apostrophe and blinds the reader to everything between. A delimiter a language also uses as a
+# letter cannot mark a literal. Measured over the shipped tree 2026-08-29, the alternative was the
+# ONLY thing hiding one span -- and it was `team-kits/model_tiers.yaml` line 31, "DEC-0034's T3
+# rung", in the very file this reader cites as the pointer form it generalises (126 pointers judged
+# without it, 125 with).
+_DELIMITED_RX = re.compile(r"`[^`\n]*`|\"[^\"\n]*\"")
+
+
+def _dec_citations(text):
+    """Every match in `text` that CITES a decision of this repo's store, as match objects.
+
+    THE DEFINITION, because "every DEC id" is not it. A shipped kit file also EXHIBITS ids: the file
+    name inside a measured command line, the literal in a byte measurement, the quoted prose a
+    guard's docstring shows as its own false positive. Those are DATA the sentence is about, and in
+    this tree data is written inside a delimiter. So an id is a CITATION unless it sits inside a
+    delimited literal whose content is MORE than the id itself; a span that is exactly the id stays a
+    citation, because that is the pointer form this round generalises (`team-kits/model_tiers.yaml`
+    writes its two that way).
+
+    WHAT THIS DOES NOT READ, said here rather than discovered later, and stated as the MECHANISM
+    rather than as an example of it: ANY id inside a delimiter longer than itself is unjudged,
+    whatever the delimited text is. Measured on the shipped tree 2026-08-29, twenty-two double-quoted
+    spans carry an id. Six of them are the DATA this exemption is for (three measured command paths,
+    three quoted illustrations). The other sixteen are text somebody READS -- thirteen kernel refusal
+    and briefing messages (`kernel/cli.py`, `kernel/migrate.py`, `kernel/state.py`,
+    `kernel/dispatch.py`, `kernel/checkpoints.py`) and three handover-marker literals -- and a
+    pointer that rots in one of those rots in front of a user at the moment a gate refuses. The other
+    direction: in bare prose the reader cannot tell a citation from an illustration, so an
+    illustrative id written without delimiters is reported although nothing rots -- the same error
+    direction `guard_memory_budget` chose for the same ambiguity, with the same remedy: delimit it.
+    """
+    exempt = [(span.start(), span.end()) for span in _DELIMITED_RX.finditer(text)
+              if not _DEC_ID_RX.fullmatch(span.group(0)[1:-1].strip())]
+    return [hit for hit in _DEC_ID_RX.finditer(text)
+            if not any(start <= hit.start() < end for start, end in exempt)]
+
+
+def _shipped_kit_files():
+    """(relative path, text) for every readable file under `team-kits/` -- the shipped tree."""
+    kits = os.path.join(ROOT, "team-kits")
+    for base, subdirs, names in os.walk(kits):
+        subdirs[:] = [name for name in subdirs if name != "__pycache__"]
+        for name in sorted(names):
+            path = os.path.join(base, name)
+            try:
+                with open(path, encoding="utf-8") as handle:
+                    yield os.path.relpath(path, ROOT).replace(os.sep, "/"), handle.read()
+            except (OSError, UnicodeDecodeError):
+                continue
+
+
+def _decisions_in_the_store():
+    """The DEC ids this repo holds, off the KERNEL's own layout rather than a path typed here.
+
+    `ProjectState.active_dir` and `archive_root` are the builders every kernel write uses, so a store
+    that reorganises moves this reader with it. Read rather than asked item by item: the kernel's own
+    `exists_anywhere` wants the lock held, and a test that takes the state lock writes a lock file
+    into canonical state to answer a read-only question.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.state import ProjectState
+    store = ProjectState(os.path.join(ROOT, "project_memory"))
+    found = set()
+    for pattern in (os.path.join(store.active_dir("DEC"), "DEC-*.yaml"),
+                    os.path.join(store.archive_root(), "DEC", "*", "DEC-*.yaml")):
+        found.update(os.path.basename(path)[:-len(".yaml")] for path in glob.glob(pattern))
+    return found
+
+
+def test_every_decision_pointer_in_a_shipped_kit_file_resolves():
+    """A kit file that names a DEC as its reason must name one this store still has (FR-0052).
+
+    WHY THE SUBJECT IS DEC AND NOT EVERY ITEM TYPE, measured rather than assumed. This round adds
+    pointers in the direction `team-kits/model_tiers.yaml` already goes -- a shipped line naming the
+    decision behind it -- and a pointer nobody can follow is the failure this repo keeps re-learning.
+    Widening the same reader to all eighteen id prefixes was run over the tree on 2026-08-29: 59
+    non-resolving spans, of which the large majority are PLACEHOLDER ids of a PROJECT's store (the
+    `project_memory/README.md` layout tables, the migration fixtures, a `proc_hash.py` usage line) --
+    a different question, answered by a different store. DEC is the type a kit file cites as a
+    REASON, and this repo's decisions are the store that answers.
+
+    MEASURED RED before the repair of this round, over the shipped tree: three sites, seven spans.
+    `kernel/kitupdate.py` cited DEC-0001 as the decision behind the update flow, and both
+    `gate_write_scope.py` comments (in all three kits) named the same id -- which BUG-0020 deleted
+    from this store the night it was measured and nobody restored. The id is unallocatable, so those
+    three pointers could never be followed again.
+    """
+    store = _decisions_in_the_store()
+    assert len(store) >= 40, (
+        "only %d decision items found -- the store layout moved and this reader is judging every "
+        "pointer against an empty set" % len(store))
+    judged, offenders = 0, []
+    for rel, text in _shipped_kit_files():
+        for hit in _dec_citations(text):
+            judged += 1
+            if hit.group(0) not in store:
+                offenders.append("%s:%d %s" % (rel, text[:hit.start()].count("\n") + 1,
+                                               hit.group(0)))
+    assert not offenders, (
+        "these shipped kit files cite a decision that is in neither decisions/active/ nor "
+        "archive/DEC/, so the reason they point at cannot be read:\n  " + "\n  ".join(offenders))
+    assert judged >= 100, (
+        "only %d decision pointers judged across team-kits/ -- the reader stopped matching, and "
+        "then every assertion above is vacuously true" % judged)
+
+
+def test_the_decision_pointer_reader_can_tell_a_citation_from_a_literal():
+    """The floor under `_dec_citations`, so "return every id" and "return none" both fail here.
+
+    Without it the test above rests on nothing: a reader that yielded nothing would look identical to
+    a clean tree, and one that yielded everything would go red on the four measured places where a
+    kit file EXHIBITS an id instead of citing one. Each probe below is the shape of one of them.
+    """
+    def found(text):
+        return [hit.group(0) for hit in _dec_citations(text)]
+
+    assert found("the reason is DEC-0034") == ["DEC-0034"]          # bare prose: a citation
+    assert found("`DEC-0034` records the ladder") == ["DEC-0034"]   # the model_tiers.yaml form
+    # A POSSESSIVE IS NOT A DELIMITER. With `'…'` among the alternatives this line read as one
+    # literal and the pointer vanished -- the regression that cost model_tiers.yaml:31 a round.
+    assert found("the kit's endpoints sit on DEC-0034's ladder") == ["DEC-0034"]
+    assert found("`project_memory/decisions/active/DEC-0001.yaml`") == []   # a measured path
+    assert found("the literals `id: DEC-0000` and `status: VALID`") == []   # a byte measurement
+    assert found('"a DEC-2100 controller" reads as a decision id') == []    # quoted prose
+    assert found("`rm -f \"x/DEC-0001.yaml\"` rc 0") == []                  # a measured command
 
 
 if __name__ == "__main__":

@@ -5,6 +5,10 @@
         "digest": "2c828b5a0294e330",
         "hooks": []
       },
+      "Answering WHY / what the target is — the decisions before the code": {
+        "digest": "8b9d02ca19d9646e",
+        "hooks": []
+      },
       "Delegation": {
         "digest": "260c86ab1e05c626",
         "hooks": []
@@ -195,6 +199,10 @@
         "digest": "9a5ce1ce3e0bed9f",
         "hooks": []
       },
+      "A question about WHY, or about the TARGET state — the decisions first, then the code": {
+        "digest": "2dfde2b40f787931",
+        "hooks": []
+      },
       "Defects (bugs)": {
         "digest": "8a0116b4eab79404",
         "hooks": []
@@ -253,6 +261,10 @@
     "agents/office-manager.md": {
       "(preamble)": {
         "digest": "74315f56a4b37182",
+        "hooks": []
+      },
+      "Answering WHY / what the target is — the decisions before the code": {
+        "digest": "8b9d02ca19d9646e",
         "hooks": []
       },
       "Memory": {
@@ -419,6 +431,10 @@
         "digest": "4124ad0e79797577",
         "hooks": []
       },
+      "A question about WHY, or about the TARGET state — the decisions first, then the code": {
+        "digest": "2dfde2b40f787931",
+        "hooks": []
+      },
       "Kit updates": {
         "digest": "5543de19b80ef1dc",
         "hooks": [
@@ -446,6 +462,10 @@
     "agents/project-manager.md": {
       "(preamble)": {
         "digest": "ef4b131642d3e134",
+        "hooks": []
+      },
+      "Answering WHY / what the target is — the decisions before the code": {
+        "digest": "8b9d02ca19d9646e",
         "hooks": []
       },
       "Delegation": {
@@ -636,6 +656,10 @@
     "skills/project-manager/SKILL.md": {
       "(preamble)": {
         "digest": "59c4bd9874b44109",
+        "hooks": []
+      },
+      "A question about WHY, or about the TARGET state — the decisions first, then the code": {
+        "digest": "2dfde2b40f787931",
         "hooks": []
       },
       "Defects, changes and the inbox": {

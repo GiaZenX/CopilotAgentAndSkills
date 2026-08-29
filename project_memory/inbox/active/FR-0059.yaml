@@ -1,0 +1,31 @@
+id: FR-0059
+title: 'Claude Code 2.1.246: /cd binds the target project''s settings/hooks/MCP/skills/agents
+  IMMEDIATELY -- measure what that does to the restart model and the gate story'
+request_text: 'User-supplied changelog quote 2026-08-29 (2.1.246): ''/cd picks up
+  the new project''s setup immediately: After you move a session to another directory,
+  that project''s settings, hooks, MCP servers, skills, and agents apply right away.
+  Before, they only loaded on --resume.'' Two standing assumptions are touched: (1)
+  the kits'' install and update flows END with ''restart the session'' because settings/agents/hooks
+  were believed to bind only at session start (kit-update-flow decision 2026-08-04,
+  scaffold step 5, HANDOVER_PENDING marker); if /cd re-binds live, part of that ceremony
+  may be droppable -- or may NOT be, if the agent binding or the PM role activation
+  behaves differently from hooks. (2) the repo''s own gate story says ''was beim Sitzungsstart
+  bindet, ist die Registrierung'' -- if a mid-session /cd swaps the registration set,
+  that sentence and any protection built on it need re-measurement (can a session
+  cd into a prepared directory and acquire ITS hooks -- or shed ours?). Research wanted
+  (Sonnet): the exact changelog wording and any docs on /cd semantics, what applies
+  immediately vs still needs restart (agent: binding? statusline? permissions?), and
+  version availability. Then a MEASUREMENT plan for our own rigs. Source: user message
+  2026-08-29.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T08:29:01'
+source: docs/reviews/2026-08-29-cd-rebinding-research.md
+triage_result: 'Research done 2026-08-29 (Sonnet, sourced): /cd is NOT model-invocable
+  (no self-shedding of gates via prompt injection -- human-typed only, trust dialog
+  lists the hooks interactively); the restart assumption is broken for /cd since 2.1.246
+  for hooks/settings/MCP/skills; whether the agent: session binding switches too is
+  UNDOCUMENTED and the key open question; CLAUDE_PROJECT_DIR stays at the start dir;
+  this host ran 2.1.239 at research time. Measurement plan (9 steps) in the doc; ceremony
+  changes only after a measuring round.'

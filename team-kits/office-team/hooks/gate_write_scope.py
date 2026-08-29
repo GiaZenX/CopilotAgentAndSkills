@@ -155,7 +155,7 @@ _INLINE_KERNEL_RX = re.compile(
 # but ONLY where the VERB in front of the flag actually takes a message. Binding the removal to the
 # flag spelling alone was BUG-0020/H34: under `re.IGNORECASE` the `-F` alternative folds onto `rm`'s
 # `-f`, `-b` is `cp`'s backup, and the removal deleted the quoted PATH behind them from EVERY reader
-# at once — measured as the loss of a canonical item (DEC-0001, `rm -f "project_memory/.../DEC-0001.yaml"`
+# at once — measured as the loss of a canonical item (`rm -f "project_memory/.../DEC-0001.yaml"`
 # rc 0, the file gone). `_MESSAGE_FLAG_RX` still finds the flag+span; `_VerbBoundMessageRemoval.sub`
 # is what decides, per segment, whether the verb is one that takes a message before it blanks.
 # `--body`/`-F`/`--description` stay for the forge CLIs (`gh`/`hub`/`glab`): a refusal's own remedy
@@ -203,8 +203,9 @@ class _VerbBoundMessageRemoval:
     Quacks like a compiled pattern for the ONE method its two callers use — `.sub(repl, text)`, so
     it drops in where `re.compile(...)` stood without either caller changing. `handle_shell` below
     calls it, and so does the repo's `_harness._prose_removed`, which IMPORTS this object: that gate
-    is the one BUG-0020 walked through when it deleted DEC-0001, so binding the removal here closes
-    the hole for it too, without a second answer to "what is prose" living in `.claude/` (H15).
+    is the one BUG-0020 walked through when it deleted a canonical decision item, so binding the
+    removal here closes the hole for it too, without a second answer to "what is prose" living
+    in `.claude/` (H15).
 
     The verb test lives INSIDE `.sub` rather than in a lookbehind the regex engine cannot express
     (a verb is variable-width): the span is blanked, the verb and flag around it are LEFT for the

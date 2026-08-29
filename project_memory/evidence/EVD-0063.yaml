@@ -1,0 +1,21 @@
+id: EVD-0063
+kind: test
+related:
+- BUG-0069
+- TSK-0088
+result: pass
+summary: 'THE HOSTED PROOF, measured: GitHub run 33234998945 on 701f5ac concluded
+  SUCCESS on BOTH platforms (check windows-latest: success, check ubuntu-latest: success)
+  -- the first green hosted run in this repository''s history. This is the residue
+  EVD-0062 held open: the 69 ubuntu tests that had never executed on the runner (they
+  died in collection under the sys.path leak) ran there for the first time, on the
+  runner''s own CPython, and passed. AC-1 of BUG-0069 is thereby measured, not hoped:
+  a tree whose local delivery suite is green now concludes green on both hosted platforms,
+  with every environment-impossible measurement an explicit counted skip. The inverted
+  external signal is repaired -- the next ''All jobs have failed'' mail the user gets
+  will mean something again'
+artifact_refs:
+- staging/TSK-0088/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-29T07:57:21'

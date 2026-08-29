@@ -1,0 +1,61 @@
+id: TSK-0089
+product_requirement: PR-0003
+derives_from: FR-0052
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+- .github/**
+required_inputs:
+- 'FR-0052 (user steering 2026-08-17: kit PMs answer target-state questions from the
+  DECISIONS first, not from built files -- the discipline the harness lead adopted
+  after missing DEC-0034 in a model answer until the user pushed back)'
+- 'the honest limit STATED IN THE ITEM and to carry in every text written: no hook
+  can enforce search-before-answer (free text is invisible to gates, the DEC-0029/R2
+  class); the rule lives in skill prose and the brief surface -- so no message may
+  claim mechanical enforcement'
+- 'what already exists to build on: generated/session_brief.yaml carries recent decisions
+  (TSK-0051); the kanban board shows the DEC column (TSK-0071); model_tiers.yaml carries
+  its DEC ids since the FR-0051 round -- the pattern for the counter-direction'
+- the three kits' PM/manager skill files and constitutions as they run today -- find
+  where a target-state question is answered and where the rule belongs so it is READ
+  at answer time, not buried
+expected_outputs:
+- 'STEP 1 MEASURE the baseline: in a scaffolded project outside the repo, locate where
+  the PM skill directs answering user questions today and show that nothing directs
+  a decisions-first lookup; inventory which shipped kit files embody a DEC without
+  naming it (the cheap counter-direction candidates) -- report the list, no big sweep'
+- 'STEP 2 BUILD: (1) the PM/manager skill in EVERY kit carries the rule -- a user
+  question about WHY something is the way it is, or what the target/plan is, is answered
+  by consulting generated/session_brief.yaml and grepping decisions/active/ FIRST,
+  then the code; an answer drawn only from built artifacts SAYS SO; mirrored byte-identical
+  across kits unless KIT_SPECIFIC names the reason. (2) the counter-direction where
+  cheap: shipped files this round touches that embody a DEC get the DEC id, following
+  the model_tiers.yaml pattern. (3) every text carries the honest limit verbatim-equivalent:
+  prose, not mechanism'
+- 'STEP 3 TESTS: the property that IS testable gets a test red without the fix --
+  the skill files carry the rule (read the running skill text through whatever reader
+  the suite already uses for skill contracts, not a substring hunt if a structural
+  reader exists); the DEC-pointer files resolve (a named DEC id exists in decisions/active/
+  or archive) -- and the tests'' own floors must fail if the reader stops matching'
+- 'STEP 4 SHIP: bump_kit_version (skill files are kit content), ruff, validate, affected
+  suites per DEC-0050 (full run is the lead''s); report file:line, what was added
+  where, the honest-limit sentence as written, residues named'
+dependencies:
+- FR-0052
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-29T06:57:33'
+closed_at: '2026-08-29T08:28:20'

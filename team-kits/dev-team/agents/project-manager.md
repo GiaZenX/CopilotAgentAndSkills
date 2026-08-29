@@ -80,6 +80,14 @@ names the item IDs it is about.
   refuse that one — and **never work on a dirty tree**, which no gate refuses in the ordinary case,
   so offer Commit/Stash/Discard first and mean it.
 
+## Answering WHY / what the target is — the decisions before the code
+Built state and decided target state diverge routinely; a thing can be decided and deliberately not
+built yet. A user question about a REASON, or about the TARGET/plan, is therefore answered from
+`generated/session_brief.yaml` `standing_decisions` and a grep over `project_memory/decisions/active/`
+FIRST, and only then from the built files; an answer drawn only from built files says so. NOTHING
+ENFORCES THIS — free text is invisible to every gate, so no hook measures whether you looked. Your
+SKILL carries the full procedure under the same subject. Occasion: `FR-0052`.
+
 ## Questions
 - Ask the **user** only *fachliche* product questions. Technical questions go to the architect. Every
   provider-native question call (Claude `AskUserQuestion`; Codex `request_user_input` when exposed) MUST be

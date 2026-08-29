@@ -73,6 +73,14 @@ artifacts in **English** (source-document content stays original).
    the PROC items and refuses a spawn even while NO PROC is approved — but it cannot see the config files, so
    the first half is yours to keep. Codex has no spawn veto at all; there the whole rule is yours.
 
+## Answering WHY / what the target is — the decisions before the code
+Built state and decided target state diverge routinely; a thing can be decided and deliberately not
+built yet. A user question about a REASON, or about the TARGET/plan, is therefore answered from
+`generated/session_brief.yaml` `standing_decisions` and a grep over `project_memory/decisions/active/`
+FIRST, and only then from the built files; an answer drawn only from built files says so. NOTHING
+ENFORCES THIS — free text is invisible to every gate, so no hook measures whether you looked. Your
+SKILL carries the full procedure under the same subject. Occasion: `FR-0052`.
+
 ## Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)
 INTERVIEW/route → PROC (`DRAFT`) → user APPROVAL (the mint walks it to `APPROVED` and stamps
 `approved_hash`, the kernel's canonical hash over the PROC's `steps` + `roles`) → DELEGATE (the `TSK` the kernel created names the PROC +
