@@ -598,10 +598,10 @@ if (Test-Path $cfg) {
 # the PM until every line is merged or consciously skipped and the file is DELETED.
 # WHICH repo scripts the KIT owns (always overwritten, never copy-if-absent, never pending) is DATA,
 # not a list in this file: `repo_kit_owned.txt` beside this script, read by BOTH scaffold twins so
-# the .ps1 and .sh sets cannot drift. It holds the guarded enforcement scripts (guard_harness_selfmod
-# refuses in-session writes to them, so no other route can deliver a kit fix -- leaving the ledger
-# judge copy-if-absent handed the non-developer user `cp` lines for a file nobody may write, BUG-0068)
-# plus the entry point and the check tooling. See that file's header for the property.
+# the .ps1 and .sh sets cannot drift. WHY a file is on it is written beside each entry in that
+# file's header -- the guarded enforcement scripts (no other route can deliver a kit fix to them,
+# BUG-0068), the entry point, the check tooling, the money reader (BUG-0072) -- and that header is
+# the authority, not this comment.
 $kitOwned = @()
 $kitOwnedFile = Join-Path $kitsRoot "repo_kit_owned.txt"
 if (Test-Path $kitOwnedFile) {
@@ -639,7 +639,7 @@ if (Test-Path $repoTplSrc) {
 $pendFile = Join-Path $repo ".claude\kit_update_pending.repo"
 $stateFile = Join-Path $repo ".claude\kit_update_pending.state"
 if ($keptList.Count -gt 0) {
-    $lines = @("# Repo templates this project customised that ALSO changed in kit $Team $((Get-Content (Join-Path $kit 'VERSION') -TotalCount 1 -ErrorAction SilentlyContinue)) (line-ending style ignored) -- the PM works each through the normal loop: merge the wanted kit fix, or record a conscious skip as a decision item (decisions/active/), then DELETE this file. session_status reminds every session until it is gone. Only PROJECT-CUSTOMISABLE templates appear here; the kit's own guarded enforcement and entry scripts (guard_harness_selfmod's protected set, e.g. scripts/ledger_add.py, and scripts/harness.py) are refreshed by the installer on every run and never land on this list, so nothing here needs a route a session forbids (BUG-0068).")
+    $lines = @("# Repo templates this project customised that ALSO changed in kit $Team $((Get-Content (Join-Path $kit 'VERSION') -TotalCount 1 -ErrorAction SilentlyContinue)) (line-ending style ignored) -- the PM works each through the normal loop: merge the wanted kit fix, or record a conscious skip as a decision item (decisions/active/), then DELETE this file. session_status reminds every session until it is gone. Only PROJECT-CUSTOMISABLE templates appear here; the scripts the KIT owns (listed in the installer's repo_kit_owned.txt, each with the reason it is there -- the enforcement layer, the entry point, the money reader) are refreshed by the installer on every run and never land on this list, so nothing here needs a route a session forbids (BUG-0068).")
     $lines += ($keptList | ForEach-Object { "- $_" })
     Set-Content -Path $pendFile -Value $lines -Encoding utf8
     # fresh REAL update -> fresh nag counter; a same-version re-run must NOT reset the

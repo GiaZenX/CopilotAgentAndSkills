@@ -1108,6 +1108,28 @@ def test_every_guarded_repo_template_is_refreshed_by_the_scaffold(tmp_path):
         "guarded" % refused)
 
 
+def test_every_kit_owned_path_is_shipped_by_some_kit():
+    """The other end of the manifest: a line that matches nothing delivers nothing.
+
+    The scaffold matches an owned entry against the templates it is placing, so a path that no kit
+    ships any more (renamed, moved, dropped) simply never fires -- and the file it used to name
+    goes back to copy-if-absent without a word. That is silent for exactly the files that are on
+    this list because silence is expensive: the ledger judge, the entry point, the money reader
+    (BUG-0072). The invariant in the other direction -- every guarded template is owned -- is
+    `test_every_guarded_repo_template_is_refreshed_by_the_scaffold` above.
+    """
+    shipped = set()
+    for kit in KITS:
+        shipped |= set(_repo_templates(kit))
+    owned = _owned_repo_scripts()
+    assert owned, "the manifest parsed to nothing; the reader stopped reaching it"
+    orphans = sorted(owned - shipped)
+    assert not orphans, (
+        "%s names %s, which no kit ships as a repo template: the scaffold never matches those "
+        "lines, so those files are copy-if-absent again without anyone being told"
+        % (os.path.relpath(KIT_OWNED_MANIFEST, ROOT), orphans))
+
+
 def test_a_guarded_script_is_refreshed_and_a_line_ending_drift_is_not_pending(tmp_path):
     """BUG-0068 end to end on a REAL office scaffold: both live defects, in one re-scaffold.
 

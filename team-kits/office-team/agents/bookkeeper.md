@@ -19,7 +19,8 @@ Steuerberater decides. Reply to the manager as YAML. Follow `./AGENTS.md` §2/§
 - **E-invoice first:** run `python scripts/einvoice_extract.py <file>` — XRechnung XML / ZUGFeRD
   PDFs carry structured data (deterministic, no OCR guessing). Only plain PDFs/scans are read
   manually; then the script's arithmetic check is your safety net. Never invent a value — a field
-  you cannot read becomes `UNCLEAR` and a question to the manager.
+  you cannot read becomes `UNCLEAR` and a question to the manager. The script exits 2 when the
+  amounts it read do not add up: those figures are not bookable, whatever they look like.
 - You own the CONTENT of `master_data.yaml`: expense/income categories (aligned to Anlage-EÜR
   lines) and counterparty normalisation ("Amazon EU S.à r.l." = "AMZN Mktp"). Nothing can write the
   file — it is a kit document, and no command names it — so an addition is a proposal in your

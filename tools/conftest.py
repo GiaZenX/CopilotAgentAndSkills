@@ -376,3 +376,27 @@ def _no_test_leaks_an_import_path():
     yield
     if sys.path != before:
         sys.path[:] = before
+
+
+@pytest.fixture(autouse=True)
+def _no_test_leaks_an_environment_variable():
+    """Hand every test back the environment it started with, for the same reason as `sys.path`.
+
+    An environment variable is inherited by every subprocess a LATER test starts, so a leak here
+    does not stay in the process that made it. Measured 2026-08-29 on pristine HEAD: two tests in
+    `test_hooks.py` set `$HARNESS_KERNEL_PATH` with a bare assignment, the entry point treats that
+    variable as authoritative by design, and every `test_kitupdate.py` run in the same session then
+    watched an "old stock" project answer out of THIS repo's kernel -- two tests red whenever
+    `test_hooks.py` went first, green whenever they ran alone, which reads as flakiness and cost a
+    round a wrong diagnosis.
+
+    RESTORED rather than asserted, like the path above: an assertion here fires during teardown,
+    where `monkeypatch` has not undone its own work yet, and would report the tests that did it
+    RIGHT. `test_repo_hygiene.test_no_test_in_this_suite_leaks_an_environment_variable` is the
+    measurement.
+    """
+    before = dict(os.environ)
+    yield
+    if os.environ != before:
+        os.environ.clear()
+        os.environ.update(before)

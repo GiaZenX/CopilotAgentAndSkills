@@ -10578,7 +10578,7 @@ def test_a_leading_redirect_does_not_hide_the_command_behind_it(tmp_path, comman
     assert _tripwire(tmp_path, command) == 2
 
 
-def test_the_door_answers_an_empty_line_as_closed_not_as_open(tmp_path):
+def test_the_door_answers_an_empty_line_as_closed_not_as_open(tmp_path, monkeypatch):
     """Verifier round 3, V1's second half: `[] is not None`, so an empty answer read as ALLOW.
 
     Asked of `open_the_door` DIRECTLY, and that is the honest place for it: after `_filing._tokens`
@@ -10594,7 +10594,13 @@ def test_the_door_answers_an_empty_line_as_closed_not_as_open(tmp_path):
     guard = load_kit_module("guard_fs_tripwire",
                             os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
     _office_documents(tmp_path, archived="rechnung\n")
-    os.environ["HARNESS_KERNEL_PATH"] = os.path.join(ROOT, "team-kits")
+    # THROUGH monkeypatch, so it dies with this test: the entry point treats this variable as
+    # authoritative, so a leaked one redirects every LATER subprocess in the session at this repo's
+    # kernel. Set process-wide here and in the neighbour below, it made two `test_kitupdate.py`
+    # tests fail in every session where this file ran first -- their old-stock project answered out
+    # of the repo's kernel instead of its own -- and pass alone, which reads as flakiness.
+    # `conftest._no_test_leaks_an_environment_variable` now catches the class; this is the source.
+    monkeypatch.setenv("HARNESS_KERNEL_PATH", os.path.join(ROOT, "team-kits"))
     assert guard.correction_authority(str(tmp_path)) is not None, (
         "the fixture must have a readable approval store, or this measures the wrong refusal")
     honoured, refused, offender = guard.open_the_door(str(tmp_path), guard.Line([], [], None))
@@ -10668,7 +10674,8 @@ def test_the_cap_stays_inside_the_budget_it_exists_for(tmp_path):
                                     guard.CORRECTION_BUDGET_SHARE, guard.CORRECTION_COST_SECONDS))
 
 
-def test_the_door_reads_the_approval_store_once_however_many_documents_a_line_names(tmp_path):
+def test_the_door_reads_the_approval_store_once_however_many_documents_a_line_names(tmp_path,
+                                                                                    monkeypatch):
     """The other half of F3, and the one a cap alone would not give: the cost PER OPERAND.
 
     Asking the kernel per operand walked the whole approval store per operand, so the cost of a
@@ -10690,7 +10697,7 @@ def test_the_door_reads_the_approval_store_once_however_many_documents_a_line_na
     _office_documents(tmp_path, **{name: "scan %s\n" % name for name in documents})
     for name in documents:
         _grant_correction(tmp_path, name, reason="Doppelscan")
-    os.environ["HARNESS_KERNEL_PATH"] = os.path.join(ROOT, "team-kits")
+    monkeypatch.setenv("HARNESS_KERNEL_PATH", os.path.join(ROOT, "team-kits"))  # see the neighbour
     line = guard.read_the_line(str(tmp_path), "rm " + " ".join(documents), [str(tmp_path)])
     assert len(line.deletes) == len(documents) and not line.unplaced
 
@@ -10795,25 +10802,357 @@ def test_ledger_refuses_year_mismatch(tmp_path):
 
 
 def test_einvoice_cii_invoice_no_not_guideline_urn(tmp_path):
-    pytest.importorskip("defusedxml")
-    cii = (
-        '<?xml version="1.0"?>'
-        '<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"'
-        ' xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100">'
-        '<rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter>'
-        '<ram:ID>urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0</ram:ID>'
-        '</ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>'
-        '<rsm:ExchangedDocument><ram:ID>RE-2026-0815</ram:ID>'
-        '<ram:IssueDateTime><udt:DateTimeString xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100"'
-        ' format="102">20260701</udt:DateTimeString></ram:IssueDateTime></rsm:ExchangedDocument>'
-        '</rsm:CrossIndustryInvoice>')
-    xml_path = tmp_path / "invoice.xml"
-    xml_path.write_text(cii, encoding="utf-8")
-    r = subprocess.run([sys.executable, os.path.join(OFFICE_SCRIPTS, "einvoice_extract.py"),
-                        str(xml_path)], capture_output=True, text=True, timeout=60)
+    # The summation is here so the run reaches exit 0: since BUG-0072 a document whose money triple
+    # is absent is refused (exit 2), and this test's subject is the invoice NUMBER.
+    r = _einvoice(tmp_path, _cii(SUMS_TO_119, guideline_urn=True, invoice_no="RE-2026-0815",
+                                 issue_date="20260701"))
     assert r.returncode == 0, r.stderr
     assert "invoice_no: RE-2026-0815" in r.stdout and "urn:cen.eu" not in r.stdout.split("invoice_no:")[1].splitlines()[0]
     assert "issue_date: 2026-07-01" in r.stdout
+
+
+# ---------------- BUG-0072: the money a real e-invoice states, or a refusal -----------------------
+# The fixtures are BUILT, not pasted: every test below states only the elements it is about, so a
+# reader sees the difference between two cases instead of two walls of XML. Synthetic throughout --
+# the invoice that produced BUG-0072 carries the user's business data and is not copied into a
+# fixture; only its SHAPE is (many line items, each with its own LineTotalAmount).
+CII_NS = ('xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100"'
+          ' xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100"'
+          ' xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100"')
+UBL_NS = ('xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"'
+          ' xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"'
+          ' xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"')
+# 100.00 + 19.00 = 119.00: the smallest triple that reconciles, for tests about something else.
+SUMS_TO_119 = ('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+               '<ram:TaxTotalAmount currencyID="EUR">19.00</ram:TaxTotalAmount>'
+               '<ram:GrandTotalAmount>119.00</ram:GrandTotalAmount>')
+
+
+def _cii_line(number, quantity, unit_price, product="Widget, blue"):
+    """One line item, carrying the LINE-level total the old extractor returned as the document net."""
+    return ('<ram:IncludedSupplyChainTradeLineItem>'
+            '<ram:AssociatedDocumentLineDocument><ram:LineID>%d</ram:LineID>'
+            '</ram:AssociatedDocumentLineDocument>'
+            '<ram:SpecifiedTradeProduct><ram:Name>%s</ram:Name></ram:SpecifiedTradeProduct>'
+            '<ram:SpecifiedLineTradeAgreement><ram:NetPriceProductTradePrice>'
+            '<ram:ChargeAmount>%s</ram:ChargeAmount></ram:NetPriceProductTradePrice>'
+            '</ram:SpecifiedLineTradeAgreement>'
+            '<ram:SpecifiedLineTradeDelivery><ram:BilledQuantity>%s</ram:BilledQuantity>'
+            '</ram:SpecifiedLineTradeDelivery>'
+            '<ram:SpecifiedLineTradeSettlement>'
+            '<ram:SpecifiedTradeSettlementLineMonetarySummation>'
+            '<ram:LineTotalAmount>%.2f</ram:LineTotalAmount>'
+            '</ram:SpecifiedTradeSettlementLineMonetarySummation>'
+            '</ram:SpecifiedLineTradeSettlement></ram:IncludedSupplyChainTradeLineItem>'
+            % (number, product, unit_price, quantity, quantity * unit_price))
+
+
+def _cii(summation, lines="", trade_tax="", seller="Muster Handel GmbH", currency="EUR",
+         invoice_no="RE-2026-0001", issue_date="20260811", guideline_urn=False):
+    """A CII document whose header summation is exactly `summation` -- the test's real subject."""
+    context = ''
+    if guideline_urn:
+        # the first ID in the document, and not the invoice number
+        context = ('<ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>'
+                   'urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0'
+                   '</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>')
+    return ('<?xml version="1.0" encoding="UTF-8"?>'
+            '<rsm:CrossIndustryInvoice %s>'
+            '<rsm:ExchangedDocumentContext>%s</rsm:ExchangedDocumentContext>'
+            '<rsm:ExchangedDocument><ram:ID>%s</ram:ID><ram:TypeCode>380</ram:TypeCode>'
+            '<ram:IssueDateTime><udt:DateTimeString format="102">%s</udt:DateTimeString>'
+            '</ram:IssueDateTime></rsm:ExchangedDocument>'
+            '<rsm:SupplyChainTradeTransaction>%s'
+            '<ram:ApplicableHeaderTradeAgreement>'
+            '<ram:SellerTradeParty><ram:Name>%s</ram:Name></ram:SellerTradeParty>'
+            '<ram:BuyerTradeParty><ram:Name>Kaeufer GmbH</ram:Name></ram:BuyerTradeParty>'
+            '</ram:ApplicableHeaderTradeAgreement>'
+            '<ram:ApplicableHeaderTradeDelivery/>'
+            '<ram:ApplicableHeaderTradeSettlement>'
+            '<ram:InvoiceCurrencyCode>%s</ram:InvoiceCurrencyCode>%s'
+            '<ram:SpecifiedTradeSettlementHeaderMonetarySummation>%s'
+            '</ram:SpecifiedTradeSettlementHeaderMonetarySummation>'
+            '</ram:ApplicableHeaderTradeSettlement>'
+            '</rsm:SupplyChainTradeTransaction></rsm:CrossIndustryInvoice>'
+            % (CII_NS, context, invoice_no, issue_date, lines, seller, currency, trade_tax,
+               summation))
+
+
+def _cii_trade_tax(basis, calculated, rate):
+    return ('<ram:ApplicableTradeTax><ram:CalculatedAmount>%s</ram:CalculatedAmount>'
+            '<ram:TypeCode>VAT</ram:TypeCode><ram:BasisAmount>%s</ram:BasisAmount>'
+            '<ram:RateApplicablePercent>%s</ram:RateApplicablePercent></ram:ApplicableTradeTax>'
+            % (calculated, basis, rate))
+
+
+def _ubl(monetary_total, tax_total, lines="", seller="Muster Handel GmbH", currency="EUR"):
+    return ('<?xml version="1.0" encoding="UTF-8"?><Invoice %s>'
+            '<cbc:ID>RE-2026-0001</cbc:ID><cbc:IssueDate>2026-08-11</cbc:IssueDate>'
+            '<cbc:DocumentCurrencyCode>%s</cbc:DocumentCurrencyCode>'
+            '<cac:AccountingSupplierParty><cac:Party>'
+            '<cac:PartyName><cbc:Name>%s</cbc:Name></cac:PartyName>'
+            '</cac:Party></cac:AccountingSupplierParty>'
+            '<cac:AccountingCustomerParty><cac:Party><cac:PartyName>'
+            '<cbc:Name>Kaeufer GmbH</cbc:Name></cac:PartyName></cac:Party>'
+            '</cac:AccountingCustomerParty>%s'
+            '<cac:LegalMonetaryTotal>%s</cac:LegalMonetaryTotal>%s</Invoice>'
+            % (UBL_NS, currency, seller, tax_total, monetary_total, lines))
+
+
+def _einvoice(tmp_path, xml, name="invoice.xml"):
+    """Run the SHIPPED script as its own process, the way the bookkeeper's step 1 runs it."""
+    pytest.importorskip("defusedxml")
+    path = tmp_path / name
+    path.write_text(xml, encoding="utf-8")
+    return subprocess.run([sys.executable, "-B", os.path.join(OFFICE_SCRIPTS, "einvoice_extract.py"),
+                           str(path)], capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=60)
+
+
+def _fields(result):
+    return dict(line.split(": ", 1) for line in result.stdout.splitlines() if ": " in line)
+
+
+def test_einvoice_cii_multi_line_net_is_the_document_total_not_line_one(tmp_path):
+    """BUG-0072, the live case: 420 units at 0.51 across several lines, net 214.20 -- not 14.28.
+
+    Measured on the user's real invoice before the fix (`net: 14.28`, exit 0, no complaint) and
+    after (`net: 214.20`). The shape is what matters and is reproduced here: each line item carries
+    its own `LineTotalAmount`, and every one of them stands BEFORE the header summation in the
+    document, so a first-match-anywhere read returns line one's total as the document net.
+    """
+    lines = "".join(_cii_line(n, q, 0.51) for n, q in ((1, 28), (2, 300), (3, 92)))
+    r = _einvoice(tmp_path, _cii(
+        '<ram:LineTotalAmount>214.20</ram:LineTotalAmount>'
+        '<ram:TaxBasisTotalAmount>214.20</ram:TaxBasisTotalAmount>'
+        '<ram:TaxTotalAmount currencyID="EUR">40.70</ram:TaxTotalAmount>'
+        '<ram:GrandTotalAmount>254.90</ram:GrandTotalAmount>', lines=lines))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _fields(r)["net"] == "214.20", r.stdout
+
+
+def test_einvoice_cii_document_allowance_net_is_the_tax_basis(tmp_path):
+    """The OTHER half of BUG-0072, with no line item involved: name order, not document order.
+
+    A document-level discount makes `LineTotalAmount` (before the discount) and
+    `TaxBasisTotalAmount` (after it) two different numbers inside the SAME summation, and the
+    first stands above the second. Asking for either name and taking whichever came first booked
+    the un-discounted total.
+    """
+    r = _einvoice(tmp_path, _cii(
+        '<ram:LineTotalAmount>1000.00</ram:LineTotalAmount>'
+        '<ram:AllowanceTotalAmount>100.00</ram:AllowanceTotalAmount>'
+        '<ram:TaxBasisTotalAmount>900.00</ram:TaxBasisTotalAmount>'
+        '<ram:TaxTotalAmount currencyID="EUR">171.00</ram:TaxTotalAmount>'
+        '<ram:GrandTotalAmount>1071.00</ram:GrandTotalAmount>'))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _fields(r)["net"] == "900.00", r.stdout
+
+
+def test_einvoice_ubl_document_allowance_net_is_the_tax_exclusive_total(tmp_path):
+    """The same defect in the other syntax: `LineExtensionAmount` precedes `TaxExclusiveAmount`."""
+    r = _einvoice(tmp_path, _ubl(
+        '<cbc:LineExtensionAmount currencyID="EUR">1000.00</cbc:LineExtensionAmount>'
+        '<cbc:TaxExclusiveAmount currencyID="EUR">900.00</cbc:TaxExclusiveAmount>'
+        '<cbc:TaxInclusiveAmount currencyID="EUR">1071.00</cbc:TaxInclusiveAmount>'
+        '<cbc:AllowanceTotalAmount currencyID="EUR">100.00</cbc:AllowanceTotalAmount>'
+        '<cbc:PayableAmount currencyID="EUR">1071.00</cbc:PayableAmount>',
+        '<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">171.00</cbc:TaxAmount>'
+        '<cac:TaxSubtotal><cbc:TaxableAmount currencyID="EUR">900.00</cbc:TaxableAmount>'
+        '<cbc:TaxAmount currencyID="EUR">171.00</cbc:TaxAmount></cac:TaxSubtotal></cac:TaxTotal>'))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _fields(r)["net"] == "900.00", r.stdout
+
+
+def test_einvoice_cii_seller_is_the_party_not_the_first_product_name(tmp_path):
+    """Measured on the same live invoice: `seller: Klick im Preisvergleich - Basiskondition`.
+
+    That is line one's `SpecifiedTradeProduct/Name` -- the product, sitting where the ledger's
+    counterparty comes from. Same mechanism as the net, so it is fixed the same way and named
+    here rather than left for the next reader to trip over.
+    """
+    r = _einvoice(tmp_path, _cii(SUMS_TO_119, lines=_cii_line(1, 100, 1.0, product="Widget, blue"),
+                                 seller="Muster Handel GmbH"))
+    assert _fields(r)["seller"] == "Muster Handel GmbH", r.stdout
+
+
+def test_einvoice_refuses_a_triple_that_does_not_add_up(tmp_path):
+    """The guard, in the direction that matters: a wrong figure never leaves silently.
+
+    Exactly the broken triple the live run returned with exit 0. All three figures are named in
+    the refusal, and each printed money line carries the mark, because one line of this output
+    gets copied on its own.
+    """
+    r = _einvoice(tmp_path, _cii('<ram:TaxBasisTotalAmount>14.28</ram:TaxBasisTotalAmount>'
+                                 '<ram:TaxTotalAmount>40.70</ram:TaxTotalAmount>'
+                                 '<ram:GrandTotalAmount>254.90</ram:GrandTotalAmount>'))
+    assert r.returncode == 2, r.stdout + r.stderr
+    for figure in ("14.28", "40.70", "254.90"):
+        assert figure in r.stderr, r.stderr
+    for key in ("net", "tax", "gross"):
+        assert "UNRECONCILED" in _fields(r)[key], r.stdout
+    assert "UNRECONCILED" not in _fields(r)["invoice_no"], r.stdout
+
+
+def test_einvoice_reconciliation_tolerance_is_one_cent_inclusive(tmp_path):
+    """The named number, measured on both sides of its edge: 0.01 passes, 0.02 does not."""
+    for gross, expected in (("119.01", 0), ("118.99", 0), ("119.02", 2), ("118.98", 2)):
+        r = _einvoice(tmp_path, _cii('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+                                     '<ram:TaxTotalAmount>19.00</ram:TaxTotalAmount>'
+                                     '<ram:GrandTotalAmount>%s</ram:GrandTotalAmount>' % gross))
+        assert r.returncode == expected, "gross %s: rc %s\n%s%s" % (gross, r.returncode, r.stdout,
+                                                                    r.stderr)
+
+
+def test_einvoice_reconciles_several_vat_rates_and_a_zero_taxed_invoice(tmp_path):
+    """The guard's other direction: what must NOT refuse.
+
+    Neither case has a single rate to multiply the net with -- two rates in the first, none in the
+    second -- which is why the identity checked is the document's own sum and not net x (1+rate).
+    """
+    multi_rate = _cii('<ram:TaxBasisTotalAmount>300.00</ram:TaxBasisTotalAmount>'
+                      '<ram:TaxTotalAmount currencyID="EUR">33.00</ram:TaxTotalAmount>'
+                      '<ram:GrandTotalAmount>333.00</ram:GrandTotalAmount>',
+                      trade_tax=_cii_trade_tax("100.00", "19.00", "19")
+                      + _cii_trade_tax("200.00", "14.00", "7"))
+    reverse_charge = _cii('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+                          '<ram:TaxTotalAmount currencyID="EUR">0.00</ram:TaxTotalAmount>'
+                          '<ram:GrandTotalAmount>100.00</ram:GrandTotalAmount>',
+                          trade_tax=_cii_trade_tax("100.00", "0.00", "0"))
+    for xml, net in ((multi_rate, "300.00"), (reverse_charge, "100.00")):
+        r = _einvoice(tmp_path, xml)
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _fields(r)["net"] == net, r.stdout
+
+
+def test_einvoice_refuses_an_incomplete_triple_instead_of_reading_zero(tmp_path):
+    """A document that states no tax total gets a refusal, not an assumed 0.00.
+
+    `100.00 + MISSING = 100.00` is arithmetically inviting and is exactly the invention this
+    script must not make; a zero-taxed invoice states its `0.00` (the case above).
+    """
+    r = _einvoice(tmp_path, _cii('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+                                 '<ram:GrandTotalAmount>100.00</ram:GrandTotalAmount>'))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert "MISSING" in r.stderr and "100.00" in r.stderr, r.stderr
+
+
+def test_einvoice_takes_the_amount_stated_in_the_document_currency(tmp_path):
+    """EN 16931 lets the tax total appear twice, once per currency -- and they differ.
+
+    Both spellings of the second statement are asked, because an amount that names no currency is
+    in the document's by definition: taking whichever came first turned a foreign figure into the
+    tax the bookkeeper sees.
+    """
+    for second in ('<ram:TaxTotalAmount currencyID="EUR">19.00</ram:TaxTotalAmount>',
+                   '<ram:TaxTotalAmount>19.00</ram:TaxTotalAmount>'):
+        r = _einvoice(tmp_path, _cii(
+            '<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+            '<ram:TaxTotalAmount currencyID="USD">21.00</ram:TaxTotalAmount>%s'
+            '<ram:GrandTotalAmount>119.00</ram:GrandTotalAmount>' % second))
+        assert r.returncode == 0, r.stdout + r.stderr
+        assert _fields(r)["tax"] == "19.00", r.stdout
+
+
+def test_einvoice_a_rounding_amount_is_not_part_of_the_grand_total(tmp_path):
+    """BT-114 belongs to the amount DUE, not to the grand total -- both directions, plus the one
+    case where it does enter.
+
+    BR-CO-15 is `BT-112 = BT-109 + BT-110`, with no rounding term; BR-CO-16 is
+    `BT-115 = BT-112 - BT-113 + BT-114`. Carrying the rounding into the grand total refused the
+    norm-VALID document below and blessed the norm-INVALID one, and the test that stood here
+    pinned the invalid one as right.
+    """
+    valid = ('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+             '<ram:TaxTotalAmount>19.00</ram:TaxTotalAmount>'
+             '<ram:GrandTotalAmount>119.00</ram:GrandTotalAmount>'
+             '<ram:RoundingAmount>0.05</ram:RoundingAmount>'
+             '<ram:DuePayableAmount>119.05</ram:DuePayableAmount>')
+    r = _einvoice(tmp_path, _cii(valid))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _fields(r)["gross"] == "119.00", r.stdout
+
+    violation = valid.replace("<ram:GrandTotalAmount>119.00", "<ram:GrandTotalAmount>119.05")
+    assert _einvoice(tmp_path, _cii(violation)).returncode == 2
+
+    # ...and the one case the rounding IS the caller's business: no grand total is stated, so the
+    # amount due stands in for it and brings BR-CO-16's terms along.
+    stands_in = ('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+                 '<ram:TaxTotalAmount>19.00</ram:TaxTotalAmount>'
+                 '<ram:RoundingAmount>0.05</ram:RoundingAmount>'
+                 '<ram:DuePayableAmount>119.05</ram:DuePayableAmount>')
+    r = _einvoice(tmp_path, _cii(stands_in))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _fields(r)["gross"] == "119.05", r.stdout
+
+
+def test_einvoice_refuses_rather_than_return_an_amount_in_a_foreign_currency(tmp_path):
+    """Every candidate names a currency, and none of them is the document's: nothing to return.
+
+    Falling back on document order here handed out a EUR figure as the net of a CHF invoice, at
+    exit 0 -- and the guard cannot see it, because foreign amounts reconcile with each other. This
+    is the same class of silent wrong money the round exists to kill, so the answer is the refusal,
+    not the first candidate.
+    """
+    r = _einvoice(tmp_path, _cii(
+        '<ram:TaxBasisTotalAmount currencyID="EUR">100.00</ram:TaxBasisTotalAmount>'
+        '<ram:TaxBasisTotalAmount currencyID="USD">110.00</ram:TaxBasisTotalAmount>'
+        '<ram:TaxTotalAmount currencyID="EUR">19.00</ram:TaxTotalAmount>'
+        '<ram:GrandTotalAmount currencyID="EUR">119.00</ram:GrandTotalAmount>', currency="CHF"))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert _fields(r)["net"].startswith("MISSING"), r.stdout
+    assert "100.00" not in r.stdout, r.stdout
+
+
+def test_einvoice_refuses_an_amount_that_is_not_a_finite_number(tmp_path):
+    """`NaN` is a valid Decimal literal and survives quantisation; the COMPARISON is what raises.
+
+    So the run ended in a traceback and exit 1 -- which this script's own contract reads as "no
+    structured data found" -- where it owes the exit-2 refusal. Asked of both places an amount is
+    read: the triple itself, and the rounding amount the amount-due branch adds.
+    """
+    triple = _cii('<ram:TaxBasisTotalAmount>NaN</ram:TaxBasisTotalAmount>'
+                  '<ram:TaxTotalAmount>19.00</ram:TaxTotalAmount>'
+                  '<ram:GrandTotalAmount>119.00</ram:GrandTotalAmount>')
+    rounding = _cii('<ram:TaxBasisTotalAmount>100.00</ram:TaxBasisTotalAmount>'
+                    '<ram:TaxTotalAmount>19.00</ram:TaxTotalAmount>'
+                    '<ram:RoundingAmount>NaN</ram:RoundingAmount>'
+                    '<ram:DuePayableAmount>119.05</ram:DuePayableAmount>')
+    for xml in (triple, rounding):
+        r = _einvoice(tmp_path, xml)
+        assert r.returncode == 2, r.stdout + r.stderr
+        assert "Traceback" not in r.stderr, r.stderr
+
+
+def test_einvoice_reads_the_document_element_not_a_line_of_the_same_name(tmp_path):
+    """What the ANCHORING holds, and nothing else does: a line item answering to a header name.
+
+    Both syntaxes have one. CII line items carry their own `LineTotalAmount`, so a document that
+    states no `TaxBasisTotalAmount` -- where the fallback name is exactly the line-level one --
+    decides on the anchor alone. UBL lets a line carry its own `TaxTotal/TaxAmount`, and a line's
+    tax is not the document's: absent stays absent, which the guard then refuses.
+
+    Name-order preference (`_pick`) answers neither of these; it was measured passing all of them
+    with the anchoring replaced by a whole-tree search.
+    """
+    lines = "".join(_cii_line(n, q, 0.51) for n, q in ((1, 28), (2, 300), (3, 92)))
+    r = _einvoice(tmp_path, _cii('<ram:LineTotalAmount>214.20</ram:LineTotalAmount>'
+                                 '<ram:TaxTotalAmount>40.70</ram:TaxTotalAmount>'
+                                 '<ram:GrandTotalAmount>254.90</ram:GrandTotalAmount>',
+                                 lines=lines))
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert _fields(r)["net"] == "214.20", r.stdout
+
+    r = _einvoice(tmp_path, _ubl(
+        '<cbc:TaxExclusiveAmount currencyID="EUR">214.20</cbc:TaxExclusiveAmount>'
+        '<cbc:TaxInclusiveAmount currencyID="EUR">254.90</cbc:TaxInclusiveAmount>', "",
+        lines='<cac:InvoiceLine><cbc:ID>1</cbc:ID>'
+              '<cbc:LineExtensionAmount currencyID="EUR">14.28</cbc:LineExtensionAmount>'
+              '<cac:TaxTotal><cbc:TaxAmount currencyID="EUR">2.71</cbc:TaxAmount></cac:TaxTotal>'
+              '</cac:InvoiceLine>'))
+    assert r.returncode == 2, r.stdout + r.stderr
+    assert _fields(r)["tax"].startswith("MISSING"), r.stdout
+    assert "2.71" not in r.stdout, r.stdout
 
 
 def test_file_budget_exactly_at_limit_passes(tmp_path):

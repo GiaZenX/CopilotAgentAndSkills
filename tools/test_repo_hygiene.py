@@ -196,6 +196,49 @@ def test_no_test_in_this_suite_leaks_an_import_path(tmp_path):
         % (result.stdout, result.stderr))
 
 
+_ENVIRONMENT_LEAK_SUITE = '''\
+import os
+
+LEAK = "HARNESS_KERNEL_PATH"
+
+
+def test_one_leaks_an_environment_variable():
+    os.environ[LEAK] = "/tsk-0091-leaked-kernel-redirect"
+    assert LEAK in os.environ
+
+
+def test_two_must_not_inherit_it():
+    assert LEAK not in os.environ, "the previous test's environment variable survived into this one"
+'''
+
+
+def test_no_test_in_this_suite_leaks_an_environment_variable(tmp_path):
+    """A test may set a variable; it may not leave it for the next test -- or its subprocesses.
+
+    THE VARIABLE IN THE FIXTURE IS THE ONE THAT DID IT: `$HARNESS_KERNEL_PATH` redirects the
+    entry point at another kernel and is authoritative by design, so a leaked one silently answers
+    later tests out of this repo instead of out of the project they built. Measured on pristine
+    HEAD: `test_kitupdate.py::test_the_bridge_reads_the_route_off_the_projects_own_entry_point`
+    and its neighbour failed in every session where `test_hooks.py` ran first and passed alone.
+
+    MEASURED THROUGH A REAL PYTEST PROCESS over this suite's own `conftest.py`, copied rather than
+    imported, like the import-path leak above -- what is asserted is the fixture as it ships. Red
+    without `conftest._no_test_leaks_an_environment_variable`: the second generated test sees the
+    first one's variable.
+    """
+    shutil.copy(os.path.join(ROOT, "tools", "conftest.py"), str(tmp_path / "conftest.py"))
+    with open(str(tmp_path / "test_env_leak.py"), "w", encoding="utf-8") as handle:
+        handle.write(_ENVIRONMENT_LEAK_SUITE)
+    result = subprocess.run(
+        [sys.executable, "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tmp_path)],
+        cwd=str(tmp_path), capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=300)
+    assert result.returncode == 0, (
+        "a test left an environment variable behind for the next one; every subprocess a later "
+        "test starts inherits it, which is how a kernel redirect from one file decided another "
+        "file's result:\n%s%s" % (result.stdout, result.stderr))
+
+
 _LAUNCHERS = ("run", "Popen", "call", "check_call", "check_output")
 
 # The floor under the sweep below. A reader that stops recognising the form finds nothing and

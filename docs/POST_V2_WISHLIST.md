@@ -2246,7 +2246,7 @@ H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit 
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
-TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H70 mit
+TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H75 mit TSK-0091, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2308,6 +2308,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H75 | **Rest** (TSK-0091) | gemessene Grenzen des E-Rechnungs-Geldpfads, je im Eintrag: der Wächter ist Arithmetik, nicht Semantik (`FR-0065` trägt die zweite Lesung); BR-CO-14 ungeprüft (in sich stimmiger, positions-widriger Kopf läuft durch, gemessen); UBL nur synthetisch belegt, Anzahlungs-Rückfall verweigert laut; XML ohne Geld-Tripel jetzt rc 2 statt still leer; die Geldleser-Klasse im Owned-Manifest ist Urteil mit zwei gepinnten Enden; ein künftiges Umgebungs-Leck wird still geheilt statt angezeigt (der Draht hält die Fixture, die Fixture heilt die Quellen — beides gemessen); und drei Randformen des Lesers mit je sicherer Richtung (ungepinnte dritte Anker-Schreibweise, Rohtext-Ausgabe der Geldfelder, unlesbarer Rundungsbetrag zählt als 0 und endet laut) |
 | H74 | **Rest** (TSK-0090) | gemessene Grenzen der schnelleren Gate-Suite, je im Eintrag: kein Schutz gegen einen zweiten Läufer (und die Suite drückt als Nachbar selbst stärker, 10→26); der Faktor 11 war Wirtslast, der 4512-s-Leerlauf bleibt unerklärt; drei benannte Abwägungen mit Zahlen (`authored` ohne Spaltenauswahl, Frist-Phase bleibt nachbarfrei, Prüfsätze ungekürzt); Zeilennummern-Zeiger als offene Klasse (H45-Verschiebung war Fall 2). Ruhefenster-Lauf: akzeptierter DEC-0053-Rest mit zwei bereitstehenden Repo-Werkzeugen |
 | H73 | **Rest** (TSK-0089) | vier gemessene Grenzen der Entscheidungs-zuerst-Runde, je im Eintrag: jede Id in einem Begrenzer, der länger ist als sie selbst, bleibt ungeprüft (16 der 22 gequoteten Spannen sind Text, den jemand liest — 13 Kernel-Meldungen + 3 Handover-Literale; Schließrichtung benannt, eigene Runde); der Regel-Test liest nur die zwei Anker, nicht die Richtung (die Regel umgekehrt passiert ihn, gemessen); eine Überbehauptung ohne Apparat-Wort fällt nicht auf — sichtbar macht sie nur der Abschnitts-Digest, nicht die Byte-Identität; und der Klausel-Schnitt des Wächters liest `,` nicht und `.`/`:` immer als Grenze — beide Fehlrichtungen gemessen, keine trifft den heutigen Text |
 | H72 | **Rest** (TSK-0087) | gemessene Grenzen der Vier-Augen-Wand, je im Eintrag: die Aufräum-Ausnahme vergleicht Vorlage+Dateiname statt Ort (ein Platzhalterwechsel läuft ohne Lesung, K7/K8 — Verschärfung wäre eine Nutzerentscheidung); Überschreiben eines Inbox-Dokuments ist frei (die Folge ist per Byte-Bindung geschlossen, der Verlust sichtbar); drei benannte Über-Verweigerungen; und die Verfahrens-Grenze (Blindheit, fremde Programme, Lead als Zweitleser). Keine Kette erreicht mehr das Geschlossene: ein fremdes/getauschtes Dokument unter doppelt gelesenem Namen |
@@ -5160,6 +5161,62 @@ Aufrufform), (b) ist Wirtsphysik plus ein ehrlich unerklärter Einzelfall, (c) s
 Abwägungen mit Zahlen, (d) ist eine Klasse mit benannter Bauart. Ruhefenster-Lauf: akzeptierter
 Rest nach `DEC-0053`, zwei Repo-Werkzeuge (`tools/gate_suite_rates.py`,
 `tools/gate_suite_margins.py`) stehen dafür bereit.
+
+### H75 — Was der E-Rechnungs-Leser NICHT prüft — offen, gemessene Grenzen des Geldpfads (TSK-0091)
+
+**Anlass:** `BUG-0072`, Live-Fund im echten Projekt des Nutzers — der Kit-Extraktor las aus einer
+ZUGFeRD/CII-Rechnung den Positionswert statt der Dokumentsumme (14,28 statt 214,20) und gab das
+stille Falsch-Tripel mit rc 0 zurück; **alle vier** strukturierten E-Rechnungen des Archivs waren
+betroffen, gebucht wurde dank der Rechenprobe im Buchungs-Richter nichts Falsches. Die Runde hat
+den Leser strukturell verankert, die Dokument-Identität (EN 16931 BR-CO-15, `BT-112 = BT-109 +
+BT-110`; Rundungsbetrag nur auf dem BR-CO-16-Rückfall) als lauten Wächter gebaut und den Prüfer
+zweimal überlebt — der dabei mit der Norm selbst gegenlas und eine Über-Verweigerung UND eine
+Segnung fing, bevor sie auslieferbar waren. Was bleibt, jede Grenze gemessen:
+
+**(a) Der Wächter ist Arithmetik, keine Semantik.** Drei in sich stimmige Zahlen vom **falschen**
+Dokument bestehen. Steht als ein Satz am Wächter und in der Bookkeeper-SKILL; die zweite Lesung
+gegen den Beleg ist `FR-0065` (Buchungs-Vier-Augen) und keine Extraktor-Aufgabe.
+
+**(b) BR-CO-14 wird nicht gegengerechnet** (Σ `ApplicableTradeTax/CalculatedAmount` =
+`TaxTotalAmount`): ein Kopf, der in sich stimmt, aber den Positionen widerspricht, läuft durch —
+gemessen (Zeilensumme 3,00 unter einem 100,00-Kopf → rc 0). Kein Kommentar behauptet anderes.
+
+**(c) UBL ist nur synthetisch belegt.** Im echten Korpus existiert keine einzige XRechnung-UBL;
+die UBL-Hälfte lebt aus Fixtures. Und der UBL-Rückfall auf `PayableAmount` verweigert bei
+**Anzahlung** (`BT-113 ≠ 0`) laut, statt zu rekonstruieren — Über-Verweigerung, nie still.
+
+**(d) Verhaltensänderung, gewollt:** ein strukturiertes XML **ohne** Geld-Tripel liefert jetzt
+rc 2 statt rc 0 mit „MISSING" — ein Nicht-Rechnungs-Dokument im Anhang wird laut zurückgewiesen
+statt leer durchgereicht.
+
+**(e) Die „Geldleser"-Klasse im Owned-Manifest ist ein Urteil, kein Test.** Gepinnt sind die
+Guard-Eigenschaft (`tools/test_kitupdate.py::test_every_guarded_repo_template_is_refreshed_by_the_scaffold`)
+und das tote Listenende (`tools/test_kitupdate.py::test_every_kit_owned_path_is_shipped_by_some_kit`);
+dass ein Skript, das Geld liest, kit-eigen zu sein hat, bleibt begründete Entscheidung im
+Manifest-Kopf.
+
+**(f) Ein neues Umgebungs-Leck wird still geheilt statt angezeigt.** Der Rundenbeifang (zwei rote
+Tests auf unberührtem HEAD: `tools/test_hooks.py` ließ `HARNESS_KERNEL_PATH` prozessweit stehen,
+und der Einstiegspunkt behandelt sie als autoritativ) ist nach dem Hausmuster geschlossen — die
+Fixture stellt die Umgebung nach jedem Test **wieder her**, statt im Teardown zu behaupten (eine
+Behauptung liefe, bevor `monkeypatch` sein eigenes Werk zurücknimmt, und würde die Tests anzeigen,
+die es richtig machen). Preis, im Fixture-Docstring benannt: ein künftiges Leck fällt nicht auf,
+es wird geheilt. Was der Draht
+`tools/test_repo_hygiene.py::test_no_test_in_this_suite_leaks_an_environment_variable` hält, ist
+die **Fixture selbst** (entfernt → rot, gemessen); die Quellen heilt die Fixture — mit den zwei
+bekannten Quellen auf blanke Zuweisung zurückgedreht bleibt der Draht grün, auch das gemessen.
+
+**(g) Drei Randformen des Lesers, vom Prüfer gemessen, Richtung je sicher:** die dritte
+Schreibweise der Anker-Klasse ist ungepinnt (UBL-`LegalMonetaryTotal`/`LineExtensionAmount`:
+Anker durch Ganzbaumsuche ersetzt lässt alle 14 einvoice-Tests grün — Fehlrichtung ist die laute
+Wächter-Verweigerung); ein gedrucktes Geldfeld ist der **Rohtext** des Dokuments, nicht die
+geprüfte Dezimalzahl (`1E+2` und `100.005` erscheinen wörtlich auf stdout, geprüft wird die
+normalisierte Zahl); und ein unlesbarer `RoundingAmount` auf dem Rückfallpfad zählt still als 0 —
+was dort zur lauten Verweigerung führt, nicht zu einer stillen Zahl.
+
+**Urteil: Rest.** (a) trägt seinen Verweis auf das offene Item, (b)–(d) sind benannte Grenzen mit
+sicherer Richtung (laut oder durchgereicht-und-gesagt), (e) ist eine Entscheidung mit zwei
+gepinnten Enden, (f) ist eine begründete Bauform mit benanntem Preis.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

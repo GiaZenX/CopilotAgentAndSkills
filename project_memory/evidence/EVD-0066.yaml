@@ -1,0 +1,28 @@
+id: EVD-0066
+kind: review
+related:
+- TSK-0091
+- BUG-0072
+result: pass
+summary: 'verifier PASS round 2 for diff:eab6c06f40e337cc11b53e23f060356c7aee41c9f8d11e642c2fbcff9535cf5a
+  -- TSK-0091: the e-invoice money path. ALL FOUR structured e-invoices in the user''s
+  real archive were misread (root: document-order name-set scan; same root corrupted
+  the seller field and pre-discount nets); NOTHING was booked wrong thanks to ledger_add''s
+  arithmetic check. Ships: structural anchoring with name-order and currency preference
+  (currency conflict now refuses loudly -- the verifier''s CHF attack), the reconciliation
+  guard on the document''s own EN 16931 identity (BR-CO-15; rounding only on the BR-CO-16
+  fallback -- the verifier read the NORM against the code and caught an over-refusal
+  AND a blessing before shipping; the wrongly-pinning test replaced by a three-leg
+  one), NaN/Infinity to contractual refusals, delivery as kit-owned measured twice
+  end to end with the user''s exact pre-fix hash. BYCATCH: two tests red on pristine
+  HEAD (HARNESS_KERNEL_PATH leaked process-wide) fixed via the env-restoring conftest
+  pattern, red-first; both roles retracted earlier misattributions on the record.
+  Touched suites 939/14 and 886/16 zero failed; full suite fresh 3905 passed / 14
+  skipped / 0 failed. Residues carried as H75 (lead''s hand, incl. the verifier''s
+  three edge forms and the corrected fixture/source claim); sweep recipe for the project
+  side durable in docs/reviews/2026-08-29-tsk0091-measurements.md'
+artifact_refs:
+- staging/TSK-0091/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-29T23:07:53'

@@ -1,0 +1,64 @@
+id: TSK-0091
+product_requirement: PR-0003
+derives_from: BUG-0072
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+- .github/**
+required_inputs:
+- 'BUG-0072 (live find, severity HIGH: the kit template scripts/einvoice_extract.py
+  read the embedded ZUGFeRD/CII XML of a real idealo invoice and returned net=14.28
+  while tax=40.70 and gross=254.90 were correct; the document states 420 clicks x
+  0.51 = 214.20 net; 14.28 = 28 x 0.51 -- plausibly ONE line item''s partial quantity
+  or a wrong element instead of the document total; the broken triple returned WITHOUT
+  any error and was caught only by the project bookkeeper''s own arithmetic)'
+- the user's project BUG-0001 (their store, OneDrive/4-BuyPlugGo project_memory/bugs/active/BUG-0001.yaml)
+  with the exact repro invoice path; READ-ONLY access to that project for measurement
+  -- never write there
+- 'the CII/ZUGFeRD structure knowledge needed: document totals live in SpecifiedTradeSettlementHeaderMonetarySummation
+  (LineTotalAmount/TaxBasisTotalAmount/TaxTotalAmount/GrandTotalAmount), line items
+  in IncludedSupplyChainTradeLineItem -- find what the current extractor actually
+  reads and why it landed on a line-level value'
+- 'the guarded-scripts reality from TSK-0086: whether einvoice_extract.py is kit-owned
+  (installer-refreshed) or copy-if-absent decides HOW the fix reaches existing projects;
+  repo_kit_owned.txt and the pending-list flow are the delivery path'
+expected_outputs:
+- 'STEP 1 MEASURE: reproduce against a CII fixture shaped like the idealo case (multi-quantity
+  line items; build the fixture from the CII structure, NOT by copying the user''s
+  invoice -- it carries business data); show the current extractor returning the wrong
+  net; name the exact code path that picked the wrong element'
+- 'STEP 2 FIX: the extractor returns the document-total net (reconciling net x (1+vat)
+  = gross within a cent tolerance whose rounding rule is NAMED) from the header monetary
+  summation; AND the reconciliation guard: any extracted triple that does not reconcile
+  is a LOUD failure naming all three figures -- never a silent return. Both halves
+  red-first'
+- 'STEP 3 DELIVERY PATH: decide and justify kit-owned vs copy-if-absent for this script
+  (a judge-like correctness fix argues for installer refresh; the TSK-0086 rules apply);
+  ensure the fix reaches existing projects through the measured update flow, and name
+  the extraction-path change precisely enough that a project-side sweep of already-booked
+  e-invoices is mechanical (their AC-B2)'
+- 'STEP 4 SHIP: bump_kit_version (kit template content), ruff, validate, affected
+  suites per DEC-0050 (the full run is the lead''s); mirrors byte-identical unless
+  KIT_SPECIFIC names the reason; report file:line, the wrong-element explanation,
+  the fixture design, residues named'
+dependencies:
+- BUG-0072
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-29T19:32:59'
+closed_at: '2026-08-29T22:30:46'

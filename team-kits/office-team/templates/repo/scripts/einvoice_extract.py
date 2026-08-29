@@ -4,18 +4,27 @@ einvoice_extract.py — structured invoice data from e-invoices (XRechnung XML /
 
 E-invoice FIRST: since 2025 German B2B invoices arrive as structured XML (XRechnung, or embedded
 in a ZUGFeRD/Factur-X PDF). Parsing XML is deterministic — no OCR guessing, no hallucinated
-amounts. Supports the common fields of both CII (CrossIndustryInvoice) and UBL syntaxes,
-best-effort: anything not found prints as MISSING (the bookkeeper treats it as UNCLEAR, never
-invents it).
+amounts. It reads the CII (CrossIndustryInvoice) and UBL (Invoice/CreditNote) syntaxes and
+nothing else: a plain PDF or a scan carries no structured data and is not parsed here. Anything
+not found prints as MISSING (the bookkeeper treats it as UNCLEAR, never invents it).
+
+Every field is read from the element its syntax puts it in — never via a name a line item can
+answer too. That shortcut returned the FIRST LINE ITEM's total as the document net on a real
+12-line invoice, silently and with exit 0 (BUG-0072).
 
 Usage: python scripts/einvoice_extract.py <file.xml|file.pdf>
 Output: key: value lines (seller, invoice_no, issue_date, currency, net, tax, gross).
-Exit 0 = something extracted; exit 1 = no structured data found (fall back to careful reading +
-the arithmetic check in ledger_add.py).
+Exit 0 = extracted, and the money triple adds up.
+Exit 1 = no structured data found (fall back to careful reading + the arithmetic check in
+         ledger_add.py).
+Exit 2 = extracted, but the money triple does not add up or is incomplete. The three figures are
+         printed marked UNRECONCILED and must not be booked. That check is ARITHMETIC ONLY: a
+         triple that adds up can still be the wrong document's — no reader here can see that.
 """
 import os
 import re
 import sys
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 try:
     # supplier XML is UNTRUSTED input: defusedxml neutralizes XXE/billion-laughs, which the
@@ -26,26 +35,148 @@ except ImportError:
     ET = None
     ParseError = Exception
 
+# One cent, in both of its roles: the quantum every amount is rounded to and the tolerance the
+# reconciliation allows (inclusive — one cent off still passes, two do not). ROUND_HALF_UP is the
+# commercial rounding a German invoice is written with; EN 16931 amounts carry at most two
+# decimals, so the rounding only ever bites on a document that does not conform to it.
+# `tools/test_hooks.py::test_einvoice_reconciliation_tolerance_is_one_cent_inclusive` measures
+# both sides of that edge.
+CENT = Decimal("0.01")
+UNRECONCILED = "(UNRECONCILED - do not book)"
 
-def _txt(root, *local_names):
-    """First text content of an element whose LOCAL name matches (namespace-agnostic)."""
-    want = set(local_names)
+
+def _local(el):
+    """The element name without the namespace ElementTree expands into the tag."""
+    return el.tag.rsplit("}", 1)[-1]
+
+
+def _text(el):
+    return (el.text or "").strip() if el is not None else ""
+
+
+def _child(parent, name):
+    """First DIRECT child with this local name, or None."""
+    if parent is None:
+        return None
+    for el in parent:
+        if _local(el) == name:
+            return el
+    return None
+
+
+def _anchor(root, name):
+    """First element ANYWHERE under root with this local name, or None.
+
+    Called only with names their syntax scopes to the DOCUMENT level, which is what makes a
+    whole-tree search safe here: CII spells the line-level counterparts differently
+    (`SpecifiedLineTradeSettlement` beside `ApplicableHeaderTradeSettlement`), and UBL keeps the
+    line ones inside `InvoiceLine`. The amounts are then read from WITHIN that element, so a name a
+    line item also answers to (`LineTotalAmount`, `TaxAmount`) cannot reach the caller:
+    `test_einvoice_reads_the_document_element_not_a_line_of_the_same_name` is what holds that, and
+    it is a different question from the name-order preference `_pick` below owns.
+    """
     for el in root.iter():
-        if el.tag.rsplit("}", 1)[-1] in want and (el.text or "").strip():
-            return el.text.strip()
+        if _local(el) == name:
+            return el
+    return None
+
+
+def _pick(parents, *names, currency="", deep=False):
+    """Text of the first non-empty match, in the ORDER OF THE NAMES — not in document order.
+
+    Document order is half of BUG-0072: `_txt(root, "TaxBasisTotalAmount", "LineTotalAmount")`
+    matched either name and took whichever came first in the file, so even inside one summation
+    the pre-discount `LineTotalAmount` won over the `TaxBasisTotalAmount` two lines below it
+    (`tools/test_hooks.py::test_einvoice_cii_document_allowance_net_is_the_tax_basis`).
+
+    `currency` picks between amounts stated more than once: EN 16931 lets the tax total appear a
+    second time in the accounting currency, and the two are different numbers. An amount that
+    names no `currencyID` is in the document currency by definition, so it beats a foreign-tagged
+    one. `parents` may be several elements, because UBL states each currency's tax total in its
+    own `TaxTotal`.
+    """
+    if parents is None:
+        return ""
+    if not isinstance(parents, list):
+        parents = [parents]
+    for name in names:
+        found = []
+        for parent in parents:
+            found += [el for el in (parent.iter() if deep else parent)
+                      if _local(el) == name and _text(el)]
+        if not found:
+            continue
+        if currency:
+            for el in found:
+                if el.get("currencyID") == currency:
+                    return _text(el)
+            for el in found:
+                if not el.get("currencyID"):
+                    return _text(el)
+            # Every candidate names a DIFFERENT currency: this document states no figure in its
+            # own, so there is none to return. Falling back on document order handed out a foreign
+            # amount, and foreign amounts reconcile with each other -- a wrong number the guard
+            # cannot see. Measured in
+            # `test_einvoice_refuses_rather_than_return_an_amount_in_a_foreign_currency`.
+            return ""
+        return _text(found[0])
     return ""
 
 
-def _cii_invoice_no(root):
-    """CII: the invoice number is ExchangedDocument's DIRECT child ID. A naive first-ID-in-document
-    search returns the guideline URN (GuidelineSpecifiedDocumentContextParameter/ID precedes it) —
-    a confidently WRONG value that would poison the ledger's duplicate detection."""
-    for el in root.iter():
-        if el.tag.rsplit("}", 1)[-1] == "ExchangedDocument":
-            for child in el:
-                if child.tag.rsplit("}", 1)[-1] == "ID" and (child.text or "").strip():
-                    return child.text.strip()
-    return ""
+def _amount(text):
+    """The XML amount as an exact decimal rounded to the cent, or None if absent/not a number.
+
+    Decimal and not float, because these figures are booked. EN 16931 writes an amount with a dot
+    and no thousands separator; anything else is a document this reader does not understand, and
+    a number it does not understand is None (which the guard below turns into a refusal) rather
+    than a guess.
+    """
+    try:
+        value = Decimal((text or "").strip())
+        # "NaN" and "Infinity" are valid Decimal literals, and a quiet NaN survives quantize
+        # unharmed -- it was the COMPARISON in the guard that raised, so an amount spelled NaN
+        # ended the run with a traceback and exit 1 ("no structured data") instead of the refusal
+        # this reader owes. A figure that is not finite is not a figure
+        # (`test_einvoice_refuses_an_amount_that_is_not_a_finite_number`).
+        return value.quantize(CENT, rounding=ROUND_HALF_UP) if value.is_finite() else None
+    except (InvalidOperation, ValueError, ArithmeticError):
+        return None
+
+
+def reconciliation_failure(out):
+    """The refusal a money triple that does not add up earns, or None if it reconciles.
+
+    The identity is the document's OWN (EN 16931 BR-CO-15: BT-112 grand total = BT-109 tax basis
+    total + BT-110 tax total). It therefore holds for one VAT rate and for several alike: a
+    multi-rate invoice has no single rate to multiply with, and this check needs none — which is
+    why it is stated as a sum and not as net x (1 + rate).
+
+    A ROUNDING AMOUNT IS NOT PART OF IT. BT-114 belongs to the amount DUE, not to the grand total
+    (BR-CO-16: BT-115 = BT-112 - BT-113 + BT-114), so it enters here in exactly one case: the
+    document stated no grand total and the amount due stood in for it. Adding it to a grand total
+    refused a norm-valid invoice and blessed a norm-invalid one, both measured
+    (`test_einvoice_a_rounding_amount_is_not_part_of_the_grand_total`).
+
+    What it does NOT see: whether these are the right document's figures. Three amounts read from
+    the wrong invoice reconcile perfectly. That second reader is a different job (FR-0065).
+    """
+    net, tax, gross = (_amount(out.get(key)) for key in ("net", "tax", "gross"))
+    figures = "net %s, tax %s, gross %s" % tuple(
+        out.get(key) or "MISSING" for key in ("net", "tax", "gross"))
+    if net is None or tax is None or gross is None:
+        return ("the money triple is incomplete or unreadable — %s. Nothing here invents the "
+                "missing figure (a zero-tax invoice states its 0.00): read the document and book "
+                "by hand." % figures)
+    rounding = _amount(out.get("rounding")) or Decimal("0")
+    stated = "%s%s" % (figures, "" if not rounding else ", rounding %s" % out.get("rounding"))
+    difference = net + tax + rounding - gross
+    if abs(difference) > CENT:
+        return ("the money triple does not add up — %s: net + tax%s = %s, which is %s away from "
+                "the stated gross (tolerance one cent). One of the three is not the figure the "
+                "document states: read it and book by hand."
+                % (stated, "" if not rounding else " + rounding", net + tax + rounding,
+                   abs(difference)))
+    return None
 
 
 def parse_xml(data):
@@ -59,24 +190,49 @@ def parse_xml(data):
     except (ParseError, ValueError) as e:
         sys.stderr.write("[einvoice] XML parse error: %s\n" % e)
         return None
-    tag = root.tag.rsplit("}", 1)[-1]
+    tag = _local(root)
     out = {"syntax": tag}
     if tag == "CrossIndustryInvoice":            # CII (ZUGFeRD/XRechnung-CII)
-        out["invoice_no"] = _cii_invoice_no(root)
-        out["issue_date"] = _txt(root, "DateTimeString")
-        out["seller"] = _txt(root, "Name")
-        out["currency"] = _txt(root, "InvoiceCurrencyCode")
-        out["net"] = _txt(root, "TaxBasisTotalAmount", "LineTotalAmount")
-        out["tax"] = _txt(root, "TaxTotalAmount")
-        out["gross"] = _txt(root, "GrandTotalAmount")
+        document = _anchor(root, "ExchangedDocument")
+        # ExchangedDocument's own ID. The first ID in the document is the guideline URN in
+        # `GuidelineSpecifiedDocumentContextParameter` — a confidently WRONG invoice number that
+        # would poison the ledger's duplicate detection.
+        out["invoice_no"] = _pick(document, "ID")
+        out["issue_date"] = _text(_child(_child(document, "IssueDateTime"), "DateTimeString"))
+        out["seller"] = _pick(_anchor(root, "SellerTradeParty"), "Name")
+        settlement = _anchor(root, "ApplicableHeaderTradeSettlement")
+        out["currency"] = _pick(settlement, "InvoiceCurrencyCode")
+        totals = _child(settlement, "SpecifiedTradeSettlementHeaderMonetarySummation")
+        out["net"] = _pick(totals, "TaxBasisTotalAmount", "LineTotalAmount",
+                           currency=out["currency"])
+        out["tax"] = _pick(totals, "TaxTotalAmount", currency=out["currency"])
+        out["gross"] = _pick(totals, "GrandTotalAmount", currency=out["currency"])
+        out["rounding"] = ""
+        if not out["gross"]:
+            # BT-112 carries no rounding. Only where the document states none does the amount DUE
+            # stand in for it, and then BT-113/BT-114 come with it -- the split
+            # `reconciliation_failure` explains, made the same way in the UBL branch below.
+            out["gross"] = _pick(totals, "DuePayableAmount", currency=out["currency"])
+            out["rounding"] = _pick(totals, "RoundingAmount", currency=out["currency"])
     elif tag in ("Invoice", "CreditNote"):        # UBL (XRechnung-UBL)
-        out["invoice_no"] = _txt(root, "ID")
-        out["issue_date"] = _txt(root, "IssueDate")
-        out["seller"] = _txt(root, "RegistrationName", "Name")
-        out["currency"] = _txt(root, "DocumentCurrencyCode")
-        out["net"] = _txt(root, "TaxExclusiveAmount", "LineExtensionAmount")
-        out["tax"] = _txt(root, "TaxAmount")
-        out["gross"] = _txt(root, "TaxInclusiveAmount", "PayableAmount")
+        out["invoice_no"] = _pick(root, "ID")     # the invoice's own ID, not a party's
+        out["issue_date"] = _pick(root, "IssueDate")
+        out["seller"] = _pick(_anchor(root, "AccountingSupplierParty"),
+                              "RegistrationName", "Name", deep=True)
+        out["currency"] = _pick(root, "DocumentCurrencyCode")
+        totals = _anchor(root, "LegalMonetaryTotal")
+        out["net"] = _pick(totals, "TaxExclusiveAmount", "LineExtensionAmount",
+                           currency=out["currency"])
+        out["tax"] = _pick([el for el in root if _local(el) == "TaxTotal"], "TaxAmount",
+                           currency=out["currency"])
+        out["gross"] = _pick(totals, "TaxInclusiveAmount", currency=out["currency"])
+        out["rounding"] = ""
+        if not out["gross"]:
+            # The same split as the CII branch above. Falling back on BT-115 holds the identity
+            # only while prepaid is zero — where it is not, the guard refuses instead of
+            # reconstructing a figure the document never states.
+            out["gross"] = _pick(totals, "PayableAmount", currency=out["currency"])
+            out["rounding"] = _pick(totals, "PayableRoundingAmount", currency=out["currency"])
     else:
         sys.stderr.write("[einvoice] unknown root element <%s> — not a known e-invoice syntax\n" % tag)
         return None
@@ -128,8 +284,16 @@ def main():
     out = parse_xml(data)
     if not out:
         sys.exit(1)
+    failure = reconciliation_failure(out)
     for key in ("syntax", "seller", "invoice_no", "issue_date", "currency", "net", "tax", "gross"):
-        print("%s: %s" % (key, out.get(key) or "MISSING"))
+        value = out.get(key) or "MISSING"
+        if failure and key in ("net", "tax", "gross"):
+            # the mark travels WITH the figure: one line of this output gets copied on its own.
+            value = "%s %s" % (value, UNRECONCILED)
+        print("%s: %s" % (key, value))
+    if failure:
+        sys.stderr.write("[einvoice] REFUSED: %s\n" % failure)
+        sys.exit(2)
 
 
 if __name__ == "__main__":
