@@ -1,0 +1,64 @@
+# ONE run's own classification of an inbox document (FR-0035): what this reader thinks the document
+# IS, and the full archive path INCLUDING the filename it thinks the document belongs at.
+#
+# WHY THIS IS NOT `filing_proposal`, and the difference is the whole point of the round. A proposal
+# is answered by a VERDICT, and a verdict is written by someone who has SEEN the proposal -- so
+# `accept` is agreement, never a second reading. What the user asked for is a second run that
+# arrives at the same answer WITHOUT being given the first one, which is a record of the same shape
+# as the first, not a judgement of it. The two artifacts therefore coexist: the proposal/verdict
+# pair is the content review (is this plausible, is the counterparty right), the two readings are
+# the classification agreement the move is gated on.
+#
+# WHAT READS IT, and this is the one shape in the filing pipeline that a hook really decides on --
+# the sibling headers' "nothing validates either file against its shape" is still true of THEM and
+# is now false of this one, which is why it is a separate contract:
+#   * `record_filing_reading` (PostToolUse) recognises a staged record by the LIST FIELD and the
+#     per-entry keys declared below -- it reads them off this file rather than spelling them -- and
+#     appends WHO the provider says wrote those exact bytes, together with the bytes of every
+#     document the record names as a `source`;
+#   * `gate_second_reading` (PreToolUse) refuses a filing into a plan-covered path unless as many
+#     records as the covering rule asks for, attested to that many DIFFERENT runs, name THIS
+#     document and the same destination -- and unless the document still is the one they were
+#     written about.
+#
+# THERE IS DELIBERATELY NO `source_sha256` FIELD, although binding the document is exactly what the
+# gate needs: the `filing-reviewer` ships with `Read, Grep, Glob, Write` and no command-running tool,
+# so a role asked for a hash could not produce one. The HOOK has the filesystem and the role does
+# not, so the digest is taken at attestation time and lives in the attestation, not here. A field
+# nobody can fill would be a contract that reads as protection and is not one.
+# Neither validates an instance against this schema: `kernel.schemas.validate` is not asked for a
+# file of this shape either, exactly as for the proposal and the verdict. What the gate requires is
+# the list field and the three per-entry keys; a record that carries more is read and its extra
+# fields are ignored, a record missing them is not a reading.
+schema: filing_reading
+# WHICH ROLE WRITES THIS FILE. `tools/test_role_contracts.py` walks every schema carrying this key
+# and holds THAT role's shipped SKILL to the field names below. The clerk is named because the
+# clerk's own reading is the first one; the SECOND reading is written by a different run, and which
+# role that is, is the manager's dispatch decision and not a property of this contract. That the
+# second writer's SKILL is therefore NOT held to these names by that test is a gap named here
+# rather than papered over -- `writer_role` takes one role.
+writer_role: records-clerk
+version: 1
+strict: true
+max_serialized_bytes: 262144
+fields:
+  task_id:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  role:
+    type: str
+    required: true
+  readings:
+    type: list
+    item_type: dict
+    required: true
+    # source           the document as it lies in the inbox, path relative to the project root --
+    #                  the spelling the move will use.
+    # destination      the FULL archive path INCLUDING the filename this reader assigns. Not a
+    #                  directory: the name is half of what the second reading has to agree with,
+    #                  which is the "no move until a name has been assigned" half of FR-0035.
+    # document_class   what this reader read the document to BE, in words. Not compared by the
+    #                  gate -- it is what makes a disagreement readable to the user when the two
+    #                  destinations differ.
+    item_required: [source, destination, document_class]

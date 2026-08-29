@@ -103,10 +103,22 @@ question inside the run (§1) and becomes no item. Auditor findings split the sa
    review goes beyond the destination to content plausibility; WHICH checks those are stands in the
    reviewer's own text and is derived there from `business_profile.yaml` — a second list here would
    be the copy that outlives the first.
-   **None of that is a hook**: it is procedure. Nothing validates either file against its shape —
-   `guard_yaml_valid` parses both for well-formedness like any other state YAML, and that is all —
-   so an unreviewed proposal reaches the wall like any other move, and the wall is unchanged:
-   `gate_filing` refuses a filing no rule of the plan covers, when the move is made.
+   **The CONTENT review is procedure**: nothing validates the proposal or the verdict against its
+   shape (`guard_yaml_valid` parses both for well-formedness, and that is all), so an unreviewed
+   proposal reaches `gate_filing` like any other move.
+   **The CLASSIFICATION agreement is a hook** (FR-0035): `gate_second_reading` refuses a document
+   ENTERING the archive until TWO `filing_reading` records (`kernel/schemas/filing_reading.yaml`, in
+   `staging/<TSK-ID>/`) name THAT document as `source` and the same destination INCLUDING the
+   filename, from two DIFFERENT runs — `record_filing_reading` stamps each with the provider's
+   `agent_id` and with the document's bytes. ENTERING is everything but a move inside the archive
+   keeping the same rule AND name: an archive-internal RENAME is a classification, and nothing else
+   here asks about it. A landing with no document behind it (a redirect, a direct write) is refused
+   outright. The clerk's reading is the first; the second is a run you dispatch that was not given
+   the first answer, and ONE record carries a whole drop. Where they differ nothing moves — the
+   refusal prints both, and both go to the USER. HOW MANY a class needs is the PLAN's: two, unless
+   the rule carries `second_reading: false`, which asks for one and never none. What the gate does
+   NOT see — and no message claims — is whether the second run read the first: it counts runs, not
+   attentions. The rest: `hooks/ENFORCEMENT.md`.
    A class the plan does NOT know is not filed and not renamed: name and location are agreed with the
    user, asked as a `filing_rule` approval, and the KERNEL appends exactly what they approved
    (`add-filing-rule`) — one rule added, none changed, nothing filed.
@@ -214,12 +226,15 @@ because they are two halves of one loop)
 
 - **office-manager (you):** interviews, owns `business_profile.yaml` / `product/masterplan.md` / the
   `PROC` items / the approval flow, routes inbox items per PROC, runs the report scripts, reports.
-- **records-clerk:** owns `filing_plan.yaml` — the single machine-readable filing truth; there is no
-  filing log to write. Opens every inbox item individually and PROPOSES its filing (§2.5), moves
-  only what the review accepted, runs migration.
-- **filing-reviewer:** the second pair of eyes, per document, before the move — judges the clerk's
-  proposals on destination, naming and content plausibility (rubric from `business_profile.yaml`)
-  and answers accept / object / partial with a reason. Runs no command, moves nothing, asks nobody.
+- **records-clerk:** owns `filing_plan.yaml` — the single machine-readable filing truth; no filing
+  log to write. Opens every inbox item individually, writes its own `filing_reading` and PROPOSES
+  its filing (§2.5), moves only what the review accepted AND a second reading agreed with, runs
+  migration.
+- **filing-reviewer:** the second pair of eyes, per document, before the move, in TWO steps that must
+  not be swapped: FIRST its own `filing_reading` — written without being given the clerk's answer,
+  and the record `gate_second_reading` counts — THEN the verdict on the proposal (destination,
+  naming, content plausibility from `business_profile.yaml`), accept / object / partial with a
+  reason. Runs no command, moves nothing, asks nobody.
 - **bookkeeper:** owns `master_data.yaml` (categories aligned to Anlage-EÜR lines; counterparty
   normalisation) and the ledger CONTENT via `ledger_add.py`; extracts invoice data (e-invoice
   XML first — `scripts/einvoice_extract.py`; PDF/scan fallback with the arithmetic check); writes
@@ -248,7 +263,7 @@ because they are two halves of one loop)
 | Item / artifact | Owner of the content |
 |---|---|
 | `PROC` (procedures/active), `FR` (inbox/active), `CR` (changes/active), `BUG` (bugs/active), Decision items, `business_profile.yaml`, `product/masterplan.md`, `project_config.yaml` | Manager |
-| `filing_plan.yaml` (its rules are APPENDED by `add-filing-rule` on a user approval — see §2.5), migration manifest, the filing proposals in `staging/<TSK-ID>/` | Records-Clerk |
+| `filing_plan.yaml` (its rules are APPENDED by `add-filing-rule` on a user approval — see §2.5), migration manifest, the filing proposals and its own `filing_reading` records in `staging/<TSK-ID>/` | Records-Clerk |
 | The filing verdicts in `staging/<TSK-ID>/` | Filing-Reviewer |
 | `master_data.yaml`, ledger content (via script), `reports/*_notes.md` | Bookkeeper |
 | `product_catalog.yaml`, `content_guidelines.yaml` | Product-Editor |

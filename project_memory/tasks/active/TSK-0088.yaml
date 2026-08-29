@@ -1,0 +1,63 @@
+id: TSK-0088
+product_requirement: PR-0003
+derives_from: BUG-0069
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+allowed_scope:
+- team-kits/**
+- tools/**
+- .github/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'BUG-0069 (the hosted CI is red on every push while the local delivery suite is
+  green: windows-latest 6 failed/96 ERRORS, ubuntu-latest 34 failed/148 ERRORS on
+  run 33202404872; the last three pushes all failed; the user gets ''All jobs have
+  failed'' mail per push, so the external signal is inverted and worthless)'
+- 'the failure classes already visible in the logs: (a) test_migrate.py needs the
+  repo HISTORY as fixture material and the runner''s shallow clone has none; (b) test_shortening_net.py::test_a_pinned_file_that_carries_no_section_is_refused
+  dies on ValueError ''path is on mount C:, start on mount D:'' because the hosted
+  Windows runner keeps the workspace on D:; (c) test_staging_cli.py::test_cli_capture_survives_a_body_no_parser_can_bound
+  builds a recursion-limit-derived fixture that lands at 64000 bytes against a 12288
+  item budget on the runner; (d) ~100+ ERRORS per platform UNCLASSIFIED -- classify
+  these FIRST, they may share one root'
+- 'the CI workflow definition under .github/workflows/ (writable in this round''s
+  scope) and the principle: a test that cannot MEASURE on a hosted runner says so
+  as an explicit counted skip with its reason -- never red, and never a silent pass
+  that claims coverage it did not have'
+expected_outputs:
+- 'STEP 1 CLASSIFY: pull the failed logs of run 33202404872 for BOTH platforms (gh
+  run view --log-failed), bucket every failure and every ERROR by root cause, and
+  report the buckets with counts -- AC-2. Reproduce at least one hosted condition
+  locally in a clone (shallow git clone for (a); a cross-drive tmpdir for (b) if the
+  host has a second drive letter, else the documented nearest condition; the runner''s
+  recursion limit for (c))'
+- 'STEP 2 FIX by class, choosing per class between: making the test environment-honest
+  (derive the assertion from the SAME environment that built the fixture), making
+  the workflow provide what the suite needs (e.g. fetch-depth: 0 where history IS
+  the fixture material), or an explicit skip that names its reason and is COUNTED
+  -- never a blanket exclusion of a whole suite. Every product-code change (if any)
+  gets the full red-first treatment; workflow/test changes get red-first against the
+  reproduced hosted condition'
+- 'STEP 3 PROVE: the reproduced hosted conditions now run green-or-honest-skip locally;
+  then the real proof is the next push''s CI run -- name that as the residue the lead
+  verifies after pushing, since no local rig IS the hosted runner'
+- 'STEP 4 SHIP: bump_kit_version only if kit content moves; ruff, validate, the affected
+  suites per DEC-0050 (the full run is the lead''s); report file:line, the bucket
+  table, the per-class decision and why, residues named'
+dependencies:
+- BUG-0069
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-28T23:44:03'

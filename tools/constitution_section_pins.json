@@ -297,7 +297,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "e87b21b46ca2db6e",
+        "digest": "42e83d7d6072c8b8",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -306,6 +306,7 @@
           "gate_ledger_valid",
           "gate_proc_approved",
           "gate_push_token",
+          "gate_second_reading",
           "gate_shell_hygiene",
           "gate_subagent_output",
           "gate_write_scope",
@@ -320,6 +321,7 @@
           "guard_yaml_valid",
           "kit_trust_state",
           "notify_agent_events",
+          "record_filing_reading",
           "session_status"
         ]
       },
@@ -343,13 +345,14 @@
         ]
       },
       "5. Roles (presets: `core` = records-clerk + filing-reviewer + bookkeeper; `commerce` adds": {
-        "digest": "74ca23430f3a0f63",
+        "digest": "904b8911d8868e50",
         "hooks": [
+          "gate_second_reading",
           "gate_write_scope"
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "5e916809cbf63bb6",
+        "digest": "267391dfbd75765d",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output"
@@ -382,7 +385,7 @@
         ]
       },
       "1. What each mechanism refuses": {
-        "digest": "4942d9659eae0544",
+        "digest": "8f5c1036022786ae",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -391,6 +394,7 @@
           "gate_ledger_valid",
           "gate_proc_approved",
           "gate_push_token",
+          "gate_second_reading",
           "gate_shell_hygiene",
           "gate_subagent_output",
           "gate_write_scope",
@@ -405,6 +409,7 @@
           "guard_yaml_valid",
           "kit_trust_state",
           "notify_agent_events",
+          "record_filing_reading",
           "session_status"
         ]
       }

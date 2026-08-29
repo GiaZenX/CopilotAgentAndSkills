@@ -198,9 +198,27 @@ def resolve(root, base, token):
 
 
 def under(relative, directory):
-    """Is this repo-relative path the given top-level directory, or inside it?"""
-    return bool(relative) and (relative == directory
-                               or relative.startswith(directory.rstrip("/") + "/"))
+    """Is this repo-relative path the given top-level directory, or inside it?
+
+    COMPARED THE WAY THIS HOST'S FILESYSTEM COMPARES TWO NAMES, which is what `os.path.normcase`
+    encodes: case-folding on Windows, identity on POSIX. It is a definition and not a patch — on
+    Linux `ARCHIVE/` really is a second directory and must not read as the tray, while on NTFS it
+    IS the tray and reading it as a different one is a hole.
+
+    MEASURED AS THAT HOLE on 2026-08-29, through the full registered chain in a scaffolded office
+    project on NTFS: `mv inbox/scan.pdf ARCHIVE/finance/incoming_invoices/2026/x.pdf` and the
+    `Archive/…` spelling both passed all six hooks at rc 0 and the file landed in `archive/`, while
+    the lower-case spelling of the same move was rc 2. Every other spelling tried resolved correctly
+    (`./`, `//`, absolute, `/./`, `/../`, `archive./`), because those are `normpath`'s business and
+    this one was not. `guard_fs_tripwire`'s delete half already folded case; its move half and both
+    filing gates read this function. Held by
+    `tools/test_hooks.py::test_a_tray_is_the_tray_however_the_host_spells_its_case`.
+    """
+    if not relative:
+        return False
+    here = os.path.normcase(str(relative))
+    there = os.path.normcase(str(directory).rstrip("/"))
+    return here == there or here.startswith(there + os.path.normcase("/"))
 
 
 def position(root, base, token):
@@ -574,6 +592,64 @@ def created(command, bases):
             out.append((token, current))
         for target in _redirect_targets_in(invocation):
             out.append((target, current))
+    return out
+
+
+Landing = collections.namedtuple("Landing", "token sources bases")
+
+
+def names_a_directory(bases, token):
+    """Does this token NAME a directory — by `resolve`'s rule, asked across every base at once.
+
+    ANY base is enough, and that is the fail-closed direction for the one caller: reading a
+    directory as a file drops the landing's filename, the landing's parent is then a level the plan
+    usually has no rule for, and the whole check is skipped. Reading a file as a directory only
+    invents a path no reading names, which refuses.
+    """
+    raw = str(token or "").replace("\\", "/")
+    if raw.endswith("/"):
+        return True
+    return any(os.path.isdir(os.path.join(base, raw)) for base in bases)
+
+
+def landings(command, bases):
+    """[Landing] — the same creations `created` reads, each with the SOURCE it came from.
+
+    `created` answers "which paths does this line create", which is everything the plan check needs.
+    A caller that has to tell a document ENTERING the archive from one being reorganised INSIDE it
+    needs the other half of the move, and that half is dropped there — hence a second reader over
+    the same walk rather than a second walk. A redirect makes content out of nothing, so it carries
+    no source and every caller reads it as an entry.
+
+    A DESTINATION THAT IS A DIRECTORY IS COMPLETED WITH THE SOURCE'S OWN NAME, one landing per
+    source, so `mv inbox/a.pdf archive/finance/2026/` reads as the landing `archive/finance/2026/
+    a.pdf` that it is. That is what keeps "the document was filed under the name it arrived with"
+    a case this reader can see rather than one that has no name at all — the half of FR-0035 about
+    a name having been assigned.
+
+    WHICH DESTINATIONS THOSE ARE is asked of `names_a_directory` and not of `Move`. `_move` sets its
+    own flag only where the calling convention says so (a `--target-directory`, a `robocopy` pair);
+    for the ordinary trailing operand it is False whatever the token looks like, which is why
+    `created` re-reads the token too. Measured 2026-08-28 with the flag alone: `mv inbox/scan.pdf
+    archive/finance/incoming_invoices/2026/` produced the landing `.../2026`, whose parent no rule
+    covers, and the gate stood down on a filing that renamed nothing — rc 0 with both readings
+    naming a different name. Held by
+    `tools/test_hooks.py::test_a_move_into_a_folder_is_judged_on_the_name_the_document_keeps`.
+    """
+    out = []
+    for invocation, tokens, current in _walk(command, bases):
+        move = _move(tokens, current)
+        if move is not None and move.destination:
+            if move.destination_is_directory or names_a_directory(current, move.destination):
+                stem = str(move.destination).replace("\\", "/").rstrip("/")
+                for source in move.sources or []:
+                    name = os.path.basename(str(source).replace("\\", "/").rstrip("/"))
+                    if name:
+                        out.append(Landing(stem + "/" + name, [source], current))
+            else:
+                out.append(Landing(move.destination, list(move.sources), current))
+        for target in _redirect_targets_in(invocation):
+            out.append(Landing(target, [], current))
     return out
 
 

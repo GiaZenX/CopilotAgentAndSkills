@@ -713,13 +713,16 @@ menschliche Freigaberunde. Kandidaten: ein Satz in §8 („die Freigabe zuletzt 
   während `tools/validate.py` dieselbe Frage seit FR-0051 aus `model_tiers.yaml` ableitet.
   Nicht neu eingeführt, durch die Ableitung sichtbar geworden; Kandidat: der Generator fragt
   dieselbe Ableitung.
-- **Zwei Bestandsreste der Office-Wand, an HEAD wie nach TSK-0077 identisch offen** (Prüfer,
-  Runde 2-4, je gemessen rc 0): `A=archive/…; rm "$A"` — der Operand wird von der Shell aus einer
+- **Ein Bestandsrest der Office-Wand, an HEAD wie nach TSK-0077 identisch offen** (Prüfer,
+  Runde 2-4, gemessen rc 0): `A=archive/…; rm "$A"` — der Operand wird von der Shell aus einer
   Variablen derselben Zeile umgeschrieben, die der Wand-Leser nicht auflöst (dieselbe Klasse wie
-  H47 am Repo-Gate; als MITFAHRER neben einer Freigabe seit TSK-0077 rc 2, allein weiter rc 0);
-  und `mv ARCHIVE/… outbox/…` — `_filing.under` vergleicht das Präfix case-sensitiv, NTFS faltet
-  (die Lösch-Hälfte fängt es per `re.I`, die Move-Hälfte nicht). Beide vorbestehend, kein Werk
-  der Korrektur-Tür; Schließrichtung: die Zeilen-Zuweisungskarte bzw. `normcase` in `under`.
+  H47 am Repo-Gate; als MITFAHRER neben einer Freigabe seit TSK-0077 rc 2, allein weiter rc 0).
+  Schließrichtung: die Zeilen-Zuweisungskarte. Die zweite Hälfte, die hier stand — `mv ARCHIVE/…`,
+  `_filing.under` case-sensitiv, während NTFS faltet — ist seit TSK-0087 GESCHLOSSEN
+  (`os.path.normcase` beidseitig in `under`, Test verzweigt selbst über `normcase` und misst
+  damit das Dateisystem): der Prüfer jener Runde hatte gemessen, dass die Schreibweise nicht nur
+  den Austritt, sondern auch die EINTRITTS-Wand samt der neuen Zweitlesungs-Mechanik aushebelte
+  (`ARCHIVE/`- und `Archive/`-Landung rc 0 durch alle sechs Hooks, Datei real im Archiv).
 - **Die Eigenschaftsaussagen der `ENFORCEMENT.md`-Zeilen haben keinen Leser** (TSK-0075, Prüfer):
   ein Draht verlangt, dass jede Warn-Art *vorkommt*, aber nicht, was über sie *behauptet* wird —
   gemessen mit einer frei erfundenen Zeile (falsche Wörter, nicht existierende Konstante, falsche
@@ -2243,7 +2246,7 @@ H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit 
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
-TSK-0086, H70 mit
+TSK-0086, H72 mit TSK-0087, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2305,6 +2308,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H72 | **Rest** (TSK-0087) | gemessene Grenzen der Vier-Augen-Wand, je im Eintrag: die Aufräum-Ausnahme vergleicht Vorlage+Dateiname statt Ort (ein Platzhalterwechsel läuft ohne Lesung, K7/K8 — Verschärfung wäre eine Nutzerentscheidung); Überschreiben eines Inbox-Dokuments ist frei (die Folge ist per Byte-Bindung geschlossen, der Verlust sichtbar); drei benannte Über-Verweigerungen; und die Verfahrens-Grenze (Blindheit, fremde Programme, Lead als Zweitleser). Keine Kette erreicht mehr das Geschlossene: ein fremdes/getauschtes Dokument unter doppelt gelesenem Namen |
 | H71 | **Rest**, keine Angriffskette (TSK-0086) | vier gemessene Grenzen des Lesers der Merge-Rückstandsliste, je im Eintrag: ein Eintrag, den `open()` mit etwas anderem als `OSError` ablehnt, bricht `update-kit` nach erfolgreichem Installerlauf ab (Hook abgesichert, Kommando nicht — Einzeiler benannt); eine gelesene Liste, die zu keinem erkennbaren Eintrag dekodiert, gilt als leer und wird gelöscht (UTF-16 gemessen, so nicht ausgeliefert); der Vergleich entfernt JEDES `CR`, also auch eines mitten in der Zeile oder in einer Binärvorlage (Über-Verwerfen; Verengen brächte Leser und Installer über dieselbe Datei in Streit — genau der Bruch, der die Liste des Nutzers erzeugte); und zwei Zustände nörgeln absichtlich weiter statt zu schweigen. Der Blocker der Runde — eine **unlesbare** Liste galt als erledigt und wurde gelöscht — ist geschlossen: `unlesbar`, `leer` und `verglichen` sind seither drei Antworten |
 | H70 | **Rest**, Messlücke des Instruments, `H10`/`H41`-Klasse (TSK-0083/TSK-0084) | der Vollständigkeits-Draht des Ledger-Gates fragt nach **Mustern** (zwei Leser, Vereinigung), also sieht er eine vierte Ausnahme nicht, die **gar kein** `re.Pattern` befragt — gemessen von Umsetzer und Prüfer unabhängig (`stage.strip().startswith("deno ")` befreit die Stufe, beide Leser grün, im Klon 1 passed), vom Lead ausdrücklich **nicht** nachgemessen. Keine offene Kette im Produkt: der Draht bewacht eine künftige Änderung. Die Frage, die es fangen müsste, ist „welche Stufe wird frei" — im Docstring benannt, als eigene Runde zurückgestellt |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
@@ -5013,6 +5017,56 @@ verliert stillschweigend eine Kit-Reparatur ohne Spur — das war der Blocker di
 `leer` und `verglichen` sind seither drei verschiedene Antworten, eine ungelesene Liste erreicht
 `resolved` auf keinem Weg, und der Eskalationszähler wird für sie nicht zurückgesetzt. Was
 bleibt, ist (a) als lauter Abbruch und (b)/(c)/(d) als Rauschen bzw. Über-Vorsicht.
+
+### H72 — Was die Vier-Augen-Wand NICHT bindet — offen, gemessene Grenzen der Zweitlesungs-Mechanik (TSK-0087)
+
+**Anlass:** `FR-0035` verlangte den Vier-Augen-Mechanismus wörtlich („ein Hook der das Verschieben
+sperrt …"), `TSK-0087` hat ihn gebaut: kein Eintritt ins Archiv ohne zwei unabhängige, an die
+**Bytes** des Dokuments gebundene Lesungen; Uneinigkeit legt beide Lesungen dem Nutzer vor. Der
+Prüfer hat die Wand in zwei Runden mit über vierzig Linien angegriffen; was durchlief, wurde
+geschlossen (archivinterne Wäsche, Pfad-statt-Dokument-Bindung, `ARCHIVE/`-Faltung,
+Freigabe-als-Waschgang). Diese Grenzen blieben, jede gemessen:
+
+**(a) Die `an_entry`-Ausnahme vergleicht Vorlage und Dateiname, nicht den Ort.** Eine Bewegung,
+die Regel (`path_template`) und Dateinamen behält, gilt als Aufräumen und braucht keine Lesung —
+auch wenn sie einen **parametrisierten Platzhalter** wechselt: `mv …/2026/x.pdf …/2027/x.pdf` ist
+rc 0 (K7), und so eine Bewegung kann auf einem Ziel landen, das bereits ein anderes, doppelt
+gelesenes Dokument trägt — das wird ersetzt (K8; die Byte-Bindung läuft nicht, das Gate steht
+vorher ab, und `guard_fs_tripwire` erlaubt Bewegungen im Archiv seit 2026-08-03 bewusst). Der
+Docstring des Gates sagt seit der Abnahme, was der Code vergleicht, statt „ein Ordner wird
+aufgeräumt" zu behaupten. Schließrichtung, wenn gewollt: den Platzhalterwechsel als Eintritt
+werten — das ist eine Verschärfung mit eigener Kostenfrage (jede Jahresumsortierung bräuchte
+zwei Lesungen), also eine Nutzerentscheidung, keine Nacharbeit.
+
+**(b) Das Überschreiben eines INBOX-Dokuments ist frei.** `echo >`, Tool-`Write` und `cp` darüber
+sind rc 0 — `guard_fs_tripwire` verweigert das **Löschen** unter `inbox/`, nicht das Überschreiben.
+Die teure Folge („zwei Lesungen holen, Dokument tauschen, ablegen") ist seit TSK-0087 durch die
+Byte-Bindung geschlossen: die Lesungen verfallen mit den Bytes („1 of 2 attested readings no
+longer match its bytes", gemessen K1/K3). Offen bleibt das Überschreiben selbst — ein Dokument
+kann im Eingang zerstört werden, bevor es je gelesen wurde. Begrenzung: der Verlust ist sichtbar
+(die Ablage scheitert, weil keine Lesung mehr passt), nicht still.
+
+**(c) Über-Verweigerungen, benannt und gewollt, Richtung sicher:** ein Dokument über 64 MB
+bekommt keinen Byte-Stempel und wird darum verweigert statt ungebunden zugelassen (K6); ein
+relatives Wort, das zwei existierende Dokumente meinen kann, verlangt die Lesungen für **beide**
+(K10, die Verweigerung nennt die Streudatei); ein `Write`/Redirect direkt ins Archiv wird immer
+verweigert, auch mit passenden Lesungen — eine Ablage **verschiebt** ein Dokument (§2.5); und die
+Verweigerung im „kein Digest"-Zweig unterscheidet seit der Abnahme „getauscht" von „nicht
+bindbar" (Rest C der Prüfrunde), damit keine Rolle einen Tausch sucht, den es nicht gab.
+
+**(d) Was kein Hook sehen kann, bleibt Verfahren:** Blindheit des zweiten Lesers ist nicht
+erzwingbar (kein Hook beobachtet einen Read; steht im Gate, im Store-Leser, in §2.5 und in
+`ENFORCEMENT.md`); ein Datensatz aus einem fremden Programm (`python -c`) bekommt keinen Stempel
+und zählt nicht (sichere Richtung); eine Befehlszeile, die den Store nirgends nennt, sieht kein
+Gate — dieselbe benannte Grenze wie bei `kit_state.json`; und der Lead als zweiter Lauf zählt als
+zwei Läufe, obwohl er den ersten Bericht gesehen haben kann — die Unabhängigkeit misst Provenienz
+(zwei `agent_id`s), nicht Unwissenheit.
+
+**Urteil: Rest.** Keine der Ketten erreicht mehr, was die Runde geschlossen hat: ein fremdes oder
+getauschtes Dokument unter einem doppelt gelesenen Namen abzulegen. (a) und (b) sind echte, enge
+Restwege mit benannter Begrenzung und je einer Schließrichtung, die eine eigene Entscheidung
+verlangt; (c) ist Über-Vorsicht; (d) ist die ehrlich ausgewiesene Grenze zwischen Mechanismus und
+Verfahren.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

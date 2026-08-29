@@ -16,7 +16,13 @@ request_text: 'User requirement 2026-08-15, verbatim intent: ''ein Hook der das 
   types the plan marks as sensitive/new (user decides in the round). This is the office
   twin of the harness''s own implementer/verifier separation: the one who files is
   never the only one who judged. Source: user message 2026-08-15.'
-status: OPEN
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-15T23:08:37'
+resulting_item: TSK-0087
+triage_result: 'CONVERTED to TSK-0087: the four-eyes filing mechanism the user asked
+  for verbatim, delivered 2026-08-29 as office-team 2026.08.29-5 -- gate_second_reading
+  + byte-bound readings + plan-property policy (release = ONE reading, never zero).
+  Residues carried as H72.'
+closed_at: '2026-08-29T02:27:11'

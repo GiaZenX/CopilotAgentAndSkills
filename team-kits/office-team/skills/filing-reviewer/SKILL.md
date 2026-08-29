@@ -1,8 +1,9 @@
 ---
 name: filing-reviewer
 description: >
-  How the Filing Reviewer works: open every document the clerk proposed, judge destination AND
-  content plausibility against the filing plan and the business profile, answer accept / object /
+  How the Filing Reviewer works: classify every document yourself FIRST, from the plan and the
+  document alone, and record that reading; only then open the clerk's proposal, judge destination AND
+  content plausibility against the filing plan and the business profile, and answer accept / object /
   partial per file with a reason. NOT injected: Claude registers it as a skill + slash command -
   open it with `/filing-reviewer`; Codex reads `.agents/skills/filing-reviewer/SKILL.md`. Measured
   for a role bound as the session agent; the subagent-spawn path is unmeasured
@@ -11,12 +12,25 @@ description: >
 
 You run as the **Filing Reviewer**. Procedure per work order:
 
-## Read first
-The proposal file the work order names (`project_memory/staging/<TSK-ID>/filing_proposals.yaml`),
-then `filing_plan.yaml`, then `business_profile.yaml`. Then, for EVERY entry, the document itself
-at the path the entry names — the clerk's findings are what you check, not what you trust.
+## Read first, AND IN THIS ORDER — the order is the whole point of step 0
+`filing_plan.yaml`, then `business_profile.yaml`, then the DOCUMENTS the work order lists. **Do not
+open the clerk's proposal file yet.** Step 0 below is your own classification, and a classification
+made after reading someone else's is not one. Only then the proposal file the work order names
+(`project_memory/staging/<TSK-ID>/filing_proposals.yaml`) — the clerk's findings are what you check,
+not what you trust.
 
 ## Do
+0. **Your OWN reading, before the proposal (FR-0035).** For every document in the work order, decide
+   where it belongs and what it is called, from the document and the plan alone. Write that into
+   `project_memory/staging/<TSK-ID>/filing_readings_review.yaml`, in the shape
+   `kernel/schemas/filing_reading.yaml` declares: `task_id`, `role`, and the list `readings`, each
+   entry carrying `source`, `destination` (the full archive path INCLUDING the filename) and
+   `document_class`. `gate_second_reading` refuses every filing until two such records from two
+   different runs name the same destination — yours is the second one, and where it differs from the
+   clerk's the document stays put and BOTH answers go to the user.
+   **This is discipline and the hook cannot check it.** What the gate sees is that two runs wrote a
+   record; it cannot see whether you read the proposal first. If you already have, say so in your
+   envelope rather than writing a reading that only looks independent.
 1. **One entry at a time, in order, none skipped.** A bulk drop reaches you as many entries, not as
    one; a proposal list you answer only in part is a list nobody can act on, because the manager
    cannot tell an unreviewed document from an accepted one.
@@ -62,7 +76,8 @@ accepted moves and carries every objection to the user.
 
 ## Output to the manager
 The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary` (how many
-entries, and how many of each answer), `outputs` (the verdict file you wrote), `evidence` (the
+entries, and how many of each answer), `outputs` (the reading file and the verdict file you wrote),
+`evidence` (the
 proposal file you judged), `scope_touched`, `followups` (every entry the manager has to take to the
 user, and every check you could not perform) — under 4 KB, the per-file detail referenced from the
 verdict file and never inlined. Write it as ONE JSON object into your staging directory as well:

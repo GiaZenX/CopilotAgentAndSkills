@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-PreToolUse(Bash|PowerShell|Edit|Write|MultiEdit) — nothing lands in archive/ that the filing
-plan does not have a rule for.
+PreToolUse(Bash|PowerShell|Edit|Write|MultiEdit|NotebookEdit) — nothing lands in archive/ that the
+filing plan does not have a rule for.
 
 WHAT CHANGED AND WHY. V1 checked filing_log.yaml: after the clerk wrote a `filed:` entry, the gate
 asked whether the target existed. Two things ended that. `filing_log.yaml` is now a REGENERATED
@@ -265,7 +265,8 @@ def main():
     # the event is settled by settings.json. Re-checking a field a provider may simply omit
     # would turn the gate into a silent exit 0 -- the failure this whole phase is about.
     data = _kernel.payload(HOOK)
-    if data.get("tool_name") not in ("Bash", "PowerShell", "Edit", "Write", "MultiEdit"):
+    if data.get("tool_name") not in ("Bash", "PowerShell", "Edit", "Write", "MultiEdit",
+                                     "NotebookEdit"):
         sys.exit(0)
     cwd = str(data.get("cwd") or "")
     root = _kernel.find_repo_root(cwd)

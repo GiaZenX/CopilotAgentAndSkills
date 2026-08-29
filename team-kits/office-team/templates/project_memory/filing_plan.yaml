@@ -24,8 +24,20 @@
 # `gate_filing` and stop.
 #
 # Rule fields: id · path_template · document_types · filename_template · required_metadata ·
-# collision_policy · retention · examples. A rule may carry more — everything except
-# `path_template` is rendered without being named. In `path_template`, `<name>` stands for a
+# collision_policy · retention · second_reading · examples. A rule may carry more — everything except
+# `path_template` is rendered without being named.
+#
+# `second_reading` IS THE ONE FIELD A HOOK DECIDES ON BESIDES `path_template`, and it is the user's
+# lever, not the kit's (FR-0035, FR-0028). Every rule asks for TWO independent classification
+# readings before one of its documents may be filed — a second run that was not given the first
+# answer has to arrive at the same path AND the same filename, or nothing moves and both readings go
+# to the user. `gate_second_reading` is what refuses; `record_filing_reading` is what makes the
+# readings countable. The ONLY way to release a rule is `second_reading: false` — the value YAML
+# itself reads as the boolean false. Absent, `true`, a word or a list all mean "two", so a typo
+# cannot quietly open a class. A RELEASE IS ONE READING, NEVER NONE: the choice the user is offered
+# is one run against two, and a class nobody has to read at all would be a folder any document could
+# be renamed into unseen. Start with everything at two (that is what an unfilled field means) and
+# release a rule only where the user has decided the class is routine enough. In `path_template`, `<name>` stands for a
 # non-empty run of characters INSIDE ONE path segment: it never spans a `/`, and a segment may mix
 # literals and placeholders (`<Modell>_<Prozessor>`, `2026-<Monat>`). Everything else is literal, so
 # `archive/finance/<year>/` covers `archive/finance/2026` and not `archive/finance/2026/q1`.
@@ -47,4 +59,5 @@ rules: []
 #    required_metadata: [date, supplier]
 #    collision_policy: suffix
 #    retention: "while product active + 3y"
+#    second_reading: false           # user's decision: one reading here, never none
 #    examples: ["archive/products/datasheets/2026-01-09_ACME_datasheet.pdf"]

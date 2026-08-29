@@ -2823,16 +2823,22 @@ def _chain_gates(command, project_dir):
 
 
 def _multi_gate_chains(kit):
-    """[(event, command)] for every registration of `kit` that runs MORE THAN ONE gate.
+    """[(event, matcher, command)] for every registration of `kit` that runs MORE THAN ONE gate.
 
     Read off the shipped settings, so a chain added on a new event is in the subject of the rule
     below the day it ships rather than the day somebody remembers it.
+
+    THE MATCHER TRAVELS WITH THE CHAIN since 2026-08-28, and that is a correction rather than an
+    addition: this returned `(event, command)` and the rule below keyed its payload on the EVENT,
+    which is a claim that one event carries at most one chain. The office kit disproved it the day
+    `gate_filing gate_second_reading` shipped (FR-0035) — two PreToolUse chains, on disjoint
+    matchers, and the spawn payload drives neither of them into the other's gates.
     """
     sys.path.insert(0, TEAM_KITS)
     from kernel.report import _invoked_scripts
     path = os.path.join(TEAM_KITS, kit, "settings", "settings.json")
     settings = json.load(open(path, encoding="utf-8"))
-    return [(event, hook["command"])
+    return [(event, entry.get("matcher"), hook["command"])
             for event, entries in (settings.get("hooks") or {}).items()
             for entry in entries
             for hook in entry.get("hooks") or []
@@ -2840,12 +2846,26 @@ def _multi_gate_chains(kit):
 
 
 def _a_spawn_the_chain_accepts(root):
-    """A project with a leased task, and the PreToolUse(Agent) call its spawn chain accepts."""
+    """A project with a leased task, and the PreToolUse(Agent) call its spawn chain accepts.
+
+    WITH AN APPROVED `PROC` AND A WORK ORDER THAT NAMES IT, which this fixture did not carry until
+    2026-08-28 — and "the chain accepts" was then not true of the office kit at all: measured,
+    `gate_proc_approved` refused this very payload with "this project has no approved procedure at
+    all", so the two gates behind it decided nothing while `gate_dispatch`, run alone, still claimed
+    the lease. The caller's own docstring promised a payload the chain accepts; this is what makes
+    that promise measurable rather than asserted. The kits without that gate are unaffected by the
+    extra item, which is just more state in the before/after diff.
+    """
+    from conftest import walk_to_status
     state, _task, header = dispatched_repo(root)
+    procedure = walk_to_status(state, state.capture(
+        "PROC", {"title": "inbox sweep", "steps": ["read", "file"],
+                 "roles": ["backend-developer"]}), "APPROVED")
     return state, {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(root),
                    "tool_input": {"subagent_type": "backend-developer",
                                   "run_in_background": False,
-                                  "prompt": "objective: do it\n%s\noutput: a result" % header}}
+                                  "prompt": "objective: run %s\n%s\noutput: a result"
+                                            % (procedure["id"], header)}}
 
 
 def _a_child_stop_the_chain_accepts(root):
@@ -2859,12 +2879,61 @@ def _a_child_stop_the_chain_accepts(root):
     return state, _child_stop(root)
 
 
-# The payload that reaches the mutating step of a chain, per EVENT — a fixture list, and the test
-# below refuses a chain it has none for, so a new multi-gate chain cannot join the tree unmeasured.
+def _a_filing_the_chain_accepts(root):
+    """A project with a filing plan, and the Bash move the office FILING chain lets through.
+
+    The plan releases this rule from the SECOND reading (`second_reading: false`), which asks for
+    one — never for none — so the fixture records one and has the shipped recorder attest it through
+    its own launcher. That is the smallest state on which BOTH gates of this chain reach a decision
+    about a real filing instead of exiting on the tool name; what the rule itself means is measured
+    where it belongs, in `tools/test_hooks.py`
+    (`test_a_plan_rule_can_release_its_own_class_from_the_second_reading`).
+    """
+    state, task, _header = dispatched_repo(root)
+    destination = "archive/finance/2026/2026-01-01_ACME.pdf"
+    write(os.path.join(state.root, "filing_plan.yaml"),
+          'rules:\n  - id: FP-001\n    path_template: "archive/finance/<year>/"\n'
+          "    document_types: [invoice]\n    second_reading: false\n")
+    write(os.path.join(str(root), "inbox", "a.pdf"), "a document that was really read\n")
+    record = os.path.join(state.root, "staging", task["id"], "readings.yaml")
+    write(record, "task_id: %s\nrole: records-clerk\nreadings:\n  - source: inbox/a.pdf\n"
+                  "    destination: %s\n    document_class: invoice\n" % (task["id"], destination))
+    subprocess.run(
+        [sys.executable, "-B", os.path.join(str(root), ".claude", "hooks", "_gate.py"),
+         "record_filing_reading.py"],
+        input=json.dumps({"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(root),
+                          "agent_id": "clerk-1", "tool_input": {"file_path": record}}),
+        capture_output=True, text=True, timeout=180,
+        env=dict(os.environ, CLAUDE_PROJECT_DIR=str(root), HARNESS_KERNEL_PATH=""))
+    return state, {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(root),
+                   "tool_input": {"command": "mv inbox/a.pdf %s" % destination}}
+
+
+# The payload that drives a chain, per (EVENT, the tool it arrives on) — a fixture list, and the
+# test below refuses a chain it has none for, so a new multi-gate chain cannot join the tree
+# unmeasured. The tool is what SELECTS the payload for a chain: a registration's matcher says which
+# tools reach it, so the payload for a chain is one whose tool that matcher accepts. `None` is the
+# entry for a registration that carries no matcher at all, which reaches every call of its event.
 _CHAIN_PAYLOADS = {
-    "PreToolUse": _a_spawn_the_chain_accepts,
-    "SubagentStop": _a_child_stop_the_chain_accepts,
+    ("PreToolUse", "Agent"): _a_spawn_the_chain_accepts,
+    ("PreToolUse", "Bash"): _a_filing_the_chain_accepts,
+    ("SubagentStop", None): _a_child_stop_the_chain_accepts,
 }
+
+
+def _payload_for(event, matcher):
+    """The builder whose payload this chain really receives, or None when the list has none.
+
+    A chain with NO matcher takes the `None` entry of its event (it reaches every call); a chain
+    WITH one takes the entry whose tool that matcher accepts. Exactly one must apply — two would
+    mean the fixture list, not the registration, decides what a chain is measured on.
+    """
+    found = [builder for (chain_event, tool), builder in _CHAIN_PAYLOADS.items()
+             if chain_event == event
+             and (tool is None if matcher is None
+                  else tool is not None and re.match("^(?:%s)$" % matcher, tool))]
+    assert len(found) < 2, (event, matcher, found)
+    return found[0] if found else None
 
 
 def _canonical_state(root):
@@ -2915,8 +2984,14 @@ def test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refu
       * at most ONE gate of a chain may mutate, because a second mutating gate necessarily stands
         in front of the first one's refusal;
       * that one must be LAST.
-    The control is the third assertion: some gate must have mutated, or the fixture never reached
-    the code under test and the two above are vacuous.
+    TWO CONTROLS, and the first replaced a third assertion that read `assert mutating` per chain.
+    That one said "the fixture never reached the mutating step" — true while every chain in the tree
+    HAD a mutating step, and false the day a chain of pure judges shipped (`gate_filing
+    gate_second_reading`, FR-0035), where it demanded a mutation the chain must not perform. So:
+      * per chain, the whole chain must ACCEPT its payload — that is what proves every gate reached
+        its decision path rather than sitting behind an earlier refusal;
+      * across the kit, SOME gate must have mutated, or the apparatus has stopped being able to
+        detect a mutation at all and the two assertions above are vacuous everywhere.
 
     WHAT IT STILL CANNOT SEE, named rather than implied: a gate that mutates only on an input the
     fixture does not produce reads as non-mutating here. The measurement is as good as the payload,
@@ -2924,16 +2999,18 @@ def test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refu
     """
     chains = _multi_gate_chains(kit)
     assert chains, "%s: no chained registration at all — the rule below has no subject" % kit
-    unmeasurable = sorted({event for event, _command in chains} - set(_CHAIN_PAYLOADS))
+    unmeasurable = sorted("%s(%s)" % (event, matcher) for event, matcher, _c in chains
+                          if _payload_for(event, matcher) is None)
     assert not unmeasurable, (
-        "%s registers a multi-gate chain on %s and this test has no payload that reaches its "
-        "mutating step. Add one to _CHAIN_PAYLOADS; a chain nobody can drive is a chain whose "
-        "order nothing checks." % (kit, unmeasurable))
+        "%s registers a multi-gate chain on %s and this test has no payload that its matcher lets "
+        "through. Add one to _CHAIN_PAYLOADS; a chain nobody can drive is a chain whose order "
+        "nothing checks." % (kit, unmeasurable))
 
-    for event, command in chains:
-        root = tmp_path / event
+    mutated_somewhere = []
+    for index, (event, matcher, command) in enumerate(chains):
+        root = tmp_path / ("%s-%d" % (event, index))
         _install_enforcement_bundle(root, kit)
-        state, payload_data = _CHAIN_PAYLOADS[event](root)
+        state, payload_data = _payload_for(event, matcher)(root)
         gates = _chain_gates(command, root)
         payload = json.dumps(payload_data)
         env = dict(os.environ, CLAUDE_PROJECT_DIR=str(root))
@@ -2941,29 +3018,38 @@ def test_no_gate_that_mutates_the_state_runs_in_front_of_one_that_can_still_refu
 
         pristine = os.path.join(str(root), "pristine")
         shutil.copytree(state.root, pristine)
-        mutating = []
+        mutating, refused = [], []
         for gate, argv in gates:
             shutil.rmtree(state.root)
             shutil.copytree(pristine, state.root)       # every gate meets the SAME state
             before = _canonical_state(root)
-            subprocess.run(argv, input=payload, capture_output=True, text=True, env=env,
-                           timeout=180)
+            result = subprocess.run(argv, input=payload, capture_output=True, text=True, env=env,
+                                    timeout=180)
+            if result.returncode:
+                refused.append("%s: %s" % (gate, result.stderr.strip()[:400]))
             if _canonical_state(root) != before:
                 mutating.append(gate)
         shutil.rmtree(state.root)
         shutil.copytree(pristine, state.root)
 
         names = [gate for gate, _argv in gates]
-        where = "%s %s chain %s" % (kit, event, names)
-        assert mutating, (
-            "%s: no gate changed the state on a call the chain accepts — the fixture never "
-            "reached the mutating step, so this measurement proves nothing" % where)
-        assert len(mutating) == 1, (
+        where = "%s %s(%s) chain %s" % (kit, event, matcher, names)
+        assert not refused, (
+            "%s: the payload this chain is measured on is refused, so every gate behind the "
+            "refusal decided nothing and the order below is unmeasured:\n  %s"
+            % (where, "\n  ".join(refused)))
+        assert len(mutating) <= 1, (
             "%s: %s both mutate the state on one call, so the earlier one pays for a call the "
             "later one can still refuse" % (where, mutating))
-        assert mutating[0] == names[-1], (
-            "%s: %s changes the state and is not last — every gate after it can still exit 2, and "
-            "nothing gives back what it wrote" % (where, mutating[0]))
+        if mutating:
+            assert mutating[0] == names[-1], (
+                "%s: %s changes the state and is not last — every gate after it can still exit 2, "
+                "and nothing gives back what it wrote" % (where, mutating[0]))
+        mutated_somewhere += mutating
+    assert mutated_somewhere, (
+        "%s: not one gate of any chained registration changed the state on a call the chain "
+        "accepts — the fixtures never reach a mutating step, so the ordering rule is measured "
+        "against nothing" % kit)
 
 
 @pytest.mark.parametrize("kit", KITS)
@@ -3096,7 +3182,12 @@ def test_the_longest_registered_chain_runs_all_four_gates_on_one_payload(tmp_pat
                                        "roles": ["backend-developer"]})
     procedure = walk_to_status(state, procedure, "APPROVED")
     command = _registered_spawn_command(claude, tmp_path)
-    spawn_chain = [line for event, line in _multi_gate_chains(kit) if event == "PreToolUse"]
+    # The SPAWN chain, picked by the matcher that carries spawns — not by "the only PreToolUse
+    # chain", which is what this said until the office kit shipped a second one (the filing chain,
+    # FR-0035) and turned a correct registration into a failure of this test.
+    spawn_chain = [line for event, matcher, line in _multi_gate_chains(kit)
+                   if event == "PreToolUse" and matcher
+                   and re.match("^(?:%s)$" % matcher, "Agent")]
     assert len(spawn_chain) == 1, spawn_chain
     assert len(_chain_gates(spawn_chain[0], tmp_path)) == 4, command
     env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))

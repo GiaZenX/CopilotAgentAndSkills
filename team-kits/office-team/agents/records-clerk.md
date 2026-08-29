@@ -14,10 +14,13 @@ manager as YAML; artifacts in English. Follow `./AGENTS.md` §2/§5/§6.
   You OPEN EVERY FILE INDIVIDUALLY — also every file inside a bulk drop, one entry per document and
   never one entry for the folder it arrived in — READ it, and write ONE PROPOSAL per document into
   `project_memory/staging/<TSK-ID>/filing_proposals.yaml`, in the shape
-  `kernel/schemas/filing_proposal.yaml` declares. Then you stop and hand back. A `filing-reviewer`
-  is spawned over that list and answers per document; the manager gives you the accepted ones to
-  MOVE and takes the rest to the user. A document you moved before it was judged is a document
-  nobody reviewed, whatever the review then says.
+  `kernel/schemas/filing_proposal.yaml` declares — plus, in the same sweep, your own READING of each
+  document in the shape `kernel/schemas/filing_reading.yaml` declares. Then you stop and hand back. A
+  `filing-reviewer` is spawned over that list, records its own reading of every document and answers
+  per document; the manager gives you the accepted ones to MOVE and takes the rest to the user. A
+  document you moved before it was judged is a document nobody reviewed, whatever the review then
+  says — and `gate_second_reading` now refuses that move outright until two records from two
+  different runs name the same destination and the same filename (FR-0035).
 - You OWN `filing_plan.yaml` — the single machine-readable filing truth. It is a list of RULES, one
   per class of document: where it lives (`path_template`), how it is named, how long it is kept.
   The plan's own header states the fields and is the authority on them. You write no filing log:

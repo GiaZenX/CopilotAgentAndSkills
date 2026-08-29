@@ -642,8 +642,17 @@ def test_the_pipeline_texts_name_the_fields_their_own_schema_declares():
 
     MEASURED RED in a copy of the tree outside this repo with the `filing_verdicts` step cut out of
     the reviewer's SKILL: one offender, five missing names.
+
+    WHERE THE FLOOR LIVES, and it moved twice. It was `len(wanted) >= 8` PER SCHEMA, which is a claim
+    that every pipeline contract is at least that big -- and `filing_reading` (FR-0035) declares six
+    names because that is its whole shape, so a correct third contract turned this red for being
+    small. The first correction dropped the per-schema floor to "yields something", which was too
+    loose in the other direction: one schema could shrink from ten names to one and the aggregate
+    would not notice. So BOTH, and both as floors under the measured stand rather than at it (the run
+    extracts 24 names today; the numbers below are the level at which the reader is provably still
+    reading, not a record of what it finds).
     """
-    judged, offenders = 0, []
+    judged, offenders, total = 0, [], []
     for name, role, schema in _pipeline_schemas():
         paths = [path for path in glob.glob(os.path.join(TEAM_KITS, "*", "skills", role,
                                                          "SKILL.md"))]
@@ -654,7 +663,11 @@ def test_the_pipeline_texts_name_the_fields_their_own_schema_declares():
             wanted += list((spec or {}).get("item_required") or [])
             for values in ((spec or {}).get("item_enums") or {}).values():
                 wanted += list(values)
-        assert len(wanted) >= 8, (name, wanted)
+        assert len(wanted) >= 3, (
+            "%s yielded %d field names -- below the smallest contract this pipeline has (a task id, "
+            "a writer and one list), so the reader has stopped matching: %s"
+            % (name, len(wanted), wanted))
+        total += wanted
         for path in paths:
             with io.open(path, encoding="utf-8") as handle:
                 text = _reading_view(handle.read())
@@ -667,6 +680,9 @@ def test_the_pipeline_texts_name_the_fields_their_own_schema_declares():
         "ends of the pipeline can drift apart (the contracts are team-kits/kernel/schemas/):\n  %s"
         % "\n  ".join(offenders))
     assert judged >= 2, "only %d pipeline SKILLs judged -- the derivation stopped matching" % judged
+    assert len(total) >= 20, (
+        "only %d field names were extracted from all pipeline schemas together -- the reader "
+        "narrowed: %s" % (len(total), sorted(set(total))))
 
 
 def _question_tools(kit):

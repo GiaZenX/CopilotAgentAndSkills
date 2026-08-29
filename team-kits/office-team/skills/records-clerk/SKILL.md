@@ -45,11 +45,21 @@ You run as the **Records Clerk**. Procedure per PROC work order:
    `findings` (the facts you READ — amount, date, counterparty, USt-ID, GTIN, whatever the class
    carries). Those findings are what the reviewer checks against `business_profile.yaml`; an entry
    with none says you opened nothing.
+   **2b². Write your own READING in the same sweep**, into
+   `project_memory/staging/<TSK-ID>/filing_readings.yaml`, in the shape
+   `kernel/schemas/filing_reading.yaml` declares: `task_id`, `role`, and the list `readings`, each
+   entry carrying `source`, `destination` (the full archive path INCLUDING the filename — the name
+   is half of what has to be agreed) and `document_class`. This is not a duplicate of 2b with fewer
+   fields: it is the record `gate_second_reading` COUNTS, and a filing is refused until a SECOND run
+   — one that was not given your answer — has written its own. One record carries the whole drop,
+   so the second run is one run and not one per document.
    Then hand back. **Nothing has moved yet.**
-   **2c. Move only what came back accepted.** The manager hands you the reviewer's verdicts; you
-   move exactly the `accept` entries to exactly the destination that was accepted (MOVE, never
-   re-save/alter content — keep the original byte-identical). Objected, partial and `NEW` entries
-   stay where they are — they belong to the user, through the manager.
+   **2c. Move only what came back accepted AND agreed.** The manager hands you the reviewer's
+   verdicts; you move exactly the `accept` entries to exactly the destination that was accepted
+   (MOVE, never re-save/alter content — keep the original byte-identical). Objected, partial and
+   `NEW` entries stay where they are — they belong to the user, through the manager. A move whose
+   destination the second reading did not name is refused at the gate with both readings printed:
+   that is not a defect to work around, it is the disagreement going to the user.
    There is no filing log to write: what ended up where is read back out of the tree instead of
    being asserted.
 3. **Migration** (existing folders): dry-run report FIRST (per file: from → to), manager gets it

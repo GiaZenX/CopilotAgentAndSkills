@@ -1,0 +1,69 @@
+id: TSK-0087
+product_requirement: PR-0003
+derives_from: FR-0035
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0003
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0035 (the user''s verbatim requirement: ''ein Hook der das Verschieben sperrt
+  bis der Datei kein neuer Name zugewiesen wurde und ein zweiter unabhaengiger Agent
+  nicht auf dasselbe Ergebnis kommt'' -- wanted ON TOP of gate_filing, ENFORCED not
+  advised)'
+- 'what TSK-0078/FR-0049 already built and what it does NOT: the filing-reviewer ROLE
+  PATH exists (agent, skill, both schemas, constitution 2.5) but the kit says so itself
+  in hooks/ENFORCEMENT.md -- ''the review pipeline in front of it is procedure and
+  not a mechanism ... a proposal nobody reviewed reaches this gate exactly like any
+  other move''. Verifier-measured 2026-08-25 in a real office project: a shell move
+  AND a direct write into a plan-covered archive path pass the FULL registered chain
+  rc 0 with NO review record; control into an uncovered path rc 2'
+- gate_filing.py and _filing.py as they run today (the rule match, fail-closed on
+  no matching rule), plus the two schemas the review pipeline already writes (filing_proposal,
+  filing_verdict) -- the records the gate must read instead of trusting one classification
+- 'FR-0028 (the user''s steering: the office kit gets RULES and ways of acting, never
+  hardcoded bindings) -- so WHEN two readings are required is a property of the filing
+  plan, not a constant in a hook'
+expected_outputs:
+- 'STEP 1 MEASURE, and one number is for the USER: against a scaffolded office project
+  outside the repo, reproduce the gap (a move with no review record passes) and MEASURE
+  what a second independent classification costs -- wall time and, where measurable,
+  tokens per document. The lead brings that number to the user, whose item explicitly
+  reserves the policy question (two runs for every document, or only for classes the
+  plan marks). Report it as its own line'
+- 'STEP 2 BUILD the mechanism so the POLICY is a plan property, not a constant: a
+  move out of inbox/ into a plan-covered path is refused unless TWO independent classification
+  records agree on target path AND name; disagreement or a missing second reading
+  leaves the document where it is and names both readings for the user. Independence
+  is enforced, not hoped: the second record must come from a separate run that did
+  not see the first (measure how you enforce it and say what that check can and cannot
+  see). Which document classes require the second reading is read from the filing
+  plan, defaulting to ALL where the plan says nothing -- the safe side, and the user''s
+  decision then narrows it by rule instead of by rebuild'
+- 'STEP 3 TESTS: red-without-fix in a clone outside the repo for each half -- a move
+  with no review record refused, a move with two AGREEING records allowed, two DISAGREEING
+  records refused with both readings named, a second record that is not independent
+  refused; and the counter-direction, so the gate cannot be satisfied by refusing
+  everything. Measured as real hook processes through the full registered chain, not
+  as unit calls'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, the affected suites per DEC-0050
+  (the full run is the lead''s); mirrors byte-identical unless KIT_SPECIFIC_HOOKS
+  names the reason; report file:line, the design chosen and WHY, the cost number,
+  and residues named honestly'
+dependencies:
+- FR-0035
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-28T21:48:28'
+closed_at: '2026-08-29T02:27:10'

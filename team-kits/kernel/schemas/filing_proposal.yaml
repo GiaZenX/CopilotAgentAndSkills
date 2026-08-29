@@ -12,11 +12,17 @@
 # specialist may write). ONE hook does read it -- `guard_yaml_valid` parses every
 # `project_memory/**.yaml` after a write, staging included, and refuses broken YAML -- and that is
 # well-formedness and nothing else: no hook checks a field declared here, and no gate decides
-# anything from what the file says. What still decides every move is `gate_filing`, against
-# `filing_plan.yaml`, at the moment the move is made. Held by
+# anything from what THIS file says. Held by
 # `tools/test_hooks.py::test_the_only_hook_that_reads_a_staged_pipeline_file_reads_it_for_well_formedness`.
 # What this contract buys is that the review pipeline is one object rather than two descriptions
 # of one.
+#
+# WHAT DOES DECIDE A MOVE, so this header does not read as "nothing does": `gate_filing`, against
+# `filing_plan.yaml`, at the moment the move is made — and since FR-0035 `gate_second_reading`
+# beside it, against two `filing_reading` records. That is a THIRD artifact with its own schema and
+# not this one, for the reason the sibling `filing_reading.yaml` header gives: a verdict on a
+# proposal is agreement with an answer already seen, and what the gate needs is a second answer
+# arrived at without it.
 schema: filing_proposal
 # WHICH ROLE WRITES THIS FILE. Declared here rather than in a test, because it is what makes
 # the contract checkable at all: `tools/test_role_contracts.py` walks every schema carrying

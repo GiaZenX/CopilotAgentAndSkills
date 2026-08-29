@@ -13,7 +13,10 @@
 #     `tools/test_schemas.py::test_an_item_enum_refuses_a_word_the_schema_does_not_declare`) --
 #     and nothing in the shipped tree asks it for a file of this shape. Measured 2026-08-21: a
 #     well-formed verdict file with an invented word passes every registered office hook, rc 0.
-# So at RUNTIME the vocabulary is discipline plus the review itself; the wall is `gate_filing`.
+# So at RUNTIME the vocabulary is discipline plus the review itself; the wall is `gate_filing`, and
+# since FR-0035 `gate_second_reading` beside it. Neither reads THIS file: a verdict is written by
+# someone who has seen the proposal, so an `accept` is agreement and not a second reading. What the
+# second-reading gate counts is the separate `filing_reading` record — see that schema's header.
 schema: filing_verdict
 # WHICH ROLE WRITES THIS FILE. Declared here rather than in a test, because it is what makes
 # the contract checkable at all: `tools/test_role_contracts.py` walks every schema carrying

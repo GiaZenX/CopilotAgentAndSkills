@@ -1,0 +1,47 @@
+id: BUG-0069
+title: GitHub CI is red on every push -- the delivery suite passes locally but fails
+  on the hosted runners, so the one external check the user sees mails him failure
+related_pr: PR-0003
+observed: 'Measured 2026-08-28 via gh: the last THREE pushes (f6dada2, 9262b3d, 8ddce26)
+  all conclude failure on both hosted runners. Latest run: windows-latest 6 failed
+  / 3754 passed / 15 skipped / 96 ERRORS; ubuntu-latest 34 failed / 3658 passed /
+  31 skipped / 148 ERRORS. The same tree passes locally: 3856 passed / 14 skipped.
+  Failure classes visible in the logs, all environment-shaped, none seen locally:
+  (a) test_migrate.py fails because the runner''s shallow/partial clone carries no
+  commit with the old V1 template, so the ''real V1 state'' fixture cannot exist there;
+  (b) test_shortening_net.py::test_a_pinned_file_that_carries_no_section_is_refused
+  dies on ValueError ''path is on mount C:, start on mount D:'' -- the hosted Windows
+  runner keeps the workspace on D: while the test builds a relpath across drives;
+  (c) test_staging_cli.py::test_cli_capture_survives_a_body_no_parser_can_bound asserts
+  a recursion-depth-derived fixture fits the item budget, and the runner''s recursion
+  limit makes the fixture 64000 bytes against a 12288 budget; (d) ~100+ ERRORS per
+  platform not yet classified (likely a fixture/collection failure multiplying). The
+  user receives ''All jobs have failed'' mail on every push while the actual delivery
+  gate (the local full suite plus verifier) is green -- the external signal is inverted
+  and therefore worthless to him.'
+expected: The hosted CI either runs the suite in a way that measures what the suite
+  needs (full clone depth where tests derive fixtures from history; drive-safe path
+  handling; environment-derived fixtures bounded by the budget they assert), or tests
+  that cannot measure on a hosted runner say so as an explicit, counted skip with
+  the reason -- never as red. A green local delivery and a red hosted run for pure
+  environment reasons is a standing false alarm; three pushes of it trains the user
+  to ignore CI, which is the worst state a check can reach.
+repro: Push any commit to feat/harness-v2; gh run list shows conclusion failure on
+  both platforms; gh run view <id> --log-failed shows the classes above.
+severity: medium
+acceptance_criteria:
+- id: AC-1
+  text: the CI run on both hosted platforms concludes green on a tree whose local
+    delivery suite is green, with every environment-impossible measurement an explicit
+    skip that names its reason and is counted in the summary
+- id: AC-2
+  text: the ~100+ ERRORS per platform are classified first (they may be one root cause)
+    and that classification is in the round's report
+- id: AC-3
+  text: a test that derives its fixture from the environment (recursion limit, drive
+    layout, git depth) asserts against the SAME environment's bounds, measured red-without-fix
+    in a clone that reproduces at least one hosted condition
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-28T23:24:48'

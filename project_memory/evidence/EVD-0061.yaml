@@ -1,0 +1,27 @@
+id: EVD-0061
+kind: review
+related:
+- TSK-0087
+- FR-0035
+result: pass
+summary: 'verifier PASS round 2 for diff:e79e6a9df0ff30a47c329573e9f4b5f667368c60c71dd178da2ea54a728475b2
+  -- TSK-0087: the four-eyes filing mechanism (FR-0035, the user''s verbatim requirement,
+  ENFORCED not advised). gate_second_reading + record_filing_reading + byte-bound
+  readings in the office kit: no archive entry without two independent readings agreeing
+  on full target incl. filename, readings bound to the document''s bytes, disagreement
+  shows both readings; policy is a plan property (release = ONE reading, never zero;
+  overlapping rules: higher demand wins, pinned by fixture). Verifier round 1 FAIL
+  closed four blockers (archive-internal laundering, path-not-document binding, ARCHIVE/
+  case-folding, cost number measured against pre-round state); round 2 PASS with all
+  attack lines re-measured and four fresh attacks on the byte-binding falling safe;
+  three PASS-bound conditions delivered (honest exemption docstring, split no-digest
+  diagnosis red-first both ways, max-wins tripwire red under max->min). 23 mutations
+  all red. office-team 2026.08.29-5. Full suite 3879 passed/14 skipped/1 failed --
+  the failure was the constitution-pin tripwire on this round''s own rule text, deliberately
+  re-pinned with the round named, shortening net re-run 35 passed. Residues carried
+  as H72; ARCHIVE/ half of the pre-existing hole-list entry closed'
+artifact_refs:
+- staging/TSK-0087/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-29T03:00:20'

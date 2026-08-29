@@ -1,4 +1,4 @@
-generated_at: '2026-08-28T21:06:27'
+generated_at: '2026-08-29T03:00:21'
 items:
 - id: BUG-0001
   type: BUG
@@ -449,6 +449,13 @@ items:
   type: BUG
   title: After update-kit the repo-template refresh lands in the USER's terminal --
     and the pending list overstates what differs (live finding, real BuyPlugGo update)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0069
+  type: BUG
+  title: GitHub CI is red on every push -- the delivery suite passes locally but fails
+    on the hosted runners, so the one external check the user sees mails him failure
   status: OPEN
   revision: 1
   approval_ref: null
@@ -1147,6 +1154,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0061
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1314,13 +1327,6 @@ items:
   type: FR
   title: 'Office: Fristen und Wiedervorlagen -- aktive Erinnerungen statt stiller
     Faelligkeiten'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0035
-  type: FR
-  title: 'Office: Vier-Augen-Ablage MECHANISCH -- kein Verschieben ohne neuen Namen
-    UND ohne dass ein zweiter unabhaengiger Agent auf dasselbe Ergebnis kommt'
   status: OPEN
   revision: 1
   approval_ref: null
@@ -1510,5 +1516,11 @@ items:
   title: 'This repo''s enforcement: four gates, a bound session agent, and no history
     record without a verdict'
   status: ACCEPTED
+  revision: 1
+  approval_ref: null
+- id: TSK-0088
+  type: TSK
+  title: null
+  status: DRAFT
   revision: 1
   approval_ref: null
