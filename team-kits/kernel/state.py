@@ -28,6 +28,7 @@ Interim notes (Fable-Check 7):
 """
 from __future__ import annotations
 
+import ntpath
 import os
 import re
 import sys
@@ -121,6 +122,30 @@ def split_revision(name: str):
     if not match:
         return None, None, None
     return match.group("base"), int(match.group("revision")), match.group("suffix") or ""
+
+
+def names_a_drive(text) -> bool:
+    r"""Does this word open with a Windows drive specification (`C:/x`, `C:x`, `//server/share`)?
+
+    ONE ANSWER FOR EVERY HOST, which is the whole reason this is a function and not
+    `os.path.splitdrive` at each caller. A position, an artefact path and a staging name are all
+    stored in the state tree, and that tree travels: written on Windows, read on Linux, and back.
+    `os.path` is the READER's flavour, so the same stored word was a drive to one session and an
+    ordinary relative name to the next -- measured 2026-08-28 on the hosted ubuntu runner, where
+    `C:\Windows\win.ini` passed `approvals.is_project_position` and `checkpoints.
+    contained_artifact` while three docstrings promised a drive letter could not (BUG-0069).
+
+    THE OVER-REFUSAL IS REAL AND IT IS THE SAFE DIRECTION. `ntpath` calls any word whose SECOND
+    character is a colon a drive spec -- `a:b` and `1:x` as much as `C:x` -- so a POSIX project
+    that holds such a name at its root can no longer name it as a position, an artefact or a
+    staged file. It gets a refusal it can report; the other direction mints an approval that
+    matches nothing. `test_the_drive_clause_of_a_stored_path_is_one_reader_for_every_host` is
+    where both the answer and the three callers' use of it are measured.
+
+    `ntpath` because it is the flavour that KNOWS about drives; a reading that does not cannot
+    refuse one. Callers pass the word after their own separator normalisation.
+    """
+    return bool(ntpath.splitdrive(str(text or ""))[0])
 
 
 # THE ONE EDGE WHOSE GUARD IS A CALLER ARGUMENT RATHER THAN A STORED RECORD (spec II.2

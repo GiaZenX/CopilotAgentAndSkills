@@ -15,7 +15,7 @@ from conftest import approve, drive_task_to, mint_via_hook  # noqa: E402 -- shar
 from kernel import approvals, backlog_types, checkpoints, dispatch, hashing, staging  # noqa: E402
 from kernel.approvals import ApprovalError  # noqa: E402
 from kernel.dispatch import DispatchError  # noqa: E402
-from kernel.state import ProjectState  # noqa: E402
+from kernel.state import ProjectState, names_a_drive  # noqa: E402
 
 
 PR_FIELDS = {
@@ -3460,6 +3460,44 @@ def test_a_checkpoint_artefact_outside_the_project_is_refused_and_never_verified
     verdict = checkpoints.verify(state, task["id"])
     assert not verdict.adoptable
     assert "is not inside the project" in " ".join(verdict.reasons)
+
+
+def test_the_drive_clause_of_a_stored_path_is_one_reader_for_every_host(monkeypatch, tmp_path):
+    r"""A word that names a drive is refused wherever the record is READ, not only on Windows.
+
+    The state tree TRAVELS: a filing position and a checkpoint artefact are written on one host and
+    read back on another, and all three refusals asked `os.path.splitdrive`, i.e. the reader's own
+    path flavour. Measured 2026-08-28 on the hosted ubuntu runner: `C:/Windows/win.ini` was a
+    project position and `C:\Windows\win.ini` a contained artefact, while all three docstrings
+    promised a drive letter could not pass (BUG-0069). A minted approval for a position the gate
+    can never produce is finding F5's failure mode, one host further on.
+
+    TWO HALVES, and the second is the one that makes this red on a WINDOWS host too -- there the
+    defective reading gives the same answer as the fixed one, so the answer alone proves nothing:
+
+      * THE ANSWER -- `state.names_a_drive` knows a drive spec on any host;
+      * THE ROUTING -- each of the three asks that reader instead of the host. Measured by
+        replacing the name each module imported and watching the word arrive there.
+    """
+    assert names_a_drive("C:/Windows/win.ini") and names_a_drive("C:x")
+    assert names_a_drive("//server/share/x")
+    assert not names_a_drive("archive/1-Finanzen/x.pdf") and not names_a_drive("")
+
+    asked = []
+
+    def spy(text):
+        asked.append(str(text))
+        return names_a_drive(text)
+
+    for module in (approvals, checkpoints, staging):
+        monkeypatch.setattr(module, "names_a_drive", spy)
+    assert not approvals.is_project_position("C:/elsewhere")
+    assert checkpoints.contained_artifact(str(tmp_path), "C:\\Windows\\win.ini") is None
+    with pytest.raises(staging.StagingError):
+        staging.contained_child(str(tmp_path), "C:x", "staging key")
+    assert len([word for word in asked if word.startswith("C:")]) == 3, (
+        "one of the three refusals decided a drive spec without the shared reader, so it answers "
+        "whatever the host it runs on happens to think: %s" % asked)
 
 
 def test_a_handwritten_checkpoint_that_measures_nothing_is_absent(state, tmp_path):

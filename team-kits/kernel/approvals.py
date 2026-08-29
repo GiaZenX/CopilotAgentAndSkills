@@ -53,7 +53,7 @@ import uuid
 
 from .backlog_types import AUTOMATA, HASHED_FIELDS, parse_id
 from .hashing import subject_manifest_hash
-from .state import ProjectState, StateError, _now_iso
+from .state import ProjectState, StateError, _now_iso, names_a_drive
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
              "kit_update", "filing_correction", "filing_rule")
@@ -336,7 +336,9 @@ def is_project_position(value) -> bool:
       * it stays inside the project: no drive letter, no leading separator, no `..` climb. The gate
         only ever produces repo-relative positions (`_filing.position` refuses everything else), so
         an approval for any other spelling is one nothing can ever match -- minted, and then the
-        real spelling refused (F5);
+        real spelling refused (F5). The drive clause reads the same on every host
+        (`state.names_a_drive`); with `os.path` it read as none at all wherever the session ran on
+        POSIX, and this docstring's "no drive letter" was a promise only Windows kept;
       * it carries no control character. The question the user signs puts this position inside a
         sentence, so a newline in it moves text onto its own line above the mint label, which is the
         same attack on the reader that F4 measured in the free-typed reason. The reason is FOLDED
@@ -345,7 +347,7 @@ def is_project_position(value) -> bool:
     """
     position = filed_position(value)
     if not position or position.startswith("/") or position == ".." \
-            or position.startswith("../") or os.path.splitdrive(position)[0]:
+            or position.startswith("../") or names_a_drive(position):
         return False
     return not any(unicodedata.category(char)[0] == "C" for char in position)
 

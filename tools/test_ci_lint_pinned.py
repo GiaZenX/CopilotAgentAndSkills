@@ -16,9 +16,15 @@ version; the explicit select freezes the rule set; together two runs are identic
 
 Each check reads the part that RUNS -- the toml ruff parses and the run: line CI executes -- never a
 string search over prose.
+
+The workflow check below joined them for the same reason one level up (BUG-0069): what the runner
+CHECKS OUT decides what the suite can measure there, and a depth the workflow leaves to the default
+is as much an unpinned knob as an unpinned ruff version was.
 """
 import os
 import re
+import shlex
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -99,6 +105,110 @@ def test_two_disagreeing_pins_on_one_line_are_both_seen(monkeypatch):
     assert pins == ["0.15.20", "0.16.2"], (
         "a second, disagreeing ruff pin on the same pip line was not seen: %s" % pins)
     assert len(set(pins)) != 1, "two different same-line pins must not resolve to one version"
+
+
+def _checkout_steps():
+    """Every `actions/checkout` step in the workflow, from the YAML the runner executes."""
+    with open(CI_YML, encoding="utf-8") as fh:
+        workflow = yaml.safe_load(fh)
+    return [step for job in workflow.get("jobs", {}).values() for step in job.get("steps", [])
+            if str(step.get("uses") or "").split("@")[0] == "actions/checkout"]
+
+
+def _commits_back_to_the_v1_fixture():
+    """How many commits separate HEAD from the newest commit the migration fixture needs, or None.
+
+    None when this cannot be measured here at all -- no git, no work tree, or a clone whose history
+    has already been cut. Asking git rather than remembering a depth: the answer moves with every
+    commit, and a remembered one is the claim that rots.
+    """
+    if not shutil.which("git"):
+        return None
+    import test_migrate
+    probe = subprocess.run(["git", "-C", ROOT, "log", "--all", "--format=%H", "--",
+                            test_migrate._V1_MARKER],
+                           capture_output=True, text=True, timeout=120)
+    commits = probe.stdout.split() if probe.returncode == 0 else []
+    if not commits:
+        return None
+    distance = subprocess.run(["git", "-C", ROOT, "rev-list", "--count", "%s..HEAD" % commits[0]],
+                              capture_output=True, text=True, timeout=120)
+    return int(distance.stdout.strip()) if distance.returncode == 0 else None
+
+
+def test_ci_checkout_fetches_the_history_the_suite_reads_as_a_fixture():
+    """The hosted runners cloned at depth 1 and `tools/test_migrate.py` needs a much older commit.
+
+    That module restores its "real V1 state" from the newest commit still carrying the V1 office
+    template (`test_migrate._last_v1_commit`); a depth-1 checkout has no such commit, and the whole
+    module then failed with "no real V1 state to migrate" -- three failures and 96 errors per
+    platform in the run BUG-0069 was raised on, the single largest class in it.
+
+    BOTH ENDS, so neither half can go stale quietly: the workflow must fetch the whole history, AND
+    that commit must really be out of a shallow checkout's reach. The day the fixture no longer
+    needs history, the second assertion says so instead of leaving an unexplained `fetch-depth` in
+    the workflow for ever.
+    """
+    steps = _checkout_steps()
+    assert steps, "the CI workflow checks out nothing -- this test's subject is gone"
+    for step in steps:
+        depth = (step.get("with") or {}).get("fetch-depth")
+        assert str(depth) == "0", (
+            "an actions/checkout step fetches depth %r, so the runner gets a shallow clone and "
+            "tools/test_migrate.py cannot build the V1 state it measures against (BUG-0069). "
+            "Remedy: `with: fetch-depth: 0`." % (depth,))
+    distance = _commits_back_to_the_v1_fixture()
+    if distance is None:
+        pytest.skip("this checkout cannot say how deep the V1 fixture commit lies (no git, no "
+                    "work tree, or a history already cut) -- the workflow half above still ran")
+    assert distance > 1, (
+        "the commit tools/test_migrate.py restores its V1 fixture from is only %d commit(s) back, "
+        "so a default checkout would reach it and the `fetch-depth: 0` above no longer earns its "
+        "place -- drop it, or say here what else needs the history" % distance)
+
+
+def _pytest_invocations():
+    """The CI run lines that RUN pytest -- pytest as the PROGRAM, not as a word on a line.
+
+    `pip install ... pyyaml pytest` names it and runs nothing; a substring reader called that the
+    test step and asked it for reporting flags. The program is the first word of the line or the
+    one right after `-m`, which is how an interpreter reads it too.
+    """
+    found = []
+    for line in _ci_run_lines():
+        try:
+            words = shlex.split(line, posix=True)
+        except ValueError:
+            continue
+        for index, word in enumerate(words):
+            program = word.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+            if program == "pytest" and (index == 0 or words[index - 1] == "-m"):
+                found.append(line)
+                break
+    return found
+
+
+def test_ci_names_the_reason_for_every_skip_it_counts():
+    """A skip is this suite saying it cannot measure something HERE; the log must say what.
+
+    Several measurements are impossible on a hosted runner and now say so as an explicit skip
+    rather than as a red (BUG-0069): the null-device spellings, the case-flip on a case-sensitive
+    filesystem, the `.ps1` installer without a PowerShell, the parser that does not recurse inside
+    the item budget. Under `-q` alone the run prints only "N skipped", so a test that quietly
+    stopped measuring is indistinguishable from one that honestly could not -- which is the defect
+    this repo documents against itself. `-rs` puts every reason in the log the failure mail points
+    at.
+
+    The pytest step is found by what it RUNS, not by its name, and the flag is read as pytest reads
+    it: `-r` takes a set of characters, so `-rs`, `-rsx` and `-ra` all name skips.
+    """
+    invocations = _pytest_invocations()
+    assert invocations, "the CI workflow runs no pytest -- this test's subject is gone"
+    for line in invocations:
+        chosen = set("".join(re.findall(r"(?:^|\s)-r([a-zA-Z]+)", line)))
+        assert chosen & set("sa"), (
+            "the CI pytest step reports no skip reasons (%r), so the hosted log says only how many "
+            "measurements were skipped and never which, or why. Remedy: add `-rs`." % line)
 
 
 def _installed_ruff_version():

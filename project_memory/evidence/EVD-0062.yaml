@@ -1,0 +1,28 @@
+id: EVD-0062
+kind: review
+related:
+- TSK-0088
+- BUG-0069
+result: pass
+summary: 'verifier verdict for diff:5ec61d2483110075353806f1682f874ef1696818f0d8c82aa631dc2ee28f1c54
+  -- TSK-0088: the hosted CI stops being an inverted signal. Verifier FAIL was form-only
+  (nothing technical blocked) and pre-specified the rework shape, delivered in full:
+  the over-alarming one-place docstring cut AND the property made measurable (test_repo_hygiene
+  sweep: every powershell line handed to subprocess sits in a host-asking function;
+  19 sites, 0 unguarded, 4 bypass mutations red), the AC-2 bucket table given its
+  durable home in docs/reviews/2026-08-29-ci-red-classification.md with both run ids,
+  the floating python-version a SAID decision, the race-residue wording corrected.
+  Verifier had independently recomputed the bucket table digit for digit (sums exactly
+  6F/96E and 34F/148E, nothing unclassified; run 33225215675 on d66525d identical),
+  reproduced six red-without-fix measurements, attacked the kernel drive-prefix product
+  fix (Windows behavior-identical, POSIX strictly stricter, old approvals resolve),
+  and ran both full suites green in his own copies. Lead full suite after rework:
+  3886 passed, 14 named skips, 0 failed (34:06). RESIDUE HELD OPEN: the only proof
+  of AC-1 is the next push''s hosted run -- 69 ubuntu tests run there for the first
+  time on CPython 3.14; BUG-0069 stays OPEN until that run is measured green, and
+  the lead watches it after this push'
+artifact_refs:
+- staging/TSK-0088/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-29T06:56:20'

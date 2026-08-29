@@ -744,8 +744,18 @@ def test_a_document_named_in_the_wrong_case_is_refused_by_its_real_name(state, c
 
     Measured on both ends: the deviant spelling is refused BY the real name (so the clerk can copy
     it out of the message), and the real name still works.
+
+    THE PREMISE IS A PROPERTY OF THE FILESYSTEM, and it is asked of the very file the fixture just
+    wrote rather than of `os.name`. On a case-sensitive one the case-flip opens nothing, the burned
+    approval this measures cannot arise, and the refusal that does arrive is the ordinary
+    unreadable-document one -- which is a different check's subject. The hosted ubuntu runner is
+    such a host, and this test failed there while measuring nothing (BUG-0069).
     """
-    _document(state, "archive/1-Finanzen/2026/x.pdf")
+    document = _document(state, "archive/1-Finanzen/2026/x.pdf")
+    flipped = os.path.join(os.path.dirname(state.root), "ARCHIVE", "1-Finanzen", "2026", "x.pdf")
+    if not os.path.isfile(flipped):
+        pytest.skip("this filesystem is case-sensitive, so %s opens nothing and the case-flip "
+                    "cannot mint the dead approval this measures" % os.path.basename(document))
     assert run_cli(state, "request-approval", "filing_correction",
                    "--document", "ARCHIVE/1-Finanzen/2026/x.pdf", "--reason", "Doppelscan") == 2
     error = capsys.readouterr().err
@@ -900,34 +910,78 @@ def test_cli_capture_refuses_a_body_over_the_item_budget(state, capsys):
     assert not os.path.exists(state.active_path("PR-0001"))
 
 
+def _recurses(depth):
+    """Does `json.loads` give up on a list nested `depth` deep on THIS interpreter?
+
+    The search below bisects, and a single negative answer at the budget's own depth is what lets
+    it skip, so both rest on deeper nesting being more parser recursion and never less. That is
+    not asserted here as prose: the search checks its own result against the depth one shallower,
+    which is where a host on which it does not hold would show up.
+    """
+    try:
+        json.loads("[" * depth + "]" * depth)
+    except RecursionError:
+        return True
+    return False
+
+
 def test_cli_capture_survives_a_body_no_parser_can_bound(state, capsys):
     """A RecursionError is not a usage message; a role hitting one learns nothing.
 
-    THE DEPTH COMES FROM THE INTERPRETER, not from a number that looked deep enough. The first
-    version sent 400 brackets, which `json.loads` parses without complaint -- so it never reached
-    the branch it was written for and passed on the LIST refusal instead (mutation-measured:
-    `except RecursionError` -> `except ZeroDivisionError` stayed green). `sys.getrecursionlimit()`
-    is what decides, so the fixture is derived from it, and the assertion names the message only
-    this branch produces.
+    THE DEPTH COMES FROM THE INTERPRETER AND THE BUDGET TOGETHER, never from a number that looked
+    deep enough. The first version sent 400 brackets, which `json.loads` parses without complaint --
+    so it never reached the branch it was written for and passed on the LIST refusal instead
+    (mutation-measured: `except RecursionError` -> `except ZeroDivisionError` stayed green). The
+    second doubled up from `sys.getrecursionlimit()` and only THEN asked whether the result still
+    fit `report.ITEM_MAX_BYTES`, which made the fixture its own subject: on CPython 3.14 neither
+    hosted runner gives up anywhere near the budget, so both reported as a defect what was this
+    test's own arithmetic (BUG-0069).
+
+    The BUDGET bounds the search now, so whatever comes out is a body this command accepts. If the
+    deepest affordable body does not recurse, no reachable one does -- and that is a fact about the
+    interpreter, said as a skip. `test_the_too_deep_refusal_is_what_the_parser_giving_up_produces`
+    keeps the arm itself measured where that happens.
     """
-    depth = sys.getrecursionlimit()
-    while depth <= 100000:
-        try:
-            json.loads("[" * depth + "]" * depth)
-        except RecursionError:
-            break
-        depth *= 2
-    else:
-        pytest.fail("no nesting depth made this parser recurse -- the branch is unreachable")
-    body = "[" * depth + "]" * depth
-    # ...and the branch is only reachable if such a body still fits the item budget, which is
-    # checked first. If it ever does not, the RecursionError arm is dead code and this says so
-    # rather than passing on the budget refusal, which is how the first version of this test lied.
-    assert len(body.encode("utf-8")) <= report.ITEM_MAX_BYTES, (
-        "a body deep enough to recurse (%d) is already over the %d-byte item budget, so the "
-        "RecursionError branch cannot be reached through this command"
-        % (len(body.encode("utf-8")), report.ITEM_MAX_BYTES))
+    affordable = report.ITEM_MAX_BYTES // 2          # a body of N brackets is 2N bytes
+    if not _recurses(affordable):
+        pytest.skip(
+            "this interpreter's json parser follows %d nesting levels without giving up, and a "
+            "deeper body no longer fits the %d-byte item budget -- so no body that reaches the "
+            "parser at all can raise RecursionError here" % (affordable, report.ITEM_MAX_BYTES))
+    low, high = 1, affordable
+    while low < high:                                # the shallowest body that still recurses
+        middle = (low + high) // 2
+        if _recurses(middle):
+            high = middle
+        else:
+            low = middle + 1
+    assert low == 1 or not _recurses(low - 1), (
+        "the search calls %d the shallowest recursing depth and %d recurses as well, so deeper "
+        "nesting is not strictly more recursion on this host and neither the bisection nor the "
+        "skip above may be trusted" % (low, low - 1))
+    body = "[" * low + "]" * low
     assert run_cli_with_body(state, body, "capture", "PR") == 2
+    assert "nests too deeply" in capsys.readouterr().err
+
+
+def test_the_too_deep_refusal_is_what_the_parser_giving_up_produces(state, capsys, monkeypatch):
+    """The same arm where no affordable body can reach it -- both hosted runners, on CPython 3.14.
+
+    The measurement above needs an interpreter that gives up inside the item budget, and skips
+    where none does. The arm stays shipped code a role can land on -- a smaller budget, another
+    parser, a thread with less stack -- so what it PRINTS is measured here with the whole command
+    running for real and only the raiser substituted: a stand-in that IS `json` apart from `loads`,
+    which raises exactly the error the arm names.
+    """
+    class _ParserThatGivesUp:
+        def __getattr__(self, name):
+            return getattr(json, name)
+
+        def loads(self, raw):
+            raise RecursionError("maximum recursion depth exceeded while decoding a JSON object")
+
+    monkeypatch.setattr(cli, "json", _ParserThatGivesUp())
+    assert run_cli_with_body(state, json.dumps(PR_FIELDS), "capture", "PR") == 2
     assert "nests too deeply" in capsys.readouterr().err
 
 

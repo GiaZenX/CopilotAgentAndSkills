@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""Repo hygiene: git must not TRACK a file it also IGNORES, and a file name must not lie about
-whose report it holds.
+"""Repo hygiene: git must not TRACK a file it also IGNORES, a file name must not lie about whose
+report it holds, a test must not leave its `sys.path` entry to the next test, and a PowerShell
+launcher must not be started where nobody asked whether this host has one.
 
 WHY THIS IS THE RIGHT SUBJECT, and not "is ModuleAnalysisCache absent". A `.gitignore` rule has no
 effect on a path git already tracks, so a tool trace that was committed once (a PowerShell module
@@ -19,10 +20,13 @@ be untracked from a harness session -- `git rm --cached` on it is refused before
 open remainder H37 Rest 2 in `docs/POST_V2_WISHLIST.md`, and the repair belongs in the kit. Anything
 tracked-and-ignored OUTSIDE that tree is a new tool trace that must be untracked.
 """
+import ast
+import glob
 import os
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -144,6 +148,194 @@ def test_every_research_role_report_is_named_after_the_role_its_own_text_is_abou
     assert not offences, (
         "a research report is filed under the wrong role, so looking up one role's findings hands "
         "over another's and nothing in the file says so:\n  " + "\n  ".join(offences))
+
+
+_LEAK_SUITE = '''\
+import sys
+
+LEAK = "/tsk-0088-leaked-import-path"
+
+
+def test_one_leaks_an_import_path():
+    sys.path.insert(0, LEAK)
+    assert LEAK in sys.path
+
+
+def test_two_must_not_inherit_it():
+    assert LEAK not in sys.path, "the previous test's sys.path entry survived into this one"
+'''
+
+
+def test_no_test_in_this_suite_leaks_an_import_path(tmp_path):
+    """A test may put a directory on `sys.path`; it may not leave it there for the next test.
+
+    WHY THIS IS THE RIGHT SUBJECT and not "is sys.path short enough": the length that broke is a
+    consequence, the leak is the cause. This suite inserts its kits directory from ~100 places with
+    a bare `sys.path.insert`, and a dozen tests hand the resulting list to a child process as
+    PYTHONPATH; Linux refuses an envp string past MAX_ARG_STRLEN, so on the hosted ubuntu runner
+    every scaffold and installer test after the crossing point died with `OSError: [Errno 7]
+    Argument list too long: 'bash'` while the Windows leg -- where those tests skip for want of a
+    POSIX shell -- reported the same tree green (BUG-0069).
+
+    MEASURED THROUGH A REAL PYTEST PROCESS over this suite's own `conftest.py`, copied rather than
+    imported, so what is asserted is the fixture as it ships and not an in-process re-enactment of
+    it. Red without `conftest._no_test_leaks_an_import_path`: the second generated test then sees
+    the first one's entry.
+    """
+    shutil.copy(os.path.join(ROOT, "tools", "conftest.py"), str(tmp_path / "conftest.py"))
+    with open(str(tmp_path / "test_leak.py"), "w", encoding="utf-8") as handle:
+        handle.write(_LEAK_SUITE)
+    result = subprocess.run(
+        [sys.executable, "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tmp_path)],
+        cwd=str(tmp_path), capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=300)
+    assert result.returncode == 0, (
+        "a test left an entry on `sys.path` for the next one, which is the unbounded growth that "
+        "made the hosted ubuntu leg refuse its own PYTHONPATH:\n%s%s"
+        % (result.stdout, result.stderr))
+
+
+_LAUNCHERS = ("run", "Popen", "call", "check_call", "check_output")
+
+# The floor under the sweep below. A reader that stops recognising the form finds nothing and
+# reports every module clean, which is the shape of check this repo has been burned by twice; the
+# number is here so that a narrowing shows up as a failure rather than as silence. It is a FLOOR
+# and not an equality on purpose -- sites come and go, blindness does not (BUG-0069).
+_POWERSHELL_LAUNCH_FLOOR = 12
+
+
+def _argv_head(node):
+    """The list a command line starts with, past any `[...] + list(args)` concatenation."""
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        node = node.left
+    return node
+
+
+def _unambiguous(assigned, node):
+    """`node`, or -- when it is a name this scope assigns exactly one value -- that value."""
+    if isinstance(node, ast.Name):
+        values = assigned.get(node.id, [])
+        return values[0] if len(values) == 1 else node
+    return node
+
+
+def _is_powershell_argv(node, assigned):
+    node = _argv_head(_unambiguous(assigned, node))
+    if not isinstance(node, (ast.List, ast.Tuple)) or not node.elts:
+        return False
+    first = _unambiguous(assigned, node.elts[0])
+    return (isinstance(first, ast.Constant) and isinstance(first.value, str)
+            and os.path.basename(first.value).lower().rsplit(".exe", 1)[0] == "powershell")
+
+
+def _powershell_launches(tree):
+    """Every `subprocess.*` call in `tree` whose program is the literal `powershell`.
+
+    A name is followed only when every value assigned to it in that scope is such a command line.
+    Ambiguity is left OUT rather than guessed at, and both directions of that are deliberate: a
+    `command = <ps1 line> if nt else <sh line>` is chosen by the very `os.name` branch the sweep
+    would look for, so nothing is lost, while treating it as a subject would flag every
+    gate-payload runner that happens to reuse the name `command`.
+
+    A parametrize row whose first element is the TOOL name `PowerShell` is not a command line and
+    never reaches here -- the subject is what is handed to `subprocess`, not what looks like it.
+
+    WHERE THIS READER STOPS, said rather than left to be discovered: the program has to be
+    READABLE in the source, as a literal or as a name this scope binds to one. A launcher assembled
+    at run time -- off a mapping, out of an environment variable, from a `which` result computed
+    elsewhere -- is not a subject, and the sweep says nothing about it.
+    """
+    sites, seen = [], set()
+    for scope in [tree] + [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]:
+        assigned = {}
+        for node in ast.walk(scope):
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        assigned.setdefault(target.id, []).append(node.value)
+        for node in ast.walk(scope):
+            if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr in _LAUNCHERS and node.args) or id(node) in seen:
+                continue
+            argv = node.args[0]
+            values = assigned.get(argv.id, []) if isinstance(argv, ast.Name) else [argv]
+            if values and all(_is_powershell_argv(value, assigned) for value in values):
+                seen.add(id(node))
+                sites.append(node)
+    return sites
+
+
+def _asks_this_host_for_powershell(scope):
+    """Does this function decide, from the HOST, whether a `powershell` exists to launch?
+
+    Two shapes, and both are real answers rather than two spellings of one: `shutil.which
+    ("powershell")` asks for the executable, and `os.name` -- in a `skipif` decorator as much as in
+    an `if` -- asks for the platform that ships it. `powershell_or_skip()` needs no clause here: it
+    leaves no literal command line, so it is not a subject at all.
+    """
+    for inner in ast.walk(scope):
+        if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Attribute) \
+                and inner.func.attr == "which":
+            for argument in inner.args:
+                if isinstance(argument, ast.Constant) and "powershell" in str(argument.value):
+                    return True
+        if isinstance(inner, ast.Attribute) and inner.attr == "name" \
+                and isinstance(inner.value, ast.Name) and inner.value.id == "os":
+            return True
+    return False
+
+
+def test_no_powershell_launch_in_this_suite_runs_without_asking_the_host_for_one():
+    """A `.ps1` launcher may only be started where somebody asked whether this host has one.
+
+    Four call sites spelled `powershell` out with no such question, and on the hosted ubuntu leg --
+    which carries `pwsh`, a different product, and no `powershell` -- they died with
+    `FileNotFoundError` while measuring nothing (BUG-0069). Every OTHER site in this suite already
+    asked, which is why this is a sweep and not a rule about one helper: the duty is the question,
+    not which helper answers it.
+
+    THE QUESTION MAY STAND ONE LEVEL UP. A helper that carries no clause of its own is accepted
+    when every caller of it in the same module does -- which is what `_scaffolded` in
+    `test_kitupdate.py` and `test_presets.py` rely on, and what a rule demanding the clause AT the
+    launch would have called a defect in working code.
+    """
+    offenders, sites = [], 0
+    for path in sorted(glob.glob(os.path.join(ROOT, "tools", "*.py"))):
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read(), os.path.basename(path))
+        parents = {child: node for node in ast.walk(tree)
+                   for child in ast.iter_child_nodes(node)}
+        functions = [n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+        guarded = {f for f in functions if _asks_this_host_for_powershell(f)}
+        callers = {}
+        for function in functions:
+            for inner in ast.walk(function):
+                if isinstance(inner, ast.Call) and isinstance(inner.func, ast.Name):
+                    callers.setdefault(inner.func.id, set()).add(function)
+        for site in _powershell_launches(tree):
+            sites += 1
+            chain, walker = [], site
+            while walker in parents:
+                walker = parents[walker]
+                if isinstance(walker, ast.FunctionDef):
+                    chain.append(walker)
+            asked = any(function in guarded for function in chain)
+            if not asked and chain:
+                who = callers.get(chain[-1].name, set())
+                asked = bool(who) and who <= guarded
+            if not asked:
+                offenders.append("%s:%d (in %s)" % (
+                    os.path.basename(path), site.lineno,
+                    "->".join(f.name for f in reversed(chain)) or "module level"))
+    assert sites >= _POWERSHELL_LAUNCH_FLOOR, (
+        "this sweep found only %d PowerShell launch(es) in tools/ -- it has stopped recognising "
+        "the form, and a check that sees nothing reports everything clean" % sites)
+    assert not offenders, (
+        "these start a PowerShell launcher without anything on the way to them asking whether this "
+        "host HAS one, so on a runner without it they report FileNotFoundError instead of saying "
+        "they could not measure (BUG-0069). Remedy: `test_hooks_v2.powershell_or_skip()`, or a "
+        "`shutil.which(\"powershell\")` / `os.name` clause in the test or its callers:\n  "
+        + "\n  ".join(offenders))
 
 
 if __name__ == "__main__":

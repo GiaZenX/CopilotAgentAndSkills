@@ -353,3 +353,26 @@ def _isolated_user_settings(monkeypatch, tmp_path_factory):
     monkeypatch.setenv(
         "CLAUDE_CONFIG_DIR", str(tmp_path_factory.mktemp("claude-config", numbered=True)))
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_test_leaks_an_import_path():
+    """Hand every test back the `sys.path` it started with.
+
+    WHY, and it is a measured defect rather than tidiness: the helpers above and ~100 test bodies
+    put their kits directory on the path with a bare `sys.path.insert`, which appends ANOTHER copy
+    on every call, and the scaffold and installer tests then hand that same list to a child
+    process as PYTHONPATH.
+    Linux refuses an envp string longer than MAX_ARG_STRLEN, so past the crossing point every
+    scaffold and installer test on the hosted ubuntu runner died with `OSError: [Errno 7] Argument
+    list too long: 'bash'` -- while the Windows leg, where those tests skip for want of a POSIX
+    shell, stayed green and hid it (BUG-0069).
+
+    Restoring HERE rather than de-duplicating at each reader of the path: the growth is the defect
+    and the readers are only where it becomes visible.
+    `test_repo_hygiene.test_no_test_in_this_suite_leaks_an_import_path` is the measurement.
+    """
+    before = list(sys.path)
+    yield
+    if sys.path != before:
+        sys.path[:] = before

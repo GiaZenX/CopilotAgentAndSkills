@@ -14804,11 +14804,18 @@ def test_a_fresh_project_is_not_red_because_of_the_host_interpreter(tmp_path):
 
     Driven through the module's own function rather than a full pipeline run, and with the real
     `run` recorded: what is asserted is the command list the check would EXECUTE.
+
+    WHETHER THE AUDITOR IS INSTALLED IS NOT THIS TEST'S SUBJECT, and leaving that to the host made
+    the host the subject: `_sec` warns and runs nothing when the tool is absent, so on both hosted
+    runners -- neither of which ships pip-audit -- this asserted an empty command list against an
+    empty one and called it a defect (BUG-0069). The probe answers "present" below; which BRANCH
+    the declaration takes, and what that branch composes, is what is left to the code.
     """
     quality = load_kit_module("quality_sca", QUALITY)
     quality.ROOT = str(tmp_path)
     executed = []
     quality.run = lambda cmd, cwd=None: (executed.append(list(cmd)) or (0, ""))
+    quality.tool_cmd = lambda tool: [tool]
     quality.FAILS[:], quality.WARNS[:], quality.OKS[:] = [], [], []
 
     quality._check_declared_dependencies()

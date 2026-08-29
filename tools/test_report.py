@@ -234,6 +234,12 @@ def test_expired_request_not_listed_as_open(state):
 # -- doctor --------------------------------------------------------------------
 
 def test_doctor_reports_lock_leases_and_findings(state):
+    """The expiry half waits for the PREDICATE `report.doctor` reads, not for a duration.
+
+    A 10 ms TTL and an immediate call is a race the fast host loses: the hosted ubuntu runner
+    reached that line inside the TTL and reported `expired: False` (BUG-0069). The lease says when
+    it expires, so that is what is waited for.
+    """
     pr = state.capture("PR", dict(PR_FIELDS))
     request = approvals.create_pending_request(state, "scope", pr["id"])
     mint_via_hook(state, request)
@@ -245,7 +251,10 @@ def test_doctor_reports_lock_leases_and_findings(state):
         "expected_outputs": [], "dependencies": [],
     })
     state.transition(task["id"], "READY")
-    dispatch.create_lease(state, task["id"], ttl=0.01)
+    lease = dispatch.create_lease(state, task["id"], ttl=0.01)
+    expires_at = float(lease["created_epoch"]) + float(lease["ttl"])
+    while time.time() <= expires_at:
+        time.sleep(0.001)
     result = report.doctor(state, kit="dev-team", kit_version="rc1")
     assert result["lock"] == {"state": "free"}
     assert result["leases"][0]["task_id"] == task["id"]

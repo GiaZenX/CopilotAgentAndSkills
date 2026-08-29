@@ -1694,10 +1694,17 @@ def measure_sections():
                     "hooks": sorted(name for name in registered
                                     if re.search(r"\b%s\b" % re.escape(name), body)),
                 }
+            # NAMED RELATIVE TO ITS OWN KIT, not to ROOT: `_pinned_files` composes every path out
+            # of `kit`, so that start is always expressible — while `relpath(path, ROOT)` raises
+            # ValueError as soon as the two sit on different Windows drives, which is exactly the
+            # synthetic kit under `tmp_path` this refusal is measured on. The hosted windows runner
+            # keeps the workspace on D: and pytest's tmp on C:, and this line was the crash rather
+            # than the refusal there (BUG-0069). The kit's own name is kept in front so the reader
+            # still gets a path they can find.
             assert sections, (
-                "%s is a pinned instruction file and carries no `## ` heading, so it contributes "
+                "%s/%s is a pinned instruction file and carries no `## ` heading, so it contributes "
                 "no section — the pin would watch the file by name and nothing of its content"
-                % os.path.relpath(path, ROOT).replace(os.sep, "/"))
+                % (os.path.basename(kit), os.path.relpath(path, kit).replace(os.sep, "/")))
             files[os.path.relpath(path, kit).replace(os.sep, "/")] = sections
         out[os.path.basename(kit)] = files
     return out

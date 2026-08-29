@@ -5428,9 +5428,17 @@ def test_a_junction_into_the_state_dir_is_resolved(tmp_path):
     assert "canonical project state" in result.stderr
 
 
+@pytest.mark.skipif(os.name != "nt",
+                    reason="an extended-length `\\\\?\\Z:` spelling is a Windows path shape; on "
+                           "POSIX it is one ordinary file name inside the project, which the gate "
+                           "CAN place -- so there is no undecidable path here to refuse")
 def test_an_unresolvable_path_is_refused_not_skipped(tmp_path):
     """"Cannot decide" must not read as "allowed" — an extended-length or other-drive spelling used
-    to fall into a branch commented "not this repo's business"."""
+    to fall into a branch commented "not this repo's business".
+
+    The undecidable spelling is the Windows one, and asserting its refusal on a POSIX host asserted
+    that an ordinary in-project file name must be refused: red on the hosted ubuntu runner, and
+    right to be (BUG-0069). Same shape as the cross-drive and junction skips further down."""
     dispatched_repo(tmp_path)
     result = run_scope(tmp_path, write_payload(tmp_path, "\\\\?\\Z:\\nope\\x.yaml"))
     assert result.returncode == 2
@@ -6682,8 +6690,6 @@ def test_the_working_directory_is_tracked_as_a_path(tmp_path, command, blocked):
     # the same shape without a stream number, and the bash spelling that redirects BOTH streams
     'cat .claude/settings.json > /dev/null',
     'grep -n mint .claude/hooks/gate_approval.py &> /dev/null',
-    # the Windows device name, which Git Bash discards just as completely
-    'ls .claude/hooks 2> NUL',
     # the verbs whose PROGRAM is an argument: their branch looked for any `>` among the tokens and
     # so answered for the SHELL's redirect too, keeping all six outside the rule
     "awk '{print $1}' .claude/settings.json 2>/dev/null",
@@ -6699,10 +6705,33 @@ def test_suppressing_output_is_not_a_write_to_the_enforcement_layer(tmp_path, co
     THE FIX IS NOT THAT CARVE-OUT, and that matters: `captures_out` lets a read-only pipeline
     redirect into any unprotected file, which is exactly `cat <hook> > copy.py`. What separates
     "suppressed" from "relocated" is whether the TARGET keeps the bytes, which is what
-    `_null_sinks` decides and what the companion test below holds to."""
+    `_null_sinks` decides and what the companion test below holds to.
+
+    Every command here is one whose answer is the SAME on every host. The two spellings whose
+    answer is not have their own tests, because a table that carries them cannot state why."""
     dispatched_repo(tmp_path)
     result = run_scope(tmp_path, shell_payload(tmp_path, command))
     assert result.returncode == 0, "%s\n%s" % (command, result.stderr)
+
+
+def test_the_windows_device_name_is_a_discard_only_where_it_is_a_device(tmp_path):
+    """`2> NUL` is the one spelling in the table above whose answer changes with the HOST.
+
+    `nul` is a Win32 reserved device no file can be created under, so Git Bash discards it as
+    completely as `>/dev/null`; on a real POSIX host the same word is an ordinary file in the
+    working directory and the redirect RETAINS the bytes, which is the relocation this branch
+    exists to refuse. `_null_sinks` says exactly that ("PER SHELL AND PER HOST") and builds its
+    base from `os.devnull`; this row sat in the shared table asserting the Windows answer
+    everywhere, and it was one of the ubuntu-only failures in BUG-0069.
+
+    `os.devnull` rather than `os.name`: it is the same fact from the standard library that the
+    gate derives from, and it is the fact that decides -- a host whose discard device IS spelled
+    `nul` is a host on which this is suppressed, whatever it is called otherwise.
+    """
+    dispatched_repo(tmp_path)
+    result = run_scope(tmp_path, shell_payload(tmp_path, "ls .claude/hooks 2> NUL"))
+    discards = os.path.normcase(os.devnull) == os.path.normcase("nul")
+    assert result.returncode == (0 if discards else 2), result.stderr
 
 
 @pytest.mark.parametrize("command", [
@@ -6819,10 +6848,6 @@ def test_the_null_sink_is_the_hosts_own_device_not_a_word_someone_typed():
 
 
 @pytest.mark.parametrize("tool,command,blocked", [
-    # PowerShell has no `/dev/null`: it resolves the string against the current DRIVE, so on a host
-    # with `C:\dev` this writes the hook into a real file. Measured 2026-08-03 -- Windows
-    # PowerShell answered `Out-File: DirectoryNotFoundException C:\dev\null`, i.e. it tried.
-    ("PowerShell", 'Get-Content .claude\\hooks\\gate_approval.py > /dev/null', True),
     ("Bash", 'cat .claude/hooks/gate_approval.py > /dev/null', False),
     # ...and the mirror image: `$null` is PowerShell's sink and an unset variable to bash, where
     # the conservative direction is to keep refusing.
@@ -6833,11 +6858,36 @@ def test_the_null_sink_is_the_hosts_own_device_not_a_word_someone_typed():
     ("PowerShell", 'Copy-Item .claude\\hooks\\gate_approval.py copy.py > $null', True),
 ])
 def test_which_names_discard_is_a_question_about_the_shell(tmp_path, tool, command, blocked):
-    """One global set of "harmless spellings" would have been wrong in both directions at once."""
+    """One global set of "harmless spellings" would have been wrong in both directions at once.
+
+    Every row here answers the same on every host; `/dev/null` under PowerShell does not, and it
+    has its own test below for that reason."""
     dispatched_repo(tmp_path)
     payload = dict(shell_payload(tmp_path, command), tool_name=tool)
     result = run_scope(tmp_path, payload)
     assert result.returncode == (2 if blocked else 0), "%s\n%s" % (command, result.stderr)
+
+
+def test_a_posix_device_word_under_powershell_is_a_question_about_the_host(tmp_path):
+    r"""`> /dev/null` under PowerShell: a real device on one host, a real FILE on the other.
+
+    On Windows, PowerShell has no `/dev/null` -- it resolves a leading-slash path against the
+    CURRENT DRIVE, so on a host carrying `C:\dev` this writes the hook into a real file. Measured
+    2026-08-03: Windows PowerShell answered `Out-File: DirectoryNotFoundException C:\dev\null`,
+    i.e. it tried. Where PowerShell runs on POSIX, that same word IS the discard device and the
+    line retains nothing, so refusing it there would be the over-refusal the mirror row guards
+    against. The row asserted the Windows answer everywhere and was one of the ubuntu-only
+    failures in BUG-0069.
+
+    `os.devnull`, the same standard-library fact `_null_sinks` builds its base from, decides --
+    not `os.name`, because what matters is whether this host's discard device is spelled that way.
+    """
+    dispatched_repo(tmp_path)
+    command = 'Get-Content .claude\\hooks\\gate_approval.py > /dev/null'
+    payload = dict(shell_payload(tmp_path, command), tool_name="PowerShell")
+    result = run_scope(tmp_path, payload)
+    discards = os.path.normcase(os.devnull) == os.path.normcase("/dev/null")
+    assert result.returncode == (0 if discards else 2), result.stderr
 
 
 # -- guard_memory_budget: the budgets the kernel cannot see (spec II.5) -------
@@ -12608,11 +12658,35 @@ def test_the_state_a_fresh_scaffold_leaves_behind_still_permits_delegation(tmp_p
 
 # -- the trust message must name a remedy that LEAVES the state ---------------
 
+def powershell_or_skip():
+    """The Windows PowerShell this host offers for a `.ps1` launcher -- or an honest skip.
+
+    ASKED FOR, never assumed. `powershell` is the interpreter every shipped instruction hands
+    `scaffold_team.ps1` to; a host without it cannot run that launcher at all, and the three sites
+    served here reported a FileNotFoundError as if it were a defect of the harness -- the hosted
+    ubuntu leg, which carries `pwsh` (a different product, and not the one the instructions name)
+    and no `powershell` (BUG-0069).
+
+    THIS IS NOT THE ONLY WAY THAT QUESTION IS ASKED IN THIS SUITE, and claiming it was would be an
+    alarm as false as a reassurance: the older `.ps1` sites carry a `shutil.which("powershell")`
+    or `os.name` clause of their own, in the test or in its callers, and none of them mis-reports.
+    What has to hold is that the question is asked SOMEWHERE on the way to the launch, by any of
+    those means -- `test_repo_hygiene.test_no_powershell_launch_in_this_suite_runs_without_asking
+    _the_host_for_one` is the sweep that holds it, over all of `tools/`.
+    """
+    launcher = shutil.which("powershell")
+    if launcher is None:
+        pytest.skip("no Windows PowerShell on this host, so the .ps1 launcher this test drives "
+                    "cannot be run here at all")
+    return launcher
+
+
 def _run_real_scaffold(home, repo, team="dev-team"):
     """The installer, run the way a user runs it: from the project root, out of `~/.claude`."""
+    launcher = powershell_or_skip()
     env = dict(os.environ, USERPROFILE=str(home), HOME=str(home))
     return subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+        [launcher, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(pathlib.Path(str(home)) / ".claude" / "team-kits" / "scaffold_team.ps1"),
          "-Team", team],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=900)
@@ -12961,7 +13035,7 @@ def test_the_scaffold_installs_the_kernel_the_hooks_import(tmp_path):
     os.makedirs(str(tmp_path / ".claude"), exist_ok=True)
     shutil.copytree(str(staging), str(tmp_path / ".claude" / "team-kits"), dirs_exist_ok=True)
     proc = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+        [powershell_or_skip(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(tmp_path / ".claude" / "team-kits" / "scaffold_team.ps1"), "-Team", "dev-team"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=600)
     # The scaffold rolls back on any failure, so an unfinished run looks exactly like a missing
@@ -13013,7 +13087,7 @@ def test_the_scaffold_removes_a_hook_an_earlier_kit_left_behind(tmp_path):
     os.makedirs(str(tmp_path / ".claude"), exist_ok=True)
     shutil.copytree(str(staging), str(tmp_path / ".claude" / "team-kits"), dirs_exist_ok=True)
     proc = subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+        [powershell_or_skip(), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
          str(tmp_path / ".claude" / "team-kits" / "scaffold_team.ps1"), "-Team", "dev-team"],
         cwd=str(repo), capture_output=True, text=True, env=env, timeout=600)
     assert not (repo / ".claude" / "hooks" / "auto_dashboard.py").exists(), (

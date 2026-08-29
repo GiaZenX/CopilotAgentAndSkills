@@ -18,8 +18,24 @@ jobs:
       PYTHONUTF8: "0"
     steps:
       - uses: actions/checkout@v4
+        with:
+          # THE HISTORY IS FIXTURE MATERIAL, not context: tools/test_migrate.py restores its "real
+          # V1 state" from the newest commit that still carries the V1 office template, and the
+          # default depth-1 checkout carries no such commit — every one of those tests then failed
+          # with "no real V1 state to migrate" (BUG-0069). Depth 0 rather than a number, because a
+          # number is a claim about how deep that commit stays.
+          # `test_ci_lint_pinned.test_ci_checkout_fetches_the_history_the_suite_reads_as_a_fixture`
+          # holds this line to the fixture that needs it, from both ends.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
+          # THIS KNOB FLOATS ON PURPOSE, and unlike the ruff pin below that is the decision rather
+          # than an oversight: the harness ships to whatever interpreter a field machine has, and
+          # `PYTHONUTF8: "0"` above exists to keep meeting the next one early. What it costs is
+          # named rather than discovered — a new CPython moves the interpreter-derived fixtures,
+          # and the deep-body half of `test_cli_capture_survives_a_body_no_parser_can_bound` now
+          # SKIPS on both runners because 3.14 no longer recurses inside the item budget
+          # (docs/reviews/2026-08-29-ci-red-classification.md, class C).
           python-version: "3.x"
       - name: Install tooling
         # Pin ruff to one version so its rule set is fixed (BUG-0007): an unpinned ruff means every
@@ -31,4 +47,9 @@ jobs:
       - name: Structural self-check
         run: python tools/validate.py
       - name: Hook + quality.py behaviour tests
-        run: python -m pytest tools/ -q
+        # `-rs`: a skip is how this suite says it CANNOT measure something on this runner, and
+        # under `-q` alone the log carries only the count — a reader then cannot tell an honest
+        # skip from a test that quietly stopped measuring. The reasons belong in the log the user
+        # gets mailed about. `test_ci_lint_pinned.test_ci_names_the_reason_for_every_skip_it_counts`
+        # holds this line.
+        run: python -m pytest tools/ -q -rs

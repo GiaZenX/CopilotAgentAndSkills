@@ -53,7 +53,7 @@ from .lock import ext_path
 from .presets import repo_root
 from .schemas import validate
 from .staging import staging_dir
-from .state import STAGING_DIRNAME, ProjectState, StateError, _now_iso
+from .state import STAGING_DIRNAME, ProjectState, StateError, _now_iso, names_a_drive
 
 CHECKPOINT_FILENAME = "checkpoint.yaml"
 # The fields `record` MEASURES and a caller may therefore not send. Same doctrine as
@@ -121,16 +121,16 @@ def contained_artifact(project_root: str, artifact: str):
     `test_a_checkpoint_artefact_outside_the_project_is_refused_and_never_verified` is the red test.
     """
     text = str(artifact or "").replace("\\", "/")
-    drive, rest = os.path.splitdrive(text)
     # A PATH THAT NAMES A ROOT IS NOT PROJECT-RELATIVE, and the test is the two ways of naming one
     # rather than `os.path.isabs`: since Python 3.13 `ntpath.isabs("/Windows/win.ini")` is False, so
     # the join would have RE-ROOTED that word into the project silently instead of refusing it --
     # contained, but no longer the path anybody wrote. A drive spec (`C:x` too, which is
     # drive-RELATIVE and which `ntpath.join` lets replace the first argument outright) goes the same
-    # way.
-    if not rest or drive or rest.startswith("/"):
+    # way -- through `state.names_a_drive`, so the answer does not depend on which host reads the
+    # record back.
+    if not text or names_a_drive(text) or text.startswith("/"):
         return None
-    target = os.path.join(project_root, *[part for part in rest.split("/") if part])
+    target = os.path.join(project_root, *[part for part in text.split("/") if part])
     try:
         resolved = os.path.realpath(ext_path(target))
         container = os.path.realpath(ext_path(project_root))

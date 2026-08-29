@@ -41,6 +41,7 @@ from .state import (
     ProjectState,
     StateError,
     _now_iso,
+    names_a_drive,
     revision_name,
     split_revision,
 )
@@ -130,7 +131,7 @@ def contained_child(base: str, name: str, what: str) -> str:
     text = str(name or "")
     normalised = text.replace("\\", "/")
     if (not normalised or "/" in normalised or normalised in (".", "..")
-            or os.path.splitdrive(text)[0]):
+            or names_a_drive(text)):
         raise StagingError(
             "%s %r is not a single name inside %s -- refused. A staging key and a staged file name "
             "are NAMES, not paths: the kernel joins them onto the state directory and then empties "
