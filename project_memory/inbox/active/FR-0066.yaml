@@ -1,0 +1,26 @@
+id: FR-0066
+title: 'Product editor gets web access: the responsible role cannot research, the
+  researching role is not responsible -- user decision from live use'
+request_text: 'Live use 2026-08-29, the user''s real office project: the new-product
+  process names the product editor as responsible for CPU/manufacturer research, but
+  the role ships with ''tools: Read, Grep, Glob, Edit, Write'' -- no WebSearch/WebFetch;
+  web-capable are only compliance-researcher, marketing-planner and shop-curator.
+  The compliance researcher correctly REFUSED the out-of-domain assignment (role boundaries
+  worked as designed), leaving the task with no clean owner; the PM correctly identified
+  the fix as a kit change it may not make itself. The USER DECIDED: give the product
+  editor web access (''Ich wuerde dem jetzt webzugriff geben''). Round content: (1)
+  add WebSearch, WebFetch to office-team/agents/product-editor.md tools, mirrored
+  into the generated provider artifacts; (2) the honest security note IN THE ROLE
+  TEXT: a writing role with web access can be steered by web content (prompt-injection
+  class); the containment is that its filings still pass the enforced second reading
+  (TSK-0087) and product-data writes stay inside its scope -- name what is NOT contained
+  (direct Edit/Write inside its allowed paths carries no second reading today); (3)
+  check whether any preset/docs list role capabilities and update them; (4) the same
+  gap will recur for article descriptions (manufacturer data research) -- the round
+  checks whether OTHER roles named responsible for research-shaped duties lack web,
+  and reports the list rather than silently widening more roles. Rollout after: global
+  store, then the user updates his project (which also delivers the pending-list fixes).'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T15:52:09'

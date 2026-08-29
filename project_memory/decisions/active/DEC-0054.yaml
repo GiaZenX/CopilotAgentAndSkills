@@ -1,0 +1,30 @@
+id: DEC-0054
+title: 'DEC-0051 Stufe 2 rueckt vor: nach der Bug-Serie kommt der ehrliche Erledigt-Weg
+  der Werkstatt, dann die Kern-Wunschpunkte'
+context: '2026-08-29, Nutzer: ''sollten langsam die Wunschliste abarbeiten in den
+  Kernpunkten und das Feature freischalten mit dem du Tasks wie beim Kit auf geschlossen
+  legen kannst.'' Das benennt DEC-0051 Stufe 2 (Freigabe-Pfad + Test-Urteile in der
+  Werkstatt, H39: ein reparierter BUG erreicht hier kein ehrliches VERIFIED; Tasks
+  enden als CANCELLED+Archiv statt als erledigt). Bisher stand Stufe 2 als letztes
+  Fernziel (DEC-0052 Punkt 4); der Nutzer zieht es vor.'
+decision: 'Reihenfolge ab jetzt: (1) laufende Runde TSK-0090 abschliessen; (2) die
+  Bug-Serie nach DEC-0053 unveraendert (BUG-0072 hoch, dann BUG-0070+0071+FR-0066
+  als Office-Doppelrunde, BUG-0073, FR-0063); (3) DANN DEC-0051 STUFE 2 als eigene,
+  sorgfaeltige Runde: der Mint-/Freigabe-Weg und Test-Urteile in der Werkstatt, mit
+  eigener Sicherheitsabwaegung (die Werkstatt verzichtet bewusst auf Leases/Dispatch
+  -- was davon Stufe 2 wirklich braucht, entscheidet die Runde messend, nicht kopierend),
+  Ziel: TSK/BUG/FR erreichen ehrliche Endzustaende und die closed_by_delivery-Ableitung
+  aus TSK-0085 wird von der Kruecke zur Gegenprobe; (4) danach die Kern-Wunschpunkte
+  der Registerreihenfolge (Block 1 Ausrollen absichern zuerst). Die DEC-0034-Leiter
+  bleibt unangetastet offen, bis der Nutzer zwischen Zwischenstufe (Erststart-Sprosse
+  statisch + FR-0047) und Vollausbau entscheidet -- die Frage liegt ihm vor.'
+consequences: DEC-0052 Punkt 4 und DEC-0053 Punkt 3 werden in dieser Reihenfolge praezisiert;
+  der Ruhefenster-Lauf zu TSK-0090 bleibt offener Rest nach DEC-0053. Der Lead arbeitet
+  ohne Rueckfragen; zum Nutzer gehen nur Produktfragen (Leiter-Entscheidung, FR-0065-Priorisierung)
+  und Livebefunde.
+source: Nutzer 2026-08-29 (woertlich oben); Vorgaenger DEC-0051, DEC-0052, DEC-0053;
+  H39, TSK-0085.
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-29T18:23:26'

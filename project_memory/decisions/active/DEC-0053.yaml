@@ -1,0 +1,34 @@
+id: DEC-0053
+title: Live bugs before the remaining DEC-0052 sequence; TSK-0090's quiet-host measurement
+  deferred to a user-signalled window
+context: '2026-08-29: the user''s live work produced four real findings in one day
+  (BUG-0070 rules-list chicken-and-egg, BUG-0071 category writer missing, BUG-0072
+  extractor returns a silent wrong net -- HIGH, real money, BUG-0073 approval-language
+  weave), plus FR-0063 (--restricted may run ungated) from the newsletter triage.
+  Meanwhile TSK-0090 (gate-suite wall time) needs quiet-host timing numbers, and the
+  host is NOT quiet (the user works in parallel sessions). The user steered: finish
+  the implementer, then fix the bugs; run the timing measurement when he says so.'
+decision: 'Ordering: (1) TSK-0090 completes THROUGH THE VERIFIER now -- the verifier
+  is never skipped -- with all load-sensitive numbers honestly labelled ''measured
+  under load, quiet run pending''; the quiet-host run ships as a NAMED residue, a
+  single command the lead fires when the user signals a quiet window (or silently
+  in the early-morning window if he sleeps). (2) Then severity order ahead of the
+  remaining DEC-0052 blocks: BUG-0072 (high, silent wrong money figure), BUG-0070+BUG-0071
+  as one round (both are ''the kernel cannot extend a kit document'' -- weigh the
+  general mechanism per BUG-0071 AC-3), BUG-0073 (approval-value language), FR-0063
+  (--restricted gate measurement). (3) Thereafter back to the DEC-0052 sequence; FR-0065
+  (booking four-eyes) and FR-0062 (gap log) go to the user for prioritisation. Rationale
+  kept from the exchange: the speed round is the one that makes every future bug round
+  cheaper, so it finishes rather than parks; only its quiet measurement is deferred,
+  because it is cheap and independent.'
+consequences: The working tree never carries an unshipped round while the next one
+  starts; every round still ends with a verifier verdict and evidence before commit.
+  The quiet measurement is tracked as an open residue on TSK-0090's close-out until
+  run.
+source: User message 2026-08-29 ('jetzt den umsetzer fertig machen lassen aber dann
+  die bugs beheben ... die messung ... wenn ichs dir sage'); lead's counterpoints
+  accepted by design (verifier never skipped; labels instead of omissions).
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-29T15:19:50'

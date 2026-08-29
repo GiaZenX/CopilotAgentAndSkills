@@ -1,4 +1,4 @@
-generated_at: '2026-08-29T09:03:02'
+generated_at: '2026-08-29T19:32:08'
 items:
 - id: BUG-0001
   type: BUG
@@ -459,6 +459,45 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: BUG-0070
+  type: BUG
+  title: 'add-filing-rule refuses to CREATE the rules list it may append to -- an
+    old-stock filing_plan.yaml sends the non-developer user into a text editor (BUG-0041
+    dead-end class, live find #2)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0071
+  type: BUG
+  title: 'Master-data categories have NO kernel writer -- the P4-12 gap measured AGAIN
+    in live use: the PM cannot add an EUeR category even with a minted approval (dead-end
+    class, live find #3)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0072
+  type: BUG
+  title: Kit script einvoice_extract.py returns a non-reconciling net from a real
+    idealo ZUGFeRD/CII invoice -- wrong figure would pass silently without the bookkeeper's
+    cross-check
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0073
+  type: BUG
+  title: Approval requests reach the user as a German-English weave -- field VALUES
+    the user must judge are written in English because nothing says which language
+    values carry (all kits, live find)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0074
+  type: BUG
+  title: freeze-* empties the ENTIRE staging folder of the task -- three unfrozen
+    wireframes deleted alongside the one being frozen (dev-team live find, data loss)
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -791,6 +830,27 @@ items:
   type: DEC
   title: 'Arbeitsfolge nach dem Rollout: BUG-0068, dann die acht halb gelieferten
     Wuensche, dann Block 1, dann DEC-0051 Stufe 2'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0053
+  type: DEC
+  title: Live bugs before the remaining DEC-0052 sequence; TSK-0090's quiet-host measurement
+    deferred to a user-signalled window
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0054
+  type: DEC
+  title: 'DEC-0051 Stufe 2 rueckt vor: nach der Bug-Serie kommt der ehrliche Erledigt-Weg
+    der Werkstatt, dann die Kern-Wunschpunkte'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0055
+  type: DEC
+  title: 'Keine Leiter-Zwischenstufe: die statischen Modell-Pins bleiben wie gebaut;
+    DEC-0034 bleibt beschlossen-unbebaut, bis der Nutzer sie aktiv anfordert'
   status: VALID
   revision: 1
   approval_ref: null
@@ -1178,6 +1238,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0065
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1206,13 +1272,6 @@ items:
 - id: FR-0010
   type: FR
   title: Die fuenf Fehlformen einer Auftragszeile gehoeren in die Rolle des Projektmanagers
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0011
-  type: FR
-  title: Die Gate-Suite kostet sechs Minuten Wandzeit je Lauf auf einem Host mit 16
-    logischen Kernen
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1466,6 +1525,57 @@ items:
   type: FR
   title: 'Claude Code 2.1.246: /cd binds the target project''s settings/hooks/MCP/skills/agents
     IMMEDIATELY -- measure what that does to the restart model and the gate story'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0060
+  type: FR
+  title: 'BOM tripwire: a role/skill/gate .md starting with a UTF-8 BOM must fail
+    a structural test -- a silently unloaded role is an unbound gate'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0061
+  type: FR
+  title: Measure the kits' command-line classifier against unrelated $()/backtick
+    substitutions -- Anthropic just fixed the same over-match class in its own matcher
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0062
+  type: FR
+  title: Per-project kit-gap log, kernel-written, harvested by the harness lead --
+    so live findings stop requiring full-session reads
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0063
+  type: FR
+  title: 'Measure claude --restricted against the gate apparatus: ''project settings
+    are ignored'' may mean ungated file writes inside the project, project_memory
+    included'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0064
+  type: FR
+  title: 'Evaluate subagent memory (memory: frontmatter) for the harness roles --
+    implementer maybe, verifier NO by design'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0065
+  type: FR
+  title: 'Four eyes for BOOKING: the figures that go to the tax office have thinner
+    assurance than the question which folder a PDF lands in -- the booking twin of
+    FR-0035'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0066
+  type: FR
+  title: 'Product editor gets web access: the responsible role cannot research, the
+    researching role is not responsible -- user decision from live use'
   status: OPEN
   revision: 1
   approval_ref: null

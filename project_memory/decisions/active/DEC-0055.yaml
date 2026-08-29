@@ -1,0 +1,21 @@
+id: DEC-0055
+title: 'Keine Leiter-Zwischenstufe: die statischen Modell-Pins bleiben wie gebaut;
+  DEC-0034 bleibt beschlossen-unbebaut, bis der Nutzer sie aktiv anfordert'
+context: '2026-08-29: Nach dem Canyon-Befund (Architekt/Designer starteten nicht auf
+  Fable) lagen dem Nutzer zwei Wege vor: Zwischenstufe (Erststart-Sprosse statisch
+  auf Fable + FR-0047-Absicherung) oder Vollausbau der DEC-0034-Leiter. Antwort: ''beim
+  keine Zwischenstufe es passt wie''s jetzt ist.'''
+decision: 'Es wird KEINE Zwischenstufe gebaut. Der gebaute Stand (statische Pins:
+  PM=fable, Architekt/Designer/QE=lead, Entwickler=worker) ist der akzeptierte Zustand.
+  DEC-0034 bleibt als beschlossenes Ziel stehen, wird aber nicht eingeplant, bis der
+  Nutzer es ausdruecklich anfordert. FR-0047 (Pins nageln, stilles Zurueckfallen sichtbar
+  machen) bleibt davon UNBERUEHRT offen -- es sichert den heutigen statischen Zustand
+  ab und ist keine Leiter-Mechanik.'
+consequences: 'Kuenftige Fragen ''stuft er hoch/runter?'' beantworten sich aus DIESER
+  Entscheidung: nein, gewollt; die Leiter ist Ziel, nicht Bau. Die Arbeitsfolge DEC-0054
+  laeuft unveraendert.'
+source: Nutzerantwort 2026-08-29; Vorgaenger DEC-0034, DEC-0054, FR-0047.
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-29T18:30:42'

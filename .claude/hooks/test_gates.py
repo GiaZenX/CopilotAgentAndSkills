@@ -35,6 +35,7 @@ import subprocess
 import sys
 import tempfile
 import textwrap
+import threading
 import time
 import tokenize
 
@@ -1075,8 +1076,49 @@ def test_the_types_a_task_list_carries_work_in_are_the_ones_the_derivation_accep
 # -- fail-closed --------------------------------------------------------------
 
 
+def _picture(tree):
+    """`{path relative to `tree`: what it holds}` -- what a tree looks like, file by file."""
+    out = {}
+    for root, _dirs, names in os.walk(tree):
+        for name in names:
+            path = os.path.join(root, name)
+            out[os.path.relpath(path, tree)] = _digest(path)
+    return out
+
+
+@pytest.fixture(scope="session")
+def without_the_shared_body(project, tmp_path_factory):
+    """A copy of the stand-in whose `_harness.py` is gone -- ONE of it, for every registered pair.
+
+    The pairs differ in which gate is started and with which payload, not in the copy they are
+    started against, and copying the whole stand-in is the most expensive thing this file does per
+    case (docs/reviews/2026-08-29-tsk0090-measurements.md, section 2).
+
+    SHARING IT IS ONLY SOUND WHILE A GATE LEAVES THE TREE IT JUDGES ALONE, and that is a property
+    of the gates, not of this file -- so it is CHECKED HERE rather than stated. A picture of the
+    copy is taken before the pairs run and again after, and a file that moved fails this fixture.
+    Without that check the class is silent: a gate that started writing anything into the project
+    it judges -- an audit line, a lock, a cache -- would leave every pair after the first measuring
+    a tree the ones before it had changed, and each pair asserts only its own `rc == 2`. Before
+    this round every pair had its own copy and the question could not arise.
+    """
+    work = str(tmp_path_factory.mktemp("no-shared-body") / "project")
+    shutil.copytree(project, work)
+    os.remove(os.path.join(work, ".claude", "hooks", "_harness.py"))
+    before = _picture(work)
+    yield work
+    after = _picture(work)
+    moved = sorted(name for name in set(before) | set(after)
+                   if after.get(name) != before.get(name))
+    assert not moved, (
+        "these files of the shared copy changed while the registered pairs were judged against it: "
+        "%s. Every pair after the first then measured a tree an earlier one had moved, and each of "
+        "them asserts only its own return code -- so this fixture is where it has to be said. Give "
+        "the pairs a copy each again, or take the write out of the gate that makes it." % moved)
+
+
 @pytest.mark.parametrize("script,tool", REGISTERED_PAIRS)
-def test_a_gate_whose_shared_body_is_gone_still_refuses(project, tmp_path, script, tool):
+def test_a_gate_whose_shared_body_is_gone_still_refuses(without_the_shared_body, script, tool):
     """The import is INSIDE the protection, and this is the measurement that says so.
 
     `guarded()` cannot cover the import of `_harness`, because that happens before any gate
@@ -1088,9 +1130,7 @@ def test_a_gate_whose_shared_body_is_gone_still_refuses(project, tmp_path, scrip
     Driven over the REGISTERED pairs rather than over a list of filenames, so a gate that is added
     to `settings.json` without the preamble is measured on the day it is registered.
     """
-    work = str(tmp_path / ("no-body-" + script + "-" + tool))
-    shutil.copytree(project, work)
-    os.remove(os.path.join(work, ".claude", "hooks", "_harness.py"))
+    work = without_the_shared_body
     rc, err = run(work, script, _refusable(work, script, tool))
     assert rc == 2, "%s answered rc=%d without its shared body (stderr: %s)" % (
         script, rc, err[:400])
@@ -1382,6 +1422,18 @@ def spellings(path):
     return out
 
 
+# The routes a candidate path reaches gate 1 by -- the payload field and the command line, on both
+# tools the command line arrives on. Not a list of spellings: the spellings are asked of the host
+# (`spellings`), and these are the two halves of the gate the docstring below names.
+_WRITING_ROUTES = {
+    "Write": lambda project, path: {
+        "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": project,
+        "tool_input": {"file_path": path, "content": "x"}},
+    "sed -i": lambda project, path: bash_payload(project, 'sed -i "s/a/b/" "%s"' % path),
+    "Set-Content": lambda project, path: bash_payload(
+        project, 'Set-Content -Path "%s" -Value ""' % path, tool="PowerShell"),
+}
+
 PROTECTED_SUBJECTS = [
     "team-kits/dev-team/hooks/gate_git.py",             # versioned kit content, exists
     ".claude/hooks/gate_todo_items.py",                 # the enforcement layer, exists
@@ -1406,19 +1458,14 @@ def test_gate1_refuses_a_protected_path_however_the_filesystem_spells_it(project
     forms = spellings(full)
     if len(forms) < 2:
         pytest.skip("this host spells %s exactly one way" % relative)
-    for label, path in sorted(forms.items()):
-        rc, err = run(project, "gate_lead_write_scope.py",
-                      {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": project,
-                       "tool_input": {"file_path": path, "content": "x"}})
-        assert rc == 2, "Write allowed the %s spelling of %s: %s" % (label, relative, err[:300])
-        command = 'sed -i "s/a/b/" "%s"' % path
-        rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
-        assert rc == 2, "sed -i allowed the %s spelling of %s: %s" % (label, relative, err[:300])
-        command = 'Set-Content -Path "%s" -Value ""' % path
-        rc, err = run(project, "gate_lead_write_scope.py",
-                      bash_payload(project, command, tool="PowerShell"))
-        assert rc == 2, "Set-Content allowed the %s spelling of %s: %s" % (
-            label, relative, err[:300])
+    subjects = [(label, route) for label in sorted(forms) for route in sorted(_WRITING_ROUTES)]
+    answers = _in_parallel(
+        lambda _slot, subject: run(project, "gate_lead_write_scope.py",
+                                   _WRITING_ROUTES[subject[1]](project, forms[subject[0]])),
+        subjects, GATE_PROCESSES)
+    for label, route in subjects:
+        rc, err = answers[(label, route)]
+        assert rc == 2, "%s allowed the %s spelling of %s: %s" % (route, label, relative, err[:300])
 
 
 def test_gate1_reads_a_free_path_as_free_in_every_spelling(project):
@@ -2501,40 +2548,311 @@ def _sandbox(base, index):
     return sandbox
 
 
-# How many of the table's shapes are measured at once. Every one of them is a real process, and
-# each has its own tree (`_sandbox`) or, for the gate, no tree at all -- so the parallelism changes
-# what it costs and not what it measures.
-AT_ONCE = 10
+# THE KINDS OF PROCESS THIS SUITE STARTS, and how many of each are measured at once. Every one of
+# them is a real process, and each subject has its own tree (`_sandbox`, `_two_sided_repo`) or, for
+# a gate, no tree at all -- so the width changes what a run COSTS and not what it measures.
+#
+# A NUMBER PER KIND AND NOT ONE FOR ALL. What bounds a run here is how many processes this host will
+# start per second rather than how many cores it has, and the kinds do not reach that bound at the
+# same width. The rates behind the first two widths, the point each of them saturates at and the
+# counter-measurement that says a wider pool stops paying were taken for TSK-0090 and stand in
+# docs/reviews/2026-08-29-tsk0090-measurements.md, section 3 -- and beside them, in section 4, how
+# far this host's own throughput moved between two hours of the same day. THE THIRD WIDTH IS NOT
+# SCANNED and is therefore not a number of its own: it is DERIVED from the gate width below, so it
+# cannot drift away from the one measurement it stands on. What pooling those scenarios bought is
+# in section 5, which says nothing about where they saturate.
+SHELL_LINES, GATE_PROCESSES, REPOSITORIES = ("shell lines", "gate processes",
+                                             "repository scenarios")
+AT_ONCE = {SHELL_LINES: 16, GATE_PROCESSES: 10}
+AT_ONCE[REPOSITORIES] = AT_ONCE[GATE_PROCESSES]
 
 
-def _in_parallel(work, subjects):
-    """`{subject: work(slot, subject)}`, with `AT_ONCE` of them running.
+def _slots(width):
+    """`width` tokens, each of which stands for one tree a subject may be measured in."""
+    slots = queue.Queue()
+    for index in range(width):
+        slots.put(index)
+    return slots
+
+
+def _all_at_once(batches):
+    """`{name: {subject: work(slot, subject)}}` for several batches, measured in ONE run.
+
+    A BATCH IS `(name, kind, work, subjects)`, AND THE KINDS RUN AT THE SAME TIME. The bound on a
+    run of this suite is this host's process creation, and the two kinds do not draw on it in the
+    same way -- measured for TSK-0090, the same two batches run TOGETHER finish sooner than one
+    after the other (docs/reviews/2026-08-29-tsk0090-measurements.md, section 5). Batches of one
+    kind share that kind's pool rather than each opening one of their own, so the width below is
+    the width of the whole run and not of a caller.
 
     A SLOT IS HELD, NOT COMPUTED FROM THE POSITION IN THE LIST: with `index % AT_ONCE` the seventh
     subject took the tree the first one was still measuring in, and six shapes of the table came
     back with each other's answers -- caught by the shell arbitration itself, which is what it is
-    for. A slot is taken from the queue and given back, so two running subjects never share one.
+    for. A slot is taken from the queue and given back, so two running subjects OF ONE KIND never
+    share one -- and per kind is the whole claim: the kinds have separate queues, and a slot means
+    whatever that kind's work makes of it (a tree for a shell line, nothing for a gate process).
+
+    WHAT A BATCH RAISES IS RAISED HERE, in the calling thread, once every kind has been joined --
+    a failure that stayed inside a worker thread would leave the caller reading an answer table
+    with holes in it as if it were a measurement. `BaseException` and not `Exception`, because the
+    outcome pytest itself raises for a skip or a fail is one: with the narrower clause a
+    `pytest.skip` inside a work function died in the driving thread and the caller got a SHORT
+    table and no word about it. No work function reaches that today; the clause is what makes the
+    sentence above true rather than nearly true.
+
+    Both of those and the completeness of the table are driven by
+    `test_the_run_that_measures_the_cells_holds_a_slot_answers_every_subject_and_raises`.
     """
-    slots = queue.Queue()
-    for index in range(AT_ONCE):
-        slots.put(index)
+    out = {name: {} for name, _kind, _work, _subjects in batches}
+    grouped = {}
+    for name, kind, work, subjects in batches:
+        grouped.setdefault(kind, []).extend((name, work, subject) for subject in subjects)
+    raised = []
 
-    def held(subject):
-        slot = slots.get()
+    def drive(kind, items):
+        slots = _slots(AT_ONCE[kind])
+
+        def held(item):
+            name, work, subject = item
+            slot = slots.get()
+            try:
+                return name, subject, work(slot, subject)
+            finally:
+                slots.put(slot)
+
         try:
-            return work(slot, subject)
-        finally:
-            slots.put(slot)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=AT_ONCE[kind]) as pool:
+                futures = [pool.submit(held, item) for item in items]
+                for future in concurrent.futures.as_completed(futures):
+                    name, subject, answer = future.result()
+                    out[name][subject] = answer
+        except BaseException as problem:
+            raised.append(problem)
 
-    out = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=AT_ONCE) as pool:
-        futures = {pool.submit(held, subject): subject for subject in subjects}
-        for future in concurrent.futures.as_completed(futures):
-            out[futures[future]] = future.result()
+    threads = [threading.Thread(target=drive, args=(kind, items))
+               for kind, items in sorted(grouped.items())]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    if raised:
+        raise raised[0]
     return out
 
 
-def test_the_shell_writes_where_the_table_of_line_shapes_says(tmp_path):
+def _in_parallel(work, subjects, kind):
+    """`{subject: work(slot, subject)}` for one batch of one kind (`_all_at_once`)."""
+    return _all_at_once([("only", kind, work, subjects)])["only"]
+
+
+def test_the_run_that_measures_the_cells_holds_a_slot_answers_every_subject_and_raises():
+    """The three things every check set below is read through `_all_at_once` for.
+
+    A SLOT IS A TREE, FOR THE KIND WHOSE WORK MAKES ONE OF IT. Two subjects of that kind holding
+    one at the same time would each read the other's line out of the protected file, and that is
+    not a red -- it is a column with wrong values in it, which is how six shapes of the cross table
+    once came back with each other's answers. So the work here records what holds a slot of its own
+    kind while it holds it, and says so if two ever overlap. ACROSS kinds the numbers are meant to
+    repeat: each queue is its own, and what a slot names is that kind's business.
+
+    WHAT A WORKER RAISES HAS TO REACH THE CALLER. A batch that fails inside a thread and leaves an
+    answer table with holes in it is the same failure one level up: the caller reads a short table
+    as a measurement. The subject is a work function that raises, and what is asserted is that the
+    exception comes out here rather than the table.
+
+    AND EVERY SUBJECT IS ANSWERED IN ITS OWN BATCH AND IN NO OTHER, over more subjects than any
+    kind has slots, so the queue really has to hand a slot back -- and with one KIND carrying TWO
+    batches, because that is the only shape in which an answer can be filed under the wrong batch
+    at all. With a single batch per kind the claim was one this test could not have failed.
+    """
+    holders, overlapped = {}, []
+    guard = threading.Lock()
+
+    def work(slot, subject):
+        held = (subject.rsplit(" ", 1)[0], slot)
+        with guard:
+            overlapped.extend([(held, holders[held], subject)] if held in holders else [])
+            holders[held] = subject
+        time.sleep(0.01)
+        with guard:
+            holders.pop(held, None)
+        return subject
+
+    counts = {kind: 3 * AT_ONCE[kind] for kind in AT_ONCE}
+    # every kind once, and the first kind a SECOND time, so one kind carries two batches
+    named = [(kind, kind) for kind in sorted(AT_ONCE)] + [("a second batch of one kind",
+                                                           sorted(AT_ONCE)[0])]
+    batches = [(name, kind, work,
+                ["%s %d" % (name, index) for index in range(counts[kind])])
+               for name, kind in named]
+    answers = _all_at_once(batches)
+    assert not overlapped, (
+        "two subjects held the same slot at the same time, so each of them measured in a tree the "
+        "other was using: %s" % overlapped[:5])
+    for name, kind in named:
+        wanted = ["%s %d" % (name, index) for index in range(counts[kind])]
+        assert sorted(answers[name]) == sorted(wanted), (
+            "the %r batch came back with %d of %d subjects answered, and %s under a subject it "
+            "never carried"
+            % (name, len(answers[name]), len(wanted), sorted(set(answers[name]) - set(wanted))[:3]))
+        assert all(answers[name][subject] == subject for subject in wanted), (
+            "an answer of the %r batch was filed under another subject" % name)
+
+    def raises(_slot, subject):
+        raise RuntimeError("this batch failed on %s" % subject)
+
+    def skips(_slot, _subject):
+        pytest.skip("a work function that reports the outcome pytest reports")
+
+    with pytest.raises(RuntimeError):
+        _all_at_once([("fails", GATE_PROCESSES, raises, ["one"]),
+                      ("runs", SHELL_LINES, work, ["two"])])
+    # the same, with the outcome pytest itself raises -- not an `Exception`, and the one a narrower
+    # clause let through while the caller read a table with a hole in it as a measurement
+    with pytest.raises(BaseException) as outcome:
+        _all_at_once([("skips", GATE_PROCESSES, skips, ["one"])])
+    assert not isinstance(outcome.value, Exception), (
+        "this subject no longer raises the kind of outcome the clause is about (%r), so the half "
+        "of it that is not an `Exception` was measured against nothing" % outcome.value)
+
+
+class _Cells(object):
+    """The answer tables of the check sets below, and what the tests need to talk about them."""
+
+    def __init__(self, **columns):
+        self.__dict__.update(columns)
+
+
+# WHICH TEST EACH COLUMN OF THE CELL PHASE IS THE COLUMN OF. The phase is one run so that the kinds
+# of process overlap (`_all_at_once`), and this is what stops a run that selected ONE of these tests
+# from paying for the columns of the others: a column is measured when its test is in the run. A
+# name here that no longer resolves would take a column out silently, so both ends of this table are
+# driven by `test_every_column_of_the_cell_phase_is_owned_by_a_test_that_asks_for_it`.
+CELL_COLUMNS = {
+    "line shapes, by the shell": "test_the_shell_writes_where_the_table_of_line_shapes_says",
+    "line shapes, by the gate": "test_gate1_refuses_a_line_exactly_where_the_shell_would_write",
+    "tilde subjects, by the shell": "test_gate1_places_a_tilde_word_where_the_shell_puts_it",
+    "tilde subjects, by the gate": "test_gate1_places_a_tilde_word_where_the_shell_puts_it",
+    "leads, by the shell": "test_gate1_answers_for_a_tilde_that_does_not_start_its_word",
+    "leads, by the gate": "test_gate1_answers_for_a_tilde_that_does_not_start_its_word",
+}
+
+
+def test_every_column_of_the_cell_phase_is_owned_by_a_test_that_asks_for_it():
+    """`CELL_COLUMNS` is read at both ends, because a wrong name in it is a SILENT loss.
+
+    A column whose owner does not resolve is simply not measured, and the test that reads it then
+    finds an empty table -- which raises where it looks a subject up, but only if it looks one up.
+    So the names are checked against the tests this module defines, and the tests that ask for the
+    phase are checked against the names: a test added to the phase without a column of its own, and
+    a column left behind by a rename, both fail here rather than one round later.
+    """
+    defined = {name for name, value in sorted(globals().items())
+               if name.startswith("test_") and inspect.isfunction(value)}
+    owners = set(CELL_COLUMNS.values())
+    assert owners <= defined, (
+        "these columns name a test this module does not define, so nothing would measure them: %s"
+        % sorted(owners - defined))
+    asking = {name for name in defined
+              if "cells" in inspect.signature(globals()[name]).parameters}
+    assert asking == owners, (
+        "these tests ask for the cell phase and own no column in it %s; these columns are owned by "
+        "a test that does not ask for the phase %s"
+        % (sorted(asking - owners), sorted(owners - asking)))
+
+
+@pytest.fixture(scope="session")
+def cells(request, project, tmp_path_factory):
+    """Every cell of the check sets below, measured ONCE and with both kinds of process running.
+
+    THE MEASUREMENT MOVED HERE, NOT THE ASSERTIONS. Each test below still says what its own property
+    is and still fails on its own subjects; what it no longer does is wait for the kind of process
+    the test before it was starting. The reason is the bound this suite really runs into -- this
+    host's process creation, not its cores -- and that the two kinds do not draw on it in the same
+    way (`_all_at_once`, and the A/B in docs/reviews/2026-08-29-tsk0090-measurements.md, section 5).
+
+    THE ARBITER IS STILL CHOSEN BY MEASUREMENT (`_can_arbitrate`) and not by name or by place on
+    PATH. A host where no candidate qualifies has no shell column at all, and this says so by
+    handing back `shell = None`: the tests that need one fail on their own, naming their own check
+    set, and the one that asks only a gate is not dragged down with them.
+
+    THE GATE IS ASKED ABOUT A TILDE SUBJECT ONLY WHERE SOMETHING IS ASSERTED ABOUT IT, which is why
+    that column is a second pass: which subjects those are is what the shell column decides.
+
+    THE COLUMNS ARE FILTERED AGAINST WHAT THIS RUN SELECTED (`CELL_COLUMNS`), because one shared
+    run is otherwise a shared bill: the alternative that was tried first made a `-k` naming one of
+    these tests pay for the columns of the other three. Both ends of that are measured in
+    docs/reviews/2026-08-29-tsk0090-measurements.md, section 5.
+    """
+    harness = _reader()
+    selected = {item.function.__name__ for item in request.session.items}
+
+    def asked_for(column):
+        return CELL_COLUMNS[column] in selected
+
+    base = str(tmp_path_factory.mktemp("cells"))
+    outside = os.path.join(base, "elsewhere")
+    os.makedirs(outside)
+    outside = outside.replace("\\", "/")
+    trees = [_sandbox(base, index) for index in range(AT_ONCE[SHELL_LINES])]
+    shell = next((candidate for candidate in _posix_shells()
+                  if _can_arbitrate(candidate, trees[0], outside)), None)
+    leads = _lead_subjects(harness)
+
+    def shape_line(label, here):
+        return _line(LINE_SHAPES[label][0], outside, here)
+
+    def tilde_line(subject):
+        return ((TILDE_STATES[subject[0]] % {"out": '"%s"' % outside})
+                + 'sed -i "s/a/b/" %s' % TILDE_SUBJECTS[subject])
+
+    def lead_line(subject):
+        return 'sed -i "s/a/b/" %s' % leads[subject]
+
+    def judged(line):
+        return run(project, "gate_lead_write_scope.py", bash_payload(project, line))
+
+    def shape_writes(slot, label):
+        return _changes_the_protected_file(shell, trees[slot], shape_line(label, trees[slot]),
+                                           outside)
+
+    def tilde_writes(slot, subject):
+        return _changes_the_protected_file(shell, trees[slot], tilde_line(subject), outside)
+
+    def lead_writes(slot, subject):
+        return _changes_the_protected_file(shell, trees[slot], lead_line(subject), outside)
+
+    claiming = sorted(label for label in LINE_SHAPES if _claimed(label) is not None)
+    binding = sorted(label for label in LINE_SHAPES
+                     if _claimed(label) is None and not LINE_SHAPES[label][2])
+    lead_order = sorted(leads)
+    possible = [
+        ("line shapes, by the gate", GATE_PROCESSES,
+         lambda _slot, label: judged(shape_line(label, project)), sorted(LINE_SHAPES)),
+        ("leads, by the gate", GATE_PROCESSES,
+         lambda _slot, subject: judged(lead_line(subject)), lead_order),
+        ("line shapes, by the shell", SHELL_LINES, shape_writes, claiming + binding),
+        ("tilde subjects, by the shell", SHELL_LINES, tilde_writes, sorted(TILDE_SUBJECTS)),
+        ("leads, by the shell", SHELL_LINES, lead_writes, lead_order)]
+    measured = _all_at_once([batch for batch in possible if asked_for(batch[0])
+                             and (batch[1] is not SHELL_LINES or shell is not None)])
+    reached = measured.get("tilde subjects, by the shell", {})
+    reaching = sorted(subject for subject in reached if reached[subject])
+    free = sorted(subject for subject in reached if not subject[1] and not reached[subject])
+    tilde_gate = _in_parallel(
+        lambda _slot, subject: judged(tilde_line(subject)),
+        sorted(set(reaching) | set(free)) if asked_for("tilde subjects, by the gate") else [],
+        GATE_PROCESSES)
+    return _Cells(shell=shell, outside=outside, trees=trees, leads=leads,
+                  shape_line=shape_line, tilde_line=tilde_line, lead_line=lead_line,
+                  shape_shell=measured.get("line shapes, by the shell", {}),
+                  shape_gate=measured.get("line shapes, by the gate", {}),
+                  tilde_shell=reached, tilde_gate=tilde_gate,
+                  lead_shell=measured.get("leads, by the shell", {}),
+                  lead_gate=measured.get("leads, by the gate", {}))
+
+
+def test_the_shell_writes_where_the_table_of_line_shapes_says(cells):
     """The first column of `LINE_SHAPES`, taken from a real shell instead of from anybody's memory.
 
     THE RETURN CODE OF A GATE IS NO EVIDENCE OF WHERE A SHELL STANDS, so the subject here is the
@@ -2557,17 +2875,12 @@ def test_the_shell_writes_where_the_table_of_line_shapes_says(tmp_path):
     edited. How many that is stands nowhere: it is `len(LINE_SHAPES) - len(claiming) - len(binding)`
     and a number written beside it is the one that goes stale, which it did.
 
-    THE SHELL IS CHOSEN BY MEASUREMENT (`_can_arbitrate`), not by its name or its place on PATH. A
-    host where no candidate qualifies cannot answer this question at all, and a test that cannot
-    measure its property reports that as a FAILURE: a silent skip is how a table stopped being
-    checked for three rounds while it looked green.
+    THE SHELL IS CHOSEN BY MEASUREMENT (`_can_arbitrate` in `cells`), not by its name or its place
+    on PATH. A host where no candidate qualifies cannot answer this question at all, and a test that
+    cannot measure its property reports that as a FAILURE: a silent skip is how a table stopped
+    being checked for three rounds while it looked green.
     """
-    outside = str(tmp_path / "elsewhere").replace("\\", "/")
-    os.makedirs(outside)
-    trees = [_sandbox(str(tmp_path), index) for index in range(AT_ONCE)]
-    shell = next((candidate for candidate in _posix_shells()
-                  if _can_arbitrate(candidate, trees[0], outside)), None)
-    assert shell is not None, (
+    assert cells.shell is not None, (
         "no shell on this host sees both trees this table is about, so the column of `LINE_SHAPES` "
         "was not measured against anything: %s" % (_posix_shells(),))
     claiming = sorted(label for label in LINE_SHAPES if _claimed(label) is not None)
@@ -2576,24 +2889,18 @@ def test_the_shell_writes_where_the_table_of_line_shapes_says(tmp_path):
         "test measures almost nothing" % (len(claiming), len(LINE_SHAPES)))
     binding = sorted(label for label in LINE_SHAPES
                      if _claimed(label) is None and not LINE_SHAPES[label][2])
-
-    def measure(index, label):
-        return _changes_the_protected_file(shell, trees[index],
-                                           _line(LINE_SHAPES[label][0], outside, trees[index]),
-                                           outside)
-
-    answers = _in_parallel(measure, claiming + binding)
+    answers = cells.shape_shell
     wrong = ["the table says %r %s the protected file, and %s disagrees: %s"
-             % (label, "changes" if _claimed(label) else "does not change", shell,
-                _line(LINE_SHAPES[label][0], outside, trees[0]))
+             % (label, "changes" if _claimed(label) else "does not change", cells.shell,
+                cells.shape_line(label, cells.trees[0]))
              for label in claiming if answers[label] != _claimed(label)]
     wrong += ["%s writes the protected file in %r, and the table lets the gate allow it: %s"
-              % (shell, label, _line(LINE_SHAPES[label][0], outside, trees[0]))
+              % (cells.shell, label, cells.shape_line(label, cells.trees[0]))
               for label in binding if answers[label]]
     assert not wrong, "\n".join(wrong)
 
 
-def test_gate1_refuses_a_line_exactly_where_the_shell_would_write(project, tmp_path):
+def test_gate1_refuses_a_line_exactly_where_the_shell_would_write(project, cells):
     """The gate answers every shape of `LINE_SHAPES` the way the second column derives.
 
     ONE PROPERTY, BOTH DIRECTIONS: where this reader keeps its position, the relative write behind
@@ -2611,20 +2918,14 @@ def test_gate1_refuses_a_line_exactly_where_the_shell_would_write(project, tmp_p
     `test_the_shell_writes_where_the_table_of_line_shapes_says`, so neither test can be satisfied
     by the reader it is about.
     """
-    outside = str(tmp_path).replace("\\", "/")
     holes = [label for label in LINE_SHAPES if _claimed(label) and not LINE_SHAPES[label][2]]
     assert not holes, (
         "the table itself says the shell writes the protected file here while the gate allows it, "
         "which is a hole written down rather than measured: %s" % sorted(holes))
-
-    def measure(_index, label):
-        return run(project, "gate_lead_write_scope.py",
-                   bash_payload(project, _line(LINE_SHAPES[label][0], outside, project)))
-
-    answers = _in_parallel(measure, sorted(LINE_SHAPES))
+    answers = cells.shape_gate
     wrong = []
     for label in sorted(LINE_SHAPES):
-        line, refuses = _line(LINE_SHAPES[label][0], outside, project), LINE_SHAPES[label][2]
+        line, refuses = cells.shape_line(label, project), LINE_SHAPES[label][2]
         rc, err = answers[label]
         if refuses and rc != 2:
             wrong.append("%s: this reader keeps its position here, the gate answered rc %d: %s"
@@ -2712,7 +3013,7 @@ TILDE_SUBJECTS = _tilde_subjects()
 TILDE_QUOTINGS = sorted({label for _state, _prefix, label in TILDE_SUBJECTS})
 
 
-def test_gate1_places_a_tilde_word_where_the_shell_puts_it(project, tmp_path):
+def test_gate1_places_a_tilde_word_where_the_shell_puts_it(cells):
     """Where this reader DELEGATES the expansion of a tilde, the delegate is measured against bash.
 
     THE BRANCH WAS RIGHT AND THE VALUE IT WAS FED WAS NOT (DEC-0020). Whether a reading may be
@@ -2736,11 +3037,12 @@ def test_gate1_places_a_tilde_word_where_the_shell_puts_it(project, tmp_path):
     the round before asked whether the word carried a spliced span ANYWHERE, and a shell suppresses
     an expansion only where the quoting stands.
 
-    THE GATE IS ASKED WHERE SOMETHING IS ASSERTED, AND NOWHERE ELSE, which is what makes an axis of
-    9840 values affordable: the shell column decides where the invariant binds (a subject the shell
-    does not write is a subject this test asserted nothing about even when the gate was asked), and
-    the both-ends set is generated. Before this the gate ran once per subject and the answer was
-    dropped for all but a handful.
+    THE GATE IS ASKED WHERE SOMETHING IS ASSERTED, AND NOWHERE ELSE, which is what makes a check
+    set this size affordable: the shell column decides where the invariant binds (a subject the
+    shell does not write is a subject this test asserted nothing about even when the gate was
+    asked), and the both-ends set is generated. Before this the gate ran once per subject and the
+    answer was dropped for all but a handful. How many subjects that is stands nowhere here -- it is
+    `len(TILDE_SUBJECTS)`, and the count that stood in this sentence had gone stale.
 
     BOTH ENDS, AND THE THIRD ONE IS NEW. Some prefix other than the empty one has to reach the tree,
     or the arbiter measured nothing at all; some word that CARRIES QUOTING has to reach it, or the
@@ -2750,29 +3052,12 @@ def test_gate1_places_a_tilde_word_where_the_shell_puts_it(project, tmp_path):
     unbounded.
     """
     harness = _reader()
-    outside = str(tmp_path / "elsewhere")
-    os.makedirs(outside)
-    outside = outside.replace("\\", "/")
-    trees = [_sandbox(str(tmp_path), index) for index in range(AT_ONCE)]
-    shell = next((candidate for candidate in _posix_shells()
-                  if _can_arbitrate(candidate, trees[0], outside)), None)
-    assert shell is not None, (
+    assert cells.shell is not None, (
         "no shell on this host sees the trees this test is about, so what a tilde prefix names was "
         "measured against nothing: %s" % (_posix_shells(),))
-
-    def line(subject):
-        return ((TILDE_STATES[subject[0]] % {"out": '"%s"' % outside})
-                + 'sed -i "s/a/b/" %s' % TILDE_SUBJECTS[subject])
-
+    line = cells.tilde_line
     subjects = sorted(TILDE_SUBJECTS)
-
-    def writes(index, subject):
-        return _changes_the_protected_file(shell, trees[index], line(subject), outside)
-
-    def judged(_index, subject):
-        return run(project, "gate_lead_write_scope.py", bash_payload(project, line(subject)))
-
-    reached = _in_parallel(writes, subjects)
+    reached, answers = cells.tilde_shell, cells.tilde_gate
     reaching = sorted(subject for subject in subjects if reached[subject])
     assert [subject for subject in reaching if subject[1]], (
         "no tilde prefix on this host reaches the protected tree from any of %d states, so the "
@@ -2782,7 +3067,6 @@ def test_gate1_places_a_tilde_word_where_the_shell_puts_it(project, tmp_path):
         "no word carrying quoting reaches the protected tree from any state, so the axis that "
         "crosses WHERE the quoting stands measured nothing: %s" % TILDE_QUOTINGS)
     free = [subject for subject in subjects if not subject[1] and not reached[subject]]
-    answers = _in_parallel(judged, sorted(set(reaching) | set(free)))
     holes = []
     for subject in reaching:
         rc, err = answers[subject]
@@ -2839,7 +3123,7 @@ def _lead_subjects(harness):
             for lead in sorted(_tilde_leads(harness)) for prefix in ends}
 
 
-def test_gate1_answers_for_a_tilde_that_does_not_start_its_word(project, tmp_path):
+def test_gate1_answers_for_a_tilde_that_does_not_start_its_word(project, cells):
     """The cell three places of the hole list described from a measurement taken under the home
     directory, where an ancestor answered instead of the property.
 
@@ -2862,16 +3146,10 @@ def test_gate1_answers_for_a_tilde_that_does_not_start_its_word(project, tmp_pat
     reaches the protected file while the gate allows is a hole and says so.
     """
     harness = _reader()
-    outside = str(tmp_path / "elsewhere")
-    os.makedirs(outside)
-    outside = outside.replace("\\", "/")
-    trees = [_sandbox(str(tmp_path), index) for index in range(AT_ONCE)]
-    shell = next((candidate for candidate in _posix_shells()
-                  if _can_arbitrate(candidate, trees[0], outside)), None)
-    assert shell is not None, (
+    assert cells.shell is not None, (
         "no shell on this host sees the trees this test is about: %s" % (_posix_shells(),))
     control = 'sed -i "s/a/b/" %s%s/%s' % (harness._TILDE, "+", RELATIVE_TARGET)
-    assert _changes_the_protected_file(shell, trees[0], control), (
+    assert _changes_the_protected_file(cells.shell, cells.trees[0], control), (
         "the same line without a lead does not reach the protected file on this host, so what a "
         "lead in front of it changes was measured against nothing: %s" % control)
     assert run(project, "gate_lead_write_scope.py", bash_payload(project, control))[0] == 2, (
@@ -2879,19 +3157,9 @@ def test_gate1_answers_for_a_tilde_that_does_not_start_its_word(project, tmp_pat
         "answer that is already an allow")
 
     removable = _tilde_leads(harness)
-    subjects = _lead_subjects(harness)
+    subjects = cells.leads
     order = sorted(subjects)
-
-    def writes(index, subject):
-        return _changes_the_protected_file(
-            shell, trees[index], 'sed -i "s/a/b/" %s' % subjects[subject], outside)
-
-    def judged(_index, subject):
-        return run(project, "gate_lead_write_scope.py",
-                   bash_payload(project, 'sed -i "s/a/b/" %s' % subjects[subject]))
-
-    reached = _in_parallel(writes, order)
-    answers = _in_parallel(judged, order)
+    reached, answers = cells.lead_shell, cells.lead_gate
     wrong = []
     for subject in order:
         lead, prefix = subject
@@ -2931,7 +3199,7 @@ def test_the_arbiter_cannot_be_pointed_out_of_its_sandbox_by_the_state_a_tilde_r
     harness = _reader()
     outside = str(tmp_path / "elsewhere")
     os.makedirs(outside)
-    trees = [_sandbox(str(tmp_path), index) for index in range(AT_ONCE)]
+    trees = [_sandbox(str(tmp_path), index) for index in range(AT_ONCE[SHELL_LINES])]
     shell = next((candidate for candidate in _posix_shells()
                   if _can_arbitrate(candidate, trees[0], outside.replace("\\", "/"))), None)
     assert shell is not None, (
@@ -2950,7 +3218,7 @@ def test_the_arbiter_cannot_be_pointed_out_of_its_sandbox_by_the_state_a_tilde_r
                 shell, trees[index],
                 'sed -i "s/a/b/" %s%s/%s' % (harness._TILDE, prefix, RELATIVE_TARGET))
 
-        reached = _in_parallel(measure, _tilde_prefixes(harness))
+        reached = _in_parallel(measure, _tilde_prefixes(harness), SHELL_LINES)
     finally:
         for name, value in saved.items():
             os.environ.pop(name, None) if value is None else os.environ.__setitem__(name, value)
@@ -3199,7 +3467,7 @@ def test_the_measurement_sandbox_leaves_a_child_shell_no_directory_word_that_nam
     for name in hostile:
         environments[name] = dict(module.sandbox_environment(trees[name][0]),
                                   **{name: _pointed_at(name, trees[name][1])})
-    answers = _in_parallel(measure, subjects)
+    answers = _in_parallel(measure, subjects, SHELL_LINES)
 
     assert answers[INHERITED][0], (
         "with the directory state inherited no line reached %s, so this host cannot show the "
@@ -5080,18 +5348,51 @@ def _authored_by(tmp_path, label, scenario):
     return done, sorted(_commit_objects(work) - before - imported)
 
 
+# The scenario tables, under the prefix each one's repositories are named with. THE PREFIX IS WHAT
+# KEEPS TWO TABLES APART when they name the same verb: `pull` stands in three of them.
+AUTHORING_TABLES = {"records-": RECORDS_HISTORY, "nothing-": AUTHORS_NOTHING,
+                    "suppressed-": SUPPRESSED, "pull-rebase-": PULL_REBASE_SPELLINGS}
+
+
+@pytest.fixture(scope="session")
+def authored(tmp_path_factory):
+    """`{(prefix, key): (the finished process, the commits it authored)}` for every scenario.
+
+    EVERY SCENARIO IS ITS OWN REPOSITORY (`_authored_by`), so they do not depend on each other and
+    are measured in one run rather than one after the other -- the same reason the cell phase above
+    gives, and the same bound (docs/reviews/2026-08-29-tsk0090-measurements.md, section 5). Each
+    test below still asserts about its own verb and fails on its own.
+
+    WHAT KEEPS THEM APART IS THE NAME `_authored_by` SANITISES, so that name has to be unique --
+    two scenarios that sanitise to one name would run CONCURRENTLY in one repository and each read
+    the other's commits. Run one after the other that was a wrong answer waiting for a collision;
+    run at the same time it is one, so the names are counted before anything starts.
+    """
+    base = str(tmp_path_factory.mktemp("authors"))
+    subjects = [(prefix, key) for prefix, table in sorted(AUTHORING_TABLES.items())
+                for key in sorted(table)]
+    named = [re.sub(r"[^a-z0-9]+", "-", (prefix + key).lower()) for prefix, key in subjects]
+    assert len(set(named)) == len(named), (
+        "two scenarios sanitise to one repository name, so they would be measured in one tree at "
+        "the same time: %s" % sorted(name for name in set(named) if named.count(name) > 1))
+    return _in_parallel(
+        lambda _slot, subject: _authored_by(
+            base, subject[0] + subject[1], AUTHORING_TABLES[subject[0]][subject[1]]),
+        subjects, REPOSITORIES)
+
+
 @pytest.mark.parametrize("verb", sorted(RECORDS_HISTORY))
-def test_every_subcommand_the_gate_calls_an_author_authors_one(tmp_path, verb):
+def test_every_subcommand_the_gate_calls_an_author_authors_one(authored, verb):
     """The dead-entry end of the tripwire: an entry that stops recording says so.
 
     Driven against the INSTALLED git, in a real repository, because that is the only thing that can
     know. A name kept in the set out of caution, or one git has repurposed, turns this red instead
     of quietly refusing lines for a property it no longer has.
     """
-    done, authored = _authored_by(tmp_path, verb, RECORDS_HISTORY[verb])
+    done, made = authored[("records-", verb)]
     assert done.returncode == 0, "the scenario for `git %s` did not run: %s" % (
         verb, (done.stderr or "")[-400:])
-    assert authored, (
+    assert made, (
         "`git %s` is in gate 3's AUTHORS_A_COMMIT and this git authored no commit object for it"
         % verb)
     assert verb in _gate3().AUTHORS_A_COMMIT, (
@@ -5099,24 +5400,24 @@ def test_every_subcommand_the_gate_calls_an_author_authors_one(tmp_path, verb):
 
 
 @pytest.mark.parametrize("verb", sorted(AUTHORS_NOTHING))
-def test_the_commands_the_gate_leaves_open_author_nothing(tmp_path, verb):
+def test_the_commands_the_gate_leaves_open_author_nothing(authored, verb):
     """The missing-recorder end: a command outside the set that starts authoring says so.
 
     The invocation has to SUCCEED, or this would measure a command that did nothing at all -- the
     shape of a test that cannot fail.
     """
-    done, authored = _authored_by(tmp_path, verb, AUTHORS_NOTHING[verb])
+    done, made = authored[("nothing-", verb)]
     assert done.returncode == 0, "the scenario for `git %s` did not run: %s" % (
         verb, (done.stderr or "")[-400:])
-    assert not authored, (
+    assert not made, (
         "`git %s` authored %s here and gate 3 does not refuse it -- a commit object can be made "
-        "without a verdict" % (verb, authored))
+        "without a verdict" % (verb, made))
     assert verb not in _gate3().AUTHORS_A_COMMIT, (
         "`git %s` is measured to author nothing and is refused as an author anyway" % verb)
 
 
 @pytest.mark.parametrize("verb", sorted(SUPPRESSED))
-def test_the_produce_first_option_is_exempted_exactly_where_it_works(tmp_path, verb):
+def test_the_produce_first_option_is_exempted_exactly_where_it_works(authored, verb):
     """`--no-commit` is honoured by some authors and IGNORED by others, and the gate has to match.
 
     Measured: `git rebase --no-commit other`, `git am --no-commit patch.mbox` and
@@ -5125,17 +5426,17 @@ def test_the_produce_first_option_is_exempted_exactly_where_it_works(tmp_path, v
     says so.
     """
     gate = _gate3()
-    done, authored = _authored_by(tmp_path, "suppressed-" + verb, SUPPRESSED[verb])
+    done, made = authored[("suppressed-", verb)]
     assert done.returncode == 0, "the scenario for the `%s` produce-first cell did not run: %s" % (
         verb, (done.stderr or "")[-400:])
-    assert (not authored) == (verb in gate.HONOURS_THE_SUPPRESSOR), (
+    assert (not made) == (verb in gate.HONOURS_THE_SUPPRESSOR), (
         "the `%s` produce-first cell authored %s, and the gate %s it as a produce-first form"
-        % (verb, authored,
+        % (verb, made,
            "exempts" if verb in gate.HONOURS_THE_SUPPRESSOR else "does not exempt"))
 
 
 @pytest.mark.parametrize("spelling", sorted(PULL_REBASE_SPELLINGS))
-def test_no_spelling_of_a_rebase_pull_survives_the_suppressor(tmp_path, spelling):
+def test_no_spelling_of_a_rebase_pull_survives_the_suppressor(authored, spelling):
     """F2: `git pull --no-commit` records under every way of asking for a rebase.
 
     The refined SR-0009 exempts a produce-first form ONLY where the option suppresses recording for
@@ -5143,11 +5444,10 @@ def test_no_spelling_of_a_rebase_pull_survives_the_suppressor(tmp_path, spelling
     bar -- and it is the tripwire the old `_pulled` (hard-wired to `--no-rebase`) could not be: a
     test that only ever passed `--no-rebase` cannot fail on the case that authors.
     """
-    done, authored = _authored_by(tmp_path, "pull-rebase-" + re.sub(r"\W+", "-", spelling),
-                                  PULL_REBASE_SPELLINGS[spelling])
+    done, made = authored[("pull-rebase-", spelling)]
     assert done.returncode == 0, "the `pull --no-commit %s` scenario did not run: %s" % (
         spelling, (done.stderr or "")[-400:])
-    assert authored, (
+    assert made, (
         "`git pull --no-commit %s` authored nothing here, so this host cannot show the case F2 is "
         "about" % spelling)
     assert "pull" not in _gate3().HONOURS_THE_SUPPRESSOR, (

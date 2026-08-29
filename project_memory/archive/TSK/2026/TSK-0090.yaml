@@ -1,0 +1,64 @@
+id: TSK-0090
+product_requirement: PR-0002
+derives_from: FR-0011
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- PR-0002
+allowed_scope:
+- .claude/hooks/test_gates.py
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/hooks/gate_*.py
+- .claude/hooks/_harness.py
+- .claude/settings.json
+- team-kits/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+required_inputs:
+- 'FR-0011 incl. triage_result: the suite ran 358 s for 134 tests on 2026-08-07 and
+  4101.94 s for 143 tests on 2026-08-13 -- a factor-11 rise the triage measured; cells
+  already run through a ThreadPoolExecutor (AT_ONCE=10), so the naive cut exists and
+  did not hold. The wanted outcome is WALL TIME PER ROUND DOWN WITHOUT FALSIFYING
+  A MEASUREMENT'
+- 'the two properties pulling apart, from the item: cell tests (the 1440-cell table,
+  real gate processes against own surrogate projects) are independent and concurrency-safe
+  IN PRINCIPLE; the DEADLINE measurements are NOT -- they measure real runtimes against
+  registered budgets, a killed hook is a pass-through, and under load from 15 neighbours
+  a point measurement becomes noise, while ''green under neighbour load'' is ALSO
+  an assured property (TSK-0021 expected_output 7), so load is both noise source and
+  measurement subject. Plus Windows process spawn cost: every cell test starts several
+  processes'
+- 'the boundary of this round: .claude/hooks/test_gates.py is yours to change (the
+  item says so explicitly -- the session agent cannot); the GATES THEMSELVES (gate_*.py,
+  _harness.py) and settings.json are NOT in scope -- a perf round must not touch the
+  enforcement it measures'
+expected_outputs:
+- 'STEP 1 PROFILE before cutting: measure where the 4100 s actually go (per-test durations,
+  process spawn counts, fixture build time, the executor''s real utilisation) -- the
+  factor-11 rise since 2026-08-07 has a cause and the round must name it before optimising
+  past it'
+- 'STEP 2 DECIDE THE CUT and build it -- the item names one candidate (concurrent
+  cell phase vs serial deadline phase), not a mandate. Whatever the design: deadline/timing
+  tests must keep measuring on a quiet host (serial, or isolated with measured headroom),
+  cell tests may parallelise, and any shared fixture must be safe under the chosen
+  concurrency'
+- 'STEP 3 MEASURE BOTH ENDS, the item''s own acceptance: (a) wall time really falls
+  -- full-suite before/after on this host, numbers in the report; (b) NO timing test
+  changes its verdict under the new neighbour load -- run the deadline tests repeatedly
+  under the new concurrency and show the margins; a flaky pass is a falsified measurement'
+- 'STEP 4 SHIP: the suite stays one command (python -B -m pytest .claude/hooks/test_gates.py
+  -q); ruff, validate; the affected suite here IS test_gates itself plus anything
+  in tools/ you touched; report file:line, the profile table, the before/after wall
+  numbers, the margin measurements, residues named'
+dependencies:
+- FR-0011
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-29T09:04:16'
+closed_at: '2026-08-29T18:33:03'

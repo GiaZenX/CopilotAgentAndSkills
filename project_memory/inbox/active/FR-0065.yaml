@@ -1,0 +1,27 @@
+id: FR-0065
+title: 'Four eyes for BOOKING: the figures that go to the tax office have thinner
+  assurance than the question which folder a PDF lands in -- the booking twin of FR-0035'
+request_text: 'User finding 2026-08-29, in his real office project, on the heels of
+  BUG-0072 (the kit extractor silently returned 14.28 instead of 214.20 net; caught
+  only by the bookkeeper''s own arithmetic cross-check): the user assumed the four-eyes
+  principle covered reading/booking figures -- it does not. FR-0035/TSK-0087 built
+  the enforced second reading for FILING (target path + name + document bytes); BOOKING
+  has a single bookkeeper plus the script''s arithmetic check, and the PM himself
+  called that ''die falsche Reihenfolge'' for figures that end at the Finanzamt. Wanted,
+  two layers with distinct catch-classes: (1) BUG-0072''s reconciliation guard (arithmetic:
+  net x (1+vat) = gross, loud failure) catches non-reconciling triples; (2) a SECOND
+  INDEPENDENT pass -- booking row against source document -- catches wrong-but-reconciling
+  figures (the extractor reading the WRONG document''s consistent total, a transposed-but-valid
+  amount, the wrong category). Design questions for the round, honestly open: full
+  second reading per row vs sampled (the FR-0035 cost lesson says fixed context lands
+  per RUN not per row, so ''every row'' may be cheaper than assumed -- measure first);
+  where the record lives and what gate_ledger_valid or the guarded ledger_add judge
+  can ENFORCE vs what stays procedure (the FR-0035 pattern: provenance measurable,
+  blindness not); and the migration story for rows already booked single-eyed. Project-side
+  interim exists (the user''s PM offers a sampled second pass as a PROC) -- this item
+  is the KIT mechanism so every project gets it enforced, not remembered. Lineage:
+  FR-0035 (filing twin), BUG-0072 (the live near-miss), P4 pilot bookkeeper findings.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T13:03:04'

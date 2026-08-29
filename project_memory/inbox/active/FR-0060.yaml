@@ -1,0 +1,20 @@
+id: FR-0060
+title: 'BOM tripwire: a role/skill/gate .md starting with a UTF-8 BOM must fail a
+  structural test -- a silently unloaded role is an unbound gate'
+request_text: 'Radar 2026-08-29 item 1 (source: radar/2026-08-29-claude.md, changelog
+  2.1.239): before 2.1.239 Claude Code silently ignored any agent/skill/command .md
+  starting with a UTF-8 BOM (EF BB BF) -- an editor can add one on save without the
+  author noticing. For this harness that is a way for a GATE ROLE or a harness role
+  to not bind at all, invisibly, on clients below the fix: gate_spawn_needs_item reads
+  role frontmatter, the agent: binding reads a role file, every kit specialist is
+  an agents/*.md. Watcher checked by read tools: no shipped role file carries a BOM
+  today -- so no live breakage, but nothing prevents a future save from adding one.
+  Wanted, both halves of the radar recommendation: (a) a structural test asserting
+  no tracked .md under .claude/agents/ and the kit agents/skills trees begins with
+  a BOM (both-ends tripwire per house rules); (b) the one-line CC-floor note about
+  the load contract where the install notes keep such floors. Estimated ~30-45 min,
+  rider-sized.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T10:24:37'

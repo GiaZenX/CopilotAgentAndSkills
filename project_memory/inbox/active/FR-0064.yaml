@@ -1,0 +1,25 @@
+id: FR-0064
+title: 'Evaluate subagent memory (memory: frontmatter) for the harness roles -- implementer
+  maybe, verifier NO by design'
+request_text: 'Newsletter 2026-08-29: a subagent with memory: project|user|local in
+  its frontmatter gets its own directory under .claude/agent-memory/, reads it at
+  start, writes as it works -- persistent across sessions. Opportunity: harness-implementer
+  re-derives measurement rigs (scaffold recipes, mutation harness patterns, red-test
+  scaffolding) every round; a role memory could cut that cost. Danger, and the reason
+  this is an EVALUATION not an adoption: the harness-verifier''s value IS the fresh
+  eye -- a memory carrying last round''s expectations undermines the independence
+  the three-role loop exists for (the same week''s newsletter praises the no-context
+  adversarial reviewer for exactly that trait). Also to check: where agent-memory
+  lives (.claude/agent-memory/ -- inside the protected area gate 1 derives, so writes
+  by the platform vs writes by tools need distinguishing), what the kits would inherit
+  (specialist roles with memory in customer projects: does the office records-clerk
+  remembering past filings undermine the four-eyes independence of the second reader?
+  the reading gate compares provenance, not blindness -- a shared memory would be
+  a NEW shared-context channel between first and second reader), and the source-format
+  duty (a new frontmatter key the Codex generator must knowingly accept or drop).
+  Decision per role, defaults: verifier none, second-reader roles none, implementer/lead
+  candidates measured first. Source: user-pasted newsletter 2026-08-29.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T11:13:16'

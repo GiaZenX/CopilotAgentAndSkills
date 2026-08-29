@@ -1,0 +1,19 @@
+id: FR-0061
+title: Measure the kits' command-line classifier against unrelated $()/backtick substitutions
+  -- Anthropic just fixed the same over-match class in its own matcher
+request_text: 'Radar 2026-08-29 item 2 (source: radar/2026-08-29-claude.md, changelog
+  2.1.243): Claude Code''s own permission/hook-if matcher over-matched on commands
+  merely CONTAINING a $() or backtick substitution; fixed by parsing substitutions
+  instead of pattern-matching across them. That is the exact seam gate_commit_evidence/_harness.command_line
+  works in (TSK-0019 added the substitution-introduced-command classification; H22
+  names the still-open under-read in the family). Wanted (evaluate, ~1-1.5 h): in
+  a throwaway clone outside the repo, feed gate_commit_evidence and gate_lead_write_scope
+  command lines carrying an UNRELATED $() or backtick substitution -- both a benign-read
+  case (over-match check: is a harmless line refused?) and a hidden-write case (under-match
+  check: does a writing line pass?). Record which way the classifier reads each; log
+  any under-read as a measured hole in the hole list WITH the chain, or record that
+  the gate already covers it. Measurement round, no code change unless a hole is found.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T10:24:38'

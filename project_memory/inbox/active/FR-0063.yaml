@@ -1,0 +1,24 @@
+id: FR-0063
+title: 'Measure claude --restricted against the gate apparatus: ''project settings
+  are ignored'' may mean ungated file writes inside the project, project_memory included'
+request_text: 'Newsletter 2026-08-29 (changelog 2.1.248): ''Start with claude --restricted
+  and Claude cannot run commands, execute code, or fetch the web. File tools stay
+  inside the working directory, and user and project settings are ignored.'' If ignored
+  settings include the PreToolUse hook REGISTRATIONS, a --restricted session in a
+  kit project (or this repo) runs with NO gates while keeping file-tool write access
+  inside the working directory -- Write/Edit into project_memory/decisions or a hand-written
+  EVD would pass ungated; the command-refusing half does not protect the file-tool
+  half. Wanted (measurement round, same shape as FR-0061): on CLI >= 2.1.248, start
+  --restricted in a scaffolded kit project OUTSIDE the repo and measure (a) whether
+  the registered hooks fire at all (payload log), (b) whether a Write into project_memory/
+  passes, (c) whether the session-start status hook and agent: binding load. If the
+  gates are really absent: hole-list entry with the chain plus the honest floor note
+  (the kits protection story assumes an unrestricted client), and evaluate whether
+  any cheap mitigation exists (docs say settings are ignored, so likely none from
+  inside -- then the entry says so). If the gates DO fire: record the negative result
+  so the question never re-surfaces. Source: user-pasted newsletter; radar 2026-08-29
+  did not itemize --restricted.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T11:13:15'

@@ -21,14 +21,11 @@ status: OPEN
 revision: 1
 approval_ref: null
 created: '2026-08-16T18:20:45'
-triage_result: 'Researched 2026-08-16 (Sonnet, docs primary). VERDICT: the classifier
-  cannot be disabled, but switchModelsOnFlag (default true) controls the CONSEQUENCE
-  -- set false and the silent downgrade becomes an ask (interactive) / a refusal (SDK/headless,
-  stop_reason==''refusal''). Per-role model pinning is fully supported (AgentDefinition.model
-  / subagent frontmatter / CLAUDE_CODE_SUBAGENT_MODEL). Drift detection is post-hoc
-  only via ResultMessage.modelUsage diffing -- no push event exists. Full sourced
-  write-up: docs/research/2026-08-16-model-downgrade-and-tier-pinning.md. IMMEDIATE
-  user action available: /config -> ''Switch models when a message is flagged'' OFF
-  stops the SILENT downgrade in interactive Claude Code. Harness build (post-release):
-  pin tiers per role + a modelUsage-diff drift alarm; the model_map/effort_map producer
-  gap (side-check N-items) is the natural home.'
+triage_result: 'BROADENED by radar 2026-08-29 item 4 (changelog 2.1.247/2.1.248):
+  a subagent whose pinned model 404s on first call no longer dies loudly -- it silently
+  rides the session''s fallback model chain (the 404 detail goes to the parent, but
+  the run proceeds on a DIFFERENT tier than the role pinned). So the wanted structural
+  test must assert not merely that every spawnable role carries a model: line, but
+  that the pinned value RESOLVES to a known alias/tier in model_tiers.yaml -- an unresolvable
+  pin is now one more silent-wrong-tier path, caught at test time instead of spawn
+  time. Source: radar/2026-08-29-claude.md item 4.'

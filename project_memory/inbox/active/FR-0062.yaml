@@ -1,0 +1,29 @@
+id: FR-0062
+title: Per-project kit-gap log, kernel-written, harvested by the harness lead -- so
+  live findings stop requiring full-session reads
+request_text: 'User proposal 2026-08-29, after the second live dead-end in his real
+  project inside a week (BUG-0068, BUG-0070 -- both recovered only by the lead reading
+  his ENTIRE sessions): a durable place where a kit project''s manager records infrastructure
+  gaps so the harness lead can read them across repos. Design direction agreed with
+  the user: NOT a central file in this repo (wrong trust direction -- project sessions
+  must not write into the repo that manufactures their own guards; and fragile paths)
+  but (1) a per-project log written by the KERNEL, not the agent''s free hand (agents
+  may not write the store directly, and that stays true) -- a thin command like report-gap
+  appending {date, kit_version, title, detail} to a project-local surface (candidate:
+  project_memory/.audit/kit_gaps.jsonl, the same area the hooks already log to; the
+  command is the writer, so the agent-write refusal stays intact); (2) the manager
+  role carries the duty: on hitting an infrastructure boundary, tell the user AND
+  book it with this command -- today the constitutions say only ''report the gap''
+  and the report dies in the chat; (3) the harvest is the lead''s, radar-style: read
+  the per-project logs, triage into FR/BUG here, mark entries harvested so nothing
+  arrives twice. Design points for the round: entry shape (schema, size cap), whether
+  the session_status brief surfaces unharvested entries to the PM, how harvested-marking
+  works without the lead writing the foreign store (candidate: the lead records harvest
+  state HERE, keyed by project+entry, not in the project), and the constitution/skill
+  sentence with its honest limit (no hook can force the PM to call it -- prose duty,
+  same class as FR-0052). Fits the BUG-0041/BUG-0068/BUG-0070 dead-end family as the
+  REPORTING half: the gaps will keep coming; this makes them cheap to collect.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-29T10:57:54'

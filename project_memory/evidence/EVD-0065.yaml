@@ -1,0 +1,34 @@
+id: EVD-0065
+kind: review
+related:
+- TSK-0090
+- FR-0011
+result: pass
+summary: 'verifier PASS round 2 for diff:63e820f1fc0b16219d1d357b5415559febf2f00b536a7435d14ae9def711a290
+  -- TSK-0090: the gate suite''s wall time falls without falsifying a measurement.
+  Process kinds pooled (-20..-27% heavy phases per window, -9.2% full suite under
+  load), column selection factor 32-44 in time AND processes, the deadline phase structurally
+  neighbour-free within one pytest process (threads joined, pools closed -- stronger
+  than first argued; neighbours measured to eat the PROOF margin 4/12-under-noise
+  while the verdict never flipped). THE FACTOR-11 RISE WAS HOST LOAD, NOT CODE (hot
+  tests AST-equal across three monthly states; 3.6x fewer shell lines/s between two
+  windows of one day); the 4512 s idle run stays honestly unexplained. Verifier round
+  1 FAIL closed two blockers: a doc number (eight vs measured ELEVEN) and the shared
+  check copy''s unguarded invariant -- now a finalizer that reds on changed, NEW and
+  DELETED files (his own delete-direction attack), with 11-cases-green-plus-one-finalizer-error
+  as the red picture. All nine residues taken in the pass (BaseException resurfacing,
+  two-batch tripwire, name-collision assert, derived width, two repo tools with measured
+  costs replacing scratch scripts, honest one-process-invocation-form sentence, both
+  doc numbers recomputed WITH UNITS from raw files -- where the verifier also retracted
+  his own first counter-computation as an aggregation artifact). Fresh full runs:
+  tools/ 3890 passed/14 skipped (36:57), gate suite 245 passed (22:20). Kit stamps
+  unchanged x3. Residues carried as H74 (entry and measurement doc name each other,
+  tripwire-enforced); quiet-window run OPEN per DEC-0053 with tools/gate_suite_rates.py
+  and gate_suite_margins.py standing ready. Rides along, named in the close-out: radar+newsletter
+  triage, the live-find items BUG-0070..0074 and FR-0060..0066, decisions DEC-0053/0054/0055,
+  the H45 pointer correction'
+artifact_refs:
+- staging/TSK-0090/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-29T19:32:07'

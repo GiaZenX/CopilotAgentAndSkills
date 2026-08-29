@@ -26,14 +26,16 @@ request_text: 'Gemessen 2026-08-07: .claude/hooks/test_gates.py laeuft 358 s fue
   dass die Wandzeit wirklich faellt, und dass kein Timing-Test unter der neuen Nebenlast
   sein Urteil aendert. test_gates.py liegt in .claude/hooks/ und ist geschuetzter
   Bereich -- die Aenderung ist ein Item fuer den Umsetzer, nicht fuer den Sitzungsagenten.'
-status: TRIAGED
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-07T21:48:18'
-triage_result: 'wanted: the cut the FR asks for -- a concurrent cell phase against
-  a serial deadline phase -- is unbuilt; the suite already runs its cells through
-  a ThreadPoolExecutor (test_gates.py AT_ONCE=10), yet a full run took 4101.94 s for
-  143 tests on this host, measured 2026-08-13 -- against 358 s when this FR was opened
-  2026-08-07, a factor-11 rise; DEC-0023 reduces how often it runs, not how long,
-  and says itself it does not replace this FR (assessment TSK-0055, corrected per
-  round verification F4/N2)'
+triage_result: 'CONVERTED to TSK-0090, delivered 2026-08-29: process kinds pooled
+  (-20..-27% heavy phases, -9.2% full suite under load), column selection factor 32-44,
+  deadline phase structurally neighbour-free within one pytest process, shared check
+  copy guarded by a red-able finalizer. The factor-11 rise was HOST LOAD, not code
+  (AST-equal across three states); the 4512 s idle run stays unexplained. Residues
+  carried as H74; quiet-window run open per DEC-0053 with two repo tools standing
+  ready.'
+resulting_item: TSK-0090
+closed_at: '2026-08-29T18:33:03'
