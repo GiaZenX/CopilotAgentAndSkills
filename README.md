@@ -330,15 +330,19 @@ entry point asks the shipped parser rather than matching text).
 **Its command surface, and what is still missing from it.** `python scripts/harness.py --help` is the
 authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
-`archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`,
+`archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`,
 `freeze-architecture`, `freeze-wireframe`, `freeze-design`,
 `migrate`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also
-walks the status transition it commits. What has no writer at
-all either way: `product/masterplan.md` is not a typed item, and neither is `project_config.yaml` —
-of which `set-preset` owns exactly one field, `project.preset`, on a user-minted approval, because
+walks the status transition it commits. Kit DOCUMENTS under `project_memory/` (the master data,
+the filing plan's neighbours, `project_config.yaml` beyond the one `set-preset` field) gained a
+route in TSK-0092: a role stages the document as it should stand, and `apply-proposal` writes it
+after a user-minted approval, refusing any removal, change or lost comment. What has no writer at
+all either way: the PROSE documents — `product/masterplan.md` and the shipped READMEs — stay
+writerless on purpose, so the global entry file's statement about the masterplan stays true.
+`set-preset` still owns exactly one field, `project.preset`, on a user-minted approval, because
 the roles a project may spawn otherwise had no route after the install at all (BUG-0041). Those are
 infrastructure defects to report, not a licence to write state by hand, and the three constitutions
 say the same in their §0. The promotion path (II.6a) DOES have one now: an `ARC`/`WFR`/`DSN` is

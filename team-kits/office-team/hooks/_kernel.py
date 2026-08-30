@@ -478,6 +478,11 @@ def unfilled_gated_documents(repo_root=None):
 def partial_write_routes(document, repo_root=None):
     """[(field, command)] a kernel COMMAND writes inside this kit document -- asked, never listed.
 
+    THE STATE DIRECTORY IS PASSED with it, which is what makes the answer right for a writer that
+    owns no single named file: `apply-proposal` writes any kit document it can COMPARE and refuses
+    one it cannot (BUG-0071), a fact about the file and not about its name. A caller that cannot
+    reach the kernel still names nothing.
+
     THE SAME DERIVATION `gate_write_scope._partial_writers` USES: `kernel.layout.partial_writers`,
     which asks the writing modules themselves. It is here because the SessionStart briefing and
     `kernel.report.doctor` both stated the OPPOSITE as a blanket fact, and a briefing that denies a
@@ -490,23 +495,27 @@ def partial_write_routes(document, repo_root=None):
     is a comfort hook that may not raise.
     """
     try:
-        layout = kernel_module("layout", repo_root or find_repo_root())
-        return [(entry["field"], entry["command"]) for entry in layout.partial_writers(document)]
+        root = repo_root or find_repo_root()
+        layout = kernel_module("layout", root)
+        return [(entry["field"], entry["command"])
+                for entry in layout.partial_writers(document, state_dir(root))]
     except BaseException:  # noqa: BLE001 -- see the contract above
         return []
 
 
 def _route_clause(document, repo_root):
-    """The ' — but one part of it HAS a route: …' half of a wall's sentence, or ''.
+    """The ' — what CAN be written into it: …' half of a wall's sentence, or ''.
 
-    Built per document from `partial_write_routes`, so a wall with no partial writer reads exactly
-    as it did before and one with a writer stops being reported as a dead end.
+    Built per document from `partial_write_routes`, so a wall with no writer reads exactly as it
+    did before and one with a writer stops being reported as a dead end. It no longer says "one
+    PART of it": `apply-proposal` writes whatever a user-approved proposal adds, so the clause
+    states the route and leaves what it covers to the route's own words.
     """
     routes = partial_write_routes(document, repo_root)
     if not routes:
         return ""
-    return " — but one part of it HAS a route: %s" % ", ".join(
-        "`python scripts/harness.py %s` writes its `%s`, on a user-minted approval"
+    return " — what CAN be written into it: %s" % ", ".join(
+        "`python scripts/harness.py %s` writes `%s`, on a user-minted approval"
         % (command, field) for field, command in routes)
 
 
@@ -519,10 +528,10 @@ def gated_document_briefing(repo_root=None):
 
     EVERY CLAUSE IS DERIVED OR QUOTED, and the sentence claims nothing beyond them. That a
     registered gate reads the file and can refuse comes from `kernel.layout.gated_documents`; that
-    it is still unfilled is the gate's own verdict, quoted verbatim rather than paraphrased; that
-    the kernel cannot write it WHOLE is `is_project_document`; and whether a command owns one FIELD
-    of it is `partial_write_routes`, per document -- which is the clause that used to be missing
-    and is the one a role acts on. What the message does NOT say is that the write is PREVENTED --
+    it is still unfilled is the gate's own verdict, quoted verbatim rather than paraphrased; that no
+    TOOL write reaches it is `is_project_document`; and what a COMMAND can write into it is
+    `partial_write_routes`, per document -- which is the clause that used to be missing and is the
+    one a role acts on. What the message does NOT say is that the write is PREVENTED --
     `gate_write_scope` refuses the tool routes and the constitution binds the shell one as policy,
     and neither fact is measured here. `doctor` is read-only and every role can run it; a message
     that named a route the session cannot take, or DENIED one it has, is the failure this text has
@@ -536,13 +545,13 @@ def gated_document_briefing(repo_root=None):
                        for document, hook, why in walls)
     return (
         "UNFILLED PROJECT DOCUMENT%s — a WALL, not a to-do: %s. A registered gate reads each of "
-        "those files and refuses work over its content, and the kernel has no path builder that "
-        "can name one, so no `python scripts/harness.py` command writes such a file AS A WHOLE: "
-        "filling it is the USER's to do, in an editor outside this session. Where a command owns a "
-        "single FIELD of one, it is named beside that file above and it asks the user first. Say "
-        "so in your FIRST paragraph, name the file and what it needs, do not retry the refused "
-        "operation, and do not start work that depends on the file. `python scripts/harness.py "
-        "doctor` lists these under `gated_documents`." % ("S" if len(walls) > 1 else "", listed))
+        "those files and refuses work over its content, and no TOOL write reaches one — the kernel "
+        "has no path builder that can name it. What a COMMAND can write into a file is named "
+        "beside it above, and that command asks the user first; a file with no such clause is the "
+        "USER's to fill, in an editor outside this session. Say so in your FIRST paragraph, name "
+        "the file and what it needs, do not retry the refused operation, and do not start work "
+        "that depends on the file. `python scripts/harness.py doctor` lists these under "
+        "`gated_documents`." % ("S" if len(walls) > 1 else "", listed))
 
 
 def kit_update_verdict(repo_root, kit):

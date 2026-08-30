@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import subprocess
 import sys
 
 import pytest
@@ -67,8 +68,12 @@ def test_freeze_wireframe_happy_path(state):
     companion = yaml.safe_load(open(result["frozen"][:-len(".drawio.svg")] + ".yaml", encoding="utf-8"))
     assert companion["scope_apr_ref"] == "APR-0001"
     assert len(companion["diagram_hash"]) == 64
-    # staging emptied on promotion (II.4 lifecycle)
-    assert not os.path.isdir(staging.staging_dir(state, pr["id"]))
+    # THE ARTIFACT is consumed on promotion, the WORKSPACE is not (BUG-0074). This line used to
+    # assert the directory was gone -- the contract that deleted three unfrozen wireframes in the
+    # user's real project -- and `test_freezing_one_artifact_leaves_the_other_staged_files_alone`
+    # is what measures the difference over all three freeze commands.
+    assert os.path.isdir(staging.staging_dir(state, pr["id"]))
+    assert result["staging"]["consumed"] and not result["staging"]["remaining"]
 
 
 def test_freeze_second_revision_gets_r02(state):
@@ -552,6 +557,15 @@ def test_cli_request_approval_opens_the_question_the_gate_will_pin(state, capsys
     assert stored["mint_code"] not in printed["question"] + printed["header"]
 
 
+# A SUBJECT KEY WHOSE VALUE HAS TO BE MORE THAN A LETTER, keyed by the parameter name the builders
+# share. `"x"` is a legal value for almost every subject key, and the test below leans on that; a
+# builder that REFUSES a subject it could not show the user honestly needs a sample that gets past
+# its own refusal, or this test would measure that refusal instead of the manifest. `proposal` is
+# such a key: `kernel.documents` only ever reads from the proposal area, so a bare name is refused
+# by `approvals.document_proposal_subject_manifest` (see its `_PROPOSAL_PREFIX`).
+SUBJECT_SAMPLES = {"proposal": "staging/TSK-0001/x.yaml"}
+
+
 def test_cli_request_approval_offers_exactly_the_kinds_a_manifest_builder_exists_for(state, capsys):
     """The surface is the kinds SOMETHING can build a subject manifest for -- and only those.
 
@@ -595,7 +609,8 @@ def test_cli_request_approval_offers_exactly_the_kinds_a_manifest_builder_exists
             builder = approvals.LINE_MANIFEST_BUILDERS[kind]
             # the flags the parser really carries for this kind, read off the same signature the
             # parser read -- a builder whose keys moved takes its command line with it
-            manifest = builder(**{name: "x" for name in cli.manifest_parameters(builder)})
+            manifest = builder(**{name: SUBJECT_SAMPLES.get(name, "x")
+                                  for name in cli.manifest_parameters(builder)})
         assert isinstance(manifest, dict) and manifest, (
             "`request-approval %s` is offered, but its manifest builder returns nothing to hash"
             % kind)
@@ -1215,7 +1230,9 @@ def test_the_freeze_commands_write_the_state_no_other_producer_can(state, capsys
         "scope": "whole system", "derives_from": [pr["id"]],
         "packaging": {"method": "docker"}}), "freeze-architecture") == 0
     printed = capsys.readouterr().out.strip()
-    assert printed == "architecture/revisions/ARC-0001.r01.drawio.svg", printed
+    # FIRST line, because the freeze also reports what it did to the proposal area (BUG-0074);
+    # the path a role pastes onward is still the whole of that first line.
+    assert printed.splitlines()[0] == "architecture/revisions/ARC-0001.r01.drawio.svg", printed
     assert "project_memory" not in printed
     companion = os.path.join(state.root, "architecture", "active", "ARC-0001.yaml")
     with open(companion, encoding="utf-8") as handle:
@@ -1226,7 +1243,8 @@ def test_the_freeze_commands_write_the_state_no_other_producer_can(state, capsys
     assert run_cli_with_body(state, json.dumps({
         "staging_key": pr["id"], "wfr_id": "WFR-0001", "scope_apr_ref": apr["id"],
         "derives_from": [pr["id"]], "title": "Checkout screen"}), "freeze-wireframe") == 0
-    assert capsys.readouterr().out.strip() == "design/wireframes/WFR-0001.r01.drawio.svg"
+    assert (capsys.readouterr().out.strip().splitlines()[0]
+            == "design/wireframes/WFR-0001.r01.drawio.svg")
 
 
 def test_freeze_design_is_the_only_thing_that_can_fill_design_refs(state, capsys):
@@ -1473,7 +1491,7 @@ def test_every_caller_that_composes_a_staged_path_has_an_escape_battery():
     is in neither list is red, which is the whole point.
     """
     covered = {("staging", "staging_dir"), ("staging", "freeze_design"),
-               ("cli", "_submitted_envelope")}
+               ("cli", "_submitted_envelope"), ("documents", "proposal_path")}
     found = _contained_child_callers()
     assert found, "the derivation found no caller at all — staging.py's shape changed"
     assert found == covered, (
@@ -1532,6 +1550,180 @@ def test_no_staged_envelope_name_can_reach_outside_the_tasks_own_staging(tmp_pat
     assert os.path.isfile(state.active_path("PR-0001")), "%s destroyed canonical state" % where
     stored = os.path.join(state.root, "tasks", "results", task["id"] + ".envelope.yaml")
     assert not os.path.exists(stored), "%s stored an envelope from outside" % where
+
+
+JUNCTION_ESCAPE = "<junction-key>"
+
+
+def _junction(link, target):
+    """A directory junction, or None where this host will not make one.
+
+    `mklink /J` rather than `os.symlink`: a junction needs no privilege on Windows, which is what
+    makes it the escape shape a role could really create. Output is decoded with `errors="replace"`
+    for `presets.CHILD_TEXT`'s measured reason -- this shell answers in the console codepage.
+    """
+    if os.name != "nt":
+        return None
+    result = subprocess.run(["cmd", "/c", "mklink", "/J", link, target], capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", timeout=60)
+    return link if result.returncode == 0 and os.path.isdir(link) else None
+
+
+@pytest.mark.parametrize("escape", ESCAPE_SHAPES + (ABSOLUTE_ESCAPE, JUNCTION_ESCAPE,
+                                                    "master_data.yaml"))
+def test_no_proposal_path_can_reach_outside_the_tasks_own_staging(tmp_path, escape, capsys):
+    """`apply-proposal --proposal` names a file in the task's proposal area, and only there.
+
+    THE THIRD CALLER of the containment chokepoint (BUG-0071), measured with the same battery as
+    the other two rather than trusted: this one READS a file and copies its bytes over a document
+    of the project, so an escaping value would file content from anywhere on the disk into a kit
+    document, under an approval whose question named a staging path. A valid proposal lies at every
+    traversal target, so no refusal here can be "no such file".
+
+    THE REFUSAL IS READ, not just the exit code, and that is what makes the battery red-capable.
+    Nothing here mints an approval, so a shape that walked straight past the containment would
+    still be stopped by the approval check and every "did the tree move" assertion would stay
+    green -- the shape of a test that cannot fail. So each escape must be refused AS A PATH, and
+    the last case, a real staged proposal, must be refused as an APPROVAL: that is the floor under
+    the other seven.
+
+    THE JUNCTION IS THE CASE `staging.contained_child` ASKED FOR. Its own docstring records that
+    each half of the guard alone catches every shape in `ESCAPE_SHAPES`, that only a link needs the
+    realpath half, and that no escape list contained one -- "the fix is a junction in the fixture".
+    Here it is: a staging KEY that is one legal segment and resolves into a sibling directory.
+    """
+    sibling = os.path.join(str(tmp_path), "sibling")
+    work = tmp_path / ("proposal-%s" % abs(hash(escape)))
+    os.makedirs(str(work), exist_ok=True)
+    state = _freeze_fixture(work, sibling)
+    if escape == ABSOLUTE_ESCAPE:
+        escape = os.path.join(sibling, "master_data.yaml")
+    # a valid proposal at every traversal target EXCEPT the document's own place -- writing there
+    # would be this fixture clobbering the very file the assertion reads
+    for directory in (str(work), sibling, os.path.dirname(state.root),
+                      os.path.join(state.root, "staging"),
+                      os.path.join(state.root, "staging", "PR-0001")):
+        os.makedirs(directory, exist_ok=True)
+        for name in ("master_data.yaml", "preview.html"):
+            with open(os.path.join(directory, name), "w", encoding="utf-8", newline="") as handle:
+                handle.write("# the document\ncategories: [%s]\n" % CANARY)
+    document = os.path.join(state.root, "master_data.yaml")
+    with open(document, "w", encoding="utf-8", newline="") as handle:
+        handle.write("# the document\ncategories: []\n")
+    original = _tree_state(state.root)[os.path.basename(document)]
+
+    staged = escape
+    if escape == JUNCTION_ESCAPE:
+        link = _junction(os.path.join(state.root, "staging", "outside"), sibling)
+        if link is None:
+            pytest.skip("this host does not create directory junctions")
+        staged = "staging/outside/master_data.yaml"
+    elif escape == "master_data.yaml":
+        staged = "staging/PR-0001/master_data.yaml"
+    before, before_sibling = _outside_state(work), _tree_state(sibling)
+    capsys.readouterr()
+
+    run_cli(state, "apply-proposal", "--kit-document", "master_data.yaml",
+            "--proposal", staged, "--reason", "battery")
+
+    where = "--proposal %r" % staged
+    refused = capsys.readouterr().err
+    if escape == "master_data.yaml":
+        assert "no live user approval" in refused, (
+            "the floor is gone: a real staged proposal must reach the approval check, or every "
+            "assertion above it is vacuous -- %s said %r" % (where, refused))
+    else:
+        assert "no live user approval" not in refused and refused.strip(), (
+            "%s was refused by the approval check rather than as a path, so this shape never "
+            "reached the containment: %r" % (where, refused))
+    assert _tree_state(state.root)[os.path.basename(document)] == original, (
+        "%s wrote into the kit document" % where)
+    assert _outside_state(work) == before, "%s changed the repo outside the state dir" % where
+    assert _tree_state(sibling) == before_sibling, "%s changed a sibling directory" % where
+    assert os.path.isfile(state.active_path("PR-0001")), "%s destroyed canonical state" % where
+
+
+@pytest.mark.parametrize("command", sorted(cli.FREEZE_COMMANDS))
+def test_freezing_one_artifact_leaves_the_other_staged_files_alone(tmp_path, command, capsys):
+    """BUG-0074, and it is measured for ALL THREE freezes rather than for the one that bit.
+
+    THE LOSS, live 2026-08-29 in the user's real dev project: freezing a wireframe emptied
+    `staging/TSK-0001/` whole -- WFR-0002/0003/0004, still unfrozen work, went with the one being
+    frozen. They were recoverable only because an unrelated chore commit happened to carry them.
+    `staging/<key>/` is the ONE tool-writable area under the state directory, so what lies there is
+    by definition work no other route holds.
+
+    That the three commands share `clear_staging` was the FINDING and not the assumption, which is
+    why the parametrisation is over `cli.FREEZE_COMMANDS` -- the mapping the surface is derived
+    from -- and not over the one command that was reported. A fourth freeze is measured on the day
+    it is written.
+
+    The bystanders are compared by CONTENT HASH (`_tree_state`) and not merely by existence,
+    because "a file of that name is there" is what a delete-then-rewrite would also satisfy.
+    """
+    sibling = os.path.join(str(tmp_path), "sibling")
+    work = tmp_path / ("survive-" + command)
+    os.makedirs(str(work), exist_ok=True)
+    state = _freeze_fixture(work, sibling)
+    contract = cli.freeze_parameters(cli.FREEZE_COMMANDS[command])
+    body = {key: value for key, value in VALID_FREEZE_BODY.items() if key in contract}
+
+    staging_key = os.path.join(state.root, "staging", "PR-0001")
+    bystanders = {"WFR-0002.drawio.svg": DRAWIO_SVG, "WFR-0003.drawio.svg": DRAWIO_SVG,
+                  "notes.md": "# unfrozen thinking\n"}
+    for name, content in bystanders.items():
+        with open(os.path.join(staging_key, name), "w", encoding="utf-8") as handle:
+            handle.write(content)
+    before = _tree_state(staging_key)
+
+    assert run_cli_with_body(state, json.dumps(body), command) == 0, capsys.readouterr().err
+    printed = capsys.readouterr().out
+
+    assert os.path.isdir(staging_key), (
+        "%s removed the task's whole staging directory" % command)
+    after = _tree_state(staging_key)
+    for name in bystanders:
+        assert name in after, "%s deleted the unfrozen %s" % (command, name)
+        assert after[name] == before[name], "%s rewrote the unfrozen %s" % (command, name)
+    # EXACTLY ONE file left the workspace, and it is the one the freeze says it consumed. Derived
+    # from the directory rather than from the body's key names: which parameter names the source
+    # differs per command (`source_name` for design, an id for the other two), and a per-command
+    # branch here would be the enumeration this parametrisation exists to avoid.
+    gone = sorted(set(before) - set(after))
+    said = [line.split()[1] for line in printed.splitlines() if line.startswith("staging: ")]
+    assert len(gone) == 1 and said == gone, (
+        "%s consumed %s and reported %s" % (command, gone, said))
+    assert "still staged" in printed, printed
+    for name in bystanders:
+        assert name in printed, "the freeze does not name what it left behind: %s" % printed
+
+
+def test_no_freeze_command_empties_the_tasks_staging_area():
+    """No freeze may reach the recursive delete again -- read off the kernel's own AST.
+
+    The sibling of the behavioural test above, and it exists because that one can only measure the
+    files a fixture happens to place: this reads WHICH function each freeze calls, so a freeze that
+    starts emptying the directory again is caught even where a test's fixture staged nothing else.
+    `clear_staging(..., mode="promoted")` is `shutil.rmtree` on the task's workspace; the lifecycle
+    step itself stays reachable for a caller that means the whole directory (spec II.4).
+    """
+    import ast
+
+    with io.open(staging.__file__, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read(), filename=staging.__file__)
+    freezers = {operation.__name__ for operation in cli.FREEZE_COMMANDS.values()}
+    assert freezers, "the freeze surface is empty -- the reader stopped matching"
+    offenders = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.FunctionDef) or node.name not in freezers:
+            continue
+        for call in ast.walk(node):
+            if (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)
+                    and call.func.id == "clear_staging"):
+                offenders.append(node.name)
+    assert not offenders, (
+        "these freeze operations empty the task's whole staging area again (BUG-0074): %s"
+        % sorted(set(offenders)))
 
 
 @pytest.mark.parametrize("command", sorted(cli.FREEZE_COMMANDS))

@@ -56,7 +56,7 @@ from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso, names_a_drive
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
-             "kit_update", "filing_correction", "filing_rule")
+             "kit_update", "filing_correction", "filing_rule", "document_proposal")
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
@@ -77,8 +77,12 @@ APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "
 # `filing_rule` for the mirror-image reason: it authorises a WRITE into the one document that says
 # where every future document belongs (FR-0049 step 5, `kernel.filing`), so an unused one lingering
 # past the conversation is a standing permission to change the Aktenplan.
+# `document_proposal` for the same reason across every remaining kit document (BUG-0071,
+# `kernel.documents`): it is bound to one before-and-after, so the clock only bounds how long an
+# UNUSED one lingers -- and that is a standing permission to write into the project's own
+# configuration and reference documents.
 EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update",
-                            "filing_correction", "filing_rule"))
+                            "filing_correction", "filing_rule", "document_proposal"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
 # approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
 # analysis/routine deliberately excluded and NOT because they authorise nothing:
@@ -584,10 +588,90 @@ def filing_rule_subject_manifest(rule_id, path_template, document_types, filenam
             "filename_template": naming, "retention": kept, "reason": _one_line(reason)}
 
 
+# HOW MANY DISTINCT PLACES ONE DOCUMENT PROPOSAL MAY TOUCH. The user has to READ what they sign,
+# and every one of these descriptors lands inside the question text beside the two paths, two
+# checksums, the reason and the expiry -- and a descriptor now carries the FILLED VALUE or the
+# ADDED COMMENT itself (verifier finding B2), not just its place. Eight is what a question at the
+# fold's own bound still leaves readable for the person BUG-0041 describes; the round that set it
+# reports the two lengths it measured. A proposal touching more places is REFUSED with the
+# count rather than summarised, because a summary is the one thing an approval may not be. It
+# bounds the number of PLACES and not the amount: fifteen new categories in one list are ONE.
+MAX_PROPOSAL_CHANGES = 8
+# The proposal area, spelled as a command line spells it. `kernel.documents` composes the real path
+# through the freeze chokepoint; this is only the prefix the SUBJECT must carry, so the user sees a
+# position that is a proposal and never a file from somewhere no gate has ever seen.
+_PROPOSAL_PREFIX = "staging/"
+
+
+def document_proposal_subject_manifest(kit_document, proposal, base, proposed, changes,
+                                       reason) -> dict:
+    """What applying a staged proposal is bound to: this document, this version, this proposal, why.
+
+    THE SUBJECT IS ONE BEFORE-AND-AFTER. `base` is the document's bytes as they stand and `proposed`
+    is the staged file's, so the approval covers exactly the transition the user was shown -- and
+    stops covering anything the moment either file moves. That is also what makes it single-use in
+    the derived way `filing_correction_subject_manifest` describes: after the write the document
+    hashes to `proposed`, so the same approval no longer matches. No "used" flag in writable state
+    has to be kept honest for it.
+
+    `changes` IS WHAT THE USER READS, and it names PLACES rather than values: which key gained an
+    entry, which empty field was filled. The values are in the file the question names, bound by its
+    checksum -- a question that quoted them would be a summary of a document rather than a binding
+    on it, and a long one would be unreadable exactly where reading IS the safeguard. The
+    descriptors arrive in the user's language (`kernel.documents.compare`), because a value a
+    non-technical user has to judge is German where it lands in an approval card (BUG-0073).
+    """
+    document = filed_position(kit_document)
+    staged = filed_position(proposal)
+    if not is_project_position(document):
+        raise ApprovalError(
+            "a document proposal names a file INSIDE this project's state directory, and %r is not "
+            "one (an absolute path, a climb out of it, or a name carrying control characters). "
+            "Remedy: name it relative to the state directory, e.g. `--kit-document "
+            "master_data.yaml`." % str(kit_document or ""),
+            user_text="Es wurde keine Freigabe erteilt: die genannte Datei liegt nicht in diesem "
+                      "Projekt. " + NEXT_START_OVER)
+    if not is_project_position(staged) or not staged.lower().startswith(_PROPOSAL_PREFIX):
+        raise ApprovalError(
+            "a proposal is a file in the task's own proposal area (`%s<TSK-ID>/<name>`), and %r is "
+            "not one. Everything else in the project is either canonical state or a place no gate "
+            "ever saw written. Remedy: stage the document as it should stand and name it there."
+            % (_PROPOSAL_PREFIX, str(proposal or "")),
+            user_text="Es wurde keine Freigabe erteilt: der genannte Vorschlag liegt nicht im "
+                      "Vorschlagsbereich des Vorgangs. " + NEXT_START_OVER)
+    described = [_one_line(one, 120) for one in _typed_list(changes)]
+    if not described:
+        raise ApprovalError(
+            "a document proposal says WHAT it would add, and nothing was given -- the user would "
+            "be asked to approve a write with no description of it. Remedy: this list is derived "
+            "by the command from the two files; report the gap if it arrived empty.",
+            user_text="Es wurde keine Freigabe erteilt: es wurde nicht gesagt, was der Vorschlag "
+                      "am Dokument ändert. " + NEXT_START_OVER)
+    if len(described) > MAX_PROPOSAL_CHANGES:
+        raise ApprovalError(
+            "this proposal changes %d places in %s, and an approval question the user cannot read "
+            "through is not an approval -- at most %d are shown, and shortening the list would ask "
+            "them to sign what they were not told. Remedy: split the proposal into steps and ask "
+            "for each; the command only ever adds, so the steps are independent."
+            % (len(described), document, MAX_PROPOSAL_CHANGES),
+            user_text="Es wurde keine Freigabe erteilt: der Vorschlag ändert zu viele Stellen auf "
+                      "einmal, um sie in einer Frage lesbar zu zeigen. " + NEXT_START_OVER)
+    if not str(base or "") or not str(proposed or ""):
+        raise ApprovalError(
+            "a document proposal is bound to the bytes of both files, and %s could not be hashed. "
+            "Remedy: report the gap and name the file."
+            % ("the document" if not base else "the staged proposal"),
+            user_text="Es wurde keine Freigabe erteilt: eine der beiden Dateien konnte nicht "
+                      "gelesen werden. " + NEXT_START_OVER)
+    return {"kit_document": document, "proposal": staged, "base": str(base),
+            "proposed": str(proposed), "changes": described, "reason": _one_line(reason)}
+
+
 LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest,
                           "kit_update": kit_update_subject_manifest,
                           "filing_correction": filing_correction_subject_manifest,
-                          "filing_rule": filing_rule_subject_manifest}
+                          "filing_rule": filing_rule_subject_manifest,
+                          "document_proposal": document_proposal_subject_manifest}
 
 # How long an approval minted from a command-line manifest stays valid. Every kind in this map is
 # in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
@@ -1159,9 +1243,46 @@ def _filing_rule_target_form(manifest: dict) -> str:
                _render_manifest_value(EXPIRY_FIELD, manifest.get(EXPIRY_FIELD))))
 
 
+def _document_proposal_target_form(manifest: dict) -> str:
+    """A staged proposal as the person deciding it reads it: which document gains what, and why.
+
+    THE AUDIENCE IS BUG-0041's, and what this question replaces is that user COPYING the staged file
+    into the document by hand, four times in one day (BUG-0071). So it is written as what will
+    happen to which file, EVERY hashed key is rendered -- both paths, every change descriptor, the
+    reason, both checksums and the expiry the kernel put into the manifest -- and no sentence here
+    is one the hash does not cover.
+
+    THE BRACKET SAYS WHAT THE APPROVAL IS WORTH AND NO MORE, and one clause of it is a LIMIT rather
+    than a reassurance: the descriptors name the places, and WHICH values arrive is in the proposal
+    file, bound by its checksum but not readable in this card. Saying so is the honest half -- the
+    role that asked is the one that has to have shown the user that file.
+
+    WHAT IS NOT UNDER THAT LIMIT IS PROSE. A comment the proposal ADDS stands in the list above in
+    full (folded like every other descriptor), because these documents are read by roles as
+    instructions: verifier finding B2 staged a legitimate fill plus a comment line addressed to
+    "JEDE ROLLE, DIE DIESE DATEI LIEST", and the card named the fill and nothing else. A value the
+    user can look up in the file; a sentence written to steer the next reader has to be in the
+    question that authorises it.
+    """
+    return ("eine Ergänzung des Dokuments »%s« aus dem Vorschlag »%s«: %s (Grund: %s; die Freigabe "
+            "FÜGT nur HINZU -- sie ändert nichts Bestehendes und löscht nichts, auch keinen "
+            "Kommentar; sie gilt für genau diese Fassung des Dokuments (Prüfsumme %s) und genau "
+            "diesen Vorschlag (Prüfsumme %s), und nur bis %s. WELCHE Werte hinzukommen, steht in "
+            "der Vorschlagsdatei, nicht in dieser Frage -- die Freigabe bindet deren Prüfsumme; "
+            "neu hinzukommende KOMMENTARE stehen dagegen oben im Wortlaut, weil ein Satz in so "
+            "einer Datei von jeder Rolle gelesen wird, die damit arbeitet)"
+            % (manifest.get("kit_document") or "?", manifest.get("proposal") or "?",
+               ", ".join(manifest.get("changes") or []) or "nichts",
+               manifest.get("reason") or "kein Grund angegeben",
+               _render_manifest_value("base", manifest.get("base")),
+               _render_manifest_value("proposed", manifest.get("proposed")),
+               _render_manifest_value(EXPIRY_FIELD, manifest.get(EXPIRY_FIELD))))
+
+
 TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form,
                 "filing_correction": _filing_correction_target_form,
-                "filing_rule": _filing_rule_target_form}
+                "filing_rule": _filing_rule_target_form,
+                "document_proposal": _document_proposal_target_form}
 
 
 def build_question(request: dict) -> dict:

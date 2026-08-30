@@ -951,3 +951,37 @@ def test_no_role_text_names_a_user_question_tool_its_own_definition_denies():
         "cannot be followed by any route. Either grant the tool or route the question through the "
         "lead:\n  %s" % "\n  ".join(sorted(set(offenders))))
     assert judged >= 20, "only %d role texts read -- the walk stopped matching" % judged
+
+
+def test_the_product_editor_can_research_and_says_what_that_costs():
+    """FR-0066: the role responsible for product research gets web access, WITH the honest note.
+
+    THE GAP, live 2026-08-29 in the user's real office project: the new-product process names the
+    product editor as responsible for CPU/manufacturer research, and its definition granted no web
+    tool at all. The compliance researcher correctly REFUSED the out-of-domain assignment, so the
+    task had no owner; the user decided to give the editor web access.
+
+    A WRITING ROLE WITH WEB ACCESS CAN BE STEERED BY WHAT IT READS, so the grant and the note are
+    measured together -- a permission widened without the note is the half that would rot first.
+    Both halves are read off the shipped artifacts: the grant from the role's own frontmatter, and
+    the two gates the note names from the kit's hook directory, so a note that pointed at a gate
+    this kit does not ship would be red rather than reassuring.
+
+    WHAT IS NOT MEASURED HERE, and it is the residue the round names rather than hides: that the
+    OTHER web-capable writing roles of this kit (compliance-researcher, marketing-planner,
+    shop-curator) carry no such note. Making that a property would widen prose the round was not
+    asked to touch; it is reported instead, which is why this test pins the role FR-0066 decided
+    and does not pretend to a rule the tree does not keep.
+    """
+    kit = os.path.join(TEAM_KITS, "office-team")
+    front, body = _role_definition(kit, "product-editor")
+    granted = {name.strip() for name in str(front.get("tools") or "").split(",")}
+    assert {"WebSearch", "WebFetch"} <= granted, granted
+
+    # the CONTAINED half and the NOT-contained half, each named
+    assert "gate_second_reading" in body and "gate_write_scope" in body, body
+    assert "NOT CONTAINED" in body, (
+        "the role gained web access without the sentence that says what is not contained by it")
+    for gate in ("gate_second_reading", "gate_write_scope"):
+        assert os.path.isfile(os.path.join(kit, "hooks", gate + ".py")), (
+            "the note points at %s and this kit does not ship it" % gate)

@@ -1,0 +1,72 @@
+id: TSK-0092
+product_requirement: PR-0003
+derives_from: BUG-0071
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- BUG-0070
+- BUG-0071
+- BUG-0074
+- FR-0066
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+- .github/**
+required_inputs:
+- 'FOUR items, one construction site -- the kernel as the store''s only writer must
+  carry the routes the constitutions promise, and must never throw work away: BUG-0070
+  (add-filing-rule refuses to CREATE the rules list when a plan carries ZERO -- nothing
+  to guess, still refuses; the user hand-typed ''rules: []''), BUG-0071 (FOUR kit
+  documents have no writer post-install -- content_guidelines, master_data, compliance_register,
+  business_profile -- while constitution para 6 assigns their content to roles; the
+  user hand-copied four times in one day; AC-3 demands the special-case-vs-general-mechanism
+  decision WITH reasons, the PM proposed per-document commands OR a generic apply-proposal
+  <file> --from staging/<TSK> with user approval), BUG-0074 (freeze-* emptied the
+  ENTIRE staging folder of the task -- three unfrozen wireframes deleted; AC-3 demands
+  ALL THREE freeze commands measured), FR-0066 (product editor gets WebSearch/WebFetch
+  -- user decision; with the honest injection note and the check which OTHER research-duty
+  roles lack web, reported not silently widened)'
+- 'the live repro material: the user''s real projects (OneDrive/4-BuyPlugGo office,
+  Offline Repos/gewerbe/buypluggo/website/Canyon_3.4.0 dev) READ-ONLY for measurement;
+  the P4-12 lineage in the global entry file; kernel/filing.py add-filing-rule as
+  the pattern; kernel/state.py capture/approvals as the approval machinery'
+- 'the constraint that shapes the design: gate_write_scope stays untouched -- agents
+  still never tool-write the store; every new route is a KERNEL command, approval-gated
+  where it changes kit documents, and its messages promise only what it builds (BUG-0073''s
+  language rule applies to any new approval prose: values the user judges in German
+  where they land in an approval card -- coordinate, do not build BUG-0073 itself
+  here)'
+expected_outputs:
+- 'PART A (BUG-0070): add-filing-rule creates the top-level rules list when the plan
+  carries NONE, keeps refusing >1, unchanged =1; red-first on an old-stock copy; the
+  refusal/creation messages scoped'
+- 'PART B (BUG-0071): the decision first, with reasons against the measured four-document
+  reality -- then the build: either per-document append commands (add-filing-rule
+  pattern) or the generic apply-proposal with approval; either way schema-checked,
+  duplicate-refusing, end to end on an old-stock copy; the constitution para-6 contradiction
+  resolved by the route existing (do not rewrite para 6 beyond pointing at the route)'
+- 'PART C (BUG-0074): freezing one artifact leaves every other staging file byte-identical
+  -- ALL THREE freeze commands measured; any remaining clear-path refuses or archives
+  loudly first; red-first reproduces the wipe'
+- 'PART D (FR-0066): WebSearch+WebFetch on product-editor with the honest security
+  note in the role text (containment: filings pass the second reading; NOT contained:
+  direct writes in its scope), provider artifacts regenerated, the research-duty-roles-without-web
+  list reported; small, no scope creep'
+- 'SHIP: bump_kit_version, ruff, validate, affected suites per DEC-0050 (full run
+  is the lead''s); mirrors byte-identical unless KIT_SPECIFIC names reasons; report
+  file:line per part, the A/B/C/D decision rationales, residues named'
+dependencies:
+- BUG-0071
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-29T23:08:55'
+closed_at: '2026-08-30T04:57:54'

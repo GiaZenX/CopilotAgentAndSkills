@@ -1,0 +1,30 @@
+id: EVD-0067
+kind: review
+related:
+- TSK-0092
+- BUG-0070
+- BUG-0071
+- BUG-0074
+- FR-0066
+result: pass
+summary: 'verifier PASS round 4 for diff:90b14127b4713a6f3ec0965761ed61d0ba4846b3d504790df236d198e317e640
+  -- TSK-0092: the kernel write-routes bundle. add-filing-rule creates the missing
+  rules list (user''s real plan measured); apply-proposal opens the 18 writerless
+  kit documents via stage-diff-approve with the seam forged over three verifier rounds
+  (skeleton line-survival closes comment loss/moves/reorder/anchors; every added comment
+  and filled value VERBATIM in the approval card -- the injected-instruction channel
+  disclosed; paths owned by named partial writers refuse with that command''s name;
+  the fill span trimmed so the founding scenario -- filling a commented empty list,
+  the Steuerberatungs-Kategorie case -- is accepted at its natural position, 15/16
+  lists, the 16th deliberately refused toward add-filing-rule); freeze consumes exactly
+  the frozen artifact across all three commands with the defect-pinning test flipped;
+  product-editor carries web with the honest containment note. Four verifier rounds,
+  all probes replayed per end state, both sides owning their measurement errors on
+  the record. Full suite fresh 3967 passed / 14 skipped / 0 failed. Kits x3 2026.08.30-6.
+  Residues carried as H76 (lead''s hand, authorship asked and answered); README command-surface
+  paragraph is the lead''s edit'
+artifact_refs:
+- staging/TSK-0092/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-30T05:34:20'

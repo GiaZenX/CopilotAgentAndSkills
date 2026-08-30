@@ -84,8 +84,10 @@ RULE_FIELDS = (("id", "rule_id"), ("path_template", "path_template"),
                ("filename_template", "filename_template"), ("retention", "retention"))
 # The top-level `rules:` key of the plan, and the two shapes an APPEND has to tell apart: the
 # shipped template's empty FLOW list (`rules: []`, which a block item cannot be appended to) and a
-# block list already carrying items. Anything else -- a flow list with entries, a `rules:` nested
-# under something, two of them -- is refused rather than guessed at.
+# block list already carrying items. NO such key at all is the third case and it is not an append:
+# `_with_created_rules` writes the key, because nothing is being guessed between (BUG-0070).
+# Anything else -- a flow list with entries, a `rules:` nested under something, two of them -- is
+# refused rather than guessed at.
 _RULES_LINE_RX = re.compile(r"\A(?P<head>rules[ \t]*:)(?P<tail>.*)\Z")
 _EMPTY_FLOW_RX = re.compile(r"\A[ \t]*\[[ \t]*\][ \t]*(?:#.*)?\Z")
 _ONLY_COMMENT_RX = re.compile(r"\A[ \t]*(?:#.*)?\Z")
@@ -239,6 +241,41 @@ def _rendered(rule: dict) -> str:
     return "".join(_INDENT + line + "\n" for line in body.rstrip("\n").splitlines())
 
 
+def _line_ending(text: str) -> str:
+    """The line ending this file already uses -- `\\r\\n` when its first complete line ends that way.
+
+    Read off the file rather than chosen, for `read_text`'s reason one function up: a document that
+    lands in the project with CRLF must not come back half translated. The default for a file with
+    no line ending at all is `\\n`, which is what every shipped template carries.
+    """
+    first = text.find("\n")
+    return "\r\n" if first > 0 and text[first - 1] == "\r" else "\n"
+
+
+def _with_created_rules(text: str, rule: dict) -> str:
+    """`text` with a `rules:` key CREATED at the end, carrying this one rule.
+
+    BUG-0070, live 2026-08-29: a plan written before the rules mechanism carries no `rules:` key,
+    the kit update deliberately never retrofits `project_memory/`, and `gate_write_scope` refuses
+    every agent write to it -- so the only hands that could add the key were the user's, and the
+    sanctioned path dead-ended in a text editor. Refusing to guess WHICH of several lists to append
+    to is right; with none there is nothing to guess.
+
+    AT THE END OF THE FILE, and that is the one placement with no second rule in it. A top-level key
+    at column 0 closes every block above it, so appending cannot land inside another key's value --
+    which is what any interior position would have to reason about, in a document whose own
+    commented examples sit between the keys. `apply` parses the result back before accepting it, so
+    a file this placement does not fit (an unterminated flow collection, say) is restored and
+    refused rather than half written.
+    """
+    ending = _line_ending(text)
+    body = _rendered(rule)
+    if ending == "\r\n":
+        body = body.replace("\n", "\r\n")
+    head = text if not text or text.endswith(("\n", "\r")) else text + ending
+    return head + RULES + ":" + ending + body
+
+
 def _with_rule(text: str, rule: dict) -> str:
     """`text` with one rule appended to `rules:`, and NOTHING else about the file touched.
 
@@ -260,7 +297,9 @@ def _with_rule(text: str, rule: dict) -> str:
         match = _RULES_LINE_RX.match(line.rstrip("\r\n"))
         if match:
             hits.append((index, match))
-    if len(hits) != 1:
+    if not hits:
+        return _with_created_rules(text, rule)
+    if len(hits) > 1:
         raise StateError(
             "%s carries %d top-level `%s:` key(s); this kernel appends to exactly one and refuses "
             "to guess which. Remedy: report the gap and name the file." % (PLAN, len(hits), RULES))

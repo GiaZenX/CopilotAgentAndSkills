@@ -824,7 +824,13 @@ def test_every_target_form_names_a_live_apr_kind(project):
     # `tools/test_kernel.py::test_the_question_a_filing_rule_asks_shows_every_field_the_hash_covers`
     # asks the MANIFEST which keys it hashes and requires each of their values in the rendered
     # sentence, so the form cannot come to show less than the user signs.
-    assert set(approvals.TARGET_FORMS) == {"push", "preset", "filing_correction", "filing_rule"}, (
+    # `document_proposal` joined in TSK-0092 (BUG-0071), the widest write on the surface -- it
+    # replaces a project document's bytes -- and it brought the same shape of measurement:
+    # `tools/test_kernel.py::test_the_question_a_document_proposal_asks_shows_every_field_the_hash
+    # _covers` asks the manifest which keys it hashes and requires each of their RENDERED values in
+    # the sentence, digests included.
+    assert set(approvals.TARGET_FORMS) == {"push", "preset", "filing_correction", "filing_rule",
+                                           "document_proposal"}, (
         "a new readable form arrived without a measurement of what it renders")
 
 

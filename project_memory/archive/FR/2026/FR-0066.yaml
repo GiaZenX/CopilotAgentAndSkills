@@ -20,7 +20,12 @@ request_text: 'Live use 2026-08-29, the user''s real office project: the new-pro
   checks whether OTHER roles named responsible for research-shaped duties lack web,
   and reports the list rather than silently widening more roles. Rollout after: global
   store, then the user updates his project (which also delivers the pending-list fixes).'
-status: OPEN
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-29T15:52:09'
+resulting_item: TSK-0092
+triage_result: 'CONVERTED into TSK-0092 (delivered 2026-08-30): product-editor carries
+  WebSearch/WebFetch with the honest containment note incl. the apply-proposal surface;
+  27-role survey found no other research-duty role lacking web.'
+closed_at: '2026-08-30T04:57:54'

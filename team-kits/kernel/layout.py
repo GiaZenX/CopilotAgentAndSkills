@@ -18,16 +18,18 @@ THE PROPERTY, not the three file names. The state directory holds two kinds of f
     ordinary project files that happen to live under the state directory, and they are scoped like
     ordinary project files.
 
-    ONE QUALIFICATION, and it is a qualification and not an exception: a kernel command may own a
-    single FIELD inside such a document. `set-preset` writes `project.preset` and nothing else in
+    ONE QUALIFICATION, and it is a qualification and not an exception: a kernel command may write
+    a DECLARED part of such a document. `set-preset` writes `project.preset` and nothing else in
     `project_config.yaml`, because the roles a project has installed had no writer at all and the
     only remaining route was a human with a text editor (BUG-0041); `add-filing-rule` APPENDS to
     `filing_plan.yaml`'s `rules` and touches nothing else, for the same reason one document over
-    (FR-0049). Both write only what a USER minted an approval for. The document is still a document
-    -- everything above about scoping and about tool writes is unchanged -- and `partial_writers`
-    below is what lets a refusal say so instead of denying a route that exists. WHICH commands
-    those are is asked of the writing modules, never counted here: this paragraph names two today
-    and the sentence that counts them would be the one that rots.
+    (FR-0049); and `kernel.documents` writes what a user-approved proposal ADDS to a document it
+    can compare, which is the same reason again for every remaining one (BUG-0071). All write
+    only what a USER minted an approval for. The document is still a document -- everything above
+    about scoping and about tool writes is unchanged -- and `partial_writers` below is what lets a
+    refusal say so instead of denying a route that exists. WHICH commands those are is asked of the
+    writing modules, never counted here: this paragraph names three today and the sentence that
+    counts them would be the one that rots.
 
 `kernel_written_subtrees` answers the first half by ASKING THE WRITERS' OWN PATH BUILDERS with a
 probe id, rather than by listing directories: `state.active_path`, `state.archive_path`,
@@ -173,7 +175,13 @@ def is_in_proposal_area(relative_path: str) -> bool:
 # `tools/test_kernel.py::test_every_kernel_module_that_writes_into_a_document_is_registered` walks
 # the package for modules declaring `DOCUMENT_WRITES` and requires this tuple to be exactly them,
 # so an entry that has stopped writing and a writer that never arrived here are one failure each.
-_DOCUMENT_WRITER_MODULES = ("presets", "filing")
+_DOCUMENT_WRITER_MODULES = ("presets", "filing", "documents")
+
+# The `document` value of a writer that owns no single named file. Such an entry carries `applies`
+# -- the writing module's OWN predicate, `(state_root, relative_path) -> bool` -- and it decides
+# per file, which is what keeps a generic route from being announced over documents it would then
+# refuse. Named here because both sides read it: the writer declares it, `partial_writers` reads it.
+ANY_DOCUMENT = "*"
 
 
 def _document_writes() -> tuple:
@@ -187,7 +195,7 @@ def _document_writes() -> tuple:
     return tuple(found)
 
 
-def partial_writers(relative_path: str) -> tuple:
+def partial_writers(relative_path: str, state_root: str = None) -> tuple:
     """({"field", "command"}, ...) a kernel COMMAND writes inside this kit document.
 
     Asked of the modules that do the writing (their own `DOCUMENT_WRITES`) rather than listed here,
@@ -195,11 +203,28 @@ def partial_writers(relative_path: str) -> tuple:
     harness has, and a second copy of "which command writes what" is how it would come to.
     Matched on the document's own path inside the state directory, case-folded like every other
     comparison in this module.
+
+    `state_root` IS WHAT A GENERIC WRITER NEEDS AND A NAMED ONE DOES NOT. An entry for one named
+    file is decided by its name alone, exactly as before. An entry declaring `ANY_DOCUMENT` is
+    decided by the writer's own `applies` predicate, which reads the FILE -- `apply-proposal` can
+    write a document it can compare and refuses one it cannot, and a route named for a file the
+    command would refuse is the same broken promise as a route denied for one it would write.
+    Without a root such an entry is left out: a caller that cannot say WHICH project it is asking
+    about gets the answer that is certain, never a guess (`tools/test_kernel.py::
+    test_a_generic_document_writer_is_named_only_for_the_documents_it_would_write`).
     """
     rel = str(relative_path or "").replace("\\", "/").strip("/").lower()
-    return tuple({"field": entry["field"], "command": entry["command"]}
-                 for entry in _document_writes()
-                 if entry["document"].lower() == rel)
+    found = []
+    for entry in _document_writes():
+        target = str(entry["document"])
+        if target == ANY_DOCUMENT:
+            applies = entry.get("applies")
+            if state_root is None or applies is None or not applies(state_root, rel):
+                continue
+        elif target.lower() != rel:
+            continue
+        found.append({"field": entry["field"], "command": entry["command"]})
+    return tuple(found)
 
 
 def is_project_document(root: str, relative_path: str) -> bool:

@@ -577,6 +577,9 @@ _WRITERS_THE_BOARD_DOES_NOT_RENDER = {
     ("filing.py", "apply"): "filing_plan.yaml -- a kit document, no card (and nothing it writes "
                             "is an item: the plan says where documents belong, the board shows "
                             "what the project is working on)",
+    ("documents.py", "apply"): "a kit DOCUMENT -- `layout.is_project_document` is what it refuses "
+                               "anything else by, so what it writes can never be an item and has "
+                               "no card",
     ("presets.py", "_after_a_failed_install"): "a .claude marker file",
     ("kitupdate.py", "ensure_restart_is_forced"): "a .claude marker file",
 }

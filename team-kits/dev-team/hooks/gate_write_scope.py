@@ -99,12 +99,14 @@ kit's `filing_plan.yaml` is the same class of file.
 
 So the refusal distinguishes the two cases with `kernel.layout.is_project_document` — a definition
 derived from the kernel writers' own path builders, not a list of file names. For canonical state
-the remedy is the entry point, as before; for a kit document it says plainly that no command writes
-such a FILE and that the gap is the user's to close outside the session, which is what §0 of all
-three constitutions already instructs ("a gap you report, not an edit you make"). Where a command
-does own a single FIELD of one — `set-preset` and `project.preset`, the route out of BUG-0041's
-dead end — the refusal names it, from `kernel.layout.partial_writers` (see `_partial_writers`);
-that is a different write from this one, and a refusal must not deny a route the harness has. The
+the remedy is the entry point, as before; for a kit document the TOOL route stays refused, which is
+what §0 of all three constitutions already instructs ("a gap you report, not an edit you make").
+What that document's own COMMAND route is comes from `kernel.layout.partial_writers` (see
+`_partial_writers`) and is never restated here — `set-preset` and `project.preset` were the route
+out of BUG-0041's dead end, `apply-proposal` is the one out of BUG-0071's, and the sentence that
+counted them would be the one that rots. Whether the closing line reads "no route from inside this
+session" is that answer's to decide, because both halves of it have now been the wrong one: a
+refusal that denies a route the harness has, and one that promises a route it does not. The
 permission itself is unchanged: §0 is a constitutional rule that this gate is the enforcement of,
 and widening it is a constitution change, not a hook change.
 """
@@ -393,23 +395,29 @@ def _is_project_document(root, inside):
 
 
 def _partial_writers(root, inside):
-    """The sentence naming any command that owns a FIELD of this document, or "".
+    """The sentence naming any command that writes a declared part of this document, or "".
 
     The refusal below used to end "and NO `harness.py` command writes it either", which was true of
     every kit document until `set-preset` began writing `project.preset` (BUG-0041). A refusal that
     denies a route the harness HAS teaches a role to stop believing refusals, so the answer is
     asked of `kernel.layout.partial_writers` — which asks the writing module itself — instead of
     being restated here. No writer, no sentence: the ordinary document refusal is unchanged.
+
+    THE STATE DIRECTORY IS PASSED, and that is what makes the answer right for a writer that owns no
+    single named file: `apply-proposal` writes any kit document it can COMPARE and refuses one it
+    cannot (BUG-0071), which is a fact about the file rather than about its name. Without the root
+    such a route is left out of the answer, so an unreachable kernel still names nothing.
     """
     try:
         layout = _kernel.kernel_module("layout")
-        writers = layout.partial_writers(inside)
+        writers = layout.partial_writers(inside, _kernel.state_dir(root))
     except Exception:  # noqa: BLE001 — an unreachable kernel names no route (fail-closed)
         return ""
     if not writers:
         return ""
-    return (" The one exception is not this write: %s -- and that command asks the USER first."
-            % "; ".join("`python scripts/harness.py %s` owns %s in it"
+    return (" WHAT DOES HAVE A ROUTE, and it is not this write: %s -- and that command asks the "
+            "USER first."
+            % "; ".join("`python scripts/harness.py %s` writes %s into it"
                         % (writer["command"], writer["field"]) for writer in writers))
 
 
@@ -422,21 +430,34 @@ def _assert_state_write_allowed(rel, inside, task, data, root):
             # here was the measured defect: no `harness.py` command writes this file, so the
             # remedy named a route that does not exist and the merge gate that reads the file
             # blocked forever. §0 of every constitution already says what to do instead.
+            #
+            # AND THE MIRROR IMAGE OF IT, once such a route existed (BUG-0041, then BUG-0071): the
+            # closing sentence and the remedy are DERIVED from `_partial_writers` now, because
+            # "this write has no route" was a blanket claim that had become false for every
+            # document the kernel can compare — and a refusal that hides the one command a role
+            # needs sends it to the user's text editor for the fifth time this month.
+            routes = _partial_writers(root, inside)
             _kernel.block(
                 HOOK,
                 "'%s' is a kit DOCUMENT inside the write-locked state directory — prose or "
                 "configuration, not a typed item. Being a document is no exception: this gate "
-                "refuses the write (constitution §0), and no `python scripts/harness.py` command "
-                "writes such a file — the kernel has a path builder for every canonical file and "
-                "none for this one.%s So this write has no route from inside this session, and "
-                "this refusal is not one to work around."
-                % (rel, _partial_writers(root, inside)),
-                remedy="report the gap to the user and name this file. It is filled by the entry "
-                       "gate BEFORE the kit is installed, or by the user in an editor outside "
-                       "this session; `init_project_memory` is copy-if-absent and will not "
-                       "overwrite what they write. If a merge gate is blocking on its content, "
-                       "say that in the same breath — retrying the write or the push changes "
-                       "nothing.")
+                "refuses the write (constitution §0), and the TOOL route into such a file does "
+                "not exist — the kernel has a path builder for every canonical file and none for "
+                "this one.%s"
+                % (rel, routes or " No `python scripts/harness.py` command writes this one "
+                                  "either, so this write has no route from inside this session, "
+                                  "and this refusal is not one to work around."),
+                remedy=("take the route named above: stage what the file should say and run that "
+                        "command, which asks the USER before it writes. Anything it does not "
+                        "cover is the user's own edit, outside this session — report that as the "
+                        "gap it is, and say in the same breath if a merge gate is blocking on the "
+                        "file, because retrying the write changes nothing." if routes else
+                        "report the gap to the user and name this file. It is filled by the entry "
+                        "gate BEFORE the kit is installed, or by the user in an editor outside "
+                        "this session; `init_project_memory` is copy-if-absent and will not "
+                        "overwrite what they write. If a merge gate is blocking on its content, "
+                        "say that in the same breath — retrying the write or the push changes "
+                        "nothing."))
         _kernel.block(
             HOOK,
             "'%s' is canonical project state — only the kernel writes it (spec II.4). A tool write "

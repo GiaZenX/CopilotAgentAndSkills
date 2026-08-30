@@ -12,8 +12,9 @@ session start. The KERNEL alone promotes:
   approval_ref)
 - freeze_design: staging DSN html -> design/revisions/ + manifest (file hash +
   root revision + timestamp), updates the root's design_refs (II.6)
-- archive_staging / clear_staging: after approval the dir is EMPTIED, after
-  rejection ARCHIVED (never silently deleted -- history-prune means archive)
+- clear_staging: rejection ARCHIVES the whole directory (never silently deleted
+  -- history-prune means archive). `mode="promoted"` EMPTIES it and no freeze
+  calls it any more -- see `consume_staged_artifact` for the measured reason.
 
 Fail-closed validation: .drawio.svg must parse as XML (well-formedness; a true
 browser render check is phase-2 tooling -- the companions' `render_check: True`
@@ -88,11 +89,17 @@ def contained_child(base: str, name: str, what: str) -> str:
 
     THE CHOKEPOINT FOR EVERY PATH A FREEZE COMPOSES FROM A CALLER'S STRING, and it exists because
     the day those strings became reachable from a command line they became a `shutil.rmtree` on any
-    directory. Every freeze ends in `clear_staging(..., mode="promoted")`, which is
+    directory: every freeze then ended in `clear_staging(..., mode="promoted")`, which is
     `rmtree(<root>/staging/<key>)`, and `staging_dir` used to be a bare `os.path.join` -- so
     `{"staging_key": "../.."}` on stdin deleted the whole repository, and `".."` deleted the whole
     state directory. The body travels on STDIN, so no hook sees it: `gate_write_scope` reads command
     LINES, and all three of those command lines pass all eight registered shell gates.
+
+    THE RECURSIVE DELETE IS GONE (BUG-0074) AND THIS GUARD IS NOT. A freeze now ends in
+    `consume_staged_artifact`, an `os.remove` of ONE composed path, and it still opens the composed
+    source, hashes it and COPIES it into canonical state -- so an escaping value still deletes a
+    file nobody named and still pulls one in from anywhere on the disk. What changed is the blast
+    radius of the delete half, not whether the composition is guarded.
 
     TWO CHECKS, AS DEFENCE IN DEPTH, and that wording is what the measurement supports rather than
     the stronger one this paragraph first carried ("neither alone is the answer"). The SEGMENT
@@ -151,6 +158,44 @@ def contained_child(base: str, name: str, what: str) -> str:
 
 def staging_dir(state: ProjectState, key: str) -> str:
     return contained_child(state.staging_root(), key, "staging key")
+
+
+def consume_staged_artifact(state: ProjectState, source: str) -> dict:
+    """Take the ONE file a freeze has just copied into canonical state out of the staging area.
+
+    THE DATA LOSS THIS EXISTS TO END (BUG-0074), measured 2026-08-29 in the user's real dev
+    project: freezing one wireframe ran `clear_staging(..., mode="promoted")` on the task's staging
+    directory, which is `shutil.rmtree`, and three UNFROZEN wireframes went with it. They came back
+    only because an unrelated chore commit happened to carry them. `staging/<key>/` is the one
+    tool-writable area under the state directory, so whatever lies there is by definition work no
+    other route holds -- a freeze that treats the directory as consumed deletes work nobody
+    promoted.
+
+    So a freeze consumes exactly what it froze. The removed file is the source of a copy that has
+    already landed in canonical state under a revision name, with its hash in the companion, so
+    this is the second half of a MOVE and not a deletion of the only copy.
+
+    IT NEVER RAISES, and that is the honest shape rather than laziness: at the moment it runs the
+    frozen copy and its companion already exist, so a file the OS will not let go of (a lock, a
+    permission) must not turn a completed freeze into a refusal that describes a state the project
+    is not in -- the same reading `presets._after_a_failed_install` was corrected into. What it
+    could not do it REPORTS: `consumed` is false and the caller prints what is still there.
+
+    `remaining` is what the staging directory still holds afterwards, and the CLI prints it
+    (`tools/test_staging_cli.py::test_freezing_one_artifact_leaves_the_other_staged_files_alone`).
+    A directory is not removed when it falls empty: it is the task's workspace, not the freeze's.
+    """
+    directory = os.path.dirname(source)
+    consumed = True
+    try:
+        os.remove(ext_path(source))
+    except OSError:
+        consumed = False
+    try:
+        remaining = sorted(os.listdir(ext_path(directory)))
+    except OSError:
+        remaining = []
+    return {"consumed": consumed, "artifact": os.path.basename(source), "remaining": remaining}
 
 
 def _file_hash(path: str) -> str:
@@ -223,9 +268,9 @@ def freeze_wireframe(
         state._write_yaml_atomic(
             os.path.join(target_dir, revision_name(wfr_id, revision, ".yaml")), companion
         )
-        clear_staging(state, staging_key, mode="promoted", _locked=True)
+        staged = consume_staged_artifact(state, source)
         state._regenerate_index_locked()
-        return {"frozen": frozen, "companion": companion}
+        return {"frozen": frozen, "companion": companion, "staging": staged}
 
 
 def freeze_architecture(
@@ -271,9 +316,9 @@ def freeze_architecture(
         os.makedirs(ext_path(active_dir), exist_ok=True)
         shutil.copyfile(ext_path(source), ext_path(os.path.join(active_dir, arc_id + ".drawio.svg")))
         state._write_yaml_atomic(os.path.join(active_dir, arc_id + ".yaml"), companion)
-        clear_staging(state, staging_key, mode="promoted", _locked=True)
+        staged = consume_staged_artifact(state, source)
         state._regenerate_index_locked()
-        return {"frozen": frozen, "companion": companion}
+        return {"frozen": frozen, "companion": companion, "staging": staged}
 
 
 def freeze_design(
@@ -321,7 +366,7 @@ def freeze_design(
         state._write_yaml_atomic(
             os.path.join(revisions_dir, revision_name(dsn_id, revision, ".yaml")), manifest
         )
-        clear_staging(state, staging_key, mode="promoted", _locked=True)
+        staged = consume_staged_artifact(state, source)
         # hashed design_refs change through the kernel edit path -- invalidates
         # an existing approval atomically (spec II.6a scope-manifest semantics)
         #
@@ -335,11 +380,20 @@ def freeze_design(
         refs.append("%s/%s" % (ACTIVE_DIRS[DESIGN_REF_TYPE],
                                revision_name(dsn_id, revision, ".html")))
         updated_root = state._update_item_locked(root_id, {"design_refs": refs})
-        return {"frozen": frozen, "manifest": manifest, "root": updated_root}
+        return {"frozen": frozen, "manifest": manifest, "root": updated_root, "staging": staged}
 
 
 def clear_staging(state: ProjectState, key: str, mode: str, _locked: bool = False) -> str:
-    """promoted -> EMPTY the dir; rejected -> ARCHIVE it (never silent delete)."""
+    """promoted -> EMPTY the dir; rejected -> ARCHIVE it (never silent delete).
+
+    NO FREEZE CALLS THE `promoted` HALF ANY MORE (BUG-0074): a freeze consumes the artifact it
+    froze (`consume_staged_artifact`) and leaves the rest of the task's workspace alone. The mode
+    stays because emptying a promoted proposal area is a lifecycle step spec II.4 names -- what it
+    may not be is the tail of an operation about ONE file. A caller that wants it is asking for the
+    whole directory to go, and what keeps a freeze from becoming such a caller again is
+    `test_no_freeze_command_empties_the_tasks_staging_area` in `tools/test_staging_cli.py` -- named
+    on ONE line, because a test name broken across two is one nobody can copy or resolve.
+    """
     if mode not in ("promoted", "rejected"):
         raise StagingError("mode must be promoted|rejected, got %r" % mode)
     if not _locked:

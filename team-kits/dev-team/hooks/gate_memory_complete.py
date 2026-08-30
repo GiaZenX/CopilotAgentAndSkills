@@ -178,7 +178,7 @@ def state_errors(root):
             for f in findings if f.get("severity") == "error"]
 
 
-def remedy_for(documents, validator_errors):
+def remedy_for(documents, validator_errors, root=None):
     """The way out, built from the findings that actually FIRED.
 
     WHY IT IS BUILT AND NOT WRITTEN. The single fixed remedy this replaces said "run
@@ -187,14 +187,20 @@ def remedy_for(documents, validator_errors):
     (measured 2026-08-02). A remedy that sends a role to a command reporting nothing is a remedy
     that teaches the gate is broken.
 
-    THE DOCUMENT HALF STATES THE DEAD END INSTEAD OF PAPERING OVER IT. `product/masterplan.md` and
-    `project_config.yaml` are kit DOCUMENTS (`kernel.layout.is_project_document`): no
-    `harness.py` command writes them, and §0 of every constitution locks the state directory
+    THE DOCUMENT HALF STATES THE DEAD END INSTEAD OF PAPERING OVER IT — where there still is one.
+    `product/masterplan.md` and `project_config.yaml` are kit DOCUMENTS
+    (`kernel.layout.is_project_document`), and §0 of every constitution locks the state directory
     against every tool write with no exception for exactly these files. Measured 2026-08-02, all
-    three routes: Write rc 2, shell heredoc rc 2, no kernel writer. So this block genuinely has no
-    key inside the session, and the only useful thing a message can do is say so and name who can
-    close it — a remedy that pretends otherwise sends a role into a retry loop, which is what the
-    repeat-block escalation above exists to count.
+    three routes: Write rc 2, shell heredoc rc 2, no kernel writer.
+
+    THE THIRD OF THOSE HAS SINCE MOVED, and the message is DERIVED for that reason rather than
+    written: `apply-proposal` writes what a user-approved proposal adds to a document the kernel
+    can compare (BUG-0071), so `project_config.yaml` now has a route and `product/masterplan.md`
+    — prose — still has none. A block that told a role "only the user can fill this" over a file
+    the harness can fill is the same defect as the reverse, so the routes come per document from
+    `_kernel.partial_write_routes`, which asks the writing modules themselves. Where nothing
+    answers, the sentence is exactly the one measured above: say so, name who can close it, and do
+    not retry — which is what the repeat-block escalation exists to count.
 
     THE VALIDATOR HALF names `archive`, and that is the correction the previous wording needed:
     "closed through its status automaton" is what a role does with `transition <ID> CANCELLED`,
@@ -205,15 +211,22 @@ def remedy_for(documents, validator_errors):
     parts = []
     if documents:
         many = len(documents) > 1
+        routed = {rel: _kernel.partial_write_routes(rel, root) for rel in documents}
         parts.append(
-            "%s %s kit DOCUMENT%s, not %s -- and %s has NO writer inside this session: no "
-            "`python scripts/harness.py` command writes %s, and §0 locks the state directory "
-            "against every tool and shell write with no exception for %s. Do not retry: tell the "
-            "user this file is unfilled and that only they can fill it (an editor outside the "
-            "session; `init_project_memory` is copy-if-absent and will not overwrite it)."
+            "%s %s kit DOCUMENT%s, not %s, so §0 locks the state directory against every tool and "
+            "shell write with no exception for %s."
             % (", ".join(documents), "are" if many else "is", "s" if many else "",
-               "typed items" if many else "a typed item", "that" if many else "it",
-               "them" if many else "it", "them" if many else "it"))
+               "typed items" if many else "a typed item", "them" if many else "it"))
+        for rel in documents:
+            parts.append(
+                "%s: %s" % (rel, "; ".join(
+                    "`python scripts/harness.py %s` writes %s into it, on a user-minted approval"
+                    % (command, field) for field, command in routed[rel])
+                    or "no `python scripts/harness.py` command writes this one, so only the USER "
+                       "can fill it (an editor outside the session; `init_project_memory` is "
+                       "copy-if-absent and will not overwrite it)"))
+        parts.append("Do not retry the push: tell the user which of those files is unfilled and "
+                     "what it needs.")
     if validator_errors:
         parts.append(
             "The remaining findings come from the state validator: `python scripts/harness.py "
@@ -267,7 +280,7 @@ def main():
             "\nREPEAT BLOCK #%d for the SAME findings — STOP retrying the push and fix the cause "
             "in THIS cycle: task the owning role to complete the item(s) before anything else."
             % (repeats + 1))
-    _kernel.block(HOOK, message, remedy=remedy_for(documents, validator))
+    _kernel.block(HOOK, message, remedy=remedy_for(documents, validator, root))
 
 
 if __name__ == "__main__":

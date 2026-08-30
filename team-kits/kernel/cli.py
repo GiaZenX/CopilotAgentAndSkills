@@ -49,8 +49,8 @@ import subprocess
 import sys
 import time
 
-from . import (approvals, board, checkpoints, dispatch, filing, hashing, kitupdate, migrate,
-               presets, report, staging)
+from . import (approvals, board, checkpoints, dispatch, documents, filing, hashing, kitupdate,
+               migrate, presets, report, staging)
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -314,6 +314,22 @@ def _document_content(state: ProjectState, args) -> str:
     return content
 
 
+def _proposal_key(key):
+    """One resolver per DERIVED key of a document proposal, all reading ONE derivation.
+
+    `base`, `proposed` and `changes` are what the two FILES say -- the document's bytes, the staged
+    proposal's bytes, and what applying one to the other would add. None of them is a role's to
+    type: a typed hash could only differ from what the user was shown, and a typed change list would
+    be a description of a write instead of a derivation of it. `kernel.documents.change_plan` is the
+    one place they come from, so the question that ASKS and the command that ACTS cannot come to
+    describe two different writes (`presets._plan`'s reason, one document over).
+    """
+    def resolve(state: ProjectState, args):
+        return documents.change_plan(state, getattr(args, "kit_document", None),
+                                     getattr(args, "proposal", None)).get(key)
+    return resolve
+
+
 LINE_MANIFEST_RESOLVERS = {
     "content": (_document_content, "hashed from the document named on this line"),
     "head": (_worktree_head, "read from the worktree this state directory sits in"),
@@ -324,6 +340,10 @@ LINE_MANIFEST_RESOLVERS.update(
     (name, (_kit_update_key(name),
             "read from this project's own kit stamp and the kit staged on this machine"))
     for name in manifest_parameters(approvals.kit_update_subject_manifest))
+LINE_MANIFEST_RESOLVERS.update(
+    (name, (_proposal_key(name),
+            "derived from the document and the staged proposal named on this line"))
+    for name in ("base", "proposed", "changes"))
 
 
 def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
@@ -698,6 +718,30 @@ def build_parser() -> argparse.ArgumentParser:
                           help="the approved rule's %s -- the approval is looked up by the "
                                "manifest these flags build, so they are the ones the user was "
                                "shown" % name)
+    # THE SAME DEAD END ACROSS EVERY REMAINING KIT DOCUMENT (BUG-0071). Each kit ships prose and
+    # configuration documents whose CONTENT its constitution assigns to a role, and after the
+    # install nobody could write one. The user hand-copied a specialist's staged file into the
+    # target document four times in ONE day. HOW MANY documents that is stands in exactly one
+    # place, `kernel/documents.py`'s own docstring, beside the derivation that measured it -- a
+    # count restated here is a count that goes stale where nobody is looking (SR-0008), and this
+    # one already had: it read TWELVE. That module also argues why this is one generic route and
+    # not a
+    # fourth special case; what belongs here is that its flags are the manifest builder's own
+    # parameters, exactly as the filing-rule command's are one block up, so the line that ASKS and
+    # the line that ACTS cannot describe two different writes.
+    proposal = sub.add_parser(
+        documents.COMMAND,
+        help="apply a user-approved staged proposal to a kit document -- ADDS only, never changes "
+             "or removes (needs a minted `%s` approval; same flags as the request that opened the "
+             "question)" % documents.KIND)
+    for name in manifest_parameters(approvals.LINE_MANIFEST_BUILDERS[documents.KIND]):
+        entry = LINE_MANIFEST_RESOLVERS.get(name)
+        proposal.add_argument(
+            "--" + name.replace("_", "-"), metavar=name.upper(),
+            help="the approved proposal's %s%s" % (
+                name, " -- NOT typed here: %s, and a value is refused" % entry[1] if entry
+                else "; the approval is looked up by the manifest these flags build, so they are "
+                     "the ones the user was shown"))
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
@@ -1047,6 +1091,18 @@ def main(argv=None) -> int:
                     root_item["id"],
                     ", ".join(str(ref) for ref in
                               field_elements(root_item.get("design_refs"))) or "-"))
+            # WHAT THE FREEZE DID TO THE PROPOSAL AREA, said out loud (BUG-0074). Until this line
+            # the answer was `rmtree` on the task's whole staging directory and nothing printed it:
+            # three unfrozen wireframes were deleted alongside the one being frozen in the user's
+            # real project, and the loss was noticed days later. The freeze now takes only the file
+            # it froze, and what is LEFT is named -- a role reading this can see its own unfrozen
+            # work is still there instead of assuming it either way.
+            staged = result.get("staging") or {}
+            print("staging: %s %s; still staged: %s" % (
+                staged.get("artifact") or "-",
+                "consumed (the frozen copy is canonical now)" if staged.get("consumed")
+                else "COULD NOT BE REMOVED and is still in staging",
+                ", ".join(staged.get("remaining") or []) or "nothing"))
             return 0
         if args.command == "capture":
             body = _json_body("capture %s" % args.item_type)
@@ -1177,6 +1233,16 @@ def main(argv=None) -> int:
             # "document filed" would report a filing that has not happened -- `gate_filing` judges
             # the move when the move is made, against the plan as it then stands.
             print("NOT done here: no document was filed. File it now; the plan covers it.")
+            return 0
+        if args.command == documents.COMMAND:
+            builder = approvals.LINE_MANIFEST_BUILDERS[documents.KIND]
+            result = documents.apply(state, _line_manifest(state, documents.KIND, builder, args))
+            print("%s updated (%d bytes): %s" % (result["document"], result["bytes"],
+                                                 ", ".join(result["changes"])))
+            # THE PROPOSAL IS STILL THERE, and it is said rather than assumed: this command copies
+            # bytes into a document, it does not consume the task's workspace -- the lesson
+            # BUG-0074 cost three unfrozen wireframes one document over.
+            print("the staged proposal is unchanged and still in %s" % args.proposal)
             return 0
         if args.command == kitupdate.COMMAND:
             result = kitupdate.apply(state)

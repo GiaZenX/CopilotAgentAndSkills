@@ -49,7 +49,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "cfc6a638936a490b",
+        "digest": "fa2062d8a33f979a",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -135,7 +135,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "cc31eaf843e20d79",
+        "digest": "ee285afa96295681",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output",
@@ -278,7 +278,7 @@
         ]
       },
       "What you are and are not": {
-        "digest": "a4baf04572b7f1a1",
+        "digest": "9af25d8740615e0c",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -292,7 +292,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "d1d3c0eac9b67c8b",
+        "digest": "82649d29eba9500a",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -357,14 +357,14 @@
         ]
       },
       "5. Roles (presets: `core` = records-clerk + filing-reviewer + bookkeeper; `commerce` adds": {
-        "digest": "904b8911d8868e50",
+        "digest": "6ccdd690694523f3",
         "hooks": [
           "gate_second_reading",
           "gate_write_scope"
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "267391dfbd75765d",
+        "digest": "5b40af9f07c156cd",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output"
@@ -505,7 +505,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "8feb921a215991d9",
+        "digest": "2c4cd73cc6b74fd2",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -597,7 +597,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "cb16545959ced747",
+        "digest": "e1656655d2dce833",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output"

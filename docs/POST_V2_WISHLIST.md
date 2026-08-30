@@ -2246,7 +2246,8 @@ H31–H32 mit TSK-0019, H33–H36 mit TSK-0021, H37–H38 mit TSK-0022, H39 mit 
 TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062, H45 mit
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
-TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H75 mit TSK-0091, H70 mit
+TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H75 mit TSK-0091, H76 mit
+TSK-0092, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2308,6 +2309,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H76 | **Rest** (TSK-0092) | gemessene Grenzen des neuen Dokument-Schreibwegs, je im Eintrag: der Listeneintrag-Prosakanal (einziger Kanal ohne Wortlaut in der Karte, dreifach begrenzt); eine Freigabe deckt binnen ihrer Stunde ein erneutes Schreiben derselben Bytes nach Hand-Revert (Bedingung im Docstring, `filing_correction`-Lesart); kein Feldschema (die echte Nutzerdatei hätte ihr eigenes Schema verletzt); Prosa-Dokumente absichtlich schreiberlos + drei Web-Schreibrollen ohne Injektionsnotiz (Eigenschafts-Draht wäre eine kleine Runde); vier Ränder mit sicherer Richtung (toter Zweig, unerreichbare Diagnose, fünf Schreibweisen eine Position, Gate-Laufzeit an Dateigröße) und der Fixture-Schreibweg ins Repo-Audit-Log |
 | H75 | **Rest** (TSK-0091) | gemessene Grenzen des E-Rechnungs-Geldpfads, je im Eintrag: der Wächter ist Arithmetik, nicht Semantik (`FR-0065` trägt die zweite Lesung); BR-CO-14 ungeprüft (in sich stimmiger, positions-widriger Kopf läuft durch, gemessen); UBL nur synthetisch belegt, Anzahlungs-Rückfall verweigert laut; XML ohne Geld-Tripel jetzt rc 2 statt still leer; die Geldleser-Klasse im Owned-Manifest ist Urteil mit zwei gepinnten Enden; ein künftiges Umgebungs-Leck wird still geheilt statt angezeigt (der Draht hält die Fixture, die Fixture heilt die Quellen — beides gemessen); und drei Randformen des Lesers mit je sicherer Richtung (ungepinnte dritte Anker-Schreibweise, Rohtext-Ausgabe der Geldfelder, unlesbarer Rundungsbetrag zählt als 0 und endet laut) |
 | H74 | **Rest** (TSK-0090) | gemessene Grenzen der schnelleren Gate-Suite, je im Eintrag: kein Schutz gegen einen zweiten Läufer (und die Suite drückt als Nachbar selbst stärker, 10→26); der Faktor 11 war Wirtslast, der 4512-s-Leerlauf bleibt unerklärt; drei benannte Abwägungen mit Zahlen (`authored` ohne Spaltenauswahl, Frist-Phase bleibt nachbarfrei, Prüfsätze ungekürzt); Zeilennummern-Zeiger als offene Klasse (H45-Verschiebung war Fall 2). Ruhefenster-Lauf: akzeptierter DEC-0053-Rest mit zwei bereitstehenden Repo-Werkzeugen |
 | H73 | **Rest** (TSK-0089) | vier gemessene Grenzen der Entscheidungs-zuerst-Runde, je im Eintrag: jede Id in einem Begrenzer, der länger ist als sie selbst, bleibt ungeprüft (16 der 22 gequoteten Spannen sind Text, den jemand liest — 13 Kernel-Meldungen + 3 Handover-Literale; Schließrichtung benannt, eigene Runde); der Regel-Test liest nur die zwei Anker, nicht die Richtung (die Regel umgekehrt passiert ihn, gemessen); eine Überbehauptung ohne Apparat-Wort fällt nicht auf — sichtbar macht sie nur der Abschnitts-Digest, nicht die Byte-Identität; und der Klausel-Schnitt des Wächters liest `,` nicht und `.`/`:` immer als Grenze — beide Fehlrichtungen gemessen, keine trifft den heutigen Text |
@@ -5217,6 +5219,61 @@ was dort zur lauten Verweigerung führt, nicht zu einer stillen Zahl.
 **Urteil: Rest.** (a) trägt seinen Verweis auf das offene Item, (b)–(d) sind benannte Grenzen mit
 sicherer Richtung (laut oder durchgereicht-und-gesagt), (e) ist eine Entscheidung mit zwei
 gepinnten Enden, (f) ist eine begründete Bauform mit benanntem Preis.
+
+### H76 — Was der neue Dokument-Schreibweg NICHT bindet — offen, gemessene Grenzen (TSK-0092)
+
+**Anlass:** `BUG-0070/0071/0074` + `FR-0066` — vier Live-Funde in zwei Tagen: der Nutzer tippte
+dreimal YAML von Hand und verlor einmal drei Wireframes an ein Einfrieren, das den ganzen
+Vorschlagsbereich leerte. Die Runde baute die Routen (Regel-Listen-Erzeugung; das generische
+`apply-proposal` über die 18 schreiberlosen Kit-Dokumente; Freeze verzehrt nur noch die eine
+Datei; Web für den Produkt-Redakteur) und überlebte zwei harte Prüfrunden, in denen der Prüfer
+den neuen Hebel an seiner Naht traf: `compare` las strukturell, `apply` schrieb byteweise —
+Inline-Kommentare, eingeschleuste Prosa, Schlüssel-Umbau und der Ablageplan-Vorbeiweg an der
+strengen Route wurden alle geschlossen (Skelett-Prüfung: jeder Wert wird über die Parser-Spannen
+ausgeblendet, jede verbleibende Zeile muss in Reihenfolge überleben; neue Kommentare und
+Füllwerte stehen im **Wortlaut** in der Freigabekarte; ein Pfad, den ein benannter Teilschreiber
+besitzt, verweigert mit dessen Namen). Was bleibt, jede Grenze gemessen:
+
+**(a) Der Listeneintrag-Prosakanal.** Felder eines Eintrags, der einer bestehenden Liste
+hinzugefügt wird, erscheinen als `1 Eintrag hinzu`, nicht im Wortlaut — der **einzige**
+verbliebene Kanal, auf dem Rollen-Prosa ohne Wortlaut in der Karte ins Dokument reist. Begrenzt
+durch: die Prüfsumme bindet die Vorschlagsbytes, höchstens 8 Stellen je Freigabe, und die Karte
+sagt selbst, dass Werte in der Vorschlagsdatei stehen; die anfragende Rolle schuldet das Zeigen
+(Prosa, kein Gate).
+
+**(b) Eine Freigabe deckt innerhalb ihrer Stunde ein erneutes Schreiben derselben Bytes**, wenn
+der Nutzer das Dokument von Hand zurücksetzt (gemessen: apply → Editor-Revert → apply, rc 0 ohne
+neue Frage). Bedingung steht seit der Abnahme im Docstring; ein „verbraucht"-Marker wäre
+wieder schreibbarer Zustand, der eine Durchsetzungsfrage entscheidet — dieselbe Lesart wie
+`filing_correction`. Grenze: die Uhr (3600 s) und dass exakt die freigegebenen Bytes landen.
+
+**(c) Kein Feldschema.** Der Kernel kennt die Pflichtfelder einer Kategorie nicht — ein
+Vorschlag darf eine Kategorie ohne `euer_line` ergänzen. Absichtlich: die echte Datei des
+Nutzers trägt Felder, die das Template nicht kennt; ein kernelseitiges Schema hätte **seine
+eigene Datei** verweigert. Was stattdessen gilt: nichts geht verloren, alles Neue wird gezeigt.
+
+**(d) Prosa-Dokumente bleiben schreiberlos, absichtlich** (3× README, 3× Masterplan, 2
+Report-Templates — 8 der 18): dadurch bleibt die Aussage der globalen Einstiegsdatei über den
+Masterplan wahr. Und drei web-fähige Schreibrollen tragen die Injektionsnotiz noch nicht
+(`compliance-researcher`, `marketing-planner`, `shop-curator`) — die Eigenschaft „Web +
+Schreibrecht ⇒ Notiz" wäre der richtige Draht, eine eigene kleine Runde; auf Codex hat ohnehin
+keine Kit-Rolle Netz (`network = false` im generierten Profil, gemessen).
+
+**(e) Vier Randbefunde des Prüfers, Richtung je sicher:** `clear_staging(promoted)` ist ein
+toter Zweig ohne Aufrufer (nur ein AST-Test hält die Abwesenheit); die `moved`-Diagnose in
+`documents.apply` ist über die CLI unerreichbar (ein zwischenzeitlich geändertes Ziel verweigert
+korrekt, nur ohne den erklärenden Satz); eine Datei ist unter fünf Schreibweisen dieselbe
+Freigabe-Position (`MASTER_DATA.YAML`, `./…`, `…/`, `staging/../…`, `…::$DATA`) — jede braucht
+ihre eigene Freigabe, keine Eskalation; und die Laufzeit des verweigernden Gates hängt neu an
+der Größe der Nutzerdatei (0,25 s bei 633 B, 5,8 s bei 2,8 MB — kein Kill-Risiko beim
+Kit-Default, aber eine neue Abhängigkeit). Dazu vorbestehend, jetzt gemessen: Kit-Hooks aus
+Test-Fixtures schreiben ins Audit-Log **dieses** Repos, wenn kein `CLAUDE_PROJECT_DIR` gesetzt
+ist — der Mechanismus gehört hierher, die wachsende Zeilenzahl in keinen Kommentar.
+
+**Urteil: Rest.** (a) und (b) tragen Begrenzung und Begründung, (c) und (d) sind Entscheidungen
+mit benanntem Warum, (e) sind Ränder mit sicherer Fehlrichtung. Der Kern der Runde — kein
+Verlust, kein unangekündigter Inhalt, kein Vorbeiweg an einer strengeren Route — ist von zwei
+Prüfrunden gemessen.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

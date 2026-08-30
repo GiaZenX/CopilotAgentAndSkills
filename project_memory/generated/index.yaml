@@ -1,4 +1,4 @@
-generated_at: '2026-08-29T23:07:54'
+generated_at: '2026-08-30T05:34:20'
 items:
 - id: BUG-0001
   type: BUG
@@ -1250,6 +1250,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0067
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1575,13 +1581,6 @@ items:
   title: 'Four eyes for BOOKING: the figures that go to the tax office have thinner
     assurance than the question which folder a PDF lands in -- the booking twin of
     FR-0035'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0066
-  type: FR
-  title: 'Product editor gets web access: the responsible role cannot research, the
-    researching role is not responsible -- user decision from live use'
   status: OPEN
   revision: 1
   approval_ref: null

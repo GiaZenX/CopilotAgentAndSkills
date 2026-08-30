@@ -6597,14 +6597,19 @@ def test_doctor_names_the_documents_that_wall_a_project_off(tmp_path):
         # `project.preset` `set-preset` has owned since BUG-0041, the answer was already wrong
         # here. Both directions are measured: a document with a partial writer must NAME it, and
         # one without must claim none.
-        expected = list(layout.partial_writers(path)) or None
+        # ...and WITH the project, because since BUG-0071 one writer answers per project rather
+        # than per file name: `apply-proposal` writes a document the kernel can compare and refuses
+        # one it cannot, so asking without the state directory would hold doctor to a shorter list
+        # than doctor has — the same defect this assertion was corrected for once already.
+        expected = list(layout.partial_writers(
+            path, os.path.join(project, "project_memory"))) or None
         assert row["kernel_writer"] == expected, (path, row["kernel_writer"], expected)
         for entry in expected or []:
             assert entry["command"] in row["note"] and entry["field"] in row["note"], (
-                "%s: a command owns %s here and doctor's note does not say so — a role reading it "
-                "reports a dead end that is not one:\n%s" % (path, entry["field"], row["note"]))
+                "%s: a command writes %s here and doctor's note does not say so — a role reading "
+                "it reports a dead end that is not one:\n%s" % (path, entry["field"], row["note"]))
         if not expected:
-            assert "DOES HAVE A ROUTE" not in row["note"], (path, row["note"])
+            assert "CAN BE WRITTEN INTO IT" not in row["note"].upper(), (path, row["note"])
         assert row["gate_refusals_recorded"] == 1, (
             "%s: the gate recorded a block in this project's audit log and doctor counted %r"
             % (path, row["gate_refusals_recorded"]))
@@ -6685,7 +6690,10 @@ def test_session_start_says_a_wall_document_is_still_the_template(
     # the list separator the briefing itself joins on.
     sys.path.insert(0, TEAM_KITS)
     from kernel import layout
-    routes = list(layout.partial_writers(document))
+    # WITH THE PROJECT, because a writer that owns no single named file answers per project: since
+    # BUG-0071 `apply-proposal` writes any kit document the kernel can compare, so asking without
+    # the state directory would check the briefing against a shorter list than the briefing has.
+    routes = list(layout.partial_writers(document, os.path.join(project, "project_memory")))
     start = context.find(document + " (")
     assert start >= 0, context
     end = context.find("; ", start)
@@ -12376,18 +12384,25 @@ def _approval_question(repo, kind, item_id):
 
 
 def _mint_in_project(repo, kind, item_id):
-    """Open the request through the CLI, pin the question, then mint through the project's hook.
+    """Open an ITEM-bound request through the CLI, then mint it through the project's hook."""
+    return _mint_question_in_project(repo, _approval_question(repo, kind, item_id))
+
+
+def _mint_question_in_project(repo, question):
+    """Pin a question the KERNEL composed, then mint it through the project's own hook.
 
     All three phases of spec II.2 run as the platform runs them: the kernel composes the question
-    (the command above), `gate_approval` PreToolUse compares the question the model would ask
-    against the one the kernel wrote, and PostToolUse mints from the recorded answer. The mint is
-    still the only thing `approvals.mint` accepts a caller for.
+    (the caller's `request-approval` run), `gate_approval` PreToolUse compares the question the
+    model would ask against the one the kernel wrote, and PostToolUse mints from the recorded
+    answer. The mint is still the only thing `approvals.mint` accepts a caller for.
+
+    It takes the QUESTION rather than a kind and an item id because a LINE kind has no item -- its
+    subject is the flags -- so the caller is the one that had to run the command.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel import approvals
     from kernel.state import ProjectState
     state = ProjectState(os.path.join(str(repo), "project_memory"))
-    question = _approval_question(repo, kind, item_id)
     request_id = re.search(r"\[APR-REQ:([0-9a-f]{32})\]", question["question"]).group(1)
     mint_code = approvals.pending_request(state, request_id)["mint_code"]
 
@@ -12487,6 +12502,90 @@ def test_the_four_commands_spec_ii4_named_are_runnable_by_the_role_that_needs_th
               for base, _dirs, files in os.walk(os.path.join(str(repo), ".claude"))
               for name in files if name.endswith((".pyc", ".pyo"))]
     assert not cached, cached
+
+
+def test_a_staged_proposal_reaches_a_kit_document_in_a_project_the_installers_built(tmp_path):
+    """BUG-0071 end to end in a REAL scaffolded project, through the gates that project registered.
+
+    THE DEAD END, live 2026-08-29: a kit document's content is a role's by constitution §6, no tool
+    write reaches it, and no command wrote it -- so the user was handed YAML to paste into an
+    editor, four times in one day. Every step of the way out is measured here as a session walks
+    it, with real hook processes:
+
+      1. the direct tool Write is still REFUSED by the project's own `gate_write_scope` -- this
+         round widened no permission;
+      2. that refusal NAMES the route instead of denying one that exists, which is the half
+         BUG-0041 was reopened for and the half a prose change alone cannot deliver;
+      3. staging the document as it should stand is allowed, because `staging/` is the proposal
+         area;
+      4. both command lines -- the request and the apply -- pass EVERY shell gate the project
+         registered (neither names the state directory, which is what makes them typable at all);
+      5. the USER's approval is minted by answering the kernel's own question, through the real
+         PostToolUse hook;
+      6. and the document then carries exactly the staged bytes.
+
+    The counter-measurement is in the same run: with the approval spent on THAT proposal, a second,
+    different proposal is refused.
+    """
+    repo, _created = _project_the_installers_produce(tmp_path / "proposal")
+    state_dir = os.path.join(str(repo), "project_memory")
+    document = os.path.join(state_dir, "project_config.yaml")
+    with io.open(document, encoding="utf-8", newline="") as handle:
+        before = handle.read()
+    proposed = before.replace('name: ""', 'name: "Checkout Platform"', 1)
+    assert proposed != before, "the shipped config no longer carries the empty project name"
+
+    refused = _project_hook_process(repo, "gate_write_scope.py", {
+        "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
+        "tool_input": {"file_path": document, "content": proposed}})
+    assert refused.returncode == 2, refused.stderr
+    assert "apply-proposal" in refused.stderr, (
+        "the refusal denies a route the harness has (BUG-0041's shape):\n%s" % refused.stderr)
+
+    staged_relative = "staging/PR-0001/project_config.yaml"
+    staged = os.path.join(state_dir, *staged_relative.split("/"))
+    os.makedirs(os.path.dirname(staged), exist_ok=True)
+    allowed = _project_hook_process(repo, "gate_write_scope.py", {
+        "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
+        "tool_input": {"file_path": staged, "content": proposed}})
+    assert allowed.returncode == 0, allowed.stderr
+    with io.open(staged, "w", encoding="utf-8", newline="") as handle:
+        handle.write(proposed)
+
+    flags = ["--kit-document", "project_config.yaml", "--proposal", staged_relative,
+             "--reason", "Der Projektname aus dem Erstgespraech"]
+    _every_shell_gate_allows(repo, "python scripts/harness.py request-approval document_proposal "
+                                   + " ".join(flags))
+    _every_shell_gate_allows(repo, "python scripts/harness.py apply-proposal " + " ".join(flags))
+
+    unapproved = _entry_point(repo, "apply-proposal", *flags)
+    assert unapproved.returncode == 1, unapproved.stdout + unapproved.stderr
+    assert "no live user approval" in unapproved.stderr, unapproved.stderr
+    with io.open(document, encoding="utf-8", newline="") as handle:
+        assert handle.read() == before, "a refusal changed the document"
+
+    opened = _entry_point(repo, "request-approval", "document_proposal", *flags)
+    assert opened.returncode == 0, opened.stdout + opened.stderr
+    question = json.loads(opened.stdout)
+    assert "project_config.yaml" in question["question"], question
+    _mint_question_in_project(repo, question)
+
+    applied = _entry_point(repo, "apply-proposal", *flags)
+    assert applied.returncode == 0, applied.stdout + applied.stderr
+    assert "project.name: gefüllt" in applied.stdout, applied.stdout
+    with io.open(document, encoding="utf-8", newline="") as handle:
+        assert handle.read() == proposed
+    # the proposal is left where it was -- an applied proposal is not a consumed artefact
+    assert os.path.isfile(staged)
+
+    # ...and the approval covers THAT proposal, not the next one
+    other = proposed.replace("greenfield", "onboarded", 1)
+    with io.open(staged, "w", encoding="utf-8", newline="") as handle:
+        handle.write(other)
+    second = _entry_point(repo, "apply-proposal", *flags)
+    assert second.returncode == 1, second.stdout + second.stderr
+    with io.open(document, encoding="utf-8", newline="") as handle:
+        assert handle.read() == proposed
 
 
 def test_a_shell_less_specialists_result_reaches_the_kernel(tmp_path):
@@ -14783,20 +14882,23 @@ def test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_do
     files explicitly), so what this measures is that the refusal now names the DEAD END rather than
     a route: no command, and the user as the only one who can close it.
 
-    THE SECOND HALF, and it cuts the other way (BUG-0041). One command does own one FIELD of one of
-    these documents — `set-preset` and `project.preset` — and a refusal that denies a route the
-    harness HAS is the same defect as one that invents a route it lacks.
+    THE SECOND HALF, and it cuts the other way (BUG-0041, then BUG-0071). Commands DO write into
+    some of these documents — `set-preset` owns `project.preset`, and `apply-proposal` writes what
+    a user-approved proposal adds to any document the kernel can compare — and a refusal that
+    denies a route the harness HAS is the same defect as one that invents a route it lacks. So the
+    two documents below are now the two SIDES of that: the masterplan is prose, nothing can compare
+    it, and its refusal must still end in the dead end; `project_config.yaml` has two routes and
+    its refusal must name both and must NOT claim there is none.
 
-    THE EXPECTATION COMES FROM THE SOURCE, `presets.DOCUMENT_WRITES`, and NOT from
-    `layout.partial_writers` — that function is on the path under test (the gate asks it), so
+    THE EXPECTATION COMES FROM THE SOURCES, the writing modules' own `DOCUMENT_WRITES`, and NOT
+    from `layout.partial_writers` — that function is on the path under test (the gate asks it), so
     building the expectation from it made both sides move together: with it emptied, the message
-    fell back to the dead-end phrasing and this test stayed green. The counts are pinned here for
-    the same reason: exactly one writer for `project_config.yaml` and none for the masterplan is
-    what the two branches below are, so a third document or a second field arrives with a red test
-    rather than with a silently unmeasured message.
+    fell back to the dead-end phrasing and this test stayed green. Which documents the GENERIC
+    writer answers for is `documents.accepts`, asked here against the same template state the hook
+    reads, for the same reason: the gate must not be the only party that decides it.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
-    from kernel import presets
+    from kernel import documents, presets
     writes = {}
     for entry in presets.DOCUMENT_WRITES:
         writes.setdefault(entry["document"], []).append(entry)
@@ -14812,20 +14914,34 @@ def test_a_kit_document_is_refused_with_the_truth_and_not_with_a_command_that_do
         assert "kit DOCUMENT" in message, message
         # the false route is gone: the old remedy's instruction was to run the entry point
         assert "write it through the entry point" not in message, message
-        assert "no route from inside this session" in message.lower(), message
-        for writer in writes.get(relative) or []:
+        expected = list(writes.get(relative) or [])
+        generic = documents.accepts(state, relative)
+        if generic:
+            expected.append({"command": documents.COMMAND, "field": documents.WRITES})
+        for writer in expected:
             assert writer["command"] in message and writer["field"] in message, (
-                "%s: a command owns %s here and the refusal does not say so -- a role reading it "
+                "%s: a command writes %s here and the refusal does not say so -- a role reading it "
                 "reports a dead end that is not one:\n%s" % (relative, writer["field"], message))
-        if relative not in writes:
-            assert "The one exception" not in message, (
-                "%s has no partial writer and the refusal claims one:\n%s" % (relative, message))
+        if expected:
+            assert "no route from inside this session" not in message.lower(), (
+                "%s HAS a route and the refusal denies it:\n%s" % (relative, message))
+        else:
+            assert "no route from inside this session" in message.lower(), message
+            assert documents.COMMAND not in message, (
+                "%s can be written by nothing and the refusal claims a route:\n%s"
+                % (relative, message))
+    # the masterplan is the one that must still come back as a dead end, so the pair above is not
+    # two readings of the same branch
+    assert not documents.accepts(state, "product/masterplan.md")
+    assert documents.accepts(state, "project_config.yaml")
     # ...and the merge gate that blocks on the same files says the same thing, instead of sending
     # the role to a validator that answers `0 error(s), 0 warning(s)` in exactly this state
     blocked = run_hook_process("gate_memory_complete.py", _merge(tmp_path), tmp_path)
     assert blocked.returncode == 2
     remedy = blocked.stdout + blocked.stderr
-    assert "NO writer inside this session" in remedy, remedy
+    assert "only the USER can fill it" in remedy and "product/masterplan.md" in remedy, remedy
+    assert documents.COMMAND in remedy, (
+        "the merge block names no route for the config it blocks on:\n%s" % remedy)
     assert "harness.py validate" not in remedy, remedy
 
 

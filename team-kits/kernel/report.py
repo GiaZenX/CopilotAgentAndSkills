@@ -2763,7 +2763,11 @@ def gated_documents(state: ProjectState, repo_root: str) -> list:
         # is to report the state reported a dead end the harness had already left (BUG-0041's shape,
         # for the very document FR-0049 step 5 serves). `layout.partial_writers` is the same
         # derivation `gate_write_scope` and the SessionStart briefing ask, so all three move together.
-        writers = list(layout.partial_writers(rel))
+        # WITH THE STATE ROOT, because a writer that owns no single named file can only answer per
+        # PROJECT: `apply-proposal` writes a document it can compare and refuses one it cannot, and
+        # that is a fact about the file on disk. Asked without it, such a route is left out, and a
+        # report that hid a route the harness has is this field's own measured defect.
+        writers = list(layout.partial_writers(rel, state.root))
         entries.append({
             "path": rel,
             "gate": who["hook"],
@@ -2775,14 +2779,15 @@ def gated_documents(state: ProjectState, repo_root: str) -> list:
             "note": (
                 "%s is registered, can refuse an operation, and addresses this file. The kernel "
                 "has no path builder that can name it, so no `python scripts/harness.py` command "
-                "writes it AS A WHOLE: the sessions that can fill it are the one that runs BEFORE "
-                "the kit is installed, and the user, in an editor outside the session.%s Whether "
-                "it is currently unfilled is that gate's own verdict and is not re-derived here -- "
-                "the SessionStart briefing asks the gate for it."
+                "creates it: the session that can do that is the one running BEFORE the kit is "
+                "installed. %s Whether it is currently unfilled is that gate's own verdict and is "
+                "not re-derived here -- the SessionStart briefing asks the gate for it."
                 % (who["audit_name"],
-                   "" if not writers else
-                   " ONE PART OF IT DOES HAVE A ROUTE: %s -- each on a user-minted approval."
-                   % ", ".join("`python scripts/harness.py %s` writes `%s`"
+                   "Nothing WRITES it either, so filling it is the user's, in an editor outside "
+                   "the session." if not writers else
+                   "WHAT CAN BE WRITTEN INTO IT: %s -- each on a user-minted approval; anything "
+                   "those commands do not cover is the user's, in an editor outside the session."
+                   % ", ".join("`python scripts/harness.py %s` writes %s"
                                % (entry["command"], entry["field"]) for entry in writers))),
         })
     return entries
