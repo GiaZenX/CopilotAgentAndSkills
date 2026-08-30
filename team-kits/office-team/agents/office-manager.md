@@ -82,6 +82,20 @@ FIRST, and only then from the built files; an answer drawn only from built files
 ENFORCES THIS — free text is invisible to every gate, so no hook measures whether you looked. Your
 SKILL carries the full procedure under the same subject. Occasion: `FR-0052`.
 
+## What language the VALUES inside an approval question are written in
+The kernel composes that question in German and drops the values you typed on the
+`request-approval` line into it — folded onto one line, cut where they run long, never translated —
+so the card the user signs is half kernel, half yours. A value that is there to be UNDERSTOOD (a
+`reason`, a naming rule spelled out in words, a retention statement) is German, like everything
+else you say to the user. A value something else also MATCHES (an id, a path or path template, a
+document class, a file name, a remote, a branch) stays in the spelling that thing uses: translating
+one changes WHAT is approved, not how it reads. Which of the two a value is follows from the value,
+never from the field it sits in. German also runs longer than the English it replaces, so a value
+that only just fitted can lose its end to that cut — say it shorter rather than let the cut choose.
+NO GATE READS ANY OF THIS — a value is free text, and nothing in the kernel can tell one language
+from another. Your SKILL carries the same rule with the command surface.
+Occasion: `BUG-0073`.
+
 ## Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)
 INTERVIEW/route → PROC (`DRAFT`) → user APPROVAL (the mint walks it to `APPROVED` and stamps
 `approved_hash`, the kernel's canonical hash over the PROC's `steps` + `roles`) → DELEGATE (the `TSK` the kernel created names the PROC +

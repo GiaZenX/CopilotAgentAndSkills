@@ -2247,7 +2247,7 @@ TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
 TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H75 mit TSK-0091, H76 mit
-TSK-0092, H70 mit
+TSK-0092, H77 mit TSK-0093, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2309,6 +2309,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H77 | **Rest** (TSK-0093) | gemessene Grenzen der Wertsprache-Regel, je im Eintrag: kein Gate erzwingt sie (Freitext); der Prosa-Test liest Anker und Ehrlichkeit, nicht Richtung und nicht Vokabelfreiheit (Umkehrung und apparat-freie Überbehauptung bleiben grün, beide Sprachen gemessen — Sichtbarkeit über den Abschnitts-Pin); `document_types` steht nackt im deutschen Satz; der Records-Clerk als einzige Nicht-Lead-Rolle mit freiem `--reason` trägt die Regel nicht (kleine eigene Runde); und eine geänderte Kartenformulierung entwertet offene Fragen fail-closed |
 | H76 | **Rest** (TSK-0092) | gemessene Grenzen des neuen Dokument-Schreibwegs, je im Eintrag: der Listeneintrag-Prosakanal (einziger Kanal ohne Wortlaut in der Karte, dreifach begrenzt); eine Freigabe deckt binnen ihrer Stunde ein erneutes Schreiben derselben Bytes nach Hand-Revert (Bedingung im Docstring, `filing_correction`-Lesart); kein Feldschema (die echte Nutzerdatei hätte ihr eigenes Schema verletzt); Prosa-Dokumente absichtlich schreiberlos + drei Web-Schreibrollen ohne Injektionsnotiz (Eigenschafts-Draht wäre eine kleine Runde); vier Ränder mit sicherer Richtung (toter Zweig, unerreichbare Diagnose, fünf Schreibweisen eine Position, Gate-Laufzeit an Dateigröße) und der Fixture-Schreibweg ins Repo-Audit-Log |
 | H75 | **Rest** (TSK-0091) | gemessene Grenzen des E-Rechnungs-Geldpfads, je im Eintrag: der Wächter ist Arithmetik, nicht Semantik (`FR-0065` trägt die zweite Lesung); BR-CO-14 ungeprüft (in sich stimmiger, positions-widriger Kopf läuft durch, gemessen); UBL nur synthetisch belegt, Anzahlungs-Rückfall verweigert laut; XML ohne Geld-Tripel jetzt rc 2 statt still leer; die Geldleser-Klasse im Owned-Manifest ist Urteil mit zwei gepinnten Enden; ein künftiges Umgebungs-Leck wird still geheilt statt angezeigt (der Draht hält die Fixture, die Fixture heilt die Quellen — beides gemessen); und drei Randformen des Lesers mit je sicherer Richtung (ungepinnte dritte Anker-Schreibweise, Rohtext-Ausgabe der Geldfelder, unlesbarer Rundungsbetrag zählt als 0 und endet laut) |
 | H74 | **Rest** (TSK-0090) | gemessene Grenzen der schnelleren Gate-Suite, je im Eintrag: kein Schutz gegen einen zweiten Läufer (und die Suite drückt als Nachbar selbst stärker, 10→26); der Faktor 11 war Wirtslast, der 4512-s-Leerlauf bleibt unerklärt; drei benannte Abwägungen mit Zahlen (`authored` ohne Spaltenauswahl, Frist-Phase bleibt nachbarfrei, Prüfsätze ungekürzt); Zeilennummern-Zeiger als offene Klasse (H45-Verschiebung war Fall 2). Ruhefenster-Lauf: akzeptierter DEC-0053-Rest mit zwei bereitstehenden Repo-Werkzeugen |
@@ -5274,6 +5275,51 @@ ist — der Mechanismus gehört hierher, die wachsende Zeilenzahl in keinen Komm
 mit benanntem Warum, (e) sind Ränder mit sicherer Fehlrichtung. Der Kern der Runde — kein
 Verlust, kein unangekündigter Inhalt, kein Vorbeiweg an einer strengeren Route — ist von zwei
 Prüfrunden gemessen.
+
+### H77 — Was die Wertsprache-Regel NICHT hält — offen, gemessene Grenzen (TSK-0093)
+
+**Anlass:** `BUG-0073`, Live-Screenshot des Nutzers — eine Freigabe-Karte erreichte ihn als
+deutsch-englisches Gewebe, weil der Manager die Feldwerte englisch verfasste und keine Fläche
+sagte, welche Sprache **Werte** tragen. Die Runde legte die Regel auf beide Lead-Flächen aller
+drei Kits (verstehen = Deutsch; abgleichen = die Schreibweise des Dings, denn Übersetzen ändert,
+WAS freigegeben wird), warnte auf der geladenen Fläche vor dem Kürzungsschnitt (Deutsch läuft
+länger — „sag es kürzer, statt den Schnitt wählen zu lassen") und verengte eine Karten-Klausel,
+die dem Nutzer das Gegenteil dessen sagte, was zwei Zeilen darüber stand. Was bleibt, gemessen:
+
+**(a) Kein Gate kann die Wertsprache erzwingen** — ein englischer Aufruf rendert unverändert
+rc 0. Die Regel lebt in Prosa und in der Formatter-Naht; steht so in beiden Fassungen.
+
+**(b) Der Prosa-Test liest Anker und Ehrlichkeit, nicht Richtung und nicht Vokabelfreiheit.**
+Der **umgekehrte** Regeltext bleibt grün; eine Überbehauptung **ohne** Apparat-Wort bleibt grün,
+in beiden Sprachen gemessen („The harness refuses…" / „Die Verfassung erzwingt das."). Der
+Grund, es nicht zu schließen, steht im Test: eine Liste von Behauptungsverben wäre die zweite,
+schlechtere Aufzählung; sichtbar macht so einen Edit der Abschnitts-Pin. Vom Prüfer dazu
+gemessen, sprachgleich in beiden Sprachen: ein **bejahendes Idiom mit Verneinungswort in
+derselben Klausel** („Ohne Zweifel verweigert ein Gate…" / „Without doubt a gate refuses…")
+liest der Wächter als verneint — die F5-Erweiterung hat die Klasse aufs Deutsche ausgedehnt,
+nicht geöffnet.
+
+**(c) `document_types` ist der eine getippte Wert, den der Kernel nackt in den deutschen Satz
+setzt** (ohne Etikett, ohne `»…«`) — heute nur als Naht erkennbar, weil Klassennamen technisch
+aussehen; eine deutschsprachige Klasse wäre vom Rahmen ununterscheidbar. Gemessen, nicht
+umgebaut (das Item verlangte messen statt nachbauen).
+
+**(d) Der Records-Clerk trägt die Regel nicht** — und er ist, vom Prüfer über alle drei Kits
+abgegrenzt, die **einzige** Nicht-Lead-Rolle, die ein freies `--reason` selbst tippt; sein
+englischer Grund landet unübersetzt in der deutschen Karte. Die Runde legte die Regel bewusst
+auf die Lead-Flächen; die Clerk-Lücke ist real, benannt und klein umrissen. Ebenso: ein Wert,
+der über ein **gestagtes Dokument** in die Karte kommt, ist in der SKILL-Fassung genannt, in
+der geladenen Kurzform nicht — und der Stager ist oft ein Spezialist.
+
+**(e) Jede Änderung an einer Kartenformulierung entwertet offene, noch unbeantwortete
+Freigabe-Fragen** — `gate_approval` vergleicht zeichenweise, die alte Frage passt nach einem
+Kit-Update nicht mehr auf den neu gebauten Text. Nicht neu, aber von dieser Runde ehrlich als
+Folge benannt: fail-closed (die Rolle stellt neu), nie ein Durchlass.
+
+**Urteil: Rest.** (a) und (b) sind die ausgewiesenen Grenzen eines Prosa-Tests mit benanntem
+Sichtbarkeits-Mechanismus, (c) ist eine gemessene Naht mit heutiger Erkennbarkeit, (d) trägt
+seine kleine Schließrichtung (ein Absatz in einer Rolle, eigene Mini-Runde), (e) ist
+Über-Vorsicht in die sichere Richtung.
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 

@@ -1,0 +1,57 @@
+id: TSK-0093
+product_requirement: PR-0003
+derives_from: BUG-0073
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+- .github/**
+required_inputs:
+- 'BUG-0073 (live screenshot: a filing_rule approval whose German kernel frame carries
+  English field VALUES the user must judge -- naming pattern, reason, retention --
+  because the PM drafted them English and nothing says which language VALUES carry;
+  ''laesst sich schlecht lesen was genau freigegeben werden soll'' on the one surface
+  where his reading IS the safeguard)'
+- 'what TSK-0092 already built in the same seam: approvals.py''s German proposal prose
+  and the value-verbatim card -- the kernel frame is one language; what remains is
+  the ROLE-DRAFTED values (rule fields, reasons) and the rule that binds them'
+- 'the FR-0052 surface pattern: the rule lands on the LOADED surface (lead agent file
+  + skill), byte-identical across kits unless a kit names its reason, with the honest
+  limit that free text has no enforcing gate'
+expected_outputs:
+- 'STEP 1 MEASURE: locate every place a kit lead drafts approval field values (filing
+  rules, document proposals, scope reasons) and show the shipped role texts say nothing
+  about value language; reproduce the weave on a scaffolded project (one drafted approval,
+  English values in the German frame)'
+- 'STEP 2 BUILD: the value-language rule on the loaded lead surfaces of all three
+  kits -- values the user judges (reasons, human-readable patterns, retention notes):
+  German; identifiers, keys, paths, technical tokens: English -- with the honest limit
+  sentence; where a kernel formatter LABELS embedded values, check the seam is visible
+  and one-language framed (TSK-0092''s card may already satisfy this -- measure, do
+  not rebuild)'
+- 'STEP 3 TESTS red-first: the structural reader that already holds the lead texts
+  covers the new section (presence + byte-identity + the no-enforcement honesty, same
+  shape as FR-0052''s tests); a drafted approval on a scaffolded project renders German
+  values end to end as the MEASURED example in the report'
+- 'STEP 4 SHIP: bump_kit_version, ruff, validate, affected suites per DEC-0050 (full
+  run is the lead''s); report file:line, the sentences verbatim, residues named'
+dependencies:
+- BUG-0073
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-30T05:35:32'
+closed_at: '2026-08-30T07:00:13'

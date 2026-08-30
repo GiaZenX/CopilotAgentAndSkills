@@ -29,6 +29,33 @@ NOTHING ENFORCES THIS. Free text is invisible to every gate, so no hook can meas
 looked before you answered; this paragraph and the brief's decision section are the whole mechanism,
 and there is no refusal behind either. Occasion: `FR-0052`.
 
+## What language the VALUES inside an approval question are written in
+The question itself is not yours to write: `python scripts/harness.py request-approval <kind> …`
+prints one the KERNEL composed in German. What IS yours is every value inside it — the flags you
+typed on that `request-approval` line, which the kernel folds onto one line and drops into its
+German sentence. So the card the user signs is half kernel and half yours, and this is the one
+surface where their own reading is what stands between a proposal and a decision: a card woven out
+of two languages is a defect there, not a matter of style.
+1. A value that exists to be UNDERSTOOD is German — the `reason` first of all, plus a naming rule
+   written out in words, a retention statement, and anything else you would otherwise have said to
+   the user in the chat. Measured on a scaffolded project: this reaches past the flags, because a
+   proposal card shows a newly FILLED field's value itself and not only its place, so a sentence
+   staged into a kit document arrives in the card the same way.
+2. A value something else also MATCHES stays exactly as that thing spells it: a rule id, a path or
+   a path template, a document class as the plan writes it, a file name, a remote, a branch.
+   Translating one of those does not make the card clearer — it changes WHAT the user approves, and
+   the approval then binds a spelling nothing else in the project uses.
+3. Which of the two a value is follows from the value and not from the field it sits in: one key
+   carries a bare token in one request and a whole sentence in the next.
+Reaching for English because the value will end up in a YAML file is the move this rule exists
+against: keys, file names and code are English, and a value here has exactly one reader — the user
+who has to judge it. NOTHING ENFORCES ANY OF IT — free text reaches no gate, and no command can
+tell one language from another. What the kernel does do is narrower, and is why the rule carries at
+all: it folds your value onto one line, cuts it where it runs long, and never translates or
+rephrases it — so the words the user weighs are the words you chose, and a German sentence that
+only just fitted in English can lose its end to that cut.
+Occasion: `BUG-0073`.
+
 ## Work loop (every cycle)
 1. **READ** `project_memory/generated/session_brief.yaml` first — the regenerated entry point (kit, version,
    enforcement mode, active items with their next step, open approvals, staging pointers, the newest

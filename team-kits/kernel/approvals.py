@@ -1253,24 +1253,33 @@ def _document_proposal_target_form(manifest: dict) -> str:
     is one the hash does not cover.
 
     THE BRACKET SAYS WHAT THE APPROVAL IS WORTH AND NO MORE, and one clause of it is a LIMIT rather
-    than a reassurance: the descriptors name the places, and WHICH values arrive is in the proposal
-    file, bound by its checksum but not readable in this card. Saying so is the honest half -- the
-    role that asked is the one that has to have shown the user that file.
+    than a reassurance. THE LIMIT IS NARROWER THAN IT READ, and that correction is the point of this
+    paragraph: it holds for ENTRIES ADDED TO A LIST and for nothing else. `documents.compare` shows
+    a newly FILLED field and a NEW KEY with their value, and a new COMMENT in its wording; only a
+    list is summarised as a count, because showing every field of every added record would put the
+    file into the card. The sentence used to say "WELCHE Werte hinzukommen" about all of them, so
+    one card could carry `tone: gefüllt mit <sentence>` two lines above a clause telling the user
+    that no value is in this question -- an untrue reassurance standing beside the very value it
+    denied (verifier finding F2, measured on one card).
 
-    WHAT IS NOT UNDER THAT LIMIT IS PROSE. A comment the proposal ADDS stands in the list above in
-    full (folded like every other descriptor), because these documents are read by roles as
-    instructions: verifier finding B2 staged a legitimate fill plus a comment line addressed to
-    "JEDE ROLLE, DIE DIESE DATEI LIEST", and the card named the fill and nothing else. A value the
-    user can look up in the file; a sentence written to steer the next reader has to be in the
-    question that authorises it.
+    WHAT IS NOT UNDER THAT LIMIT IS PROSE, and it is now said in the same clause rather than after
+    it. A comment the proposal ADDS stands in the list above in full (folded like every other
+    descriptor), because these documents are read by roles as instructions: verifier finding B2
+    staged a legitimate fill plus a comment line addressed to "JEDE ROLLE, DIE DIESE DATEI LIEST",
+    and the card named the fill and nothing else. A record in a list the user can look up in the
+    file; a word written to steer the next reader has to be in the question that authorises it.
+
+    Both directions are measured by
+    `tools/test_kernel.py::test_the_card_only_claims_a_value_is_missing_where_the_value_really_is`.
     """
     return ("eine Ergänzung des Dokuments »%s« aus dem Vorschlag »%s«: %s (Grund: %s; die Freigabe "
             "FÜGT nur HINZU -- sie ändert nichts Bestehendes und löscht nichts, auch keinen "
             "Kommentar; sie gilt für genau diese Fassung des Dokuments (Prüfsumme %s) und genau "
-            "diesen Vorschlag (Prüfsumme %s), und nur bis %s. WELCHE Werte hinzukommen, steht in "
-            "der Vorschlagsdatei, nicht in dieser Frage -- die Freigabe bindet deren Prüfsumme; "
-            "neu hinzukommende KOMMENTARE stehen dagegen oben im Wortlaut, weil ein Satz in so "
-            "einer Datei von jeder Rolle gelesen wird, die damit arbeitet)"
+            "diesen Vorschlag (Prüfsumme %s), und nur bis %s. WELCHE EINTRÄGE zu einer Liste "
+            "hinzukommen, steht in der Vorschlagsdatei und nicht in dieser Frage -- die Freigabe "
+            "bindet deren Prüfsumme; alles andere, was neu ist, steht oben im Wortlaut: ein neu "
+            "GEFÜLLTES Feld, ein NEUER Schlüssel und ein neu hinzukommender KOMMENTAR, weil ein "
+            "Satz in so einer Datei von jeder Rolle gelesen wird, die damit arbeitet)"
             % (manifest.get("kit_document") or "?", manifest.get("proposal") or "?",
                ", ".join(manifest.get("changes") or []) or "nichts",
                manifest.get("reason") or "kein Grund angegeben",

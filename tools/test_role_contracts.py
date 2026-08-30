@@ -49,6 +49,8 @@ import os
 import re
 import sys
 
+import pytest
+
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM_KITS = os.path.join(ROOT, "team-kits")
@@ -700,11 +702,11 @@ def _markdown_sections(text):
 def _answering_sections(path, names):
     """The sections of the file at `path` that name every string in `names`.
 
-    WHICH SECTION IS "THE RULE" is decided by the two artifacts the rule sends the reader to -- the
-    brief's decision field and the decisions directory -- and both spellings come from running code
-    (the session_brief schema and `backlog_types.ACTIVE_DIRS`). So a renamed field or a moved
-    directory makes this reader go looking for a block that no longer exists, rather than quietly
-    matching a heading whose text drifted.
+    TWO RULES USE THIS NOW, so it says nothing about either one: which strings identify a block is
+    the caller's question, and each answers it from running code (`_rule_anchors`,
+    `_value_language_anchors`). What this function contributes is only the shape -- a `##` section
+    is the unit, and a block matches when it names EVERY anchor, so a rule identified by a heading
+    whose text drifted is found missing rather than matched by accident.
     """
     if not os.path.isfile(path):
         return []
@@ -715,7 +717,15 @@ def _answering_sections(path, names):
 
 
 def _rule_anchors():
-    """(brief decision field, decisions directory) -- the two names the rule must send a reader to."""
+    """(brief decision field, decisions directory) -- the two names the rule must send a reader to.
+
+    WHICH SECTION IS "THE ANSWERING RULE" is decided by the two artifacts it sends the reader to,
+    and both spellings come from running code (the session_brief schema and
+    `backlog_types.ACTIVE_DIRS`). So a renamed field or a moved directory makes the reader go
+    looking for a block that no longer exists, rather than quietly matching a heading whose text
+    drifted. (This paragraph stood in `_answering_sections` while that helper had one caller; it
+    belongs to the anchors, not to the section reader.)
+    """
     sys.path.insert(0, TEAM_KITS)
     from kernel import backlog_types
     from kernel.schemas import load_schema
@@ -751,8 +761,20 @@ def _enforcement_words(kit):
     return words
 
 
-_NEGATION_RX = re.compile(r"\b(?:no|not|never|nothing|none|cannot|can't|invisible|without)\b",
-                          re.IGNORECASE)
+# THE WORDS THAT TURN A MENTION INTO ITS OPPOSITE. A vocabulary and therefore finite, which is the
+# limit named in the tests that use it; what it must at least cover is the language the blocks it
+# guards are written in.
+#
+# GERMAN IS IN HERE SINCE TSK-0093, and it was a measured miss rather than a hypothetical: that
+# round writes a rule PRESCRIBING German values, and an honest German limit sentence in one of these
+# blocks ("Kein Gate liest das.") was classified AFFIRMED -- the guard would have reported the one
+# shape it exists to permit. The particles are spelled out rather than stemmed, because a stem
+# matches words that negate nothing (`nie` inside `Niederlage`), and `\b` on both ends is what keeps
+# each of them a word.
+_NEGATION_RX = re.compile(
+    r"\b(?:no|not|never|nothing|none|cannot|can't|invisible|without"
+    r"|kein|keine|keinen|keinem|keiner|keines|nicht|nichts|nie|niemals|ohne|unsichtbar)\b",
+    re.IGNORECASE)
 # Where a clause ends. The run-up in front of a mention is cut here, so a negation belonging to
 # ANOTHER sentence cannot excuse it.
 _CLAUSE_END = ".;:\n"
@@ -773,6 +795,11 @@ def _enforcement_claims(block, words):
     sentences REPLACED by "A gate refuses an answer that skipped this step.": affirmed=0, negated=1
     -- the check passed over exactly the claim it exists to catch. With the boundary cut the same
     text is affirmed=1, negated=0.
+
+    THE NEGATION VOCABULARY IS FINITE (`_NEGATION_RX`) and covers English and German; a limit
+    phrased with neither -- a symbol, another language, an ironic reading -- lands in `affirmed`.
+    That direction is the safe one (a false alarm is read by a human), and the floor under both
+    directions is `test_the_enforcement_reader_hears_a_negation_in_the_languages_these_blocks_use`.
     """
     affirmed, negated = [], []
     for word in sorted(words):
@@ -783,6 +810,39 @@ def _enforcement_claims(block, words):
             (negated if _NEGATION_RX.search(run_up) else affirmed).append(
                 run_up + match.group(0))
     return affirmed, negated
+
+
+@pytest.mark.parametrize("sentence,negated_expected", [
+    ("A gate refuses an answer that skipped this step.", False),
+    ("Ein Gate verweigert eine Antwort, die diesen Schritt übersprungen hat.", False),
+    ("No gate reads this -- free text never reaches one.", True),
+    ("Kein Gate liest das; Freitext erreicht keines.", True),
+    ("Nichts erzwingt das, und keine Regel dahinter ist ein Hook.", True),
+    # the TSK-0089 lesson, in one probe: an honest limit followed by an overclaim. The second
+    # mention has its own clause and must not inherit the first one's negation.
+    ("Nothing enforces this. A gate refuses it anyway.", False),
+])
+def test_the_enforcement_reader_hears_a_negation_in_the_languages_these_blocks_use(
+        sentence, negated_expected):
+    """The floor under both honesty guards: the reader itself, driven over one sentence at a time.
+
+    WHY IT EXISTS AT ALL: the two tests above can only fail when a shipped block is wrong, so a
+    reader that classified everything as NEGATED would keep them green forever while measuring
+    nothing -- the shape this repo calls a test that cannot fail. Here the reader is the subject.
+
+    THE VOCABULARY IS THE KIT'S OWN, not a word typed here: `_enforcement_words` off a shipped
+    `settings.json`, and the probes are built from a word it really yields, so a kit that renames
+    its mechanisms moves these probes with it instead of leaving them measuring a dead string.
+
+    GERMAN IS HALF THE TABLE because TSK-0093 writes a rule prescribing German values, and an
+    honest German limit ("Kein Gate liest das") was measured AFFIRMED before `_NEGATION_RX` learned
+    the particles -- i.e. the guard would have refused the one shape it exists to allow.
+    """
+    words = _enforcement_words(_kit_dirs()[0])
+    word = next(one for one in sorted(words) if re.search(r"\b%s\b" % one, sentence, re.I))
+    affirmed, negated = _enforcement_claims(sentence, {word})
+    assert bool(negated) == negated_expected and bool(affirmed) != negated_expected, (
+        "%r -> affirmed=%s negated=%s" % (sentence, affirmed, negated))
 
 
 def test_every_kit_lead_is_told_to_answer_from_the_decisions_before_the_code():
@@ -883,6 +943,157 @@ def test_the_answering_rule_claims_no_enforcement_it_does_not_have():
                     "%s/%s: the answering rule states no limit at all. A reader then assumes a "
                     "mechanism behind it, and there is none" % (os.path.basename(kit),
                                                                 os.path.basename(path)))
+    assert judged >= 6, "only %d rule blocks judged -- the reader stopped finding them" % judged
+
+
+# ====================== 6. the language of the values a lead types into an approval (BUG-0073)
+def _value_language_anchors():
+    """The two names the value-language rule must send a reader to, both read off the shipped CLI.
+
+    THE COMMAND, asked of the parser by the property that identifies it rather than by its spelling:
+    it is the subcommand carrying a POSITIONAL whose choices are exactly the approval kinds
+    (`item_derived_kinds` + `line_manifest_kinds`). A rename moves this reader with it, and a second
+    command growing the same positional is a finding rather than a silent second answer.
+
+    THE VALUE, asked of the same surface: `cli._line_manifest` types a manifest key on the line
+    unless `LINE_MANIFEST_RESOLVERS` derives it, so the typed keys ARE what a role writes into an
+    approval card. The subject here is the ones MORE THAN ONE kind asks for -- a value the rule
+    cannot dismiss as one command's peculiarity. Today that is one key; a second one arriving is a
+    second free-typed value the rule owes the user a sentence about, and it arrives here demanding
+    it instead of passing unnoticed.
+
+    BOTH ARE READ IN THEIR BACKTICKED SPELLING, and that is a measurement rather than a taste. Bare,
+    these two names are ordinary English: run over the shipped tree on 2026-08-30 the bare pair
+    matched FOURTEEN sections that have nothing to do with this rule -- every work loop, every
+    preset section, both startup gates -- so a reader anchored on them would have called the rule
+    present while it was nowhere written. Backticked the same run matches nothing at all, which is
+    what makes the red below the absence of the rule and not a coincidence of vocabulary. What this
+    reader therefore does NOT see is a rule that names its two anchors in prose only.
+    """
+    import argparse
+    import collections
+    from kernel import approvals, cli
+    parser = cli.build_parser()
+    subs = [action for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)]
+    assert subs, "the shipped CLI has no subcommands -- this reader stopped matching"
+    kinds = set(approvals.item_derived_kinds()) | set(approvals.line_manifest_kinds())
+    assert kinds, "the kernel offers no approval kinds -- this reader stopped matching"
+    commands = sorted(name for name, sub in subs[0].choices.items()
+                      for action in sub._actions
+                      if not action.option_strings and set(action.choices or ()) == kinds)
+    assert len(commands) == 1, (
+        "exactly one subcommand opens an approval question; the parser offers %s" % commands)
+    typed = collections.Counter(
+        key for builder in approvals.LINE_MANIFEST_BUILDERS.values()
+        for key in cli.manifest_parameters(builder)
+        if key not in cli.LINE_MANIFEST_RESOLVERS)
+    shared = sorted(key for key, count in typed.items() if count > 1)
+    assert shared, (
+        "no manifest value is typed on the line by more than one approval kind -- the subject this "
+        "reader anchors on is gone: %s" % sorted(typed))
+    return tuple("`%s`" % name for name in commands + shared)
+
+
+def test_every_kit_lead_is_told_which_language_an_approval_value_is_written_in():
+    """BUG-0073: the values a lead types into an approval card are German where the user judges them.
+
+    THE MEASURED DEFECT: the kernel writes the approval question in German and shows every typed
+    value verbatim, so a card is half kernel and half lead. On the user's own office project a
+    `filing_rule` card arrived with its naming pattern, its retention and its reason in English
+    inside the German frame, because nothing in any lead text says which language a VALUE carries --
+    and this is the one surface where the user's reading IS the protection.
+
+    TWO SURFACES, both derived, for `test_every_kit_lead_is_told_to_answer_from_the_decisions_
+    before_the_code`'s measured reason: `lead_package.files` is what a session loads and never
+    unloads, `lead_package.on_demand_files` is the lead SKILL, which is registered and NOT injected
+    (measured 2026-08-02). A rule standing only in the SKILL is not in front of the lead at the
+    moment it composes a `request-approval` line.
+
+    ONE COPY PER SURFACE MUST BE IDENTICAL ACROSS THE KITS: skills are not mirrored files and no
+    `KIT_SPECIFIC` mechanism covers them, so that identity IS the mirror for these two blocks. An
+    intersection and not a count, for the reason the sibling test records: a kit growing a section
+    of its own that happens to name both anchors is none of this test's business.
+
+    MEASURED RED 2026-08-30 over the shipped tree, before the rule was written: six offenders, one
+    per kit per surface -- no section of any lead agent file, constitution or lead SKILL named both
+    anchors.
+
+    WHAT IT CANNOT DO: it reads PROSE, so it cannot tell whether a lead obeyed the rule, and of the
+    block's content it reads only the two anchors -- the rule INVERTED ("English values, German
+    keys") names them both and passes. That is the same residue the answering rule carries, and the
+    same reason it is stated rather than papered over.
+    """
+    anchors = _value_language_anchors()
+    loaded, on_demand = {}, {}
+    for kit in _kit_dirs():
+        name = os.path.basename(kit)
+        skill = {block for path in lead_package.on_demand_files(kit)
+                 for block in _answering_sections(path, anchors)}
+        package = {block for path in lead_package.files(kit)
+                   for block in _answering_sections(path, anchors)}
+        assert skill, (
+            "%s: no section of its lead SKILL names %s -- the value-language rule is not there"
+            % (name, " and ".join(anchors)))
+        assert package, (
+            "%s: no section of the LOADED package (%s) names %s. The lead SKILL is registered, not "
+            "injected, so a rule that stands only in it is not in front of the lead when it drafts "
+            "the approval" % (name,
+                              ", ".join(os.path.basename(p) for p in lead_package.files(kit)),
+                              " and ".join(anchors)))
+        on_demand[name], loaded[name] = skill, package
+    assert set.intersection(*on_demand.values()), (
+        "the kits' lead SKILLs share no identical value-language rule -- one copy has drifted: %s"
+        % sorted(on_demand))
+    assert set.intersection(*loaded.values()), (
+        "the kits' loaded lead texts share no identical value-language rule -- one copy has "
+        "drifted: %s" % sorted(loaded))
+    assert len(on_demand) >= 3, sorted(on_demand)
+
+
+def test_the_value_language_rule_claims_no_enforcement_it_does_not_have():
+    """A round about language honesty may not itself overclaim (BUG-0073, AC-3).
+
+    NOTHING CAN ENFORCE THIS: a value is free text on a command line, no gate reads free text, and
+    the kernel folds and prints a value without ever asking which language it is in. A block naming
+    the apparatus as its backing would be the failure this repo is built against; a block dropping
+    the limit leaves the next reader to assume one. So both halves are asked, with the SAME reader
+    the answering rule uses -- `_enforcement_claims`, whose run-up is cut at a clause boundary
+    because a fixed window was measured dead against a negation-saturated block (TSK-0089).
+
+    MEASURED RED 2026-08-30 in a clone outside this repo, both shapes an overclaim can take, over
+    both surfaces of all three kits -- the numbers are in the round's report.
+
+    THE RESIDUE, because the vocabulary is derived and therefore finite, and it has TWO doors here
+    rather than the sister test's one. An overclaim that names no word `_enforcement_words` yields
+    passes, measured 2026-08-30 in a clone with the sentence added to all six blocks and the suite
+    still green: "The harness refuses a value in the wrong language." and "Die Verfassung erzwingt
+    das." The vocabulary is the kit's mechanism names, and those stay English whatever language the
+    sentence around them is, so neither door is narrower. The German one is the one this
+    round opened by writing a rule about German at all, and it is stated rather than closed: what
+    would close it is a vocabulary of CLAIM verbs, which is a second enumeration and a worse one.
+    What makes such an edit visible at all is the section pin
+    (`test_shortening_net.test_no_section_of_a_pinned_instruction_file_disappears_unnoticed`),
+    whose digest over this block then demands a re-pin with a written note -- visibility, not a
+    refusal.
+    """
+    anchors = _value_language_anchors()
+    judged = 0
+    for kit in _kit_dirs():
+        words = _enforcement_words(kit)
+        assert words, "%s registers no hooks -- the vocabulary came out empty" % kit
+        for path in lead_package.files(kit) + lead_package.on_demand_files(kit):
+            for block in _answering_sections(path, anchors):
+                judged += 1
+                affirmed, negated = _enforcement_claims(block, words)
+                assert not affirmed, (
+                    "%s/%s: the value-language rule names the enforcement layer without a negation, "
+                    "and nothing enforces the language of a free-typed value:\n  %s"
+                    % (os.path.basename(kit), os.path.basename(path), "\n  ".join(affirmed)))
+                assert negated, (
+                    "%s/%s: the value-language rule states no limit at all. A reader then assumes a "
+                    "mechanism behind it, and there is none"
+                    % (os.path.basename(kit), os.path.basename(path)))
     assert judged >= 6, "only %d rule blocks judged -- the reader stopped finding them" % judged
 
 

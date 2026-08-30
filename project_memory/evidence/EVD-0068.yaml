@@ -1,0 +1,26 @@
+id: EVD-0068
+kind: review
+related:
+- TSK-0093
+- BUG-0073
+result: pass
+summary: 'verifier PASS round 2 for diff:fe35b5c0abc8ca7a3d854131248d614ab3766b06e6951b13e91c6aea77518d20
+  -- TSK-0093: the approval value-language rule. The user''s screenshot card renders
+  one language end to end; the rule sits on BOTH lead surfaces of all three kits byte-identical
+  (understand=German, match=the thing''s own spelling, translating changes WHAT is
+  approved) with the honest no-enforcement limit. Verifier round 1 caught the rule''s
+  own irony (German runs +14% longer and only the non-loading surface warned about
+  the kernel''s cut -- fixed on the loaded blocks with the say-it-shorter warning)
+  and a self-contradicting document_proposal card (withholding clause narrowed to
+  the list case, red-first both directions on the KERNEL-BUILT card). Test infrastructure:
+  parser-derived backticked anchors (0 foreign hits vs 14 bare), the TSK-0089 clause
+  reader reused, _NEGATION_RX extended to German with a floor test; the verifier''s
+  affirmative-idiom probe measured language-equal and carried into H77. Kits x3 2026.08.30-10;
+  full suite fresh 3976 passed / 14 skipped / 0 failed; the one under-load noise-guard
+  red isolated green and named. Residues as H77 (lead''s hand, authorship asked and
+  answered)'
+artifact_refs:
+- staging/TSK-0093/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-30T07:37:12'

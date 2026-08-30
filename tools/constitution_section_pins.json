@@ -34,6 +34,10 @@
           "gate_write_scope"
         ]
       },
+      "What language the VALUES inside an approval question are written in": {
+        "digest": "0b096786b34ac1a3",
+        "hooks": []
+      },
       "What you are and are not": {
         "digest": "5376c516483c8e9d",
         "hooks": []
@@ -248,6 +252,10 @@
         "digest": "8e07012909d52ffa",
         "hooks": []
       },
+      "What language the VALUES inside an approval question are written in": {
+        "digest": "593082e98f54ee99",
+        "hooks": []
+      },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
         "digest": "7963d3058d35f706",
         "hooks": [
@@ -276,6 +284,10 @@
         "hooks": [
           "gate_proc_approved"
         ]
+      },
+      "What language the VALUES inside an approval question are written in": {
+        "digest": "0b096786b34ac1a3",
+        "hooks": []
       },
       "What you are and are not": {
         "digest": "9af25d8740615e0c",
@@ -441,6 +453,10 @@
           "gate_write_scope"
         ]
       },
+      "What language the VALUES inside an approval question are written in": {
+        "digest": "593082e98f54ee99",
+        "hooks": []
+      },
       "What you OWN (the content — the kernel writes it)": {
         "digest": "6c0d8dc514c74ba1",
         "hooks": []
@@ -489,6 +505,10 @@
         "hooks": [
           "gate_write_scope"
         ]
+      },
+      "What language the VALUES inside an approval question are written in": {
+        "digest": "0b096786b34ac1a3",
+        "hooks": []
       },
       "What you are and are not": {
         "digest": "597ff29b5e512ef4",
@@ -701,6 +721,10 @@
       },
       "Status (you own the RQ chain)": {
         "digest": "83e52ab641319a28",
+        "hooks": []
+      },
+      "What language the VALUES inside an approval question are written in": {
+        "digest": "593082e98f54ee99",
         "hooks": []
       },
       "What you OWN (the content — the kernel writes it)": {
