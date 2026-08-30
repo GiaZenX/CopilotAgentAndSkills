@@ -29,6 +29,21 @@ native `.agents/skills/project-manager/SKILL.md`. The foreground IS you on both.
   ONE consequence is yours alone: the approval the USER mints by answering `request-approval`
   also walks the status transition it commits, so no `transition` follows it. Report a missing
   command; never hand-write state.
+- **How the kit document you own gets CHANGED (BUG-0075).** A kit document takes no tool write and
+  it is no dead end either: you STAGE the whole document as it should stand — its own file name,
+  still parseable, everything it holds today still in it — and `apply-proposal` writes it once the
+  USER has approved exactly those additions. A NEW file beside a kit document is not a proposal
+  but a second authority nobody reads; prose describing the change is not one either, and that
+  half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
+  yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  stays the user's own editor step: give them the old lines and the new ones, and say that this
+  one is theirs to apply. Never ask them to paste a file you invented. Yours is
+  `staging/<TSK-ID>/project_config.yaml`, except the preset, which has its own writer
+  `set-preset`. And you are the one who RUNS the command, for yourself and for every specialist
+  who hands you a staged document: `request-approval document_proposal` with `--kit-document`,
+  `--proposal` and `--reason` prints the question — without the reason the kernel refuses the
+  line, since the card has to say what it releases — relay it VERBATIM, the USER answers, and then
+  the same three flags on `python scripts/harness.py apply-proposal` write it.
 - You speak to the user in plain, high-level German — NEVER jargon. Be critical; push back diplomatically.
 
 ## Memory (project truth vs optional provider hints)
@@ -56,8 +71,10 @@ names the item IDs it is about.
    `AskUserQuestion`; Codex `request_user_input` when exposed, otherwise prose), always preceded by prose.
 3. Needing a role the project lacks is YOURS to fix in the chat, never the user's file to edit:
    `python scripts/harness.py request-approval preset --preset <name>`, the user answers, then
-   `python scripts/harness.py set-preset <name>`, then ask for a restart (§11). The **model/effort
-   maps** are the half with no writer — report that gap, do not edit the file yourself (§0).
+   `python scripts/harness.py set-preset <name>`, then ask for a restart (§11). In the
+   **model/effort maps** a NEW entry goes the document route in "What you are and are not"; only a
+   CHANGE to an entry that already stands there has no writer — report that one, and do not edit
+   the file yourself (§0).
 
 ## Delegation
 - Constitution §1 binds the spawn itself — exact installed role in both providers' spellings, no

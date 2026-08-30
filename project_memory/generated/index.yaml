@@ -1,4 +1,4 @@
-generated_at: '2026-08-30T12:51:20'
+generated_at: '2026-08-30T20:57:51'
 items:
 - id: BUG-0001
   type: BUG
@@ -495,6 +495,46 @@ items:
   type: BUG
   title: freeze-* empties the ENTIRE staging folder of the task -- three unfrozen
     wireframes deleted alongside the one being frozen (dev-team live find, data loss)
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0075
+  type: BUG
+  title: 'The document write route exists but the roles that OWN documents are not
+    routed onto it -- measured live: the product-editor staged prose in a .md and
+    asked the user to paste it into content_guidelines.yaml'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0076
+  type: BUG
+  title: 'The design draft reaches the user UNSEEN: no kit duty renders and reviews
+    a DSN before the user sees it, and the product-designer has no tool to look at
+    his own work'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0077
+  type: BUG
+  title: 'Circular ordering: the PM skill wants the approved wireframe INSIDE the
+    scope manifest, but gate_dispatch refuses the designer spawn that would draw it
+    until the scope approval exists'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0078
+  type: BUG
+  title: 'kit_update_pending marker has no sanctioned remover: gate_write_scope refuses
+    every pipeline naming .claude, so a completed update leaves a stale nag the PM
+    can only report'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0079
+  type: BUG
+  title: 'documents.py''s own remedy line is refused by the code that prints it: the
+    document_proposal remedy omits --reason, and the printed command line then fails
+    with ''reason is missing'''
   status: OPEN
   revision: 1
   approval_ref: null
@@ -1268,6 +1308,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0070
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1588,6 +1634,13 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0067
+  type: FR
+  title: A kernel route for REPLACING/deleting in a kit document -- old-vs-new shown
+    per spot in the approval card -- so the last remaining hand edit disappears
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1659,5 +1712,11 @@ items:
   type: TSK
   title: null
   status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0096
+  type: TSK
+  title: null
+  status: READY
   revision: 1
   approval_ref: null

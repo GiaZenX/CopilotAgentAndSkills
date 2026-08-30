@@ -32,6 +32,20 @@ manager as YAML; artifacts in English. Follow `./AGENTS.md` §2/§5/§6.
   the user as an approval question, and the kernel appends exactly what the user approved. You do
   not write that file — no tool write reaches it — and you do not invent a folder to get the
   document out of the inbox.
+- **How the kit document you own gets CHANGED (BUG-0075).** A kit document takes no tool write and
+  it is no dead end either: you STAGE the whole document as it should stand — its own file name,
+  still parseable, everything it holds today still in it — and `apply-proposal` writes it once the
+  USER has approved exactly those additions. A NEW file beside a kit document is not a proposal
+  but a second authority nobody reads; prose describing the change is not one either, and that
+  half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
+  yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  stays the user's own editor step: give them the old lines and the new ones, and say that this
+  one is theirs to apply. Never ask them to paste a file you invented. Yours is
+  `staging/<TSK-ID>/filing_plan.yaml`; stage it, then ask the manager, who puts the kernel's
+  question to the user. A RULE is not on this route: `rules` has its own writer, `add-filing-rule`
+  (the bullet above), which puts every field of the rule in front of the user — reach into it
+  through a proposal and the kernel refuses and names that command. Everything else the plan
+  carries goes this way.
 - Filing MOVES files (never copy-then-delete-later, never delete; `guard_fs_tripwire` blocks any
   delete under `inbox/` or `archive/` and any move OUT of `archive/`, and leaves filing INTO the
   archive open — use plain moves into `archive/`). Originals are never altered or re-saved.

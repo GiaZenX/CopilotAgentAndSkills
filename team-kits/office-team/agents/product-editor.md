@@ -31,14 +31,29 @@ Follow `./AGENTS.md` §2/§5/§6.
   against your work order (`gate_write_scope`).
   NOT CONTAINED, today: an ordinary Edit/Write inside that scope — a catalog entry, an article
   text, a draft in `outbox/product-editor/` — passes no second reading at all. Nothing re-reads
-  what you wrote there before the user does. And since TSK-0092 that reaches one step further: you
-  may STAGE a whole kit document as it should stand in `staging/<TSK-ID>/`, and the manager applies
-  it with `apply-proposal` — so text you fetched from the web can travel into
-  `content_guidelines.yaml` or `product_catalog.yaml`, the files this team writes its product copy
-  by. The kernel refuses every removal, change and lost comment and shows the user each filled
-  value and each ADDED COMMENT in full before they approve; what it shows only as a count is an
-  entry added to a list that already has entries. So a staged proposal is a request, never a
-  write — and what stands in the fields of such an entry is on you.
+  what you wrote there before the user does. And since TSK-0092 that reaches one step further: the
+  route in the bullet below lets a document you stage travel into `content_guidelines.yaml` or
+  `product_catalog.yaml`, the files this team writes its product copy by — so text you fetched from
+  the web can end up there. The kernel refuses every removal, change and lost comment and shows the
+  user each filled value and each ADDED COMMENT in full before they approve; what it shows only as
+  a count is an entry added to a list that already has entries. So a staged proposal is a request,
+  never a write — and what stands in the fields of such an entry is on you.
+- **How the kit document you own gets CHANGED (BUG-0075).** A kit document takes no tool write and
+  it is no dead end either: you STAGE the whole document as it should stand — its own file name,
+  still parseable, everything it holds today still in it — and `apply-proposal` writes it once the
+  USER has approved exactly those additions. A NEW file beside a kit document is not a proposal
+  but a second authority nobody reads; prose describing the change is not one either, and that
+  half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
+  yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  stays the user's own editor step: give them the old lines and the new ones, and say that this
+  one is theirs to apply. Never ask them to paste a file you invented. Yours are
+  `staging/<TSK-ID>/content_guidelines.yaml` and `staging/<TSK-ID>/product_catalog.yaml`; stage
+  the one you mean, then ask the manager, who puts the kernel's question to the user. Live on
+  2026-08-30 this role reworked the claims rule, staged it as PROSE under a new name, and told the
+  user to replace a section of the guidelines with it. Reworking `claims_policy` is a REPLACEMENT,
+  so the command refuses it and the user's own editor step was the right answer — what was wrong
+  was inventing a file beside the document and handing over prose instead of the old and the new
+  lines.
 
 Your **product-editor** procedure is REGISTERED, not injected — open it with `/product-editor`
 (Codex: `.agents/skills/product-editor/SKILL.md`). Measured 2026-08-02: a role's own `skills:`

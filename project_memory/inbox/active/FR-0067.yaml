@@ -1,0 +1,25 @@
+id: FR-0067
+title: A kernel route for REPLACING/deleting in a kit document -- old-vs-new shown
+  per spot in the approval card -- so the last remaining hand edit disappears
+request_text: 'Follow-up named by the TSK-0096 round (BUG-0075/BUG-0071 lineage).
+  apply-proposal deliberately writes ADDITIONS only: replacing a recorded value or
+  deleting an entry is refused (''correcting a value the project already recorded
+  is an edit the user makes themselves'', measured against the running kernel in the
+  round). That is a security decision, not a gap -- but it leaves exactly one class
+  of change where the user still edits YAML by hand: the live case of 2026-08-30 was
+  a REPLACEMENT (a rewritten source-evidence rule in content_guidelines.yaml), and
+  after TSK-0096 the role text now correctly routes it to the user''s editor with
+  old-vs-new lines listed. Wanted: a kernel route where the role stages the changed
+  document, the kernel diffs it against the standing one and the approval card shows
+  EVERY replaced/deleted spot as old line vs new line verbatim (the addition half
+  already exists and stays as is); the user approves exactly those spots; hash-bound
+  like document_proposal. Security weighing belongs to the round: a replacement card
+  must be un-summarisable (no ''n entries changed'' -- the list-entry prose channel
+  of H76(a) must NOT widen), and deletion may deserve a separate, louder card. Not
+  a hole-list entry: nothing enforces wrongly today -- the current state is honest
+  and refuses loudly.'
+related_pr: BUG-0071
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-30T17:00:57'

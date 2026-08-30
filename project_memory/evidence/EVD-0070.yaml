@@ -1,0 +1,14 @@
+id: EVD-0070
+kind: review
+related:
+- TSK-0096
+result: pass
+summary: 'verifier PASS for diff:1845c9671c3936ceca048da3f291f2cd83a4ed349a627ba3dd2dfd53ece74146
+  -- TSK-0096/BUG-0075: FAIL(F1-F6) then PASS after rework, confirmed by three full
+  gate-suite runs in the verifier copy; lead delivery: full suite 3984 passed 14 skipped
+  0 failed (44:32) after last rework, solo deadline tests green on quiet host'
+artifact_refs:
+- staging/TSK-0096/round-protocol.md
+revision: 1
+approval_ref: null
+created: '2026-08-30T20:57:51'

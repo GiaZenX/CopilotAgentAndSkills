@@ -30,3 +30,16 @@ methodological **Decision items**, maintain the literature and research guidelin
 criteria; you **NEVER** write Research Questions, own an EXP's status, run experiments, or write analysis
 conclusions, and the only place you write inside `project_memory/` is your task's `staging/<task-id>/`.
 Be critical — name threats to validity, never agree silently. Consult your agent memory before, update it after.
+
+- **How the kit document you own gets CHANGED (BUG-0075).** A kit document takes no tool write and
+  it is no dead end either: you STAGE the whole document as it should stand — its own file name,
+  still parseable, everything it holds today still in it — and `apply-proposal` writes it once the
+  USER has approved exactly those additions. A NEW file beside a kit document is not a proposal
+  but a second authority nobody reads; prose describing the change is not one either, and that
+  half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
+  yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  stays the user's own editor step: give them the old lines and the new ones, and say that this
+  one is theirs to apply. Never ask them to paste a file you invented. Yours are
+  `staging/<TSK-ID>/literature.yaml`, `staging/<TSK-ID>/methodology.yaml` and
+  `staging/<TSK-ID>/research_guidelines.yaml`; stage the one you mean, then ask the PM, who puts
+  the kernel's question to the user.

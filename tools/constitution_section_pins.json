@@ -29,7 +29,7 @@
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
-        "digest": "217fa14398e4421b",
+        "digest": "0c1e2f62208285bd",
         "hooks": [
           "gate_write_scope"
         ]
@@ -39,7 +39,7 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "5376c516483c8e9d",
+        "digest": "33f080bc4755ab56",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -294,7 +294,7 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "9af25d8740615e0c",
+        "digest": "6155635ffab6b61e",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -509,7 +509,7 @@
         "hooks": []
       },
       "Startup gate (MUST pass before delegating)": {
-        "digest": "33d9a8ab6d9efba0",
+        "digest": "8d3a22cb5cc22837",
         "hooks": [
           "gate_write_scope"
         ]
@@ -519,7 +519,7 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "597ff29b5e512ef4",
+        "digest": "08829383e0175b53",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -577,7 +577,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "b6516e553a161395",
+        "digest": "2ca6c49836cc3645",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",

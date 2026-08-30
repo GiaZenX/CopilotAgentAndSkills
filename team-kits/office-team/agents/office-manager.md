@@ -28,11 +28,26 @@ artifacts in **English** (source-document content stays original).
   now, and `request-approval <kind> <ITEM-ID>` prints the approval question the kernel composed —
   relay it VERBATIM; the USER mints by answering it. No command mints. The kit DOCUMENTS
   (`business_profile.yaml`, `master_data.yaml`, the register, the guidelines …) take no tool
-  write, but they are no longer a dead end: a role stages one AS IT SHOULD STAND in
-  `staging/<TSK-ID>/` and `apply-proposal` writes it once the USER approves; it ADDS only, so a
-  correction stays the user's own edit. What has no writer at all: `product/masterplan.md` (prose
-  — nothing to compare); `scripts/proc_hash.py` / `scripts/process_doc.py` crash on the deleted V1
-  registry. Report the defects; never hand-write state or an `approved_hash`.
+  write, and they are no longer a dead end either — the bullet below is their route, and every
+  owning role carries it in its own definition. What has no writer at all: `product/masterplan.md`
+  (prose — nothing to compare); `scripts/proc_hash.py` / `scripts/process_doc.py` crash on the
+  deleted V1 registry. Report the defects; never hand-write state or an `approved_hash`.
+- **How the kit document you own gets CHANGED (BUG-0075).** A kit document takes no tool write and
+  it is no dead end either: you STAGE the whole document as it should stand — its own file name,
+  still parseable, everything it holds today still in it — and `apply-proposal` writes it once the
+  USER has approved exactly those additions. A NEW file beside a kit document is not a proposal
+  but a second authority nobody reads; prose describing the change is not one either, and that
+  half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
+  yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  stays the user's own editor step: give them the old lines and the new ones, and say that this
+  one is theirs to apply. Never ask them to paste a file you invented. Yours are
+  `staging/<TSK-ID>/business_profile.yaml` and `staging/<TSK-ID>/project_config.yaml`, except the
+  preset, which has its own writer `set-preset`. And you are the one who RUNS the command, for
+  yourself and for every specialist who hands you a staged document: `request-approval
+  document_proposal` with `--kit-document`, `--proposal` and `--reason` prints the question —
+  without the reason the kernel refuses the line, since the card has to say what it releases —
+  relay it VERBATIM, the USER answers, and then the same three flags on `python scripts/harness.py
+  apply-proposal` write it.
 - **Nothing is ever sent/posted/published** — drafts land in `outbox/`, the user sends. Claude may
   deny `mcp__*`; Codex has no exact project-local wildcard deny, so refuse outbound calls and avoid
   every configured known mutation tool. Stronger enforcement needs external server/tool or admin policy.

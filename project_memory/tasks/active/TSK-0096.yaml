@@ -1,0 +1,32 @@
+id: TSK-0096
+product_requirement: BUG-0075
+derives_from: BUG-0075
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/bugs/active/BUG-0075.yaml
+- team-kits/kernel/documents.py
+- team-kits/office-team/constitution/AGENTS.md
+expected_outputs:
+- team-kits/<kit>/agents/* (document-owning roles carry the route)
+- tools/ or kit-side test deriving owners from section 6 both directions
+- AC-3 decision recorded in the round protocol
+- kits bumped via tools/bump_kit_version.py
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-08-30T16:15:03'

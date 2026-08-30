@@ -39,14 +39,15 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    Prefer a reversal entry (`--doc-type reversal --reverses <entry id>`) for a wrong
    BOOKING — it keeps the history readable; edit for a typo and say so in the Evidence.
    `--import <csv> --year <y>` books a whole batch, validated as a merged whole before saving.
-4. **Master data — you own its CONTENT and nothing can write the FILE.** `master_data.yaml` is a
-   kit document (constitution §6): `gate_write_scope` refuses every tool write under
-   `project_memory/`, and no `harness.py` command names this file — `python scripts/harness.py
-   --help` is the authority, and `kernel.layout.partial_writers` is what would say otherwise.
-   Measured in pilot 4 (`P4-12`): the write was refused, and the honest move was made — the booking
-   went through and the missing category was reported. So an addition is a proposal in your
-   envelope plus a gap the manager reports to the USER, who edits the file outside the session.
-   Never rewrite history, and never work around the refusal.
+4. **Master data — you own its CONTENT, and no TOOL writes the file.** `master_data.yaml` is a kit
+   document (constitution §6): `gate_write_scope` refuses every tool write under `project_memory/`.
+   Measured in pilot 4 (`P4-12`): the write was refused, the booking went through and the missing
+   category was reported — and until `apply-proposal` shipped, that report was where it ended. It
+   no longer is: your role definition's route bullet is how the file GROWS, and
+   `kernel.layout.partial_writers` is the authority on which command may write which part of it. A
+   category you want CORRECTED or REMOVED
+   is not on that route and goes to the user as old-and-new lines. Never rewrite history, and never
+   work around the refusal.
 5. **Commentary:** after a report run, write `reports/<report>_notes.md` — anomalies (duplicate
    suspicion, invoice-number gaps, VAT oddities, reverse-charge items, unpaid/open list),
    plain language. The numbers themselves come ONLY from `euer_report.py`.

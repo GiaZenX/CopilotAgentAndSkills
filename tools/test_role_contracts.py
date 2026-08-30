@@ -47,6 +47,7 @@ import io
 import json
 import os
 import re
+import shutil
 import sys
 
 import pytest
@@ -1196,3 +1197,429 @@ def test_the_product_editor_can_research_and_says_what_that_costs():
     for gate in ("gate_second_reading", "gate_write_scope"):
         assert os.path.isfile(os.path.join(kit, "hooks", gate + ".py")), (
             "the note points at %s and this kit does not ship it" % gate)
+
+
+# ================ 7. the route that WRITES a kit document, and who is told it (BUG-0075)
+def _installed(kit, root):
+    """`kit`'s shipped template tree as an installed project at `root`.
+
+    The tree a role really faces after the scaffold, so every question below is asked of files that
+    exist rather than of names: `documents.accepts` reads the FILE, and a predicate answered against
+    a path that is not there answers about nothing.
+    """
+    shutil.copytree(os.path.join(kit, "templates", "project_memory"), root)
+    return root
+
+
+def _writable_documents(root):
+    """Every path in an installed project that `apply-proposal` would WRITE.
+
+    THE PREDICATE IS THE COMMAND'S OWN. `documents.accepts` is what `layout.partial_writers` asks
+    before a refusal names the route, and it reads the file: a document has to parse as a YAML
+    mapping to be compared at all. So the prose documents drop out here without a suffix or a name
+    appearing anywhere in this file, which is the half that carries the weight -- a role sent at
+    `apply-proposal` for a document the command refuses is BUG-0041's dead end pointed the other
+    way (`test_no_document_owner_is_routed_at_one_the_command_would_refuse`).
+    """
+    from kernel import documents
+    found = []
+    for dirpath, _dirs, files in os.walk(root):
+        rel = os.path.relpath(dirpath, root).replace("\\", "/")
+        for name in files:
+            at = name if rel == "." else "%s/%s" % (rel, name)
+            if documents.accepts(root, at):
+                found.append(at)
+    return sorted(found)
+
+
+def _split_row(line):
+    return [cell.strip() for cell in line.strip().strip("|").split("|")]
+
+
+def _ownership_table(kit, root):
+    """[(cells, owner column index)] of the constitution table that assigns CONTENT to a role.
+
+    FOUND BY TWO PROPERTIES AND NOT BY A SECTION NUMBER: its header names an OWNER column, and its
+    rows name at least one file the INSTALLED project really has. BUG-0075's occasion is §6 in all
+    three kits, and the number is exactly the thing that rots when a constitution grows a section.
+    The second property is not decoration: a constitution can carry a SECOND table with an `Owner`
+    column -- the dev and research work-loop tables do, office's does not -- and that kind assigns a
+    STEP to a role rather than a file to one, which is visible in the rows themselves: they name no
+    file the project holds. Exactly one table may match, so none and two are one answer here:
+    unreadable, and said so.
+
+    THE THREE TABLES DO NOT RHYME, which is why nothing below reads a fixed column count: office
+    writes its owners in plain text and the other two in bold, and one research row carries three
+    cells where the header declares two. Reading the owner by its HEADER index, with the last cell
+    as the fallback, is what survives that.
+    """
+    path = os.path.join(kit, "constitution", "AGENTS.md")
+    with io.open(path, encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
+    tables, current = [], []
+    for line in lines + [""]:
+        if line.strip().startswith("|"):
+            current.append(line)
+            continue
+        if current:
+            tables.append(current)
+        current = []
+    found = []
+    for table in tables:
+        if len(table) < 3:
+            continue
+        header = _split_row(table[0])
+        columns = [index for index, cell in enumerate(header) if re.search(r"owner", cell, re.I)]
+        if not columns:
+            continue
+        rows = [(_split_row(line), min(columns[0], len(_split_row(line)) - 1))
+                for line in table[2:]]
+        if any(os.path.isfile(os.path.join(root, *span.split("/")))
+               for cells, owner_index in rows
+               for index, cell in enumerate(cells) if index != owner_index
+               for span in _BACKTICKED_RX.findall(cell)):
+            found.append(rows)
+    assert len(found) == 1, (
+        "%s: %d of its constitution tables name an OWNER column over rows that name a file this "
+        "project has -- the ownership table is found by those two properties, so none and two are "
+        "the same answer: unreadable" % (os.path.basename(kit), len(found)))
+    return found[0]
+
+
+def _role_aliases(kit):
+    """{role: [word set, ...]} -- every spelling a role of `kit` answers to, off its own frontmatter.
+
+    TWO SOURCES, BOTH THE ROLE'S OWN: the file name the provider spawns it by, and the `Keywords:`
+    tail its `description` ends with. The ownership tables call the same role `Bookkeeper`,
+    `Records-Clerk` and -- in two kits -- `PM`, and the last of those is in no file name while it is
+    in both project managers' keyword lists.
+
+    THE FREE PROSE OF A DESCRIPTION IS DELIBERATELY NOT READ: dev's architect describes itself as
+    "invoked by the Project Manager", so a reader that searched the whole description would hand
+    every dev document a second owner. What is read is the two places a role NAMES itself.
+    """
+    import yaml
+    aliases = {}
+    for path in sorted(glob.glob(os.path.join(kit, "agents", "*.md"))):
+        role = os.path.basename(path)[:-3]
+        with io.open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        end = text.find("\n---", 3)
+        front = yaml.safe_load(text[3:end]) or {}
+        spellings = [set(role.replace("-", " ").split())]
+        keywords = re.search(r"Keywords:\s*(.*)$", str(front.get("description") or ""), re.S)
+        for word in (keywords.group(1).split(",") if keywords else []):
+            cleaned = set(re.sub(r"[^a-z0-9]+", " ", word.lower()).split())
+            if cleaned:
+                spellings.append(cleaned)
+        aliases[role] = spellings
+    return aliases
+
+
+def _owner_roles(kit, cell):
+    """[(token, [role, ...])] for every owner an ownership cell names.
+
+    A cell can name more than one role -- research partitions one row between two -- so the split is
+    on the separators the tables use and each token is resolved on its own. A token matches a role
+    when its words are contained in one of that role's own spellings, which is what lets `Manager`
+    reach `office-manager` without a mapping table standing here.
+    """
+    aliases = _role_aliases(kit)
+    plain = re.sub(r"\(.*?\)", " ", re.sub(r"[*`]", " ", cell))
+    resolved = []
+    for token in re.split(r"[/,·]|\band\b", plain):
+        words = set(re.sub(r"[^a-z0-9]+", " ", token.lower()).split())
+        if not words:
+            continue
+        resolved.append((token.strip(),
+                         sorted(role for role, spellings in aliases.items()
+                                if any(words <= spelling for spelling in spellings))))
+    return resolved
+
+
+def _document_owners(kit, root, writable=None):
+    """{role: [document, ...]} -- who owns which WRITABLE kit document, off the constitution.
+
+    A row's documents are the backticked spans of its non-owner cells that name a document
+    `apply-proposal` would write. A row naming none is not about this route and never reaches the
+    owner side, so a prose document drops out where it stands -- office's first row names the
+    masterplan beside two writable documents -- without being excluded anywhere. And a document a
+    kit stops shipping takes its row's duty with it, which is AC-1's second direction at the source.
+
+    `writable` is a parameter only so a caller that already walked the project does not walk it
+    twice; the answer is the same either way.
+    """
+    writable = set(_writable_documents(root) if writable is None else writable)
+    owned = {}
+    for cells, owner_index in _ownership_table(kit, root):
+        named = sorted({span for index, cell in enumerate(cells) if index != owner_index
+                        for span in _BACKTICKED_RX.findall(cell)} & writable)
+        if not named:
+            continue
+        for token, roles in _owner_roles(kit, cells[owner_index]):
+            assert len(roles) == 1, (
+                "%s: the ownership row for %s calls its owner %r, and that resolves to %s. The "
+                "table and the shipped role files have drifted apart -- one of the two moved"
+                % (os.path.basename(kit), ", ".join(named), token, roles or "no role at all"))
+            owned.setdefault(roles[0], set()).update(named)
+    return {role: sorted(documents) for role, documents in owned.items()}
+
+
+def _staged_spelling(root):
+    """`staging/<TSK-ID>/` as the KERNEL spells it when it refuses something that is not a proposal.
+
+    READ OUT OF THE REFUSAL rather than typed here: that message is what a role meets when it stages
+    in the wrong place, so the shape the role texts are held to below is the shape the command
+    itself names. A renamed proposal area or a re-worded placeholder moves this reader with it.
+    """
+    from kernel import documents
+    from kernel.state import ProjectState
+    try:
+        documents.proposal_path(ProjectState(root), "not-a-proposal")
+    except documents.DocumentError as exc:
+        found = re.search(r"`([^`]*/<[^`>]+>/)<[a-z]+>`", str(exc))
+        assert found, "the refusal no longer spells the proposal position: %s" % exc
+        return found.group(1)
+    raise AssertionError("the kernel took a bare word for a staged proposal")
+
+
+def _bullets(body):
+    """The top-level bullets of a role definition, one reading view each.
+
+    THE BULLET IS THE UNIT and not the paragraph: these files write their whole body as one
+    unseparated list, so a paragraph-sized window is the entire role definition and every question
+    about "what the route block says" would be answered by the rest of the text.
+    """
+    return [_reading_view(chunk) for chunk in re.split(r"(?m)^(?=-\s)", body)
+            if chunk.lstrip().startswith("- ")]
+
+
+def _route_bullets(kit, role):
+    from kernel import documents
+    _front, body = _role_definition(kit, role)
+    return [bullet for bullet in _bullets(body) if ("`%s`" % documents.COMMAND) in bullet]
+
+
+def test_every_role_that_owns_a_kit_document_carries_the_route_that_writes_it(tmp_path):
+    """AC-1/AC-4 of BUG-0075: knowing the route is a PROPERTY of owning a document, in every kit.
+
+    THE DEFECT, live on 2026-08-30 in the user's real office project one day after `apply-proposal`
+    shipped: the product editor reworked a content rule, staged it as PROSE under a NEW name in
+    `staging/<TSK>/claims_policy.proposed.md`, and told the user to paste it into
+    `content_guidelines.yaml` by hand -- a second authority beside the kit document, and the dead end
+    BUG-0071 had closed the day before. Of the roles that own a document in §6, most had never heard
+    of the command in their own definition; the one that had carried it inside a paragraph about web
+    content, where it reads as a warning rather than as "this is how you write your document".
+
+    BOTH ENDS ARE DERIVED, which is what makes this a property rather than a list. The owners come
+    from the constitution's own ownership table crossed with `documents.accepts`, so a role that
+    stops owning a document stops owing the route on the same day, and a document a kit stops
+    shipping takes its duty with it. What the route must SAY is derived too:
+
+      * the staged file for every document it owns, spelled `staging/<TSK-ID>/<the document's own
+        name>` -- which is the live case's defect stated mechanically. It gives a role that names
+        the file it must stage no OCCASION to invent a second one beside it; it does not make that
+        impossible, and the limit is the last paragraph here.
+      * NO staged file for a document it does not own, so the route cannot be copied around.
+      * every OTHER command `layout.partial_writers` names for those documents. `apply-proposal`
+        refuses a change at a field a named writer owns (`documents._owned_elsewhere`), so a route
+        that named only this command would send the filing clerk at a refusal for the one part of
+        the plan it most wants to change.
+
+    AND TWO DIRECTIONS BACK, on every role and every document of every kit: a definition that names
+    the command while the table gives it no writable document is an offender -- that is the day a
+    role's ownership moved and its text did not -- and so is a document the command WOULD write that
+    the table gives no owner, because then the route is owed to nobody and the next role to touch
+    that file is back where the live case started.
+
+    MEASURED RED against the shipped tree on 2026-08-30, before any role file was touched -- the
+    numbers are in the round's report, not here.
+
+    WHAT THIS CANNOT DO: it reads prose, so it cannot tell a good instruction from a bad one, and
+    what it reads of the route are the names -- a staged file whose path carries no `staging/`
+    prefix is invisible to it. Those limits and the two beside them are one entry in
+    `docs/POST_V2_WISHLIST.md`. What it holds is the two ends: who owes the route, and which files
+    and commands the route names. That the SHAPE behind those names is stated once and does not
+    drift is the sibling test `test_the_document_route_is_one_text_wherever_it_stands`.
+    """
+    from kernel import documents, layout
+    per_kit, offenders, judged = {}, [], 0
+    for kit in _kit_dirs():
+        name = os.path.basename(kit)
+        root = _installed(kit, str(tmp_path / name / "project_memory"))
+        writable = _writable_documents(root)
+        owners = _document_owners(kit, root, writable)
+        staged = _staged_spelling(root)
+        per_kit[name] = owners
+        # THE DOCUMENT SIDE OF THE SAME PROPERTY. A document the command would write and the table
+        # names no owner for is a route owed to nobody: the next role that needs it is exactly where
+        # the live case started, and every check below would pass while saying nothing about it.
+        orphans = sorted(set(writable) - {one for owned in owners.values() for one in owned})
+        if orphans:
+            offenders.append(
+                "%s: %s would be written by `%s` and the ownership table names no owner for it, so "
+                "no role is told the route" % (name, ", ".join(orphans), documents.COMMAND))
+        for path in sorted(glob.glob(os.path.join(kit, "agents", "*.md"))):
+            role = os.path.basename(path)[:-3]
+            owned, route = owners.get(role, []), _route_bullets(kit, role)
+            where = "%s/%s" % (name, role)
+            if not owned:
+                # THE WHOLE DEFINITION AND NOT ITS BULLETS, and only on this side. A role that owns
+                # nothing may not carry the route ANYWHERE in its text, so reading only the bullets
+                # would leave the same sentence in a heading or a closing paragraph unseen. On the
+                # owner's side the bullet is the unit, because there the question is what one block
+                # says (`_bullets`).
+                _front, body = _role_definition(kit, role)
+                if ("`%s`" % documents.COMMAND) in _reading_view(body):
+                    offenders.append(
+                        "%s: its definition names `%s` and the ownership table gives it no document "
+                        "the command would write" % (where, documents.COMMAND))
+                continue
+            judged += 1
+            if len(route) != 1:
+                offenders.append(
+                    "%s: owns %s, and %d of its bullets name `%s` -- the route is missing or it is "
+                    "said twice" % (where, ", ".join(owned), len(route), documents.COMMAND))
+                continue
+            block, wanted = route[0], {"%s%s" % (staged, one) for one in owned}
+            absent = sorted(one for one in wanted if ("`%s`" % one) not in block)
+            if absent:
+                offenders.append("%s: its route names no staged file for %s"
+                                 % (where, ", ".join(absent)))
+            # A span that IS the proposal area and names no file in it is prose about the route, not
+            # a second document staged into it -- the reason this compares against the prefix and
+            # then requires something behind it.
+            stray = sorted(span for span in _BACKTICKED_RX.findall(block)
+                           if span.startswith(staged) and span != staged and span not in wanted)
+            if stray:
+                offenders.append("%s: its route stages %s, which this role does not own"
+                                 % (where, ", ".join(stray)))
+            for document in owned:
+                for entry in layout.partial_writers(document, root):
+                    if ("`%s`" % entry["command"]) not in block:
+                        offenders.append(
+                            "%s: `%s` writes part of %s (%s) and the route does not name it, so the "
+                            "role meets a refusal there"
+                            % (where, entry["command"], document, entry["field"]))
+    assert not offenders, (
+        "a role that OWNS a kit document must be told, in its own definition, how that document is "
+        "written -- and no other role may carry that route (BUG-0075):\n  %s"
+        % "\n  ".join(offenders))
+    assert len(per_kit) >= 3 and all(per_kit.values()), (
+        "a kit contributed no document owner at all -- the derivation stopped matching: %s" % per_kit)
+    # A floor under everything above, which is vacuous over an empty owner set. It sits well under
+    # the tree's stand rather than at it: a renamed role must not trip it, and a derivation that
+    # collapsed to one owner per kit must not pass.
+    assert judged >= 6, sorted(per_kit.items())
+
+
+def test_the_document_route_is_one_text_wherever_it_stands(tmp_path):
+    """AC-2 of BUG-0075: the SHAPE is written once, identically, because nothing can derive it.
+
+    WHAT THE SIBLING TEST CANNOT ASK. That a proposal must be the WHOLE document as it should stand,
+    that it must still parse, that a new file beside a kit document is not a proposal, and that what
+    the command refuses stays the user's own editor step -- none of those is a name a reader can
+    look up. They are prose. What can be measured is that they are ONE prose: role definitions are
+    per-kit files and no `KIT_SPECIFIC` mechanism covers them, so an identical block IS the mirror
+    here, exactly as it is for the two lead rules above.
+
+    WHAT IS COMPARED IS THE RUN-UP, and it is a comparison of EQUALS rather than an intersection.
+    Every route bullet is cut at its first sentence that names a staged file -- everything before
+    that is the shape, everything from there on is this role's own business (which documents it
+    stages, who runs the command for it, which field of its document another writer owns). Those
+    run-ups have to be one text.
+
+    THE INTERSECTION IT REPLACED WAS TOO WEAK, and that was measured rather than reasoned. This test
+    first asked "the bullets share at least one sentence". In the round's own clone one claim of the
+    shape was then reworded in ONE kit -- "a new file beside a kit document is fine" -- and all
+    three tests stayed green: the other sentences were still shared and the floor still held. Cut at
+    the staged file and compared as equals, that same mutation is red.
+
+    A SIDE EFFECT WORTH HAVING: the shape therefore stands FIRST in every route bullet, before the
+    file names. A reader who stops early has read the rule and not the list.
+
+    MEASURED RED against the shipped tree on 2026-08-30: most owners named the command nowhere, and
+    the definitions that did name it carried no run-up like this. The counts are in the report.
+
+    THE RESIDUE, stated rather than discovered: one text that says the WRONG thing in every owner's
+    definition passes this. It is the same residue the answering rule and the value-language rule
+    carry, and the same answer -- what makes such an edit visible is that it has to be made in every
+    one of them at once, and that the section pin watches the lead files among them.
+    """
+    from kernel import documents
+    run_ups = {}
+    for kit in _kit_dirs():
+        name = os.path.basename(kit)
+        root = _installed(kit, str(tmp_path / name / "project_memory"))
+        staged = _staged_spelling(root)
+        for role in sorted(_document_owners(kit, root)):
+            route = _route_bullets(kit, role)
+            assert len(route) == 1, (
+                "%s/%s owns a kit document and %d of its bullets name `%s`"
+                % (name, role, len(route), documents.COMMAND))
+            sentences = _SENTENCE_SPLIT_RX.split(route[0])
+            names_a_file = [index for index, one in enumerate(sentences) if staged in one]
+            assert names_a_file, (
+                "%s/%s: its route bullet names no staged file at all" % (name, role))
+            run_ups["%s/%s" % (name, role)] = " ".join(sentences[:names_a_file[0]])
+    assert len(run_ups) >= 6, sorted(run_ups)
+    distinct = sorted(set(run_ups.values()))
+    if len(distinct) > 1:
+        # WHERE THE TEXTS PART, not their first 160 characters: the drift this catches is a reworded
+        # claim in the MIDDLE of a shared paragraph, and a head-of-string excerpt of two such texts
+        # is the same excerpt twice -- measured while writing this test.
+        parted = next((position for position in range(min(len(one) for one in distinct))
+                       if len({one[position] for one in distinct}) > 1),
+                      min(len(one) for one in distinct))
+        raise AssertionError(
+            "the document route is written %d different ways across %d owners, so the shape will "
+            "drift one file at a time. They agree up to %d characters and then read:\n  %s"
+            % (len(distinct), len(run_ups), parted,
+               "\n  ".join("%s\n    ...%s" % (
+                   ", ".join(sorted(role for role, text in run_ups.items() if text == one)),
+                   one[parted:parted + 120]) for one in distinct)))
+    text = distinct[0]
+    assert ("`%s`" % documents.COMMAND) in text, (
+        "the shared part of the route does not name `%s`; what the roles have in common is prose "
+        "around the command rather than the route itself" % documents.COMMAND)
+    # A floor under the shared run-up, so "one text" cannot be bought by making it one clause. The
+    # shape is four claims -- the whole document, its own name, still parseable, and what the
+    # command refuses -- and none of them fits in a sentence fragment.
+    assert len(text) >= 300, text
+
+
+def test_no_document_owner_is_routed_at_one_the_command_would_refuse(tmp_path):
+    """The other failure form, and it is BUG-0041's: a route named where the command says no.
+
+    THE KITS SHIP PROSE DOCUMENTS WITH OWNERS IN THE SAME TABLE -- `product/masterplan.md` stands in
+    every kit's first row -- and `apply-proposal` writes no document it cannot COMPARE. A role told
+    to stage one of those would meet a refusal about the file's shape with nothing behind it, which
+    is the dead end this whole line of work exists to end, arriving from the other side.
+
+    SO TWO THINGS ARE ASKED, and the first is what keeps the second from being vacuous: every kit's
+    ownership table must still NAME at least one document the command refuses (otherwise this test
+    is judging an empty set and should say so), and no such document may reach an owner's list or a
+    route bullet's staged files.
+    """
+    from kernel import documents
+    for kit in _kit_dirs():
+        name = os.path.basename(kit)
+        root = _installed(kit, str(tmp_path / name / "project_memory"))
+        writable, staged = set(_writable_documents(root)), _staged_spelling(root)
+        named = {span for cells, owner_index in _ownership_table(kit, root)
+                 for index, cell in enumerate(cells) if index != owner_index
+                 for span in _BACKTICKED_RX.findall(cell)}
+        refused = sorted(span for span in named - writable
+                         if os.path.isfile(os.path.join(root, *span.split("/"))))
+        assert refused, (
+            "%s: its ownership table names no document `%s` would refuse, so this check judged "
+            "nothing" % (name, documents.COMMAND))
+        owners = _document_owners(kit, root)
+        for role, owned in sorted(owners.items()):
+            assert not set(owned) & set(refused), (name, role, owned, refused)
+            for block in _route_bullets(kit, role):
+                for one in refused:
+                    assert ("`%s%s`" % (staged, one)) not in block, (
+                        "%s/%s is told to stage %s, and `%s` refuses that document -- it is not a "
+                        "YAML mapping this command can compare"
+                        % (name, role, one, documents.COMMAND))

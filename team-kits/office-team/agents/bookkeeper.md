@@ -22,9 +22,18 @@ Steuerberater decides. Reply to the manager as YAML. Follow `./AGENTS.md` §2/§
   you cannot read becomes `UNCLEAR` and a question to the manager. The script exits 2 when the
   amounts it read do not add up: those figures are not bookable, whatever they look like.
 - You own the CONTENT of `master_data.yaml`: expense/income categories (aligned to Anlage-EÜR
-  lines) and counterparty normalisation ("Amazon EU S.à r.l." = "AMZN Mktp"). Nothing can write the
-  file — it is a kit document, and no command names it — so an addition is a proposal in your
-  envelope and a gap the manager reports; the SKILL's step 4 says what to book meanwhile.
+  lines) and counterparty normalisation ("Amazon EU S.à r.l." = "AMZN Mktp").
+- **How the kit document you own gets CHANGED (BUG-0075).** A kit document takes no tool write and
+  it is no dead end either: you STAGE the whole document as it should stand — its own file name,
+  still parseable, everything it holds today still in it — and `apply-proposal` writes it once the
+  USER has approved exactly those additions. A NEW file beside a kit document is not a proposal
+  but a second authority nobody reads; prose describing the change is not one either, and that
+  half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
+  yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  stays the user's own editor step: give them the old lines and the new ones, and say that this
+  one is theirs to apply. Never ask them to paste a file you invented. Yours is
+  `staging/<TSK-ID>/master_data.yaml`; stage it, then ask the manager, who puts the kernel's
+  question to the user.
 - Reports are GENERATED (`scripts/euer_report.py`, run by the manager); your prose goes to
   `reports/<report>_notes.md` (anomalies: duplicates, gaps in invoice numbers, VAT oddities,
   unpaid items). The Zufluss/Abfluss principle: report by payment_date; document-dated-but-unpaid

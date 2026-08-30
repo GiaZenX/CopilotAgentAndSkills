@@ -2309,6 +2309,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H79 | **Rest** (TSK-0096) | gemessene Grenzen der Besitz-Ableitung für die Dokument-Schreibroute, je im Eintrag: eine erfundene Zweitdatei ohne `staging/`-Präfix sieht der Leser nicht (die Ableitung liest Namen, nicht Absichten); derselbe FALSCHE Routentext in allen Besitzer-Definitionen kommt durch (Gleichheit ist geprüft, Richtigkeit nicht — Sichtbarkeit über den Abschnitts-Pin der drei Lead-Dateien); und SKILL-Dateien liegen außerhalb der Ableitung, obwohl sie dieselbe Falschaussage tragen können (in dieser Runde eine gefunden und von Hand korrigiert) |
 | H78 | **OFFEN, nicht schließbar**, mit benannter Begrenzung (TSK-0094) | ein Client-Startmodus, der die Projekteinstellungen nicht lädt, entfernt alle vier Registrierungsflächen des Kits, während die Dateiwerkzeuge im Projekt schreibfähig bleiben — drei Mitglieder gemessen, die Kette bis Merge+Push durchgefahren (`validate`: 0 Fehler auf gefälschtem Zustand), vier Ränder benannt (Einstiegspunkt beschreibbar und außerhalb des Vertrauens-Hashes, `permissions.deny` fällt unter `--restricted`, Werkzeugfläche 7→152/159 inkl. MCP, Verfassung lädt nicht). Von innen nichts baubar; Begrenzung: bewusster Start, korrigierte Kit-Prosa (`TSK-0095`), informierter Nutzer |
 | H77 | **Rest** (TSK-0093) | gemessene Grenzen der Wertsprache-Regel, je im Eintrag: kein Gate erzwingt sie (Freitext); der Prosa-Test liest Anker und Ehrlichkeit, nicht Richtung und nicht Vokabelfreiheit (Umkehrung und apparat-freie Überbehauptung bleiben grün, beide Sprachen gemessen — Sichtbarkeit über den Abschnitts-Pin); `document_types` steht nackt im deutschen Satz; der Records-Clerk als einzige Nicht-Lead-Rolle mit freiem `--reason` trägt die Regel nicht (kleine eigene Runde); und eine geänderte Kartenformulierung entwertet offene Fragen fail-closed |
 | H76 | **Rest** (TSK-0092) | gemessene Grenzen des neuen Dokument-Schreibwegs, je im Eintrag: der Listeneintrag-Prosakanal (einziger Kanal ohne Wortlaut in der Karte, dreifach begrenzt); eine Freigabe deckt binnen ihrer Stunde ein erneutes Schreiben derselben Bytes nach Hand-Revert (Bedingung im Docstring, `filing_correction`-Lesart); kein Feldschema (die echte Nutzerdatei hätte ihr eigenes Schema verletzt); Prosa-Dokumente absichtlich schreiberlos + drei Web-Schreibrollen ohne Injektionsnotiz (Eigenschafts-Draht wäre eine kleine Runde); vier Ränder mit sicherer Richtung (toter Zweig, unerreichbare Diagnose, fünf Schreibweisen eine Position, Gate-Laufzeit an Dateigröße) und der Fixture-Schreibweg ins Repo-Audit-Log |
@@ -5416,3 +5417,60 @@ Geschichte des Befunds stehen; sein Wortlaut unten beschreibt den Stand unter `S
    abgeleitet wird, und der kanonische Teil von `project_memory/` für jeden Aufrufer. Jede dieser
    drei Erweiterungen schließt eine gemessene Kette (H3, H5, F3 des Prüfberichts) — aber sie sind
    Erweiterungen, und eine stillschweigende Vertragserweiterung ist die andere Art, falsch zu sein.
+
+### H79 — Was die Besitz-Ableitung der Dokument-Schreibroute NICHT bindet — offen, gemessene Grenzen (TSK-0096)
+
+**Anlass:** `BUG-0075`, live im echten Office-Projekt des Nutzers am 2026-08-30, einen Tag nach
+`apply-proposal` (H76): der Produkt-Redakteur überarbeitete eine Inhaltsregel, legte sie als PROSA
+unter einem NEUEN Namen (`claims_policy.proposed.md`) in den Vorschlagsbereich und bat den Nutzer,
+sie von Hand in `content_guidelines.yaml` einzusetzen — eine zweite Autorität neben dem Kit-Dokument
+und dieselbe Sackgasse, die `BUG-0071` am Vortag geschlossen hatte. Ursache: von den Rollen, die in
+§6 ein Kit-Dokument BESITZEN, kannte die Mehrzahl das Kommando in der eigenen Definition gar nicht.
+Die Runde macht das Kennen der Route zu einer EIGENSCHAFT des Besitzes: die Besitzer werden aus der
+Besitztabelle der Verfassung × `documents.accepts` abgeleitet, und drei Prüfungen in
+`tools/test_role_contracts.py` (Abschnitt 7) halten beide Richtungen — Besitzer ohne Route, Route
+ohne Besitz, Route auf ein Dokument, das das Kommando verweigert. Eine vierte, vom Prüfer
+gemessene Lücke ist in derselben Runde GESCHLOSSEN worden: ein schreibbares Kit-Dokument, für das
+die Tabelle KEINEN Besitzer nennt, schuldete die Route niemandem; das ist jetzt ein eigener Befund
+je Kit (rot gemessen an einem eingelegten `supplier_terms.yaml`). Was bleibt, jede Grenze gemessen:
+
+**(a) Eine erfundene Zweitdatei ohne `staging/`-Präfix ist unsichtbar.** Die Ableitung fordert für
+jedes besessene Dokument die Spanne `staging/<TSK-ID>/<eigener Dateiname>` im Routen-Absatz und
+verbietet dort jede andere Spanne mit diesem Präfix — genau der Livefall, mechanisch gesagt. Ein
+Rollentext, der zusätzlich eine Datei OHNE dieses Präfix nennt (`claims_policy.proposed.md` blank
+im Satz), verletzt keine dieser beiden Bedingungen und bleibt grün; der Prüfer hat das als V5
+gemessen. Begrenzt durch: der Absatz nennt die richtige Datei, also hat die Rolle keinen Anlass
+mehr, eine zweite zu erfinden — das ist eine Absicht und keine Garantie, und der Docstring des
+Tests sagt es in diesen Worten. Was es zu einer Garantie machen würde, wäre ein Leser für „jede
+Dateinamen-artige Spanne im Absatz", also eine Endungsliste; genau die Aufzählung, die dieses Repo
+als Defektquelle führt.
+
+**(b) Derselbe FALSCHE Routentext in allen Besitzer-Definitionen kommt durch.** Geprüft wird, dass
+der Vorlauf jedes Routen-Absatzes — alles bis zu seinem ersten Satz, der eine gestagte Datei nennt —
+in allen Kits identisch ist; RICHTIG ist er dadurch nicht. Gemessen in dieser Runde: eine
+umformulierte Behauptung in EINEM Kit ist rot (die frühere Schnittmengen-Fassung ließ sie durch, das
+ist der Grund für die Gleichheits-Fassung); dieselbe Umformulierung in ALLEN ist grün, und der
+Prüfer hat das als V9 unabhängig bestätigt. Begrenzt durch: die Änderung muss in jeder
+Besitzer-Definition zugleich gemacht werden, und drei davon sind Lead-Dateien, über denen der
+Abschnitts-Pin liegt (`tools/pin_constitution_sections.py`, das jede übernommene Änderung mit einer
+Journalzeile quittiert) — Sichtbarkeit, keine Verweigerung, dieselbe Lesart wie bei H77 (a).
+
+**(c) SKILL-Dateien liegen außerhalb der Ableitung.** Geprüft wird `agents/<rolle>.md`, weil das die
+Datei ist, die der Provider der Rolle einspielt; ein SKILL ist registriert und NICHT injiziert
+(gemessen 2026-08-02, `tools/provider_observations.json`). Ein SKILL kann darum weiterhin das
+Gegenteil des Routen-Absatzes behaupten, ohne dass etwas rot wird — in dieser Runde genau einmal
+gefunden (`office-team/skills/bookkeeper/SKILL.md` Schritt 4 behauptete, kein Kommando nenne
+`master_data.yaml`, und schickte den Nutzer in den Texteditor) und von Hand korrigiert, nicht durch
+einen Draht. Denselben Rang hat die Verfassung: `research-team/constitution/AGENTS.md` §2 Regel 7 trug
+bis zu dieser Nacharbeit „`research_guidelines.yaml` still has NO writer at all" für ein Dokument,
+das die Runde dem Methodologen zuweist — und die Verfassung übertrumpft die Rollendatei. Beides
+gehört in denselben Draht: „keine Instruktionsfläche eines Kits behauptet Schreiberlosigkeit für
+ein Dokument, das `documents.accepts` annimmt". Das ist der naheliegende nächste Schritt und
+bewusst nicht in dieser Runde gebaut — er berührt Verfassungen und SKILLs aller drei Kits und
+braucht seine eigene Rot-Messung.
+
+**Urteil: Rest.** (a) ist Absicht statt Garantie, mit benanntem Preis der Alternative; (b) trägt
+Begrenzung und Sichtbarkeit; (c) ist eine benannte, nicht gebaute Erweiterung mit zwei in dieser
+Runde von Hand geschlossenen Fundstellen. Der Kern — wer die Route schuldet, welche Datei sie nennt,
+welche Zweitschreiber sie mitnennen muss, und dass kein schreibbares Dokument ohne Besitzer bleibt —
+ist abgeleitet und mit acht Mutationen des Umsetzers plus acht des Prüfers rot gemessen.
