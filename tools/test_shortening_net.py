@@ -2032,6 +2032,81 @@ def test_no_enforcement_text_claims_a_hook_that_no_registration_starts():
         "these texts name a hook no registration can start: %s" % ", ".join(lying))
 
 
+# A NAME RUN: code spans separated by nothing but `, `. The inventory is located by its SHAPE and
+# not by the words above it, because a heading is a spelling and this repo has paid for those.
+_NAME_RUN_RX = re.compile(r"`([a-z][a-z0-9_]+)`(?:, `[a-z][a-z0-9_]+`)+")
+
+
+@_cached
+def _presented_inventory(kit_dir):
+    """The list the constitution PRESENTS as this kit's mechanisms — the longest such run.
+
+    Longest, because a kit names its whole apparatus in exactly one place and nowhere else strings
+    two dozen hook names together; a floor in the test below refuses to answer at all if the run it
+    finds is too short to be that place, so a reformatting that breaks the run fails loudly instead
+    of quietly comparing against a fragment.
+
+    A MAJORITY OF SHIPPED HOOK NAMES, NOT ALL OF THEM, and that correction was measured while
+    writing this: demanding all of them made the ONE case that matters in the second direction
+    unreachable — a bogus name added to the list dropped the whole run out of the reader, and the
+    check reported "no inventory found" instead of "this name starts nothing". That is the whole of
+    what the majority is for. It carries nothing against a COMPETING run: measured over all three
+    constitutions with this same reader, the longest run that is not the inventory is four spans,
+    so the longest-run rule already decides that on its own.
+    """
+    shipped = {name[:-3] for name in os.listdir(os.path.join(kit_dir, "hooks"))
+               if name.endswith(".py") and not name.startswith("_")}
+    with open(os.path.join(kit_dir, "constitution", "AGENTS.md"), encoding="utf-8") as handle:
+        flat = re.sub(r"\s+", " ", handle.read())
+    best = ()
+    for match in _NAME_RUN_RX.finditer(flat):
+        names = tuple(re.findall(r"`([a-z][a-z0-9_]+)`", match.group(0)))
+        if len(names) > len(best) and sum(name in shipped for name in names) * 2 > len(names):
+            best = names
+    return best
+
+
+def test_the_inventory_the_constitution_presents_is_the_registrations_it_ships():
+    """The sentence says "complete in both directions", and until now nothing measured either.
+
+    THE DEFECT (found by the verifier on TSK-0095, in the office kit): `gate_second_reading` and
+    `record_filing_reading` shipped with TSK-0087, are registered in `settings/settings.json`, have
+    their own row in `hooks/ENFORCEMENT.md` — and never reached the list. 24 registered, 22 listed.
+    The claim above it read "no mechanism that runs is missing from this list".
+
+    WHY NOTHING CAUGHT IT. `test_every_registered_hook_is_anchored_in_its_kits_constitution` asks
+    whether the NAME occurs anywhere in the constitution, and both names occur in §2 prose about
+    the four-eyes rule. That is the right question for its own subject (a mechanism must be
+    findable in the text roles read) and the wrong instrument for this one: the LIST is a claim
+    about a set, so it has to be compared as a set.
+
+    THE DIRECTION MATTERS AND IS THE HARDER HALF TO NOTICE: this understated the protection. A
+    reader of that list concludes the two hooks do not exist, and house rule 3 treats an
+    under-alarming text exactly like an over-alarming one. Both directions are asserted here, over
+    all three kits, so the reader itself is proven by the two that are correct.
+    """
+    findings = []
+    for kit in _kit_dirs():
+        name = os.path.basename(kit)
+        listed = _presented_inventory(kit)
+        assert len(listed) >= 10, (
+            "%s: the longest run of hook names in the constitution is %d long, which is not an "
+            "inventory — either the list was reformatted out of one run or this kit stopped "
+            "presenting one: %s" % (name, len(listed), ", ".join(listed) or "nothing"))
+        duplicated = sorted({one for one in listed if listed.count(one) > 1})
+        if duplicated:
+            findings.append("%s lists %s twice" % (name, ", ".join(duplicated)))
+        registered = {hook[:-3] for hook in _registered_hooks(kit) if not hook.startswith("_")}
+        for missing in sorted(registered - set(listed)):
+            findings.append("%s REGISTERS %s and does not list it — the list understates what runs"
+                            % (name, missing))
+        for stale in sorted(set(listed) - registered):
+            findings.append("%s lists %s and no shipped registration can start it" % (name, stale))
+    assert not findings, (
+        "the constitutions claim their hook list is complete in both directions and it is not:\n  "
+        + "\n  ".join(findings))
+
+
 # ============================ TASK 2b — what a REFUSAL claims about the text it sends you to
 def _self_named_docs(kit_dir):
     """{word: kit-relative path} for every pinned text that names ITSELF twice.

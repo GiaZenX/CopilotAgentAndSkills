@@ -1,0 +1,29 @@
+id: EVD-0069
+kind: review
+related:
+- TSK-0095
+- TSK-0094
+- FR-0063
+result: pass
+summary: 'verifier PASS round 3 for diff:21c1ca323ae765752eca00de3f3762d106390b09dfad7934e9f6ae092ce641a5
+  -- TSK-0094 measured and TSK-0095 corrected: a client start mode that does not load
+  the project settings removes the kit''s ENTIRE enforcement apparatus while file
+  tools stay writable (three members measured on CLI 2.1.251, both roles independently;
+  the chain to merge+push driven with validate reporting 0 errors on planted state;
+  four edges named incl. scripts/harness.py writable and outside the trust hash).
+  The three absolute kit claims now carry the measured condition AS A PROPERTY, never
+  a flag; the floor lives once per kit in ENFORCEMENT.md byte-identical, and the verifier
+  MEASURED that a real refusal hands the reader exactly that file. Caught in-round:
+  the office WHAT-RUNS list understated by two -- our own TSK-0087 hooks, running
+  but unlisted, with no test able to see it; now DERIVED from the registrations in
+  both directions (5 reds, three of the verifier''s design). Also corrected: two freshly
+  written justifications that overclaimed (a 25-span competitor measuring four; a
+  sibling docstring saying ''really states'' where the measurement says ''addresses'')
+  and the lead''s own hole-list warning count. Kits dev/research 2026.08.30-13, office
+  -14; full suite fresh 3981 passed / 14 skipped / 0 failed. H78 carries the finding
+  as OPEN-NOT-CLOSEABLE with its named bound plus two residues'
+artifact_refs:
+- staging/TSK-0095/close-out.md
+revision: 1
+approval_ref: null
+created: '2026-08-30T12:51:19'

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """What loads at every session start, and how big it may get — the two halves of one question.
 
-TWO DECISIONS ARE MEASURED HERE.
+THREE DECISIONS ARE MEASURED HERE.
 
   1. THE SIZE STATEMENT IS BYTES, IT IS PER KIT, AND IT IS A MEASUREMENT RATHER THAN A CHOICE.
      `tools/validate.py` used to fail a constitution over 220 LINES. Measured, that limit said
@@ -26,6 +26,17 @@ TWO DECISIONS ARE MEASURED HERE.
      skills, session-start injection) rather than asserted about the platform; the second is
      measured by making every refusal a shipped hook writes carry the file's path, and then reading
      that path out of REAL hook processes.
+
+  3. WHAT DOES NOT LOAD TAKES THE WHOLE APPARATUS WITH IT, so a text may not claim reach without
+     naming the session it holds for. The kits' enforcement is registered in the PROJECT's own
+     `.claude/`, and a client session started in a mode that does not load those settings runs none
+     of it while the file tools stay writable in the project — measured against the running client
+     for three such modes (`docs/reviews/2026-08-30-tsk0094-client-start-modes-measurements.md`).
+     Until 2026-08-30 the three constitutions said `gate_write_scope` "refuses every tool write
+     there", "WRITE-LOCKED against every tool write" and "WHAT RUNS HERE, complete in both
+     directions" with no such qualifier at all. The checks in section 3 below hold the corrected
+     form: they are about the TEXT, which is the artifact in question, and the reach they measure
+     it against is the registration surface the two checks above already read.
 
 WHAT THIS MODULE DOES NOT ESTABLISH, said here rather than discovered later: that Claude Code or
 Codex loads exactly the files this repo believes it loads. Nothing in a test can measure a
@@ -1003,6 +1014,252 @@ def test_the_reference_note_points_at_the_file_beside_the_hook_that_printed_it(t
     assert expected in result.stderr, (
         "the refusal points somewhere other than the bundle it ran out of:\n%s" % result.stderr)
     assert os.path.isfile(expected)
+
+
+# ============== 3. a claim of reach names the session it holds for (FR-0063) ==============
+#
+# A TOTALITY OVER WHAT THIS APPARATUS REACHES. This is a FORMULATION rather than a concept, the way
+# `test_hooks.py::_SURFACE_DENIAL_RX` is one, and for the same measured reason: "every"/"no" is how
+# this corpus says almost anything, so what separates a claim of REACH from all of them is the noun
+# the quantifier governs — the apparatus's own two subjects, a tool write and a mechanism that runs.
+# Both ends of the formulation are driven by `test_the_reach_reader_sees_the_claims_it_was_written_
+# for`: the three sentences that shipped before 2026-08-30 must still read as claims, and ordinary
+# prose must not. WHAT IT DOES NOT SEE is a claim that says the same thing in other nouns ("every
+# write a tool performs"): a single sentence rewritten that way leaves the reader silently, and only
+# the per-text floor in the first test catches a whole text doing it. Measured by this round's
+# verifier, and open.
+_TOTAL_REACH_RX = re.compile(r"\b(?:every|any|all|no)\s+(?:tool write|mechanism that runs)", re.I)
+
+# THE BOUND IS A PROPERTY: a sentence that says whether this project's SETTINGS LOAD. Deliberately
+# not a flag — three members of that class are measured and the client can gain a fourth, so a
+# spelling here would be the same enumeration defect one level down. That half is not trusted
+# either: `test_no_statement_of_the_bound_names_a_flag` reads it.
+_SETTINGS_RX = re.compile(r"project'?s? settings", re.I)
+_LOADING_RX = re.compile(r"\bload(?:s|ed|ing)?\b", re.I)
+
+# A POINTER TO THE SECTION THAT CARRIES THE BOUND, in the file the sentence stands in. §0 is the
+# constitution's first section and, since this round, the reference's floor note.
+# `test_the_bound_lives_in_the_section_the_pointers_name` is what keeps it from aiming at nothing.
+_BOUND_SECTION = "0"
+_BOUND_POINTER = "§" + _BOUND_SECTION
+
+# A CLIENT FLAG as a reader sees it in these texts: a long option word. `-f` is not in here on
+# purpose — a single dash is `-p`, `-q` and half the shell examples in this tree, and a rule that
+# fired on those would be noise rather than a check.
+_FLAG_RX = re.compile(r"(?<![\w-])--[A-Za-z][\w-]+")
+
+
+def _enforcement_story(kit):
+    """The two texts that STATE this kit's enforcement: the constitution and the reference.
+
+    The same union `test_shortening_net.py::test_no_enforcement_text_claims_a_hook_that_no_
+    registration_starts` uses for the "must not lie" direction, and for its reason: the
+    constitution is what a session always carries, the reference is what a role is handed at the
+    moment it has been refused. Both are read here; nothing else is, and that is a NAMED limit —
+    the same absolute claim still stands in the three LEAD agent files, in one specialist agent
+    file, in one role SKILL, in `README.md` and in the two global entry files under `user/`, none
+    of which this round corrected. The direction of that residue is the uncomfortable one: those
+    lead files load at every session start and every spawn, while the reference carrying the floor
+    loads nothing at all.
+    """
+    return (os.path.join(_kit_dir(kit), "constitution", "AGENTS.md"), _reference_path(kit))
+
+
+def _sentences(text):
+    """The text as sentences, with a markdown line break treated as a space.
+
+    A sentence, not a paragraph: the unit was a whole block until a measured defect showed that a
+    file-wide reader was satisfied by a phrase four hundred lines away
+    (`test_hooks.py::_markdown_blocks`), and the same argument taken one step further says the
+    claim and its bound belong in one sentence. The price is that a bound stated in the NEXT
+    sentence does not count, which is why the pointer below exists as the second way to satisfy it.
+    """
+    return re.split(r"(?<=[.!?])\s+", re.sub(r"[ \t]*\n[ \t]*", " ", text))
+
+
+def _claims_total_reach(sentence):
+    return bool(_TOTAL_REACH_RX.search(sentence))
+
+
+def _states_the_bound(sentence):
+    """Does this sentence say whether the project's settings load? — the running predicate."""
+    return bool(_SETTINGS_RX.search(sentence) and _LOADING_RX.search(sentence))
+
+
+def _section(text, number):
+    """The `## <number>.` section of a markdown text, heading included, or None."""
+    lines = text.splitlines()
+    start = next((index for index, line in enumerate(lines)
+                  if re.match(r"^##+\s*%s\." % re.escape(number), line)), None)
+    if start is None:
+        return None
+    stop = next((index for index in range(start + 1, len(lines))
+                 if lines[index].startswith("## ")), len(lines))
+    return "\n".join(lines[start:stop])
+
+
+def test_every_claim_of_reach_names_the_session_it_holds_for():
+    """The correction of 2026-08-30, in the form that cannot silently be taken back.
+
+    THE DEFECT, measured against the running client (TSK-0094): a start mode that does not load the
+    project settings removes every registration this kit owns, while the file tools keep writing
+    inside the project. Three shipped sentences claimed the opposite without a word of condition —
+    `gate_write_scope` "refuses every tool write there", the state directory "WRITE-LOCKED against
+    every tool write", and the hook inventory "complete in both directions". A role that reads one
+    of them believes a fence that a session can simply start without.
+
+    WHAT IS DEMANDED is the smallest thing that cannot be true while the condition is hidden: the
+    sentence says whether the project's settings load, or it points at the section of its own file
+    that does. Not that the claim is CORRECT — no reader here can decide that — but that it is
+    bounded, which is the half that went missing.
+
+    WHAT THE PREDICATE IS, so nothing is credited to it that it does not do: `_states_the_bound` is
+    a CO-OCCURRENCE over one sentence — the project's settings and their loading are both named in
+    it. It reads neither POLARITY nor ATTACHMENT, and both were driven by this round's verifier: a
+    §0 rewritten to say the settings load anyway and every mechanism below still runs passes, and
+    so does a sentence whose condition belongs to a DIFFERENT claim standing beside the absolute
+    one. So this turns a MISSING condition into a red test and leaves a WRONG one to a reader. The
+    pointer (`§0`) is that same instrument one file wider and inherits exactly the same blindness —
+    `test_the_bound_lives_in_the_section_the_pointers_name` establishes that §0 addresses the
+    condition, not that it answers it correctly.
+    """
+    naked, seen = [], {}
+    for kit in KITS:
+        for path in _enforcement_story(kit):
+            where = os.path.relpath(path, ROOT).replace(os.sep, "/")
+            with io.open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            seen[where] = 0
+            for sentence in _sentences(text):
+                if not _claims_total_reach(sentence):
+                    continue
+                seen[where] += 1
+                if _states_the_bound(sentence) or _BOUND_POINTER in sentence:
+                    continue
+                naked.append("%s: %s" % (where, sentence.strip()[:220]))
+    assert not naked, (
+        "these sentences claim what the apparatus reaches without saying whether this project's "
+        "settings load, and without pointing at %s where that stands:\n  %s"
+        % (_BOUND_POINTER, "\n  ".join(naked)))
+    # A FLOOR PER TEXT, because everything above is vacuously true over an empty set — and because
+    # a GLOBAL floor was measured worthless in exactly this round: rewording the single reach claim
+    # of two of these files ("ANY tool write into" -> "each and every write a tool performs into")
+    # dropped both texts out of the reader while the sum stayed comfortably over any total. The
+    # reader is a two-noun formulation and this is the tripwire on its far end. Going red does not
+    # say which of the two happened, and the message must not pretend to: a text that stops
+    # claiming a totality is a legitimate change, and the answer is a second look either way.
+    silent = sorted(where for where, count in seen.items() if not count)
+    assert not silent, (
+        "these enforcement texts carry no claim of reach at all — either they stopped claiming "
+        "one, or the reader stopped seeing the words they use:\n  " + "\n  ".join(silent))
+
+
+def test_the_bound_lives_in_the_section_the_pointers_name():
+    """A pointer is worth the section it resolves to, and three copies are worth their identity.
+
+    Two halves, and the second is why three copies of one statement are safe here at all: §0 of
+    every one of the six texts addresses the condition, and the reference's floor note is
+    BYTE-IDENTICAL across the three kits. A statement that lives in three files drifts into three
+    statements; the identity assertion is what keeps it one.
+
+    ADDRESSES, not "states correctly" — the same co-occurrence predicate as its sibling, with the
+    same blindness to polarity, and this docstring said the stronger word until the verifier of this
+    round inverted §0 byte-identically in all three kits and measured it green.
+    """
+    floors = {}
+    for kit in KITS:
+        for path in _enforcement_story(kit):
+            with io.open(path, encoding="utf-8") as handle:
+                section = _section(handle.read(), _BOUND_SECTION)
+            where = os.path.relpath(path, ROOT).replace(os.sep, "/")
+            assert section, "%s carries no %s section for its pointers to resolve to" % (
+                where, _BOUND_POINTER)
+            assert any(_states_the_bound(sentence) for sentence in _sentences(section)), (
+                "%s %s does not say whether this project's settings load, so every sentence "
+                "pointing at it points at nothing:\n%s" % (where, _BOUND_POINTER, section[:400]))
+        floors[kit] = _section(io.open(_reference_path(kit), encoding="utf-8").read(),
+                               _BOUND_SECTION)
+    assert len(set(floors.values())) == 1, (
+        "the floor note differs between kits, so it is three statements: %s"
+        % ", ".join(sorted(floors)))
+
+
+def test_no_statement_of_the_bound_names_a_flag():
+    """The boundary is a PROPERTY of the start mode, never one spelling of it.
+
+    Three members of the class are measured and they agree on nothing except this property — one
+    drops the secret-read denial, another brings a shell and writes outside the working directory.
+    A sentence that named a flag would teach a reader to check for that flag, which is the
+    enumeration defect one level down and the reason the measurement document itself was named away
+    from one. So: a sentence that states the bound names no long option. Ordinary command lines
+    keep their flags — the rule is about the sentence that carries the boundary, not about the
+    paragraph it stands in.
+    """
+    offenders = []
+    for kit in KITS:
+        for path in _enforcement_story(kit):
+            with io.open(path, encoding="utf-8") as handle:
+                for sentence in _sentences(handle.read()):
+                    if not _states_the_bound(sentence):
+                        continue
+                    for flag in _FLAG_RX.findall(sentence):
+                        offenders.append("%s: %s (in %r)"
+                                         % (os.path.relpath(path, ROOT).replace(os.sep, "/"),
+                                            flag, sentence.strip()[:160]))
+    assert not offenders, (
+        "these sentences state the start-mode boundary and name a flag as its subject — say the "
+        "property (settings that do not load), not a spelling of it:\n  " + "\n  ".join(offenders))
+
+
+# The three claims as they SHIPPED until 2026-08-30, each CUT at the point where the rest of the
+# sentence is a kit-specific file list or the inventory itself — the CLAIM is verbatim, the tail is
+# not, and saying "verbatim" of the whole was itself a small false statement (found by this round's
+# verifier). They are the control of the reader above: the corpus assertion is vacuously true once
+# they are gone, and a reader nobody re-measures is how they survived four releases.
+_CLAIMS_AS_THEY_SHIPPED = (
+    "`gate_write_scope` refuses every tool write there, and every shell pipeline whose COMMAND "
+    "LINE names the path.",
+    "**The state directory is WRITE-LOCKED against every tool write, and has exactly ONE writer:** "
+    "`gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`.",
+    "WHAT RUNS HERE, complete in both directions — no mechanism that runs is missing from this "
+    "list, and no name on it is one no registration starts: `clear_handover_marker`.",
+)
+
+# Sentences from the same texts that are NOT claims of reach, so "call everything a claim" is not a
+# way out: a rule about the ONE writer, and a statement about where a refusal points.
+_NOT_CLAIMS_OF_REACH = (
+    "The kernel is the only writer of `project_memory/`.",
+    "Every refusal a gate writes prints the path of this file, so the moment you need the table is "
+    "the moment you are handed its location.",
+)
+
+
+def test_the_reach_reader_sees_the_claims_it_was_written_for():
+    """Both ends of the formulation, driven over sentences instead of trusted.
+
+    A reader that answered "no claim" to everything would make the corpus check above green over
+    any text at all; one that answered "claim" to everything would demand the bound in every
+    sentence of six documents. Both directions are driven here, and so is the bound predicate — the
+    corrected sentence is recognised as bounded, and the same sentence with the qualifier taken out
+    is not.
+    """
+    for sentence in _CLAIMS_AS_THEY_SHIPPED:
+        assert _claims_total_reach(sentence), (
+            "the reader no longer sees the shape it was written for: %r" % sentence)
+        assert not _states_the_bound(sentence) and _BOUND_POINTER not in sentence, (
+            "the pre-round sentence reads as bounded, so the check would have passed over the "
+            "defect it was written for: %r" % sentence)
+    for sentence in _NOT_CLAIMS_OF_REACH:
+        assert not _claims_total_reach(sentence), (
+            "the reader calls ordinary prose a claim of reach: %r" % sentence)
+
+    corrected = ("No role writes a state file with an editor, yours included: in a session that "
+                 "loads this project's settings, `gate_write_scope` refuses every tool write "
+                 "there, and every shell pipeline whose COMMAND LINE names the path.")
+    assert _claims_total_reach(corrected) and _states_the_bound(corrected), corrected
+    assert not _states_the_bound(corrected.replace("in a session that loads this project's "
+                                                   "settings, ", "")), (
+        "the bound predicate answers yes to the sentence with the qualifier removed")
 
 
 if __name__ == "__main__":

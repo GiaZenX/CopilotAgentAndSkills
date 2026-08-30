@@ -1,0 +1,59 @@
+id: TSK-0095
+product_requirement: PR-0003
+derives_from: FR-0063
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- FR-0063
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+- .github/**
+required_inputs:
+- 'the TSK-0094 measurement (docs/reviews/2026-08-30-tsk0094-client-start-modes-measurements.md):
+  a client start mode that does not load the project settings removes the kit''s ENTIRE
+  enforcement apparatus while file tools stay writable in the project -- measured
+  for --restricted, --safe-mode and --setting-sources user; --restricted also drops
+  permissions.deny (secret read in clear), --safe-mode also brings Bash and bypassPermissions
+  and writes outside the working directory; the tool surface grows 7 -> 152/159 incl.
+  the user''s MCP servers; scripts/harness.py is writable and lies OUTSIDE the trust
+  hash'
+- 'the three overclaiming sentences shipping today, verbatim-verified by both roles:
+  dev-team and research-team constitution/AGENTS.md:53 (''refuses every tool write
+  there''), office-team constitution/AGENTS.md:26 (''WRITE-LOCKED against every tool
+  write''), and ''WHAT RUNS HERE, complete in both directions'' in all three (:71/:71/:165)'
+- the floor wording the measurement round proposed and the verifier vetted, incl.
+  its ending 'Was in so einer Sitzung noch begrenzt, haengt am konkreten Modus und
+  ist hier nicht zugesichert' -- and the deliberate silence on managed settings (documented
+  as authoritative by claude --help, UNMEASURED here)
+expected_outputs:
+- 'STEP 1: correct the three sentences in all three constitutions so each says what
+  the code builds -- the refusal holds for a session that loads the project settings,
+  and names the property (a start mode that does not load them) as the boundary WITHOUT
+  naming a flag as the subject; the ''complete in both directions'' claim gets its
+  measured qualifier'
+- 'STEP 2: the floor note lands where a kit states its enforcement story (the ENFORCEMENT.md
+  surface and/or the constitution section that carries the claim -- decide and justify),
+  one language, no unmeasured mitigation named'
+- 'STEP 3 TESTS red-first: the structural reader that already holds these constitution
+  sections covers the corrected claim (the sentence must not silently return to the
+  absolute form); mirror parity across the three kits byte-identical unless KIT_SPECIFIC
+  names the reason'
+- 'STEP 4 SHIP: bump_kit_version (constitution is kit content), ruff, validate, affected
+  suites per DEC-0050 (the full run is the lead''s); report file:line and the corrected
+  sentences VERBATIM, residues named'
+dependencies:
+- FR-0063
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-30T09:36:08'
+closed_at: '2026-08-30T12:14:22'

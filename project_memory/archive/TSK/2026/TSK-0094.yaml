@@ -1,0 +1,55 @@
+id: TSK-0094
+product_requirement: PR-0003
+derives_from: FR-0063
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- FR-0063
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/reviews/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+- CLAUDE.md
+- docs/POST_V2_WISHLIST.md
+- user/**
+- .github/**
+required_inputs:
+- 'FR-0063 (newsletter 2.1.248: ''Start with claude --restricted and Claude cannot
+  run commands, execute code, or fetch the web. File tools stay inside the working
+  directory, and user and project settings are ignored.'' If ignored settings include
+  the PreToolUse hook REGISTRATIONS, a --restricted session in a kit project runs
+  with NO gates while keeping file-tool write access inside the working directory
+  -- Write/Edit into project_memory would pass ungated)'
+- the host CLI is now updated (was 2.1.239 during the FR-0059 research; confirm >=
+  2.1.248 before measuring); a scaffolded kit project OUTSIDE the repo is the rig
+  -- NEVER measure inside this repo or the user's real projects
+- 'what to measure, from the item: (a) do the registered hooks fire at all under --restricted
+  (payload log); (b) does a Write into project_memory/ pass; (c) does the session-start
+  status hook and the agent: binding load; measure -p/SDK reachability of --restricted
+  too if cheap'
+expected_outputs:
+- 'STEP 1: confirm CLI version; scaffold an office or dev project outside the repo;
+  plant a log-writing PreToolUse hook fixture alongside the kit''s own so firing is
+  observable'
+- STEP 2 MEASURE the three questions with real sessions (claude --restricted -p '...'
+  or the closest reachable form; document exactly which invocation forms you could
+  and could not drive); every claim carries its rc/log evidence
+- 'STEP 3: if the gates are ABSENT under --restricted: the finding goes to the report
+  with the full chain (the lead writes the hole-list entry) and evaluate whether any
+  cheap mitigation exists from inside the kit (docs say settings are ignored, so likely
+  none -- then say so and propose the honest floor note wording for the kits'' security
+  prose); if the gates DO fire: record the negative result so the question never re-surfaces'
+- 'STEP 4: durable measurement doc in docs/reviews/ (the classification-doc lesson);
+  bump only if kit content moves; ruff, validate, affected suites per DEC-0050; report
+  file:line, the measured table, residues named'
+dependencies:
+- FR-0063
+root_revision: 1
+status: CANCELLED
+revision: 1
+approval_ref: null
+created: '2026-08-30T07:38:07'
+closed_at: '2026-08-30T12:14:21'

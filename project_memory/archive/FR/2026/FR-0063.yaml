@@ -18,7 +18,17 @@ request_text: 'Newsletter 2026-08-29 (changelog 2.1.248): ''Start with claude --
   inside -- then the entry says so). If the gates DO fire: record the negative result
   so the question never re-surfaces. Source: user-pasted newsletter; radar 2026-08-29
   did not itemize --restricted.'
-status: OPEN
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-29T11:13:15'
+resulting_item: TSK-0095
+triage_result: 'CONVERTED into TSK-0094 (measurement) + TSK-0095 (prose correction),
+  delivered 2026-08-30. MEASURED: a client start mode that does not load the project
+  settings removes the kit''s entire enforcement apparatus while file tools stay writable;
+  three members measured; the chain to merge+push driven with validate reporting 0
+  errors on planted state. NOT CLOSEABLE from inside -- carried as H78 (open, not
+  closeable, with its named bound). The kits'' three absolute claims now carry the
+  measured condition as a property, and the office WHAT-RUNS list is derived from
+  the registrations in both directions.'
+closed_at: '2026-08-30T12:14:23'

@@ -1,4 +1,4 @@
-generated_at: '2026-08-30T07:37:12'
+generated_at: '2026-08-30T12:51:20'
 items:
 - id: BUG-0001
   type: BUG
@@ -1262,6 +1262,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0069
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1564,14 +1570,6 @@ items:
   type: FR
   title: Per-project kit-gap log, kernel-written, harvested by the harness lead --
     so live findings stop requiring full-session reads
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0063
-  type: FR
-  title: 'Measure claude --restricted against the gate apparatus: ''project settings
-    are ignored'' may mean ungated file writes inside the project, project_memory
-    included'
   status: OPEN
   revision: 1
   approval_ref: null

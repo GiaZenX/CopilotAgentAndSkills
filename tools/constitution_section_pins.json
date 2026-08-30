@@ -53,7 +53,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "fa2062d8a33f979a",
+        "digest": "95f368ee6c19f080",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -89,7 +89,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "b83bbad09fdd82da",
+        "digest": "1b3172e7ffa40fc4",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -167,8 +167,12 @@
           "guard_harness_selfmod"
         ]
       },
+      "0. The floor under every row below": {
+        "digest": "f13615d2734fe1f4",
+        "hooks": []
+      },
       "1. What each mechanism refuses": {
-        "digest": "526e46208a9ee8b7",
+        "digest": "4d24cd29cd68e4e8",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -304,7 +308,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "82649d29eba9500a",
+        "digest": "73c9a04fe76b8a03",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -321,7 +325,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "42e83d7d6072c8b8",
+        "digest": "696eafe900f1dcfd",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -408,8 +412,12 @@
           "guard_harness_selfmod"
         ]
       },
+      "0. The floor under every row below": {
+        "digest": "f13615d2734fe1f4",
+        "hooks": []
+      },
       "1. What each mechanism refuses": {
-        "digest": "8f5c1036022786ae",
+        "digest": "4266fc9e1632fa20",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -525,7 +533,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "2c4cd73cc6b74fd2",
+        "digest": "6491cfcf266b37b3",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -569,7 +577,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "61aaa1f5cd31138b",
+        "digest": "b6516e553a161395",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -644,8 +652,12 @@
           "guard_harness_selfmod"
         ]
       },
+      "0. The floor under every row below": {
+        "digest": "f13615d2734fe1f4",
+        "hooks": []
+      },
       "1. What each mechanism refuses": {
-        "digest": "6609ddeab6b127d2",
+        "digest": "37b4248659007da9",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",

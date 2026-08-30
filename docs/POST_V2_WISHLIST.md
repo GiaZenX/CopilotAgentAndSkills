@@ -2247,7 +2247,7 @@ TSK-0058, H41 mit TSK-0009, H42 mit TSK-0033, H43 mit TSK-0033, H44 mit TSK-0062
 TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H54 mit TSK-0080,
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
 TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H75 mit TSK-0091, H76 mit
-TSK-0092, H77 mit TSK-0093, H70 mit
+TSK-0092, H77 mit TSK-0093, H78 mit TSK-0094, H70 mit
 TSK-0083/TSK-0084.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
@@ -2309,6 +2309,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
+| H78 | **OFFEN, nicht schließbar**, mit benannter Begrenzung (TSK-0094) | ein Client-Startmodus, der die Projekteinstellungen nicht lädt, entfernt alle vier Registrierungsflächen des Kits, während die Dateiwerkzeuge im Projekt schreibfähig bleiben — drei Mitglieder gemessen, die Kette bis Merge+Push durchgefahren (`validate`: 0 Fehler auf gefälschtem Zustand), vier Ränder benannt (Einstiegspunkt beschreibbar und außerhalb des Vertrauens-Hashes, `permissions.deny` fällt unter `--restricted`, Werkzeugfläche 7→152/159 inkl. MCP, Verfassung lädt nicht). Von innen nichts baubar; Begrenzung: bewusster Start, korrigierte Kit-Prosa (`TSK-0095`), informierter Nutzer |
 | H77 | **Rest** (TSK-0093) | gemessene Grenzen der Wertsprache-Regel, je im Eintrag: kein Gate erzwingt sie (Freitext); der Prosa-Test liest Anker und Ehrlichkeit, nicht Richtung und nicht Vokabelfreiheit (Umkehrung und apparat-freie Überbehauptung bleiben grün, beide Sprachen gemessen — Sichtbarkeit über den Abschnitts-Pin); `document_types` steht nackt im deutschen Satz; der Records-Clerk als einzige Nicht-Lead-Rolle mit freiem `--reason` trägt die Regel nicht (kleine eigene Runde); und eine geänderte Kartenformulierung entwertet offene Fragen fail-closed |
 | H76 | **Rest** (TSK-0092) | gemessene Grenzen des neuen Dokument-Schreibwegs, je im Eintrag: der Listeneintrag-Prosakanal (einziger Kanal ohne Wortlaut in der Karte, dreifach begrenzt); eine Freigabe deckt binnen ihrer Stunde ein erneutes Schreiben derselben Bytes nach Hand-Revert (Bedingung im Docstring, `filing_correction`-Lesart); kein Feldschema (die echte Nutzerdatei hätte ihr eigenes Schema verletzt); Prosa-Dokumente absichtlich schreiberlos + drei Web-Schreibrollen ohne Injektionsnotiz (Eigenschafts-Draht wäre eine kleine Runde); vier Ränder mit sicherer Richtung (toter Zweig, unerreichbare Diagnose, fünf Schreibweisen eine Position, Gate-Laufzeit an Dateigröße) und der Fixture-Schreibweg ins Repo-Audit-Log |
 | H75 | **Rest** (TSK-0091) | gemessene Grenzen des E-Rechnungs-Geldpfads, je im Eintrag: der Wächter ist Arithmetik, nicht Semantik (`FR-0065` trägt die zweite Lesung); BR-CO-14 ungeprüft (in sich stimmiger, positions-widriger Kopf läuft durch, gemessen); UBL nur synthetisch belegt, Anzahlungs-Rückfall verweigert laut; XML ohne Geld-Tripel jetzt rc 2 statt still leer; die Geldleser-Klasse im Owned-Manifest ist Urteil mit zwei gepinnten Enden; ein künftiges Umgebungs-Leck wird still geheilt statt angezeigt (der Draht hält die Fixture, die Fixture heilt die Quellen — beides gemessen); und drei Randformen des Lesers mit je sicherer Richtung (ungepinnte dritte Anker-Schreibweise, Rohtext-Ausgabe der Geldfelder, unlesbarer Rundungsbetrag zählt als 0 und endet laut) |
@@ -5320,6 +5321,84 @@ Folge benannt: fail-closed (die Rolle stellt neu), nie ein Durchlass.
 Sichtbarkeits-Mechanismus, (c) ist eine gemessene Naht mit heutiger Erkennbarkeit, (d) trägt
 seine kleine Schließrichtung (ein Absatz in einer Rolle, eigene Mini-Runde), (e) ist
 Über-Vorsicht in die sichere Richtung.
+
+### H78 — Ein Startmodus, der die Projekteinstellungen nicht lädt, entfernt den ganzen Durchsetzungsapparat — offen, von innen nicht schließbar (TSK-0094)
+
+**Der Mechanismus, in einem Satz** (so formuliert der Prüfer, und so gehört er gelesen —
+`--restricted` ist nur die Schreibweise, an der es auffiel): **jeder Client-Startmodus, der die
+Projekteinstellungen nicht lädt, entfernt alle vier Registrierungsflächen eines Kits, während die
+Dateiwerkzeuge im Projekt schreibfähig bleiben.**
+
+**Anlass:** Newsletter-Zeile zu 2.1.248, vom Nutzer weitergereicht; die Vermutung war „vielleicht
+laufen die Hooks dann nicht" und ist gemessen worden — von beiden Rollen unabhängig, auf CLI
+2.1.251, gegen frisch gescaffoldete Projekte außerhalb des Repos.
+
+**Drei gemessene Mitglieder der Klasse** (`--restricted`, `--safe-mode`, `--setting-sources user`)
+— in der Durchsetzungsfrage einheitlich, sonst nicht:
+
+| | Kontrolle | `--restricted` | `--safe-mode` | `--setting-sources user` |
+|---|---|---|---|---|
+| Projekt-Hooks feuern | 10 | **0** | **0** | **0** |
+| Write nach `project_memory/` | verweigert | **angelegt** | **angelegt** | **angelegt** |
+| Bash ohne Zusatzflagge | ja | nein | **ja** | – |
+| `bypassPermissions` | – | rc 1 | **rc 0** | – |
+| Schreiben außerhalb des Arbeitsverzeichnisses | – | verweigert | **gelungen** | – |
+| Werkzeuge (`init.tools`) | **7** | 152 | 30 | **159** |
+
+**Die Kette, gegen die laufenden Gates getrieben, beide Enden gemessen:** vorher verweigert
+`gate_git` den Merge eines DRAFT-Vorhabens (rc 2) — danach genügen vier gewöhnliche
+Dateioperationen (Status auf `IN_DELIVERY`, drei `EVD`-Dateien mit `result: pass`), und Merge
+**und** Push laufen rc 0, während `kernel.cli validate` **0 Fehler** meldet (Warnungen je nach Rig
+0 oder 1; die Fehlerzahl ist die Aussage, und sie ist in beiden Messungen null). Grund:
+der Kernel liest Items per `os.listdir` — eine hingelegte Datei **ist** Zustand. Die
+eingeschränkte Sitzung hat diese vier Operationen beim Prüfer **selbst** ausgeführt; die
+Selbstverweigerung, die der Umsetzer zuerst sah, ist Modellzufall und keine Grenze.
+
+**Vier benannte Ränder, je gemessen:** `scripts/harness.py` — der Einstiegspunkt, den **jede**
+Gate-Verweigerung als Ausweg vorschreibt — ist so beschreibbar und liegt **außerhalb** des
+Vertrauens-Hashes (`hook_bundle_hash` identisch mit und ohne die eingefügte Zeile), also sieht
+die nächste normale Sitzung die Vergiftung nicht; dass sie ihn dann ausführt, ist ausdrücklich
+**nicht** gemessen. Der Modus **öffnet** außerdem: unter `--restricted` fällt die
+`permissions.deny`-Liste des Kits mit, ein `.env`-Geheimnis wird im Klartext gelesen (unter
+`--safe-mode` greift sie weiter — die Klasse fällt hier auseinander). Die Werkzeugfläche wächst
+von 7 (die `tools:` der gebundenen Rolle) auf 152–159, inklusive der MCP-Server des Nutzers mit
+schreibenden Werkzeugen. Und die Verfassung selbst lädt nicht — ein gepflanzter Token kommt in
+der Kontrolle wörtlich zurück, im Modus `ABSENT`.
+
+**Warum es offen bleibt und was stattdessen begrenzt:** von innen ist nichts baubar — alle vier
+Registrierungsflächen eines Kits fallen weg, und die einzige Fläche, die weiterbindet, ist die
+Aufrufzeile selbst, also die des Angreifers. `claude --help` beschreibt „managed settings" als
+weiter geltend; diese Fläche ist hier **nicht gemessen** und wird darum in keiner Kit-Prosa als
+Gegenmittel genannt. Was diese Runde liefert, ist deshalb **Ehrlichkeit statt Schutz**: die drei
+Verfassungssätze, die heute „jeder Werkzeug-Schreibzugriff wird verweigert" behaupten, werden auf
+das korrigiert, was der Code baut (`TSK-0095`). Der Nutzer wurde direkt informiert, mit der einen
+praktischen Folge: in einem Kit-Projekt nicht mit einem solchen Modus starten.
+
+**Nicht gemessen und benannt:** interaktive TUI (alle Läufe headless `-p`), managed settings
+(Verzeichnis existiert auf dem Wirt nicht und wurde bewusst nicht angelegt), Enterprise-Policy,
+`.mcp.json`, SDK-Erreichbarkeit, sechs der acht `Bash|PowerShell`-Gates. **Ein Konfundierer,
+ausdrücklich:** in **allen** Läufen beider Rollen war `permissions.allow` inaktiv („this
+workspace has not been trusted"), also ist jede Aussage darüber, **warum** ein Bash-Befehl
+freigegeben wurde, für diese Runde unentscheidbar — die Kit-Seite bleibt davon unberührt: kein
+Gate sieht einen geschachtelten Start, und die `python -c`-Schreibweise liegt innerhalb der
+erlaubten Muster.
+
+**Zwei Reste aus der Ehrlichkeits-Nachrüstung** (`TSK-0095`, vom Prüfer gemessen): dieselbe
+absolute Behauptung steht weiter **außerhalb** der sechs korrigierten Texte — nachgezählt **78**
+satzweise Reichweite-Aussagen in 42 Dateien, **54 ohne jede Bedingung**, darunter die drei
+**Lead-Rollendateien** (`agents/project-manager.md:24` dev/research, `agents/office-manager.md:24`,
+dazu `records-clerk.md` und `skills/bookkeeper/SKILL.md:42`), `README.md:439/:534` und die globalen
+Einstiegsdateien unter `user/`. Die Gewichtung ist die unangenehme: die ehrliche Bodenzeile liegt
+in `hooks/ENFORCEMENT.md`, das **nichts** lädt, die absolute Behauptung in den Rollendateien, die
+bei **jedem** Sitzungsstart und jedem Spawn laden. Und der Leser, der die Korrektur hält, ist
+selbst eine Zwei-Substantiv-Aufzählung (`every|any|all|no` × `tool write|mechanism that runs`):
+eine einzelne umformulierte Rückkehr zur absoluten Fassung („refuses every write a tool performs
+there") ist ihm unsichtbar — gemessen grün; rot wird nur die vollständige Erblindung.
+
+**Urteil: OFFEN, nicht schließbar, mit benannter Begrenzung** — die dritte Zustandsform, die
+`CLAUDE.md` erlaubt: warum nicht schließbar (der Apparat wird vom Client abgeschaltet, bevor eine
+Kit-Datei gelesen wird) und was stattdessen begrenzt (die Modi müssen bewusst gestartet werden;
+die Kit-Prosa hört auf, das Gegenteil zu behaupten; der Nutzer weiß es).
 
 ### Zwei Vertragsabweichungen, die `SR-0006` nachgezogen bekommen muss — ERLEDIGT durch `SR-0009`
 
