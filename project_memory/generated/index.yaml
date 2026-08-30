@@ -1,4 +1,4 @@
-generated_at: '2026-08-30T20:57:51'
+generated_at: '2026-08-30T20:59:08'
 items:
 - id: BUG-0001
   type: BUG
@@ -503,7 +503,7 @@ items:
   title: 'The document write route exists but the roles that OWN documents are not
     routed onto it -- measured live: the product-editor staged prose in a .md and
     asked the user to paste it into content_guidelines.yaml'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0076
@@ -1314,6 +1314,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0071
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1712,11 +1718,5 @@ items:
   type: TSK
   title: null
   status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0096
-  type: TSK
-  title: null
-  status: READY
   revision: 1
   approval_ref: null

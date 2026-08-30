@@ -47,7 +47,7 @@ acceptance_criteria:
 - id: AC-4
   text: the same derivation runs for dev-team and research-team, whose kit documents
     have owners too
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-30T16:11:34'
