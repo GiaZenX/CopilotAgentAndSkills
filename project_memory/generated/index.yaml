@@ -1,4 +1,4 @@
-generated_at: '2026-08-31T06:44:53'
+generated_at: '2026-08-31T17:02:03'
 items:
 - id: BUG-0001
   type: BUG
@@ -546,6 +546,22 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: BUG-0081
+  type: BUG
+  title: gate_git demands acceptance evidence before the FIRST work-branch push, but
+    under packaging.method shopify-theme acceptance testability only ARISES through
+    that push -- circular, and the PM routes around the gate via the user's hand
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0082
+  type: BUG
+  title: 'The kits'' gate_write_scope misses a glob-expanded path to the enforcement
+    layer: `python .cla*de/hooks/gate_approval.py` is rc 0 where the literal spelling
+    is rc 2'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -899,6 +915,13 @@ items:
   type: DEC
   title: 'Keine Leiter-Zwischenstufe: die statischen Modell-Pins bleiben wie gebaut;
     DEC-0034 bleibt beschlossen-unbebaut, bis der Nutzer sie aktiv anfordert'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0056
+  type: DEC
+  title: Gates guard against ERROR, not against INTENT -- no more hardening rounds
+    against a deliberate insider, and the cost side is part of every gate decision
   status: VALID
   revision: 1
   approval_ref: null
@@ -1334,6 +1357,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0073
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1734,15 +1763,9 @@ items:
   status: DRAFT
   revision: 1
   approval_ref: null
-- id: TSK-0097
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
 - id: TSK-0098
   type: TSK
   title: null
-  status: DRAFT
+  status: READY
   revision: 1
   approval_ref: null

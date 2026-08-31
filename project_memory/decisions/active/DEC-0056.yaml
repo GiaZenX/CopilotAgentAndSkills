@@ -1,0 +1,50 @@
+id: DEC-0056
+title: Gates guard against ERROR, not against INTENT -- no more hardening rounds against
+  a deliberate insider, and the cost side is part of every gate decision
+context: 'User steer 2026-08-31, after TSK-0098 spent three rounds (implementer +
+  two independent verifiers + a rework) closing bypasses of the workshop''s own approval
+  hook: ''ja es gibt mit Sicherheit tausend Wege. wir brauchen kein Geruest aufzubauen
+  das groesser ist als das Haus.'' He had asked earlier the same day why security
+  was being discussed at all when the agreed priority was live-measured bugs and wishlist
+  features, and asked whether it was still about prompt injection. It was not: the
+  actor in every one of those chains was the lead or an implementer subagent, inside
+  a repo only the user operates. MEASURED FACTS THAT DECIDE THIS: (1) the residue
+  H11 -- an actor who writes its own script mints anyway -- is NOT closeable, in the
+  workshop and in the kits alike, so the class was unwinnable from the start; (2)
+  the hardening cost real capability twice in one round, self-measured by the implementer:
+  `grep -c python <hook>` and the `until [ $i -ge 12 ]` wait loop that the round orders
+  themselves prescribe were refused, and had to be recovered; (3) three rounds produced
+  zero comfort the user can perceive, while BUG-0076 (his live design-loop finding),
+  BUG-0081, FR-0045 and FR-0065 waited.'
+decision: 'Gates in this project exist to catch the apparatus being WRONG, not to
+  defeat an apparatus that is deliberately circumventing. Consequences, binding on
+  the lead: (a) NO round is scheduled whose purpose is to close a bypass of an enforcement
+  surface by a deliberate insider -- such a finding is recorded with its measured
+  chain and the named exception, and that is a complete answer, not a placeholder;
+  (b) a gate proposal must state what ERROR it catches, with a case where that error
+  actually occurred, and what it costs the legitimate path -- a gate that catches
+  no measured error class is not built; (c) EXCEPTION, and it is not a security exception
+  but a care exception: where an action changes the user''s data irreversibly -- money
+  figures, deleted or archived documents, a push to a shared branch, figures that
+  reach the tax office -- thoroughness stays maximal, because there an ERROR is unrecoverable;
+  (d) BUG-0082 (the same forge class in the shipped kits) stays TRIAGED at severity
+  low with its fix shape recorded, to be lifted only when a kit round touches that
+  gate anyway. This decision does NOT weaken any built gate and removes none: it governs
+  what new work is scheduled.'
+consequences: 'The hole list keeps its discipline -- a chain that runs within one
+  session is still blocking and still needs closure OR a named, user-approved exception
+  -- but ''named exception'' is now the EXPECTED outcome for the deliberate-insider
+  class rather than a fallback that invites another round. The lead owes the user
+  the threat model in plain words whenever it asks about a gap (''who would have to
+  do this, and would it be an accident or a decision?''), because the H80 question
+  of 2026-08-31 was answered by a user who was not told that the attacker in question
+  was the lead itself. Neighbours: H11 (the unclosable residue, now with its measurement),
+  H80 (closed for its named difference), BUG-0082, DEC-0050 (test scope per round
+  -- same economy of effort), DEC-0053 (the deferred quiet-window measurement).'
+source: 'Nutzerentscheidung 2026-08-31 in der Sitzung (zwei Nachfragen: ''wieso wird
+  das wieder thematisiert'', dann ''kein Geruest groesser als das Haus''); Lead-Messungen
+  derselben Runde (TSK-0098 Protokoll, zwei Pruefberichte, H11-Rest)'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-08-31T14:49:02'

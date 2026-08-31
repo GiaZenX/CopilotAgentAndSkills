@@ -37,6 +37,13 @@ for a subject that reaches this gate as a path, and
 `test_gate1_leaves_the_sessions_own_commands_runnable` for one that reaches it as a command line --
 the two halves of the registration above, and a gate that refuses either is a broken one, not a
 stricter one.
+
+A THIRD SUBJECT ARRIVES FROM THE SHELL HALF: the file a stage would START. It is judged against the
+hook directories rather than against the whole protected area, and refused to EVERYONE --
+`_harness.ProtectedArea.hand_driven` carries why, and `docs/POST_V2_WISHLIST.md` H80 the chain that
+made it necessary. What that costs and what it leaves open is measured in
+`test_gate1_refuses_starting_a_hook_from_every_caller` and
+`test_gate1_leaves_a_file_outside_the_hook_directories_startable`.
 """
 import os
 import sys
@@ -106,6 +113,14 @@ def decide():
                       "line and the write on the next, where the position is the one the payload "
                       "states -- while a tilde prefix only the shell can resolve has to be written "
                       "out.")
+        elif isinstance(path, _harness.Executed):
+            subject = "no command line in this repo may start"
+            remedy = ("let the PROVIDER start it. For an approval that means the route the kernel "
+                      "prints: `request-approval` opens the request and the answer to the relayed "
+                      "question is what the registered hook reads. To MEASURE a hook, drive it "
+                      "from a probe or test process the way `tools/test_hooks.py` does "
+                      "(`run_hook_process`) -- this gate judges a command line, so a script that "
+                      "starts a hook is outside what it reads, and that residue is H11.")
         elif everyone:
             subject = "no tool call in this repo may write"
             remedy = ("write it through the kernel (`PYTHONPATH=team-kits python -B -m kernel.cli "

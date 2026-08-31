@@ -225,7 +225,7 @@ Gate 3 urteilt.
 nicht das Verzeichnis. Ein *neues* File neben ihr bleibt schreibbar; das steht als Loch in
 `docs/POST_V2_WISHLIST.md`, nicht als Schutzbehauptung hier.
 
-Frei ist alles, was keine dieser Eigenschaften hat — **mit drei gemessenen Ausnahmen, und die ersten
+Frei ist alles, was keine dieser Eigenschaften hat — **mit gemessenen Ausnahmen, und die ersten
 beiden stehen hier, weil sie einen treffen, der nur liest.** Die erste: ein Kandidat, der einen **Vorfahren** eines
 geschützten Baums nennt (ein einzelnes `..`, ein bloßer Laufwerksbuchstabe, die Repo-Wurzel), wird
 als Schreibzugriff auf alles darunter gelesen und verweigert: `cp -r docs ..` ist rc 2 (`H19`). Die
@@ -245,8 +245,24 @@ Stellvertreterprojekt außerhalb des Heimatverzeichnisses **rc 0**. Das leere Pr
 das ist gebaut, nicht angenommen: eine Shell entfernt Quotierung zeichenweise, also unterdrückt nur
 eine Quotierung **im Präfix selbst** die Erweiterung — und dann bleibt das Wort auch in der Shell
 literal. Bis 2026-08-07 stand dieser Absatz hier, während ein `"` hinter dem Präfix genügte:
-`sed -i "s/a/b/" ~+/"team-kits"/kernel/state.py` war rc 0, und `bash` schrieb die Datei. Alle drei
-sind Über-Verweigerung, kein Loch, und alle drei stehen mit ihrer Kette in
+`sed -i "s/a/b/" ~+/"team-kits"/kernel/state.py` war rc 0, und `bash` schrieb die Datei. Die
+vierte ist seit TSK-0098 keine Über-Verweigerung, sondern der Punkt: eine
+Befehlszeile, die eine **Haken-Datei startet** — Provider-Baum oder ein `hooks/`-Verzeichnis der
+Kits, als Ableitung, nicht als Liste —, wird **jedem** Aufrufer verweigert, auch dem, der sonst
+schreiben darf. Wer den Haken von Hand fährt, spielt den Provider und prägt eine Freigabe, die
+niemand erteilt hat; genau diese Zeile war bis dahin rc 0 und ist die gemessene Kette von H80. Was
+als „starten" zählt, sagt `_harness._executed_words`, nicht dieser Absatz, und dazu gehören seit den
+Prüfrunden vom 2026-08-31 auch ein Wort, dessen Pfad die Shell erst herstellt (`$p`,
+`$(pwd)/…`, `te*m-kits/…`), ein Starter vor dem Interpreter (`nohup`, `timeout`, `xargs -a`) und
+PowerShells Aufrufoperator mit einem Ausdruck. **Zwei Folgen treffen auch, wer nichts Böses
+vorhat:** ein Wort mit `$`, `*`, `?`, `[` oder `{` wird unplatzierbar und verweigert — aber nur
+dort, wo es überhaupt einen Pfad benennen könnte (`_could_name_a_path`), weshalb `[ $i -ge 3 ]`
+einer Warteschleife rc 0 bleibt; und eine Shell-Zeile, die eine Haken-Datei **direkt** benennt,
+pflegt sie nicht mehr — kopieren, verschieben, löschen, `sed -i` sind jedem verweigert, während
+`Edit`/`Write` dieselbe Datei einem Subagenten offenhalten. Was H80 offen lässt, steht dort mit
+Messung: ein selbst geschriebenes Skript prägt weiter (H11), und ein kopiertes
+Haken-**Verzeichnis** ebenfalls. Die ersten drei
+sind Über-Verweigerung, kein Loch, und alle stehen mit ihrer Kette in
 `docs/POST_V2_WISHLIST.md`. Was das ansonsten heute konkret trifft, sagt das Gate,
 nicht dieser Absatz — eine Aufzählung hier wäre genau die Behauptung, die schon zweimal eine Datei
 zu kurz war.

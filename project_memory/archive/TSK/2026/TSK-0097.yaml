@@ -27,7 +27,8 @@ expected_outputs:
 - kits bumped if kit-visible surfaces change
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-08-30T20:59:47'
+closed_at: '2026-08-31T06:45:18'

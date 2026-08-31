@@ -2254,7 +2254,8 @@ TSK-0063, H46 und H47 mit TSK-0070, H48 mit TSK-0071, H49 mit TSK-0075, H50–H5
 H55–H57 mit TSK-0081, H58–H61 mit TSK-0082, H62–H68 mit TSK-0083, H69 mit TSK-0084, H71 mit
 TSK-0086, H72 mit TSK-0087, H73 mit TSK-0089, H74 mit TSK-0090, H75 mit TSK-0091, H76 mit
 TSK-0092, H77 mit TSK-0093, H78 mit TSK-0094, H79 mit TSK-0096, H80 und H81 mit TSK-0097, H70 mit
-TSK-0083/TSK-0084.
+TSK-0083/TSK-0084. H80 ist mit TSK-0098 geschlossen und H39 dort zur Hälfte aufgelöst; neue
+Nummern hat diese Runde nicht erzeugt.
 
 Ein **geschlossener** Eintrag, dessen roter Test die gekreuzte Tabelle in `test_gates.py` ist, nennt
 zusätzlich die **Zellen** dieser Tabelle, auf denen er steht — die von Hand geschriebenen Werte ihrer
@@ -2284,7 +2285,7 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H10 | **Rest**, offen ist nur die Vollständigkeit | die beiden gefundenen Hälften sind geschlossen und je durch einen roten Test gedeckt; für die dritte gibt es keinen Ersatz, sondern eine ungestellte Frage — ein erschöpfender Mutationslauf über `.claude/hooks/` |
 | H37 | **GESCHLOSSEN**, mit benannten Resten (Rest 1–5 im Eintrag) | für den Mechanismus des Eintrags steht Code (`.claude/hooks/_sandbox.py`, drei Tests). Die Reste liegen sämtlich in der **Messvorrichtung**, nicht im Schutz der Gates, und jeder nennt seine Begrenzung: Rest 1 (nicht importiert = unbewacht), Rest 2 (`_audit.record_event` der Kits schreibt `project_memory/.audit/` dieses Repos — Reparaturstelle im Kit, Begrenzung **sozial**), Rest 3 (die Namensliste bleibt eine Aufzählung; `BASH_ENV` gemessen offen), Rest 4 (`watch` sieht keine Neuanlage), Rest 5 (`_inside` kanonisiert die Win32-Namensräume nicht — Gate 1 selbst ist nicht betroffen) |
 | H38 | **Ausnahme, Abnahme offen** | **nichts Technisches** für den Schreibzugriff — dieselbe Begrenzung wie H34: die Prosa-Entfernung ist die der Kits (`gate_write_scope._HEREDOC_RX`). Gemessen begrenzt ist nur die Commit-Hälfte: steht der Commit auf derselben Zeile, verweigert Gate 3 sie wegen des Verbs. **Sozial** — Rollentrennung und Item |
-| H39 | **Ausnahme, Abnahme offen**, Mechanismus 2026-08-30 korrigiert (TSK-0097) | eine Erreichbarkeitslücke der Buchführung für den EHRLICHEN Weg: keine Antwort des Nutzers kann hier münzen, weil dieses Repo keinen Freigabe-Haken registriert — der Kernel sagt das seit TSK-0097 in der Verweigerung selbst. Was der Eintrag bis dahin FALSCH behauptete („kein Münzweg existiert"), ist mit drei rc-0-Zeilen widerlegt; diese Hälfte ist kein Buchführungsrest, sondern ein Loch und steht als H80. DEC-0041 trägt weiter die Bedeutung von `CANCELLED` |
+| H39 | **Ausnahme** — für `BUG` mit TSK-0098 aufgelöst (wirksam ab dem nächsten Sitzungsstart), für `TSK` unverändert | die Freigabe-Hälfte war eine Erreichbarkeitslücke, weil dieses Repo keinen Freigabe-Haken registrierte; seit TSK-0098 registriert es ihn, `approval_mint_is_wired` meldet `True`, und der Zusatzsatz an der Verweigerung fällt weg. Die REGISTRIERUNG bindet aber erst beim Sitzungsstart: bis der Nutzer neu startet, liest kein Prozess die Antwort. `DONE`/`VALIDATED` für `TSK` hängen weiter am Dispatch-Lease, das diese Werkstatt nicht fährt — dafür gilt DEC-0041 unverändert |
 | H40 | **Ausnahme, Abnahme offen** | der Stolperdraht gegen Zitationen abgelöster Verträge liest die `.py`-Quellen von `.claude/hooks/` — Registrierung, Rollendefinitionen, `CLAUDE.md` und `docs/` liest kein Draht; die eine gemessene Lebendzitation steht im Eintrag, ihre Behebung liegt außerhalb des TSK-0058-Scopes |
 | H41 | **Rest**, keine Angriffskette | vier gemessene Grenzen des Zeiger-Wächters aus TSK-0009, je im Eintrag; keine berührt eine Gate-Entscheidung. Der lebende Bestand ist in den ersten drei Richtungen leer; die vierte (Zeiger auf Tests ANDERER Dateien, vom Leser übersprungen) trägt heute elf Vorkommen — sieben aus dem H43-, drei aus dem H44- und einer aus dem H70-Eintrag —, alle von Hand aufgelöst |
 | H42 | **GESCHLOSSEN** (TSK-0060, `DEC-0043`), mit benannten Resten | der Vertrag ist entschieden statt normalisiert: `INV.scope` regiert genau einen Bereich, `backlog_types.SINGLE_VALUE_FIELDS` deklariert das, `state._assert_single_value_fields` verweigert die Mehrere-Dinge-Form an beiden Türen in den aktiven Zustand und `report._check_single_value_fields` meldet sie als Fehler (gemessen: capture/update verweigert, `validate` 0 → 1 Fehler, `gate_memory_complete` rc 0 → rc 2). Die vier Leser sind unverändert. Reste: ein schon geschriebenes Item wird gemeldet statt geheilt, die Archiv-Tür nimmt die Form weiter an (DEC-0009), die Deklaration ist nicht abgeleitet, und im `office-team` schützt sie keinen Leser |
@@ -2315,8 +2316,8 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H67 | **offen**, Loch, vorbestehend (benannt TSK-0083) | die Köder- und Geschwisterprüfung des Ledger-Gates wird **nur befragt, wenn dieselbe Zeile eine blockierte Operation trägt**. Ein Lauf eines unbewachten Zwillings ohne Commit und ohne Ledger-Schreibzugriff in derselben Zeile (`python tools/ledger_add.py`, `python scripts/ledger_add.py.bak ledger/2026.csv`) ist rc 0 — an beiden Zwillingen identisch, also nicht Preis einer Runde. Begrenzt: der Gewinn des Angreifers wird erst mit einer zweiten, dann geprüften Zeile wirksam |
 | H68 | **offen**, Über-Verweigerung, naheliegender Fix gemessen falsch (TSK-0083) | zwei Schreibweisen, die das Ledger-Gate verweigert, obwohl sie nichts schreiben: ein **handgetippter Backslash** im Validatorpfad (`python scripts\ledger_add.py --validate ledger/2026.csv`, rc 2, weil eine der beiden Lesarten den Backslash frisst und das Gate verweigert, sobald IRGENDEINE Lesart „schreibt" sagt), und ein **quotiertes Semikolon oder ein quotierter senkrechter Strich** in Argument-Prosa, der Segment bzw. Pipeline-Stufe schneidet. Der naheliegende Fix — quotierungsbewusst trennen — ist gemessen falsch: er schluckt den Trenner, den `_SUBSTITUTION_OPEN_RX` absichtlich IN eine quotierte Spanne injiziert, und macht `BUG-0065` wieder auf |
 | H69 | **offen**, Werkbank, bewusst nicht gebaut (`DEC-0022`, TSK-0084) | die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung** unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht. Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 → `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu |
-| H81 | **Rest**, keine Angriffskette (TSK-0097) | der Mint-Leser irrt in beide Richtungen, beide gemessen: eine Registrierung mit quotiertem Pfad, der ein **Leerzeichen** enthält, zerlegt `_invoked_scripts` nicht → `False` + Warnung, obwohl die Zeile münzt (Item `APPROVED`); ein auflösbarer Pfad mit **fehlender Datei** → `True`, kein Wort, obwohl nichts läuft. Kein Kit betroffen (alle drei registrieren über `$CLAUDE_PROJECT_DIR`, gemessen `True`); getroffen wäre ein ausgeschriebener Pfad, wie ihn H80s Empfehlung erzeugen würde — darum schreibt H80 die leerzeichenfreie Form vor. Nicht hier geschlossen: `_invoked_scripts` trägt auch `doctor` und die Bündel-Vertrauensprüfung, eine Erweiterung ist eine eigene Runde mit eigenen roten Tests an diesen Lesern |
-| H80 | **OFFEN, blockierend** — Abnahme erteilt 2026-08-31: Schließung beschlossen, Träger `TSK-0098` (TSK-0097) | der Freigabe-Haken lässt sich in dieser Werkstatt von Hand fahren und münzt eine Freigabe, die niemand erteilt hat: `request-approval` (reiner Kernel) → Münz-Code im Klartext lesen → `python team-kits/dev-team/hooks/gate_approval.py < forged.json`, alle drei rc 0 unter Gate 1, danach `BUG-0001 APPROVED, approval_ref APR-0001`. Dieselbe Zeile ist im Kit **rc 2** (`gate_write_scope`: „names the enforcement layer in a pipeline that can write") — die Werkstatt ist hier schwächer als das Produkt. Einstufung liegt in `.claude/`, dem verbotenen Bereich dieser Runde; Begrenzung: Absicht statt Ausrutscher, Sichtbarkeit im Commit, `approval_provenance: unverified`, und die Verweigerung sagt jetzt selbst, dass hier keine Nutzerantwort münzt |
+| H81 | **Rest**, keine Angriffskette (TSK-0097) | der Mint-Leser irrt in beide Richtungen, beide gemessen: eine Registrierung mit quotiertem Pfad, der ein **Leerzeichen** enthält, zerlegt `_invoked_scripts` nicht → `False` + Warnung, obwohl die Zeile münzt (Item `APPROVED`); ein auflösbarer Pfad mit **fehlender Datei** → `True`, kein Wort, obwohl nichts läuft. Kein Kit betroffen (alle drei registrieren über `$CLAUDE_PROJECT_DIR`, gemessen `True`); getroffen wäre ein ausgeschriebener Pfad; die Registrierung, die TSK-0098 in diesem Repo geschrieben hat, geht deshalb über `${CLAUDE_PROJECT_DIR}` und liest gemessen `True`. Nicht hier geschlossen: `_invoked_scripts` trägt auch `doctor` und die Bündel-Vertrauensprüfung, eine Erweiterung ist eine eigene Runde mit eigenen roten Tests an diesen Lesern |
+| H80 | **GESCHLOSSEN** (TSK-0098) für den benannten Unterschied, mit einem Rest, den auch das Produkt trägt | eine Befehlszeile hat jetzt eine START-Position, und eine Datei aus einem **Haken-Verzeichnis** dort zu starten ist **jedem** Aufrufer verweigert (`_harness.Executed` + `ProtectedArea.hand_driven`, Verzeichnisse abgeleitet über `kit_hooks_directories`). Nach drei Prüfrunden, die je eine eigene Kette bis `APPROVED` gegen die Vorfassung gefahren haben, ist Schritt 3 in **jeder** gemessenen Form rc 2 — beide Shells, beide Aufrufer, 63 Formen im Haupt-Rig plus 17 Subshell-Formen —, während alle dokumentierten Tageszeilen rc 0 bleiben; die Kit-Regel hätte vier von neun verweigert, darum der engere Schnitt. Mit geschlossen: dieselbe Unplatzierbarkeit in der SCHREIB-Richtung, dort seit dem Bau der Shell-Hälfte offen. Zweite Hälfte: der Freigabe-Haken der Kits ist auf beiden `AskUserQuestion`-Ereignissen registriert, der ehrliche Weg in einer Kopie Ende zu Ende gefahren. Rest mit Shell-Zeugen: ein selbst geschriebenes Skript prägt weiter (H11, in den Kits genauso), und ein Subagent darf ein Kit-Haken*verzeichnis* rekursiv kopieren. Die Subshell-Klasse ist zu, ihre Schreib-Hälfte steht bei H27 |
 | H79 | **Rest** (TSK-0096) | gemessene Grenzen der Besitz-Ableitung für die Dokument-Schreibroute, je im Eintrag: eine erfundene Zweitdatei ohne `staging/`-Präfix sieht der Leser nicht (die Ableitung liest Namen, nicht Absichten); derselbe FALSCHE Routentext in allen Besitzer-Definitionen kommt durch (Gleichheit ist geprüft, Richtigkeit nicht — Sichtbarkeit über den Abschnitts-Pin der drei Lead-Dateien); und SKILL-Dateien liegen außerhalb der Ableitung, obwohl sie dieselbe Falschaussage tragen können (in dieser Runde eine gefunden und von Hand korrigiert) |
 | H78 | **OFFEN, nicht schließbar**, mit benannter Begrenzung (TSK-0094) | ein Client-Startmodus, der die Projekteinstellungen nicht lädt, entfernt alle vier Registrierungsflächen des Kits, während die Dateiwerkzeuge im Projekt schreibfähig bleiben — drei Mitglieder gemessen, die Kette bis Merge+Push durchgefahren (`validate`: 0 Fehler auf gefälschtem Zustand), vier Ränder benannt (Einstiegspunkt beschreibbar und außerhalb des Vertrauens-Hashes, `permissions.deny` fällt unter `--restricted`, Werkzeugfläche 7→152/159 inkl. MCP, Verfassung lädt nicht). Von innen nichts baubar; Begrenzung: bewusster Start, korrigierte Kit-Prosa (`TSK-0095`), informierter Nutzer |
 | H77 | **Rest** (TSK-0093) | gemessene Grenzen der Wertsprache-Regel, je im Eintrag: kein Gate erzwingt sie (Freitext); der Prosa-Test liest Anker und Ehrlichkeit, nicht Richtung und nicht Vokabelfreiheit (Umkehrung und apparat-freie Überbehauptung bleiben grün, beide Sprachen gemessen — Sichtbarkeit über den Abschnitts-Pin); `document_types` steht nackt im deutschen Satz; der Records-Clerk als einzige Nicht-Lead-Rolle mit freiem `--reason` trägt die Regel nicht (kleine eigene Runde); und eine geänderte Kartenformulierung entwertet offene Fragen fail-closed |
@@ -2620,6 +2621,16 @@ der Ausnahme ausgenommen und wird verweigert.
 `python scratch/w.py` **rc 0** → der Lauf hängt real 8 Bytes an
 `team-kits/dev-team/hooks/gate_git.py` an. Zwei Werkzeugaufrufe, eine Sitzung.
 
+**Und seit TSK-0098 reicht dieselbe Kette bis zu einer Freigabe, die niemand erteilt hat.** Der
+Freigabe-Haken der Kits ist ein Programm; ein Skript, das ihn mit einer selbst gebauten Nutzlast
+startet, prägt. Gemessen 2026-08-31 (`residues.py`, echte Shell, echter Kernel, Wegwerf-Projekt):
+`python probe_start.py` — **rc 0 bei Gate 1 für beide Aufrufer** —, danach steht das Item auf
+`APPROVED` mit `approval_ref: APR-0001`. H80 hat jede **Befehlszeilen**-Form dieser Kette
+geschlossen; diese hier bleibt, und sie bleibt aus demselben Grund wie eh und je: es ist der Weg,
+auf dem dieses Repo seine eigenen Haken MISST (`tools/test_hooks.py::run_hook_process`), und die
+Kits tragen ihn genauso. Die Klasse ist damit teurer als der Eintrag bis dahin sagte — nicht mehr
+nur „ein Skript schreibt eine geschützte Datei", sondern „ein Skript stellt eine Freigabe aus".
+
 **Und sie hebt Gate 3 mit auf — gemessen, nicht abgeleitet (TSK-0008, R-d).** Im selben Lauf:
 `git commit -m wip` **rc 2** (Gate 3 verweigert, kein Beweismittel) → ein Skript im freien Bereich,
 das `git commit` startet → `python scratch/c.py` **rc 0 bei Gate 1 UND rc 0 bei Gate 3** → `HEAD`
@@ -2886,6 +2897,19 @@ während dieselbe Zeile mit `cd "C:/<projekt>"` rc 0 bleibt und `cd /c/<projekt>
 HEAD` ebenfalls (ein lesendes Verb sammelt keine Kandidaten). Die Abhilfe steht in der Verweigerung
 selbst; die dokumentierten Befehle dieses Repos tragen ohnehin kein `cd`.
 
+**Der Ausloeser ist NICHT auf diese Schreibweise beschraenkt, und die zweite gemessene Form ist
+alltaeglicher (TSK-0098, Pruefbefund):** ein Ziel, das es noch nicht gibt. `cd "noch-nicht-da" &&
+ls` verlor die Position ebenso, weil der Leser das Betreten selbst fragt und ein Verzeichnis ohne
+Existenz nicht betretbar ist. Dass ein LESENDES Verb dahinter trotzdem verweigert wurde, kam
+allerdings nicht von der Bewegung, sondern von der ersten Fassung der START-Position: sie las das
+VERB jeder Stufe als Datei im Arbeitsverzeichnis, und aus einer unbekannten Position ist jedes
+trennzeichenlose Verb unplatzierbar. Seit `_harness._verb_as_a_file` steht der Verb-Platz nur noch
+einem Wort MIT Trennzeichen offen, und die Zeile ist wieder rc 0 (gemessen 2026-08-31, beide
+Aufrufer, beide Shells;
+`test_gate1_does_not_read_a_bare_verb_as_a_file_in_the_working_directory` haelt es). Was bleibt,
+ist die eigentliche Aussage dieses Eintrags: ein relativer SCHREIB- oder START-Kandidat hinter
+einer solchen Bewegung wird verweigert.
+
 **Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:** `with the base outside it`,
 `cd to a target this reader cannot name`, `cd with an option the shell accepts`,
 `a move inside the tree the reader cannot compute`,
@@ -3097,7 +3121,7 @@ schneidet und die Wörter dahinter ihr eigenes Verb bekommen. Gefragt wird jetzt
 `a move in front of a pipe that carries stderr`, `a move behind a pipe glued to a bracket`,
 `glued to its terminator`, `behind a glued and`, `in a group glued to the terminator behind it`.
 
-### H27 — Die Kindschaft eines Verzeichnisverbs hatte eine Schreibweise — GESCHLOSSEN (TSK-0013)
+### H27 — Die Kindschaft eines Verzeichnisverbs hatte eine Schreibweise — GESCHLOSSEN (TSK-0013, duale Hälfte TSK-0098)
 
 **Mechanismus:** ein Verzeichnisverb, das die Shell in einem **Kind** ausführt, lässt die Shell
 selbst stehen. Gezählt wurde das pro Pipeline und nur an der Klammer: hinter einem Listentrenner
@@ -3120,6 +3144,30 @@ und mitgemessen: elf Zeilen, in denen die Shell wirklich geht (darunter die gesc
 kein Kind ist), bleiben rc 0. Rot ohne den Fix:
 `test_gate1_refuses_a_line_exactly_where_the_shell_would_write`, gegen die Tabelle, deren Spalte
 `test_the_shell_writes_where_the_table_of_line_shapes_says` aus einer echten Shell nimmt.
+
+**Die DUALE Hälfte, gefunden vom Prüfer und geschlossen am 2026-08-31 (TSK-0098).** Dieser
+Eintrag schließt den Schreibzugriff AUSSERHALB der Klammer -- die Shell ist nie gegangen, also
+darf die Basis nicht mitgehen. Was dabei offen blieb, ist der Schreibzugriff INNERHALB derselben
+Klammer: dort ist die Bewegung für jeden Befehl der Gruppe echt, und dieser Leser urteilte
+weiter von der unbewegten Elternbasis aus. Gemessen, jede Zeile flach **rc 2** und in Klammern
+**rc 0**, und zwar für **jeden** Aufrufer:
+`(cd .claude/hooks && rm gate_todo_items.py)`, `(cd .claude/hooks && sed -i "s/a/b/"
+gate_todo_items.py)`, `(cd project_memory && sed -i "s/a/b/" bugs/active/BUG-nnnn.yaml)` und
+`(cd team-kits && sed -i "s/a/b/" kernel/state.py)` (dieses für den Lead). Gegen `HEAD` derselbe
+Befund -- die Hälfte war seit dem Bau der Shell-Hälfte offen und ist von TSK-0098 nicht
+eingeführt worden. Die START-Richtung derselben Ursache steht in **H80**; sie hat geprägt.
+
+**Gebaut ist eine SCOPE-Verwaltung und keine Verweigerung:** `WorkingDirectory.follow` geht in die
+Gruppe mit (`_open_scope`), und `settle` bringt die Basis zurück, sobald eine spätere Pipeline
+auf kleinerer Tiefe steht. Der kürzere Fix -- die Position verlieren, wie bei einer Bewegung in
+einer fremden Shell -- hätte `(cd tools && python bump_kit_version.py)` verweigert, also eine
+Lieferzeile dieses Repos. Zwei Leser mussten dafür mit: `_walk` bekommt die Pipeline **ab dem
+Verb** (mit der Klammer davor las es `cd` selbst als Ziel und gab die Position auf), und
+`_the_move_in_a_later_stage` findet ein `cd`, das in der empfangenden Stufe einer Pipe steht
+(`true | (cd <hooks> && python …)`). Rot ohne den Fix:
+`test_gate1_refuses_maintaining_a_hook_file_from_a_shell` und die Subshell-Zellen von
+`test_gate1_refuses_starting_a_hook_from_every_caller`; die Gegenrichtung hält
+`test_gate1_comes_back_out_of_a_group_it_walked_into`.
 
 **Zellen der gekreuzten Tabelle, auf denen dieser Eintrag steht:** `in a group`,
 `in a group opened before a terminator`, `in a group opened before an and`,
@@ -3422,6 +3470,15 @@ begrenzt und was der Vorschlag ist:** steht in H34.
 `a write in a $() substitution behind a read-only verb`.
 
 ### H33 — Die erweiternde Antwort kam von einer Funktion, die eine andere Frage beantwortet (neu, TSK-0021)
+
+**Nachtrag TSK-0098:** die Tilde ist nicht mehr die einzige Konstruktion, die ein Wort
+unplatzierbar macht. `_harness._UNRESOLVED` gibt dieselbe Antwort für ein Wort, das eine Shell aus
+einer Expansion oder aus dem Dateisystem erst baut — und einige der Zeichen, die dieser Eintrag als
+harmlose Vorsätze vor einer Tilde führt (`*`, `[`, `{`, `?`), sind genau jene. Ein Wort wie
+`*~/team-kits/kernel/state.py` wird darum jetzt verweigert, obwohl die Tilde darin nicht am Anfang
+steht; `test_gate1_answers_for_a_tilde_that_does_not_start_its_word` fragt beide Leser statt nur
+diesen einen. Wo bash das Muster auf nichts abbildet und das Wort literal lässt, ist das eine
+Über-Verweigerung — und die fail-closed-Richtung, aus demselben Grund wie hier.
 
 **Mechanismus:** ob eine Lesart erweitert werden **darf**, ist seit H31 richtig entschieden. Was die
 Erweiterung **ist**, holte der Leser aus `os.path.expanduser`. Die beiden beantworten nicht dieselbe
@@ -3849,9 +3906,11 @@ erfüllt, und dieses Repo betreibt bewusst keins (DEC-0003). Erstens verweigert
 (`dispatch.assert_lease_backed_transition_locked`); die TSK-Kette führt über `LEASED` und
 `IN_PROGRESS`, also sind `DONE` und `VALIDATED` ohne echtes Dispatch unerreichbar. Zweitens bindet
 `approvals.APPROVAL_TRANSITIONS` die Kante `BUG TRIAGED→APPROVED` an eine Freigabe in Kraft;
-gemünzt wird die über den PostToolUse-Haken der Kits auf der AskUserQuestion-Antwort, und die
-Registrierung dieses Repos führt nur die vier Gates — die gedruckte Abhilfe der Verweigerung
-(„Frage weiterreichen, die Antwort münzt") hat hier keinen Zuhörer.
+gemünzt wird die über den PostToolUse-Haken der Kits auf der AskUserQuestion-Antwort. **Bis
+TSK-0098 führte die Registrierung dieses Repos nur die eigenen Gates**, und die gedruckte Abhilfe
+der Verweigerung („Frage weiterreichen, die Antwort münzt") hatte hier keinen Zuhörer; seit
+TSK-0098 steht der Haken der Kits auf beiden AskUserQuestion-Ereignissen — wirksam ab dem nächsten
+Sitzungsstart, siehe den Absatz am Ende dieses Eintrags.
 
 **Was dieser Absatz bis 2026-08-30 zusätzlich behauptete und was daran falsch war (TSK-0097):**
 er endete mit „`VERIFIED` ist damit für jeden Bug unerreichbar, solange kein Münzweg existiert".
@@ -3877,33 +3936,48 @@ als `CANCELLED` — der Lieferbeleg liegt in den EVDs und Commits, nicht im Stat
 reparierte Bugs bleiben aktiv auf `TRIAGED` stehen, statt mit `REJECTED`/`DUPLICATE` belogen zu
 werden. Dieser Bestand ist sichtbar und wächst mit jedem weiteren reparierten Bug.
 
-**Urteil: kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung — benannte Ausnahme
-(DEC-0041).** **Warum nicht hier schließbar:** der Münzweg wäre entweder eine Registrierung in
+**Urteil: kein Angriffsloch, eine Erreichbarkeitslücke der Buchführung — für `BUG` seit TSK-0098
+aufgelöst (Registrierung, wirksam nach Neustart), für `TSK` weiter benannte Ausnahme (DEC-0041).**
+**Warum es bis dahin nicht geschlossen wurde:** der Münzweg wäre eine Registrierung in
 `.claude/settings.json` oder ein Kernel-Münzkommando in `team-kits/**` — beides dem
 **Sitzungsagenten** verwehrt (Gate 1 führt beide Bereiche als session-beschränkt; ein
-Umsetzer-Subagent dürfte dort schreiben, der Änderungskreis existiert genau dafür). Es fehlt also
-keine Schreibbarkeit, sondern eine eigene Runde mit eigener Sicherheitsabwägung — denn ein
-Kommando, das ohne Nutzerantwort münzt, wäre genau das selbst ausgestellte Ja, das die
-Verweigerung wörtlich verbietet. **Was stattdessen begrenzt:** DEC-0041 trägt die Bedeutung von
-`CANCELLED`, und die Bugliste bleibt ehrlich sichtbar statt leergelogen.
+Umsetzer-Subagent darf dort schreiben, der Änderungskreis existiert genau dafür, und genau so ist
+es in TSK-0098 geschehen). Es fehlte also keine Schreibbarkeit, sondern eine Runde mit eigener
+Sicherheitsabwägung — denn ein Kommando, das ohne Nutzerantwort münzt, wäre genau das selbst
+ausgestellte Ja, das die Verweigerung wörtlich verbietet. Gebaut wurde deshalb **kein** solches
+Kommando, sondern die Registrierung, die die Antwort des Nutzers zum einzigen Münzweg macht.
+**Was für die `TSK`-Hälfte stattdessen begrenzt:** DEC-0041 trägt die Bedeutung von `CANCELLED`,
+und die Bugliste bleibt ehrlich sichtbar statt leergelogen.
 
-**Wodurch es auffiele:** entsteht ein EHRLICHER Münzweg — also eine Registrierung des
-Freigabe-Hakens auf dem Ereignis, das die Nutzerantwort liest —, dann meldet
-`report.approval_mint_is_wired` für dieses Repo `True`, der Zusatzsatz an der Verweigerung
-verschwindet von selbst, und dieser Eintrag ist mit der neuen Messung zu schließen und DEC-0041
-abzulösen. Der frühere Wortlaut dieses Absatzes nannte als Auslöser „ein Münzweg (Kit-Installation
-oder Kernel-Kommando)"; das war zu weit gefasst und hat den unehrlichen Weg mitgemeint, der längst
-existierte — siehe H80.
+**Was TSK-0098 daran aufgelöst hat, und was nicht.** Der Auslöser dieses Absatzes ist eingetreten:
+`.claude/settings.json` registriert den Freigabe-Haken der Kits auf `PreToolUse` und `PostToolUse`
+von `AskUserQuestion`, `report.approval_mint_is_wired` meldet für dieses Repo **`True`** (gemessen
+2026-08-31 gegen die geschriebene Registrierung), und der Zusatzsatz an der Verweigerung entfällt
+damit von selbst. Zwei Einschränkungen, beide gemessen und keine davon kosmetisch:
 
-### H80 — Der Freigabe-Haken lässt sich in dieser Werkstatt von Hand fahren; im Kit ist genau diese Zeile rc 2 (neu, TSK-0097)
+* **Der Leser ist der Datei voraus.** `approval_mint_is_wired` liest die REGISTRIERUNG, der
+  Provider bindet Haken beim **Sitzungsstart**. Solange der Nutzer die Sitzung nicht neu gestartet
+  hat, sagt der Leser `True`, während kein Prozess die Antwort liest. Was den Unterschied auflöst,
+  ist ein Neustart und nichts sonst.
+* **Die `BUG`-Hälfte hängt ohnehin nicht an der Freigabe allein.** `VERIFIED` verlangt zusätzlich
+  einen `test`-Nachweis mit der Bug-Id (`state.CONFIRMING_EVIDENCE`); die Freigabe öffnet nur die
+  Kante `TRIAGED → APPROVED`.
+
+Die **`TSK`-Hälfte bleibt offen und unverändert**: `DONE`/`VALIDATED` liegen hinter einem echten
+Dispatch-Lease, das dieses Repo bewusst nicht fährt, und dafür gilt DEC-0041 weiter. Der frühere
+Wortlaut dieses Absatzes nannte als Auslöser „ein Münzweg (Kit-Installation oder
+Kernel-Kommando)"; das war zu weit gefasst und hat den unehrlichen Weg mitgemeint, der längst
+existierte — der ist seit TSK-0098 zu, siehe H80.
+
+### H80 — Der Freigabe-Haken ließ sich in dieser Werkstatt von Hand fahren — GESCHLOSSEN (TSK-0098), mit benannten Resten
 
 **Mechanismus:** `approvals.mint` nimmt nur einen Aufrufer an — den Freigabe-Haken, als sich selbst
 gestartet (`_assert_minting_caller`). Dass *nur der Provider* diesen Haken startet, kann
 Bibliothekscode nicht feststellen; das steht im Docstring des Kernels und ist als `known_hole`
 erfasst. In den Kits schließt eine ZWEITE Wand diese Tür: `gate_write_scope` verweigert jede
-Befehlszeile, die den Durchsetzungsapparat in einer schreibfähigen Stufe nennt. Die vier Gates
-dieses Repos haben diese Wand nicht: `gate_lead_write_scope` stuft eine Stufe, die eine Datei aus
-einem geschützten Baum AUSFÜHRT, als lesend ein.
+Befehlszeile, die den Durchsetzungsapparat in einer schreibfähigen Stufe nennt. Die Gates dieses
+Repos hatten diese Wand nicht: `gate_lead_write_scope` stufte eine Stufe, die eine Datei
+AUSFÜHRT, als lesend ein — für den Sitzungsagenten wie für jeden Subagenten.
 
 **Kette (gemessen 2026-08-30, Runde TSK-0097, Wegwerf-Projekt außerhalb des Repos):**
 1. `request-approval scope BUG-nnnn` — reiner Kernel, ohne Haken, ohne Kit: schreibt
@@ -3920,37 +3994,154 @@ Gegenmessung im Kit, identische Zeile aus (3) gegen `team-kits/dev-team/hooks/ga
 ist im Kit verweigert und hier erlaubt. Die Suite selbst fährt diesen Aufruf als Vorrichtung
 (`tools/conftest.py::mint_via_hook`) — er ist also nicht exotisch, sondern ein Einzeiler.
 
-**Urteil: OFFEN, blockierend (die Kette läuft innerhalb einer Sitzung durch) — Abnahme durch den
-Nutzer erteilt am 2026-08-31: er hat die SCHLIESSUNG gewählt (Härtung plus Registrierung des
-Freigabe-Hakens), Träger ist `TSK-0098`; offen bleibt dieser Eintrag nur, bis diese Runde gelaufen
-und gemessen ist.** **Warum in der Runde TSK-0097 nicht schließbar:** die Einstufung liegt
-in `.claude/hooks/gate_lead_write_scope.py`, dem ausdrücklich verbotenen Bereich jenes Auftrags,
-und dem Sitzungsagenten ist der Bereich ohnehin verschlossen — in `TSK-0098` ist `.claude/**`
-`allowed_scope`, dort ist er schließbar. **Was stattdessen begrenzt, ohne
-Beschönigung:** (a) Gate 1 hält den kanonischen Zustand für Werkzeug-Schreibzugriffe zu, aber
-**nicht** gegen diesen Weg — der Kernel schreibt die Freigabe selbst, also ist das keine Grenze und
-wird hier nicht als eine ausgegeben; (b) es ist kein Ausrutscher, sondern ein absichtlicher Bau
-einer Nutzlast aus einer gelesenen Anfrage; (c) die entstandene Freigabe liegt als `APR-nnnn.yaml`
-plus verbrauchter Anfrage im Commit, den der Nutzer sieht — Sichtbarkeit, nicht Verhinderung;
-(d) `doctor` meldet `approval_provenance: unverified`, und der Kernel sagt seit dieser Runde in der
-Verweigerung selbst, dass hier keine Nutzerantwort münzt, sodass der NAHELIEGENDE Irrweg („Frage
-weiterreichen und dann nachhelfen") nicht mehr aus Unkenntnis entsteht.
+**Was gebaut wurde (TSK-0098), als EIGENSCHAFT und nicht als Pfadliste:** eine Befehlszeile hat
+eine START-Position — die Datei, die eine Stufe ausführt —, und sie ist ein eigener Gegenstand
+(`_harness.Executed`, gefüllt von `_harness._executed_words`). `ProtectedArea.hand_driven`
+beurteilt diese Position gegen die **Haken-Verzeichnisse** (den Provider-Baum dieses Repos plus das
+`hooks/`-Verzeichnis jedes Kits, abgeleitet über `_harness.kit_hooks_directories`) und verweigert
+sie **jedem** Aufrufer. Der Grund für „jedem": wer Durchsetzungscode ÄNDERN darf, ist die Frage des
+Änderungskreises und ein Subagent darf es; wer den **Provider spielen** darf, ist keine Rollenfrage.
 
-**Wenn der Nutzer den Haken registriert, dann leerzeichenfrei:** die Zeile muss den Pfad über
-`$CLAUDE_PROJECT_DIR` bilden, so wie die Kits es tun, und nicht als ausgeschriebenen absoluten
-Pfad. Der Grund ist gemessen und steht als **H81**: der Leser, der entscheidet, ob eine
-Nutzerantwort hier etwas bewirken kann, zerlegt eine quotierte Spanne mit Leerzeichen nicht — und
-der Pfad dieses Repos hat eines. Die Registrierung würde funktionieren, aber der Einstieg und die
-Verweigerung würden weiter behaupten, niemand lese die Antwort.
+Was danach zwei Prüfrunden gekostet hat, ist die Frage, WO in einer Zeile ein Programm anfängt.
+Die Antworten stehen im Code, jede mit ihrer Messung im Docstring: der Verb-Platz, aber nur
+wenn das Wort überhaupt eine Datei nennt (`_verb_as_a_file` — ein Wort ohne Trennzeichen sucht eine
+Shell über `PATH`); die Operanden eines Interpreters, gefragt an seinem OPTIONSTEIL statt an allem
+dahinter (`_option_part`); der Interpreter, den ein Wrapper oder eine zweite Shell startet
+(`_command_positions`, mit der Lesend-Bedingung, die einen Lesebefehl frei lässt); jeder Operand
+einer Stufe, deren Verb dieser Leser gar nicht benennen kann; und ein Interpreter, dem ein anderes
+Programm sein Programm aus einer Datei reicht (`_handed_a_program_from_elsewhere`). Dazu zwei Leser
+für eine Stufe, deren Verb er gar nicht sieht: die Wörter hinter einer schließenden Klammer, die
+diese Stufe nie geöffnet hat (`_after_an_unopened_closer` — eine Ersetzung mit einem `;` darin wird
+mittendurch geschnitten), und ein Verb, das erst zur Laufzeit feststeht
+(`_resolves_the_verb_at_runtime`). Daneben zwei Antworten, die NICHT in der START-Position sitzen
+und beide Richtungen zugleich betreffen: ein Wort, das eine Shell erst baut, ist unplatzierbar
+(`_UNRESOLVED`, gefragt nur wo `_could_name_a_path` es zulässt), und eine Bewegung INNERHALB einer
+Zeile, die an eine zweite Shell geht, kostet die Position (`_moves_inside_an_inline_program`).
 
-**Der benannte Schluss, für die Runde, die ihn fährt:** `gate_lead_write_scope` muss eine Stufe,
-die eine Datei aus einem geschützten Baum ausführt, als schreibfähig lesen — die Kits tun genau
-das, und die Gegenmessung oben ist die Vorlage. Das ist eine eigene Runde mit eigener
-Über-Verweigerungs-Abwägung (jeder `python tools/...`-Aufruf dieses Repos liefe dann durch dieselbe
-Einstufung).
+**Warum die Einstufung der Kits nicht übernommen werden konnte, gemessen statt behauptet
+(2026-08-31, `probe_lines.py`, echte Hook-Prozesse gegen ein Wegwerf-Projekt):** die Kit-Regel
+(„nennt den Apparat in einer schreibfähigen Stufe") verweigert **vier von neun** gemessenen
+Zeilen dieses Repos — `python -B -m pytest .claude/hooks/test_gates.py -q`, die Kernel-Zeile in
+beiden Schreibweisen, `request-approval` und jede weitere Zeile, die `project_memory` oder
+`.claude` nennt. Der Schnitt liegt deshalb nicht bei „nennt einen geschützten Baum", sondern bei
+„führt eine Datei aus einem Haken-Verzeichnis aus". Ergebnis auf denselben Zeilen: alle
+Tagesbefehle rc 0, `python tools/bump_kit_version.py` und `python tools/validate.py` eingeschlossen
+— und das ist der Kern des Schnitts, denn was ein gestartetes Programm schreibt, sagt keine
+Befehlszeile (H11).
 
-**Wodurch es auffiele:** die Kette oben ist als Kommandozeilen aufgeschrieben; ein Lauf von
-Schritt (3) gegen `gate_lead_write_scope` sagt in einem Aufruf, ob die Wand steht.
+**Die Kette jetzt (gemessen 2026-08-31 nach drei Prüfrunden, `battery.py` mit 63 Formen und
+`subshell.py` mit 17, je × zwei Shells × beide Aufrufer):** Schritt 3 ist in **jeder** gemessenen
+Schreibweise rc 2 für Lead und Subagent. Die erste Fassung dieses Absatzes war zu früh geschrieben
+— drei Prüfrunden haben sie mit je eigenen Ketten bis `APPROVED` widerlegt, und was sie fanden,
+steht jetzt als Liste, weil eine Liste, die einmal falsch war, ihre Fälle nennen muss:
+* der einfache Weg: relativ, absolut mit Leerzeichen im Pfad, Quotierung mitten im Wort, `-B`,
+  hinter `cd <hooks>`, als Empfänger einer Pipe, ohne Interpreter davor (`./<hook>`);
+* ein **Optionswort HINTER dem Skript** (`python <hook> -c`, `-m`, `-abc`, `-M`) — die Frage „läuft
+  hier ein Modul" wurde über alles hinter dem Interpreter gestellt, also auch über die Argumente
+  des Skripts, und ein einziges Wort löschte den ganzen Scan (`_option_part`);
+* ein Wort, das die **Shell erst baut**: `"$PWD/<hook>"`, `"${PWD}/<hook>"`, `"$(pwd)/<hook>"`,
+  `H=<hook>; python $H`, dazu die Muster `te*m-kits/…`, `…/gate_approva?.py`,
+  `…/gate_approva[l].py`, `team-kits/{dev-team,office-team}/…` (`_UNRESOLVED`);
+* ein **Wrapper-Verb** vor dem Interpreter: `timeout`, `nohup`, `stdbuf`, `env`, `eval`,
+  `find -exec`, und die Argumentliste aus einer Datei (`xargs -a list.txt python`, die einzige
+  dieser Formen, die den Haken auch wirklich geprägt hat);
+* eine **zweite Shell**, mit und ohne Bewegung darin: `bash -lc "python <hook>"`,
+  `sh -c "cd <hooks> && python gate_approval.py"` (die zweite hat geprägt);
+* PowerShells **Aufrufoperator mit einem Ausdruck** statt eines Programmnamens,
+  `& ('pyt'+'hon') <hook>` — in dieser Runde selbst gefunden, nicht gemeldet, und mit echtem
+  PowerShell als Zeugen, dass die Zeile wirklich startet;
+* eine **Subshell**, die zuerst hineingeht: `(cd <hooks> && python gate_approval.py)` und jede
+  gemessene Schwester davon — mit `;` statt `&&`, geschachtelt, hinter einer Pipe, im
+  Hintergrund. Die Klammer bewegt den Elternprozess nicht, und genau deshalb urteilte dieser Leser
+  weiter von dort aus, während der Befehl IN der Klammer aus dem bewegten Verzeichnis startet.
+  Das ist die duale Hälfte von **H27**, die dort mit ihrer Schreib-Richtung steht, und sie hat
+  geprägt.
+
+Schritt 1 und 2 bleiben rc 0 — sie sind Kernel und Lesen, und daran ändert diese Runde nichts.
+
+**Die zweite Hälfte: der EHRLICHE Weg existiert jetzt.** `.claude/settings.json` registriert den
+Freigabe-Haken der Kits auf beiden `AskUserQuestion`-Ereignissen, mit `timeout`, über
+`${CLAUDE_PROJECT_DIR}` gebildet (leerzeichenfrei, siehe **H81**) und auf die Kit-Datei zeigend
+statt auf eine Kopie — `approvals.mint` nimmt den Haken nur an, wenn er als er selbst neben seinem
+eigenen `_kernel.py` läuft. In einer Wegwerf-Kopie Ende zu Ende gefahren (`probe_mint.py`):
+`approval_mint_is_wired` `False`→`True`, `request-approval` ohne die Warnung, wortgleiche
+Weiterreichung rc 0, umformulierte rc 2, die Antwort der Plattform prägt `APR-0001` und geht die
+Kante selbst (Item danach `APPROVED`, der Handübergang meldet „illegal transition APPROVED →
+APPROVED"). **Nicht gemessen und nicht behauptet:** ein echter Klick eines echten Nutzers — die
+`answers` schreibt in einer Sitzung die Plattform; die Sonde hat sie in der Kopie selbst gesetzt.
+
+**Urteil: GESCHLOSSEN (TSK-0098) für den Unterschied, den dieser Eintrag benennt — mit einem Rest,
+den auch das Produkt trägt.** Keine Befehlszeile prägt hier mehr eine Freigabe, in keiner
+gemessenen Form und für keinen Aufrufer; die Werkstatt steht damit auf derselben Wand wie ein
+ausgeliefertes Kit und trägt dessen benannten Rest. Dass **ein Skript** es weiter kann, ist keine
+Nachlässigkeit dieser Runde, sondern die Klasse **H11**, die die Kits gleichermaßen tragen und die
+dort um genau diese Messung erweitert ist.
+
+**Reste, jeder mit einem Zeugen aus einer echten Shell (`residues.py`, Wegwerf-Projekt, echter
+Kernel) — „prägt" heißt: das Item stand danach auf `APPROVED`:**
+
+| Rest | Gate lead / sub | Shell | prägt? |
+|---|---|---|---|
+| **R1** ein selbst geschriebenes Skript startet den Haken (`python probe_start.py`) | 0 / 0 | rc 0 | **ja** |
+| **R2** `python -m runpy <hook>` | 0 / 0 | rc 1 | nein — `-m` nimmt einen MODUL-, keinen Pfadnamen |
+| **R3** `python -c "…runpy.run_path(<hook>)"` | 2 / 0 | rc 0 | nein — `_assert_minting_caller` nimmt `run_path` nicht an |
+| **R4** ein Kit-Haken**verzeichnis** rekursiv kopieren und die Kopie starten | 2 / 0 | rc 0 | **ja** |
+| **R5** `sh <<'EOF' … python <hook> … EOF` | 0 / 0 | rc 2 | nein — das Heredoc verbraucht die stdin, die der Haken für die Nutzlast braucht |
+| **R6** `python <(cat <hook>)` (Prozessersetzung) | **2 / 2** | rc 2 | nein — der Haken liefe unter dem Dateinamen der Ersetzung; seit der Subshell-Runde ohnehin verweigert |
+
+**Was daraus folgt, ohne Beschönigung.** **R1** ist die einzige Form, die JEDEM offensteht, und sie
+ist zugleich der Weg, auf dem dieses Repo seine Haken misst. **R4** trifft nur einen
+**Subagenten** und nur die rekursive Form über ein Verzeichnis: eine Haken-DATEI zu kopieren ist
+seit dieser Runde jedem verweigert (gemessen: `cp <hook-datei> x` rc 2/2, `cp -r .claude/hooks copy`
+rc 2/2), offen bleibt `cp -r team-kits/<kit>/hooks copy` (rc 2 für den Lead, 0 für den Subagenten),
+weil das Wort das Haken-Verzeichnis SELBST nennt und ein Verzeichnis in der START-Position kein
+gestartetes Programm ist. Beide Reste geben einem Subagenten nichts, was R1 ihm nicht ohnehin gibt.
+**R2 stand in der ersten Fassung dieses Eintrags als offener Startweg — das war falsch**, mit
+derselben Strenge falsch wie ein verschwiegenes Loch: der zweite Prüfer hat gemessen, dass die
+Zeile gar nichts startet. Seither trägt jeder Rest hier seinen Shell-Zeugen.
+
+**Über-Verweigerungen, die diese Runde bewusst in Kauf nimmt (alle gemessen):**
+* ein Haken-Pfad, der einem Skript als **Argument** übergeben wird, ist rc 2
+  (`python probe.py .claude/hooks/gate_approval.py`); der Leser kann Argument und Programm nicht
+  trennen, ohne den Fall `python -W ignore <hook>` zu verlieren;
+* eine Datei in einem Haken-Verzeichnis, die kein Haken ist, ist in der START-Position trotzdem
+  rc 2: `python .claude/hooks/test_gates.py`. Der dokumentierte Weg
+  (`python -B -m pytest .claude/hooks/test_gates.py -q`) bleibt rc 0;
+* **kein Shell-Befehl pflegt mehr eine Haken-Datei**: kopieren, verschieben, löschen oder ein
+  `sed -i` darauf ist jedem verweigert, auch dem Subagenten, dem das Werkzeug `Edit` dieselbe Datei
+  offenhält. Das ist der Preis dafür, dass eine Stufe, deren Verb dieser Leser nicht benennen kann,
+  ihre Operanden als Start liest — und es ist dieselbe Regel, die die Kits für ihren eigenen Apparat
+  aussprechen;
+* ein Wort, das eine Shell erst baut, ist **auch dort** verweigert, wo es harmlos wäre:
+  `$`, `*`, `?`, `[` und `{` machen ein Wort unplatzierbar, ohne dass Quotierung gelesen wird
+  (`_UNRESOLVED` sagt, warum die vier Konstruktionen dafür zu verschieden quotiert werden).
+  **Gefragt wird das aber nur, wo das Wort überhaupt einen Pfad benennen könnte** —
+  mit Trennzeichen, oder an einer Programmstelle (`_could_name_a_path`). Die erste Fassung
+  fragte jedes Wort und verweigerte damit `[ $i -ge 3 ]`, also jede Warteschleife, mit der
+  diese Runde ihre eigenen Hintergrundläufe abgefragt hat; `$i` ist dort Daten und kein
+  Gegenstand.
+
+**Was diese Runde ZUSÄTZLICH geschlossen hat, ohne dass es hier gefordert war:** dieselbe
+Unplatzierbarkeit fehlte in der SCHREIB-Richtung, seit die Shell-Hälfte gebaut wurde —
+`sed -i "s/a/b/" "$PWD/team-kits/kernel/state.py"` war rc 0, während die relative Schreibweise
+derselben Datei rc 2 war. Der Fix sitzt in `_candidates`, durch das beide Positionen laufen, also
+ist die Schreib-Hälfte mit geschlossen; `test_gate1_refuses_a_word_it_cannot_resolve_in_the_write_position`
+hält sie.
+
+**Wodurch ein Rückfall auffiele:** `test_gates.py::test_gate1_refuses_starting_a_hook_from_every_caller`
+(gekreuzt über die abgeleiteten Haken-Verzeichnisse, dreizehn Startformen und beide Aufrufer),
+`…::test_gate1_refuses_a_word_it_cannot_resolve` über die sieben Schreibweisen, die eine Shell erst
+baut, `…::test_gate1_refuses_a_powershell_call_operator_starting_a_hook` und
+`…::test_gate1_refuses_the_line_that_minted_an_approval_nobody_gave` für die Zeile dieses Eintrags.
+Jede dieser Aufzählungen hat ihren Zeugen aus einer echten Shell —
+`…::test_a_start_shape_really_starts_a_program`,
+`…::test_an_unresolved_word_really_changes_in_a_shell` und
+`…::test_the_powershell_call_operator_really_starts_a_program` —, denn eine Form, die nichts
+startet, ist eine Wand vor nichts. Die Gegenrichtung halten
+`…::test_gate1_leaves_a_file_outside_the_hook_directories_startable`,
+`…::test_gate1_leaves_a_wrapped_module_run_alone`,
+`…::test_gate1_does_not_read_a_bare_verb_as_a_file_in_the_working_directory` und
+`…::test_gate1_does_not_read_a_directory_as_a_started_file`.
 
 ### H81 — Der Mint-Leser irrt in BEIDE Richtungen: eine unzerlegbare Zeile warnt zu viel, eine fehlende Datei zu wenig (neu, TSK-0097)
 
@@ -3978,9 +4169,12 @@ ist eine **Unter-Warnung**: es wird geschwiegen, wo nichts münzen kann.
 **Wen es trifft:** kein ausgeliefertes Kit. Alle drei registrieren über `$CLAUDE_PROJECT_DIR`, also
 steht in der Zeile selbst kein Leerzeichen — gemessen, alle drei `settings/settings.json` gegen die
 eigenen `hooks/`-Bäume: `True`. Getroffen wäre ein Projekt, in dem jemand den Pfad **ausschreibt**,
-und das ist genau der Fall, den die H80-Empfehlung an den Nutzer erzeugen würde: dieses Repo liegt
-unter `C:\Offline Repos\AgentAndSkills`. Deshalb nennt H80 die leerzeichenfreie Schreibweise
-ausdrücklich.
+und das ist genau der Fall, den die H80-Empfehlung an den Nutzer erzeugt hätte: dieses Repo liegt
+unter `C:\Offline Repos\AgentAndSkills`. **Und dieses Repo ist seit TSK-0098 selbst ein Projekt mit
+einer solchen Registrierung** — sie ist über `${CLAUDE_PROJECT_DIR}` gebildet, und genau deshalb
+liest `approval_mint_is_wired` hier `True` (gemessen 2026-08-31 gegen die geschriebene Datei,
+deren Projektpfad ein Leerzeichen enthält). Die ausgeschriebene Form wäre dieselbe Wirkung mit der
+falschen Auskunft gewesen.
 
 **Urteil: Rest, keine Angriffskette — benannte Grenze.** Keine der beiden Richtungen erzeugt eine
 Freigabe; die eine hält eine Runde an, die andere schweigt. **Warum nicht hier geschlossen:**
@@ -3990,8 +4184,8 @@ was `doctor` für **jedes** Projekt meldet, und braucht eigene rote Tests an die
 eigene Runde, nicht ein Zusatz in einer Runde über Endzustände. Ein zweiter Zerleger nur für den
 Mint-Leser wäre die zweite Antwort auf „was fährt diese Zeile", also genau die Drift, gegen die
 `_invoked_scripts` als einzige Antwort existiert. **Was stattdessen begrenzt:** beide Richtungen
-stehen im Docstring des Lesers, H80 schreibt die leerzeichenfreie Registrierung vor, und die
-Kits sind gemessen nicht betroffen.
+stehen im Docstring des Lesers, die Registrierung dieses Repos ist seit TSK-0098 selbst
+leerzeichenfrei gebildet, und die Kits sind gemessen nicht betroffen.
 
 **Wodurch es auffiele:** `probe_n3.py` im Rundenverzeichnis fährt die vier Zeilen der Tabelle; ein
 Lauf sagt, ob sich der Leser bewegt hat.

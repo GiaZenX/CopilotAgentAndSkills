@@ -514,13 +514,14 @@ def repo_root(data=None):
     return _from_kit("_root").find_repo_root(str((data or {}).get("cwd") or "") or here)
 
 
-def _kit_hooks_dir(root):
-    """The kit hooks directory these gates borrow their payload reader from.
+def kit_hooks_directories(root):
+    """Every directory under `team-kits/` that ships a kit's hooks, in a stable order.
 
     DERIVED, and the derivation is the point: the three kits ship `_compat.py` byte-identical
     (`tools/test_hooks.py` KIT_SPECIFIC_HOOKS names the exceptions, and this is not one), so
     naming one kit here would be an enumeration of one that goes stale the day that kit is
-    renamed. The first entry that IS a kit and ships the file answers.
+    renamed. A directory that IS a kit's and ships that helper is a directory the provider of a
+    scaffolded project starts programs out of, which is the property both callers below want.
 
     WHAT A KIT IS COMES FROM THE KERNEL and is not repeated here. The predicate stood spelled out
     below its own docstring's claim that `kernel.hashing.is_kit_dir` decides -- two answers to one
@@ -533,12 +534,24 @@ def _kit_hooks_dir(root):
     if kits not in sys.path:
         sys.path.append(kits)
     is_kit_dir = _from_kit("kernel.hashing").is_kit_dir
+    found = []
     for entry in sorted(os.listdir(kits)):
         candidate = os.path.join(kits, entry, "hooks")
         if (is_kit_dir(os.path.join(kits, entry))
                 and os.path.isfile(os.path.join(candidate, "_compat.py"))):
-            return candidate
-    raise RuntimeError("no kit under %s ships hooks/_compat.py" % kits)
+            found.append(candidate)
+    return found
+
+
+def _kit_hooks_dir(root):
+    """The kit hooks directory these gates borrow their payload reader from -- the first that is
+    one. Which of the mirrored kits answers is immaterial; that they are mirrored is what
+    `kit_hooks_directories` rests on."""
+    found = kit_hooks_directories(root)
+    if not found:
+        raise RuntimeError("no kit under %s ships hooks/_compat.py"
+                           % os.path.join(root, "team-kits"))
+    return found[0]
 
 
 def _add_kit_paths(root):
@@ -812,7 +825,7 @@ class ProtectedArea(object):
     """
 
     __slots__ = ("root", "kit_directories", "producer_files", "provider_tree", "state_root",
-                 "staging")
+                 "staging", "hook_directories")
 
     def __init__(self, root):
         self.root = root
@@ -822,11 +835,58 @@ class ProtectedArea(object):
         self.provider_tree = os.path.join(root, PROVIDER_DIR)
         self.state_root = os.path.join(root, STATE_ROOT)
         self.staging = os.path.join(root, STATE_ROOT, STAGING)
+        # Where a hook is STARTED from, for the `Executed` position only: this repo's provider tree
+        # and the hook directory of every kit it ships. Both are places a provider runs programs
+        # out of -- here at every tool call, there in every scaffolded project -- which is the
+        # property `hand_driven` turns on.
+        self.hook_directories = [self.provider_tree] + kit_hooks_directories(root)
+
+    def hand_driven(self, path):
+        """(audience, reason) for a file a command line would START, or (None, None).
+
+        A HOOK IS A PROGRAM THE PROVIDER STARTS, on a payload the provider wrote. Started from a
+        command line it runs on a payload the CALLER wrote, and that is the whole of an approval's
+        provenance: `approvals.mint` accepts the approval hook run as itself, so a payload
+        assembled from the readable pending request mints an approval nobody gave -- measured end
+        to end in TSK-0097, and the same line is rc 2 in every scaffolded project because
+        `gate_write_scope` reads a stage that names the enforcement layer as write-capable.
+
+        REFUSED TO EVERYONE, and that is a different audience from the one the same file gets as a
+        WRITTEN path. Who may EDIT enforcement code is the change circle's question and a subagent
+        may; who may PLAY THE PROVIDER is not a question of role at all. Measured in TSK-0097: the
+        hand-driven mint was rc 0 for the session instance AND for an implementer subagent, and
+        `test_gate1_refuses_starting_a_hook_from_every_caller` is where both audiences are held to
+        it -- the counter-direction, that a file OUTSIDE these directories stays startable, is
+        `test_gate1_leaves_a_file_outside_the_hook_directories_startable`.
+
+        STRICTLY INSIDE, and both halves of that were measured. Never CONTAINS: a word that merely
+        holds a hook directory (`team-kits`, the repo root) stands in this position on every
+        `PYTHONPATH=team-kits python ...` line this repo runs. And never the directory ITSELF:
+        `under` answers yes for equality, so the first cut refused the word `.claude` -- a
+        directory nothing starts -- and a verifier met it while copying a tree (measured
+        2026-08-31, a PowerShell payload naming `.claude` in a list, rc 2). Equality is ruled out
+        the way this file already spells containment, by asking the other direction too.
+        """
+        for directory in self.hook_directories:
+            if under(path, directory) and not under(directory, path):
+                return EVERYONE, (
+                    "this file is started by the PROVIDER, on a payload the provider wrote -- it "
+                    "is enforcement code, and %s is a place hooks are run out of. From a command "
+                    "line it would run on a payload this caller wrote instead, which is how an "
+                    "approval nobody gave gets minted (H80 in docs/POST_V2_WISHLIST.md carries "
+                    "the chain and what it leaves open)." % _shown(self.root, directory))
+        return None, None
 
     def verdict(self, path):
-        """(audience, reason) for a path this call would write, or (None, None)."""
+        """(audience, reason) for a path this call would write or start, or (None, None)."""
         if isinstance(path, Unplaceable):
             return NOWHERE_KNOWN, path.reason
+        if isinstance(path, Executed):
+            # BEFORE every area below, and that ordering is the answer to "why is `python
+            # tools/bump_kit_version.py` still allowed": what a started program WRITES cannot be
+            # read off a command line (`_runs_a_program`, H11), so this position is judged on
+            # where the file is STARTED FROM and on nothing else.
+            return self.hand_driven(path)
         if under(path, self.staging):
             return None, None
         reach = reaches(path, self.state_root)
@@ -879,6 +939,18 @@ def _worded(reach, reason):
     return reason if reach == INSIDE else CONTAINS_NOTE + reason
 
 
+def _shown(root, path):
+    """`path` as a reader of this repo would name it -- relative to the root where that is possible.
+
+    A refusal that spells the checkout's absolute path says nothing the reader did not already
+    know and hides the part that identifies the area.
+    """
+    try:
+        return os.path.relpath(path, root).replace("\\", "/")
+    except ValueError:  # pragma: no cover -- a different drive; then the absolute path IS the name
+        return path
+
+
 def goes_into_a_kit_version(path, directories):
     """How this path reaches a kit's content hash, or None (see `kit_version_directories`)."""
     for directory in directories:
@@ -920,8 +992,30 @@ _PATHISH = re.compile(r"[A-Za-z0-9_.\-/\\:~]+")
 # The character a shell expands a word by, and what ends the prefix it expands (`_tilde_prefix`).
 _TILDE = "~"
 _PATH_SEPARATORS = "/\\"
+# The OTHER characters that make a shell hand a program a word this line does not state: the
+# introducer of a parameter or command expansion, the three pathname-matching characters, and the
+# opener of a brace expansion. An enumeration, unavoidably -- nothing this file reads derives a
+# shell's word grammar -- so it carries a tripwire measuring BOTH ends
+# (`test_gates.UNRESOLVED_WORDS`): a real shell has to hand back something other than the literal
+# word for each of them, and the gate has to refuse each of them. Quoting is deliberately NOT read
+# here, unlike for the tilde: the four constructions are suppressed by different quotings (`$`
+# expands inside double quotes, the others do not), and one reader that got that wrong in either
+# direction is worse than a refusal too many -- H80 in `docs/POST_V2_WISHLIST.md` carries what it
+# costs, and H33 the same answer for the tilde.
+_UNRESOLVED = "$*?[{"
 # The flag that turns an interpreter's argument from a program to RUN into a program to BE.
 _INLINE_PROGRAM_FLAG = "c"
+# ...and the flag that makes it run a program the IMPORT SYSTEM finds instead of one this command
+# line names. Both mean the same thing for `_executed_words`: no word of this stage is a file the
+# interpreter starts, so no word of it is judged in that position -- which is what keeps this
+# repo's own documented lines runnable (`python -B -m pytest .claude/hooks/test_gates.py -q`,
+# `PYTHONPATH=team-kits python -B -m kernel.cli --root project_memory <command>`, both measured
+# rc 0 in the round that added the position). What it costs is named rather than implied: a module
+# that takes a path and runs it (`-m runpy <hook>`) starts a hook this reader then does not see,
+# and so does any script the caller wrote first -- the same boundary `_runs_a_program` carries,
+# H11 in `docs/POST_V2_WISHLIST.md`. That the daily lines really survive is held to
+# `test_gate1_leaves_a_file_outside_the_hook_directories_startable` rather than to this sentence.
+_MODULE_FLAG = "m"
 # The keyword form of a function declaration. A word of the shell's own grammar rather than a
 # spelling somebody happens to use -- `_declares_a_function` reads both forms the grammar has.
 _FUNCTION_KEYWORD = "function"
@@ -1005,11 +1099,8 @@ def _runs_a_program(verb):
     return verb.startswith("python") or verb in ("py", "pythonw")
 
 
-def _inline_program_words(stage):
-    """The tokens of an interpreter stage that are a PROGRAM rather than a path to one.
-
-    `-c` and every short-flag cluster carrying it (`python -Bc "..."`), plus the token after it.
-    Both are scanned, because the text can be glued to the flag or stand beside it.
+def _carries_flag(token, letter):
+    """Is this token a short-flag cluster carrying `letter` (`python -Bc "..."`)?
 
     The token's own text is enough here and no reading loop is needed: `_tokenise` is
     `_compat.shell_words`, which already hands back the RESOLVED word, so `python "-c" "..."` and
@@ -1017,17 +1108,254 @@ def _inline_program_words(stage):
     function scanned every reading for that case, and the mutation that removed it stayed green,
     which is the sign that the code was answering a question something else had already answered.
     """
+    text = str(token)
+    return (text.startswith("-") and not text.startswith("--")
+            and letter in text[1:].lower())
+
+
+def _flag_words(stage, letter):
+    """Every token of a stage carrying short flag `letter`, plus the token behind each.
+
+    Both tokens are taken, because the value can be glued to the flag or stand beside it.
+    """
     words = []
     for index, token in enumerate(stage):
-        text = str(token)
-        if not text.startswith("-") or text.startswith("--"):
-            continue
-        if _INLINE_PROGRAM_FLAG not in text[1:].lower():
+        if not _carries_flag(token, letter):
             continue
         words.append(token)
         if index + 1 < len(stage):
             words.append(stage[index + 1])
     return words
+
+
+def _inline_program_words(stage):
+    """The tokens of an interpreter stage that are a PROGRAM rather than a path to one."""
+    return _flag_words(stage, _INLINE_PROGRAM_FLAG)
+
+
+def _resolves_the_verb_at_runtime(tool, token):
+    """Does a COMMAND SUBSTITUTION stand where the program name goes?
+
+    Then what this stage starts is whatever the substitution prints, and no reader of the command
+    line can say whether that is an interpreter -- so its operands stand in the START position.
+    Measured 2026-08-31: `$(which python) <hook>` came out rc 0 for a subagent while
+    `python <hook>` was rc 2; the outer pipeline keeps the substitution's own tokens, so its verb
+    reads as the opener and the file behind it stood in no position at all.
+
+    ABLATED ONCE AND BROUGHT BACK, which is the more useful half of this docstring. While
+    `_unresolved_at` still answered for a bare `$`, this branch changed no verdict anywhere in the
+    round's battery and was removed as unreachable. It became reachable again the moment that
+    reader stopped answering for one-character words -- `$(printf 'pyt'; printf 'hon') <hook>` cuts
+    at the `;`, so the hook stands behind a stage whose verb is `printf`, which the kits classify as
+    a read. The lesson is not about substitutions: a branch is unreachable only against the reader
+    standing beside it, and both have to be measured again when either moves.
+    """
+    text = str(token)
+    return bool(text) and any(opener.startswith(text)
+                              for opener, _closer in _substitution_pairs(tool))
+
+
+def _after_an_unopened_closer(tool, body):
+    """Where the OUTER stage's words resume, when this body ends a substitution it never opened.
+
+    A SUBSTITUTION WITH A `;` IN IT IS CUT WHERE THE SHELL CUTS IT, and the last piece then carries
+    the closer plus everything the outer stage wrote behind it -- with the INNER command's verb in
+    front. Measured 2026-08-31: `$(printf 'pyt'; printf 'hon') <hook>` arrives here as
+    `['printf', 'hon', ')', '<hook>']`, verb `printf`, which the kits classify as a read, so the
+    hook stood in no position at all while bash started it. What follows an unopened closer belongs
+    to a command whose name this reader never saw, so it is judged like any other unknown program's
+    operand list.
+
+    The openers are matched by PREFIX because the tokeniser splits `$(` into `$` and `(`, which is
+    the same reading `_resolves_the_verb_at_runtime` uses.
+
+    A CLOSER WITH NOTHING BEHIND IT IS NOT THIS SHAPE, and saying so is not tidiness: the last
+    pipeline of a SUBSHELL ends in exactly such a token (`(cd <hooks> && python gate_approval.py)`
+    arrives as `['python', 'gate_approval.py', ')']`), and answering for it handed the caller an
+    empty operand list -- so the hook standing right there was judged in no position at all.
+    Measured 2026-08-31: rc 0 in all four combinations while the flat spelling was rc 2.
+    """
+    pairs = _substitution_pairs(tool)
+    openers = {opener for opener, _closer in pairs}
+    closers = {closer for _opener, closer in pairs}
+    opened = False
+    for index, token in enumerate(body):
+        text = str(token)
+        if text and any(opener.startswith(text) for opener in openers):
+            opened = True
+        elif text in closers and not opened and index + 1 < len(body):
+            return index + 1
+    return None
+
+
+def _executed_words(module, tool, body, verb):
+    """The tokens of a stage that could name a file it STARTS.
+
+    THREE POSITIONS, because a shell starts a program in three ways, and each of the last two was
+    measured as a way past the first:
+      * the stage's own VERB -- `./.claude/hooks/gate_approval.py` needs no interpreter in front
+        of it, and `_verb_as_a_file` says when a verb names a file at all;
+      * the OPERANDS of an interpreter, whether it is the verb, or a WRAPPER starts it
+        (`timeout`, `nohup`, `stdbuf`), or another shell is handed it as a line of its own
+        (`bash -lc "python <hook>"`) -- `_command_positions` carries which stages that reaches and
+        why a read is not one of them;
+      * every operand of a stage whose verb this reader cannot name as a program at all, which is
+        the fail-closed remainder and the branch below.
+
+    A FOURTH STOOD HERE FOR ONE ROUND -- the operands of a stage whose verb is a command
+    SUBSTITUTION -- and it was ablated on 2026-08-31 without a single verdict changing across the
+    round's whole measured battery in both shells: such a verb is never read-only and never an
+    interpreter, so the remainder answers it, and in bash the substitution's own token is a word
+    `_UNRESOLVED` already refuses. A branch no measurement can reach is a claim, not a wall.
+
+    EVERY OPERAND, not the first one, and that direction is the one this file already takes for a
+    stage it cannot classify (`written_paths` hands the WHOLE body to the area when the verb is not
+    read-only). An interpreter's grammar has flags that take a value of their own
+    (`python -W ignore <file>`), so "the first word that is not a flag" is the script for some
+    lines and the value of a flag for others -- and reading it that way stops at the value and
+    never sees the file behind it. Over-inclusion costs a refusal for a path handed to a script as
+    an ARGUMENT; under-inclusion costs the wall.
+
+    A stage that runs a MODULE or an inline program of its own names no file to start, so it has
+    no operand in this position -- see `_MODULE_FLAG`, which carries what that leaves open.
+    """
+    at = _verb_position(module, body, verb)
+    if at is None:
+        return [], []
+    words = _verb_as_a_file(body[at])
+    if _resolves_the_verb_at_runtime(tool, body[at]):
+        return words + _operands(body[at + 1:]), []
+    resumes = _after_an_unopened_closer(tool, body)
+    if resumes is not None:
+        return words + _operands(body[resumes:]), []
+    positions = _command_positions(module, body, verb, at)
+    if not positions and not module._stage_is_read_only(body):
+        # THE VERB IS A PROGRAM THIS READER CANNOT NAME, and the stage is not one it can call a
+        # read either -- so what the operands are FOR is unknown, and "an argument" is only one of
+        # the answers. Measured 2026-08-31 with a real PowerShell as arbiter: `& ('pyt'+'hon')
+        # <hook>` really starts the hook (the call operator with a parenthesised expression), the
+        # verb came out as `pyt+hon`, no word of the stage was an interpreter, and the line was
+        # rc 0 for a subagent. The same branch takes the relocation with it: `cp -r <hooks> copy`
+        # is a stage of this kind, and its operands are now judged in the start position for every
+        # caller. What it costs is that no shell line maintains a hook file any more -- a copy, a
+        # move, a removal or an in-place edit of one is refused to everyone, which is the rule the
+        # kits state for their own layer and the door the Write and Edit tools keep open.
+        #
+        # THE SECOND LIST, AND WHY IT IS A SECOND ONE: these words stand where a program COULD be,
+        # not where one demonstrably is, so a word among them that only a shell can resolve is not
+        # by itself a subject -- `[ $i -ge 3 ]` is a stage of exactly this kind, and reading `$i`
+        # as an unplaceable start refused every polling loop this repo measures with (measured
+        # 2026-08-31, rc 2 on the round's own wait line). `_could_name_a_path` is where that split
+        # is made.
+        return words, _operands(body[at + 1:])
+    for index in sorted(positions):
+        rest = body[index + 1:]
+        options = _option_part(rest)
+        if _flag_words(options, _MODULE_FLAG) or _flag_words(options, _INLINE_PROGRAM_FLAG):
+            continue
+        started = _operands(rest)
+        if not started and index != at:
+            words.append(Unplaceable(str(body[index]), _handed_a_program_from_elsewhere()))
+            continue
+        words += started
+    return words, []
+
+
+def _handed_a_program_from_elsewhere():
+    """Why an interpreter a WRAPPER starts with no program is a start this reader cannot place.
+
+    IT WILL RUN SOMETHING, and the line does not say what: another program turns data into its
+    argument list. Measured 2026-08-31 with a real shell against a real kernel:
+    `echo <hook> > list.txt; xargs -a list.txt python < forged.json` minted `APR-0001` and left the
+    item `APPROVED`, while neither `python` nor any word beside it named the hook.
+
+    ONLY WHERE THE INTERPRETER IS NOT THE STAGE'S OWN VERB, and that boundary is the mechanism
+    rather than a concession to convenience: an interpreter standing first with no operand reads
+    its PROGRAM from standard input, which spends the one channel the hook needs for its payload --
+    measured, `cat <hook> | python < forged.json` cannot have both and mints nothing. A wrapper is
+    the shape that leaves stdin free, and it is the one refused here. So `python - <<'PY'`, the
+    form this repo works in, stays rc 0.
+    """
+    return ("a program starts this interpreter WITHOUT naming a program for it, so what it runs "
+            "comes from a channel this line does not carry -- a file another program turns into "
+            "its argument list. A reader of command lines cannot follow that, and what it can "
+            "then start includes the enforcement layer: measured, `xargs -a <list> python` with a "
+            "forged payload on standard input minted an approval nobody gave.\n"
+            "Remedy: name the program on the line (`python <path>`), or run it from a script and "
+            "report that -- this gate reads a command line and says so.")
+
+
+def _program_name(token):
+    """The word a shell would compare against a program name -- the kits' reading of a verb."""
+    return os.path.basename(str(token).lower().replace("\\", "/"))
+
+
+def _verb_as_a_file(token):
+    """The stage's verb, but only when it names a FILE this line places.
+
+    A SEPARATORLESS VERB IS RESOLVED OVER `PATH`, NEVER AGAINST THE WORKING DIRECTORY, and reading
+    it as a file in the current directory is not a stricter answer, it is a wrong one: measured
+    2026-08-31, from inside a hooks directory EVERY command came out rc 2 -- `cat`, `ls`, `grep` --
+    and the refusal called `grep` enforcement code. `./x.py` and `dir/x.py` are the shapes that DO
+    name a file, and the shell tells them apart by exactly this character.
+    """
+    text = str(token)
+    return [token] if any(separator in text for separator in _PATH_SEPARATORS) else []
+
+
+def _option_part(words):
+    """The words a program reads as OPTIONS: everything up to its first operand.
+
+    THE QUESTION "does this stage run a module instead of a file" IS ABOUT THE INTERPRETER'S OWN
+    OPTIONS, and asking it of every word behind the interpreter answers it with the SCRIPT's
+    arguments too. Measured 2026-08-31: `python <hook> -c` was rc 0, and so were `-m`, `-abc` and
+    `-M`, while the control `-x` was rc 2 -- a single option-looking word behind the script deleted
+    the operand scan, and the hook does not read `sys.argv`, so the extra word cost the caller
+    nothing. The chain ran to `APPROVED` again.
+
+    WHERE THIS ERRS is the safe direction and it is named: a flag that takes a value of its own
+    (`python -W ignore -m pytest x`) ends the option part at the VALUE, so a `-m` behind it is not
+    seen and the operands are scanned -- a refusal too many, never one too few.
+    """
+    out = []
+    for token in words:
+        if not str(token).startswith("-"):
+            return out
+        out.append(token)
+    return out
+
+
+def _command_positions(module, body, verb, at):
+    """Every position of this stage at which a program name this reader KNOWS stands.
+
+    TWO: the verb itself when it is an interpreter, and an interpreter ANYWHERE in a stage whose
+    verb this reader can classify as neither read-only nor an interpreter -- a wrapper, or another
+    shell handed a line of its own, whose words the kits' tokeniser gives back as ordinary words of
+    this stage. Measured 2026-08-31, each rc 0 for a subagent before this: `timeout 60 python
+    <hook>`, `nohup python <hook>`, `stdbuf -o0 python <hook>`, `bash -lc "python <hook>"`.
+
+    THE READ-ONLY CONDITION IS WHAT KEEPS A READ FREE. `grep -rn python .claude/hooks/` carries the
+    word `python` in an operand and stays rc 0 because the kits classify `grep` as read-only -- not
+    because the word stands in a particular place. A THIRD condition stood here for exactly one
+    round, taking the position behind an inline-program flag whatever the verb; the mutation run
+    that removed it changed no verdict, because every stage it could fire on that really runs
+    something is already a wrapper -- and on a read-only verb it produced refusals of reads
+    (`grep -c python <hook>`) and nothing else. A verb this reader cannot classify at all is not
+    read-only, so it lands here, which is the fail-closed direction.
+    """
+    out = set()
+    if _runs_a_program(verb):
+        out.add(at)
+    elif not module._stage_is_read_only(body):
+        for position in range(at + 1, len(body)):
+            if _runs_a_program(_program_name(body[position])):
+                out.add(position)
+    return out
+
+
+def _operands(words):
+    """The words of a stage that are not flags -- what a program is given rather than told."""
+    return [token for token in words if not str(token).startswith("-")]
 
 
 def _declares_a_function(module, head):
@@ -1097,6 +1425,19 @@ class Unplaceable(str):
         return self
 
 
+class Executed(str):
+    """A path an interpreter stage would START, rather than one it would change.
+
+    A SUBJECT OF ITS OWN, and not a written path with a different name, because it is judged
+    against a different area and for a different reason. What a program WRITES is unreadable from a
+    command line (`_runs_a_program` carries that boundary and H11 its chain), so a path in this
+    position is not refused for being protected: `python tools/bump_kit_version.py` and
+    `python tools/validate.py` are how this repo is delivered. What IS refused is starting a file
+    out of the enforcement layer, and `ProtectedArea.verdict` decides that -- here there is only
+    the position.
+    """
+
+
 def _lost_the_position(why):
     """Why a relative word written from a position this reader gave up is one it cannot place."""
     return ("this word is spelled relative to a position this reader could not follow. `%s` "
@@ -1104,6 +1445,45 @@ def _lost_the_position(why):
             "not the careful answer for a move whose direction is unknown -- it may be the one "
             "that goes back INTO a protected tree. From an unknown position a relative word "
             "can name any file on this host, canonical project state included." % (why,))
+
+
+def _cannot_resolve_the_word(character, reading):
+    """Why a word carrying a construction only a shell can resolve is one this reader cannot place.
+
+    THE SAME ANSWER AS THE TILDE'S AND FOR THE SAME REASON (`_cannot_expand_the_tilde`, DEC-0020):
+    the shell builds the word out of state or out of the filesystem, this reader holds neither, and
+    what the word can then name includes every protected path. It was measured as a hole in BOTH
+    directions on 2026-08-31 -- the START position (`python "$PWD/<hook>"` and
+    `python te*m-kits/.../gate_approval.py`, each rc 0 and each run to an approval nobody gave) and
+    the WRITE position, where it had been open since the shell half was built
+    (`sed -i "s/a/b/" "$PWD/team-kits/kernel/state.py"` rc 0 against rc 2 for the relative spelling).
+    """
+    return ("this word carries `%s`, and what stands from there on is built by the SHELL: out of "
+            "its own state (a parameter or command expansion) or out of the filesystem (a pathname "
+            "or brace expansion). This reader holds neither, so the word it will really hand to "
+            "the program is one nothing on this line states -- and what it can name includes "
+            "canonical project state and the enforcement layer. The whole reading was %r."
+            % (character, reading))
+
+
+def _unresolved_at(text):
+    """Where a construction only a shell can resolve begins in `text`, or None (see `_UNRESOLVED`).
+
+    WHICH WORDS THIS IS ASKED OF is decided by the caller and not here, and that is the whole
+    reason this stayed usable: `_candidates` asks it of a word that could name a PATH (it carries a
+    separator) and of one standing where a PROGRAM is started, and of nothing else. A shell
+    variable used as DATA (`[ $i -ge 3 ]`, `$((i + 1))`) is then not a subject at all, which is the
+    difference between a gate and a lockout -- measured the hard way, the first cut refused this
+    round's own polling line.
+
+    A SECOND CONDITION STOOD HERE AND WAS ABLATED: "a word of one character is punctuation, not a
+    construction" (`[` as the `test` builtin, `{` as a group). With the caller's question in place
+    it changed no verdict anywhere in the round's battery, because a one-character word carries no
+    separator and stands in no program position.
+    """
+    positions = [text.find(character) for character in _UNRESOLVED]
+    found = [position for position in positions if position >= 0]
+    return min(found) if found else None
 
 
 def _cannot_expand_the_tilde(prefix):
@@ -1278,7 +1658,19 @@ def _expanded(text, expandable):
     return os.path.expanduser(text)
 
 
-def _candidates(compat_module, word, position):
+def _could_name_a_path(reading, starts):
+    """Is this word one whose SHELL-BUILT value could be a path at all? (see `_unresolved_at`)
+
+    TWO WAYS TO BE ONE, and the second is the position rather than the text: a word carrying a path
+    separator is being spelled as a path, and a word standing where a program is STARTED is a path
+    whatever it looks like (`H=<hook>; python $H` -- one variable, no separator, and it started the
+    hook). Everything else is data as far as this reader can tell, and refusing data is how a gate
+    becomes a lockout: `[ $i -ge 3 ]` and `$((i + 1))` carry an expansion and name nothing.
+    """
+    return starts or any(separator in str(reading) for separator in _PATH_SEPARATORS)
+
+
+def _candidates(compat_module, word, position, starts=False):
     """Every path a word could name, resolved against where the line stands.
 
     EVERY READING of the word (`readings`: `'.cl'aude/hooks/x` and `.claude/hooks/x` are one file
@@ -1306,7 +1698,19 @@ def _candidates(compat_module, word, position):
     """
     out = []
     for reading, expandable in readings(compat_module, word):
-        for found in [reading] + [match.group(0) for match in _PATHISH.finditer(reading)]:
+        unresolved = _unresolved_at(str(reading)) if _could_name_a_path(reading, starts) else None
+        parts = [(str(reading), 0)] + [(match.group(0), match.start())
+                                       for match in _PATHISH.finditer(reading)]
+        for found, begins in parts:
+            # THE POSITION DECIDES, and it has to: `_PATHISH` carries none of the characters of
+            # `_UNRESOLVED`, so the path-like part of `$PWD/team-kits/x` is the SUBSTRING behind the
+            # expansion -- and that substring starts with a separator, i.e. it read as an absolute
+            # path and landed under nothing. A part that stands in FRONT of the construction is a
+            # real prefix of a real path and keeps its answer.
+            if unresolved is not None and begins >= unresolved:
+                out.append(Unplaceable(reading, _cannot_resolve_the_word(
+                    str(reading)[unresolved], str(reading))))
+                break
             text = _expanded(found, expandable)
             if text is None:
                 out.append(Unplaceable(reading, _cannot_expand_the_tilde(_tilde_prefix(found))))
@@ -1702,6 +2106,43 @@ def _is_the_command_name(module, pipeline, position):
     return True
 
 
+def _the_move_in_a_later_stage(module, tool, pipeline):
+    """`(stage, verb, position in the pipeline)` for a directory verb the pipeline's own verb hides.
+
+    ONLY THE LAST STAGE, because that is the one whose position can outlive its own stage: a group
+    in it holds the commands that follow inside the same child. A `cd` in an EARLIER stage of a
+    pipe ends with that stage, and `_group_depth` says so on its own -- outside a group the answer
+    is 0 and the multi-stage guard of `_runs_in_the_shell_itself` keeps the base where it is.
+
+    The stage comes back with the verb, because what stands in FRONT of a command name is a
+    question about the stage: `true | ( cd …` has `true` and `|` in front of the group, and neither
+    says anything about the group's own first word.
+    """
+    parts = stages(module, pipeline)
+    if len(parts) < 2:
+        return pipeline, "", None
+    head = stage_body(module, parts[-1])
+    verb = module._stage_verb(head)
+    at = _verb_position(module, head, verb)
+    if at is None or _directory_role(tool, str(head[at])) is None:
+        return pipeline, "", None
+    return head, verb, _verb_position(module, pipeline, verb)
+
+
+def _group_depth(module, pipeline, position, depth):
+    """How many groups stand open where this verb is -- `commands()`' count plus this pipeline's.
+
+    ONE READING FOR TWO QUESTIONS. `_runs_in_the_shell_itself` asks whether the count is nil,
+    because that is what decides the PARENT's position; `WorkingDirectory.follow` asks for the
+    number, because that is the scope the move really belongs to (`WorkingDirectory.settle`). Both
+    were counting it separately, and one of them was counting it only to throw it away.
+    """
+    for token in pipeline[:position]:
+        text = module._operator(token)
+        depth += text.count("(") - text.count(")")
+    return depth
+
+
 def _runs_in_the_shell_itself(module, pipeline, position, depth, asynchronous):
     """Does the SHELL ITSELF run this verb, so that where it goes stays with it?
 
@@ -1728,10 +2169,27 @@ def _runs_in_the_shell_itself(module, pipeline, position, depth, asynchronous):
     """
     if asynchronous or len(stages(module, pipeline)) > 1:
         return False
-    for token in pipeline[:position]:
-        text = module._operator(token)
-        depth += text.count("(") - text.count(")")
-    return depth == 0
+    return _group_depth(module, pipeline, position, depth) == 0
+
+
+def _moves_inside_an_inline_program(tool, pipeline):
+    """Does this pipeline hand ANOTHER shell a line that changes where it stands?
+
+    THE MOVE IS THEN NOT THIS PIPELINE'S VERB, so nothing that reads the verb sees it, while the
+    real shell really moves -- and the words of everything after it are resolved against a position
+    that no longer exists. `WorkingDirectory.follow` carries the measurement.
+
+    ASKED OF WHAT STANDS BEHIND AN INLINE-PROGRAM FLAG, because that is the one place a command
+    line carries another command line. What it costs is a read whose own flag cluster happens to
+    carry the same letter with a directory verb behind it (`grep -c cd file`), which loses the
+    position for the rest of the call -- an over-refusal in the H20 class, and the safe direction.
+    """
+    behind = False
+    for token in pipeline:
+        if behind and _directory_role(tool, str(token)) is not None:
+            return True
+        behind = behind or _carries_flag(token, _INLINE_PROGRAM_FLAG)
+    return False
 
 
 def _redirections_removed(module, words):
@@ -1854,7 +2312,7 @@ class WorkingDirectory(object):
     Those are answers, not doubts, and the base stays because the shell's does.
     """
 
-    __slots__ = ("base", "why", "_previous", "_stack")
+    __slots__ = ("base", "why", "_previous", "_stack", "_scopes")
 
     def __init__(self, base):
         self.base = base
@@ -1864,6 +2322,38 @@ class WorkingDirectory(object):
         # An empty stack and an unseen one answer the next pop differently, and only the second of
         # them was a hole -- see `follow`.
         self._stack = []
+        # Where this reader stood before it walked into a GROUP -- see `settle` and `follow`.
+        self._scopes = []
+
+    def settle(self, depth):
+        """Come back out of every group whose move this reader followed and that has now closed.
+
+        A SUBSHELL MOVES A SHELL THAT ENDS, and both halves of that were wrong here. `( cd <deeper>
+        && <command> )` does not move the PARENT -- which `_runs_in_the_shell_itself` had right --
+        but the command INSIDE the same brackets runs from the moved directory, and this reader
+        resolved it against the base the parent never left. Measured 2026-08-31, real shell as
+        arbiter, every one of them rc 0 while the flat spelling of the same line was rc 2:
+        `(cd <hooks> && python gate_approval.py)` started the hook and minted `APR-0001`, and in
+        the WRITE direction -- open since the shell half was built, not introduced by this round --
+        `(cd .claude/hooks && rm gate_todo_items.py)` was rc 0 for EVERY caller, as were
+        `(cd project_memory && sed -i … <item>)` and `(cd team-kits && sed -i … kernel/state.py)`.
+        That is the dual of H27: that entry closed the write AFTER the closing bracket, this one is
+        the write INSIDE it.
+
+        SO THE ANSWER IS A SCOPE AND NOT A REFUSAL. `follow` walks into the group and remembers
+        where it stood; when a later pipeline stands at a smaller depth, the group has closed and
+        the base comes back. Losing the position instead -- the shorter fix -- would have refused
+        `(cd tools && python bump_kit_version.py)`, i.e. a line of this repo's own delivery, and a
+        gate that refuses those is broken rather than stricter.
+        """
+        while self._scopes and self._scopes[-1][0] > depth:
+            _at, base, previous, stack = self._scopes.pop()
+            self.base, self._previous, self._stack = base, previous, stack
+
+    def _open_scope(self, at):
+        """Remember where the shell stands before a move made INSIDE a group at depth `at`."""
+        self._scopes.append((at, self.base, self._previous,
+                             None if self._stack is None else list(self._stack)))
 
     def follow(self, module, compat_module, pipeline, depth, asynchronous, tool):
         """Move as this pipeline would move a shell -- or stay, which is most of the answer.
@@ -1877,19 +2367,51 @@ class WorkingDirectory(object):
         position = _verb_position(module, pipeline, verb)
         if position is None:
             return
+        said = " ".join(str(token) for token in pipeline)[:120]
+        # FIRST, BEFORE ANY SEARCH FOR A VERB THIS PIPELINE MIGHT CARRY: a line handed to another
+        # shell is one this reader does not decompose at all, so nothing it finds in the tokens can
+        # be trusted to be the move. Ordering it after the search cost the `sh -c "cd <hooks> && …"`
+        # refusal for a subagent -- measured, 2 -> 0, while building the paragraph below.
+        if _moves_inside_an_inline_program(tool, pipeline):
+            # A LINE HANDED TO ANOTHER SHELL MOVES A SHELL THIS ONE IS NOT WATCHING. The move is
+            # not this pipeline's verb, so nothing below would look at it, and the words of the
+            # NEXT pipeline are then resolved against a position the real shell has left. Measured
+            # 2026-08-31 with a real shell against a real kernel: `sh -c "cd <hooks> && python
+            # gate_approval.py"` was rc 0 for a subagent and minted `APR-0001` -- the reader cut at
+            # the `&&`, saw `python gate_approval.py` from the repo root, and placed it nowhere
+            # near a hook directory.
+            self._lose(said)
+            return
+        head = pipeline
         role = _directory_role(tool, str(pipeline[position]))
         if role is None:
+            # THE MOVE MAY BE IN A LATER STAGE OF THE PIPE, and then this pipeline's own verb is
+            # not it. `true | (cd <hooks> && python gate_approval.py)` puts the whole group in the
+            # receiving stage, so the `cd` and the command it applies to are in the SAME child --
+            # measured 2026-08-31, rc 0 in all four combinations while the same group without the
+            # pipe was rc 2. Read from the last stage; `head` keeps that stage, because what stands
+            # in front of the verb is a question about the stage and not about the pipeline (a
+            # `true |` in front of a group says nothing about the group's own first word).
+            head, verb, position = _the_move_in_a_later_stage(module, tool, pipeline)
+            if position is None:
+                return
+            role = _directory_role(tool, str(pipeline[position]))
+        inside = _group_depth(module, pipeline, position, depth)
+        if inside > 0:
+            # INSIDE A GROUP THE MOVE IS REAL FOR EVERY COMMAND OF THAT GROUP, and only the parent
+            # keeps its place. `_runs_in_the_shell_itself` answers the parent's question and
+            # answers it correctly; what was missing is the group's own. `settle` carries the
+            # measurement and what the shorter fix would have cost.
+            self._open_scope(inside)
+        elif not _runs_in_the_shell_itself(module, pipeline, position, depth, asynchronous):
             return
-        if not _runs_in_the_shell_itself(module, pipeline, position, depth, asynchronous):
-            return
-        said = " ".join(str(token) for token in pipeline)[:120]
-        if not _is_the_command_name(module, pipeline, position):
+        if not _is_the_command_name(module, head, _verb_position(module, head, verb)):
             # A word in FRONT of the command name is a command of its own, and what it does with
             # the rest is its business: `command cd` leaves the builtin in the shell, `env cd`
             # never reaches it. Which of the two this is, is not readable from here.
             self._lose(said)
             return
-        operand = _destination_word(module, pipeline, position)
+        operand = _destination_word(module, head, _verb_position(module, head, verb))
         if operand is _UNACCOUNTABLE:
             self._lose(said)
             return
@@ -1918,7 +2440,8 @@ class WorkingDirectory(object):
                     self._lose(said)
             return
         leaving = self.base
-        target = self._resolve(module, compat_module, pipeline, operand)
+        target = self._resolve(module, compat_module, head, operand,
+                               _verb_position(module, head, verb))
         if target is None or not self._enter(target):
             # TWO WAYS TO FAIL AND ONE ANSWER. This reader could not name a directory from the word
             # (a variable, a target `_walk` walks out of the tracked point), or it could name one
@@ -1947,12 +2470,20 @@ class WorkingDirectory(object):
         self.why = ""
         return True
 
-    def _resolve(self, module, compat_module, pipeline, operand):
+    def _resolve(self, module, compat_module, pipeline, operand, position=0):
         """The absolute directory this word names, or None when nothing here can name it.
 
         `_walk` stays the answer for the relative case, fed with the absolute point we stand on --
         one reading of a path walk, not a second. From an UNKNOWN position only an absolute word
         names anything, and naming nothing keeps the position unknown.
+
+        THE PIPELINE IS HANDED OVER FROM THE VERB ON, because that is where the kits' `_walk`
+        starts reading (`pipeline[1:]` are its arguments). Everything in front of the verb is shell
+        syntax by then -- `_is_the_command_name` has said so -- but it still COUNTS: measured
+        2026-08-31, `( cd team-kits/dev-team/hooks && …` handed `_walk` a pipeline whose first
+        token was `(`, so it read `cd` itself as the destination and answered `<base>/cd`, a
+        directory nothing can enter. The position was then given up on a line this reader can
+        follow perfectly well.
 
         A TILDE THIS READER MAY NOT EXPAND NAMES NOTHING HERE EITHER (`_expanded`, DEC-0020), and
         the caller reads that as a move it could not compute -- so the position is given up rather
@@ -1971,23 +2502,35 @@ class WorkingDirectory(object):
                 return expanded
         if self.base is _UNKNOWN_POSITION:
             return None
-        walked = module._walk(pipeline, str(self.base).replace("\\", "/"))
+        walked = module._walk(pipeline[position:], str(self.base).replace("\\", "/"))
         if walked is None:
             return None
         walked = walked.replace("/", os.sep)
         return walked if os.path.isabs(walked) else None
 
 
-def written_paths(data):
-    """Every path this command line would WRITE, as absolute paths.
+def _started(candidate):
+    """One candidate of the START position, as the kind of subject that makes it.
 
-    THREE POSITIONS, and they are the three a command line has:
+    An `Unplaceable` keeps its own kind: a word nothing on the line places can name any file on the
+    host, so it is the wider answer of the two and the position does not narrow it.
+    """
+    return candidate if isinstance(candidate, Unplaceable) else Executed(candidate)
+
+
+def written_paths(data):
+    """Every path this command line would WRITE, plus every file it would START.
+
+    FOUR POSITIONS, and they are the four a command line has:
       * the target of an output redirect that RETAINS what is written (`_null_sinks` decides what
         retains; a redirect into the discard device is output suppression, not a write),
       * every word of a stage whose verb carries a WRITE FLAG (`sed -i`, `find -delete`, ...),
       * every word of a stage whose verbs are not read-only and that does not merely RUN what it
         is given -- for an interpreter only the inline program text (`-c`) is read as a write,
-        since its other operands are code to execute, not files to change.
+        since its other operands are code to execute, not files to change,
+      * and the file the stage STARTS (`_executed_words`), which is a subject of its own kind
+        (`Executed`) because it is judged against the enforcement layer and not against the whole
+        protected area -- `python tools/bump_kit_version.py` is how this repo is stamped.
 
     A stage with no verb at all (`$env:PYTHONPATH="team-kits"`) runs no program and writes
     nothing, which is why the PowerShell spelling of this repo's own kernel call survives.
@@ -2012,6 +2555,10 @@ def written_paths(data):
     directory = WorkingDirectory(str(data.get("cwd") or "") or os.getcwd())
     out = []
     for pipeline, depth, asynchronous in command_line(module, compat_module, data, command):
+        # BEFORE THE WORDS ARE PLACED, not after: a group that has closed took its move with it,
+        # and the next pipeline's relative words belong to the shell that stands outside it again
+        # (`WorkingDirectory.settle`).
+        directory.settle(depth)
         for target in module._redirect_targets(pipeline, sinks):
             out.extend(_candidates(compat_module, target, directory))
         for stage in stages(module, pipeline):
@@ -2029,6 +2576,18 @@ def written_paths(data):
                 words = body
             for word in words:
                 out.extend(_candidates(compat_module, word, directory))
+            started, handed = _executed_words(module, data.get("tool_name"), body, verb)
+            for word, starts in [(word, True) for word in started] + \
+                                [(word, False) for word in handed]:
+                # an `Unplaceable` from this position is not a word to resolve -- it is the
+                # verdict already (`_handed_a_program_from_elsewhere`), and resolving it would turn
+                # the interpreter's own name into a path nothing protects
+                if isinstance(word, Unplaceable):
+                    out.append(word)
+                    continue
+                out.extend(_started(candidate)
+                           for candidate in _candidates(compat_module, word, directory,
+                                                        starts=starts))
         directory.follow(module, compat_module, pipeline, depth, asynchronous,
                          data.get("tool_name"))
     return out

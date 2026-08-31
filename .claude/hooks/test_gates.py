@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-The measurement for this repo's four PreToolUse gates (SR-0009, TSK-0003).
+The measurement for the hooks this repo registers on its own provider (SR-0009, TSK-0003).
 
 HOW IT MEASURES. Every gate is started as a REAL PROCESS with a JSON payload on stdin, against a
 project built OUTSIDE this repo, and the verdict read off the exit code -- 2 is a refusal, 0 is an
@@ -9,7 +9,7 @@ sentence: two tests in this repo's history were satisfied by their own docstring
 its own environment instead of the thing under test.
 
 BOTH DIRECTIONS, EVERY GATE. A gate that only refuses is indistinguishable from a gate that refuses
-everything, and that failure is the expensive one here -- these four sit on the delegation path of
+everything, and that failure is the expensive one here -- these hooks sit on the delegation path of
 the session that builds the kits.
 
 WHERE IT DOES NOT RUN. `python -m pytest tools/ -q` does not collect this file; it lives beside the
@@ -104,6 +104,17 @@ def _sandbox_module():
     sys.path.insert(0, HOOKS)
     import _sandbox
     return _sandbox
+
+
+def _reader():
+    """The module under test, imported once -- table axes are GENERATED out of it.
+
+    UP HERE because two tables are built at import time from what it answers, and a module-level
+    parametrisation runs before the definitions further down exist.
+    """
+    sys.path.insert(0, HOOKS)
+    import _harness
+    return _harness
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -284,12 +295,32 @@ def open_item(project):
     return done.stdout.split()[0]
 
 
+def _script_path(project, gate):
+    """Where the provider would start `gate` FROM -- read off the registration, never assumed.
+
+    Not every gate this repo registers lives in `.claude/hooks/`: the approval hook is the kits'
+    own file, referenced where it ships (`settings.json` carries why). A helper that joined
+    `.claude/hooks/` to every name would start a file that is not there, and a missing file is a
+    silent allow -- which is exactly what the tests using this are here to catch.
+    """
+    with open(os.path.join(project, ".claude", "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    for groups in (settings.get("hooks") or {}).values():
+        for group in groups:
+            for hook in group.get("hooks") or []:
+                for word in re.findall(r"\$\{CLAUDE_PROJECT_DIR\}(/[^\"\s]+)",
+                                       str(hook.get("command") or "")):
+                    if os.path.basename(word) == gate:
+                        return os.path.join(project, word.lstrip("/").replace("/", os.sep))
+    return os.path.join(project, ".claude", "hooks", gate)
+
+
 def run(project, gate, payload, hooks=None):
     """Start `gate` as the provider starts it and return (rc, stderr)."""
-    directory = hooks or os.path.join(project, ".claude", "hooks")
+    script = os.path.join(hooks, gate) if hooks else _script_path(project, gate)
     environment = dict(os.environ, CLAUDE_PROJECT_DIR=project)
     environment.pop("PYTHONPATH", None)
-    done = subprocess.run([sys.executable, "-B", os.path.join(directory, gate)],
+    done = subprocess.run([sys.executable, "-B", script],
                           input=json.dumps(payload).encode("utf-8"), cwd=project,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                           env=environment, timeout=300)
@@ -336,16 +367,21 @@ def _registered(settings_path):
 
 
 def _registered_tools(settings_path):
-    """{script: {tool_name, ...}} -- which EVENTS each gate is actually wired to.
+    """{script: {(event, tool_name), ...}} -- which CALLS each hook is actually wired to.
+
+    THE EVENT IS PART OF THE ANSWER, and leaving it out cost a whole half of a registration its
+    tripwire: the approval hook sits on two events of the same tool and the two do different jobs
+    (one prevents, one mints), so a table keyed on tool names alone was satisfied by either. The
+    verifier's mutation deleted the `PreToolUse` half and nothing went red.
 
     The matcher is an alternation of tool names, which is how the provider reads it, so the tool
     names are what comes back. A matcher naming a tool that does not exist (`NeverFires`) shows up
     here as that name and fails the comparison below rather than quietly firing on nothing.
     """
     out = {}
-    for matchers in _registered(settings_path).values():
+    for event, matchers in _registered(settings_path).items():
         for matcher, commands in matchers.items():
-            tools = {part.strip() for part in matcher.split("|") if part.strip()}
+            tools = {(event, part.strip()) for part in matcher.split("|") if part.strip()}
             for command in commands:
                 for relative in re.findall(r"\$\{CLAUDE_PROJECT_DIR\}(/[^\"\s]+\.py)", command):
                     out.setdefault(os.path.basename(relative), set()).update(tools)
@@ -373,12 +409,21 @@ def _registered_tools(settings_path):
 #   gate 2  -- clause 2: the spawn tools.
 #   gate 3  -- clause 3: recording history is a shell act.
 #   gate 4  -- clause 4: the list tool.
+#   gate_approval -- NOT an SR-0009 gate and not this repo's file: it is the KIT's approval hook,
+#              registered here so that a user's answer can mint what the kernel refuses without
+#              one (H39). The kits pair its two events and so does this repo; the tool name is the
+#              one the kernel spells (`approvals.APPROVAL_QUESTION_TOOL`), and
+#              `test_the_approval_hook_is_the_kits_own_file_where_it_ships` measures that the path
+#              in the registration really is a kit's hooks directory rather than one kit's name
+#              that outlived it.
 EXPECTED_TOOLS = {
-    "gate_lead_write_scope.py": {"Write", "Edit", "MultiEdit", "NotebookEdit",
-                                 "Bash", "PowerShell"},
-    "gate_spawn_needs_item.py": {"Agent", "Task"},
-    "gate_commit_evidence.py": {"Bash", "PowerShell"},
-    "gate_todo_items.py": {"TodoWrite"},
+    "gate_lead_write_scope.py": {("PreToolUse", name) for name in
+                                 ("Write", "Edit", "MultiEdit", "NotebookEdit",
+                                  "Bash", "PowerShell")},
+    "gate_spawn_needs_item.py": {("PreToolUse", "Agent"), ("PreToolUse", "Task")},
+    "gate_commit_evidence.py": {("PreToolUse", "Bash"), ("PreToolUse", "PowerShell")},
+    "gate_todo_items.py": {("PreToolUse", "TodoWrite")},
+    "gate_approval.py": {("PreToolUse", "AskUserQuestion"), ("PostToolUse", "AskUserQuestion")},
 }
 
 # The call each gate must REFUSE, per class of tool it is registered on. Used to drive every
@@ -400,15 +445,28 @@ def _refusable(project, script, tool):
         return payload
     if script == "gate_commit_evidence.py":
         return bash_payload(project, "git commit -m wip", tool=tool)
+    if script == "gate_approval.py":
+        # A question that CLAIMS to be an approval for a request this project does not hold. The
+        # marker is what makes the hook look at all (a markerless question is none of its
+        # business, by its own docstring), and an id no pending request answers is the shortest
+        # refusable shape -- it needs no state planted and cannot pass by accident.
+        question = {"question": "Freigabe? [APR-REQ:%s]" % ("0" * 32), "header": "Freigabe",
+                    "multiSelect": False,
+                    "options": [{"label": "Freigeben [aaaaaa]", "description": "d"}]}
+        return {"hook_event_name": "PreToolUse", "tool_name": tool, "cwd": project,
+                "tool_input": {"questions": [question]}}
     payload = todo_payload(project, "eins", "zwei")
     payload["tool_name"] = tool
     return payload
 
 
-REGISTERED_PAIRS = sorted(
+# The DISTINCT (script, tool) calls to drive through a real process. The event is what the
+# registration table above compares; here it would only run the same payload twice, and the
+# payloads below carry their own `hook_event_name`.
+REGISTERED_PAIRS = sorted({
     (script, tool)
-    for script, tools in _registered_tools(os.path.join(ROOT, ".claude", "settings.json")).items()
-    for tool in tools)
+    for script, calls in _registered_tools(os.path.join(ROOT, ".claude", "settings.json")).items()
+    for _event, tool in calls})
 
 
 def test_the_registration_is_the_one_the_contract_asks_for():
@@ -420,6 +478,10 @@ def test_the_registration_is_the_one_the_contract_asks_for():
     to a tool name that does not exist. Both ends, because either alone rots: a gate that is
     registered but not in the table is a gate nobody decided about, and a table entry that is not
     registered is a gate that does not run.
+
+    THE EVENT IS PART OF EACH ENTRY since round TSK-0098, and that was a gap of its own: keyed on
+    tool names alone, the approval hook's two events were one entry, and deleting the `PreToolUse`
+    half -- the one that refuses a relayed question the kernel did not write -- turned nothing red.
     """
     actual = _registered_tools(os.path.join(ROOT, ".claude", "settings.json"))
     assert set(actual) == set(EXPECTED_TOOLS), (
@@ -666,6 +728,531 @@ def test_gate1_leaves_the_sessions_own_commands_runnable(project, tool, command)
     refuses the session's own documented commands is not stricter, it is broken.
     """
     rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command, tool=tool))
+    assert rc == 0, "refused %r (stderr: %s)" % (command, err[:400])
+
+
+# -- gate 1, the START position: nobody plays the provider (H80) --------------------------------
+#
+# A pipeline stage that hands a FILE to an interpreter starts it. The shapes below are how a
+# command line does that; nothing in this repo derives a shell's grammar, so this IS an
+# enumeration, and it carries a tripwire at both ends: `test_a_start_shape_really_starts_a_program`
+# runs each one through a real shell and fails for an entry that starts nothing, and
+# `test_gate1_refuses_starting_a_hook_from_every_caller` fails for one the gate lets through.
+# `{program}` is the path of the file to start, spelled relative to the project.
+#
+# NOT IN THE TABLE, measured rather than forgotten: the shape where the file IS the verb
+# (`./x.py`). No shell on this host starts a `.py` that way -- measured 2026-08-31 in Git Bash with
+# `#!/usr/bin/env python3` and with an absolute shebang, both no start -- so it has no witness
+# here; `test_gate1_refuses_a_hook_started_as_the_verb_itself` carries that half with what it costs.
+START_SHAPES = {
+    "an interpreter": "python {program}",
+    "an interpreter with a flag": "python -B {program}",
+    "a flag that takes a value of its own first": "python -W ignore {program}",
+    "a shell one level down": 'bash -lc "python {program}"',
+    "the receiving end of a pipe": "cat /dev/null | python {program}",
+    # A substitution whose text does not CONTAIN the interpreter's name, which is what makes this
+    # shape measure `_resolves_the_verb_at_runtime` rather than the wrapper branch: with
+    # `$(echo python)` the word `python` stands in the stage and the wrapper branch alone already
+    # answers, so the mutation that removed the runtime branch stayed green. And not
+    # `$(which python)` either -- that answers with this host's absolute interpreter path, whose
+    # SPACE the shell splits the word at, so it starts nothing here (both measured 2026-08-31, each
+    # by the witness below).
+    "a command substitution in the verb": "$(printf 'pyt%s' hon) {program}",
+    # ...and the same substitution with a `;` in it, which the reader cuts THROUGH: the last piece
+    # then carries the closing bracket plus the outer stage's own words, with the INNER command's
+    # verb in front of them (`_after_an_unopened_closer`)
+    "a command substitution cut in two": "$(printf 'pyt'; printf 'hon') {program}",
+    "after entering the directory": "cd {directory} && python {name}",
+    # -- the shapes the first cut of this position let through, each measured to an approval
+    #    nobody gave before it was closed (round TSK-0098, verifier findings B1/B3 and the
+    #    wrapper that hands an interpreter its program out of a file)
+    "an option-looking word behind the script": "python {program} -c",
+    "a wrapper in front of the interpreter": "timeout 60 python {program}",
+    "another wrapper": "nohup python {program}",
+    "a wrapper that buffers": "stdbuf -o0 python {program}",
+    "a shell one level down that moves first": 'sh -c "cd {directory} && python {name}"',
+    "an argument list built out of a file": "echo {program} > list.txt; xargs -a list.txt python",
+    # -- and the group: the move is real for every command INSIDE it, which is the half
+    #    `_runs_in_the_shell_itself` deliberately does not answer (`WorkingDirectory.settle`)
+    "a subshell that moves first": "(cd {directory} && python {name})",
+    "a subshell with a semicolon": "(cd {directory}; python {name})",
+    "two subshells, one inside the other": "(cd {directory} && (cd . && python {name}))",
+    "a subshell on the receiving end of a pipe": "true | (cd {directory} && python {name})",
+    "a subshell in the background": "(cd {directory} && python {name}) &",
+}
+
+
+def _shaped(shape, program):
+    """One line of `START_SHAPES`, filled in for a project-relative `program`."""
+    return shape.format(program=program, directory=os.path.dirname(program),
+                        name=os.path.basename(program))
+
+
+# How a shell can build a word out of something this command line does not state. `%s` is the
+# rest of the path. An enumeration of the shell's grammar, like `START_SHAPES`, and with the same
+# tripwire at both ends: `test_an_unresolved_word_really_changes_in_a_shell` hands each one to a
+# real shell and fails for a shape the shell keeps literal, and
+# `test_gate1_refuses_a_word_it_cannot_resolve` fails for one the gate places anyway. Each of these
+# reached an approval nobody gave in round TSK-0098 before `_harness._UNRESOLVED` existed.
+UNRESOLVED_WORDS = {
+    "a parameter expansion": '"$PWD/%s"',
+    "a braced parameter expansion": '"${PWD}/%s"',
+    "a command substitution": '"$(pwd)/%s"',
+    "a pathname wildcard": "%s",          # filled by `_wildcarded`, which needs the real name
+    "a single-character wildcard": "%s",
+    "a character class": "%s",
+    "a brace expansion": "%s",
+}
+
+# ...and how the three filesystem-matching shapes are made out of a real relative path: the first
+# segment is the one that is made unreadable, because every one of them has to still MATCH the
+# path for the shell to hand back something -- a shape that matches nothing is handed back
+# literally and would be a dead entry.
+_WILDCARDS = {
+    "a pathname wildcard": lambda head: head[:1] + "*" + head[2:],
+    "a single-character wildcard": lambda head: head[:-1] + "?",
+    "a character class": lambda head: head[:-1] + "[" + head[-1] + "]",
+    "a brace expansion": lambda head: "{%s,other}" % head,
+}
+
+
+def _unresolved(shape, relative):
+    """One line of `UNRESOLVED_WORDS`, filled in for a project-relative path."""
+    make = _WILDCARDS.get(shape)
+    if make is None:
+        return UNRESOLVED_WORDS[shape] % relative
+    head, _, tail = relative.partition("/")
+    return "%s/%s" % (make(head), tail)
+
+
+def _hook_directories():
+    """Every directory this repo's provider or a scaffolded project's provider starts hooks from.
+
+    DERIVED for the kit half (`_harness.kit_hooks_directories`, which asks the kernel what a kit
+    is), so a fourth kit is covered on the day it ships. The provider tree is the definition
+    `_harness.PROVIDER_DIR` states, not a path spelled here.
+    """
+    harness = _reader()
+    return ([os.path.join(ROOT, harness.PROVIDER_DIR, "hooks")]
+            + harness.kit_hooks_directories(ROOT))
+
+
+def _a_hook_in(directory):
+    """One real file of `directory`, picked by a rule and not by a name that could go stale."""
+    names = sorted(name for name in os.listdir(directory) if name.endswith(".py"))
+    assert names, "no hook file under %s" % directory
+    return os.path.join(directory, names[0])
+
+
+HOOK_SUBJECTS = sorted(
+    os.path.relpath(_a_hook_in(directory), ROOT).replace("\\", "/")
+    for directory in _hook_directories())
+
+
+@pytest.mark.parametrize("program", HOOK_SUBJECTS)
+@pytest.mark.parametrize("shape", sorted(START_SHAPES))
+@pytest.mark.parametrize("caller", ["lead", "subagent"])
+def test_gate1_refuses_starting_a_hook_from_every_caller(project, program, shape, caller):
+    """H80: a hook is a program the PROVIDER starts, and a command line may not stand in for it.
+
+    THE MEASURED CHAIN this closes ran in one session (TSK-0097): the kernel's own
+    `request-approval` writes the pending request, its mint code stands in that file in cleartext,
+    and `python <kit hooks>/gate_approval.py < forged.json` then mints an approval nobody gave --
+    rc 0 under gate 1 for the session instance AND for an implementer subagent, while the identical
+    line is rc 2 in every scaffolded project.
+
+    BOTH CALLERS, and that is the point of the parameter. Who may EDIT enforcement code is the
+    change circle's question and a subagent may; who may PLAY THE PROVIDER is not a question of
+    role at all, so this is the one area gate 1 refuses to everyone that is not canonical state.
+    """
+    payload = bash_payload(project, _shaped(START_SHAPES[shape], program))
+    if caller == "subagent":
+        payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 2, "allowed %r for the %s (stderr: %s)" % (
+        _shaped(START_SHAPES[shape], program), caller, err[:400])
+
+
+@pytest.mark.parametrize("shape", sorted(START_SHAPES))
+def test_a_start_shape_really_starts_a_program(outside_the_home_directory, shape):
+    """The other end of `START_SHAPES`: a line the gate refuses that starts nothing proves nothing.
+
+    A REAL SHELL IS THE ARBITER, against a marker script in a sandbox -- the same discipline
+    `the_repo_is_not_a_sandbox` applies to the write shapes. A dead entry here is a refusal this
+    suite has been counting as a wall.
+    """
+    work = os.path.join(outside_the_home_directory, "start-shapes", shape.replace(" ", "-"))
+    os.makedirs(os.path.join(work, "sub"), exist_ok=True)
+    marker = os.path.join(work, "sub", "marker.txt")
+    with open(os.path.join(work, "sub", "prog.py"), "w", encoding="utf-8") as handle:
+        handle.write("import os\nopen(%r, 'a').write('x')\n" % marker.replace("\\", "/"))
+    shell = next((candidate for candidate in _posix_shells()
+                  if _sees_this_filesystem(candidate, work)), None)
+    assert shell is not None, (
+        "no shell on this host reads back a file this process writes under %s, so nothing here "
+        "arbitrates: %s" % (work, _posix_shells()))
+    subprocess.run([shell, "-c", _shaped(START_SHAPES[shape], "sub/prog.py")], cwd=work,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=120)
+    # A SHELL CAN RETURN BEFORE THE PROGRAM IT STARTED HAS RUN -- a shape ending in `&` hands the
+    # whole list to a child and comes straight back. Waiting is the difference between "started
+    # nothing" and "had not finished yet", and the wait is for every shape rather than for the one
+    # that showed it, because nothing here says which shapes are synchronous.
+    for _ in range(50):
+        if os.path.isfile(marker):
+            break
+        time.sleep(0.1)
+    assert os.path.isfile(marker), (
+        "%r started no program in a real shell, so the refusal this suite asserts for it is a wall "
+        "in front of nothing" % _shaped(START_SHAPES[shape], "sub/prog.py"))
+
+
+@pytest.mark.parametrize("shape", sorted(UNRESOLVED_WORDS))
+@pytest.mark.parametrize("caller", ["lead", "subagent"])
+def test_gate1_refuses_a_word_it_cannot_resolve(project, shape, caller):
+    """A word the SHELL builds is a word this reader cannot place -- the same answer as the tilde's.
+
+    Measured 2026-08-31, each of these rc 0 before and each run through to `APPROVED` with an
+    `approval_ref`: the path-like part of `$PWD/<hook>` is the SUBSTRING BEHIND the expansion, and
+    it starts with a separator, so it read as an absolute path and landed under no protected tree
+    at all. The wildcard shapes reach the same place by a different route.
+
+    BOTH POSITIONS, because the class is wider than the round that found it: the write direction
+    (`test_gate1_refuses_a_word_it_cannot_resolve_in_the_write_position`) had been open since the
+    shell half was built.
+    """
+    command = "python " + _unresolved(shape, HOOK_SUBJECTS[0])
+    payload = bash_payload(project, command)
+    if caller == "subagent":
+        payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 2, "allowed %r for the %s (stderr: %s)" % (command, caller, err[:400])
+
+
+@pytest.mark.parametrize("shape", sorted(UNRESOLVED_WORDS))
+def test_gate1_refuses_a_word_it_cannot_resolve_in_the_write_position(project, shape):
+    """The half that is not about hooks at all, and that was open before this position existed.
+
+    `sed -i "s/a/b/" "$PWD/team-kits/kernel/state.py"` was rc 0 while the relative spelling of the
+    same file was rc 2 (measured 2026-08-31). The fix sits in `_candidates`, which both positions
+    go through, so closing one closed the other -- this is what holds that true.
+    """
+    command = 'sed -i "s/a/b/" %s' % _unresolved(shape, "team-kits/kernel/state.py")
+    rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
+    assert rc == 2, "allowed %r (stderr: %s)" % (command, err[:400])
+
+
+@pytest.mark.parametrize("shape", sorted(UNRESOLVED_WORDS))
+def test_an_unresolved_word_really_changes_in_a_shell(outside_the_home_directory, shape):
+    """The other end of `UNRESOLVED_WORDS`: a shape a shell keeps LITERAL is a refusal for nothing.
+
+    The arbiter is a real shell and a program that reports the word it was handed. A dead entry
+    here is a refusal this suite has been counting as a wall -- and the wildcard shapes are the
+    ones that go dead easily, because a pattern matching nothing is handed back unchanged.
+    """
+    work = os.path.join(outside_the_home_directory, "unresolved", shape.replace(" ", "-"))
+    os.makedirs(os.path.join(work, "sub"), exist_ok=True)
+    with open(os.path.join(work, "sub", "prog.py"), "w", encoding="utf-8") as handle:
+        handle.write("import sys\nprint(sys.argv[1])\n")
+    shell = next((candidate for candidate in _posix_shells()
+                  if _sees_this_filesystem(candidate, work)), None)
+    assert shell is not None, "no shell on this host arbitrates under %s" % work
+    word = _unresolved(shape, "sub/prog.py")
+    done = subprocess.run([shell, "-c", "python sub/prog.py %s" % word], cwd=work,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+    handed = done.stdout.decode("utf-8", "replace").strip()
+    assert handed and handed != word.strip('"'), (
+        "a shell handed the program %r for the word %r, i.e. it kept it literal -- the gate's "
+        "refusal of this shape stands in front of nothing (stderr: %s)"
+        % (handed, word, done.stderr.decode("utf-8", "replace")[:200]))
+
+
+@pytest.mark.parametrize("caller", ["lead", "subagent"])
+def test_gate1_refuses_the_line_that_minted_an_approval_nobody_gave(project, caller):
+    """Step 3 of the H80 chain, spelled exactly as it ran, against both callers.
+
+    The generalised property is measured above; this is the LINE, kept because a defect's own
+    command is the one thing a later refactor can walk past while every derived case still passes.
+    Measured rc 0 on 2026-08-30 for both callers, and the item stood at `APPROVED` with an
+    `approval_ref` afterwards.
+    """
+    command = "python team-kits/dev-team/hooks/gate_approval.py < forged.json"
+    payload = bash_payload(project, command)
+    if caller == "subagent":
+        payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 2, "allowed the self-mint line for the %s (stderr: %s)" % (caller, err[:400])
+
+
+def test_the_approval_hook_is_the_kits_own_file_where_it_ships():
+    """The registration names ONE kit, and this is what keeps that spelling from outliving it.
+
+    A settings file cannot derive a path, so the kit is named there; here the name is compared
+    with what `_harness.kit_hooks_directories` answers, which asks the kernel what a kit is. A
+    renamed or dropped kit turns this red instead of leaving a registration pointing at nothing --
+    and a hook the provider cannot find is a silent allow on every call of its event.
+
+    WHY NOT A COPY UNDER `.claude/hooks/`: `approvals.mint` accepts the approval hook only when it
+    runs as itself beside its own `_kernel.py`, so a copy would have to bring that helper too, and
+    a wrapper would have to reproduce what the kits' `_gate.py` already does.
+    """
+    directories = {os.path.normcase(os.path.abspath(path))
+                   for path in _reader().kit_hooks_directories(ROOT)}
+    path = _script_path(ROOT, "gate_approval.py")
+    assert os.path.isfile(path), "the registered approval hook is not there: %s" % path
+    assert os.path.normcase(os.path.dirname(os.path.abspath(path))) in directories, (
+        "%s is registered but does not lie in a kit's hooks directory (%s)"
+        % (path, sorted(directories)))
+
+
+def test_a_users_answer_can_mint_in_this_repo_and_the_kernel_says_so(tmp_path):
+    """H39's own condition, asked of the reader that decides it rather than of this file.
+
+    `report.approval_mint_is_wired` is what appends the "nothing here reads your answer" sentence
+    to a refused transition and warns before a question is put to the user. It answers off the
+    REGISTRATION, so it says True from the moment the file says so -- while the provider binds
+    hooks at session start, which is why the user has to restart before an answer really mints.
+    Both directions, so a reader stuck on either answer fails: the entry removed from a copy of the
+    registration reads False.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import report
+    assert report.approval_mint_is_wired(ROOT) is True, (
+        "this repo registers no approval hook on the minting event, so no answer of the user's "
+        "can mint here (H39)")
+    work = str(tmp_path / "without")
+    os.makedirs(os.path.join(work, ".claude"))
+    with open(os.path.join(ROOT, ".claude", "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    settings["hooks"].pop("PostToolUse", None)
+    with open(os.path.join(work, ".claude", "settings.json"), "w", encoding="utf-8") as handle:
+        json.dump(settings, handle)
+    assert report.approval_mint_is_wired(work) is False, (
+        "the reader says a user's answer mints even where nothing is registered on the minting "
+        "event -- then its True above says nothing either")
+
+
+@pytest.mark.parametrize("caller", ["lead", "subagent"])
+def test_gate1_refuses_a_hook_started_as_the_verb_itself(project, caller):
+    """The start position that needs no interpreter in front of it.
+
+    THE SUBJECT IS A KIT HOOK AND THE CALLER IS A PARAMETER, both because the first cut of this
+    test measured neither: it used a file under `.claude/` with a lead payload, and BOTH of those
+    are refused by the older write rule on their own -- the mutation that removed the verb position
+    left it green while a direct probe showed the gap ([2, 2] against [2, 0]).
+
+    WITHOUT A WITNESS ON THIS HOST, said plainly rather than implied: no shell here starts a `.py`
+    by its own name (see `START_SHAPES`), so this measures the gate and not the reachability. It is
+    kept because the reachability is a property of the HOST -- an executable bit and an interpreter
+    the shebang resolves are all it takes -- and the gate is the same either way.
+    """
+    program = next(name for name in HOOK_SUBJECTS if name.startswith("team-kits/"))
+    payload = bash_payload(project, "./%s" % program)
+    if caller == "subagent":
+        payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 2, "allowed ./%s for the %s (stderr: %s)" % (program, caller, err[:400])
+
+
+# PowerShell's call operator with an expression in place of the program name. Its own table,
+# because the arbiter for it is PowerShell and not the POSIX shell every other shape here is
+# measured against -- and because three neighbouring spellings are NOT commands at all on this
+# host: `@('pyt'+'hon') x`, `$(('pyt'+'hon')) x` and `@(python) x` are each a parse error
+# (measured 2026-08-31, powershell.exe 5.1, all three rc 1 and nothing started), so a table that
+# carried them would be refusing what nobody can run.
+POWERSHELL_START = "& ('pyt'+'hon') %s"
+
+
+@pytest.mark.parametrize("caller", ["lead", "subagent"])
+def test_gate1_refuses_a_powershell_call_operator_starting_a_hook(project, caller):
+    """The verb is then an EXPRESSION, and no word of the stage is a program name this reader knows.
+
+    Found by measurement in this repo rather than reported: `& ('pyt'+'hon') <hook>` came out rc 0
+    for a subagent while a real PowerShell started the program (both measured 2026-08-31). The
+    reader's verb for it is `pyt+hon`, the stage is not read-only, and nothing in it is an
+    interpreter -- which is the case `_harness._executed_words` now answers by putting the whole
+    operand list in the start position.
+    """
+    command = POWERSHELL_START % HOOK_SUBJECTS[0]
+    payload = bash_payload(project, command, tool="PowerShell")
+    if caller == "subagent":
+        payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 2, "allowed %r for the %s (stderr: %s)" % (command, caller, err[:400])
+
+
+def test_the_powershell_call_operator_really_starts_a_program(outside_the_home_directory):
+    """The other end of the shape above -- PowerShell as its own arbiter.
+
+    A host without PowerShell has not measured it, and this says so as a failure rather than as a
+    silent pass: the refusal above would then stand in front of something nobody here can run.
+    """
+    shell = shutil.which("powershell") or shutil.which("pwsh")
+    assert shell, "no PowerShell on this host, so the shape above was not measured at all"
+    work = os.path.join(outside_the_home_directory, "powershell-start")
+    os.makedirs(os.path.join(work, "sub"), exist_ok=True)
+    marker = os.path.join(work, "sub", "marker.txt")
+    with open(os.path.join(work, "sub", "prog.py"), "w", encoding="utf-8") as handle:
+        handle.write("open(%r, 'a').write('x')\n" % marker.replace("\\", "/"))
+    subprocess.run([shell, "-NoProfile", "-NonInteractive", "-Command",
+                    POWERSHELL_START % "sub/prog.py"], cwd=work, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL, timeout=180)
+    assert os.path.isfile(marker), (
+        "PowerShell started no program for %r, so the refusal of that shape stands in front of "
+        "nothing" % (POWERSHELL_START % "sub/prog.py"))
+
+
+@pytest.mark.parametrize("caller", ["lead", "subagent"])
+@pytest.mark.parametrize("command", [
+    # the flat spelling and the same line inside a group -- a shell maintains no hook file, and a
+    # bracket around it changes nothing (`WorkingDirectory.settle`)
+    "sed -i s/a/b/ .claude/hooks/gate_todo_items.py",
+    "cd .claude/hooks && rm gate_todo_items.py",
+    "(cd .claude/hooks && rm gate_todo_items.py)",
+    '(cd .claude/hooks && sed -i "s/a/b/" gate_todo_items.py)',
+    "cp -r .claude/hooks copy",
+])
+def test_gate1_refuses_maintaining_a_hook_file_from_a_shell(project, command, caller):
+    """The WRITE half of the start position, and the half that DEC-0056 keeps: it catches a mistake.
+
+    A stage whose verb this reader can call neither read-only nor an interpreter does something to
+    its operands that it cannot name, so those operands stand in the start position too -- and
+    inside a hook directory that is refused to EVERYONE, the same rule the kits state for their own
+    layer. What keeps the change circle open is the OTHER door: `Edit` and `Write` reach the same
+    file for a subagent, and this gate does not touch them.
+
+    Measured 2026-08-31: without this, all five drop to rc 0 for a subagent, and the three
+    bracketed ones were rc 0 for EVERY caller -- open since the shell half was built and found by
+    the verifier, not by this round.
+    """
+    payload = bash_payload(project, command)
+    if caller == "subagent":
+        payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 2, "allowed %r for the %s (stderr: %s)" % (command, caller, err[:400])
+
+
+@pytest.mark.parametrize("command", [
+    # a group is LEFT again when it closes, and what follows belongs to the shell outside it
+    "(cd docs && cat note.md)",
+    "(cd tools && python bump_kit_version.py)",
+    "(cd .claude/hooks && cat _harness.py)",
+    "(cd /c/tmp && ls)",
+    "(cd . && PYTHONPATH=team-kits python -B -m kernel.cli --root project_memory generate-index)",
+    "(ls && cat docs/note.md)",
+    "(cd team-kits/dev-team/hooks && ls) && cat docs/note.md",
+    '(cd team-kits && ls) && sed -i "s/a/b/" docs/note.md',
+])
+def test_gate1_comes_back_out_of_a_group_it_walked_into(project, command):
+    """The counter-direction of `WorkingDirectory.settle`, and the reason it is a scope.
+
+    The shorter fix for the subshell hole -- give up the position, as for a move inside an inline
+    program -- would have refused the second line here, which is how this repo stamps its kits.
+    The last two lines are the other end: what stands AFTER the closing bracket belongs to the
+    shell that never moved, and reading it from inside the group would be the H27 defect again.
+    """
+    rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
+    assert rc == 0, "refused %r (stderr: %s)" % (command, err[:400])
+
+
+@pytest.mark.parametrize("command", [
+    "timeout 900 python -B -m pytest .claude/hooks/test_gates.py -q",
+    "nohup python -B -m pytest tools/ -q",
+])
+def test_gate1_leaves_a_wrapped_module_run_alone(project, command):
+    """What keeps the wrapper branch NARROW, and the reason it is not the fallback beside it.
+
+    A stage this reader can classify as neither read-only nor an interpreter falls back to reading
+    EVERY operand as a start; for a wrapper it does not have to, because the interpreter is right
+    there and its own options say it runs a MODULE. Without the wrapper branch these two lines
+    would be refused for the path `pytest` was given.
+
+    THE CALLER IS A SUBAGENT, and that is not a convenience: for the SESSION agent both lines are
+    rc 2 whatever this position does, because a stage with an unclassified verb hands its whole
+    body to the write rule and both name a protected path there. Measured against HEAD, unchanged
+    by this round: lead 2, subagent 0.
+    """
+    payload = bash_payload(project, command)
+    payload.update(agent_id="sub-1", agent_type="harness-implementer")
+    rc, err = run(project, "gate_lead_write_scope.py", payload)
+    assert rc == 0, "refused %r for a subagent (stderr: %s)" % (command, err[:400])
+
+
+@pytest.mark.parametrize("command", [
+    # a shell variable used as DATA names no path, and refusing it refuses every polling loop
+    'i=0; until [ $i -ge 3 ]; do i=$((i+1)); done; echo done',
+    'if [ -f probe.py ]; then cat probe.py; fi',
+    "{ cat probe.py ; }",
+])
+def test_gate1_leaves_a_shell_variable_that_names_no_path_alone(project, command):
+    """The cost the unresolvable-word class must NOT have, measured on this round's own wait line.
+
+    `_UNRESOLVED` answers for a word a shell BUILDS, and the first cut asked it of every word: the
+    `until … [ $i -ge 12 ]` loop this round polled its own background runs with came out rc 2, and
+    so did every `if [ … ]`. What decides is `_harness._could_name_a_path` -- a word carrying a
+    path separator, or one standing where a program is started, and nothing else.
+    """
+    rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
+    assert rc == 0, "refused %r (stderr: %s)" % (command, err[:400])
+
+
+def test_gate1_does_not_read_a_directory_as_a_started_file(project):
+    """A hook DIRECTORY is not a file anything starts, and naming one is not playing the provider.
+
+    `under` answers yes for equality, so the first cut of `hand_driven` refused the bare word
+    `.claude` -- a verifier met it while copying a tree (measured 2026-08-31, a PowerShell payload
+    naming the directory in a list, rc 2). The candidate here stands in the START position, which
+    is what makes this measure `hand_driven` and not the write rule: a hook FILE in the same
+    position is refused two tests up.
+    """
+    for command in ("python probe.py team-kits/dev-team/hooks",
+                    "python probe.py .claude"):
+        rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
+        assert rc == 0, "refused %r (stderr: %s)" % (command, err[:400])
+
+
+@pytest.mark.parametrize("command", [
+    # a bare verb is looked up over PATH, so standing INSIDE a hook directory says nothing about it
+    "cd .claude/hooks && cat _harness.py",
+    "cd .claude/hooks && ls",
+    "cd team-kits/dev-team/hooks && grep -rn python .",
+    # ...and a directory is not a file anything starts
+    "ls team-kits/dev-team/hooks",
+    "python -m ruff check .claude/hooks/",
+    # a move this reader cannot compute costs the position, not every command afterwards
+    'cd "does-not-exist-yet" && ls',
+])
+def test_gate1_does_not_read_a_bare_verb_as_a_file_in_the_working_directory(project, command):
+    """The over-refusal the first cut of the START position introduced, and its two neighbours.
+
+    Measured 2026-08-31, HEAD rc 0 against rc 2 here: from inside a hook directory EVERY command
+    was refused -- `cat`, `ls`, `grep` -- because a separatorless verb was resolved against the
+    working directory, and the refusal then called `grep` enforcement code. A shell looks such a
+    word up over `PATH` and never against the working directory; `_harness._verb_as_a_file` is that
+    distinction, and it also takes the third case with it (a move into a directory that does not
+    exist yet used to lose the position and refuse every relative word behind it).
+    """
+    rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
+    assert rc == 0, "refused %r (stderr: %s)" % (command, err[:400])
+
+
+@pytest.mark.parametrize("command", [
+    # the delivery lines of this repo that START a file rather than a module -- the counter-error
+    # the START position could make, and the one that would make the repo unusable
+    "python tools/bump_kit_version.py",
+    "python tools/validate.py",
+    "python -B -m pytest .claude/hooks/test_gates.py -q",
+    "PYTHONPATH=team-kits python -B -m kernel.cli --root project_memory generate-index",
+])
+def test_gate1_leaves_a_file_outside_the_hook_directories_startable(project, command):
+    """`python tools/bump_kit_version.py` starts a file gate 1 PROTECTS, and must stay rc 0.
+
+    That is the whole boundary of the START position, and it is why it is judged against the hook
+    directories rather than against the protected area: what a started program writes cannot be
+    read off a command line at all (H11), so a position that refused every protected file would
+    refuse the stamper, the validator and the suite -- the three lines this repo delivers with.
+    The kits' own rule, measured against these four lines on 2026-08-31, refuses three of them.
+    """
+    rc, err = run(project, "gate_lead_write_scope.py", bash_payload(project, command))
     assert rc == 0, "refused %r (stderr: %s)" % (command, err[:400])
 
 
@@ -1086,6 +1673,26 @@ def _picture(tree):
     return out
 
 
+def _audit_journals(names):
+    """The kits' audit JOURNAL among `names` -- the file, not the directory that holds it.
+
+    THE ONE FILE OF A JUDGED TREE A HOOK MAY GROW. A kit gate records the calls it refuses
+    (`_audit`, whose own docstring calls the tree local diagnostics rather than project state), and
+    this repo now registers one of those hooks. The record decides nothing: no gate of this repo or
+    of a kit reads it back. The journal's NAME comes from the kit module rather than from a
+    spelling here, so a rename lands as an empty set -- and then the fixture below fails loudly
+    instead of excluding the wrong thing quietly.
+
+    THE FILE AND NOT ITS DIRECTORY, because the two are different exemptions: excusing the
+    directory excuses anything a hook might put beside the journal, which is the shape of a hole
+    rather than of a named remainder. A rotated generation carries the journal's name inside its
+    own (`_audit._rotate`), which is why the comparison is a containment and not an equality.
+    """
+    sys.path.insert(0, _reader()._kit_hooks_dir(ROOT))
+    import _audit
+    return {name for name in names if _audit.LOG_NAME in os.path.basename(name)}
+
+
 @pytest.fixture(scope="session")
 def without_the_shared_body(project, tmp_path_factory):
     """A copy of the stand-in whose `_harness.py` is gone -- ONE of it, for every registered pair.
@@ -1101,6 +1708,10 @@ def without_the_shared_body(project, tmp_path_factory):
     it judges -- an audit line, a lock, a cache -- would leave every pair after the first measuring
     a tree the ones before it had changed, and each pair asserts only its own `rc == 2`. Before
     this round every pair had its own copy and the question could not arise.
+
+    ONE FILE IS EXEMPT AND IT IS NAMED, not waved through: the kits' audit journal, which a kit
+    gate appends to whenever it blocks. `_audit_journals` carries why that decides nothing and
+    where the name comes from.
     """
     work = str(tmp_path_factory.mktemp("no-shared-body") / "project")
     shutil.copytree(project, work)
@@ -1108,8 +1719,10 @@ def without_the_shared_body(project, tmp_path_factory):
     before = _picture(work)
     yield work
     after = _picture(work)
-    moved = sorted(name for name in set(before) | set(after)
-                   if after.get(name) != before.get(name))
+    seen = set(before) | set(after)
+    journals = _audit_journals(seen)
+    moved = sorted(name for name in seen
+                   if after.get(name) != before.get(name) and name not in journals)
     assert not moved, (
         "these files of the shared copy changed while the registered pairs were judged against it: "
         "%s. Every pair after the first then measured a tree an earlier one had moved, and each of "
@@ -2021,13 +2634,6 @@ BASES = {
 # What the arbitrating shell is told about the two trees, and the gate is not. A directory verb
 # whose target is only in the environment is the shape H16 carries: the gate is handed the text.
 TREE_VARIABLES = {"R_OUT": "outside", "R_HERE": "the sandbox"}
-
-
-def _reader():
-    """The module under test, imported once -- the table's axes are GENERATED out of it."""
-    sys.path.insert(0, HOOKS)
-    import _harness
-    return _harness
 
 
 def _other_spellings(word):
@@ -3166,14 +3772,22 @@ def test_gate1_answers_for_a_tilde_that_does_not_start_its_word(project, cells):
         # what a shell hands the program: a removable lead is gone, a kept one is still in front
         word = subjects[subject][len(lead):] if removable[lead] else subjects[subject]
         head = word[len(harness._TILDE):].split("/")[0] if word.startswith(harness._TILDE) else ""
+        # A TILDE PREFIX IS NO LONGER THE ONLY WAY A WORD CAN BE UNPLACEABLE, and the second way is
+        # asked of the reader that decides it rather than restated here: some of the leads ARE the
+        # characters a shell builds a word out of (`*`, `[`, `{`, `?`), so from TSK-0098 on such a
+        # lead makes the word unplaceable on its own -- and this test would otherwise report the
+        # gate's correct answer as a defect.
+        built = (harness._could_name_a_path(word, False)
+                 and harness._unresolved_at(word) is not None)
         rc = answers[subject][0]
         if reached[subject] and rc != 2:
             wrong.append("lead %r, prefix %r: bash writes the protected file through it and the "
                          "gate answered rc %d" % (lead, prefix, rc))
-        elif (rc == 2) != bool(head):
+        elif (rc == 2) != bool(head or built):
             wrong.append("lead %r, prefix %r: the shell reads the word as %r, so this gate can "
                          "place it %s -- and it answered rc %d"
-                         % (lead, prefix, word, "not at all" if head else "as any other word", rc))
+                         % (lead, prefix, word,
+                            "not at all" if head or built else "as any other word", rc))
     assert not wrong, "\n".join(wrong)
 
 
