@@ -1,0 +1,33 @@
+id: TSK-0097
+product_requirement: FR-0058
+derives_from: FR-0058
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/decisions/active/DEC-0051.yaml
+- project_memory/inbox/active/FR-0058.yaml
+- team-kits/kernel/approvals.py
+- team-kits/kernel/backlog_types.py
+expected_outputs:
+- 'workshop approval/mint path: BUG and FR reach honest terminal states through the
+  kernel'
+- test verdicts usable in the workshop
+- closed_by_delivery derivation becomes a cross-check, not the truth
+- 'security weighing recorded: what of leases/dispatch stage 2 really needs, measured
+  not copied'
+- kits bumped if kit-visible surfaces change
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-08-30T20:59:47'

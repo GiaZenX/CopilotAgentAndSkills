@@ -34,6 +34,10 @@ import sys
 import time
 
 from .approvals import (
+    APPROVAL_HOOK,
+    APPROVAL_MINT_EVENT,
+    APPROVAL_QUESTION_EVENT,
+    APPROVAL_QUESTION_TOOL,
     APPROVED_CONTENT_HASH_FIELD,
     ROOT_DISPATCH_KINDS,
     ApprovalError,
@@ -489,6 +493,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_approval_expiry_agrees(state, active_items))
     findings.extend(_check_task_origins(state, active_items))
     findings.extend(_check_accepted_tasks_carry_a_verdict(state, active_items))
+    findings.extend(_check_confirmations_agree_with_the_verdicts(state, active_items))
     findings.extend(_check_experiment_reports(active_items))
     findings.extend(_check_premise_recheck(state, active_items))
     findings.extend(_check_fr_result_link(state, active_items))
@@ -747,14 +752,27 @@ def _check_dispatch_approval_presented(state: ProjectState, active_items: dict) 
     THE STORE IS READ ONCE, and that is not tidiness. The first cut re-listed and re-parsed the
     whole approvals directory INSIDE the item loop, with `assert_apr_in_force` -- which reads the
     consumed request and recomputes its hash -- in the inner branch. `validate_state` runs from
-    `gate_memory_complete` on every Bash call, and the shape this very round creates is the bad
+    `gate_memory_complete` on a MERGE OR PUSH line, and the shape this very round creates is the bad
     one: a routine approval is per root and is re-minted WEEKLY, so the store grows linearly while
     those roots permanently present a non-dispatching approval. Measured over 400 approvals and
-    300 items: 1 affected item 0.20 s, 5 -> 1.34 s, 20 -> 5.33 s, 50 -> 13.23 s, 300 -> 87.97 s, and
-    this runs on EVERY Bash call -- a minute and a half of a frozen session per command, growing
+    300 items: 1 affected item 0.20 s, 5 -> 1.34 s, 20 -> 5.33 s, 50 -> 13.23 s, 300 -> 87.97 s --
+    a minute and a half of a frozen session in front of every merge and every push, growing
     with the store, and a store a few times that size outgrows the window the calling hook is
     killed at (the kits' `_compat.HOOK_DEADLINE_SECONDS`), which is where a slow validator becomes
-    an unrun one. One pass over the directory into `{item id: [approval, ...]}` makes it
+    an unrun one.
+
+    WHEN THAT PATH REALLY RUNS, recorded HERE and nowhere else because it was wrong in FOUR
+    docstrings of this module at once (2026-08-31): the hook process starts on every Bash and
+    PowerShell call, and it leaves again -- rc 0, silent -- unless the line wants a merge or a push
+    (`gate_memory_complete.main`, whose own applicability check is `_compat.wants_push_or_merge`).
+    Measured through that hook as a process against a project holding one finding: `ls -la` rc 0
+    silent, `git commit -m x` rc 0 silent, `git push origin main` rc 2, `git merge feat/x` rc 2. The
+    "every Bash call" wording overstated the cost by the whole ratio between those two sets, and it
+    was the sentence every other docstring here had copied. The budget note under `ITEM_MAX_LINES`
+    said it correctly the whole time; the others now point at this paragraph rather than retelling
+    it (SR-0008).
+
+    One pass over the directory into `{item id: [approval, ...]}` makes it
     O(approvals + items) with the same verdicts.
     """
     findings = []
@@ -1090,7 +1108,7 @@ def _active_map(state: ProjectState) -> dict:
             if not exc and isinstance(item, dict)}
 
 
-def closed_by_delivery(state: ProjectState) -> dict:
+def closed_by_delivery(state: ProjectState, by_subject: dict = None) -> dict:
     """{item id: [EVD id, ...]} -- every item a DELIVERY has already closed, read from the evidence.
 
     THE OCCASION is `DEC-0051`: a status field is set by hand and a delivery verdict is written by
@@ -1102,6 +1120,14 @@ def closed_by_delivery(state: ProjectState) -> dict:
     CURRENT delivery verdict of every kind that NAMES it says `pass`, and at least one kind does. A
     FAIL recorded after a PASS therefore REOPENS the item, which "any pass wins" could not express:
     `test_report.test_a_later_fail_reopens_what_an_earlier_pass_had_closed`.
+
+    `by_subject` is the grouping a caller has already paid for (`qa_verdicts_by_subject`), passed in
+    for the reason `delivered_but_open` takes `active_items`: `contradicted_confirmations` asks this
+    question and the failing half of it in one breath, so the pair costs one scan of the Evidence
+    directory rather than two. That matters on the one path where `validate_state` is not a command
+    somebody typed -- the merge/push line, recorded at `_check_dispatch_approval_presented` -- and
+    it is the same moment `_delivery_evidence` names as the one where extra work over that
+    directory turns a slow validate into a blocked push.
 
     WHAT IS SHARED WITH THE MERGE GATE AND WHAT IS NOT -- exactly, because the wider claim stood
     here for one round and is measurably false. SHARED: which files are delivery verdicts
@@ -1140,7 +1166,9 @@ def closed_by_delivery(state: ProjectState) -> dict:
     measurement.
     """
     closed = {}
-    for subject, verdicts in qa_verdicts_by_subject(state).items():
+    if by_subject is None:
+        by_subject = qa_verdicts_by_subject(state)
+    for subject, verdicts in by_subject.items():
         try:
             subject_type, _number = parse_id(subject)
         except ValueError:
@@ -1177,6 +1205,80 @@ def delivered_but_open(state: ProjectState, active_items: dict = None) -> dict:
             continue
         open_items[item_id] = evidence_ids
     return open_items
+
+
+def contradicted_confirmations(state: ProjectState, active_items: dict = None) -> dict:
+    """{item id: [EVD id, ...]} -- items whose STATUS says CONFIRMED while a verdict says it failed.
+
+    THE CROSS-CHECK ON `closed_by_delivery`, and DEC-0051 stage 2 is the occasion. Stage 1 made
+    "delivered" a DERIVATION over the Evidence, which left two answers about one item standing
+    beside each other: the status field and the derivation. `delivered_but_open` reports one
+    direction of a disagreement -- the evidence closed it, the status did not follow -- as coverage,
+    because a project can be unable to clear it. This is the other direction, and it is a FINDING,
+    because it is never a reachability gap: an item can only stand here if somebody walked it to the
+    end of its chain while the store already held, or later gained, a failing verdict about it.
+
+    THE THREE TERMS ARE ALL DERIVED, none of them listed:
+      * WHICH STATUS MEANS CONFIRMED is `backlog_types.confirming_edge`, the same reader
+        `state._assert_confirmed` and `accepted_without_a_verdict` use -- the terminal a type can
+        only reach by walking its whole chain. A type that has none (an `FR`, which ends its chain
+        off a terminal and whose three ways out are a judgement no automaton makes) is not asked.
+        This is deliberately NOT "the item is in some terminal": `REJECTED`, `DUPLICATE`,
+        `CANCELLED` and `SUPERSEDED` mean the work was DROPPED, and a failing verdict beside a
+        dropped item agrees with the record instead of contradicting it.
+      * WHAT COUNTS AS THE VERDICT is `closed_by_delivery`'s own definition, asked of the same
+        grouping in the same breath -- so the cross-check cannot come to read the evidence
+        differently from the derivation it is checking.
+      * SILENCE IS NOT A CONTRADICTION. An item nothing has ever judged is not in this answer, and
+        that is the one place a rule could have been invented here: `state.CONFIRMING_EVIDENCE`
+        guards this edge for `BUG` alone and says in its own comment that the other confirming
+        edges are policy the roles follow, not a rule the kernel enforces. Demanding a verdict for
+        every confirmed item would be the kernel making that policy up.
+
+    NOT ON THE HOT PATH UNLESS IT HAS TO BE: the Evidence directory is scanned only when some
+    active item actually stands in a confirming terminal, which is rare -- a confirmed item is
+    normally archived. In a store without one this costs a dictionary walk and no file read.
+
+    Both ends are measured: `test_report.test_a_failing_verdict_contradicts_a_confirmed_item` and
+    `test_report.test_a_terminal_that_does_not_mean_confirmed_is_no_contradiction`.
+    """
+    if active_items is None:
+        active_items = _active_map(state)
+    confirmed = {}
+    for item_id, (item_type, item) in active_items.items():
+        edge = confirming_edge(item_type)
+        if edge is not None and item.get("status") == edge[1]:
+            confirmed[item_id] = item_type
+    if not confirmed:
+        return {}
+    by_subject = qa_verdicts_by_subject(state)
+    closed = closed_by_delivery(state, by_subject)
+    contradicted = {}
+    for item_id in sorted(confirmed):
+        verdicts = by_subject.get(item_id)
+        if not verdicts or item_id in closed:
+            continue
+        contradicted[item_id] = sorted(
+            str((entry or {}).get("id")) for entry in verdicts.values()
+            if (entry or {}).get("result") != "pass")
+    return contradicted
+
+
+def _check_confirmations_agree_with_the_verdicts(state: ProjectState, active_items: dict) -> list:
+    """The finding `contradicted_confirmations` produces -- see it for the derivation."""
+    return [
+        _finding(
+            "error", item_id,
+            "%s while the current delivery verdict(s) %s say the work did NOT hold -- the status "
+            "claims a confirmation the records contradict"
+            % (active_items[item_id][1].get("status"), ", ".join(failing)),
+            "decide which of the two is true and make the store say it: record the re-run that "
+            "passes (`python scripts/harness.py evidence --kind <kind> --result pass --related %s "
+            "--summary ... --artifact-ref <staged proof>`), or archive the verdict that no longer "
+            "applies -- never by editing the Evidence, which is immutable" % item_id,
+        )
+        for item_id, failing in sorted(contradicted_confirmations(state, active_items).items())
+    ]
 
 
 def _guarded_edge(item_type: str, source: str, target: str) -> dict:
@@ -1273,9 +1375,11 @@ def delivery_closure_rollup(state: ProjectState) -> list:
     `test_report.test_the_delivery_rollup_is_printed_beside_the_findings_and_is_none_of_them`
     holds it out of the findings; `H39` is the gap it reports around.
 
-    NOT ON THE HOOK PATH, deliberately. `validate_state` runs from `gate_memory_complete` on every
-    Bash call in the dev and research kits, and this is one more pass over the Evidence directory
-    -- so it hangs off the two commands a person types, and the gate path pays nothing for it.
+    NOT ON THE HOOK PATH, deliberately. `validate_state` runs from `gate_memory_complete` on a
+    merge or push line in the dev and research kits (`_check_dispatch_approval_presented` records
+    when that path runs and what it costs), and this is one more pass over the Evidence directory
+    -- so it hangs off the two commands a person types, and neither the gate path nor a merge pays
+    anything for it.
     """
     active_items = _active_map(state)
     rows = []
@@ -1392,9 +1496,9 @@ def accepted_without_a_verdict(state: ProjectState, active_items: dict = None) -
     over the store and groups by the ids an Evidence WRITES, without the reference walk. Evidence
     recorded about something that hangs from the task is therefore not counted here, while
     `qa_verdicts` would count it. The one pass is the reason -- this runs inside `validate_state`,
-    which `gate_memory_complete` runs on every Bash call, and a per-task walk over the store is the
-    shape `_check_approval_expiry_agrees` documents as having turned a validate into a blocked
-    push.
+    which `gate_memory_complete` reaches on a MERGE OR PUSH line (recorded at
+    `_check_dispatch_approval_presented`), and a per-task walk over the store is the shape
+    `_delivery_evidence` documents as having turned a validate into a blocked push.
     """
     edge = confirming_edge("TSK")
     if edge is None:
@@ -2007,6 +2111,74 @@ def _fires_for(wired: dict, name: str, event: str, tools) -> bool:
     return all(any(_matches_tool(m, (tool,)) for m in matchers) for tool in tools)
 
 
+def approval_mint_is_wired(repo_root: str) -> bool:
+    """Can an ANSWER OF THE USER'S mint anything in this project?
+
+    ITS OWN WALK AND NOT `_wired_hooks`, and that correction is the whole point of this function
+    existing separately. `_wired_hooks` answers "could this registration BLOCK", which is the right
+    question for the capability matrix and the wrong one here: a mint is a SIDE EFFECT -- the hook
+    writes the APR file on its way out -- so it happens whatever the exit status is and wherever the
+    file lies. Both differences are reachable and both were measured 2026-08-30 against the shipped
+    hook, each with the item ending at `APPROVED`:
+      * `python -B "$CLAUDE_PROJECT_DIR/.claude/hooks/gate_approval.py" ; exit 0` --
+        `_swallows_exit_code` drops it, and it mints (hook rc 0);
+      * the same hook registered from a directory that is not `.claude/hooks/` -- `_wired_hooks`
+        requires the file THERE, and it mints.
+    Read through `_wired_hooks` this function called both of them "nothing consumes the answer",
+    which is an over-claim in the unsafe direction: it tells a role the project is weaker than it is.
+    None of the three shipped kits is affected -- all three read True either way, measured.
+
+    SO THE THREE DROPPED CONDITIONS ARE DELIBERATE. What decides is what really starts the hook:
+    the kill switch, the event, the matcher, the hook TYPE, and whether the command RUNS the
+    approval hook rather than merely naming it (`_invoked_scripts`) -- that list, and nothing more
+    generous.
+
+    WHERE THIS READER IS STILL WRONG, IN BOTH DIRECTIONS, measured 2026-08-31 rather than reasoned
+    about (an earlier version of this paragraph claimed every remaining doubt fell towards `True`,
+    and neither half of that held):
+      * a command line this reader cannot DECOMPOSE falls to `False` -- an over-warning. The
+        reachable shape is a quoted absolute path containing a SPACE: `_invoked_scripts` yields
+        nothing for it, and the same registration mints (item at `APPROVED`). It does not arise
+        from a kit, which registers through `$CLAUDE_PROJECT_DIR` and so carries no space in the
+        line; it arises when somebody writes the path out. `H81` in `docs/POST_V2_WISHLIST.md`
+        carries the chain and the reason the fix is not made here: `_invoked_scripts` is also the
+        reader behind `capability_matrix`, so widening it moves what `doctor` reports for every
+        project and needs its own round.
+      * a resolvable path whose FILE IS MISSING falls to `True` -- an under-warning, and the one
+        `_wired_hooks` would have caught. Nothing runs, and no sentence says so.
+    Both are recorded rather than implied, because this function's consumer is a sentence a role
+    acts on and the cost of each direction is different: the first stalls a round that could have
+    proceeded, the second stays silent about one that cannot.
+
+    WHAT IT DOES NOT ANSWER, said because the name invites the wider reading: whether `mint` is
+    reachable at all. It is not the same question -- the hook can be run by hand with a payload
+    assembled from the readable pending request, which `approvals._assert_minting_caller` records in
+    its own docstring and the shipped `known_hole` tests assert. `False` here means "this project
+    does not tell the provider to run the minting hook", never "nothing can mint".
+
+    Measured in both directions by `test_report.test_the_mint_is_wired_by_the_registration_and_not
+    _by_the_file_lying_there` and `test_report.test_a_registration_that_could_not_block_still_mints`.
+    """
+    if _hooks_disabled(repo_root):
+        return False
+    for layer in _settings_layers(repo_root):
+        hooks = layer.get("hooks")
+        if not isinstance(hooks, dict):
+            continue
+        entries = hooks.get(APPROVAL_MINT_EVENT)
+        for entry in entries if isinstance(entries, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            if not _matches_tool(entry.get("matcher"), (APPROVAL_QUESTION_TOOL,)):
+                continue
+            for hook in entry.get("hooks") or []:
+                if not isinstance(hook, dict) or hook.get("type", "command") != "command":
+                    continue
+                if APPROVAL_HOOK in _invoked_scripts(str(hook.get("command") or "")):
+                    return True
+    return False
+
+
 def capability_matrix(state: ProjectState, repo_root: str = None, enumeration=None):
     """(matrix, reasons) — every enforcement capability, and WHY each reads as it does.
 
@@ -2046,8 +2218,10 @@ def capability_matrix(state: ProjectState, repo_root: str = None, enumeration=No
         "no gate_dispatch registration fires on PreToolUse for Agent/Task — either it is not "
         "registered, its matcher excludes those tools, the file is missing, or hooks are disabled")}
 
-    approval_pre = _fires_for(wired, "gate_approval.py", "PreToolUse", ("AskUserQuestion",))
-    approval_post = _fires_for(wired, "gate_approval.py", "PostToolUse", ("AskUserQuestion",))
+    approval_pre = _fires_for(wired, APPROVAL_HOOK, APPROVAL_QUESTION_EVENT,
+                              (APPROVAL_QUESTION_TOOL,))
+    approval_post = _fires_for(wired, APPROVAL_HOOK, APPROVAL_MINT_EVENT,
+                               (APPROVAL_QUESTION_TOOL,))
     scope_file = _fires_for(wired, "gate_write_scope.py", "PreToolUse",
                             ("Edit", "Write", "MultiEdit", "NotebookEdit"))
     scope_shell = _fires_for(wired, "gate_write_scope.py", "PreToolUse", ("Bash", "PowerShell"))

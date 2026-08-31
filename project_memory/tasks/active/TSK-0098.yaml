@@ -1,0 +1,31 @@
+id: TSK-0098
+product_requirement: FR-0058
+derives_from: FR-0058
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- .claude/**
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/**
+- project_memory/**
+required_inputs:
+- docs/POST_V2_WISHLIST.md
+- .claude/hooks/gate_lead_write_scope.py
+- .claude/settings.json
+- project_memory/staging/TSK-0097/round-protocol.md
+expected_outputs:
+- gate_lead_write_scope refuses hand-driving the approval hook (H80 closed), red-first
+- gate_approval registered on the minting event in .claude/settings.json with timeout
+- H80 entry updated to CLOSED with the measured chain
+- measured answer whether /cd roundtrip rebinds the new registration or a restart
+  is needed
+dependencies: []
+root_revision: 1
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-08-31T05:22:32'

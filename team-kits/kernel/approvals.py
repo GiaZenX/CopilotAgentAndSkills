@@ -975,7 +975,7 @@ def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
         "status no gate may read as approval.%s Remedy: run `python scripts/harness.py "
         "request-approval %s %s`%s and relay the printed question to the user VERBATIM -- their "
         "answer mints the approval AND walks this transition, so there is nothing left to "
-        "transition by hand afterwards."
+        "transition by hand afterwards.%s"
         % (item["id"], from_status, to_status, "/".join(wanted), item["id"],
            item.get("revision"),
            (" The approvals that name this item do not count: %s." % "; ".join(rejected))
@@ -983,8 +983,48 @@ def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
            wanted[0], item["id"],
            "" if len(wanted) == 1
            else " (or %s in place of %s -- either kind commits this edge)"
-                % ("/".join(wanted[1:]), wanted[0]))
+                % ("/".join(wanted[1:]), wanted[0]),
+           _unwired_mint_note(state))
     )
+
+
+def _unwired_mint_note(state: ProjectState) -> str:
+    """The sentence a project earns when the remedy above cannot reach its own end -- or "".
+
+    WHY IT IS APPENDED RATHER THAN REPLACING THE REMEDY: the first half of that route runs
+    everywhere. `request-approval` is pure kernel and writes the pending request in any project.
+    It is the SECOND half -- "their answer mints the approval" -- that is a promise about a hook,
+    and where the provider runs no such hook the user can answer all day and nothing reads it.
+    Measured 2026-08-30 in this harness repository, which registers no approval gate:
+    `request-approval scope BUG-nnnn` rc 0, question printed, and no surface anywhere that consumes
+    an `AskUserQuestion` answer.
+
+    THE READER IS THE REGISTRATION, not the presence of a file (`report.approval_mint_is_wired`),
+    because a hook that is installed and unregistered is a hook the provider never runs. That the
+    two answers really differ is `tools/test_report.py::
+    test_the_mint_is_wired_by_the_registration_and_not_by_the_file_lying_there`.
+
+    IT SAYS WHAT DOES NOT HAPPEN AND CLAIMS NOTHING ABOUT WHAT CANNOT, and the sentence below is
+    held to exactly that: an unwired project is one that does not tell the provider to run the
+    minting hook, so no ANSWER of the user's reaches one. It does not say a mint is impossible.
+    Whether some other caller can still reach `mint` is `_assert_minting_caller`'s subject -- its
+    docstring records that a hand-run hook with a stdin payload does, and the shipped `known_hole`
+    tests assert it.
+
+    WHAT THE READER GETS WRONG IS NOT SMOOTHED OVER HERE EITHER: `approval_mint_is_wired` records
+    two measured directions, and one of them prints this sentence at a project that CAN mint -- a
+    registration whose command line it cannot decompose, the reachable shape being a quoted
+    absolute path with a space in it. `H81` carries that; a role reading this sentence in such a
+    project is being over-warned, not lied to about an approval.
+    """
+    from . import report      # deferred: `report` imports this module at its own scope
+    if report.approval_mint_is_wired(os.path.dirname(state.root)):
+        return ""
+    return (" THAT ROUTE DOES NOT REACH ITS END HERE: this project's own hook registration runs no "
+            "%s on %s(%s), so nothing is set up to read the answer the user gives -- the request "
+            "opens and the question prints, and that is all. Report the gap instead of walking the "
+            "item by hand; what a delivery has already closed is derived from the Evidence "
+            "(DEC-0051)." % (APPROVAL_HOOK, APPROVAL_MINT_EVENT, APPROVAL_QUESTION_TOOL))
 
 
 def item_derived_kinds() -> tuple:
@@ -1369,6 +1409,17 @@ def build_question(request: dict) -> dict:
 
 
 APPROVAL_HOOK = "gate_approval.py"
+# THE TWO EVENTS OF THE PROTOCOL AND THE ONE TOOL THEY HANG FROM, spelled once each. The hook file
+# above is the only caller `mint` accepts (`_assert_minting_caller`), and the kits register it on
+# BOTH events of that one tool -- two pairs, with different jobs: QUESTION_EVENT is the half that
+# PREVENTS (it compares the asked question against the kernel's and can refuse), MINT_EVENT is the
+# half that moves state. Only the second one can mint, which is why "can an answer mint here" is a
+# question about that pair alone (`report.approval_mint_is_wired`) while the enforcement matrix
+# asks about both (`report.capability_matrix`). Spelled here so neither reader writes the names a
+# second time -- a swapped pair is caught by `tools/test_hooks.py -k "approval or mint or verdict"`.
+APPROVAL_QUESTION_TOOL = "AskUserQuestion"
+APPROVAL_QUESTION_EVENT = "PreToolUse"
+APPROVAL_MINT_EVENT = "PostToolUse"
 
 
 def _is_same_file(left, right) -> bool:

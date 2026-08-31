@@ -1,4 +1,4 @@
-generated_at: '2026-08-30T20:59:08'
+generated_at: '2026-08-31T06:44:53'
 items:
 - id: BUG-0001
   type: BUG
@@ -535,6 +535,14 @@ items:
   title: 'documents.py''s own remedy line is refused by the code that prints it: the
     document_proposal remedy omits --reason, and the printed command line then fails
     with ''reason is missing'''
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0080
+  type: BUG
+  title: Repairing a freeze bound to the wrong approval needs a staged copy of the
+    artifact -- and no role may write it, so the USER hand-copies again (Canyon live
+    find, the BUG-0071 class at the freeze input)
   status: OPEN
   revision: 1
   approval_ref: null
@@ -1320,6 +1328,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0072
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1715,6 +1729,18 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0088
+  type: TSK
+  title: null
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: TSK-0097
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0098
   type: TSK
   title: null
   status: DRAFT

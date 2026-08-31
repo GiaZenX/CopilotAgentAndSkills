@@ -34,7 +34,10 @@ genau das ist hier gemessen der Fall (H39, Abschnitt 3). Das ist dieselbe Form, 
 `record_scan_coverage` seit 2026-08-07 neben den Findings steht.
 
 **Nicht auf dem Hookpfad**: `validate_state` läuft in den dev-/research-Kits aus
-`gate_memory_complete` bei jedem Bash-Aufruf. Die Ableitung hängt deshalb an den beiden Befehlen,
+`gate_memory_complete` bei jedem Bash-Aufruf. *(Korrektur 2026-08-31, TSK-0097: der Hook startet
+auf jedem Bash-Aufruf, `validate_state` läuft darin nur auf Merge-/Push-Zeilen —
+`gate_memory_complete` steigt sonst vorher aus; gemessen in `kernel/report.py`,
+`_check_dispatch_approval_presented`. Die Folgerung dieses Absatzes bleibt richtig.)* Die Ableitung hängt deshalb an den beiden Befehlen,
 die ein Mensch tippt, nicht an `validate_state` — der Gate-Pfad zahlt keinen zusätzlichen Lauf
 über das Evidence-Verzeichnis.
 

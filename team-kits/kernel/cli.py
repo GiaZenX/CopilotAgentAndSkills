@@ -1159,6 +1159,21 @@ def main(argv=None) -> int:
             # The request id travels inside the text as `[APR-REQ:<id>]`; that marker is what the
             # gate resolves back to this request.
             print(json.dumps(approvals.build_question(pending), indent=2, ensure_ascii=False))
+            # ...AND, ON STDERR, WHETHER THE ANSWER HAS A READER. Same rule as the `dispatch`
+            # branch below: stdout carries only what must be relayed verbatim. Without this the
+            # only surface that says the answer goes nowhere is the transition refusal, which
+            # arrives AFTER the user has been asked and has clicked -- the shape BUG-0039 records,
+            # where a yes evaporates and no surface tells her. Said here it is said BEFORE the
+            # question is put to her. One reader with `approvals._unwired_mint_note`
+            # (`report.approval_mint_is_wired`), so the two surfaces cannot disagree about
+            # whether this project mints.
+            if not report.approval_mint_is_wired(os.path.dirname(state.root)):
+                sys.stderr.write(
+                    "warning: this project's own hook registration runs no %s on %s(%s), so "
+                    "nothing here is set up to read the answer. The question above can be asked "
+                    "and it will approve nothing -- report that gap instead of relaying it.\n"
+                    % (approvals.APPROVAL_HOOK, approvals.APPROVAL_MINT_EVENT,
+                       approvals.APPROVAL_QUESTION_TOOL))
             return 0
         if args.command == "dispatch":
             # ONLY the header on stdout: it has to be copied into the spawn prompt character for

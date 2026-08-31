@@ -16,7 +16,7 @@ REPO_ROOT = os.path.dirname(TEAM_KITS)
 sys.path.insert(0, TEAM_KITS)
 
 from conftest import drive_task_to, mint_via_hook, walk_to_status  # noqa: E402 -- ONE mint helper for the suite
-from kernel import approvals, dispatch, report, staging  # noqa: E402
+from kernel import approvals, cli, dispatch, report, staging  # noqa: E402
 from kernel.hashing import hook_bundle_hash  # noqa: E402 -- THE definition of the bundle hash
 from kernel import state as kernel_state  # noqa: E402 -- the module, for its naming rule
 from kernel.backlog_types import (  # noqa: E402
@@ -1055,6 +1055,235 @@ def test_an_item_already_in_a_terminal_status_is_not_reported_as_open(state):
     state.transition(wish["id"], "REJECTED")
     assert wish["id"] in report.closed_by_delivery(state)
     assert wish["id"] not in report.delivered_but_open(state)
+
+
+def test_a_failing_verdict_contradicts_a_confirmed_item(state):
+    """The cross-check DEC-0051 stage 2 asks for: the status says confirmed, the records say not.
+
+    `delivered_but_open` reports the other direction as COVERAGE, because a project may be unable to
+    clear it. This direction is a FINDING, and the difference is reachability: nobody can arrive
+    here by failing to act. The item was walked to the end of its chain and a delivery verdict about
+    it says the work did not hold -- one of the two statements is false, and the store must say
+    which.
+
+    THE SECOND HALF IS THE VALIDATOR, not only the reader: `contradicted_confirmations` answering
+    correctly while nothing asked it would be a derivation with no consumer, which is how the
+    disagreement stayed invisible in the first place.
+
+    RED WITHOUT THE FIX: with `_check_confirmations_agree_with_the_verdicts` removed from
+    `validate_state` the error assertion fails; with `contradicted_confirmations` absent the module
+    has no such reader at all.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    evd(state, kind="test", result="pass", related=(bug["id"],), created="2026-01-01T00:00:00")
+    walk_to_status(state, bug, "VERIFIED")
+    assert report.contradicted_confirmations(state) == {}, "the control half: confirmed and green"
+
+    regression = evd(state, kind="test", result="fail", related=(bug["id"],),
+                     created="2026-02-01T00:00:00")
+    assert report.contradicted_confirmations(state) == {bug["id"]: [regression]}
+    named = [f for f in errors(report.validate_state(state)) if f["item"] == bug["id"]]
+    assert named, "the disagreement is a finding of the validator, not only of a reader"
+
+    # ...AND THE ANSWER IS NOT ABOUT `BUG`. Only that type has a kernel-enforced proof on its
+    # confirming edge (`state.CONFIRMING_EVIDENCE`), so a reader narrowed to it would pass
+    # everything above while every other confirmed type went unchecked. A root walked to the end of
+    # ITS chain is the second positive case, and its confirming status is a different word.
+    delivered = state.capture("PR", dict(PR_FIELDS, title="a second root"))
+    walk_to_status(state, delivered, "ACCEPTED")
+    broke = evd(state, kind="review", result="fail", related=(delivered["id"],))
+    assert report.contradicted_confirmations(state).get(delivered["id"]) == [broke]
+    assert [f for f in errors(report.validate_state(state))
+            if f["item"] == delivered["id"]], "the finding is produced for every confirmed type"
+
+
+def test_a_terminal_that_does_not_mean_confirmed_is_no_contradiction(state):
+    """A failing verdict beside DROPPED work AGREES with the record — both directions of that.
+
+    Two shapes, one condition (`backlog_types.confirming_edge`), and reading it as "the item is in
+    some terminal" would report both as defects: a `BUG` put down as `REJECTED` says the work was
+    abandoned, so a failing verdict is what one expects there; and an `FR` has no confirming edge at
+    all, because its chain ends off a terminal and which of the three it takes is a judgement no
+    automaton makes.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    state.transition(bug["id"], "TRIAGED")
+    state.transition(bug["id"], "REJECTED")
+    evd(state, kind="test", result="fail", related=(bug["id"],))
+
+    wish = state.capture("FR", {"title": "wish", "request_text": "please add X"})
+    state.update_item(wish["id"], {"triage_result": "folded into another request"})
+    state.transition(wish["id"], "TRIAGED")
+    state.update_item(wish["id"], {"resulting_item": root["id"]})
+    state.transition(wish["id"], "MERGED")
+    evd(state, kind="test", result="fail", related=(wish["id"],))
+
+    assert report.contradicted_confirmations(state) == {}
+    assert [f for f in errors(report.validate_state(state))
+            if f["item"] in (bug["id"], wish["id"])] == []
+
+
+def _register_approval_hook(repo, event=None, suffix="", hook_dir=(".claude", "hooks"),
+                            matcher=None, command=None, disable_all=False):
+    """Install the approval hook in `repo` and register it on `event`, or on nothing.
+
+    The FILE is placed either way, because that is one distinction under test: a helper that wrote
+    only the settings would make every `is False` below pass for the wrong reason. The keywords are
+    the registration shapes the two tests below tell apart: `suffix` appends to the command
+    (`" ; exit 0"` throws the exit status away) and `hook_dir` moves the file -- neither decides
+    whether a registration can MINT; `matcher`, `command` and `disable_all` are three that do.
+    """
+    hook = os.path.join(repo, *hook_dir, approvals.APPROVAL_HOOK)
+    os.makedirs(os.path.dirname(hook), exist_ok=True)
+    with open(hook, "w", encoding="utf-8") as handle:
+        handle.write("# a file is not a registration\n")
+    if command is None:
+        command = ('python "$CLAUDE_PROJECT_DIR/%s/%s"%s'
+                   % ("/".join(hook_dir), approvals.APPROVAL_HOOK, suffix))
+    hooks = {} if event is None else {event: [
+        {"matcher": approvals.APPROVAL_QUESTION_TOOL if matcher is None else matcher,
+         "hooks": [{"type": "command", "command": command, "timeout": 60}]}]}
+    settings = {"hooks": hooks}
+    if disable_all:
+        settings["disableAllHooks"] = True
+    path = os.path.join(repo, ".claude", "settings.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(settings, handle)
+
+
+def test_the_mint_is_wired_by_the_registration_and_not_by_the_file_lying_there(tmp_path):
+    """Whether a USER'S ANSWER can mint is decided by what the provider is told to run.
+
+    The hook file being present says nothing: an installed, unregistered hook is one the provider
+    never starts, and a registration on the event that only VERIFIES the question
+    (`APPROVAL_QUESTION_EVENT`) mints nothing either -- that event can refuse, it cannot write an
+    approval. Three states, one reader.
+    """
+    repo = str(tmp_path)
+    _register_approval_hook(repo, event=None)
+    assert report.approval_mint_is_wired(repo) is False, "installed is not registered"
+    _register_approval_hook(repo, event=approvals.APPROVAL_QUESTION_EVENT)
+    assert report.approval_mint_is_wired(repo) is False, "the verifying event never mints"
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT)
+    assert report.approval_mint_is_wired(repo) is True
+
+
+def test_the_entry_point_warns_before_the_question_is_put_to_the_user(state, tmp_path, capsys):
+    """The warning has to arrive BEFORE the click, not at the transition afterwards.
+
+    `request-approval` is where a role learns what to relay, and the transition refusal that
+    carries the same fact only runs once the user has already answered -- BUG-0039's shape, where
+    a yes evaporates and no surface says so. Both halves are asserted: the warning appears, and
+    stdout stays the question ALONE, because that is what gets relayed verbatim.
+
+    RED WITHOUT THE FIX: with the stderr branch gone the first `err` assertion fails; with it
+    written unconditionally the wired half fails.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    argv = ["--root", state.root, "request-approval", "scope", bug["id"]]
+
+    assert cli.main(list(argv)) == 0
+    unwired = capsys.readouterr()
+    assert "[APR-REQ:" in json.loads(unwired.out)["question"], "stdout is the question alone"
+    assert approvals.APPROVAL_HOOK in unwired.err and "approve nothing" in unwired.err
+
+    _register_approval_hook(str(tmp_path), event=approvals.APPROVAL_MINT_EVENT)
+    assert cli.main(list(argv)) == 0
+    wired = capsys.readouterr()
+    assert "[APR-REQ:" in json.loads(wired.out)["question"]
+    assert wired.err == "", "a project that CAN mint is not warned about minting"
+
+
+def test_a_registration_that_could_not_block_still_mints(state, tmp_path):
+    """"Could this refuse" and "could this mint" are different questions about one registration.
+
+    A mint is a SIDE EFFECT -- the hook writes the APR on its way out -- so it happens whatever the
+    exit status is and wherever the file lies. `_wired_hooks` drops both shapes because it answers
+    the first question, and reading this one through it told a project it could not mint while the
+    shipped hook minted for it. Measured 2026-08-30 against the real hook process; the assertion
+    below drives that same process rather than repeating the claim.
+
+    THE COST OF GETTING IT WRONG IS THE SENTENCE: `approvals._unwired_mint_note` would tell a role
+    that no answer of the user's mints here, at a project where one does -- an over-claim in the
+    direction that makes the apparatus look weaker than it is, which is as wrong as the reassuring
+    kind.
+
+    THE COUNTERWEIGHTS BELOW ARE HALF OF IT: a reader that answered `True` to everything would
+    satisfy every positive assertion here, so the three registrations under which the provider never
+    starts the hook are asserted in the same test rather than trusted to a separate one. All three
+    fail in the REASSURING direction -- they suppress the warning at a project where no answer of
+    the user's mints -- which is the direction a warning must not fail in quietly.
+
+    RED WITHOUT THE FIX: with `approval_mint_is_wired` reading through
+    `_fires_for(_wired_hooks(...))` both `is True` assertions fail and the refusal carries the note;
+    with each of the kill switch, the matcher and the `_invoked_scripts` term dropped from the walk,
+    one counterweight fails.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    state.transition(bug["id"], "TRIAGED")
+    repo = str(tmp_path)
+
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT, suffix=" ; exit 0")
+    assert report.approval_mint_is_wired(repo) is True, "a wrapper that cannot block still mints"
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT,
+                            hook_dir=("tools", "approval"))
+    assert report.approval_mint_is_wired(repo) is True, "the hook need not live in .claude/hooks"
+
+    with pytest.raises(Exception) as refused:
+        state.transition(bug["id"], "APPROVED")
+    assert approvals.APPROVAL_HOOK not in str(refused.value), (
+        "a project whose registration DOES mint must not be told that nothing reads the answer")
+
+    # ...AND THE COUNTERWEIGHTS, because a reader that answered True to everything would satisfy
+    # every line above. Each of these is a registration under which the provider never starts the
+    # hook, so each must still read as unwired -- and each fails in the REASSURING direction, by
+    # suppressing the warning at a project where no answer of the user's mints anything.
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT, disable_all=True)
+    assert report.approval_mint_is_wired(repo) is False, "the documented kill switch stops it"
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT, matcher="Bash|Edit")
+    assert report.approval_mint_is_wired(repo) is False, "a matcher that excludes the tool"
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT,
+                            command='echo "see %s"' % approvals.APPROVAL_HOOK)
+    assert report.approval_mint_is_wired(repo) is False, "naming the hook is not running it"
+
+    _register_approval_hook(repo, event=approvals.APPROVAL_MINT_EVENT, suffix=" ; exit 0")
+    mint_via_hook(state, approvals.create_pending_request(state, "scope", bug["id"]))
+    assert state.read_item(bug["id"])["status"] == "APPROVED", (
+        "the premise of this test: the shipped hook mints for this project")
+
+
+def test_the_approval_remedy_does_not_promise_a_mint_the_project_cannot_make(state, tmp_path):
+    """A refusal may not send a role to relay a question whose answer nothing in the project reads.
+
+    The remedy's first half runs everywhere (`request-approval` is pure kernel), so it stays; what
+    is conditional is the promise that the user's answer finishes the job. Measured 2026-08-30 in
+    this repository, whose registration carries no approval gate: without this the refusal told the
+    role to relay and wait for a mint that no surface here can produce.
+
+    RED WITHOUT THE FIX: `_unwired_mint_note` returning "" unconditionally leaves the first
+    assertion without its sentence.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    bug = make_bug(state, root["id"])
+    state.transition(bug["id"], "TRIAGED")
+
+    with pytest.raises(Exception) as unwired:
+        state.transition(bug["id"], "APPROVED")
+    assert approvals.APPROVAL_HOOK in str(unwired.value)
+    assert approvals.APPROVAL_MINT_EVENT in str(unwired.value)
+    assert "request-approval scope" in str(unwired.value), "the half that does work stays"
+
+    _register_approval_hook(str(tmp_path), event=approvals.APPROVAL_MINT_EVENT)
+    with pytest.raises(Exception) as wired:
+        state.transition(bug["id"], "APPROVED")
+    assert approvals.APPROVAL_HOOK not in str(wired.value), (
+        "a project that CAN mint must not be told it cannot")
+    assert "request-approval scope" in str(wired.value)
 
 
 def test_the_closing_route_of_a_bug_names_both_guards_between_it_and_verified(state):
