@@ -100,14 +100,42 @@ taste constraints. Your `TSK` names the exact files in `required_inputs`. Note t
 - a self-contained HTML preview — the visual REVISION. On approval the kernel freezes it as
   `design/revisions/DSN-nnnn.rNN.html` and points the PR's `design_refs` at it; that frozen file is the
   `design_ref` a UI task must carry, and the frontend's binding contract.
+**Name both of them by that convention while they are still staged** (`DSN-nnnn.html`, `WFR-nnnn.drawio.svg`),
+and not `index.html` or `preview.html`: `gate_design_sighted` recognises your draft by its FILE NAME, so a
+staged draft sharing a name with a source file turns every sentence about that source file into a refusal.
+The convention is what keeps that collision unlikely — nothing enforces it
+(`tools/test_hooks.py::test_a_staged_draft_sharing_a_file_name_over_refuses_and_that_is_the_price`).
 
 Both freezes are on the entry point's surface — the `freeze-wireframe` and `freeze-design` commands, each
-taking its operation's own parameters as ONE JSON object on stdin — and the PM runs them, because your own
-definition grants no command-running tool (your dispatch header's `hand_back`). **Nothing refuses a freeze
-that carries no approval**: `approval_ref` is a key of that body, not a gate. So what you owe is unchanged
-— name the staged path in your envelope and never report a frozen revision you did not see produced.
+taking its operation's own parameters as ONE JSON object on stdin — and **the PM runs them, not you**. That
+is a rule and no longer a consequence of your toolset: since you carry `Bash` for the render loop below,
+your dispatch header reads `hand_back: self` and the entry point is reachable from your session. **Nothing
+refuses a freeze that carries no approval**: `approval_ref` is a key of that body, not a gate, and nothing
+refuses one issued by you either. So what you owe is unchanged — name the staged path in your envelope and
+never report a frozen revision you did not see produced.
 Nothing survives outside staging: on approval the kernel promotes and EMPTIES the directory, on rejection it
 archives it. So state facts in your result envelope, never in a file you invent.
+
+## The SIGHT loop — render, LOOK, fix — before ANY draft leaves you (Phases 1 and 2)
+A design draft that reaches the user unrendered is the failure this loop is named after: a real project
+presented a revision TWICE with nobody having looked at pixels, and the user — not the apparatus — asked
+for the screenshot review. Both rejections were things only a render shows ("teilweise linksbündig statt
+mittig"). So the last step of Phase 1 and of every Phase-2 iteration is yours, not the user's:
+1. **RENDER** — `python scripts/kit_design_render.py <your task-id>`. It shoots every HTML you staged at a
+   desktop and a mobile viewport into `staging/<your task-id>/review/` and writes the record
+   `gate_design_sighted` reads. **Exploration ambition:** add `--reference <url>` for the CURRENT site and
+   for each style reference the design-ambition Decision item records — those URLs come from the user's own
+   answer, never from a list in this skill or in the script.
+2. **LOOK** — open every PNG with `Read`. Not the file listing, the images. Walk them against the frozen
+   wireframe, against the quality bar above and against the reference shots: alignment and centering,
+   optical rhythm, hierarchy, whether it reads as premium or as a template. Nothing measures this step —
+   the record only ties images to the bytes they were made from — that a browser ran, and that you looked,
+   is nothing anything here can establish.
+3. **FIX and RENDER AGAIN** until you would put your own name on it. Then hand the PM the staged path.
+List the review directory and what you fixed in your envelope's `evidence`; the images stay in staging and
+are archived or emptied with it, so a finding that must outlive the round belongs in the envelope's text.
+**When the render cannot run** (no Playwright, no Chromium) the script exits with the install line and
+nothing is presented: say so in `followups` and hand it back — an unrendered draft is not a smaller draft.
 
 ## Phase 0 — WIREFRAME (mandatory for EVERY UI scope, before any visual work)
 `WFR-nnnn.drawio.svg`: layout, content blocks, navigation and flows — **no colors, no type choices, no
@@ -133,6 +161,9 @@ fonts · motion · a 1-line layout sketch) the PM can use verbatim as an option 
 by side as real tiles — actual background/surface/accent colors, the real font pairing, a sample heading +
 body text, and **a real button and card** with a live hover/press transition at the stated timing. This is
 what makes "choose a design" real instead of picking a name. Keep it lightweight and offline.
+
+Then run the **SIGHT loop** above on that file before it leaves you — the tiles are the first thing the
+user ever sees of this product, and a tile that looks generic in a render looks generic to them too.
 
 Hand the PM: the direction summaries, each direction's `preview` text, and the staged file's path,
 plus your one-line recommendation. The **PM** sends the user the file and asks them to choose **and** invites
@@ -163,6 +194,8 @@ against it. A design that exists only as a token list cannot be built faithfully
   (form controls do NOT inherit fonts by default — a real run shipped a wrong-font button because of this);
   a global `prefers-reduced-motion` fallback; the focus-visible baseline. Classic pitfalls belong in the
   spec up front, and QA checks them mechanically.
+**Every iteration ends in the SIGHT loop above, per screen and per viewport** — this is where the mockups
+become the visual contract QA later compares against, so a mockup you never rendered contracts nothing.
 The staged HTML carries the spec; a rule that must hold beyond this revision (a fixed ordering, a mandatory
 label, a contrast floor) is proposed as an `INV` item WITH the test that proves it — a hard requirement
 nothing can check is how a wrong value survives a redesign. Iterate until the user is happy; each approved
@@ -193,8 +226,8 @@ is NOT optional at minimal ambition; only the competing directions fall away.
 **Never** treat "minimal" as licence to ship an unstyled/generic page or to document a design only **as-built**.
 
 ## Files you WRITE
-Only `project_memory/staging/<your task-id>/` — the `WFR-nnnn.drawio.svg` and the self-contained HTML
-preview. Never write code (`src/**`, `frontend/**`), requirements, architecture, or any file elsewhere under
+Only `project_memory/staging/<your task-id>/` — the `WFR-nnnn.drawio.svg`, the self-contained HTML
+preview, and the `review/` directory the render script fills. Never write code (`src/**`, `frontend/**`), requirements, architecture, or any file elsewhere under
 `project_memory/`: `gate_write_scope` refuses it, and the kernel is what makes your work canonical.
 
 ## Output to the PM

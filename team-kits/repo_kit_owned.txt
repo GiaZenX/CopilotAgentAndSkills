@@ -21,6 +21,11 @@
 # PM who must still act: measured 2026-08-29 on the real office project, that list held 7 entries
 # nobody had worked through.
 #
+# kit_design_render.py is owned for the same reason as the kit-check tooling: it is the command a
+# fail-closed remedy names. gate_design_sighted refuses a design draft that reaches the user with no
+# render record, and its refusal tells the role to run exactly this script -- a project's forked copy
+# could write a record the gate accepts without producing pixels, and the kit fix would never arrive.
+#
 # A file NOT here is copy-if-absent: the project may customise it, and the pending list reports a
 # real content divergence (line-ending style ignored) for the PM to work through the normal loop.
 # The price of a line here is the other direction: the scaffold overwrites a project's own changes
@@ -32,5 +37,6 @@
 scripts/harness.py
 scripts/kit_checks.py
 scripts/kit_browser_checks.py
+scripts/kit_design_render.py
 scripts/ledger_add.py
 scripts/einvoice_extract.py

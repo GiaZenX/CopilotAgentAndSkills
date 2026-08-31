@@ -285,22 +285,22 @@ def _settings_command_line_tools(kit):
     return found
 
 
-def _gate_tuple(name):
-    """A module-level tuple of the shipped `gate_write_scope`, read off its AST.
+def _gate_tuple(name, path=None):
+    """A module-level tuple of a shipped hook, read off its AST (`gate_write_scope` by default).
 
     PARSED, not imported: the hook's import of `_kernel` resolves against a project, and a gate
     that fails closed on an absent kernel would make this reader measure the fixture. Parsed, not
     grepped, for the reason this repo keeps re-learning — a string search finds the tuple in a
     docstring too.
     """
-    path = os.path.join(TEAM_KITS, "dev-team", "hooks", "gate_write_scope.py")
+    path = path or os.path.join(TEAM_KITS, "dev-team", "hooks", "gate_write_scope.py")
     with io.open(path, encoding="utf-8") as handle:
         tree = ast.parse(handle.read(), filename=path)
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
                 isinstance(target, ast.Name) and target.id == name for target in node.targets):
             return tuple(ast.literal_eval(node.value))
-    raise AssertionError("gate_write_scope no longer defines %s" % name)
+    raise AssertionError("%s no longer defines %s" % (os.path.basename(path), name))
 
 
 def test_the_command_running_tools_are_one_fact_in_three_places():
@@ -322,6 +322,13 @@ def test_the_command_running_tools_are_one_fact_in_three_places():
     for kit in _kit_dirs():
         wired = {name.lower() for name in _settings_command_line_tools(kit)}
         assert wired == kernel_side, (os.path.basename(kit), wired, kernel_side)
+    # A FOURTH statement joined the three in TSK-0099: `gate_design_sighted` decides whose stop it
+    # judges by asking whether that role's own frontmatter grants a command-running tool, and it is
+    # stdlib-only by spec II.7 — so it cannot import the kernel for the answer either. Same
+    # tripwire, same file, rather than a second one somewhere else.
+    sighted = _gate_tuple("COMMAND_TOOLS",
+                          os.path.join(TEAM_KITS, "dev-team", "hooks", "gate_design_sighted.py"))
+    assert {name.lower() for name in sighted} == kernel_side, (sighted, kernel_side)
 
 
 def test_every_shipped_specialist_is_told_a_path_its_toolset_can_walk():
@@ -1197,6 +1204,64 @@ def test_the_product_editor_can_research_and_says_what_that_costs():
     for gate in ("gate_second_reading", "gate_write_scope"):
         assert os.path.isfile(os.path.join(kit, "hooks", gate + ".py")), (
             "the note points at %s and this kit does not ship it" % gate)
+
+
+def test_the_product_designer_can_look_at_its_own_draft_and_says_what_that_costs():
+    """BUG-0076: the role that must SIGHT a draft gets the tool that renders it, WITH the note.
+
+    THE GAP, live 2026-08-30 in the user's real project: a design revision reached the user twice
+    unrendered, and the designer could not have rendered it even if told to -- its definition
+    granted `Read, Edit, Write, Grep, Glob`, no command-running tool at all, which its own skill
+    stated as the reason the PM runs every kernel command for it.
+
+    THE GRANT AND ITS PRICE ARE MEASURED TOGETHER, because a permission widened without the note is
+    the half that rots first (the same shape as `test_the_product_editor_can_research_and_says_what
+    _that_costs` one role over). Two consequences, both read off the shipped tree rather than
+    asserted in prose: the containment that DOES hold is named and its gates exist in this kit, and
+    the kernel's own `hand_back` answer for the role flips to `self` -- so the entry point is
+    reachable from the designer's session, and "the PM freezes, never you" is a rule with nothing
+    behind it. The skill has to say that in the sentence that used to derive it from the toolset.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import dispatch
+    kit = os.path.join(TEAM_KITS, "dev-team")
+    front, body = _role_definition(kit, "product-designer")
+    granted = {name.strip() for name in str(front.get("tools") or "").split(",")}
+    assert "Bash" in granted, granted
+    assert {"Read", "Write"} <= granted, (
+        "the sighting role also needs the tool that DISPLAYS an image; a render nobody opens is "
+        "worse than none")
+
+    assert "NOT CONTAINED" in body, (
+        "the role gained a command line without the sentence that says what is not contained by it")
+    for gate in ("gate_write_scope", "gate_git", "gate_push_token", "gate_shell_hygiene",
+                 "gate_design_sighted"):
+        assert gate in body, gate
+        assert os.path.isfile(os.path.join(kit, "hooks", gate + ".py")), (
+            "the note points at %s and this kit does not ship it" % gate)
+    # THE HALF THE FIRST CUT GOT BACKWARDS, and it is the reason this assertion exists rather than
+    # only the one above: the note said `gate_write_scope` "keeps your writes inside your task's
+    # allowed_scope", full stop. Measured by a verifier as a bound subagent through all eight
+    # registered shell gates: the Write TOOL onto `src/app.py` is rc 2, and `echo x > src/app.py`,
+    # `sed -i`, `cp` and `python -c open(...)` are all rc 0. The role whose own text says it NEVER
+    # writes production code could do exactly that from its new shell, while its note said it
+    # could not. The kit's `ENFORCEMENT.md` already named that residue correctly, so the note has
+    # to point there instead of summarising it a second time (house rule: a quotation nothing
+    # checks is a claim that rots).
+    assert "keeps your writes inside" not in body, (
+        "the containment note is back to claiming a scope binding that a shell line does not have")
+    assert "ENFORCEMENT.md" in body, (
+        "the note bounds a shell without pointing at the table that states each gate's real reach")
+
+    assert dispatch.hand_back_path(os.path.join(kit, "agents"), "product-designer") == \
+        dispatch.HAND_BACK_SELF
+    with io.open(os.path.join(kit, "skills", "product-designer", "SKILL.md"),
+                 encoding="utf-8") as handle:
+        skill = handle.read()
+    assert "grants no command-running tool" not in skill, (
+        "the skill still derives 'the PM runs the freeze' from a toolset that now runs commands -- "
+        "the rule is fine, the reason is false")
+    assert "hand_back: self" in skill or "hand_back: self" in body
 
 
 # ================ 7. the route that WRITES a kit document, and who is told it (BUG-0075)

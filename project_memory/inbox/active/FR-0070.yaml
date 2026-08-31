@@ -1,0 +1,26 @@
+id: FR-0070
+title: Adopt Anthropic's webapp-testing skill (Apache-2.0) -- the same execution model
+  our specialists have, and the capability BUG-0076's design loop needs
+request_text: 'Found 2026-08-31 in the skill survey (docs/research/2026-08-31-skill-survey.md),
+  not asked for -- it is the strongest fit of the whole survey and was overlooked
+  in July. anthropics/skills -> webapp-testing, Apache-2.0 with LICENSE.txt in the
+  folder. Measured properties: NO end-user dialogue, NO memory between tasks, Playwright
+  black-box scripts, pure file in / file out -- that is exactly the execution model
+  of our specialists, unlike frontend-design (assumes the agent talks to the user
+  and builds what it designed) and unlike the document skills (proprietary). Fit:
+  quality-engineer and frontend-developer directly; and it is the capability BUG-0076/TSK-0099
+  needs anyway -- a role that must render a draft and look at it. Two named rules
+  from it were already judged adoption-worthy in the July survey (the networkidle
+  rule, the black-box script rule) but only as sentences; the skill as a whole was
+  never weighed as a SKILL file because July only asked the role-budget question.
+  Duties on adoption (Apache-2.0 sec.4): ship the license copy, mark modifications,
+  one line in NOTICES.md. Weigh together with FR-0068 (frontend-design) and FR-0045
+  (the user''s Claude Design export) -- same drop-in point, same licensing shape,
+  one round. Open question for that round: whether webapp-testing belongs to a role
+  or is a shared REFERENCE skill several roles may open (the lead''s proposed rule
+  of 2026-08-31: one procedure skill per role, any number of shared reference skills).'
+related_pr: BUG-0076
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-31T17:53:38'

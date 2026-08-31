@@ -558,7 +558,7 @@ def _compositions_outside_the_kernel_package():
 # date the moment the last one goes. The places themselves are named in `L24`; naming them here as
 # well would be the second statement of one fact, which is the failure mode this whole rule exists
 # against.
-_COMPOSITIONS_OUTSIDE_THE_PACKAGE = 7
+_COMPOSITIONS_OUTSIDE_THE_PACKAGE = 8
 
 
 def test_the_path_rule_stops_at_the_kernel_package_and_the_rest_is_counted():
@@ -566,10 +566,15 @@ def test_the_path_rule_stops_at_the_kernel_package_and_the_rest_is_counted():
 
     The rule above holds inside the kernel package and is READ there. Shipped code outside it
     composes the same directory names by hand, because at those points there is no `ProjectState`
-    to ask: the hooks' bridge decides whether a repo is greenfield by walking around `generated/`,
-    and two template scripts address `generated/` and `archive/` directly. Each of them is a second
-    spelling of a builder's answer, which is exactly the defect the rule is a tripwire for -- the
-    difference is only that closing them would move a kernel-free bootstrap path onto the kernel.
+    to ask -- the hooks' bridge and the repo template scripts both run where the kernel may be
+    absent or beside the point. Each of them is a second spelling of a builder's answer, which is
+    exactly the defect the rule is a tripwire for -- the difference is only that closing them would
+    move a kernel-free path onto the kernel.
+
+    WHICH places those are is `L24`'s to say and not this docstring's: it used to name them here
+    too ("the hooks' bridge ... and two template scripts"), and the day a third template script
+    shipped that sentence was simply false while the count beside it did its job. One statement of
+    one fact, in the entry the first line points at.
 
     RED in both directions, which is what a counted residual owes: a new composition outside the
     package, and the last one disappearing without the entry being closed.

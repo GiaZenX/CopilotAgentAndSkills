@@ -1,0 +1,19 @@
+id: EVD-0074
+kind: review
+related:
+- TSK-0099
+result: pass
+summary: 'verifier PASS for diff:212e2176f33e0a16a277236ab5a30126ca8789981be76694ed4a61bcb57ce0c1
+  -- TSK-0099/BUG-0076: FAIL(F1 trigger blind to absolute/file:// /spaced paths --
+  the user''s REAL project path has spaces, so the gate would not have fired there;
+  F2 two reds in the package; F3 role text claimed containment the shell does not
+  have) -> PASS at dev 2026.08.31-5 (verifier re-measured the whole package because
+  it moved under him mid-review) -> N1/N2 residues accepted at -6, byte-identity of
+  the seven untouched files verified. Kit-side red L24 counter (red since -4, missed
+  by the verifier''s own -5 pass, self-reported) fixed as a number plus entry, no
+  code. Full suite 4034 passed 14 skipped 0 failed (46:26)'
+artifact_refs:
+- staging/TSK-0099/protocol.md
+revision: 1
+approval_ref: null
+created: '2026-08-31T22:25:36'

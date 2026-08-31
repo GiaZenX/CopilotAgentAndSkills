@@ -1,4 +1,4 @@
-generated_at: '2026-08-31T17:02:03'
+generated_at: '2026-08-31T22:25:38'
 items:
 - id: BUG-0001
   type: BUG
@@ -1363,6 +1363,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0074
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1690,6 +1696,36 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0068
+  type: FR
+  title: Vendor Anthropic's frontend-design skill as a SKILL beside the designer (not
+    into the role) -- the July rejection was a role-budget argument that does not
+    apply to a skill file
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0069
+  type: FR
+  title: 'A design BRIEF before any design work: read the existing repo first, then
+    ask the user only what cannot be derived from it'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0070
+  type: FR
+  title: Adopt Anthropic's webapp-testing skill (Apache-2.0) -- the same execution
+    model our specialists have, and the capability BUG-0076's design loop needs
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0071
+  type: FR
+  title: Which reference skill a role opens is DERIVED from the task, not chosen by
+    the role -- plus a tripwire that a shipped skill no route reaches makes the suite
+    red
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1763,7 +1799,7 @@ items:
   status: DRAFT
   revision: 1
   approval_ref: null
-- id: TSK-0098
+- id: TSK-0099
   type: TSK
   title: null
   status: READY

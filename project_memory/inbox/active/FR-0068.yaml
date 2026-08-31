@@ -1,0 +1,30 @@
+id: FR-0068
+title: Vendor Anthropic's frontend-design skill as a SKILL beside the designer (not
+  into the role) -- the July rejection was a role-budget argument that does not apply
+  to a skill file
+request_text: 'User request 2026-08-31: ''bitte Bau dem Designer folgenden Skill ein:
+  Frontend Design von anthropic, zu finden auf GitHub ... weil ich glaub mit diesem
+  Skill und der design system Vorlage vom Claude Design arbeitet er anstaendig.''
+  MEASURED WHY THIS IS NOW POSSIBLE: the July 2026 adoption research (docs/research/2026-07-27-adoption-anthropic.md,
+  -SYNTHESE.md) rejected wholesale adoption on ONE number -- frontend-design/SKILL.md
+  reformatted to our wrap width is 121 lines, ''81% des gesamten 150-Zeilen-Budgets
+  einer Rolle''. That budget is the ROLE definition, which loads at every session
+  start. Measured 2026-08-31: dev-team/agents/product-designer.md is 45 lines; dev-team/skills/product-designer/SKILL.md
+  is already 231 lines and is REGISTERED, not injected (tools/test_context_budget.py::test_no_skill_a_session_can_reach_claims_to_be_preloaded
+  pins that property). A skill file beside the designer therefore costs nothing of
+  the scarce budget, and the original objection does not transfer. The second July
+  objection DOES still apply and must be handled honestly rather than ignored: ''frontend-design
+  unterstellt einen Agenten, der mit dem User spricht, sich Notizen in seinem eigenen
+  Gedaechtnis macht und selbst baut, was er entworfen hat'' -- in the kits the designer
+  does not talk to the user (the PM does), writes only staging/<task-id>/, and II.5
+  forbids project state in agent memory. So the round adapts the PROCESS half while
+  keeping the sentences, and marks every modification (Apache-2.0 sec.4). Licensing
+  measured in July: Apache-2.0 per skill folder, no repo-root LICENSE; duties are
+  a license copy shipped alongside, changes marked, one line in NOTICES.md. Pairs
+  with FR-0045 (the user''s real Claude Design export is itself directly consumable
+  as a skill) -- same shape, same drop-in point, so weigh doing both in one round.'
+related_pr: BUG-0076
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-31T17:29:08'

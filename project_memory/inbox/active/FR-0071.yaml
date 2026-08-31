@@ -1,0 +1,36 @@
+id: FR-0071
+title: Which reference skill a role opens is DERIVED from the task, not chosen by
+  the role -- plus a tripwire that a shipped skill no route reaches makes the suite
+  red
+request_text: 'User question 2026-08-31, on hearing that reference skills would be
+  added beside the roles'' procedure skills: ''wie entscheidet der PM wann welche
+  eingesetzt werden? Nicht dass er blauaeugig immer dieselben nutzt?'' MEASURED STARTING
+  POINT: every one of the 25 shipped roles declares exactly one skill, identical to
+  its own name, so today there is nothing to choose and the question does not arise;
+  and a role''s `skills:` frontmatter was measured on 2026-08-02 to deliver nothing
+  to a session bound to it -- what makes a skill reachable is the ROLE TEXT naming
+  it plus opening it by name. So the moment a second, shared reference skill exists
+  (FR-0068 frontend-design, FR-0070 webapp-testing, FR-0045 the design-system export),
+  the user''s failure mode is the DEFAULT: the role text names them all and the role
+  reaches for the habitual one. WANTED, in the repo''s own idiom (CLAUDE.md: ''Der
+  Auftrag an den Umsetzer wird AUS DEM ITEM erzeugt, nicht frei geschrieben''): the
+  reference skills named in a work order are DERIVED from the task -- its type, its
+  scope, the root''s design ambition -- not picked by the role or improvised by the
+  PM. Consequences that make it worth building rather than writing down: a wrong pick
+  becomes visible in the generated order instead of happening silently, and a text
+  change does not drag in the same heavyweight design references as a redesign. PLUS
+  a tripwire of the shape TSK-0096 built for kit documents, both directions: a shipped
+  skill that NO derivation can ever name is dead weight and fails the suite; a derivation
+  naming a skill the kit does not ship fails too. Design questions for the round,
+  open: where the derivation lives (kernel create-task? the PM skill? a kit-side data
+  file like repo_kit_owned.txt?); whether the mapping is data or code; and how a role
+  may open something NOT named in its order (an honest escape hatch, or deliberately
+  none). Per DEC-0056 the mechanism must name the measured error it catches -- here
+  the error is not yet measured live, it is predicted, so the round must either find
+  it in a pilot transcript or state plainly that it is a design-time precaution and
+  keep it cheap.'
+related_pr: BUG-0076
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-08-31T19:32:36'

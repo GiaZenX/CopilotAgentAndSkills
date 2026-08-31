@@ -115,6 +115,10 @@
           },
           {
             "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_design_sighted.py"
+          },
+          {
+            "type": "command",
             "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_approval.py"
           }
         ]
@@ -193,7 +197,7 @@
     ],
     "SubagentStop": [
       {
-        "_comment": "ONE chained command, and gate_dispatch is LAST because the gate ahead of it can turn this stop into a CONTINUATION: gate_subagent_output exits 2 for a final message without its output contract, and the child then keeps working. gate_dispatch records the child's END here (BUG-0058), and a record written ahead of that refusal would report a specialist that is still running as idle at the lead's next turn-end. _gate.py runs the chain in one process and stops at the first refusal, which is exactly what makes the order carry the meaning.",
+        "_comment": "ONE chained command, and gate_dispatch is LAST because every gate ahead of it can turn this stop into a CONTINUATION: gate_subagent_output exits 2 for a final message without its output contract, gate_design_sighted exits 2 for a final message naming a staged design draft nobody rendered (BUG-0076), and the child then keeps working in both cases. gate_dispatch records the child's END here (BUG-0058), and a record written ahead of such a refusal would report a specialist that is still running as idle at the lead's next turn-end. _gate.py runs the chain in one process and stops at the first refusal, which is exactly what makes the order carry the meaning. Both refusing gates share ONE retry, because `stop_hook_active` is set per continuation and not per gate.",
         "hooks": [
           {
             "type": "command",
@@ -201,7 +205,7 @@
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py gate_dispatch.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_subagent_output.py gate_design_sighted.py gate_dispatch.py"
           }
         ]
       }

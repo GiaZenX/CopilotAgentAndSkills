@@ -3835,6 +3835,563 @@ def test_a_foreign_agent_leaves_no_give_up_record(kit_repo):
     assert not log.exists(), log.read_text(encoding="utf-8")
 
 
+# ---------------- gate_design_sighted: no design draft reaches the user unrendered ----------------
+DESIGN_TASK = "TSK-0007"
+DRAFT_NAME = "DSN-0001.html"
+
+
+def _design_hook():
+    """The shipped gate as a module — its own constants, so no spelling is repeated in this file."""
+    return load_kit_module("gate_design_sighted",
+                           os.path.join(HOOKS, "gate_design_sighted.py"))
+
+
+def _staged_draft(repo, body="<html><body><h1>Draft</h1></body></html>", task=DESIGN_TASK,
+                  name=DRAFT_NAME):
+    """A design draft staged the way the designer stages one, and its repo-relative path."""
+    relative = "project_memory/staging/%s/%s" % (task, name)
+    write(os.path.join(str(repo), *relative.split("/")), body)
+    return relative
+
+
+def _render_record(repo, relative, images=("review/a.png",), content=b"PNG", sha=None):
+    """A record of the shape `scripts/kit_design_render.py` writes, without running a browser.
+
+    Hand-written on purpose HERE: what the gate consumes is the record, and the round trip against
+    the real renderer is a separate test, so that a browser this machine lacks cannot take the
+    gate's own cases with it. That this file is EASY to write by hand is not a gap in the fixture —
+    it is the property the gate's own row states, and the reason it claims provenance of the bytes
+    rather than proof of a render.
+    """
+    parts = relative.split("/")
+    item_dir = os.path.join(str(repo), *parts[:3])
+    draft = os.path.join(str(repo), *parts)
+    digest = sha or hashlib.sha256(open(draft, "rb").read()).hexdigest()
+    for image in images:
+        path = os.path.join(item_dir, *image.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as handle:
+            handle.write(content)
+    record = {"tool": "kit_design_render.py", "task": parts[2], "viewports": ["1440x900"],
+              "sources": [{"path": "/".join(parts[3:]), "sha256": digest, "images": list(images)}],
+              "references": []}
+    write(os.path.join(item_dir, "review", "render.json"), json.dumps(record))
+    return record
+
+
+def _presentation(repo, text, option=None):
+    """An `AskUserQuestion` payload — the moment the draft is handed to the user."""
+    return {"hook_event_name": "PreToolUse", "tool_name": "AskUserQuestion", "cwd": str(repo),
+            "tool_input": {"questions": [
+                {"question": text, "header": "Design",
+                 "options": [{"label": "A", "description": option or "die Kacheln"}]}]}}
+
+
+def test_a_design_draft_named_to_the_user_without_a_render_is_refused(tmp_path):
+    """THE LIVE CASE, replayed: the PM hands the user a staged revision nobody rendered.
+
+    Canyon, 2026-08-30: `DSN-0001.html` went to the user TWICE unrendered, both rounds were
+    rejected on layout only pixels show, and the user had to ask for the internal review himself
+    (BUG-0076). Measured against the shipped kit BEFORE this gate existed: rc 0 — nothing on the
+    path from the draft to the user asked whether anyone had looked.
+    """
+    relative = _staged_draft(tmp_path)
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Welche Richtung? Datei: %s" % relative),
+                              tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "nobody has rendered this draft" in result.stderr, result.stderr
+    assert "kit_design_render.py" in result.stderr, result.stderr
+
+
+def _spellings(repo, relative):
+    """The ways one PM could name ONE staged file to a non-developer, all of the same file."""
+    absolute = os.path.join(str(repo), *relative.split("/"))
+    return {
+        "repo-relative": relative,
+        "absolute": absolute,
+        "absolute, forward slashes": absolute.replace(os.sep, "/"),
+        "file:// URL": "file:///" + absolute.replace(os.sep, "/"),
+        "quoted absolute": '"%s"' % absolute,
+        "markdown link": "[der Entwurf](%s)" % relative,
+        "bare file name": os.path.basename(relative),
+        "upper case": relative.upper(),
+    }
+
+
+@pytest.mark.parametrize("shape", sorted(_spellings("REPO", "a/b/c.html")))
+def test_every_spelling_of_one_staged_draft_is_the_same_refusal(tmp_path, shape):
+    """THE DEFECT THE FIRST CUT SHIPPED, and the reason this gate reads filesystem -> text.
+
+    That version tokenised the message and resolved each token as a path. Measured by a verifier
+    against ONE unrendered draft: the repo-relative spelling was rc 2 and the absolute path, the
+    `file://` URL, the quoted path and every spelling containing a SPACE were rc 0 — because the
+    token pattern excluded `:` and whitespace, so a Windows path lost its drive letter and a path
+    with a space lost everything before it. The live project of BUG-0076 sits under
+    `C:/Offline Repos/gewerbe/...`, a path WITH a space, and a PM naming a draft so a non-developer
+    can open it writes exactly those spellings. A file NAME is a substring of every spelling of its
+    own path; that is what makes one rule out of this list instead of eight.
+
+    RED-FIRST, AND WHAT IT MEASURED IS NARROWER THAN THE LIST — said here rather than implied:
+    restoring that reader verbatim in a clone turns `bare file name` and both space cases red,
+    while `absolute` and `file://` stay green ON THIS MACHINE, because the drive letter the token
+    pattern dropped happened to be the hook process's own current drive, so `/Users/...` resolved
+    back to the same file. That is luck of the layout, not a property — which is why the whole list
+    also has its red direction through the mutation that switches the gate off.
+    """
+    relative = _staged_draft(tmp_path)
+    text = "Schau dir das an: %s" % _spellings(tmp_path, relative)[shape]
+    result = run_hook_process("gate_design_sighted.py", _presentation(tmp_path, text), tmp_path)
+    assert result.returncode == 2, (shape, result.stdout + result.stderr)
+
+
+@pytest.mark.parametrize("name,folder", [("Mein Entwurf.html", DESIGN_TASK),
+                                         ("tiles.html", DESIGN_TASK + "/Mein Ordner")])
+def test_a_space_in_the_path_is_not_a_way_past_this_gate(tmp_path, name, folder):
+    """Both halves of the space case the verifier measured: in the file name and in a directory.
+
+    Kept beside the spelling matrix rather than inside it because the SUBJECT differs — here the
+    staged path itself carries the space, which is what the user's own project looks like.
+    """
+    relative = _staged_draft(tmp_path, task=folder, name=name)
+    absolute = os.path.join(str(tmp_path), *relative.split("/"))
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Oeffne %s" % absolute), tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+
+
+def test_a_draft_named_only_in_an_option_description_is_refused(tmp_path):
+    """A design question puts one file per direction into the OPTIONS, not into the question text.
+
+    The option half had no case of its own, so removing it from the reader would have stayed green
+    while the most likely real shape of this question walked through.
+    """
+    relative = _staged_draft(tmp_path)
+    payload = _presentation(tmp_path, "Welche Richtung gefaellt dir?",
+                            option="Variante A liegt in %s" % relative)
+    result = run_hook_process("gate_design_sighted.py", payload, tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+
+
+def test_the_presentation_opens_once_a_record_covers_the_draft(tmp_path):
+    relative = _staged_draft(tmp_path)
+    _render_record(tmp_path, relative)
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % relative), tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_draft_edited_after_its_render_is_refused_again(tmp_path):
+    """The record binds to BYTES, not to a filename — otherwise one render covers every later fix.
+
+    This is the shape a real round produces: render once, iterate the HTML, present. The pixels
+    anyone saw were then a different draft, which is indistinguishable from never having rendered.
+    """
+    relative = _staged_draft(tmp_path)
+    _render_record(tmp_path, relative)
+    _staged_draft(tmp_path, body="<html><body><h1>Draft v2</h1></body></html>")
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % relative), tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "OTHER bytes" in result.stderr, result.stderr
+
+
+def test_a_sibling_draft_that_was_never_rendered_is_not_told_it_changed(tmp_path):
+    """The REASON has to be the right one, and it was not: `seen_any` counted per ITEM.
+
+    A second draft staged beside a rendered one was refused with "this file changed after it was
+    rendered", sending the reader to look for an edit that never happened. The record is asked
+    about THIS source path now.
+    """
+    first = _staged_draft(tmp_path)
+    _render_record(tmp_path, first)
+    second = _staged_draft(tmp_path, name="DSN-0002.html", body="<html><body>zwei</body></html>")
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % second), tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "nobody has rendered this draft" in result.stderr, result.stderr
+    assert "OTHER bytes" not in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("images,content", [
+    (("review/gone.png",), None),      # the record names an image nobody wrote
+    (("review/a.png",), b""),          # ...or one a half-finished render left empty
+    ((), b""),                         # ...or names none at all
+])
+def test_a_record_whose_images_are_not_there_is_not_evidence(tmp_path, images, content):
+    relative = _staged_draft(tmp_path)
+    _render_record(tmp_path, relative, images=images, content=content or b"")
+    if content is None:
+        os.remove(os.path.join(str(tmp_path),
+                               *(relative.split("/")[:3] + list(images[0].split("/")))))
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % relative), tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert ("no image at all" if not images else "missing, empty or outside") in result.stderr
+
+
+def test_a_record_cannot_point_its_images_outside_the_staging_item(tmp_path):
+    """The record is written by the agent being judged, so what it may point AT has to be bounded.
+
+    Without containment, `"images": ["../../../../Windows/win.ini"]` is a file that exists and is
+    not empty — every machine then ships a render. This does not make the record trustworthy (the
+    gate's own row says it cannot establish that a browser ran); it bounds the cheapest way to
+    write one that names nothing of this task at all.
+    """
+    relative = _staged_draft(tmp_path)
+    outside = os.path.join(str(tmp_path), "elsewhere.png")
+    with open(outside, "wb") as handle:
+        handle.write(b"PNG")
+    _render_record(tmp_path, relative, images=("../../../elsewhere.png",))
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % relative), tmp_path)
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "outside" in result.stderr, result.stderr
+
+
+@pytest.mark.parametrize("text", [
+    "Sollen Kunden ihre Bestellhistorie sehen?",                       # nothing visual at all
+    "Wie gehabt in design/revisions/DSN-0001.r01.html",                # frozen: already approved
+    "Der Wireframe liegt in project_memory/staging/TSK-0007/WFR-0001.drawio.svg",
+    "Alles unter project_memory/staging/TSK-0007/ anschauen",          # the folder, not the file
+    "Oeffne project_memory/staging/TSK-0007/DSN-0001 im Browser",      # the name without .html
+    "Der Einstieg liegt in src/index.html",                            # a file this is not about
+])
+def test_the_gate_is_silent_where_there_is_nothing_to_look_at(tmp_path, text):
+    """The COST side, measured: what this duty must not paralyse — and its two blind spots.
+
+    The duty attaches to the ARTIFACT and not to the ambition, so a scope with no staged HTML —
+    a copy-only change, a minimal-ambition spec, the wireframe phase — never meets it, and a frozen
+    revision the user already approved is out of the gate's subtree by construction. The last two
+    cases are BLIND SPOTS rather than virtues and are named as such in the hook and in H82: a
+    mention that never writes the file name out is one this reader cannot see.
+    """
+    _staged_draft(tmp_path)                       # an unrendered draft IS in the project
+    write(os.path.join(str(tmp_path), "project_memory", "staging", DESIGN_TASK,
+                       "WFR-0001.drawio.svg"), "<svg/>")
+    write(os.path.join(str(tmp_path), "design", "revisions", "DSN-0001.r01.html"), "<html/>")
+    write(os.path.join(str(tmp_path), "src", "index.html"), "<html/>")
+    result = run_hook_process("gate_design_sighted.py", _presentation(tmp_path, text), tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("text", [
+    "src/index.html ist fertig — abnehmen?",
+    "frontend/public/index.html ist gebaut",
+    "Die index.html ist noch offen",
+])
+def test_a_staged_draft_sharing_a_file_name_over_refuses_and_that_is_the_price(tmp_path, text):
+    """THE OTHER DIRECTION OF THE NAME MATCH, measured so it cannot flip unnoticed.
+
+    The reader asks whether the message CONTAINS a staged draft's file name, so a draft staged as
+    `index.html` makes every sentence about any other `index.html` — a source file, a build output,
+    or the bare name in prose — a refusal. That is the price of the fix for F1: comparing whole
+    paths instead is precisely the version that let every absolute, quoted, `file://` and
+    space-carrying spelling of the real file through.
+
+    Kept as a TEST and not only as a sentence in `ENFORCEMENT.md` and H82 (b), because a named cost
+    nothing measures is a cost that can silently become something else. What makes the collision
+    unlikely in practice is the kit's own naming convention (`DSN-nnnn.html`, `WFR-nnnn`), which
+    the product-designer skill now states as the reason rather than leaving it to chance.
+    """
+    colliding = _staged_draft(tmp_path, task="TSK-0009", name="index.html")
+    assert colliding.endswith("index.html")
+    result = run_hook_process("gate_design_sighted.py", _presentation(tmp_path, text), tmp_path)
+    assert result.returncode == 2, (
+        "the over-refusal this test exists to keep visible is gone — either the reader changed, "
+        "or it changed back to whole-path matching (F1): %s" % (result.stdout + result.stderr))
+    # ...and the SAME sentence is silent without the colliding draft, which is what makes this a
+    # measurement of the collision rather than of the gate refusing everything.
+    shutil.rmtree(os.path.join(str(tmp_path), "project_memory", "staging", "TSK-0009"))
+    _staged_draft(tmp_path)
+    quiet = run_hook_process("gate_design_sighted.py", _presentation(tmp_path, text), tmp_path)
+    assert quiet.returncode == 0, quiet.stdout + quiet.stderr
+
+
+def _design_stop(repo, message, retried=False, atype="product-designer"):
+    payload = {"hook_event_name": "SubagentStop", "agent_type": atype,
+               "cwd": str(repo), "last_assistant_message": message}
+    if retried:
+        payload["stop_hook_active"] = True
+    return payload
+
+
+def _install_roles(repo, kit="dev-team"):
+    """The kit's agent definitions where a scaffolded project keeps them.
+
+    The gate reads the INSTALLED role file to decide whose stop it judges, so the fixture installs
+    the real ones rather than inventing frontmatter: the property under test is "this role's own
+    definition grants a command-running tool", and a hand-written stub would measure the stub.
+    """
+    shutil.copytree(os.path.join(ROOT, "team-kits", kit, "agents"),
+                    os.path.join(str(repo), ".claude", "agents"), dirs_exist_ok=True)
+
+
+@pytest.mark.parametrize("atype,refused", [
+    ("product-designer", True),      # the role that staged it and can render it
+    ("frontend-developer", True),    # named over-reach: it can render, so it is asked to
+    ("software-architect", False),   # grants no command tool — the order could not be followed
+    ("Explore", False),              # not one of our specialists at all
+    ("", False),                     # a stop with no agent_type
+])
+def test_the_stop_door_judges_only_a_role_that_could_render(tmp_path, atype, refused):
+    """WHOSE stop this is, measured per caller — the first cut judged every one of them.
+
+    A verifier measured rc 2 for `Explore` and for a stop with NO `agent_type`, and for the
+    `software-architect`, whose definition grants no command-running tool: telling those to run the
+    renderer is an order they cannot follow, and the architect would have spent its one retry on it.
+    The scope is now the property "this role could have rendered", read off the installed role file.
+    The remaining over-reach is deliberate and named in the gate: another shell-carrying specialist
+    that merely QUOTES a staged draft is judged too — binding the stop to the agent HOLDING the
+    staging key needs the kernel bridge and the `GATE_PREAMBLE` restructure with it (DEC-0056).
+    """
+    _install_roles(tmp_path)
+    relative = _staged_draft(tmp_path)
+    result = run_hook_process("gate_design_sighted.py",
+                              _design_stop(tmp_path, "summary: staged it\noutputs: %s" % relative,
+                                           atype=atype), tmp_path)
+    assert result.returncode == (2 if refused else 0), (atype, result.stdout + result.stderr)
+
+
+def test_the_designer_cannot_stop_on_an_unrendered_draft_and_the_retry_is_let_through(tmp_path):
+    """The second door: the specialist's own stop, where its envelope names what it staged.
+
+    Both states, and the exit 0 on the second is asserted with them — the one-retry pass-through is
+    the deliberate hole (`gate_subagent_output`'s reason: the provider sets `stop_hook_active` on a
+    continuation a stop hook caused, so refusing again loops the subagent forever). A test that
+    measured only the refusal would let that hole be closed by accident and stay green.
+    """
+    _install_roles(tmp_path)
+    relative = _staged_draft(tmp_path)
+    message = "summary: staged the directions preview\noutputs: %s" % relative
+    first = run_hook_process("gate_design_sighted.py", _design_stop(tmp_path, message), tmp_path)
+    assert first.returncode == 2, first.stdout + first.stderr
+
+    again = run_hook_process("gate_design_sighted.py",
+                             _design_stop(tmp_path, message, retried=True), tmp_path)
+    assert again.returncode == 0, again.stderr
+    log = tmp_path / "project_memory" / ".audit" / "hook_events.jsonl"
+    assert "gave_up" in log.read_text(encoding="utf-8")
+
+
+def test_the_gate_measures_provenance_and_says_it_cannot_measure_sight(tmp_path):
+    """The named limit, measured rather than promised: this gate cannot tell whether anyone LOOKED.
+
+    A record whose "images" are twenty bytes of ASCII is accepted — the gate weighs existence,
+    containment and the source hash, nothing about what is in the picture, and no reading of it
+    could weigh attention. The record is also written BY the agent being judged, so it is not even
+    evidence that a browser ran. FR-0035's pattern: provenance is measurable, blindness is not. The
+    row a role reads at the refusal has to say BOTH, or the apparatus claims a review it never did.
+    """
+    relative = _staged_draft(tmp_path)
+    _render_record(tmp_path, relative, content=b"not a picture at all")
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % relative), tmp_path)
+    assert result.returncode == 0, result.stderr
+    row = _enforcement_row(os.path.join(ROOT, "team-kits", "dev-team"), "gate_design_sighted")
+    assert "cannot establish at all" in row and "anyone LOOKED" in row, row
+    assert "browser ever ran" in row, row
+
+
+def _registered_design_commands(repo, kit="dev-team"):
+    """The command lines this kit REGISTERS gate_design_sighted under, per event, installed.
+
+    Read off the settings.json a scaffold copies, `${CLAUDE_PROJECT_DIR}` and all. Nothing else in
+    this file reads the registration, and that was a measured gap: both doors could be removed from
+    settings.json and every case above stayed green, because each ran the gate file directly.
+    """
+    claude = os.path.join(str(repo), ".claude")
+    shutil.copytree(os.path.join(ROOT, "team-kits", kit, "hooks"),
+                    os.path.join(claude, "hooks"), dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(os.path.join(ROOT, "team-kits", "kernel"), os.path.join(claude, "kernel"),
+                    dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy(os.path.join(ROOT, "team-kits", kit, "settings", "settings.json"),
+                os.path.join(claude, "settings.json"))
+    _install_roles(repo, kit)
+    with open(os.path.join(claude, "settings.json"), encoding="utf-8") as handle:
+        settings = json.load(handle)
+    found = {}
+    for event, groups in settings["hooks"].items():
+        for group in groups:
+            for hook in group.get("hooks", []):
+                command = str(hook.get("command") or "")
+                if "gate_design_sighted.py" not in command:
+                    continue
+                argv = command.replace("${CLAUDE_PROJECT_DIR}", str(repo)).replace('"', "").split()
+                found.setdefault(event, []).append([sys.executable] + argv[1:])
+    return found
+
+
+@pytest.mark.parametrize("event", ["PreToolUse", "SubagentStop"])
+def test_both_doors_run_through_the_command_the_kit_registers(tmp_path, event):
+    """A gate nobody registers refuses nothing, and no case above would have noticed.
+
+    Measured by a verifier: removing either registration from `settings.json` left the whole suite
+    green. So both doors are driven here through the command line the shipped settings really
+    spell — the chained launcher included, which is what a session runs.
+    """
+    commands = _registered_design_commands(tmp_path)
+    assert event in commands and len(commands[event]) == 1, (event, sorted(commands))
+    relative = _staged_draft(tmp_path)
+    payload = (_presentation(tmp_path, "Datei: %s" % relative) if event == "PreToolUse"
+               else _design_stop(tmp_path, "summary: staged it\noutputs: %s" % relative))
+    env = dict(os.environ, CLAUDE_PROJECT_DIR=str(tmp_path))
+    env.pop("HARNESS_KERNEL_PATH", None)      # the installed bundle carries its own kernel
+    blocked = subprocess.run(commands[event][0], input=json.dumps(payload), capture_output=True,
+                             text=True, env=env, timeout=180)
+    assert blocked.returncode == 2, blocked.stdout + blocked.stderr
+    assert "kit_design_render.py" in blocked.stderr, blocked.stderr
+
+    _render_record(tmp_path, relative)
+    opened = subprocess.run(commands[event][0], input=json.dumps(payload), capture_output=True,
+                            text=True, env=env, timeout=180)
+    assert opened.returncode == 0, opened.stdout + opened.stderr
+
+
+@pytest.mark.parametrize("form,expected", [
+    ("%s TSK-0007", 0),
+    ("%s TSK-0007 --reference https://example.com --reference https://x.dev", 0),
+    ("%s --source project_memory/staging/TSK-0007/DSN-0001.html", 2),
+])
+def test_the_render_command_this_gate_prescribes_is_one_the_shell_gates_allow(prd_repo, form,
+                                                                              expected):
+    """The remedy in a refusal has to RUN, and the reason the CLI takes an id is measured here.
+
+    `gate_write_scope` refuses any write-capable pipeline that names `project_memory`, so a
+    renderer with a `--source <path>` interface would be refused before it started — the remedy
+    would name a command no role can execute. Measured on the shipped gates: the id form is rc 0
+    for the lead and for a subagent through every gate the kit registers on a shell line, the path
+    form rc 2. Both directions, because only the pair says the choice was necessary rather than a
+    taste. The gate list is read off the kit's own registration, not typed here.
+    """
+    command = form % _design_hook().RENDER_SCRIPT.replace("scripts/", "python scripts/")
+    gates = [gate for _event, _matcher, chain in _registered_entries("dev-team")
+             for gate in _chained_gates(str(chain.get("command") or ""))
+             if _matcher_names_a_shell(_matcher)]
+    assert len(gates) >= 6, gates
+    for caller in ({}, {"agent_id": "sub-1"}):
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(prd_repo),
+                   "tool_input": {"command": command}}
+        payload.update(caller)
+        for gate in gates:
+            got = run_hook_process(gate, payload, prd_repo)
+            if expected == 0:
+                assert got.returncode == 0, (gate, caller, got.stdout + got.stderr)
+            elif gate == "gate_write_scope.py":
+                assert got.returncode == 2, (gate, caller, got.stdout + got.stderr)
+
+
+def _matcher_names_a_shell(matcher):
+    """Is this registration matcher the kit's SHELL one? Asked of the gate that defines the set."""
+    tools = {part.strip().lower() for part in str(matcher).split("|") if part.strip()}
+    return bool(tools & set(_design_hook().COMMAND_TOOLS))
+
+
+def test_the_shipped_renderer_writes_a_record_the_gate_accepts(tmp_path):
+    """The round trip, through the real script and a real browser: render -> record -> gate opens.
+
+    Skipped where no browser is installed, and that skip is exactly what the delivery is honest
+    about: without Playwright + Chromium the script exits 2 with the install line and the draft is
+    not presented at all (`test_the_renderer_fails_loud_and_never_writes_a_half_record` measures
+    the failure half, which needs no browser).
+    """
+    pytest.importorskip("playwright")
+    relative = _staged_draft(tmp_path)
+    script = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts",
+                          "kit_design_render.py")
+    run = subprocess.run([sys.executable, "-B", script, DESIGN_TASK], cwd=str(tmp_path),
+                         capture_output=True, text=True, timeout=300)
+    if run.returncode == 2 and "Chromium" in (run.stdout + run.stderr):
+        pytest.skip("no Chromium on this machine — the loud-failure half is measured separately")
+    assert run.returncode == 0, run.stdout + run.stderr
+    result = run_hook_process("gate_design_sighted.py",
+                              _presentation(tmp_path, "Datei: %s" % relative), tmp_path)
+    assert result.returncode == 0, result.stderr
+
+
+def test_the_renderer_fails_loud_and_never_writes_a_half_record(tmp_path):
+    """Every way this script can fail is exit 2 WITH the fix, and none of them leaves a record.
+
+    A record is what a gate consumes, so a script that wrote one on a failed run would buy the
+    presentation it just failed to justify. Two failures need no browser to measure: a task with
+    no staging directory, and one that stages no HTML at all (a wireframe is not this subject).
+    """
+    script = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts",
+                          "kit_design_render.py")
+    os.makedirs(os.path.join(str(tmp_path), "project_memory"), exist_ok=True)
+    write(os.path.join(str(tmp_path), "project_memory", "staging", DESIGN_TASK,
+                       "WFR-0001.drawio.svg"), "<svg/>")
+    for task, expected in ((DESIGN_TASK, "stages no .html"), ("TSK-9999", "no staging directory")):
+        run = subprocess.run([sys.executable, "-B", script, task], cwd=str(tmp_path),
+                             capture_output=True, text=True, timeout=120)
+        assert run.returncode == 2, (task, run.stdout, run.stderr)
+        assert expected in (run.stdout + run.stderr), (task, run.stdout + run.stderr)
+    assert not glob.glob(os.path.join(str(tmp_path), "project_memory", "staging", "**",
+                                      "render.json"), recursive=True)
+
+
+# A kit that stages HTML and is NOT given the design loop, with the reason — the KIT_SPECIFIC_HOOKS
+# shape, and pinned in BOTH directions by the test below so a stale entry cannot survive.
+DESIGN_LOOP_EXEMPT = {
+    "research-team": "its report-writer stages `EXP-*.html` as the OPTIONAL quick view of the "
+                     "`.tex`/PDF it actually submits, and that artifact is judged on its content. "
+                     "BUG-0076's error class — an artifact the user picks by its LOOK reaching "
+                     "them unseen — has no case there, and DEC-0056 builds no mechanism without "
+                     "one. Lift this the day a research role stages something judged by appearance.",
+}
+
+
+def _roles_staging_html(kit):
+    """Roles whose own 'Files you WRITE' section names an `.html` under `staging/`.
+
+    THE PROPERTY, read off the section that states it, because the predecessor of this test
+    searched every SKILL for the string `freeze-design` and called that a property: a verifier
+    measured that research-team's report-writer stages `EXP-xxxx.html` "so every report can be
+    eyeballed in a browser" and fell straight through that search, while all three constitutions
+    contain the word.
+    """
+    out = set()
+    for path in sorted(glob.glob(os.path.join(ROOT, "team-kits", kit, "skills", "*",
+                                              "SKILL.md"))):
+        with open(path, encoding="utf-8", errors="ignore") as handle:
+            text = handle.read()
+        blocks = re.split(r"(?m)^##\s+", text)
+        for block in blocks:
+            if not block.lower().startswith("files you write"):
+                continue
+            # `html` as a WORD, not as a file extension: dev's designer writes "the self-contained
+            # HTML preview" and research's report-writer "`EXP-*.html`" — one property, two
+            # spellings, and keying on the dotted form would have read only the second.
+            if "staging/" in block and re.search(r"\bhtml\b", block, re.IGNORECASE):
+                out.add(os.path.basename(os.path.dirname(path)))
+    return out
+
+
+def test_the_design_loop_ships_where_a_draft_is_judged_by_its_LOOK():
+    """WHICH kits get the gate and the renderer — the property, plus one named exception.
+
+    Both ends are derived: the kits whose roles stage HTML come from those roles' own file lists,
+    and what ships comes from the filesystem. The exemption carries its reason and is pinned in
+    both directions, so a kit that stops staging HTML cannot keep a stale entry here — the same
+    shape `KIT_SPECIFIC_HOOKS` uses for the mirror rule.
+    """
+    stages = {kit: _roles_staging_html(kit) for kit in KITS}
+    assert stages["dev-team"] and stages["research-team"], stages
+    for kit, reason in DESIGN_LOOP_EXEMPT.items():
+        assert stages.get(kit), (
+            "%s is exempted from the design loop and stages no HTML at all any more — drop the "
+            "entry instead of leaving a reason nothing applies to" % kit)
+        assert len(reason) > 80, kit
+    expected = {kit for kit, roles in stages.items()
+                if roles and kit not in DESIGN_LOOP_EXEMPT}
+    for kit in KITS:
+        for relative in ("hooks/gate_design_sighted.py",
+                         "templates/repo/scripts/kit_design_render.py"):
+            here = os.path.isfile(os.path.join(ROOT, "team-kits", kit, *relative.split("/")))
+            assert here == (kit in expected), (kit, relative, here, sorted(expected))
+
+
 # ---------------- office fs tripwire: shell redirects into the ledger are blocked ----------------
 def test_office_business_profile_records_provider_and_preserves_legacy_key():
     yaml = pytest.importorskip("yaml")

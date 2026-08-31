@@ -1,0 +1,35 @@
+id: TSK-0099
+product_requirement: BUG-0076
+derives_from: BUG-0076
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+- AC-2
+- AC-3
+- AC-4
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/bugs/active/BUG-0076.yaml
+- team-kits/dev-team/skills/product-designer/SKILL.md
+- team-kits/dev-team/agents/product-designer.md
+- team-kits/dev-team/skills/project-manager/SKILL.md
+expected_outputs:
+- draft phases carry the internal render-sight-fix loop BEFORE the user sees anything
+- the sighting role has a tool that can produce the render, or the round names who
+  renders and why
+- reference comparison included for exploration ambition; artifacts land in staging
+- red-first against the live Canyon case
+- kits bumped
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-08-31T17:02:35'

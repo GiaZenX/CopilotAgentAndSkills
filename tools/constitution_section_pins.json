@@ -89,11 +89,12 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "1b3172e7ffa40fc4",
+        "digest": "53007e0ef7d1ac0e",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
           "gate_approval",
+          "gate_design_sighted",
           "gate_dispatch",
           "gate_git",
           "gate_memory_complete",
@@ -131,8 +132,9 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "60bb615a14d15022",
+        "digest": "aa31e31e5bd548d5",
         "hooks": [
+          "gate_design_sighted",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_question_context"
@@ -172,11 +174,12 @@
         "hooks": []
       },
       "1. What each mechanism refuses": {
-        "digest": "4d24cd29cd68e4e8",
+        "digest": "1f89a5e3ff9aa420",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
           "gate_approval",
+          "gate_design_sighted",
           "gate_dispatch",
           "gate_git",
           "gate_memory_complete",
@@ -261,8 +264,9 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "7963d3058d35f706",
+        "digest": "0e81b6a8ab9a1a4c",
         "hooks": [
+          "gate_design_sighted",
           "gate_dispatch",
           "gate_git"
         ]

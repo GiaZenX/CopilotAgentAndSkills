@@ -123,11 +123,27 @@ Occasion: `BUG-0073`.
    ship a single design / "document one as-built" without that confirmation (the synaipse failure mode).
    Record it as a **Decision item** — nothing else remembers it. Minimal → ONE restrained spec (same quality
    bar, no alternatives) and you skip (a)–(b).
+   **At exploration ambition the same question collects the REFERENCES**, and the Decision item records them
+   as URLs: the product's CURRENT site (if one exists) and the products whose look the user loves — the
+   free-text option in (b) is where most of them arrive. Those URLs are the only source the designer's
+   render loop has for its comparison shots; a Decision item that names none silently reduces the internal
+   review to "does it look broken" instead of "does it hold up next to what he admires". A real user had to
+   ask for that comparison himself (BUG-0076).
    (a)+(b) task `product-designer` for 2–3 distinct directions, each with a `preview` text plus the
    self-contained HTML preview it staged; **send the user that staged file so they actually SEE the options**,
    then ask in a **separate** question call (prose first), one option per direction using its `preview`, and
    explicitly **invite their own wishes** ("…or describe a product whose look you love" — the free-text option).
    The user chooses the look; you never pick it for them; their answer goes into the (a0) Decision item.
+   **(a)–(c) share ONE precondition: the draft has been SEEN inside the team before the user sees it.** The
+   designer renders it and looks at the pixels (its own skill, the SIGHT loop); you never forward a staged
+   draft that has no render behind it. `gate_design_sighted` holds the door: an `AskUserQuestion` naming a
+   `.html` under `project_memory/staging/**` is refused while no render record covers that file's current
+   bytes, and the refusal names the command. It matches the draft's FILE NAME, so every spelling of the same
+   file is one rule. What it does NOT see is yours to keep: a mention that never writes the file name out
+   (only the folder, or the name without its extension), a path that stands only in the prose BEFORE the
+   question (the hook is handed the question, not the message around it), whether a browser ever ran, and
+   whether anyone looked. If the render cannot run in this project (no Playwright/Chromium), that is an
+   install the user must be asked for, not a step to skip.
    (c) task the designer again to **detail the chosen direction** INCLUDING **per-view screen mockups** of every
    key screen, and iterate with the user step by step. Their approval freezes it as
    `design/revisions/DSN-nnnn.rNN.html` and points the PR's `design_refs` at it — that frozen revision is what a

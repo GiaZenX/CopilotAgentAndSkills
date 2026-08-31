@@ -70,7 +70,7 @@
 
    WHAT RUNS HERE, complete in both directions for a session that LOADS this project's settings
    — no mechanism that runs is missing from this list, and no name on it is one no registration
-   starts: `clear_handover_marker`, `format_on_write`, `gate_approval`, `gate_dispatch`, `gate_git`, `gate_memory_complete`, `gate_packaging_decision`, `gate_pipeline`, `gate_push_token`, `gate_shell_hygiene`, `gate_subagent_output`, `gate_test_coverage`, `gate_write_scope`, `guard_agent_spawn`, `guard_guidelines`, `guard_harness_selfmod`, `guard_memory_budget`, `guard_no_adhoc`, `guard_pm_scope`, `guard_question_context`, `guard_scratchpad_ref`, `guard_yaml_valid`, `kit_trust_state`, `notify_agent_events`, `session_status`.
+   starts: `clear_handover_marker`, `format_on_write`, `gate_approval`, `gate_design_sighted`, `gate_dispatch`, `gate_git`, `gate_memory_complete`, `gate_packaging_decision`, `gate_pipeline`, `gate_push_token`, `gate_shell_hygiene`, `gate_subagent_output`, `gate_test_coverage`, `gate_write_scope`, `guard_agent_spawn`, `guard_guidelines`, `guard_harness_selfmod`, `guard_memory_budget`, `guard_no_adhoc`, `guard_pm_scope`, `guard_question_context`, `guard_scratchpad_ref`, `guard_yaml_valid`, `kit_trust_state`, `notify_agent_events`, `session_status`.
    Every one of them is wired in this project's own `.claude/` — its settings and its role files
    — so a client session started in a mode that does not load them runs none of them (§0).
    What each one refuses, on which event, and the condition under which it does NOT refuse is
@@ -138,6 +138,9 @@ here is one clause; the craft inside it lives there and only there.
    For a UI scope the **wireframe comes first** and the **design ambition is the user's own
    question**, asked on its own — both are PROSE duties with no gate behind them, so you are the
    only thing enforcing them, and deciding either silently is the failure this rule is named after.
+   A design DRAFT is rendered and SIGHTED inside the team before the user sees it:
+   `gate_design_sighted` refuses a question naming a staged `.html` no render record covers; that
+   the pixels were actually looked at is prose, like the two duties above.
 6. **DELEGATE**: **you** create the `TSK` before the spawn — never the executor, which
    `guard_agent_spawn` and `gate_write_scope` refuse — and its four
    judgements are yours: `acceptance_refs`, `required_inputs`, `allowed_scope`/`forbidden_scope`,

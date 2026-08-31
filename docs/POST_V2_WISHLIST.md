@@ -1131,14 +1131,21 @@ der Stellen steht **nur** im Pin `test_kernel._COMPOSITIONS_OUTSIDE_THE_PACKAGE`
 absichtlich nicht wiederholt — bis 2026-08-08 stand sie an beiden Orten, und die Prosakopie war die,
 die niemand nachzieht. Die Stellen selbst: `hooks/_kernel.py` (`generated`, je Kit dreimal gespiegelt),
 `templates/repo/scripts/generate_dashboard.py` (`archive`, `generated`),
-`templates/repo/scripts/retro.py` (`generated`, dev und research). Jede davon ist eine zweite
+`templates/repo/scripts/retro.py` (`generated`, dev und research) und seit TSK-0099
+`templates/repo/scripts/kit_design_render.py` (`staging`). Jede davon ist eine zweite
 Schreibweise der Antwort eines Bauers: zieht `state.generated_path` um, liest der Bridge-Code
-weiter am alten Ort und meldet ein Projekt fälschlich als greenfield.
+weiter am alten Ort und meldet ein Projekt fälschlich als greenfield; zieht `staging/` um, rendert
+das Design-Skript ins Leere und `gate_design_sighted` verweigert jede Vorlage, weil es den
+Datensatz am alten Ort sucht.
 
 **Urteil: OFFEN, nicht blockierend** — die Kette braucht eine Umbenennung im Kernel, und der
 Bridge-Pfad ist genau der, der ohne Kernel funktionieren muss (`_kernel.state_is_empty` antwortet
 auch dann, wenn der Kernel nicht importierbar ist; ihn an einen Bauer zu hängen, verlegt eine
-Bootstrap-Antwort auf den Kernel).
+Bootstrap-Antwort auf den Kernel). Für die drei Vorlagen-Skripte gilt dasselbe eine Stufe weiter
+draußen: sie laufen **im Projekt** und stdlib-only, wie ihre eigenen Köpfe sagen — im Kit-Repo gibt
+es dort keinen `ProjectState` zu fragen, und einen Kernel-Import hineinzulegen würde genau den
+kernelfreien Pfad aufgeben, den dieser Eintrag beschreibt. Deshalb ist der Zuwachs eine Zahl plus
+eine Zeile hier und keine Code-Änderung.
 
 **Was stattdessen begrenzt:** die Zahl ist gepinnt, und zwar in **beiden** Richtungen — eine neue
 Stelle wird rot, und die letzte verschwundene Stelle wird ebenfalls rot, damit der Eintrag nicht
@@ -5792,3 +5799,120 @@ Begrenzung und Sichtbarkeit; (c) ist eine benannte, nicht gebaute Erweiterung mi
 Runde von Hand geschlossenen Fundstellen. Der Kern — wer die Route schuldet, welche Datei sie nennt,
 welche Zweitschreiber sie mitnennen muss, und dass kein schreibbares Dokument ohne Besitzer bleibt —
 ist abgeleitet und mit acht Mutationen des Umsetzers plus acht des Prüfers rot gemessen.
+
+### H82 — Was die interne Sicht-Schleife für Design-Entwürfe NICHT bindet — offen, gemessene Grenzen (TSK-0099)
+
+**Anlass:** `BUG-0076`, live im echten Projekt des Nutzers (Canyon, 2026-08-30, Kit 2026.08.24-7):
+der PM legte dem Nutzer zweimal eine Design-Fassung vor, die niemand je gerendert hatte. Beide
+Runden wurden an Dingen abgelehnt, die nur Pixel zeigen; danach hat der NUTZER selbst die interne
+Screenshot-Prüfung angefordert. Gemessen am ausgelieferten Kit: jede Screenshot-Pflicht hing an
+„after implementation", die Entwurfsphasen sagten nur „iterate with the user", und die Rolle
+Product-Designer hatte gar kein Kommando-Werkzeug. Die Runde baut `gate_design_sighted` (dev-team,
+`PreToolUse(AskUserQuestion)` + `SubagentStop`), `scripts/kit_design_render.py` und gibt dem
+Designer `Bash`.
+
+**Ein Befund der ersten Fassung ist GESCHLOSSEN und steht hier, weil er die Leserichtung
+begründet:** der erste Auslöser zerlegte die Nachricht in Wort-Token und löste jedes als Pfad auf.
+Der Prüfer maß an EINEM ungerenderten Entwurf: repo-relativ rc 2, aber absoluter Pfad, `file://`,
+quotiert, alles mit Leerzeichen rc 0 — das Token-Muster schloss `:` und Leerraum aus. Das reale
+Projekt liegt unter `C:/Offline Repos/gewerbe/...`, also MIT Leerzeichen. Der Gate liest jetzt vom
+Dateisystem zum Text: es zählt die gestagten `.html` auf und fragt, ob die Nachricht ihren
+Dateinamen oder ihren staging-relativen Pfad enthält, kleingeschrieben. Nachgemessen, je rc 2:
+repo-relativ, absolut (beide Trennzeichen), `file://`, quotiert, Markdown-Link, nackter Dateiname,
+GROSS, Leerzeichen im Dateinamen, Leerzeichen im Unterordner — 0,15 bis 0,28 s je Lauf.
+
+Was **nicht** geschlossen ist, jede Grenze gemessen:
+
+**(a) Eine Nennung, die den Dateinamen nicht ausschreibt, sieht das Gate nicht.** Gemessen je rc 0:
+nur der Ordner („alles unter `project_memory/staging/TSK-0007/`") und der Name ohne Endung. Dazu
+ein zweiter Weg derselben Klasse: der PM soll den Kontext laut PM-SKILL als sichtbaren Text VOR die
+Frage setzen, und die Nutzlast eines `PreToolUse(AskUserQuestion)` ist genau die Frage — der Text
+davor steht nicht darin. Über `transcript_path` wäre er erreichbar; bewusst nicht gelesen, weil er
+unbegrenzt groß und providerförmig ist und eine Nennung von vor drei Zügen nicht die Nennung
+DIESER Frage ist. Begrenzt durch: die Frage muss ohnehin selbsttragend sein
+(`guard_question_context`), und wer dem Nutzer etwas zum Öffnen gibt, schreibt den Dateinamen hin.
+Absicht, keine Garantie.
+
+**(b) Über-Verweigerung derselben Mechanik: ein gestagter Entwurf, der den Dateinamen einer
+Quelldatei trägt.** Gemessen: liegt `staging/TSK-0009/index.html` im Projekt, verweigert eine Frage
+über `src/index.html` mit rc 2; ohne diesen Entwurf rc 0. Preis der Alternative: nur noch ganze
+Pfade zu vergleichen, und genau das war die Fassung, die alle Windows- und Leerzeichen-Schreibweisen
+durchließ.
+
+**(c) Der Renderdatensatz ist Selbstauskunft genau des Agenten, über den geurteilt wird.** Er
+schreibt `review/render.json` und die Bilder selbst; ein handgeschriebener Datensatz mit korrektem
+sha256 und einem 20-Byte-„Bild" öffnet die Tür (gemessen, rc 0). Der Gate belegt damit die HERKUNFT
+der Bytes — dass ein Browser lief, ist ebenso wenig belegt wie dass jemand hingesehen hat. Das
+sagen die ENFORCEMENT-Zeile, der Hook-Kopf und der Renderer jetzt in diesen Worten; eine frühere
+Fassung schrieb „the record proves provenance", was zu stark war. Gebaut wurde nur die billige
+Hälfte: Bildpfade müssen INNERHALB des Staging-Items liegen (`_contained_child`) — ein
+`../../../../Windows/win.ini` als „Bild" ist rc 2 statt rc 0. Das Muster aus `FR-0035`: Herkunft
+ist messbar, Blindheit nicht.
+
+**(d) Die Stopp-Tür urteilt weiter über zu viele Rollen.** Erste Fassung: über JEDEN Subagenten —
+gemessen rc 2 für `Explore` und für einen Stopp ohne `agent_type`. Jetzt gebunden an die
+Eigenschaft „diese Rolle hätte rendern können", gelesen aus der installierten Rollendatei; gemessen
+rc 0 für `software-architect` (kein Kommando-Werkzeug), `Explore` und ohne `agent_type`, rc 2 für
+`product-designer`, `frontend-developer`, `quality-engineer`, `devops-engineer`. Die letzten beiden
+sind die verbleibende Über-Reichweite: eine shell-tragende Rolle, die einen gestagten Entwurf nur
+ZITIERT, wird mitgeurteilt. Der genaue Schnitt wäre `kernel.dispatch.task_for_agent` — der braucht
+die Kernel-Brücke und mit ihr den `GATE_PREAMBLE`-Umbau des ganzen Hooks; nach `DEC-0056` mehr
+Gerüst als der Restfall wert ist. Die Fragetür ist die Garantie, die Stopp-Tür scheitert nur früher.
+Nebenwirkung dieser Reichweite, geerbt und darum leicht zu übersehen: bei einer Verweigerung bricht
+die `SubagentStop`-Kette VOR `gate_dispatch` ab, das Ende des Kindes wird also nicht gebucht — bei
+`gate_subagent_output` ist das gewollt (das Kind arbeitet weiter), hier trifft es jetzt auch Rollen,
+die mit dem Entwurf nichts zu tun haben.
+
+**(e) Was `Bash` in dieser Rolle NICHT begrenzt.** Der Prüfer maß als gebundener Subagent über alle
+acht registrierten Shell-Gates: das Schreib-WERKZEUG auf `src/app.py` ist rc 2, aber
+`echo x > src/app.py`, `sed -i`, `cp`, `python -c open(...)`, `curl`, `cat .env` sind rc 0; nur
+`docker system prune -f` und `git push` verweigern. Die Rolle, deren Text „You NEVER write
+production code" sagt, kann Produktionscode also aus der Shell schreiben — das ist eine Regel, die
+sie hält, keine, die etwas verweigert. Der Rollentext behauptete bis zu dieser Nacharbeit das
+Gegenteil („keeps your writes inside your task's `allowed_scope`") und zeigt jetzt auf
+`ENFORCEMENT.md`, das den Rest schon korrekt führte. Eingegrenzt ist die vom Refusal
+vorgeschriebene Zeile selbst: 32 Läufe (zwei Zeilenformen × zwei Aufrufer × acht Gates) rc 0,
+während die Pfadform derselben CLI an `gate_write_scope` rc 2 ist — deshalb nimmt das Skript eine
+Task-Id statt eines Pfades.
+
+**(f) Der Designer erreicht jetzt den Kernel-Einstiegspunkt.** Mit `Bash` beantwortet der Kernel
+`hand_back` für die Rolle mit `self` (abgeleitet, gemessen in
+`tools/test_role_contracts.py::test_the_product_designer_can_look_at_its_own_draft_and_says_what_that_costs`).
+Damit ist `freeze-design` aus der Designer-Sitzung erreichbar, und kein Gate verweigert einen
+Freeze ohne Freigabe — „der PM friert ein, nie du" ist eine Regel ohne Draht dahinter. Nach
+`DEC-0056` die bewusst benannte Ausnahme statt einer Härtungsrunde: der Handelnde wäre die eigene
+Rolle, kein Fremder.
+
+**(g) Ohne Browser fällt die Entwurfsphase aus, laut statt leise.** Fehlt Playwright oder Chromium,
+endet `kit_design_render.py` mit Exit 2 und der Installationszeile und schreibt KEINEN Datensatz
+(gemessen für „kein Staging-Verzeichnis" und „kein `.html` gestaget"; keiner der beiden Läufe
+hinterließ eine `render.json`) — das Gate verweigert die Vorlage dann weiter. Bewusst gewählter
+Preis: eine stille Degradierung würde genau die falsche Sicherheit erzeugen, die `BUG-0076`
+beschreibt. Gemildert dadurch, dass dev-team `playwright` seit dem Browser-Smoke ohnehin in
+`requirements-dev.txt` führt — dieselbe Abhängigkeit, keine neue.
+
+**(h) Auf `SubagentStop` gilt die Ein-Retry-Durchreiche, und sie wird geteilt.** Setzt der Provider
+`stop_hook_active`, lässt das Gate den zweiten Stopp durch (sonst Endlosschleife) — dieselbe
+bewusste Lücke wie bei `gate_subagent_output`, und beide Gates teilen sich die eine Wiederholung,
+weil das Flag pro Fortsetzung und nicht pro Gate gesetzt wird. Gemessen: erster Stopp rc 2, zweiter
+rc 0 mit `gave_up` im Audit. Die Fragetür hat keine solche Durchreiche.
+
+**(i) Nur dev-team bekommt die Schleife, und research-team ist eine benannte Ausnahme.** Die
+Eigenschaft ist gebaut („welche Rolle schreibt laut ihrem eigenen Abschnitt *Files you WRITE* eine
+HTML nach `staging/`"); sie trifft dev-team UND research-team, dessen Report-Writer `EXP-*.html`
+stagt, „so every report can be eyeballed in a browser". Ausgenommen mit Grund im Test
+(`DESIGN_LOOP_EXEMPT`): diese HTML ist die optionale Schnellansicht des `.tex`/PDF, das eingereicht
+wird, und wird nach INHALT beurteilt — die Fehlerklasse aus `BUG-0076` (ein nach dem AUSSEHEN
+gewähltes Artefakt erreicht den Nutzer ungesehen) existiert dort nicht. Die Ausnahme ist in beide
+Richtungen gepinnt: hört research auf, HTML zu stagen, wird der Eintrag rot. Die Vorgängerfassung
+des Tests behauptete diese Eigenschaft und maß eine Wortsuche nach `freeze-design`, an der
+research vorbeilief — vom Prüfer gefunden.
+
+**Urteil: Rest.** (a), (b), (d) und (f) sind benannte Grenzen mit gemessenem Preis der jeweiligen
+Alternative; (c) ist zur billigen Hälfte gebaut und zur teuren ehrlich benannt; (e) ist eine
+bewusst erkaufte Fläche, deren Grenzen jetzt dort stehen, wo die Rolle sie liest; (g) ist eine
+Entscheidung gegen stille Degradierung; (h) ist geerbt und dokumentiert; (i) trägt eine begründete,
+beidseitig gepinnte Ausnahme. Der Kern — ein gestagter Entwurf erreicht den Nutzer nicht ohne
+Renderdatensatz über genau seine Bytes, in jeder Schreibweise seines Namens — ist an der laufenden
+Fassung rot gemessen.
+
