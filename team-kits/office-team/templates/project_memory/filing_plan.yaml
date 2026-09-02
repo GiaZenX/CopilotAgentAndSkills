@@ -42,6 +42,17 @@
 # literals and placeholders (`<Modell>_<Prozessor>`, `2026-<Monat>`). Everything else is literal, so
 # `archive/finance/<year>/` covers `archive/finance/2026` and not `archive/finance/2026/q1`.
 # retention: DE defaults (Belege 8 years, Bücher 10 — the user's Steuerberater confirms; source noted).
+#
+# THIS FILE SHIPS EMPTY, AND AN EMPTY PLAN FILES NOTHING: `gate_filing` fails closed on it, so the
+# first document a fresh project meets is refused. That is not a dead end — the manager runs
+# `python scripts/filing_plan.py --draft` at onboarding: it derives one proposed rule per document
+# class the owner named in `business_profile.yaml` -> `document_sources`, prints the archive TREE
+# those rules would produce, and prints the two command lines per rule (`request-approval
+# filing_rule` for the question the USER answers, `add-filing-rule` for the write the kernel then
+# performs). It writes nothing itself, and it proposes no retention: that number is the user's and
+# their Steuerberater's. `python scripts/filing_plan.py --tree` renders the plan as it stands, and
+# the same renderer fills the Ablage section of the Verfahrensdokumentation — one tree, never a
+# second hand-written copy of the structure (FR-0031).
 
 rules: []
 #  - id: FP-001

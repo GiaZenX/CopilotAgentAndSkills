@@ -1,0 +1,42 @@
+id: DEC-0059
+title: Model tier per round is the orchestrator choice, announced briefly -- in the
+  workshop the lead decides per stream, in the kits the PM decides per task and tells
+  the user in one line
+context: 'User decision 2026-09-02 after the lead proposed a measured split for the
+  second DEC-0057 stream generation (E texts, I design pass, K humanizer on Fable;
+  F kernel, G office, H measurements, J hygiene on Opus): Ja los gehts, Hygiene aber
+  auch mindestens Opus. Und kuenftig entscheidest du welche Stufe Sinn macht aber
+  mit kurzer Ankuendigung. Und so wuensche ich es mir auch in den Kits. Background:
+  the harness roles here carry pinned models in their definitions; the Agent tool
+  overrides per spawn. In the kits DEC-0055 (2026-08-29) froze the static pins (PM=fable,
+  architect/designer/QE=lead, developers=worker) and shelved DEC-0034 ladder mechanics
+  until the user asks. Measured basis for the split: today four streams failed their
+  first verification on prose overclaims and unmeasured edge cases, not on mechanics
+  -- whether a stronger model avoids that class is UNMEASURED; the user own observation
+  is that the PM on Fable reasons better than Opus.'
+decision: '(1) WORKSHOP: the lead chooses the model tier per round/stream by the kind
+  of work (judgment- and language-heavy -> the strongest tier; mechanical, test-driven
+  -> the default), announces it to the user in one line before spawning, and records
+  it in the round protocol together with the outcome (verifier first-pass findings,
+  rework rounds) so tiers get compared on the same generation. Floor: no implementer
+  below Opus (hygiene included). (2) KITS: the same rule for the PM -- it may choose
+  a higher or lower tier than the role default per task, tells the user in one line
+  in the dispatch card or the chat (which role, which tier, why), and the choice is
+  recorded on the TSK; the role defaults of DEC-0055 remain the default, DEC-0034
+  stays shelved; FR-0047 (tier resolves; silent fallback visible) is the guard that
+  keeps a chosen tier honest. (3) The kit-side text lands with the FR-0074 round (PM
+  behaviour, plan-level approval) because both change what the PM says to the user
+  and both touch the PM skill/constitution -- not as a separate text change.'
+consequences: 'Second generation cast, effective now: E, I (design pass) and K on
+  Fable; F, G, H, J on Opus; I build phase on Opus. The DEC-0057 (g) pilot report
+  gains a tier column. DEC-0055 is NOT superseded: its pins stay the defaults; this
+  DEC adds the PM override with announcement. What is still unmeasured and must not
+  be claimed: that Fable reduces first-pass verifier findings -- this generation is
+  the measurement.'
+source: Nutzerentscheidung 2026-09-02 in der Sitzung (Zitat im Kontext); DEC-0055,
+  DEC-0034, FR-0047; Messung der ersten Stream-Generation (vier FAILs im ersten Anlauf,
+  alle Prosa/Randfall)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-02T09:03:05'

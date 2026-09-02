@@ -8,7 +8,10 @@ request_text: 'Measured gap the user asked about on 2026-08-15 (''haben wir das 
   zero (research question root RQ, hypotheses, experiments, reports, literature/methodology
   files) measuring the same independence number as the dev pilots. Post-release per
   the user''s ordering decision (DEC-0045); thin item so the gap does not get lost.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T22:42:05'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Second half: REICHT SO -- the apparatus pilot found the defects (BUG-0083..0086);
+  close as delivered after the merge, no persona run.'

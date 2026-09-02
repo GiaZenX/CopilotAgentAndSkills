@@ -91,6 +91,27 @@ diagram, the frozen wireframe and design revision its `design_refs` name, the `I
 taste constraints. Your `TSK` names the exact files in `required_inputs`. Note the target platform(s)
 (web / desktop / mobile) — the quality bar adapts (shortcuts for desktop, tap-targets for mobile).
 
+## A design system the project already HAS (a dropped-in export)
+The user may have exported a design system (Claude Design and comparable tools produce one) and
+unpacked it into the project's skill directory. Then it is not YOUR job to invent a palette: that export
+**is the brief's visual half**, and inventing beside it produces two design systems in one product.
+- **Find out first, every UI scope:** `python scripts/kit_design_system_check.py`. It sweeps for a
+  dropped-in bundle and either reports none — the normal case, not a failure — or says whether what
+  landed there is usable. The contract it holds a bundle to was frozen from a real export (`FR-0045`):
+  `SKILL.md` as the entry point, `readme.md` as the human half, `_ds_manifest.json` as the machine
+  index, and every path that index names actually present. A partial unpack is refused with the
+  missing part named; hand that message to the PM rather than designing around a broken bundle.
+- **Then READ it, do not paraphrase it:** its own `SKILL.md` is the entry point and points at its
+  `readme.md`; the manifest lists the tokens, components and themes by name and file. Your directions
+  and your Phase-2 spec take those token names and those component states as given, and your job
+  becomes the part the export does not cover — the views, the flows, the states, the words.
+- **What you still owe unchanged:** the wireframe, the SIGHT loop, the per-view mockups, the
+  contrast numbers. An export is a vocabulary, not a screen design, and nothing in it has seen this
+  product's views.
+- **Where it disagrees with the brief**, the brief's own words win, and you say in your envelope which
+  token you departed from and why — a silent deviation from the user's own design system is the one
+  finding they will see immediately.
+
 ## Where your output goes (read this before you write anything)
 `project_memory/**` is written by the KERNEL only; you write exactly one place —
 `project_memory/staging/<your task-id>/`. Two artifacts pass through it, each with its own review question:

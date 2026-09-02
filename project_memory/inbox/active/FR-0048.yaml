@@ -15,7 +15,10 @@ request_text: 'TSK-0074 finding (implementer, 2026-08-17, verifier-confirmed): p
   it still lacks the team-size question, the sign-off step, the clock rule and the
   sharpened language rule) -- the biggest open effect gap of rounds A4b/TSK-0064.
   Ask the user at the release conversation at latest.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-17T18:10:08'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, AUSROLLEN -- EXTERNAL APPROVAL GIVEN (DEC-0045): roll user/claude/CLAUDE.md
+  + user/codex/AGENTS.md to the home directory with the next install run, backup first.'

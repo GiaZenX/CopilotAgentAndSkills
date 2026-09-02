@@ -2909,6 +2909,28 @@ def _a_filing_the_chain_accepts(root):
                    "tool_input": {"command": "mv inbox/a.pdf %s" % destination}}
 
 
+def _a_staged_reading_the_recorders_accept(root):
+    """A project with a staged classification reading, and the PostToolUse `Write` that created it.
+
+    The office kit's second chained registration (FR-0065) is the pair of RECORDERS —
+    `record_filing_reading` and `record_booking_reading` — and it needs a payload that reaches their
+    decision path rather than their tool-name exit. A record under `staging/<TSK-ID>/` is what both
+    of them scan for, and the `Write` naming it is the call whose `agent_id` they attest with.
+
+    Neither of them mutates the CANONICAL state by `_canonical_state`'s reading (an attestation is a
+    `.jsonl` line, not one of `_kernel.CANONICAL_SUFFIXES`), which is the correct answer here and not
+    an omission: the assertions above allow a chain with no mutating gate, and the kit-wide control
+    is satisfied by the spawn chain.
+    """
+    state, task, _header = dispatched_repo(root)
+    record = os.path.join(state.root, "staging", task["id"], "readings.yaml")
+    write(record, "task_id: %s\nrole: records-clerk\nreadings:\n  - source: inbox/a.pdf\n"
+                  "    destination: archive/finance/2026/2026-01-01_ACME.pdf\n"
+                  "    document_class: invoice\n" % task["id"])
+    return state, {"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(root),
+                   "agent_id": "clerk-1", "tool_input": {"file_path": record}}
+
+
 # The payload that drives a chain, per (EVENT, the tool it arrives on) — a fixture list, and the
 # test below refuses a chain it has none for, so a new multi-gate chain cannot join the tree
 # unmeasured. The tool is what SELECTS the payload for a chain: a registration's matcher says which
@@ -2917,6 +2939,7 @@ def _a_filing_the_chain_accepts(root):
 _CHAIN_PAYLOADS = {
     ("PreToolUse", "Agent"): _a_spawn_the_chain_accepts,
     ("PreToolUse", "Bash"): _a_filing_the_chain_accepts,
+    ("PostToolUse", "Write"): _a_staged_reading_the_recorders_accept,
     ("SubagentStop", None): _a_child_stop_the_chain_accepts,
 }
 
@@ -9189,6 +9212,33 @@ def test_the_whole_ledger_is_judged_inside_the_host_hook_budget(tmp_path):
                          "through" % (12, elapsed)
 
 
+def test_the_two_ledger_gates_budgets_together_fit_inside_the_hook_deadline():
+    """THE SUM IS THE BOUND, because the two gates run SEQUENTIALLY IN ONE PROCESS.
+
+    `settings.json` chains `gate_ledger_valid` and `gate_second_booking` behind one `_gate.py`, so
+    what the host sees is one hook whose worst case is BOTH budgets. Each of them was checked
+    against `_compat.HOOK_DEADLINE_SECONDS` alone (the test one screen up does it for the first),
+    and that is not the property: at 50 + 15 the neighbour's own assertion stays green while the
+    chain runs 65 s past a 60 s deadline -- and a killed hook is a silent ALLOW, which is the one
+    outcome neither gate can turn into a refusal.
+
+    READ OFF THE MODULES, all three numbers, so the arithmetic lives here and nowhere in a comment:
+    `_bookings`' header used to spell "40 + 15 = 55" in prose, which is a copy of a constant that
+    belongs to another file. Raising either budget past the sum turns this red.
+    """
+    ledger = load_hook_module("gate_ledger_valid", OFFICE_HOOKS)
+    bookings = load_hook_module("_bookings", OFFICE_HOOKS)
+    compat = load_hook_module("_compat", OFFICE_HOOKS)
+    together = ledger.TOTAL_BUDGET + bookings.TOTAL_BUDGET
+    assert together < compat.HOOK_DEADLINE_SECONDS, (
+        "the chained ledger gates give themselves %g s together (%g + %g) against a %g s deadline: "
+        "the host kills the chain mid-decision and the commit it was refusing goes through"
+        % (together, ledger.TOTAL_BUDGET, bookings.TOTAL_BUDGET, compat.HOOK_DEADLINE_SECONDS))
+    # ...and the tooth: a budget of 0 would satisfy the line above while measuring nothing.
+    assert bookings.TOTAL_BUDGET > 0 and ledger.TOTAL_BUDGET > 0, (ledger.TOTAL_BUDGET,
+                                                                   bookings.TOTAL_BUDGET)
+
+
 def test_an_ordinary_multi_year_ledger_commit_costs_what_an_empty_one_costs(tmp_path):
     """The honest case paid the quadratic cost too: 7 x 2 000 rows with real cross-year stornos
     cost 17s per commit and 6.5s per append before the sibling index.
@@ -13121,11 +13171,17 @@ def test_the_posix_scaffold_prunes_unshipped_hooks_like_its_windows_twin():
 
 @pytest.mark.parametrize("script", ["scaffold_team.ps1", "scaffold_team.sh"])
 def test_both_scaffolds_manage_the_kernel_as_one_layer(script):
-    """The POSIX half cannot be executed on this runner, and an enforcement layer that installs on
-    one platform and not the other is the same defect with a smaller blast radius. So the two
-    scripts are compared on the bookkeeping that a half-failed scaffold depends on: the kernel has
-    to be in the backup list AND the rollback list, or a failed run leaves a project with new
-    hooks and the previous kernel."""
+    """An enforcement layer that installs on one platform and not the other is the same defect with
+    a smaller blast radius. So the two scripts are compared on the bookkeeping a half-failed
+    scaffold depends on: the kernel has to be in the set the run backs up AND puts back, or a
+    failed run leaves a project with new hooks and the previous kernel.
+
+    WHAT THIS READS IS THE SET, and since 2026-09-01 the set is DATA in both twins (`RESTORABLE` /
+    `$restorable`): the backup pass, the snapshot's own RESTORE_SET manifest and the restore
+    routine are three consumers of that one declaration, so membership in it is the whole property.
+    The RUNTIME half -- both twins really executed, the manifest they wrote compared entry by entry
+    -- is `tools/test_kitupdate.py::test_both_installer_twins_record_the_same_restore_set`, which
+    is where the claim "the .sh and .ps1 agree" is actually measured rather than read."""
     with open(os.path.join(TEAM_KITS, script), encoding="utf-8") as handle:
         body = handle.read().replace("\\", "/")
     # COMMENTS STRIPPED FIRST. The predecessor of this test grepped the raw file for
@@ -13135,13 +13191,10 @@ def test_both_scaffolds_manage_the_kernel_as_one_layer(script):
     assert ".claude/kernel" in code, "%s never names .claude/kernel in code" % script
     assert re.search(r"(?mi)^\s*(?:cp -R|Copy-Item)\s", code), (
         "%s has no copy statement at all" % script)
-    backup = re.findall(r"(?mi)^\s*(?:backup_local|Backup-Local).*\.claude/kernel", code)
-    assert backup, "%s does not back up an existing .claude/kernel before replacing it" % script
-    # the rollback list: whatever the restore routine enumerates has to include the kernel, or a
-    # failed scaffold leaves a project with new hooks and the previous kernel
-    start = code.lower().index("restore")
-    assert ".claude/kernel" in code[start:], (
-        "%s does not restore .claude/kernel on rollback" % script)
+    declaration = re.search(r"(?is)(?:RESTORABLE=\(|\$restorable\s*=\s*@\()(.*?)\)", code)
+    assert declaration, "%s declares no restore set" % script
+    assert ".claude/kernel" in declaration.group(1), (
+        "%s does not back up and put back .claude/kernel" % script)
 
 
 def test_the_installed_kernel_carries_the_known_holes_sidecar(tmp_path):

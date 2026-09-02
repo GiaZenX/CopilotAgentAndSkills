@@ -2335,6 +2335,21 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H72 | **Rest** (TSK-0087) | gemessene Grenzen der Vier-Augen-Wand, je im Eintrag: die Aufräum-Ausnahme vergleicht Vorlage+Dateiname statt Ort (ein Platzhalterwechsel läuft ohne Lesung, K7/K8 — Verschärfung wäre eine Nutzerentscheidung); Überschreiben eines Inbox-Dokuments ist frei (die Folge ist per Byte-Bindung geschlossen, der Verlust sichtbar); drei benannte Über-Verweigerungen; und die Verfahrens-Grenze (Blindheit, fremde Programme, Lead als Zweitleser). Keine Kette erreicht mehr das Geschlossene: ein fremdes/getauschtes Dokument unter doppelt gelesenem Namen |
 | H71 | **Rest**, keine Angriffskette (TSK-0086) | vier gemessene Grenzen des Lesers der Merge-Rückstandsliste, je im Eintrag: ein Eintrag, den `open()` mit etwas anderem als `OSError` ablehnt, bricht `update-kit` nach erfolgreichem Installerlauf ab (Hook abgesichert, Kommando nicht — Einzeiler benannt); eine gelesene Liste, die zu keinem erkennbaren Eintrag dekodiert, gilt als leer und wird gelöscht (UTF-16 gemessen, so nicht ausgeliefert); der Vergleich entfernt JEDES `CR`, also auch eines mitten in der Zeile oder in einer Binärvorlage (Über-Verwerfen; Verengen brächte Leser und Installer über dieselbe Datei in Streit — genau der Bruch, der die Liste des Nutzers erzeugte); und zwei Zustände nörgeln absichtlich weiter statt zu schweigen. Der Blocker der Runde — eine **unlesbare** Liste galt als erledigt und wurde gelöscht — ist geschlossen: `unlesbar`, `leer` und `verglichen` sind seither drei Antworten |
 | H70 | **Rest**, Messlücke des Instruments, `H10`/`H41`-Klasse (TSK-0083/TSK-0084) | der Vollständigkeits-Draht des Ledger-Gates fragt nach **Mustern** (zwei Leser, Vereinigung), also sieht er eine vierte Ausnahme nicht, die **gar kein** `re.Pattern` befragt — gemessen von Umsetzer und Prüfer unabhängig (`stage.strip().startswith("deno ")` befreit die Stufe, beide Leser grün, im Klon 1 passed), vom Lead ausdrücklich **nicht** nachgemessen. Keine offene Kette im Produkt: der Draht bewacht eine künftige Änderung. Die Frage, die es fangen müsste, ist „welche Stufe wird frei" — im Docstring benannt, als eigene Runde zurückgestellt |
+| H82 | **Rest** (TSK-0099) | sieben benannte Grenzen der internen Sicht-Schleife für Design-Entwürfe, je mit gemessenem Preis der Alternative; der Kern — ein gestagter Entwurf erreicht den Nutzer nicht ohne Renderdatensatz über genau seine Bytes — ist an der laufenden Fassung rot gemessen |
+| H83 | **GESCHLOSSEN** (TSK-0104), beide Ketten, mit benanntem Rest | Scaffold und Codex-Spiegel kopieren/erzeugen ein Skill-Verzeichnis jetzt nach der Eigenschaft „gehört keiner Rolle" statt nach der Preset-Rollenliste; gemessen am echten Installer in beiden Zwillingen über `team`/`duo`/`solo` und am erzeugten `.agents/skills`. Rest: das subtraktive Entfernen läuft weiter über die Rollenliste, ein zurückgezogenes Referenz-Skill bliebe im Projekt stehen |
+| H84 | **Rest**, gemessene Grenzen (TSK-0100) | die Ableitung der Referenz-Skills erzwingt nichts: der Fehler ist vorhergesagt und nicht gemessen, der Dispatch-Header gewährt nichts, die Fluchttür ist Prosa, die zweite Stolperdraht-Richtung ist an der Ableitung tautologisch, und die Kreuzmenge ist die des KITS und nicht die eines Projekts mit abgewähltem Preset |
+| H85 | **Rest**, gemessene Grenzen (TSK-0100) | die Herkunftsprüfung sieht keine UNMARKIERTE Textänderung (kein Test dieser Suite geht ins Netz; ersetzt durch `source_commit`/`source_blob_sha1` im Frontmatter), `NOTICES.md` reist nicht ins Projekt, das Bündelschema ist an EINEM echten Export gemessen, ein Bündel ohne `_ds_manifest.json` findet der Suchlauf nicht, und der INHALT eines Design-Systems wird nicht beurteilt — nichts davon ist ein Gate |
+| H86 | **Rest** (TSK-0101) | drei Grenzen EINES V1-Erkenners, den `migrate` und `report` schon benutzen — ein Speicher außerhalb des Zustandsverzeichnisses, ein umbenannter darin, einer im Kernelbereich; sie zu schließen hieße eine zweite Definition von „V1-Datensatz" zu schreiben. (e) ist geschlossen und steht als Warnschild: eine Meldung ist kein Schutz |
+| H87 | **GESCHLOSSEN** (TSK-0104), mit gewolltem Rest | `pin-kit`/`unpin-kit`/`rollback-kit` auf der Kommandofläche, ein `pinned`-Verdikt in der Sitzungsmeldung, die Zeilen in `README.md` und den drei Verfassungen. Die drei Kommandos DRUCKEN und handeln nicht — eine Sitzung darf einen Hebel ziehen, der Verweigerung hinzufügt, nie einen, der sie wegnimmt. Rest by design: die Pin-Datei legt der Nutzer an und löscht sie |
+| H88 | **Rest** (TSK-0101, ergänzt TSK-0104) | der Rollback ist byte-gleich nur über die aufgezeichnete Menge; ältere Sicherungen tragen keine und werden mit Grund verweigert statt geraten, und die Rückstandsliste des NEUEN Kits überlebt seine Rücknahme. (a3) neu und nachgemessen: ein ABSOLUTES Wort in der `RESTORE_SET` wird von den Zwillingen verschieden beantwortet (rc 0 bzw. rc 1 über eine unbehandelte Ausnahme), kein Zwilling schreibt außerhalb. (a4) GESCHLOSSEN in TSK-0104: eine Manifestzeile, die weder in `RESTORABLE` steht noch eine Kopie in der Sicherung hat, wird vor dem ersten Löschen verweigert (beide Zwillinge, rot-zuerst); Rest: ein fremdes Manifest nur aus `RESTORABLE`-Pfaden bleibt ununterscheidbar, und über den Kopie-Zweig auch eine `KEPT_ONLY`-Datei (`.claude/settings.local.json`) mit der älteren Kopie überschreibbar |
+| H89 | **Rest, benannt** (TSK-0102) | ohne `git` kann die Vier-Augen-Buchung Alt- von Neuzeilen nicht unterscheiden und TRITT ZURÜCK statt zu verweigern; die Gegenrichtung säße auf genau dem Commit, der die Zeilen zu Altzeilen macht. Begrenzt durch: der Rückzug wird je Datei ins Audit-Log geschrieben, und die Verfassung macht `git` zur Pflicht |
+| H90 | **Rest, benannt** (TSK-0102) | zwei identische Buchungen EINES Belegs teilen sich ein Lesepaar, solange keine `invoice_no` gesetzt ist; mit ihr greift `ledger_add.validate_cross`. Gehört in die Duplikatsregel des Validators, nicht in dieses Gate |
+| H91 | **Rest, benannt** (TSK-0102) | der gerenderte Aktenplan-Baum zeigt den PLAN und nicht die Platte — er beschreibt die Form mit `<year>`-Platzhaltern. Der Abgleich Plan↔Platte ist die Prüfung des `project-auditor` |
+| H92 | **OFFEN, blockierend**, Abnahme des Nutzers offen (TSK-0103) | `report._root_of` löst EINEN Sprung auf, `_hangs_from` ist transitiv, und die Ursprungsprüfung des Dispatchs benutzt den ersten — die von der research-Verfassung §4 vorgeschriebene Kette `RQ → HYP → EXP → TSK` ist damit nicht anlegbar. **Nichts begrenzt es**: der PM bleibt stehen und muss ausweichen, und beide Auswege sind selbst Löcher (`H93`, `H95`). Kernel-Fix, `BUG-0083` |
+| H93 | **OFFEN, blockierend, sicherheitsrelevant**, Abnahme des Nutzers offen (TSK-0103) | die Freigabe, auf die der von der Verweigerung genannte Ausweg zwingt, unterschreibt bei `HYP` KEIN Inhaltsfeld, stirbt nie (`HASHED_FIELDS` kennt `HYP` nicht) und nimmt die Arbeit darunter aus der Urteilspflicht. Begrenzt nur dadurch, dass der Weg unüblich ist — in keinem Dokument steht er, aber die Verweigerung schlägt ihn vor. Kernel-Fix, `BUG-0084` |
+| H94 | **offen**, zur Hälfte eine Dokumentationsfrage (TSK-0103) | der gerenderte Forschungsbericht hat keinen Schreibweg (`gate_write_scope` rc 2 auf beiden §6-Dateien), während §17 ihn zur Vollständigkeitsbedingung macht; der Merge blockt dabei auf leerem `evidence_refs`, nicht auf der Datei. Verschärfend: `solo` installiert gar keinen `report-writer`. Kernel-Schreiber ODER Verfassungsänderung, `BUG-0085` |
+| H95 | **OFFEN, blockierend**, Abnahme des Nutzers offen (TSK-0103) | die Ursprungsprüfung des Dispatchs fällt bei MEHRDEUTIGER Elternschaft offen aus (`_root_of` → `None`, der Aufrufer überspringt) — kit-unabhängig, und sie verschwindet NICHT mit `H92` (im Klon nachgemessen). Begrenzt nur dadurch, dass eine mehrelterige Bindung beim `capture` so geschrieben werden muss. Kernel-Fix, `BUG-0086` |
+| H99 | **Ausnahme, Abnahme offen** (TSK-0102) | `H11`s Interpreterklasse hebt die Vier-Augen-Buchung mit auf: ein Skript trägt eine ungelesene Zeile nach `HEAD` (dauerhaft ausgenommen) und prägt die zweite Lesung. Begrenzt durch: die Fehlklasse, für die `FR-0065` gebaut ist (Versehen), läuft vollständig durch die Schicht; das Vehikel ist eine Datei im Arbeitsbaum und damit im Commit sichtbar; und der Buchungs-Store ist erste-Zeile-gewinnt, eine Prägung verlangt also drei bewusste Schritte |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -2644,6 +2659,12 @@ das `git commit` startet → `python scratch/c.py` **rc 0 bei Gate 1 UND rc 0 be
 bewegt sich real von `7818d4b7` auf `dc6f500d`. Gate 3 fragt `Invocation.runs("commit")` an den
 **Text** der Zeile, und in dieser Zeile steht kein `git`. Die Interpreter-Ausnahme ist damit nicht
 nur ein Loch in Gate 1, sondern der Weg an **beiden** Gates vorbei.
+
+**Und seit TSK-0102 hebt sie die BUCHUNGS-Schicht mit auf.** Die Vier-Augen-Buchung (FR-0065)
+urteilt über Zeilen, die noch nicht in `HEAD` stehen, und ihre Attestierungen liegen in einem
+Verzeichnis, in das keine direkte Schreibweise reicht — beides ruht auf derselben Interpreter-
+Ausnahme wie Gate 3 oben. Ein Skript trägt eine ungelesene Zeile nach `HEAD` (dauerhaft ausgenommen)
+und prägt außerdem den zweiten „Lauf", den die Schicht zählt. Beide Ketten mit ihren Zahlen: `H99`.
 
 **Urteil: blockierend nach der Regel — benannte Ausnahme, Abnahme des Nutzers offen.** Nicht
 schließbar von einer Kommandozeile aus: dieselbe Grenze benennen die Kits für ihr
@@ -5916,3 +5937,815 @@ beidseitig gepinnte Ausnahme. Der Kern — ein gestagter Entwurf erreicht den Nu
 Renderdatensatz über genau seine Bytes, in jeder Schreibweise seines Namens — ist an der laufenden
 Fassung rot gemessen.
 
+---
+
+### H83 — Ein Referenz-Skill erreichte nur Projekte auf dem Preset `all` — GESCHLOSSEN (TSK-0104), beide Ketten, mit benanntem Rest
+
+**Mechanismus (Stand vor TSK-0104).** Die Skill-Schleife beider Scaffold-Zwillinge filterte
+Skill-VERZEICHNISSE über die Preset-Rollenliste: `scaffold_team.sh` ruft `in_preset "$name" || continue`, `scaffold_team.ps1`
+prüft `$presetRoles -notcontains $_.Name`. Beides ist richtig für ein Rollen-Skill, dessen Name
+eine Rolle IST — und falsch für ein Referenz-Skill, das per Definition zu keiner Rolle gehört
+(Verfassung §1a). Bei `PRESET_ROLES=""` (das Preset `team`, intern `all`) trifft der Filter nicht,
+darum fällt es nur unter `solo` und `duo` auf.
+
+**Gemessene Kette**, echter Scaffold-Lauf gegen ein Wegwerf-`$HOME` unter
+`_round-scratch/TSK-0100/scaffold/` (kein Eingriff in den globalen Store, DEC-0057 d), Kit aus dem
+Strom mit elf Skill-Verzeichnissen:
+
+| Preset | installierte Skills | `frontend-design` | `webapp-testing` |
+|---|---|---|---|
+| `team` | 11 | ja | ja |
+| `solo` | 5 (backend-developer, project-auditor, project-manager, quality-engineer, software-architect) | **nein** | **nein** |
+
+Die Folge trifft genau die Ableitung, die diese Runde gebaut hat: `kernel.references` liest
+`.claude/skills/*/SKILL.md` des PROJEKTS, also nennt der Auftrag eines `solo`-Projekts nichts, und
+die Verfassung §1a beschreibt dort eine Mechanik ohne Inhalt. Kein Datenverlust, kein
+Sicherheitsloch — eine Auslieferungslücke.
+
+**Warum sie im Strom offen blieb.** `scaffold_team.sh` / `.ps1` standen in `forbidden_scope`
+dieses Stroms (`TSK-0100`); der Parallelstrom `TSK-0101` besaß sie. Ein Umweg über `presets.yaml` — die
+Referenz-Skills als Preset-Einträge zu führen — ist keine Alternative, sondern ein zweiter Defekt:
+`tools/validate.py` Schritt 6/7 verlangt, dass jeder explizite Preset-Eintrag eine echte Kit-Rolle
+ist, und die Rollen-Manifestdatei `.claude/team_kit_roles.txt` steuert das subtraktive Entfernen.
+
+**ZWEITE, UNABHÄNGIGE KETTE DERSELBEN LÜCKE — der Codex-Spiegel, und die trifft AUCH das Preset
+`team`.** `.agents/skills/` wird nicht kopiert, sondern **erzeugt**, und zwar pro ROLLE:
+`gen_provider_artifacts.py` läuft über die installierten Rollendateien, gefiltert durch
+`.claude/team_kit_roles.txt`. Ein Referenz-Skill hat keine Rolle, also erzeugt der Generator es
+nie. Gemessen am selben echten Scaffold, Preset `team`: `.claude/skills` trägt zwölf Verzeichnisse
+(elf Kit-Skills plus das eingeworfene Design-System), `.agents/skills` trägt **neun** — genau die
+installierten Rollen. Folge: drei ausgelieferte Texte behaupteten „Codex reads
+`.agents/skills/<name>/SKILL.md`" über Skills, die dort nie ankamen. TSK-0100 hat die drei Sätze
+auf den damaligen Stand korrigiert („keine native Kopie"); TSK-0104 hat den Generator geändert
+und damit dieselben drei Sätze ein zweites Mal — sie sagen jetzt wieder, dass die Kopie da ist,
+und ihre Grundlage steht gegen den laufenden Generator
+(`tools/test_reference_skills.py::test_the_codex_mirror_is_generated_per_skill_directory`).
+Dass ein Satz in EINER Runde zweimal umgeschrieben werden musste, ist der Preis dafür, die
+Aussage und nicht nur ihre Grundlage zu pflegen — und genau der Grund, warum die Grundlage
+gepinnt ist. Der Routen-Test dieser Runde
+las den KIT-Baum und war deshalb über alle drei Sätze grün; sein Docstring sagt das jetzt.
+
+**Der Schnitt, den TSK-0104 gemacht hat**, als Eigenschaft und nicht als Namensliste, an
+**zwei** Stellen statt einer: (1) die Skill-Schleife beider Scaffold-Zwillinge kopiert ein
+Verzeichnis, wenn es im Preset steht ODER wenn das Kit für seinen Namen **keine Rollendatei**
+(`agents/<name>.md`) ausliefert — genau die Definition von „gehört keiner Rolle"; (2)
+`team-kits/gen_provider_artifacts.py` spiegelt nach derselben Eigenschaft statt nur über
+`roles`. **(2) ist eine Nahtdatei außerhalb JEDES Stroms** — kein Strom darf sie anfassen, also
+muss die Merge-Runde es tun, sonst bleibt die Codex-Hälfte offen, auch nachdem die Scaffold-Hälfte
+zu ist. Dazu je ein Test, der einen `solo`-Lauf bzw. das erzeugte `.agents/skills` MISST statt die
+Zeile zu lesen.
+
+**Was den Schaden bis dahin begrenzt — und die erste Fassung dieses Absatzes war schlicht falsch.**
+Sie behauptete, `solo`/`duo` installierten `product-designer` und `frontend-developer` ohnehin
+nicht. Gemessen an echten Scaffold-Läufen stimmt das nicht: `duo` installiert **sieben** Rollen
+**einschließlich `frontend-developer`**, und `quality-engineer` steckt in `solo` **und** `duo` —
+also sind genau die Rollen da, für die abgeleitet würde, und die Verzeichnisse fehlen. Die Lage ist
+nicht gemildert, sie ist voll da.
+
+**Wie sie sich ÄUSSERT, ebenfalls gemessen, weil die naheliegende Vermutung falsch ist:** der
+Header nennt **keine** toten Skills. Die Ableitung liest das `.claude/skills` des PROJEKTS, nicht
+den Kit-Baum, also liefert `for_task` dort die leere Liste und der Schlüssel `references` bleibt
+weg. Nachgemessen an den drei echten Projekten: `duo`/`frontend-developer`/`type: ui` → `[]`,
+`duo`/`quality-engineer`/`type: test` → `[]`, `solo`/`quality-engineer` → `[]`, während dieselben
+Fragen im `team`-Projekt `['frontend-design', 'webapp-testing']` bzw. `['webapp-testing']`
+beantworten. Der Ausfall ist also **stille Abwesenheit einer Fähigkeit**, kein hängender Zeiger —
+schlechter als ein Fehler, den man sieht, und der Grund, warum der Eintrag offen bleibt statt als
+Randfall zu gelten.
+
+**GESCHLOSSEN in TSK-0104, beide Ketten, je gegen einen laufenden Prozess gemessen.**
+
+* **Scaffold-Hälfte:** beide Zwillinge überspringen ein Skill-Verzeichnis nur noch dann, wenn das
+  Kit für seinen Namen eine `agents/<name>.md` ausliefert UND das Preset diese Rolle nicht führt.
+  Die Frage „ist dieser Name eine Rolle" wird an das `agents/`-Verzeichnis des Kits gestellt, nicht
+  an eine Liste, also ist ein morgen dazukommendes Referenz-Skill am Tag seiner Auslieferung
+  gedeckt.
+* **Codex-Hälfte:** `gen_provider_artifacts.native_skill_sources` ist der eine Gegenstand des
+  Spiegels — jedes unmittelbare Kind von `.claude/skills/` mit einer `SKILL.md`, also dieselbe
+  Definition, nach der beide Provider ein Skill erkennen. Ausdrücklich mit erfasst: ein Bündel, das
+  der NUTZER dort ausgepackt hat (`FR-0045` lädt genau dazu ein) — die gewollte Richtung, denn die
+  Alternative wäre, dass die beiden Provider verschiedene Skills sehen.
+* **Rot gemessen** in einem Klon außerhalb des Repos, je eine Mutation zurück auf den Stand von
+  `c155a5f`: `tools/test_reference_skills.py::test_a_reference_skill_reaches_every_preset_and_not_
+  only_team` fährt den ECHTEN Installer in beiden Zwillingen über die Presets `team`, `duo` und
+  `solo` und prüft beide Enden — jedes Skill ohne Rolle kommt überall an, und ein Rollen-Skill
+  außerhalb des Presets weiterhin nicht (sonst wäre die Prüfung von einem Installer erfüllt, der
+  alles kopiert). Derselbe Test misst den erzeugten `.agents/skills`-Baum gegen das, was im Projekt
+  liegt; `::test_the_codex_mirror_is_generated_per_skill_directory` hält die Ableitung im Generator.
+
+**Rest, benannt:** das subtraktive Entfernen beim Preset-Wechsel läuft weiter über die ROLLEN-Liste
+(`.claude/team_kit_roles.txt`). Ein Referenz-Skill wird also nie entfernt — richtig, solange das
+Kit es ausliefert, und ungemessen für den Fall, dass ein Kit ein Referenz-Skill wieder abschafft:
+das Verzeichnis bliebe im Projekt stehen. Kein Datenverlust, keine Kette; ein Eintrag für die Runde,
+die ein Referenz-Skill zurückzieht.
+
+**Urteil: GESCHLOSSEN (TSK-0104), beide Ketten — mit dem einen benannten Rest.** Die Scaffold-Hälfte
+und die Codex-Hälfte sind je als Eigenschaft geschlossen und je mit einem Test rot gemessen, der den
+echten Installer bzw. den erzeugten Spiegel fährt; was bleibt, ist der subtraktive Rückbau eines
+zurückgezogenen Referenz-Skills — kein Datenverlust, keine Kette, gehört der Runde, die so ein
+Skill zurückzieht.
+
+### H84 — Was die Ableitung der Referenz-Skills NICHT bindet — offen, gemessene Grenzen (TSK-0100)
+
+**Anlass:** `FR-0071`, Nutzerfrage „wie entscheidet der PM wann welche eingesetzt werden? Nicht dass
+er blauäugig immer dieselben nutzt?". Gebaut: `kernel/references.py` liest die
+`reference_for:`-Erklärung jedes Skills gegen `assigned_role` und `type` der Aufgabe;
+`create_lease` legt das Ergebnis in die Lease, `dispatch_header` trägt es in die eine Zeile des
+Prompts, die den Spezialisten wörtlich erreicht.
+
+**(a) Der Fehler, den das fängt, ist VORHERGESAGT und nicht gemessen.** `DEC-0056` verlangt den
+gemessenen Anlass; hier gibt es ihn nicht: bis zu dieser Runde deklarierte jede der 27 Rollen genau
+ein Skill mit ihrem eigenen Namen, es gab also nichts zu wählen und keinen Fehlgriff zu beobachten.
+Das ist ausdrücklich eine Vorkehrung zur Bauzeit, und der Preis ist entsprechend klein gehalten:
+eine Datei Kernel-Code, ein Frontmatter-Block je Skill, kein Gate. Der erste Pilot-Transkript-Lauf,
+in dem eine Rolle ein nicht genanntes Skill öffnet, ist die fehlende Messung.
+
+**(b) Der Header ist ein Zeiger und erzwingt nichts.** `parse_header` liest drei Schlüssel, und
+`references` ist keiner davon (gemessen in
+`tools/test_reference_skills.py::test_the_dispatch_header_names_the_reference_skills_the_task_derives`).
+Ob die Rolle das genannte Skill je öffnet, sieht niemand — dieselbe Klasse wie die Sicht-Pflicht aus
+`H82(c)`: die Herkunft ist messbar, das Hinsehen nicht.
+
+**(c) Die Fluchttür ist Prosa.** Verfassung §1a erlaubt ausdrücklich, ein nicht genanntes Skill zu
+öffnen, und verlangt dafür eine Zeile im `evidence` des Ergebnisumschlags. Nichts prüft das. Die
+Alternative — die Fluchttür schließen — wäre eine Verweigerung, die nichts durchsetzen kann
+(`allowed-tools`/`disallowed-tools` sind providerspezifisch und pro Zug, gemessen im Juli-Bericht
+§3(5)), also eine Regel, die nur wie erzwungen LIEST.
+
+**(d) Die zweite Richtung des Stolperdrahts ist an der Ableitung tautologisch.** Solange
+`for_task` seine Namen aus den Skill-VERZEICHNISSEN nimmt, löst jeder ausgegebene Name auf. Der
+Test dazu ist ein Boden unter dieser Konstruktion und wird rot, sobald ein Name von woanders
+hereinkommt (gemessen: eine `for_task`, die einen Literalnamen hinzufügt, ist rot). Die Richtung,
+die HEUTE brechen kann — ein ausgelieferter TEXT schickt eine Rolle zu einem Skill, das es nicht
+gibt — trägt ein anderer Leser
+(`tools/test_reference_skills.py::test_every_skill_retrieval_route_a_shipped_kit_file_spells_resolves`),
+und der liest nur die Codex-Pfadschreibweise. Die Claude-Schrägstrich-Form ist bewusst ausgelassen
+und der Grund ist gemessen: `/hooks`, `/model` und `/schedule` stehen als PROVIDER-Kommandos in den
+ausgelieferten Verfassungen und PM-Skills, ein Leser dieser Form meldet in allen drei Kits
+Nicht-Skills als fehlend. Preis: eine Datei, die nur die Schrägstrich-Form anbietet, ist ungedeckt.
+
+**(e) Die Kreuzmenge ist die des Kits, nicht die der Wirklichkeit.** Der Stolperdraht fragt
+`roles × TASK_TYPES` aus dem ausgelieferten Baum. Ein Projekt, das eine Rolle abwählt (Preset,
+`H83`), erzeugt weniger Aufträge als der Test annimmt — der Test misst „erreichbar für IRGENDEINEN
+Auftrag dieses Kits", nicht „erreichbar in DIESEM Projekt".
+
+**Urteil: Rest, keine Angriffskette — benannte Grenzen eines Zeigers.** (a)–(e) sind Grenzen der
+Ableitung, die nur einen HINWEIS erzeugt und keine Erlaubnis; die Fehlrichtung ist überall ein
+fehlender Zeiger, nie ein falscher Zugriff. Was heute brechen kann (ein Text schickt zu einem
+Skill, das es nicht gibt), trägt der genannte Routen-Test; die Claude-Schrägstrich-Form bleibt mit
+gemessenem Grund ungedeckt.
+
+### H85 — Was die Herkunfts- und Bündelprüfungen NICHT sehen — offen, gemessene Grenzen (TSK-0100)
+
+**Anlass:** `FR-0068`/`FR-0070` (zwei fremde Skills unter Apache-2.0 übernommen) und `FR-0045` (das
+Bündelschema aus einem echten Claude-Design-Export).
+
+**(a) Eine UNMARKIERTE Änderung am übernommenen Text fällt nicht auf.** Der Test hält die
+`[MOD-n]`-Marken im Text und die Liste am Ende gegeneinander — beide Richtungen, gemessen rot. Was
+er nicht kann, ist die größere Hälfte: einen Satz, der geändert wurde, ohne eine Marke zu setzen.
+Dafür bräuchte er die Original-Bytes, und keine Prüfung dieser Suite geht ins Netz. Was gebaut
+wurde, ist stattdessen die Nachvollziehbarkeit: `source_commit` + `source_blob_sha1` im Frontmatter
+jedes übernommenen Skills, gemessen gegen die GitHub-Blob-Hashes beim Ziehen (identisch), sodass
+eine spätere Runde neu zieht und diffed. Ein Test, der das täte, wäre ein Netzzugriff in der Suite —
+bewusst nicht gebaut.
+
+**(b) `NOTICES.md` reist nicht mit.** Die Datei liegt in der Wurzel dieses Repos und wird vom
+Scaffold nicht in ein Projekt kopiert. Was die Apache-2.0-§4-Pflichten im INSTALLIERTEN Projekt
+erfüllt, liegt im Skill-Verzeichnis selbst und reist mit: die `LICENSE.txt` daneben, der
+Änderungshinweis im Kopf der `SKILL.md`, die Marken im Text. §4(d) greift nicht — die
+Upstream-Ordner tragen kein `NOTICE` (zweimal gemessen, 2026-07-27 und 2026-08-31). Die Tabelle ist
+Buchhaltung für Leser DIESES Repos, und die Datei sagt das über sich selbst.
+
+**(c) Das Bündelschema ist an EINEM Export gemessen, und der Pfad-Leser hat zwei benannte
+Grenzen.** 184 Einträge, Typ „design system", vom Nutzer geliefert. Ob ein PROTOTYP-/Handoff-Export
+dieselbe Form hat, ist ungemessen und stand schon so in `FR-0045`. Die Prüfung ist entsprechend
+zurückhaltend: sie verlangt drei Dateien und eine abgeleitete Eigenschaft (jeder Pfad, den der
+Index NENNT, existiert), nicht die 33 Komponenten und 309 Token dieses einen Bündels. Gemessen: am
+echten Archiv 105 pfadförmige Werte, alle auflösend, Ergebnis `ok`; acht Mutationen desselben
+Archivs je `rc 2` mit benanntem Fehlteil. Die zwei Grenzen: **(c1)** die Existenzprüfung ist
+`os.path.isfile` und damit dateisystemabhängig — ein Index, der `Tokens/Colors.css` schreibt, wo
+`tokens/colors.css` liegt, ist auf Windows/macOS `rc 0` und auf einem case-sensitiven Host
+`rc 2`. Ein eigener Fall-Vergleich wäre eine zweite Antwort auf „existiert diese Datei" neben der
+des Betriebssystems und ist bewusst nicht gebaut. **(c2)** die Regel „ein Schlüssel, der auf
+`path`/`paths` endet oder `files` heißt, nennt eine Datei" greift auch in **unbekannte** Schlüssel:
+ein künftiger `*Path`, der eine URL, ein Verzeichnis oder einen optionalen Ort benennt, wird als
+fehlende Datei gemeldet. Der Boden unter dem Leser prüft, dass er am SCHLÜSSEL entscheidet und
+nicht am Aussehen des Wertes — er prüft nicht, dass jeder künftige Schlüssel dieser Form wirklich
+eine Datei meint.
+
+**(d) Ein Bündel ohne `_ds_manifest.json` findet der Suchlauf nicht.** Der Index IST der
+Erkennungsschlüssel — er ist die einzige Datei, die sonst nichts in einem Skill-Verzeichnis hat, und
+das ist es, was einen halb ausgepackten Export von einem Rollen-Skill unterscheidbar macht. Der
+Preis steht in der Meldung des Suchlaufs selbst („nenne den Ordner auf der Kommandozeile") und ist
+in beide Richtungen gemessen: der genannte Ordner wird mit „`_ds_manifest.json` is missing"
+verweigert, während der Suchlauf über die elf echten dev-team-Skills `rc 0` und „kein Design-System"
+sagt.
+
+**Die zweite Hälfte davon ist gebaut, weil sie billig war, und ihre Grenze steht hier:** das
+häufigste Auspack-Ergebnis ist ein WRAPPER-Ordner (das Archiv landet in einem neuen Ordner, das
+Bündel liegt eine Ebene tiefer). Vorher meldete die Prüfung dafür drei „X is missing"-Zeilen über
+einen Ordner, dessen Inhalt völlig in Ordnung ist. Sie sagt jetzt „das Bündel liegt eine Ebene
+tiefer, in `<name>`" — gebunden an eine BENANNTE Form (hier kein Rückgrat, genau ein Kind mit
+Index), damit der Hinweis einen echten Fehlteil nicht verschluckt; beide Richtungen sind gemessen
+(zwei Kandidatenkinder oder ein bloß fehlender Index bekommen weiter die echte Antwort). **Nicht
+gebaut:** eine zweite Ebene. Ab dort wäre es kein Hinweis auf einen bekannten Fehler mehr, sondern
+eine Suche, deren Fehlschlag niemand beschreiben kann. Der SUCHLAUF selbst steigt weiterhin nicht
+hinab — ein Wrapper unter dem Skill-Verzeichnis bleibt für ihn unsichtbar, und die Meldung „nenne
+den Ordner" ist der Weg dorthin.
+
+**(e) Der Inhalt des Design-Systems wird nicht beurteilt.** Kontrast, Token-Qualität, ob die
+Komponenten zum Produkt passen — nichts davon liest diese Prüfung, und sie ist kein Gate: nichts
+verweigert eine Aufgabe, weil sie `rc 2` gab. Sie ist die laute, frühe Antwort auf „ist das Ding
+überhaupt benutzbar".
+
+**Urteil: Rest, keine Angriffskette — benannte Grenzen einer Prüfung, die kein Gate ist.** (a) bis
+(e) sagen, was der Bündel-Leser nicht sieht (Netz, Dateisystem-Schreibweise, unbekannte Pfadschlüssel,
+zweite Ebene, Inhalt); jede Grenze fällt in die laute Richtung (`rc 2` mit benanntem Teil) oder in
+eine benannte Nicht-Prüfung, nie in eine stille Annahme.
+
+---
+
+### H86 — Was die Bestandsklassifikation NICHT sieht — offen, gemessene Grenzen (TSK-0101)
+
+**Anlass:** `FR-0044`/N13. Der Installer klassifizierte den vorgefundenen Bestand gar nicht; die
+Seitenkontrolle vom 2026-08-16 konnte den No-write-Nachweis nicht führen, weil ihr ein echter
+V1-Bestand fehlte (§5.6). Die drei Feldkopien unter `C:/Offline Repos/v2-pilot` SIND welche —
+gemessen 2026-09-01: alle drei tragen `.claude/kit_version` und `.claude/team_kit_roles.txt` wie ein
+V2-Projekt (der Vor-Kernel-Installer schrieb beide, `git show 9e4419b~1:team-kits/scaffold_team.sh`),
+und keine einzige Datei liegt im Bereich des Kernels. Was der Leser in ihnen findet, als
+Datensatz für alle Leser dieser Zahl: **synaipse 632** V1-Backlog-Datensätze in 7 Monolithen
+(`tasks.yaml` 264, `system_requirements.yaml` 224, `decisions.yaml` 69, `feature_requests.yaml` 48,
+`product_requirements.yaml` 17, `change_requests.yaml` 6, `bugs.yaml` 4), **portfolio 285** in
+denselben 7, **BuyPlugGo 16** in `process_definitions.yaml`. Die Gegenmessung mit dem Installer VOR dieser
+Runde, gegen dieselbe synaipse-Kopie: rc 0, 128 neue Dateien, 64 geänderte, eine gelöschte
+(`.claude/hooks/auto_dashboard.py`), `.claude/kernel` installiert — über einen Zustand, den kein
+V2-Kommando lesen kann und in den danach kein Werkzeug mehr schreiben darf. Nach der Runde: alle
+drei rc 1, Baum-Hash vorher/nachher identisch (1602 / 4010 / 2590 Dateien).
+
+Die Klassifikation liest ZWEI unabhängige Dinge über das Zustandsverzeichnis — ob der Kernel dort
+einen eigenen Bereich hat, und ob ein V1-Datensatz in einem durchsuchbaren Dokument liegt — und die
+vier Verdikte sind deren Kreuzprodukt. Was sie **nicht** sieht, je gemessen:
+
+**(a) Ein V1-Bestand AUSSERHALB des Zustandsverzeichnisses.** `docs/old/tasks.yaml` mit einem
+`TSK-0001` → Verdikt `greenfield`. Gemessen ist das Verdikt; dass ein greenfield-Verdikt den
+Installer schreiben lässt, ist die Gegenrichtung derselben Runde
+(`tools/test_kitupdate.py::test_a_greenfield_project_still_installs`). Dieselbe Klasse, die `N11` schon für
+`gate_write_scope` festgehalten hat: geschützt ist der ORT, nicht der Datensatz. Begrenzt durch:
+der Bestand, um den es geht, ist der eines INSTALLIERTEN Kits, und dessen Zustand lag in beiden
+Generationen unter `project_memory/`. Ein Projekt, das seinen V1-Speicher nach `docs/` verschoben
+hat, hat ihn bereits als Altpapier behandelt.
+
+**(b) Ein umbenannter oder versteckter V1-Speicher IM Zustandsverzeichnis.**
+`project_memory/tasks.yaml.bak` mit einem `TSK-0002` → `greenfield`. Das ist geerbt und nicht neu:
+`migrate.search_coverage` führt genau diese Datei als `unsearched`, und der Rest steht als `L19`
+dort. Diese Runde übernimmt den Leser bewusst statt einen zweiten zu schreiben — ein eigener hätte
+den Installer und den Validator über dieselbe Datei verschieden urteilen lassen.
+
+**(c) Ein V1-Datensatz im Bereich des Kernels** (`L20`) — wer eine Monolithdatei nach
+`product/active/` kopiert, wird von keinem der beiden Leser genannt.
+
+**(d) Der Preis der Lesung wird bezahlt, auch wenn nichts gefunden wird.** Gemessen, warm:
+synaipse 2,9–3,1 s über 20 Dokumente, BuyPlugGo 0,95–1,03 s über 14, portfolio 0,77–0,92 s. Der
+Bereich des Kernels wird NICHT gelesen (die Item-Dateien sind `KERNEL`), sonst wäre es die
+Größenordnung des Zustands statt die der Dokumente. Die Schranken sind `report.DOCUMENT_MAX_BYTES`
+und `DOCUMENT_SCAN_MAX_BYTES`, importiert statt abgeschrieben.
+
+**(e) GESCHLOSSEN, und der Eintrag bleibt, weil die erste Fassung dieses Absatzes das Gegenteil
+behauptete.** Bis zur Nacharbeit vom 2026-09-01 landete ein Dokument, das die Lesung nicht öffnen
+konnte, in `unreadable` und **sonst nirgends**: die Meldung sagte „diese Einschätzung kann zu kurz
+sein", das VERDIKT blieb `greenfield`, und der Installer lief durch. Gemessen vom Prüfer an einer
+echten BuyPlugGo-Kopie mit EINER unbalancierten `[` in `process_definitions.yaml`: rc 0, +132/−1/~58
+Dateien, `.claude/kernel` installiert, Monolithe unverändert daneben — also genau der Zustand, den
+(a)–(c) als „von innen kein Weg zurück" beschreiben. Zwei Kommentare im Code behaupteten dabei
+Schutz, den er nicht baute. Jetzt ist die unvollständige Lesung ein **eigenes Verdikt**
+(`unknown`), und zwar an genau der Stelle, an der sie die Entscheidung ändern kann: liegt schon ein
+V1-Datensatz vor, steht das Verdikt ohnehin fest; besitzt der Kernel einen eigenen Bereich, sind
+die beiden Reste `v2` und `mixed` und beide werden geschrieben; nur wenn beides fehlt, stehen sich
+`greenfield` und `v1` gegenüber — und das ist die eine Stelle, an der „nicht hingesehen" nicht als
+„nichts gefunden" aufgelöst werden darf. Rot gemessen an der ENTSCHEIDUNG (Baum-Hash vor/nach einem
+echten Installerlauf, beide Zwillinge): `tools/test_kitupdate.py::test_a_stock_whose_reading_did_
+not_complete_is_not_written_over`; die Gegenrichtung, damit daraus keine Über-Verweigerung wird:
+`tools/test_kitupdate.py::test_a_reading_that_did_not_complete_over_a_LIVE_v2_project_still_installs`.
+
+**Urteil: Rest.** (a)–(c) sind Grenzen EINES Lesers, den zwei andere Stellen dieses Kernels schon
+benutzen; sie zu schließen hieße, eine zweite Definition von „V1-Datensatz" zu schreiben, und genau
+das ist der Defekt, den `report._check_no_v1_records_outside_the_archive` ausdrücklich vermeidet.
+(d) ist kein Loch, sondern der bezahlte Preis, hier mit Zahl. (e) ist geschlossen und steht als
+Warnschild: eine Meldung ist kein Schutz.
+
+---
+
+### H87 — Pin und Rollback hatten keinen Kernel-Befehl, und der Pin schwieg in der Sitzungsmeldung — GESCHLOSSEN (TSK-0104), mit benanntem Rest
+
+**Anlass:** `FR-0041`/N8. Gebaut ist der MECHANISMUS: `.claude/kit_pin` verweigert sowohl
+`update-kit` als auch den von Hand gestarteten Installer, und `scaffold_team --rollback` /
+`-Rollback` spielt das vorige Bundle zurück. Nicht gebaut ist die BEDIENFLÄCHE, und zwar aus einem
+Auftragsgrund, nicht aus einem technischen: die Kommandofläche liegt in `team-kits/kernel/cli.py`,
+und dieser Stream (`DEC-0057`, Strom B) darf keine andere Kernel-Datei als `kitupdate.py` anfassen.
+
+Gemessen am ausgelieferten Einstiegspunkt der Feldkopie: 25 Unterkommandos, `has_pin: false`,
+`has_rollback: false`. Was ein Nutzer heute also tun muss, um zu pinnen: die Datei
+`.claude/kit_pin` mit `version: <stand>` aus einer Shell AUSSERHALB der Sitzung anlegen, und zum
+Lösen löschen. Das ist bewusst nicht die Sitzung — `gate_write_scope` verweigert dort jeden
+Werkzeug-Schreibzugriff auf `.claude/`, und ein Pin, den der Agent selbst setzen könnte, wäre
+schlimmer als keiner.
+
+**Der Preis, den der Pin dafür zahlt, dass er den Nag NICHT abschaltet** (die Markerklasse aus
+`BUG-0078`): die Sitzungsmeldung rechnet ihr Angebot aus `kitupdate.relation` und kennt diese Datei
+nicht. Gemessen am ausgelieferten `session_status.py` als Prozess, gegen ein gepinntes Projekt
+(installiert 2026.09.01-2, gestaged 2099.12.31-9): der Text sagt „KIT UPDATE AVAILABLE … On their OK
+you install it YOURSELF" und nennt den Pin mit keinem Wort. Die Kette läuft also so: der PM schlägt
+das Update vor, der Nutzer sagt ja, die Freigabe wird geprägt — und ERST `update-kit` verweigert und
+nennt den Pin. Das ist die laute Reihenfolge, nicht die stille: nichts wird installiert, und der
+Nutzer erfährt vom eigenen Pin. Der Preis ist eine überflüssige Frage an den Nutzer und eine
+geprägte Freigabe, die nichts öffnet. Die Gegenrichtung — den Nag abschalten — wäre genau
+`BUG-0078`: eine Datei, die eine Meldung dauerhaft verstummen lässt, ohne dass jemand davon weiß.
+
+**Was fehlte, benannt als Naht für die Merge-Runde:** `pin-kit` / `unpin-kit` / `rollback-kit` auf
+`kernel/cli.py`, ein Satz in `session_status.py`, der den Pin nennt statt das Update anzubieten, und
+die Zeile in `README.md`s Kommandoflächen-Liste. Alle drei lagen außerhalb des erlaubten Bereichs
+dieses Stroms; TSK-0104 hat alle drei gebaut (unten).
+
+**Was der Pin seit der Nacharbeit vom 2026-09-01 zusätzlich hält**, weil beides an ihm vorbeiging
+und beides gemessen ist: (1) er vergleicht ein **Bundle**, nicht eine Versionszeichenkette —
+`bump_kit_version.py` stempelt alle drei Kits auf denselben Stand, also ging ein KIT-TAUSCH glatt
+durch (gepinnt auf `dev-team 2026.09.01-4`, `scaffold_team office-team` → rc 0, +114 Dateien,
+Durchsetzungsschicht und Verfassung ersetzt, Pin schweigt); verglichen wird jetzt das Kit plus jedes
+Stempelfeld, das der Datensatz **nennt**. (2) Er verweigert auch den **Rollback** — der ersetzt das
+installierte Bundle genauso wie ein Update. Vorher: gepinnt auf 2099.12.31-9, `--rollback` → rc 0,
+Stempel 2026.09.01-4, Pin bleibt stehen — und danach ließ der Pin **weder** Update **noch**
+Reparatur durch, weil das einzige zugelassene Bundle nicht mehr installiert war.
+
+**GESCHLOSSEN in TSK-0104, alle drei Stellen.**
+
+* **Drei Kommandos auf der Fläche:** `pin-kit`, `unpin-kit`, `rollback-kit`. Sie **drucken und
+  handeln nicht**, und das ist die Entscheidung und keine halbe Umsetzung. Die Eigenschaft dahinter:
+  eine Sitzung darf einen Hebel ziehen, der nur Verweigerung HINZUFÜGT, nie einen, der sie
+  WEGNIMMT. Einen Pin zu lösen nimmt weg — er ist das Einzige, was zwischen dieser Sitzung und einer
+  ersetzten Durchsetzungsschicht steht —, und ein Rollback ersetzt diese Schicht so gut wie ein
+  Update, wofür `update-kit` eine geprägte Freigabe braucht, die für einen Rollback keine
+  Freigabeart deckt. Was die drei liefern, ist genau das, was der Eintrag als fehlend benannte:
+  Bequemlichkeit und eine frühere Ansage — der Pfad der Pin-Datei mit den zwei Zeilen dieses
+  Projekts, die Pin-Datei zum Löschen, die Sicherung mit ihrer Zeile. Gemessen als Baum-Hash um
+  alle drei Aufrufe, gepinnt und ungepinnt:
+  `tools/test_kitupdate.py::test_the_kit_pin_routes_print_and_never_write`.
+* **Die Sitzungsmeldung nennt den Pin** statt das Update anzubieten: `_kernel.kit_update_verdict`
+  kennt ein fünftes Verdikt `pinned`, und es trifft genau den EINEN Satz, der bisher nach einem OK
+  fragte — die drei anderen sagen ohnehin „nicht installieren". Der Nag wird nicht stummgeschaltet
+  (das wäre `BUG-0078`s Markerklasse); dieselbe Tatsache kommt einen Schritt früher, zusammen mit
+  dem Wortlaut des Pins. Gemessen am ausgelieferten Haken als Prozess:
+  `tools/test_kitupdate.py::test_a_pinned_project_hears_about_its_pin_instead_of_an_offer`.
+* **`README.md`** trägt die vier neuen Kommandos in der Kommandoflächen-Liste und zwei Absätze zu
+  Pin und Rollback; die drei Verfassungen tragen die Liste ebenfalls
+  (`tools/test_hooks.py::test_every_span_that_presents_the_command_surface_names_all_of_it`
+  erzwingt beides).
+
+**Rest, benannt und gewollt:** die Pin-DATEI legt weiterhin nur der Nutzer an und löscht sie
+weiterhin nur er, aus einer Shell oder einem Dateimanager außerhalb der Sitzung. Das ist keine
+Restlücke, sondern die Aussage des Mechanismus: ein Pin, den der Agent selbst setzen oder lösen
+könnte, wäre keiner. Wer das ändern will, braucht eine eigene Freigabeart — ein Eingriff in
+`approvals.APR_KINDS`, die Schemata und alle drei Verfassungen, also Gerüst über dem Haus
+(`DEC-0056`) und eine eigene Runde.
+
+**Urteil: GESCHLOSSEN (TSK-0104) für beide Hälften des Eintrags — mit dem einen gewollten Rest.**
+Die Kommandofläche trägt die Verben (sie drucken und handeln nicht, und jeder Text sagt das), die
+Sitzungsmeldung nennt den Pin statt des Angebots, beides rot gemessen am ausgelieferten Haken und
+an der Fläche; der Rest ist die Aussage des Mechanismus, kein Loch.
+
+---
+
+### H88 — Der Rollback ist byte-gleich nur über die aufgezeichnete Menge, und ältere Sicherungen tragen keine — offen, gemessen (TSK-0101)
+
+**Anlass:** `FR-0041`/N8, zweite Hälfte. Der Installer schrieb seine Sicherungen seit jeher nach
+`.claude/backups/<stempel>`, aber kein Befehl spielte sie zurück, und die Sicherungsliste und die
+Wiederherstellungsliste im Skript waren zwei getrennte Aufzählungen. Jetzt ist es EINE Menge
+(`RESTORABLE` / `$restorable`), die Sicherung schreibt sie als `RESTORE_SET` IN die Sicherung, und
+der Rollback spielt die Menge, die die damalige Sicherung aufgezeichnet hat.
+
+**(a) Was der Rollback nicht rückgängig macht, wird genannt statt verschwiegen.** Gemessen an der
+synaipse-Feldkopie: 15 aufgezeichnete Pfade, byte-gleich; und die Zeile
+`[rollback] left as they are (not part of the recorded set): .claude/agent-memory
+.claude/claude-security-guidance.md .claude/HANDOVER_PENDING .claude/kit_last_seen_version
+.claude/kit_update_pending.repo .claude/project_path.state`. Zwei davon sind Absicht (der Marker
+steht, weil sich das Bundle unter der laufenden Sitzung erneut geändert hat; das Gedächtnis des
+Agenten gehört ihm), die Merge-Rückstandsliste ist der echte Rest: sie ist die Liste des NEUEN
+Kits und überlebt dessen Rücknahme.
+
+**(a2) Das Manifest einer Sicherung ist DATA, und der Zwilling, der es liest, ist nicht
+zwingend der, der es schrieb.** Gemessen in der Nacharbeit: mit `../victim.txt` in einer
+`RESTORE_SET` verglich der POSIX-Zwilling das Wort **textuell** gegen `$REPO/`, ließ es passieren,
+und sein `rm -rf` löschte bei rc 0 eine Datei **außerhalb** des Repositoriums — während der
+PowerShell-Zwilling dieselbe Zeile über `GetFullPath` verweigerte. Beide verweigern jetzt ein Wort
+mit `..`-Bestandteil, und zwar bevor irgendetwas gelöscht wird (die Zeilen werden erst alle geprüft,
+dann zurückgespielt). Rot gemessen in beiden Leserichtungen, mit der LÖSCHUNG als erster Zusicherung:
+`tools/test_kitupdate.py::test_neither_twin_replays_a_snapshot_that_points_out_of_the_repository`.
+
+**(b) Eine Sicherung von VOR dieser Runde trägt kein `RESTORE_SET` und wird nicht zurückgespielt.**
+Gemessen als Verweigerung mit Grund; die Alternative — „spiel alles zurück, was drinliegt" — hätte
+Dateien überschrieben, die der Installer nur LIEST (`settings.local.json`, `AGENTS.override.md`),
+also fremde Bearbeitungen. Betrifft jedes heute im Feld stehende Projekt genau einmal: die erste
+Installation nach dieser Runde legt die erste zurückspielbare Sicherung an.
+
+**(c) Ein Defekt, der dabei aufgefallen ist und geschlossen wurde, steht hier, weil er die Grenze
+begründet:** `.claude/kit_state.json` — der Vertrauensdatensatz über das Hook-Bundle, den der Lauf
+selbst neu schreibt — war weder gesichert noch wiederhergestellt. Ein Abbruch nach
+`write_kit_state.py` stellte also das ALTE Bundle wieder her und ließ den Hash des NEUEN daneben
+stehen; `doctor` misst `hook_trust` dann gegen ein Bundle, das nicht da ist. Er ist jetzt Teil der
+Menge, rot gemessen (`tools/test_kitupdate.py::test_a_rollback_restores_the_previous_bundle_byte_
+for_byte` fällt ohne ihn, und seit der Nacharbeit auch
+`tools/test_kitupdate.py::test_an_aborted_install_puts_the_trust_record_back_with_the_bundle`, der
+den ABBRUCH wirklich fährt statt ihn zu behaupten — der Kommentar im Installer nannte bis dahin
+einen Testnamen, den es nicht gab).
+
+**(a3) Die beiden Zwillinge beantworten ein ABSOLUTES Wort in der `RESTORE_SET` nicht gleich**
+(neu, TSK-0104, aus einem Prüferrest von TSK-0101, hier nachgemessen statt zitiert). Die Regel im
+Code heißt „kein `..`" — eine Aufzählung, wo die Eigenschaft „eine `RESTORE_SET`-Zeile ist
+repo-relativ" lautet. Gemessen 2026-09-02 mit genau einer absoluten Zeile in einem echten Manifest,
+echter Installer, beide Zwillinge: der POSIX-Zwilling liest sie als repo-relativ (der Aufrufer
+übergibt `$REPO/$line`), findet unter diesem Namen nichts in der Sicherung und endet bei **rc 0**
+mit unverändertem Baum; der PowerShell-Zwilling endet bei **rc 1**, aber über eine unbehandelte
+`GetFullPath`-Ausnahme statt über seine eigene Verweigerung. **Und der POSIX-Zwilling meldet dabei
+ERFOLG**: „replayed … (1 recorded path(s))" und „Rollback done." über einen Lauf, der nichts
+zurückgespielt hat — dieselbe stille Richtung, die dieser Eintragsstapel bei `H83` als „schlechter
+als ein sichtbarer Fehler" einstuft; der Nutzer hält seinen Rollback für gelaufen. **Kein Zwilling
+schreibt außerhalb des Repositoriums** — das ist der Unterschied zu (a2), wo eine Datei wirklich gelöscht wurde. Nicht
+geschlossen, weil der Fix zwei Zwillinge und einen eigenen roten Lauf je Zwilling braucht (die
+PowerShell-Hälfte müsste zusätzlich die Ausnahme zu einer Verweigerung machen) und diese Runde eine
+MERGE-Runde ist; die beiden Kommentare sagen jetzt, was gilt, statt Gleichheit zu behaupten.
+
+**(a4) Eine Sicherungs-Aufzeichnung, die NICHT von diesem Installer stammt, löschte Projektdateien
+ersatzlos — GESCHLOSSEN (TSK-0104), beide Zwillinge.** `restore_from_snapshot` /
+`Restore-FromSnapshot` löschen das Ziel, BEVOR sie nach einer Kopie in der Sicherung sehen.
+Gemessen 2026-09-02 an echten Installationen, beide Zwillinge: eine `RESTORE_SET` mit der einzigen
+Zeile `docs/note.md` (repo-INTERN, also von jeder Sicherheitsprüfung korrekt durchgelassen), keine
+Kopie in der Sicherung → **rc 0, „Rollback done.", Datei weg**.
+
+**Die Lösch-vor-Prüfen-Reihenfolge ist trotzdem richtig, und der falsche Aufrufer hätte hier
+beinahe eine falsche Begründung getragen.** Eine wirklich frische Installation schreibt **gar keine**
+`RESTORE_SET` (die Sicherung entsteht nur, wenn es etwas zu sichern gab). Die Gestalt „14 von 15
+Zeilen ohne Kopie, 12 davon im Projekt" gehört zum ABBRUCH-Rückbau, der die Menge `RESTORABLE`
+direkt gegen eine leere Sicherung fährt — dort ist Löschen ohne Ersatz zwingend, und dieser Pfad
+liest keine fremden Daten. Der ROLLBACK-Pfad sieht das Manifest der ZWEITEN Installation: gemessen
+**15 Zeilen, 2 ohne Kopie** (`.github/hooks`, `.github/agents`, vom Installer angelegt), **0 davon
+im Projekt vorhanden**. Auch dort gilt: eine Zeile, die der Installer besitzt, MUSS entfernt werden
+dürfen.
+
+**Gebaut, und der Trennschnitt ist ein zweiter, unabhängiger Besitznachweis:** das Manifest kann
+nicht sein eigener Beweis sein — es ist das Zweifelhafte. `RESTORABLE` / `$restorable` ist der
+Nachweis: die Menge, die das Skript selbst sichert. **Eine Manifestzeile passiert, wenn sie in
+dieser Menge steht ODER die Sicherung eine Kopie von ihr hält**; nur wer beides nicht ist, wird
+verweigert, mit Nennung der Zeile, in der Schleife, die ohnehin alle Zeilen liest BEVOR die erste
+gelöscht wird. Die zweite Hälfte hält die Vorwärtskompatibilität: eine ältere Sicherung, die einen
+inzwischen aus `RESTORABLE` gestrichenen Pfad nennt, trägt ihre eigene Kopie und bleibt spielbar.
+Gemessen: `RESTORABLE` 15 Namen, Manifest 15 Zeilen, **keine Zeile außerhalb**, also **null
+Fehlverweigerungen** an einer echten zweiten Installation. Der Kommentar steht an genau dieser
+Schleife in beiden Zwillingen.
+
+**Dabei ist ein zweiter, älterer Defekt aufgefallen und mitgeschlossen — eine BOM.** Der
+PowerShell-Zwilling schreibt sein eigenes `RESTORE_SET` **mit** UTF-8-BOM (Bytes `efbbbf`, gemessen).
+Der POSIX-Zwilling strippte `CR`, aber nicht die BOM, also war die ERSTE aufgezeichnete Zeile für
+ihn ein Name, den es nicht gibt: gemessen am ausgelieferten Kreuzfall **rc 0, „Rollback done.", und
+der erste Pfad wurde nie zurückgespielt** — ein Rollback, der Erfolg meldet und eine Datei
+auslässt. (Genau daran ist die erste Prüfmessung dieser Runde vorbeigelaufen.) Die BOM wird
+**gestrippt und nicht verweigert**, und das ist gemessen entschieden: sie stammt vom eigenen
+Zwilling, eine Verweigerung träfe also die eigenen Sicherungen — mit der Besitzregel, aber ohne den
+Abstrich verweigert der POSIX-Zwilling das Manifest seines Zwillings bei rc 1. Nach dem Bau spielen
+alle vier Schreiber/Leser-Paarungen die erste Zeile korrekt zurück.
+
+**Rot gemessen, je Zwilling** (`tools/test_kitupdate.py::test_neither_twin_replays_a_manifest_line_
+it_does_not_own`): Besitzregel entfernt → beide Zwillinge rot (rc 0 statt Verweigerung, Datei weg);
+BOM-Abstrich entfernt → POSIX-Zwilling rot. Die Gegenrichtung (ältere Sicherung mit eigener Kopie)
+läuft im selben Test, damit die Verweigerung nicht von einem Installer erfüllt wird, der alles
+ablehnt.
+
+**Was NICHT geschlossen ist, und dafür gibt es keinen Ersatz:** ein Manifest, das ausschließlich
+Pfade aus `RESTORABLE` nennt, aber von fremder Hand stammt, ist von einem echten nicht zu
+unterscheiden — dagegen hülfe nur ein Herkunftsnachweis über die Zeilen. Der Schaden wäre dann
+allerdings auf die Menge begrenzt, die der Installer ohnehin ersetzt — **plus** die `KEPT_ONLY`-Dateien
+(`AGENTS.override.md`, `.claude/settings.local.json`): `backup_local` sichert auch sie, also passiert
+ihre Manifestzeile über den Kopie-Zweig, und die Nutzerdatei wird mit der älteren Kopie
+überschrieben (gemessen 2026-09-02, beide Zwillinge, `{"old": 1}`). Überschreiben, nicht Löschen;
+dieselbe Vorbedingung (fremdes Manifest, `H11`); schließbar mit einer Zeile je Zwilling (den
+Kopie-Zweig um `KEPT_ONLY` verengen), in TSK-0104 nicht mehr gemacht. Begrenzt wird das übrige
+durch `gate_write_scope` über `.claude/`: eine veränderte Aufzeichnung setzt eine Shell außerhalb
+der Sitzung oder einen Defekt voraus, also `H11`s Klasse.
+
+**Urteil: Rest.** Jede Grenze mit dem Ort, an dem sie ausgesprochen ist: (a) und (b) spricht der
+Befehl selbst aus, wenn er sie trifft; (a3) steht als Kommentar an `assert_safe_repo_path` in
+beiden Zwillingen, mit dieser Messung; (a4) ist GESCHLOSSEN, und sein Kommentar steht an der
+Manifest-Schleife des Rollback-Zweigs in beiden Zwillingen (dort, wo die Regel läuft), rot
+gemessen je Zwilling; (a2) und (c) sind ebenfalls geschlossen, beide rot gemessen. Offen bleibt
+nur der Herkunftsnachweis, benannt am Ende von (a4).
+
+
+### H89 — Ohne `git` kann die Vier-Augen-Buchung alte von neuen Zeilen nicht unterscheiden und tritt zurück (neu, TSK-0102, FR-0065)
+
+**Mechanismus.** `gate_second_booking` urteilt nur über Ledger-Zeilen, die noch nicht in `HEAD`
+stehen. Das ist die Migrationsantwort: ein echtes Buch trägt Zeilen, die vor dieser Schicht gebucht
+wurden, und ein Mechanismus, der jede davon verweigert, ist schlechter als keiner (`FR-0065` sagt
+genau das). Die Grundlinie ist damit nichts Aufgezähltes und nichts, was sich prägen ließe — der
+einzige Weg nach `HEAD` ist ein Commit, und der Commit ist einer der Momente, an denen dieses Gate
+steht. Wo `git` aber gar nicht antwortet — nicht installiert, oder ein Verzeichnis, das kein
+Arbeitsbaum ist —, gibt es diese Unterscheidung nicht.
+
+**Gemessene Kette.** Ein gescaffoldetes Office-Projekt ohne `git init`, mit einer ungelesenen Zeile
+im Ledger: `git commit -m books` durch die volle registrierte Kette → **rc 0**. Dieselbe Zeile mit
+`git init` (ohne Commit) → rc 2 mit der Vier-Augen-Verweigerung. Gemessen 2026-09-01,
+`tools/test_hooks.py::test_a_ledger_git_cannot_answer_for_stands_the_booking_gate_down_and_says_so`
+hält die Rückzugsrichtung fest.
+
+**Warum nicht geschlossen.** Die Gegenrichtung — verweigern, wenn nichts unterscheidbar ist — legt
+genau das Projekt still, das den Ausweg am nötigsten braucht: die Verweigerung säße auf dem Commit,
+der die Zeilen zu Altzeilen gemacht hätte. Das ist derselbe Fehler, den der Kopf von
+`gate_ledger_valid` als „a corrupt marker with no ledger present deadlocked the repo" führt.
+
+**Was stattdessen begrenzt.** Der Rückzug ist nicht still: er wird pro Datei in das Audit-Log des
+Projekts geschrieben (`project_memory/.audit/hook_events.jsonl`, `gate_second_booking … stood down
+for …`), also dorthin, wo ein Prüfer nachliest, ob eine Schicht überhaupt hingesehen hat. Und die
+Voraussetzung ist keine exotische: die Verfassung des Office-Kits macht `git` zur Pflicht (§9,
+Commit nach jedem abgeschlossenen PROC-Lauf), das Kit liefert `.gitignore` und `gate_push_token`
+mit. Ein Office-Projekt ohne `git` hat ohnehin keinen Prüfpfad — was diese Schicht dort verliert,
+hat es vorher schon verloren.
+
+**Urteil: Rest, benannt.** Nicht blockierend nach der Hausregel — die Angriffskette verlangt, dass
+der Nutzer sein Projekt ohne Versionsverwaltung führt, und dann fehlt der Nachweis vor dieser
+Schicht.
+
+### H90 — Zwei identische Buchungen EINES Belegs teilen sich ein Lesepaar (neu, TSK-0102, FR-0065)
+
+**Mechanismus.** `_bookings` verbindet Lesungen und Zeilen über die Spalte `source` (den Beleg) und
+prüft dann Feld für Feld auf Übereinstimmung. Die Spalte `id` ist bewusst ausgenommen (sie entsteht
+erst beim Schreiben). Zwei Zeilen, die sich NUR in der `id` unterscheiden, sind damit beide von
+demselben Lesepaar gedeckt — also eine Doppelbuchung desselben Belegs, die diese Schicht durchlässt.
+
+**Gemessene Kette.** Zwei Zeilen mit identischen Feldern außer `id`, beide OHNE `invoice_no`, ein
+Lesepaar aus zwei Läufen: `git commit` durch die volle registrierte Kette → **rc 0** (gemessen
+2026-09-01 in einer Kopie außerhalb des Repos). Mit gesetzter `invoice_no` greift stattdessen
+`ledger_add.validate_cross` („duplicate invoice … booked 2 times") und `gate_ledger_valid`
+verweigert — die Lücke besteht also genau dort, wo der Beleg keine Rechnungsnummer trägt (Quittung,
+Kassenbon).
+
+**Warum nicht hier geschlossen.** Doppelbuchungen sind die Frage des VALIDATORS, nicht der
+Vier-Augen-Schicht: die eine fragt „stimmt diese Zeile mit dem Beleg überein", die andere „steht
+diese Zeile schon einmal in den Büchern". Die Erkennung im Validator um belegfreie Zeilen zu
+erweitern (gleicher Beleg + gleicher Betrag + gleiches Datum = Verdacht) ist ein eigener Eingriff
+in `ledger_add.validate_cross` mit eigener Fehlklasse — eine legitime Doppelzahlung derselben
+Rechnung existiert —, und in dieser Runde nicht gemessen.
+
+**Was stattdessen begrenzt.** Der Fall braucht einen Beleg ohne Rechnungsnummer UND zwei Zeilen mit
+sonst identischen Feldern; die EÜR-Summe wird dadurch doppelt gezählt, was der Bericht-Kommentar
+des Bookkeepers („duplicate suspicion") ausdrücklich sucht. Kein Gate misst das.
+
+**Urteil: Rest, benannt** — mit dem Vorschlag, ihn in die Duplikatsregel des Validators zu legen
+und nicht in dieses Gate.
+
+### H91 — Der gerenderte Aktenplan-Baum zeigt den PLAN, nicht die Platte (neu, TSK-0102, FR-0031)
+
+**Mechanismus.** `scripts/filing_plan.py --tree` und der Ablage-Abschnitt der
+Verfahrensdokumentation rendern die `path_template`s der Regeln. Das ist gewollt — der Baum IST der
+Plan, so hat der Nutzer es gesteuert — aber es heißt auch: ein Ordner, der unter `archive/`
+tatsächlich EXISTIERT und von keiner Regel gedeckt ist, kommt in dem Bild, das dem Nutzer als
+„sichtbare Wahrheit" vorgelegt wird, nirgends vor.
+
+**Gemessene Kette.** Projekt mit einer Regel `archive/supplier_invoice/<year>/`, dazu ein real
+angelegtes `archive/alte_ablage/2019/x.pdf`: `--tree` gibt rc 0 aus und zeigt ausschließlich den
+Regelbaum; die Zeichenkette `alte_ablage` steht nirgends darin (gemessen 2026-09-01). Ebenso zeigt
+der Baum Platzhalter (`<year>`) und keine wirklichen Jahresordner — er beschreibt die Form, nicht
+den Bestand.
+
+**Warum nicht geschlossen.** Ein Abgleich Plan↔Platte ist eine andere Frage als „wie sieht die
+Ablage aus" und gehört zu einer Prüfung (der `project-auditor` prüft laut Verfassung den Archivbaum
+gegen `filing_plan.yaml`), nicht zum Renderer. Ihn hier einzubauen hieße, den Renderer beim
+Onboarding über einen leeren Archivbaum urteilen zu lassen.
+
+**Was stattdessen begrenzt.** `gate_filing` verweigert jede Ablage, die keine Regel deckt — ein
+ungedeckter Ordner kann also nur aus der Zeit vor dem Kit stammen oder von Hand außerhalb der
+Werkzeuge entstanden sein. Die Ausgabe des Renderers sagt in ihrer Kopfzeile ausdrücklich, dass sie
+das Archiv „as `project_memory/filing_plan.yaml` describes it" zeigt.
+
+**Urteil: Rest, benannt.**
+
+### H92 — Der Wurzel-Leser des Kernels löst EINEN Sprung auf, die Forschungskette ist zwei tief (neu, TSK-0103)
+
+**Mechanismus:** `report._root_of` beantwortet „woran hängt dieses Item" mit dem **einen
+unmittelbaren Elternteil** (`parents[0] if len(parents) == 1 else None`), während
+`report._hangs_from` dieselbe Frage **transitiv** beantwortet.
+`dispatch._assert_task_origin_matches_root` benutzt den ersten. Damit ist die Hierarchie, die die
+research-Verfassung §4 vorschreibt — `RQ → HYP → EXP → TSK` — nicht anlegbar: der Ursprung `EXP`
+hat für die Prüfung die Wurzel `HYP`, für jede andere Stelle die Wurzel `RQ`.
+
+**Kette (gemessen 2026-09-01 in einem frisch gescaffoldeten research-Projekt, Rohdaten unter
+`_round-scratch/TSK-0103/`):**
+
+```
+$ python scripts/harness.py create-task --product-requirement RQ-0001 --derives-from EXP-0001 ...
+rc=1  derives_from EXP-0001 belongs to HYP-0001, not to this task's root RQ-0001 -- refused at
+      creation (spec II.8). ... Remedy: create the task under HYP-0001, or name an origin that
+      hangs from RQ-0001
+
+HYP-0001 parents=['RQ-0001']   _root_of=RQ-0001    _hangs_from(RQ-0001)=True
+EXP-0001 parents=['HYP-0001']  _root_of=HYP-0001   _hangs_from(RQ-0001)=True
+```
+
+**Wer hier recht hat, ist entschieden, und es ist nicht der Kernel.** `cli.py:484` führt `EXP`
+selbst als legalen Ursprung („the item whose criteria this task serves (root, BUG, CR, EXP)"),
+`cli.py:482` nennt `--product-requirement` „the PR/RQ root this task serves", und die Verweigerung
+oben formuliert ihren eigenen Ausweg **transitiv** („name an origin that hangs from RQ-0001").
+Drei Stellen des Kernels beschreiben also das Verhalten, das `_root_of` nicht liefert.
+
+Warum es nie ein Test gesehen hat: im dev-Kit liegt jeder Aufgaben-Ursprung genau eine Ebene unter
+der Wurzel (`PR → SR → TSK`, `PR → BUG`, `PR → CR`), da fallen die beiden Leser nie auseinander.
+Das research-Kit ist das einzige ausgelieferte mit einer tieferen Kette.
+
+Als laufende Messung gepinnt in `tools/test_research_chain.py::test_a_task_on_an_experiment_cannot_name_the_question_the_experiment_hangs_from`;
+der Test wird laut, sobald die Lücke geschlossen ist (im Klon nachgemessen: mit transitivem Term
+fällt er mit `assert 0 == 1`).
+
+**Urteil: blockierend und offen.** Die Kette läuft innerhalb einer Sitzung durch. Geschlossen ist
+sie nicht, und der Grund ist Zuständigkeit, nicht Schwierigkeit: der Fix liegt in
+`team-kits/kernel/`, das dem research-Stream nicht gehört (DEC-0057 a). **Was heute stattdessen
+begrenzt:** nichts an der Sache — der PM bleibt stehen und muss ausweichen, und beide Auswege sind
+selbst Löcher (H93, H95). Zur Abnahme durch den Nutzer.
+
+### H93 — Die Freigabe, auf die der genannte Ausweg zwingt, gibt es laut Kernel und Verfassung nicht, sie unterschreibt keinen Inhalt und sie stirbt nie (neu, TSK-0103)
+
+**Mechanismus:** Der Ausweg, den die H92-Verweigerung nennt („create the task under HYP-0001"),
+führt auf eine Aufgabe, deren Wurzel eine `HYP` ist. `dispatch` verlangt dafür eine Scope-Freigabe
+auf der `HYP`. Drei Stellen sagen, dass es die nicht gibt: die research-Verfassung §4 („`HYP` rides
+on the RQ's scope approval and carries no approval of its own"),
+`backlog_types.INVALIDATION_TARGET` („HYP deliberately absent") und
+`approvals.APPROVAL_TRANSITIONS`, das kein `("HYP", …)`-Paar führt. `request-approval scope
+HYP-0001` läuft trotzdem, und der Haken prägt.
+
+**Kette (gemessen 2026-09-01, echte Hook-Prozesse):**
+
+```
+$ python scripts/harness.py dispatch TSK-0002
+rc=1  no user approval authorises dispatching TSK-0002 under HYP-0001 ...
+      Remedy: obtain the scope approval for HYP-0001, ...
+$ python scripts/harness.py request-approval scope HYP-0001   -> rc 0, Frage wird gestellt
+   gate_approval.py (PostToolUse)                             -> approval APR-0004 recorded
+$ python scripts/harness.py dispatch TSK-0002                 -> rc 0, HARNESS_DISPATCH ...
+
+$ harness update HYP-0001 {"statement": "GEAENDERT: ..."}  -> rev 1, approval_ref: APR-0004
+$ harness update RQ-0001  {"motivation": "GEAENDERT"}      -> rev 2, approval_ref: -, Status DRAFT
+```
+
+**Drei Eigenschaften, und die dritte ist die schlimmste:**
+
+1. Der Nutzer unterschreibt **keinen Inhalt**. `item_subject_manifest` schneidet für `scope` gegen
+   `approvals._SCOPE_FIELDS`; eine `HYP` trägt davon **kein einziges** Feld. Der sha256, den die
+   Frage nennt, läuft also über Identität und Revision, nicht über die Aussage der Hypothese.
+2. Die Freigabe **stirbt nie**. `HASHED_FIELDS` führt kein `HYP`, also bewegt keine Änderung an
+   `statement` oder `testable_prediction` die Revision, und nichts entwertet die Freigabe. Wer die
+   Hypothese nach der Freigabe umdreht, dispatcht weiter unter der alten Zustimmung — die
+   Gegenprobe an der `RQ` in derselben Messung zeigt, wie es aussähe, wenn es griffe.
+3. Die Aufgabe **entzieht sich der QA-Schuldprüfung**. `report.accepted_without_a_verdict` sammelt
+   nur Aufgaben, deren Wurzeltyp in `ROOT_TYPE_BY_KIT.values()` liegt (`report.py:1509-1511`,
+   `delivery_roots`). Eine Aufgabe unter einer `HYP` fällt heraus und wird nie als „akzeptiert ohne
+   Urteil" gemeldet.
+
+**Urteil: blockierend und offen, sicherheitsrelevant** — das ist keine Buchhaltungsfrage: der
+einzige vom Kernel selbst genannte Weg an H92 vorbei erzeugt eine Dauerfreigabe über einen leeren
+Gegenstand und nimmt die betroffene Arbeit zugleich aus der Urteilspflicht. Der Fix liegt in
+`team-kits/kernel/` (nicht dieser Stream). **Was heute begrenzt:** nur, dass der Weg unüblich ist —
+in keinem Dokument steht er, aber die Verweigerung schlägt ihn vor. Zur Abnahme durch den Nutzer.
+
+### H94 — Der gerenderte Forschungsbericht hat keinen Schreibweg, während der Merge auf ihm besteht (neu, TSK-0103)
+
+**Mechanismus:** Die research-Verfassung §6 gibt `reports/EXP-*.{tex,pdf,html}` und
+`reports/fzulg_application_RQ-*.md` dem **Report-Writer**; §17 macht den gerenderten Bericht zur
+Vollständigkeitsbedingung eines Experiments. Der Merge hängt daran:
+`report._check_experiment_reports` (`report.py:1543-1560`) meldet als **error**, was in `ANALYZED`
+steht und **leere** `evidence_refs` hat, und `gate_memory_complete` liest den Validator auf der
+Merge-Zeile. Gleichzeitig verweigert `gate_write_scope` jeden Werkzeug-Schreibzugriff unter
+`project_memory/` und macht für dieses Fach keine Ausnahme — §0 der Verfassung sagt das
+ausdrücklich.
+
+**Kette (gemessen 2026-09-01, `gate_write_scope.py` hinter `_gate.py`, echte Payloads):**
+
+```
+Write project_memory/reports/EXP-0002.tex                   -> rc 2
+Write project_memory/reports/fzulg_application_RQ-0001.md   -> rc 2
+Write project_memory/staging/TSK-0001/EXP-0002.tex          -> rc 0
+Write reports/EXP-0002.tex                                  -> rc 0
+```
+
+Wortlaut der Verweigerung: „the TOOL route into such a file does not exist … No `python
+scripts/harness.py` command writes this one either, so this write has no route from inside this
+session." Der angebotene Ausweg — „filled by the entry gate BEFORE the kit is installed, or by the
+user in an editor outside this session" — passt auf die Masterplan-Klasse, aber nicht auf einen
+Bericht je Experiment, den es beim Onboarding noch nicht gibt.
+
+**Genau formuliert, damit es nicht überzeichnet ist:** der Merge blockt auf einem **leeren Feld**,
+nicht auf der Existenz einer Datei. Ein `evidence_refs`, das eine Evidenz nennt, die den Bericht
+vertritt, genügt ihm — und diese Evidenz kann ein Artefakt unter `staging/<TSK-ID>/` oder in einem
+`reports/` außerhalb des Zustandsverzeichnisses referenzieren. Was fehlt, ist nicht der Merge,
+sondern der Weg an den Ort, den §6 und §17 nennen.
+
+**Urteil: offen, und zur Hälfte eine Dokumentationsfrage.** §0 ist an dieser Stelle ehrlich; §6 und
+§17 verteilen eine Pflicht, ohne den Ort zu nennen, an dem sie heute erfüllbar ist. Der Fix ist
+entweder ein Kernel-Schreiber für dieses Fach (nicht dieser Stream) oder eine Verfassungsänderung,
+die den Ort nennt — die zweite kostet Zeichen im Lead-Paket, das auf seinem Deckel liegt. Zur
+Abnahme durch den Nutzer. **Verschärfend:** das Preset `solo` installiert gar keinen
+`report-writer` (`presets.yaml`), also fehlt derselbe Weg dort ein zweites Mal.
+
+### H95 — Die Ursprungsprüfung des Dispatchs fällt bei MEHRDEUTIGER Elternschaft offen aus, in allen Kits (neu, TSK-0103)
+
+**Mechanismus:** `report._root_of` gibt `None` zurück, sobald ein Item **mehr als ein**
+Bindungsfeld gefüllt hat (`report.py:934-941`, `parents[0] if len(parents) == 1 else None`).
+`dispatch._assert_task_origin_matches_root` prüft `if origin_root and origin_root != root["id"]`
+(`dispatch.py:176-177`) — bei `None` wird die Prüfung stillschweigend übersprungen. Die Prüfung,
+die verhindern soll, dass eine Aufgabe gegen die Kriterien einer **fremden** Wurzel gemessen wird,
+fällt also nicht zu, sondern auf.
+
+**Kette (gemessen 2026-09-01 vom Prüfer in seinem eigenen Rig):**
+
+```
+$ harness capture EXP {"derives_from": ["HYP-0001", "RQ-0001"], ...}  -> EXP-0004, _root_of = None
+$ harness create-task --product-requirement RQ-0002 --derives-from EXP-0004 ...  -> rc 0
+$ harness validate                                                    -> 0 error(s)
+   Kontrolle, dasselbe Experiment einelterig:                         -> rc 1
+```
+
+**Zwei Eigenschaften, die es größer machen als es aussieht:**
+
+* **Kit-unabhängig.** Betroffen ist jeder Typ, dessen Bindungsfeld eine LISTE tragen darf —
+  `SR.derives_from` zum Beispiel —, nicht nur die research-Kette.
+* **Es verschwindet nicht mit H92.** Der Prüfer hat H92 im Klon geschlossen (transitiver Term in
+  `_assert_task_origin_matches_root`); der Weg oben blieb rc 0. Die erste Fassung dieses Befundes
+  im Pilotdokument behauptete das Gegenteil und war falsch.
+
+**Urteil: blockierend und offen.** Kernel, nicht dieser Stream. **Was heute begrenzt:** eine
+mehrelterige Bindung entsteht nicht von selbst — sie muss beim `capture` so geschrieben werden;
+gegen einen irrenden oder gedrängten Orchestrator begrenzt das nichts. Zur Abnahme durch den
+Nutzer.
+
+### H99 — H11 hebt die Vier-Augen-Buchung mit auf: ein Skript trägt eine ungelesene Zeile nach `HEAD` und prägt die zweite Lesung (neu, TSK-0102, FR-0065)
+
+**Mechanismus.** `gate_second_booking` ruht auf zwei Annahmen, und beide sind Ableitungen aus
+`H11`s Interpreter-Ausnahme, nicht aus einer eigenen Schranke:
+
+1. **Die Grundlinie ist `HEAD`**, und was `HEAD` bewegt, sieht die Schicht nur so weit, wie
+   `gate_ledger_valid.requires_a_sound_ledger` einen Commit an der *Befehlszeile* erkennt. Ein
+   Commit, den ein SKRIPT ausführt, steht nicht in dieser Zeile — dieselbe Stelle, an der `H11`
+   schon Gate 3 aushebelt.
+2. **Die Attestierung liegt in `project_memory/.books/`**, wohin `gate_write_scope` jede *direkte*
+   Schreibweise verweigert — aber nicht das Skript, das sie ausführt.
+
+Bis zu dieser Runde behaupteten `_bookings.py`, die ENFORCEMENT-Zeile und ein Test-Docstring
+wortgleich das Gegenteil: „no snapshot can be minted: the only way into `HEAD` is a commit, and a
+commit is one of the moments this gate stands in". Das ist gemessen falsch und der Satz ist an allen
+drei Stellen gestrichen; was dort jetzt steht, ist die Ableitung als das, was sie ist.
+
+**Kette A, gemessen (2026-09-01, eigenes Rig gegen die Kette aus der ausgelieferten
+`settings.json`, Wegwerf-Projekt außerhalb des Repos), ungelesene 14,28-Zeile im Ledger:**
+
+```
+git commit -am books                       rc 2   VERWEIGERT (Vier-Augen)
+printf 'git add -A\ngit commit -m books\n' > release.sh    rc 0
+bash release.sh                            rc 0   DURCHGELASSEN
+  → die ungelesene Zeile steht in HEAD
+git commit -m more   (echter Commit)       rc 0   DURCHGELASSEN — die Zeile ist ab jetzt
+                                                   dauerhaft ausgenommen, mit NULL Lesungen
+```
+
+**Kette B, gemessen, dasselbe Vehikel gegen die Attestierung.** Zuerst jede DIREKTE Schreibweise
+gegen `project_memory/.books/readings.jsonl`, alle **rc 2**: `echo >>`, `cp`, ein Glob
+(`.books/*.jsonl`), `sed -i`, `tee -a`, `python -c`, `cd project_memory && echo >>` — dazu ein
+`Write` und ein Append-Redirect aus der Runde selbst. Dann:
+
+```
+ein attestierter Lauf, Zeile 14,28        rc 2   VERWEIGERT (eine Lesung, zwei nötig)
+bash mint.sh   (heredoc-Append an den Store)   rc 0   DURCHGELASSEN
+git commit -m books                        rc 0   DURCHGELASSEN — die falsche 14,28 ist gebucht
+```
+
+**Eine Begrenzung, die beim Nachmessen sichtbar wurde und die die Kette teurer macht, als sie
+aussieht:** der Store ist **erste-Zeile-gewinnt je (Datensatz, sha256)**. Eine gefälschte Zeile über
+DENSELBEN Datensatz ändert darum gar nichts (gemessen: Commit blieb rc 2). Wer prägen will, muss den
+Datensatz erst KOPIEREN und die Kopie attestieren — die Kopie selbst ist ein gewöhnlicher
+`staging/`-Schreibzugriff und braucht keinen Trick. Es sind also drei bewusste Schritte, nicht einer.
+
+**Warum nicht geschlossen.** Genau aus `H11`s Grund, und dieses Gate kann ihn nicht enger machen als
+die beiden Gates, auf denen es aufsitzt: die Interpreter-Ausnahme ist unverzichtbar (ohne sie
+verweigert Gate 1 jede dokumentierte Zeile dieses Repos), sie liegt in `gate_write_scope` und in
+`gate_ledger_valid`, und beides sind Dateien, die diese Schicht nicht besitzt. Eine eigene Antwort
+hier — etwa „jeder Interpreteraufruf verweigert, wenn ein Ledger unlesbare Zeilen trägt" — wäre
+Gerüst über dem Haus (DEC-0056) und würde das Kit für jede legitime Skriptnutzung stilllegen.
+
+**Was stattdessen begrenzt.**
+* **Absicht statt Versehen.** Beide Ketten verlangen, dass jemand eine Skriptdatei schreibt und sie
+  fährt. Kein Irrtum eines Bookkeepers landet hier; die Fehlklasse, für die FR-0065 gebaut ist
+  (BUG-0072: der Extraktor liest die falsche Zahl), läuft vollständig durch die Schicht.
+* **Sichtbarkeit im Commit.** Das Vehikel ist eine Datei im Arbeitsbaum. `release.sh`/`mint.sh`
+  stehen im Diff, den Gate 3 hasht und den ein Prüfer liest — anders als eine Befehlszeile, die
+  nirgends bleibt.
+* **Rollentrennung und Item**, also dasselbe, was `H11` selbst als einzige verbleibende Begrenzung
+  nennt: keine technische.
+
+**Urteil: blockierend nach der Hausregel — die Kette läuft innerhalb einer Sitzung durch. Als
+benannte Ausnahme geführt, Abnahme des Nutzers offen**, mit demselben Begründungsstand wie `H11`,
+dessen Klasse sie ist. Der Zusatz gegenüber `H11` ist die FOLGE: dort war es „ein Skript schreibt
+eine geschützte Datei" und „ein Skript stellt eine Freigabe aus", hier ist es „ein Skript hebt die
+Vier-Augen-Prüfung der Zahlen auf, die ans Finanzamt gehen" — und die ausgenommene Zeile bleibt
+ausgenommen, auch wenn nie wieder ein Skript läuft.

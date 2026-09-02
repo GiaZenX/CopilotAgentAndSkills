@@ -1,0 +1,29 @@
+id: FR-0073
+title: 'An invoice WRITER for the office kit: clean, norm-conformant e-invoices (XRechnung
+  / ZUGFeRD, EN 16931) from ledger and master data, validated before they leave the
+  house'
+request_text: 'User wish 2026-09-02 during the FR survey: es waere gut, wenn wir ein
+  Rechnungstool haben, um sauberere konforme Rechnungen zu schreiben; unklar, ob eigenes
+  Tool/Projekt, integriert, oder ein eigenes Projekt, das das Kit nutzen kann. Lead
+  first assessment, to be measured by the round: INTEGRATED as a kit-owned template
+  script beside the existing READER (templates/repo/scripts/einvoice_extract.py, TSK-0091)
+  -- a writer that renders an outgoing invoice from business_profile (sender, tax
+  id, Kleinunternehmer flag), master_data and the ledger row, in a profile the receiver
+  can read (XRechnung XML for public-sector receivers, ZUGFeRD hybrid PDF+XML for
+  B2B), and validates it against the authoritative KoSIT validator before it lands
+  in outbox/ for the user approval. Legal frame measured in the 2026-08-31 office
+  survey: receive duty since 2025, issue duty 2027 (over 800k turnover) / 2028 (all)
+  -- so the writer is not urgent for a Kleinunternehmer but the reader already is.
+  Decisions the round owes, measuring: (1) library vs own rendering -- which open-source
+  libraries exist with a license the kit may ship (the office survey found none checked
+  yet), (2) validator route (KoSIT engine as a CLI dependency vs a web validator that
+  leaks invoice data -- the latter is out), (3) number sequence and immutability (GoBD:
+  an issued invoice never changes; the writer needs a sanctioned numbering source
+  and a refuse-on-reissue), (4) shape: script vs role duty vs taught PROC, per FR-0028.
+  Not a separate product: the kit line is one apparatus, and a separate project would
+  be a second place for business_profile and master_data to drift.'
+related_pr: FR-0033
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T07:42:11'

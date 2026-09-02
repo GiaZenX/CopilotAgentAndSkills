@@ -53,7 +53,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "95f368ee6c19f080",
+        "digest": "6f4a5b0337da8542",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -86,6 +86,10 @@
       },
       "15. Upkeep": {
         "digest": "759b20a53ddd1fa4",
+        "hooks": []
+      },
+      "1a. Skills — one procedure per role, any number of shared references": {
+        "digest": "c3bcd418eb2de586",
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
@@ -264,7 +268,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "0e81b6a8ab9a1a4c",
+        "digest": "19a524d64f870fac",
         "hooks": [
           "gate_design_sighted",
           "gate_dispatch",
@@ -298,8 +302,10 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "6155635ffab6b61e",
-        "hooks": []
+        "digest": "ff7c20d8b8152448",
+        "hooks": [
+          "gate_filing"
+        ]
       },
       "Work loop (sequence + ungated duties: constitution §4a; the `office-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
         "digest": "153b4fb983e3fc43",
@@ -312,7 +318,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "73c9a04fe76b8a03",
+        "digest": "7b4ca15380bb2cb6",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -329,7 +335,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "696eafe900f1dcfd",
+        "digest": "66da6266001ebb06",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -338,6 +344,7 @@
           "gate_ledger_valid",
           "gate_proc_approved",
           "gate_push_token",
+          "gate_second_booking",
           "gate_second_reading",
           "gate_shell_hygiene",
           "gate_subagent_output",
@@ -353,6 +360,7 @@
           "guard_yaml_valid",
           "kit_trust_state",
           "notify_agent_events",
+          "record_booking_reading",
           "record_filing_reading",
           "session_status"
         ]
@@ -398,7 +406,7 @@
         ]
       },
       "8. Behavior": {
-        "digest": "b385c7fe092c0648",
+        "digest": "ee46c9b92e43d23b",
         "hooks": []
       },
       "9. Git & data": {
@@ -421,8 +429,9 @@
         "hooks": []
       },
       "1. What each mechanism refuses": {
-        "digest": "4266fc9e1632fa20",
+        "digest": "4526c32a39e6e7ee",
         "hooks": [
+          "_gate",
           "clear_handover_marker",
           "gate_approval",
           "gate_dispatch",
@@ -430,6 +439,7 @@
           "gate_ledger_valid",
           "gate_proc_approved",
           "gate_push_token",
+          "gate_second_booking",
           "gate_second_reading",
           "gate_shell_hygiene",
           "gate_subagent_output",
@@ -445,6 +455,7 @@
           "guard_yaml_valid",
           "kit_trust_state",
           "notify_agent_events",
+          "record_booking_reading",
           "record_filing_reading",
           "session_status"
         ]
@@ -463,6 +474,12 @@
         "digest": "5543de19b80ef1dc",
         "hooks": [
           "gate_write_scope"
+        ]
+      },
+      "The Aktenplan at onboarding: a binding DRAFT, and a tree the user can see": {
+        "digest": "8821690cf78edd8d",
+        "hooks": [
+          "gate_filing"
         ]
       },
       "What language the VALUES inside an approval question are written in": {
@@ -537,7 +554,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "6491cfcf266b37b3",
+        "digest": "965f17c2a06b019c",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -581,7 +598,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "2ca6c49836cc3645",
+        "digest": "5dd40ec5f730eb3c",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -613,7 +630,7 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "becd81a7b51ae1ab",
+        "digest": "181867502a257c77",
         "hooks": []
       },
       "5. Phase model": {

@@ -12,7 +12,10 @@ request_text: 'Gap named by the lead and prioritised by the user 2026-08-15 (all
   and is guarded). Design question for the round: role vs taught workflow -- measure
   what the PROC mechanism can already carry before adding a role. Source: user selection
   2026-08-15.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T23:03:40'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter -- outbox/ is the shared outgoing tray for every role (clarified); the invoice
+  WRITER became FR-0073.'

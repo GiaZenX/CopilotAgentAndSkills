@@ -254,6 +254,37 @@ def test_every_file_the_package_weighs_checks_out_lf():
         "any hook is installed (BUG-0025): %s" % wrong)
 
 
+def test_no_file_the_package_weighs_carries_crlf_on_disk():
+    """The other half of its neighbour, and a SEPARATE test because it needs no git at all.
+
+    THE ATTRIBUTE IS WHAT GIT PROMISES; THIS IS WHAT IS THERE. The two come apart, and git cannot
+    report it: it normalizes on the way IN, so a file an editor saved with CRLF reads as unmodified
+    and keeps its `eol=lf` attribute while carrying CRLF on disk. Measured on this working tree
+    2026-09-02: 47 tracked text files were in exactly that state, NONE of them in a lead package --
+    so nothing was wrong, and nothing could have said so either.
+
+    WHAT IT WOULD COST is the whole of BUG-0025 once more, in the direction nobody watches: the size
+    RECORD is taken from these bytes (`tools/record_lead_package_sizes.py`), and the ceiling is an
+    EQUALITY (`test_the_recorded_ceiling_is_the_measurement_and_not_a_typed_number`) -- so a record
+    taken over a CRLF file is a number no LF checkout can ever match, and it would be CI that goes
+    red rather than the machine that wrote it. The kit content hash is unaffected either way
+    (`kernel.hashing.kit_hash` normalizes CRLF before it digests), which is why this lives here and
+    not there.
+
+    SEPARATE, and that is measured rather than tidy: folded into its neighbour, the assertion never
+    ran in a clone without `.git` -- the two `pytest.skip`s there stand ahead of it, and a mutation
+    that put CRLF into a shipped constitution came back "1 skipped".
+    """
+    weighed = [path for kit in KITS for path in lead_package.files(_kit_dir(kit))]
+    assert weighed, "the package weighs nothing — the subject derived to nothing"
+    crlf = {os.path.relpath(path, ROOT).replace(os.sep, "/"): body.count(b"\r\n")
+            for path, body in ((path, io.open(path, "rb").read()) for path in weighed)
+            if b"\r\n" in body}
+    assert not crlf, (
+        "these files feed the byte-size check and carry CRLF on disk, so the size recorded here is "
+        "one an LF checkout cannot reproduce: %s" % crlf)
+
+
 OBSERVATIONS = json.load(io.open(os.path.join(ROOT, "tools", "provider_observations.json"),
                                  encoding="utf-8"))
 

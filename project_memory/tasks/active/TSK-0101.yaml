@@ -1,0 +1,44 @@
+id: TSK-0101
+product_requirement: FR-0041
+derives_from: FR-0041
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/kernel/kitupdate.py
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/dev-team/**
+- team-kits/office-team/**
+- team-kits/research-team/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0041.yaml
+- project_memory/inbox/active/FR-0044.yaml
+- project_memory/inbox/active/FR-0055.yaml
+- project_memory/inbox/active/FR-0046.yaml
+- docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
+expected_outputs:
+- 'pin and rollback as kernel mechanisms: an installed project can be pinned to its
+  bundle, and rollback restores the previous bundle from the existing backups (FR-0041)'
+- installer preflight classifies the stock found (greenfield/V2/V1/mixed) with a no-write
+  proof on V1 (FR-0044)
+- user-scope defaults ship remoteControlAtStartup=false, added only when the key is
+  absent (FR-0055)
+- field test of the update path on COPIES of the three v2-pilot projects, copy-before-use,
+  masters untouched (FR-0046)
+- red-first for every fix; affected suites green; kits stamped provisionally (DEC-0057
+  d); hole entries use reserved numbers H86-H88 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-01T21:19:41'

@@ -12,7 +12,10 @@ request_text: 'User wish (2026-08-14/15): the ''app'' runs containerised -- deco
   Erste Scheibe #3). Depends naturally on FR-0023 (provider-agnostic harness) and
   FR-0024 (backlog UI) if it becomes the desktop app''s runtime. Post-release; user
   prioritises.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T13:32:08'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter -- behind FR-0024; pros/cons given (config separation vs a second platform
+  every gate would need re-measuring on).'

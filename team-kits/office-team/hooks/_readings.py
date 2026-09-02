@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """
-Shared helper: the classification READINGS a filing is judged against, and who the PROVIDER says
-wrote each one. Two hooks use it — `record_filing_reading` writes the attestations,
-`gate_second_reading` reads them — and it exists as one module because a store whose writer and
-reader spell its shape separately is the drift `_filing` was split out to prevent.
+Shared helper: the independent READINGS a decision is judged against, and who the PROVIDER says
+wrote each one. FOUR hooks use it, in two pairs — `record_filing_reading`/`gate_second_reading` for
+the FILING of a document (FR-0035), `record_booking_reading`/`gate_second_booking` for the BOOKING
+of a ledger row (FR-0065) — and it exists as one module because a store whose writer and reader
+spell its shape separately is the drift `_filing` was split out to prevent. What differs between the
+two pairs is named by a `Contract` and nothing else; the semantics of the filing keys stay here,
+the semantics of the booking keys live in `_bookings`.
 
 WHAT "INDEPENDENT" MEANS HERE, stated as the property that is measured and not as the one that
 would be nice. A reading counts as a reading only when an attestation names the RUN that wrote those
@@ -35,8 +38,9 @@ WHERE THE STORE LIVES AND WHY THERE. `project_memory/.filing/readings.jsonl` —
 state directory and outside `staging/`, which is exactly the area `gate_write_scope` refuses every
 tool write to and every write-capable shell line that names it. That is what makes an attestation
 something an agent cannot mint for itself; it is the same protection `kit_state.json` has and it
-has the same named limit — a shell line that names the path NOWHERE (a glob, a script) is refused
-by nothing here. `test_an_agent_cannot_write_the_attestation_store_through_the_registered_chain`
+has the same named limit — a shell line that names the path NOWHERE, because a SCRIPT it starts
+does the writing, is refused by nothing here (`H11`). A GLOB is not that case and was named as
+one for a round: measured rc 2 through the registered chain. `test_an_agent_cannot_write_the_attestation_store_through_the_registered_chain`
 measures the covered half.
 """
 import hashlib
@@ -58,6 +62,31 @@ READ_KEYS = (SOURCE, DESTINATION, DOCUMENT_CLASS)
 STORE_DIR = ".filing"
 STORE_NAME = "readings.jsonl"
 STAGING = "staging"
+
+
+class Contract(object):
+    """One KIND of reading: the schema that declares its shape, the key that names the DOCUMENT it
+    is about, and the directory its attestations live in.
+
+    IT EXISTS BECAUSE THERE ARE TWO OF THEM AND NOT BECAUSE THERE MIGHT BE. FR-0035 built the
+    four-eyes rule for FILING; FR-0065 asked for the same rule on BOOKING, whose figures end at the
+    Finanzamt. Everything below the semantics — recognising a staged record, binding it to a run and
+    to the document's bytes, first-line-wins in the store — is the same question twice, and a second
+    copy of it is the drift this module was split out of two hooks to prevent.
+
+    `read_keys` EMPTY means "whatever the schema declares as `item_required`". That is the booking
+    contract's answer: there the declared keys ARE the comparison, so a tuple here would be a second
+    statement of the schema. The filing contract names its three, for the reason directly above.
+    """
+
+    def __init__(self, schema, source_key, store_dir, read_keys=()):
+        self.schema = schema
+        self.source_key = source_key
+        self.store_dir = store_dir
+        self.read_keys = tuple(read_keys)
+
+
+FILING = Contract(SCHEMA, SOURCE, STORE_DIR, READ_KEYS)
 # The run identity of the SESSION INSTANCE. It is not a spawn and carries no `agent_id`
 # (`tools/provider_observations.json` -> `agent_identity`), so every call it makes is this one run.
 SESSION_RUN = "session"
@@ -118,8 +147,8 @@ def run_identity(data):
     return str(data.get("agent_id") or "").strip() or SESSION_RUN
 
 
-def store_path(state):
-    return os.path.join(state, STORE_DIR, STORE_NAME)
+def store_path(state, spec=FILING):
+    return os.path.join(state, spec.store_dir, STORE_NAME)
 
 
 def digest(path, limit=None):
@@ -139,7 +168,7 @@ def digest(path, limit=None):
         return None
 
 
-def source_digests(root, entries):
+def source_digests(root, entries, spec=FILING):
     """{source path: sha256 of the DOCUMENT as it lies now} for the entries of one reading record.
 
     WHY THE ATTESTATION BINDS THE DOCUMENT AND NOT ONLY ITS PATH. Two readings agree that
@@ -159,7 +188,7 @@ def source_digests(root, entries):
     """
     found = {}
     for entry in entries:
-        source = as_landing(entry.get(SOURCE))
+        source = as_landing(entry.get(spec.source_key))
         if not source or source in found:
             continue
         digested = digest(os.path.join(root, source.replace("/", os.sep)), MAX_DOCUMENT_BYTES)
@@ -168,28 +197,90 @@ def source_digests(root, entries):
     return found
 
 
-def contract(kernel_module):
-    """The name of a reading record's LIST FIELD, read off the schema — or None.
+# The plan field a rule uses to release its own class from the SECOND reading. Its VALUES are not
+# enumerated anywhere: `readings_required` reads the one answer YAML gives as a boolean false and
+# treats everything else — absent, true, a word, a list — as "not released".
+SECOND_READING = "second_reading"
+# The two answers `readings_required` gives, named because both appear in refusals the user reads
+# and a number that lives in two places is the one that stops matching the code.
+REQUIRED_READINGS = 2
+RELEASED_READINGS = 1
+
+
+def readings_required(rule):
+    """How many independent readings this policy entry demands. TWO unless it says otherwise.
+
+    ONE FUNCTION, TWO CALLERS, and the entry is whichever document the user owns for that decision:
+    a `filing_plan.yaml` RULE for a document entering the archive (`gate_second_reading`), a
+    `master_data.yaml` CATEGORY for a row entering the ledger (`gate_second_booking`). An entry that
+    does not exist — a category nobody put in the vocabulary — is `None` here and asks for two,
+    which is the side a project starts on and the side an invented category lands on.
+
+    TWO BY DEFAULT, and the only way to say otherwise is a value the plan's own YAML reads as the
+    boolean false — so the spellings that release a rule (`false`, `no`, `off`, `False`) are
+    PyYAML's and not a tuple in this file. Every other value, the field being absent included, is
+    "not released": a plan that says nothing has released nothing, and a typo must not read as a
+    release.
+
+    A RELEASE IS ONE READING, NOT NONE, and that is a correction of this round's own first cut. The
+    user's question was "two runs for every document, or only for the classes the plan marks" — one
+    run against two, never zero — and reading `false` as "ask nothing" made the released class a
+    laundry: measured 2026-08-29, a document already filed under a SECURED rule could be renamed
+    into a released folder with no reading of any kind, because the gate stood down entirely there.
+    A released class still has to have been READ once by an attested run; what the user gave up is
+    the second opinion, not the record.
+    `test_a_plan_rule_can_release_its_own_class_from_the_second_reading` measures all three states.
+    """
+    return (RELEASED_READINGS if (rule or {}).get(SECOND_READING, True) is False
+            else REQUIRED_READINGS)
+
+
+def contract_of(kernel_module, spec=FILING):
+    """(name of the record's LIST FIELD, the per-entry keys it owes) — read off the schema.
 
     `kernel_module` is `_kernel.kernel_module` — passed in rather than imported, so the failure to
     reach the kernel belongs to the caller, which is the one that knows whether failing means
-    "refuse" or "record nothing". None when the schema is unreachable, declares no list field, or
-    declares one whose required per-entry keys do not include all of `READ_KEYS`. Both callers read
-    None as "no reading can be recognised", which refuses a filing rather than allowing one.
+    "refuse" or "record nothing". `(None, ())` when the schema is unreachable, declares no list
+    field, or declares one whose required per-entry keys do not include all of the contract's own
+    `read_keys`. Every caller reads that as "no reading can be recognised", which refuses rather
+    than allows.
+
+    THE KEYS COME BACK WITH THE NAME because for the booking contract they ARE the answer: what a
+    booking reading must state is the schema's business, and a hook that spelled the list again
+    would be a second contract nothing compares against the first.
     """
     try:
         schemas = kernel_module("schemas")
-        schema = schemas.load_schema(SCHEMA) or {}
+        schema = schemas.load_schema(spec.schema) or {}
     except BaseException:  # noqa: BLE001 — an unreachable contract is not an empty one
-        return None
-    for name, spec in (schema.get("fields") or {}).items():
-        keys = set(((spec or {}).get("item_required")) or ())
-        if (spec or {}).get("type") == "list" and keys.issuperset(READ_KEYS):
-            return name
-    return None
+        return None, ()
+    for name, declared in (schema.get("fields") or {}).items():
+        keys = tuple((declared or {}).get("item_required") or ())
+        if (declared or {}).get("type") == "list" and set(keys).issuperset(spec.read_keys):
+            return name, keys
+    return None, ()
 
 
-def staged_records(state, field):
+def contract(kernel_module):
+    """The FILING contract's list field, or None — `contract_of`'s answer for the one caller pair
+    that only ever asks about filing (`gate_second_reading`, `record_filing_reading`)."""
+    return contract_of(kernel_module, FILING)[0]
+
+
+def stated(value):
+    """Has this entry actually ANSWERED for a key? Present, not null, not blank.
+
+    NOT TRUTHINESS, and the difference is a measured defect rather than a nicety: FR-0065's booking
+    readings carry `vat_rate`, and a kleinunternehmer or reverse-charge invoice reads `0` there. YAML
+    parses that as the integer zero, which is falsy — so a truth test dropped every such reading, the
+    row it belonged to could never be covered, and the project would have been walled off its own
+    commits with a refusal pointing at a record that was there. An empty string and a missing key
+    stay "not answered", which is the case the check exists for.
+    """
+    return value is not None and str(value).strip() != ""
+
+
+def staged_records(state, field, keys=READ_KEYS):
     """[(state-relative path, sha256, [entry dicts])] for every staged file that IS a reading record.
 
     Recognised by SHAPE and not by filename: a mapping under `staging/<item>/` carrying the schema's
@@ -227,14 +318,14 @@ def staged_records(state, field):
             if not isinstance(parsed, dict):
                 continue
             entries = [e for e in (parsed.get(field) or [])
-                       if isinstance(e, dict) and all(e.get(key) for key in READ_KEYS)]
+                       if isinstance(e, dict) and all(stated(e.get(key)) for key in keys)]
             if entries:
                 found.append((os.path.join(STAGING, item, name).replace("\\", "/"),
                               digest(path), entries))
     return found
 
 
-def attestations(state):
+def attestations(state, spec=FILING):
     """{(state-relative path, sha256): (run, {source: sha256})} — the store as it stands.
 
     FIRST LINE WINS for one (path, digest). An attestation is a statement about who wrote those
@@ -243,7 +334,7 @@ def attestations(state):
     """
     found = {}
     try:
-        with open(store_path(state), encoding="utf-8") as handle:
+        with open(store_path(state, spec), encoding="utf-8") as handle:
             for line in handle:
                 line = line.strip()
                 if not line:
@@ -262,7 +353,7 @@ def attestations(state):
     return found
 
 
-def attest(state, records, run, root):
+def attest(state, records, run, root, spec=FILING):
     """Append an attestation for every record whose current bytes have none. Best effort.
 
     Best effort on purpose: this runs on PostToolUse, where an exit code decides nothing, and a
@@ -273,19 +364,19 @@ def attest(state, records, run, root):
     documents it names looked like at that moment (`sources`, from the filesystem). See
     `source_digests` for why the second half is here and not a field of the record.
     """
-    known = attestations(state)
+    known = attestations(state, spec)
     new = [(path, sha, entries) for path, sha, entries in records
            if sha and (path, sha) not in known]
     if not new:
         return []
     try:
-        os.makedirs(os.path.join(state, STORE_DIR), exist_ok=True)
-        with open(store_path(state), "a", encoding="utf-8") as handle:
+        os.makedirs(os.path.join(state, spec.store_dir), exist_ok=True)
+        with open(store_path(state, spec), "a", encoding="utf-8") as handle:
             for path, sha, entries in new:
                 handle.write(json.dumps({
                     "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
                     "record": path, "sha256": sha, "run": run,
-                    "sources": source_digests(root, entries),
+                    "sources": source_digests(root, entries, spec),
                 }, ensure_ascii=False) + "\n")
     except OSError:
         return []

@@ -21,7 +21,9 @@ request_text: 'User question 2026-08-16: has the wishlist MD been fully migrated
   expect them. The SOURCE repo is the workshop -- none of these files ship into user
   projects; the cleanup is about workshop hygiene, not user-facing clutter. Source:
   user questions 2026-08-16.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-16T10:01:07'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- hygiene round after the feature streams.'

@@ -20,15 +20,6 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T09:41:11'
-triage_result: 'wanted: the flagship post-release wish. RESEARCHED 2026-08-15, full
-  findings in docs/research/2026-08-15-multi-provider-eigene-oberflaeche.md: buildable
-  as sketched with named cuts -- Agent SDK as engine (in-house pilot mechanics measured;
-  new-but-documented: partial-message streaming, session resume, interrupt depth unverified),
-  per-session provider casting is the documented normal case (one session = one endpoint),
-  AskUserQuestion never reaches subagents (matches the kit rule), an own UI rendering
-  systemMessage visibly closes the measured BUG-0039 terminal blind spot, parallel
-  sessions share ONE subscription window, prior art exists (claudecodeui 13k stars,
-  claude-code-router 37k stars; LiteLLM malware warning). First slice confirmed: read-only
-  kanban from the index -> one persistent PM session -> config separation (the measured
-  pilot mechanism) -> then intake+multi-provider. Shell choice Tauri-vs-Electron is
-  an open user decision.'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter -- keep, behind the kit fixes. FR-0022 (human names) pairs with THIS item,
+  not FR-0021.'

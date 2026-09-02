@@ -14,7 +14,9 @@ request_text: 'Radar 2026-08-29 item 1 (source: radar/2026-08-29-claude.md, chan
   a BOM (both-ends tripwire per house rules); (b) the one-line CC-floor note about
   the load contract where the install notes keep such floors. Estimated ~30-45 min,
   rider-sized.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-29T10:24:37'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- Kleinkram rider.'

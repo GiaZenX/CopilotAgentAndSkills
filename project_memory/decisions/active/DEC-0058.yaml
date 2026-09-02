@@ -1,0 +1,51 @@
+id: DEC-0058
+title: 'Plan-level approval: the user approves the derived goal list ONCE; afterwards
+  the team works the whole plan and asks only for the irreversible and the taste-bound
+  (merge/push, design choices, money, anything leaving the house)'
+context: 'User impression 2026-09-01 (a fresh kit project feels dumber and less efficient,
+  blocks itself, asks at every FR) and his restated wish 2026-09-02 (FR-0074, verbatim):
+  Es waere wichtig dass der Plan penibel steht und jedes PR anhand des Plans durchgegangen
+  wird mit eigenen Vorschlaegen und man wirklich an jede Ecke denkt. Und sobald alle
+  PR bestaetigt sind alles abgearbeitet wird ohne weitere Fragen ausser noetig. So
+  hat man mehr den Eindruck autonom. MEASURED TODAY (Canyon audit 2026-08-30): one
+  PR at a time, each with a scope approval + a delivery approval + three to four design
+  questions for UI; ten goals = twenty-plus questions. The kit foundation stays: a
+  status the supervised party can set itself is a status no gate may read as approval
+  -- so the plan-level approval is a REAL minted approval whose manifest is the confirmed
+  goal list, not prose. Asked 2026-09-02 via AskUserQuestion which questions remain
+  after the plan approval; the user chose: Nur Unumkehrbares + Geschmack.'
+decision: '(1) PLANNING PHASE, thorough by design: the PM derives the full goal list
+  from the masterplan, walks EACH goal through with the user, adds its own proposals
+  and thinks around corners (the user words), and records every confirmed goal as
+  a PR with acceptance criteria. (2) ONE plan-level approval covers the confirmed
+  list -- a minted approval of a new kind whose subject manifest hashes the list of
+  PR ids and their acceptance criteria; a later change to any listed PR invalidates
+  it (HASHED_FIELDS), exactly as scope approvals behave today. (3) After it, per-goal
+  SCOPE questions fall away; the team works the list in order. (4) What still asks
+  the user, as a PROPERTY not a list: an action that is irreversible or leaves the
+  house (merge to a shared branch, push, a write to an external system, money) and
+  a taste-bound choice (design direction, wording the user must own). Everything the
+  plan settled is not asked again. (5) Delivery stays per goal on the machine side:
+  verdicts, evidence, merge gates -- the user is not asked, the gates are. A goal
+  the team cannot do as planned comes back as ONE question, never an improvisation.
+  (6) The round measures the width it opens: how many questions a ten-goal plan needs
+  before/after, and whether any irreversible step became unasked -- if so, that is
+  a blocking finding. Neighbours untouched: DEC-0034 (ladder), DEC-0055 (tiers), the
+  four-eyes gates of the office kit, DEC-0056 (this catches a MEASURED error: the
+  user counted the questions).'
+consequences: 'FR-0074 becomes buildable as its own round after the DEC-0057 merge:
+  kernel (a new approval kind + its manifest + invalidation) plus PM skill/constitution
+  text in all three kits -- it therefore waits for streams E (texts) and F (kernel)
+  or is cut as the round that follows both. The office kit keeps its per-document
+  and per-booking approvals (those are external writes and money -- inside the property
+  in (4)). The user is told, at the first plan approval, what the approval covers
+  and what will still be asked -- in the card, not in prose beside it. Related items:
+  FR-0074 (source), BUG-0078/0080/0081 (the self-blocking half of the same impression,
+  separate fixes), FR-0005 (cut critic, separate and smaller).'
+source: 'Nutzerentscheidung 2026-09-02 per AskUserQuestion (Option: Nur Unumkehrbares
+  + Geschmack); Nutzerwunsch FR-0074 im Wortlaut; Canyon-Audit 2026-08-30 als Messung
+  des heutigen Fragevolumens'
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:55:22'

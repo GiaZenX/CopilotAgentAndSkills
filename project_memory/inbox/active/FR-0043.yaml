@@ -4,7 +4,9 @@ request_text: 'TSK-0069 side check N10. Measured: the shipped CI workflow has on
   job (quality) with seven steps (YAML parsed); no bench, no p95 measurement. The
   spec itself marks it non-blocking -- priority accordingly low, but it is an open
   promise. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md N10.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-16T14:06:45'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter.'

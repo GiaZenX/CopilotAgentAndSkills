@@ -332,7 +332,7 @@ authority: today `doctor`, `validate`, `generate-index`, `generate-session-brief
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
 `archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`,
 `freeze-architecture`, `freeze-wireframe`, `freeze-design`,
-`migrate`. Of the twelve
+`migrate`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also
@@ -749,6 +749,22 @@ the user with `request-approval kit_update`, and on their answer runs `update-ki
 kit's own installer (backup first, copy-if-absent, `project_memory/` content is never overwritten; the update
 adds missing typed directories, it never touches an existing item), refuses a downgrade, and stops the session
 so the new registration binds at the next start. **You type no shell commands for this.**
+
+**Holding a project at the release it runs.** A file `./.claude/kit_pin` naming a release refuses
+every door into the enforcement layer — the update command, the installer run by hand, and a
+rollback — while re-installing that same release stays allowed, so a half-finished install can
+still be repaired. `python scripts/harness.py pin-kit` prints the two lines to put in that file,
+filled in with the release this project runs; `python scripts/harness.py unpin-kit` prints the pin
+it carries and the file to delete.
+
+**Going back.** The installer snapshots what it replaces into `./.claude/backups/<stamp>/` and can
+replay exactly the paths that snapshot recorded (`scaffold_team.sh --rollback` /
+`scaffold_team.ps1 -Rollback`); `python scripts/harness.py rollback-kit` names the snapshot and
+prints that line.
+
+**All three print; none of them writes.** Creating and deleting the pin file is yours alone — a pin
+an agent could lift would not be holding anything, and a rollback replaces the enforcement layer
+just as an update does.
 
 **A project installed BEFORE that command existed (kits up to `2026.08.14-9`) cannot reach it** — its own
 kernel has no `update-kit`, and its own write-scope gate refuses the installer to anything inside the session.

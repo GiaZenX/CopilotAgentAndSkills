@@ -1,0 +1,54 @@
+id: TSK-0107
+product_requirement: FR-0034
+derives_from: FR-0034
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/office-team/hooks/**
+- team-kits/*/hooks/session_status.py
+- team-kits/office-team/templates/project_memory/**
+- team-kits/office-team/templates/repo/scripts/**
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/kernel/**
+- team-kits/dev-team/hooks/**
+- team-kits/research-team/hooks/**
+- team-kits/office-team/templates/repo/tools/**
+- team-kits/office-team/templates/repo/dashboards/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0034.yaml
+- project_memory/inbox/active/FR-0038.yaml
+- project_memory/inbox/active/FR-0028.yaml
+- project_memory/inbox/active/FR-0002.yaml
+- docs/office-kit-from-field.md
+expected_outputs:
+- deadline register derived from business_profile/filing_plan/ledger + a session-start
+  notice (FR-0034); auditor run record + overdue notice, the hook REPORTS, the PM
+  spawns (FR-0038) -- session_status.py mirrored byte-identical across kits
+- 'FR-0028 measurement: teach a PROC -> next session same repo -> holds; plus a tools/
+  test that no shipped kit text names Shopify or a product group (violations are SEAM
+  items for stream E, not edits here)'
+- FR-0002 F2-F6 template work (retention with legal basis and honesty note, naming
+  scheme, inbox/archive boundary as a definition, deletion quarantine, .gitignore
+  rules); F7/F8 named as follow-ups
+- role/skill sentences these need are SEAM items for stream E; red-first; provisional
+  stamp; hole numbers H111-H113 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:56:27'

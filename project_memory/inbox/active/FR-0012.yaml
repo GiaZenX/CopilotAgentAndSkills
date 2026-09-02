@@ -54,5 +54,5 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-09T09:35:01'
-triage_result: 'wanted: no decision-in-prose catcher exists; guard_no_adhoc is name-based
-  and reads no content (assessment TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- as a verifier duty, no new scaffold.'

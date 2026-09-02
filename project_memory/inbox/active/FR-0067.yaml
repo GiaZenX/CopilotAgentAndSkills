@@ -19,7 +19,10 @@ request_text: 'Follow-up named by the TSK-0096 round (BUG-0075/BUG-0071 lineage)
   a hole-list entry: nothing enforces wrongly today -- the current state is honest
   and refuses loudly.'
 related_pr: BUG-0071
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-30T17:00:57'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- kernel round with its own security weighing; deletion gets a louder
+  card than replacement.'

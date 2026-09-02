@@ -17,6 +17,8 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T09:24:49'
-triage_result: wanted, PARKED by the user 2026-08-15 ('bin mir noch nicht sicher ob
-  ich das will') -- no build until the user re-raises it; the thin-install redesign
-  and the .gitignore interim step both stay described in the request
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  ANGEPASST -- ''kann im Repo bleiben, aber alles in EINEN Ordner? so viele Verzeichnisse''.
+  New shape: one folder for everything kit-owned outside the provider-fixed dirs (.claude/.codex/.agents
+  stay where the providers read them; scripts/tools/dashboards fold; project_memory
+  stays); measure which dirs are provider-fixed before moving anything.'

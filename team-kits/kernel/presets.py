@@ -356,6 +356,12 @@ def installer_command(kit: str):
 
 
 AGENTS_DIR = os.path.join(".claude", "agents")
+# The installer's OTHER role-artifact destination, and it is stated here for the same reason as
+# `AGENTS_DIR`: this module is what drives the scaffold, so the paths the scaffold writes are its
+# answer to give. `UNREAD` below already had to name `.claude/skills` in prose; `kernel.references`
+# now reads it, and a kit that moved its skills would move both with this line instead of leaving a
+# second spelling somewhere to go stale.
+SKILLS_DIR = os.path.join(".claude", "skills")
 ROLE_SUFFIX = ".md"
 
 # WHAT THE TWO READERS DO NOT COVER, in the words the refusals carry -- one sentence, and EVERY

@@ -1,0 +1,19 @@
+id: EVD-0075
+kind: review
+related:
+- TSK-0104
+result: pass
+summary: 'verifier PASS for diff:dae7f26816fb9612a68424fbbfd5c5e098114fe7ddf436584eacc8323f1a4683
+  -- TSK-0104 merge of DEC-0057 generation 1 (streams A/B/C/D, each PASSed by its
+  own verifier): merge verifier FAIL(protocol spelled V1 paths; seam tripwire duty
+  half dead) -> FAIL(H88 a4 unclosability claim false) -> PASS after the RESTORE_SET
+  ownership guard in both twins + cross-twin BOM defect closed. Full tools/ suite
+  on the release tree 2026.09.02-10: 4151 passed 14 skipped 0 failed (52:11); after
+  the lead''s prose fixes (four verdict spans H83/H84/H85/H87, H86 test path, H88
+  a4/KEPT_ONLY, protocol arithmetic) the doc-reading suites 95 passed and the gate-suite
+  hole-list tripwires 9 passed'
+artifact_refs:
+- staging/TSK-0104/merge-protocol.md
+revision: 1
+approval_ref: null
+created: '2026-09-02T11:16:31'

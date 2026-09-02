@@ -159,6 +159,11 @@ Occasion: `BUG-0073`.
    `acceptance_refs` (the criteria this task is measured against),
    `required_inputs` (exact files/IDs — never "read the tasks", name them), `allowed_scope`/`forbidden_scope`,
    and `design_ref` for a UI task with a confirmed design.
+   **A fifth thing is NOT yours and you do not write it: which REFERENCE skills the order names.**
+   `kernel.references` derives them from the task's `assigned_role` and `type` when you create the lease, and
+   they ride in the dispatch header (constitution §1a). So the two fields above already decide it — a task
+   typed `docs` gets none of the design references a `ui` task gets — and listing skills by hand in the prompt
+   is how the pick silently becomes yours again.
    On Claude set **`run_in_background: false`** unless deliberately parallelizing — a background
    specialist's messages arrive in THIS session while it works, so its English work narration can land
    in the stream the user reads (measured on the SDK stream; what a terminal client collapses of it is

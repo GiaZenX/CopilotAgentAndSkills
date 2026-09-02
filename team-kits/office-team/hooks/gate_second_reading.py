@@ -57,36 +57,15 @@ import _readings  # noqa: E402
 import gate_filing  # noqa: E402
 
 HOOK = "gate_second_reading"
-# The plan field a rule uses to release its own class from the SECOND reading. Its VALUES are not
-# enumerated anywhere: `readings_required` reads the one answer YAML gives as a boolean false and
-# treats everything else — absent, true, a word, a list — as "not released".
-SECOND_READING = "second_reading"
-# The two answers `readings_required` gives, named because both appear in refusals the user reads
-# and a number that lives in two places is the one that stops matching the code.
-REQUIRED_READINGS = 2
-RELEASED_READINGS = 1
-
-
-def readings_required(rule):
-    """How many independent readings this plan rule demands before one of its documents is filed.
-
-    TWO BY DEFAULT, and the only way to say otherwise is a value the plan's own YAML reads as the
-    boolean false — so the spellings that release a rule (`false`, `no`, `off`, `False`) are
-    PyYAML's and not a tuple in this file. Every other value, the field being absent included, is
-    "not released": a plan that says nothing has released nothing, and a typo must not read as a
-    release.
-
-    A RELEASE IS ONE READING, NOT NONE, and that is a correction of this round's own first cut. The
-    user's question was "two runs for every document, or only for the classes the plan marks" — one
-    run against two, never zero — and reading `false` as "ask nothing" made the released class a
-    laundry: measured 2026-08-29, a document already filed under a SECURED rule could be renamed
-    into a released folder with no reading of any kind, because the gate stood down entirely there.
-    A released class still has to have been READ once by an attested run; what the user gave up is
-    the second opinion, not the record.
-    `test_a_plan_rule_can_release_its_own_class_from_the_second_reading` measures all three states.
-    """
-    return (RELEASED_READINGS if (rule or {}).get(SECOND_READING, True) is False
-            else REQUIRED_READINGS)
+# The release lever, the two answers it has, and the rule that decides between them all live in
+# `_readings`: FR-0065 gave the same lever to BOOKING (a category of `master_data.yaml` instead of a
+# rule of the filing plan), and the same question answered in two files is the drift this module's
+# neighbours were split out to prevent. The names stay spelled here because the refusals below read
+# them.
+SECOND_READING = _readings.SECOND_READING
+REQUIRED_READINGS = _readings.REQUIRED_READINGS
+RELEASED_READINGS = _readings.RELEASED_READINGS
+readings_required = _readings.readings_required
 
 
 def landing_path(root, landing):

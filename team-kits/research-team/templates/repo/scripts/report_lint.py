@@ -23,6 +23,17 @@ import re
 import subprocess
 import sys
 
+# Same reason and same spelling as `quality.py`, which runs this file as a subprocess and reads its
+# stdout: on Windows an unreconfigured stream writes the OS codepage. Every line this module prints
+# carries a PATH the user chose, and both halves were measured on 2026-09-01 against cp1252 — a
+# German report name came back as mojibake through the pipe, and a Greek or Chinese one raises
+# UnicodeEncodeError on the write, which takes the stage down before any finding is printed.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass  # non-reconfigurable stream (e.g. a test runner capturing it) — best effort
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Each pattern names a SHAPE, and each one has a counter-shape that makes it silent: a number, a
@@ -60,25 +71,95 @@ _HEDGED_RX = re.compile(
     re.IGNORECASE)
 
 
-def tracked_reports():
+# Markup is not a claim. The experiment report is rendered as HTML, so it carries its own
+# stylesheet, and `width: 100%` reads to the "result without an n" pattern exactly like a result
+# does — measured 2026-09-01 on the shipped `experiment_report.template.html`, which sits in the
+# tray of every research project and would otherwise put that finding into every run.
+# Blanked rather than deleted, so a finding still names the line it really stands on.
+#
+# WHAT MAKES A `<` A TAG HERE: a name letter directly behind it, and no second `<` before the
+# closing `>`. NOT a line boundary — that reader was wrong in both directions, both measured:
+# `Bei Werten < 30 stieg der Anteil auf 95% in Gruppen > 10 Personen.` lost its whole claim to a
+# pretend tag, while a real `<table` whose attributes wrapped onto the next line stayed markup
+# nobody blanked. Blanking prose is the failure this must not have, so the letter rule guards the
+# direction that costs a finding.
+#
+# WHAT IT STILL BLANKS AND SHOULD NOT, at its true reach: prose whose `<` IS followed by a letter
+# and closed later on — `wenn x<y und z>0` — and `DOTALL` means LATER may be several lines down,
+# so a whole paragraph between such a pair goes silent, findings and all. `[^<>]` ends the span at
+# the next `<`, which is not a line and not a paragraph.
+# A LENGTH LIMIT WAS MEASURED AND REJECTED, and the reason is NOT that today's numbers overlap:
+# across every `.html`/`.md`/`.tex` the three kits ship the longest real tag is 70 characters and
+# the two false hits are 88 and 220, so a cut between them separates the classes TODAY. It is
+# rejected because a real tag has NO length — an attribute list is unbounded — so any cut here is a
+# number fitted to one tree, and the first longer tag written anywhere trades a silent false hit
+# for a loud wrong one. Closing this needs a tag GRAMMAR, not a bound.
+_MARKUP_RX = re.compile(r"<(?:script|style)\b[^>]*>.*?</(?:script|style)\s*>|</?[A-Za-z][^<>]*>",
+                        re.IGNORECASE | re.DOTALL)
+
+
+def _without_markup(text):
+    return _MARKUP_RX.sub(lambda hit: re.sub(r"[^\n]", " ", hit.group(0)), text)
+
+
+def _report_text(rel):
+    """A report's prose — UTF-8 with its markup blanked — or None when the bytes are not UTF-8.
+
+    None means what it says and no more: these bytes are not UTF-8. A pdflatex PDF falls out on
+    that, because of the binary comment line it writes after `%PDF`; an all-ASCII PDF does NOT and
+    is read like any other file — measured, and left standing rather than answered with a suffix.
+    Strict, where this used to read with `errors="ignore"` — decoded that way every binary becomes
+    mojibake this lint would then count as a report it checked.
+
+    `utf-8-sig`, because a BOM read as text stands in front of the first character: a `#` heading
+    then no longer starts its line, `lint` stops skipping it, and the BOM travels into the output.
+    """
     try:
-        result = subprocess.run(["git", "-C", ROOT, "ls-files", "reports", "evidence"],
+        with open(os.path.join(ROOT, *rel.split("/")), encoding="utf-8-sig") as handle:
+            return _without_markup(handle.read())
+    except (OSError, UnicodeDecodeError):
+        return None
+
+
+def tracked_reports():
+    """Every file in the project that IS a report — recognised by shape, not by a list of names.
+
+    A report lies DIRECTLY in a directory named `reports`. That covers the tray the kit renders
+    into (`project_memory/reports/`, the row the constitution's §6 ownership table assigns to the
+    report-writer) and a plain `reports/` at a repo root alike, while a SUBdirectory of a tray
+    drops out: the kit ships the render's inputs there — fonts, KaTeX, style — and those are
+    machinery, not claims about results.
+
+    Asked of git, so the set is bounded by the project and `.gitignore` decides what is build
+    output; `--others` because a report is linted on the pass that RENDERS it (§17), which is
+    before anything is staged; `core.quotepath=off` because git escapes a non-ASCII name by
+    default and the escaped spelling opens no file — a report called `EXP-0001-Größe.tex` would
+    drop out silently. Reading the bytes is the second half of the definition (`_report_text`).
+
+    WHY IT IS A SHAPE NOW: the pathspec this replaced asked git for `reports` and `evidence` at the
+    REPO ROOT, and a scaffolded research project has neither — measured 2026-09-01 against one, the
+    lint answered "no reports to check" with overstating reports standing in the tray. `evidence`
+    is dropped rather than moved: Evidence items are YAML, and the suffix filter beside that
+    pathspec (`.md`/`.txt`) never matched one either.
+    """
+    try:
+        result = subprocess.run(["git", "-c", "core.quotepath=off", "-C", ROOT, "ls-files",
+                                 "--cached", "--others", "--exclude-standard"],
                                 capture_output=True, text=True, encoding="utf-8",
                                 errors="replace", timeout=60)
     except (OSError, subprocess.SubprocessError):
         return []
     if result.returncode != 0:
         return []
-    return [line.strip() for line in result.stdout.splitlines()
-            if line.strip().lower().endswith((".md", ".txt"))]
+    trayed = [rel for rel in (line.strip() for line in result.stdout.splitlines())
+              if rel.split("/")[-2:-1] == ["reports"]]
+    return [rel for rel in trayed if _report_text(rel) is not None]
 
 
 def lint(rel):
     findings = []
-    try:
-        with open(os.path.join(ROOT, rel), encoding="utf-8", errors="ignore") as handle:
-            text = handle.read()
-    except OSError:
+    text = _report_text(rel)
+    if text is None:
         return findings
     for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip() or line.lstrip().startswith(("#", ">", "|", "-", "*")):

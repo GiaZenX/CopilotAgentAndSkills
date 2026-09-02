@@ -1,0 +1,46 @@
+id: FR-0074
+title: 'Plan-level approval and autonomous work-through: the masterplan is worked
+  out meticulously, every product goal is walked through against it WITH the PM own
+  proposals, and once all goals are confirmed the team works the whole plan without
+  further questions except the necessary ones'
+request_text: 'User, 2026-09-02, verbatim (answer to the FR-0005 question, restating
+  his 2026-09-01 impression that a fresh kit project feels dumber and less efficient,
+  blocks itself, and asks at every FR although it should derive from the plan): Es
+  waere wichtig dass der Plan penibel steht und jedes PR anhand des Plans durchgegangen
+  wird mit eigenen Vorschlaegen und man wirklich an jede Ecke denkt. Und sobald alle
+  PR bestaetigt sind alles abgearbeitet wird ohne weitere Fragen ausser noetig. So
+  hat man mehr den Eindruck autonom. WHAT THE KIT DOES TODAY (measured in the Canyon
+  audit 2026-08-30): the PM works ONE product goal (PR) at a time, each with a scope
+  approval, a delivery approval and -- for UI -- three to four design questions; a
+  plan with ten goals is twenty-plus questions. Every approval must come from the
+  user by the kit foundation (a status the supervised party can set itself is a status
+  no gate may read as approval), and the masterplan is frozen prose the kernel cannot
+  read as approval. THE CHANGE WANTED, as a design to be decided with reasons (DEC),
+  not a bug: (1) a PLANNING PHASE that is thorough by design -- the PM derives the
+  full list of product goals from the masterplan, walks each one through with the
+  user, adds its OWN proposals and thinks around corners (the user words), and records
+  each confirmed goal as a PR with its acceptance criteria; (2) ONE approval at plan
+  level that covers the confirmed list (scope of the whole plan), after which the
+  team works through it in order WITHOUT per-goal scope questions; (3) the questions
+  that REMAIN are the irreversible or taste-bound ones -- merge/push, design choices,
+  money, anything the plan did not settle -- and the kit names that set as a property,
+  not a list; (4) the hole in control this opens must be measured and named: a plan-level
+  approval is wider than a per-goal one, so the delivery side (verdicts, evidence,
+  merge gates) must stay per goal, and a goal the team could not do as planned comes
+  back as a question rather than an improvisation. Relation: DEC-0034 escalation ladder
+  untouched; BUG-0081/BUG-0080/BUG-0078 are the self-blocking half of the same impression
+  and are separate fixes; FR-0005 (cut critic) stays a smaller, separate concern.
+  Security weighing per DEC-0056: this catches a MEASURED error (the user counted
+  the questions himself) and its cost is the width of one approval -- the round measures
+  both.'
+related_pr: FR-0058
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:19:51'
+triage_result: 'DECIDED 2026-09-02 via AskUserQuestion: after the plan-level approval
+  only the irreversible and the taste-bound still ask the user (merge/push, external
+  writes, money, design direction). Recorded as a DEC (the capture right before this
+  update); the round is cut after streams E and F of the next generation land, because
+  it touches the kernel (new approval kind + manifest + invalidation) AND the PM texts
+  of all three kits.'

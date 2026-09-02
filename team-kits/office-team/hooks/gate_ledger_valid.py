@@ -1073,20 +1073,50 @@ def _refuse_if_invalid(root, what):
         remedy=remedy)
 
 
+def requires_a_sound_ledger(data):
+    """WHAT this call is, when it is one the books have to be sound for — else None.
+
+    ONE READER FOR TWO GATES. `gate_second_booking` (FR-0065) asks a different question of the same
+    rows at the same shell moments, and "is this a commit, a push, a merge or a report" answered
+    twice is the drift that lets one of the two stand down where the other bites. The string it
+    returns is the phrase the refusal names the operation by, so the two gates do not describe one
+    call in two ways either.
+
+    WHICH of the moments a caller ACTS on is the caller's own decision and not this reader's, and
+    the two differ in one: a DISPATCH. An unsound ledger is a reason not to send a specialist at it,
+    but an unread ROW is the opposite — the second reading is written by a second spawn, so refusing
+    the spawn would refuse the only way out of the refusal. `gate_second_booking`'s own header
+    carries that, and
+    `tools/test_hooks.py::test_the_booking_gate_stands_at_the_shell_moments_and_not_at_a_dispatch`
+    measures both halves.
+    """
+    tool = data.get("tool_name")
+    if tool in SPAWN_TOOLS:
+        return "specialist dispatch"
+    if tool not in SHELL_TOOLS:
+        return None
+    raw = str((data.get("tool_input") or {}).get("command") or "")
+    # ONE view, the one the shell hands git: quote marks gone, their content kept. That is
+    # what makes `eval "git commit -m x"` visible here without a second search over the raw
+    # text — the workaround the deleted prose-stripping reader needed.
+    text = _compat.git_argument_text(raw)
+    if (any(invocation.runs(*_BLOCKED_GIT_SUBCOMMANDS)
+            for invocation in _compat.git_invocations(raw))
+            or _BLOCKED_SCRIPT_RX.search(text) or _BLOCKED_SCRIPT_RX.search(raw)):
+        return "this command (commit/push/merge/report)"
+    return None
+
+
 def handle_pre_tool_use(data):
     root = _kernel.find_repo_root(data.get("cwd"))
     tool = data.get("tool_name")
+    operation = requires_a_sound_ledger(data)
     if tool in SPAWN_TOOLS:
-        _refuse_if_invalid(root, "specialist dispatch")
+        if operation:
+            _refuse_if_invalid(root, operation)
     elif tool in SHELL_TOOLS:
         raw = str((data.get("tool_input") or {}).get("command") or "")
-        # ONE view, the one the shell hands git: quote marks gone, their content kept. That is
-        # what makes `eval "git commit -m x"` visible here without a second search over the raw
-        # text — the workaround the deleted prose-stripping reader needed.
-        text = _compat.git_argument_text(raw)
-        blocked_op = (any(invocation.runs(*_BLOCKED_GIT_SUBCOMMANDS)
-                          for invocation in _compat.git_invocations(raw))
-                      or _BLOCKED_SCRIPT_RX.search(text) or _BLOCKED_SCRIPT_RX.search(raw))
+        blocked_op = operation is not None
         if blocked_op and _writes_ledger(_without_messages(raw)):
             _kernel.block(
                 HOOK,
@@ -1103,7 +1133,7 @@ def handle_pre_tool_use(data):
                        "separately. The second call re-validates and refuses if the write broke "
                        "anything, which is the whole point.")
         if blocked_op:
-            _refuse_if_invalid(root, "this command (commit/push/merge/report)")
+            _refuse_if_invalid(root, operation)
         # a shell write to the judge itself. An interpreter running a SCRIPT is exempt (that is how
         # `--validate` gets run); an interpreter with an inline `-c`/`-e`/`-m` payload never is.
         # ...asked of the SAME VIEWS the decision below works on, and that is what a cheap

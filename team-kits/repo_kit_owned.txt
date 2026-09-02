@@ -26,6 +26,13 @@
 # render record, and its refusal tells the role to run exactly this script -- a project's forked copy
 # could write a record the gate accepts without producing pixels, and the kit fix would never arrive.
 #
+# kit_design_system_check.py is owned for the third of those reasons and not the first: NO gate
+# names it, so it is here on a judgement, and the judgement is that it holds a SCHEMA. It decides
+# whether the user's own exported design system is usable, and a project's forked copy would answer
+# that question with last year's contract while the designer's skill sends the role to run exactly
+# this command. Nothing about the schema is a project's to customise, which is what makes the price
+# of a line here (the scaffold overwrites local changes without asking) the wanted direction.
+#
 # A file NOT here is copy-if-absent: the project may customise it, and the pending list reports a
 # real content divergence (line-ending style ignored) for the PM to work through the normal loop.
 # The price of a line here is the other direction: the scaffold overwrites a project's own changes
@@ -38,5 +45,6 @@ scripts/harness.py
 scripts/kit_checks.py
 scripts/kit_browser_checks.py
 scripts/kit_design_render.py
+scripts/kit_design_system_check.py
 scripts/ledger_add.py
 scripts/einvoice_extract.py

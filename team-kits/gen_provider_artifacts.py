@@ -13,7 +13,8 @@ Generates:
             .codex/hooks.json           (supported registrations translated from Claude settings;
                                          hook trust is required)
             .codex/agents/<role>.toml   (one per installed specialist; NEVER the project lead)
-            .agents/skills/<role>/      (native Codex skill discovery, including the lead skill)
+            .agents/skills/<name>/      (native Codex skill discovery -- every skill directory the
+                                         project carries, role or not; see `native_skill_sources`)
 
 Copilot generation was REMOVED (the kits target Claude Code + Codex only); the .github/* ownership
 patterns below remain solely so stale Copilot artifacts from older scaffolds are still cleaned up.
@@ -997,6 +998,34 @@ def legacy_owned_outputs(repo):
     return files, dirs
 
 
+def native_skill_sources(repo):
+    """Every skill directory this project carries -- the one subject of the Codex mirror.
+
+    A SKILL IS A DIRECTORY WITH A `SKILL.md` IN IT. That is what both providers discover, it is
+    what this generator already refuses a role for (`missing_skills` above), and it is a definition
+    rather than a list -- so a reference skill, which belongs to no role by construction
+    (constitution §1a), is covered the day it ships instead of the day somebody remembers it.
+
+    UNTIL TSK-0104 THIS WALKED THE ROLE LIST, so a real `team` install left both reference skills
+    out of the mirror entirely while three shipped texts pointed a Codex session at them. The
+    directory counts of that measurement live in `H83` and only there -- one of them was taken over
+    a project with a design-system bundle dropped in, which is a qualification a second copy of the
+    number here would lose (SR-0008).
+
+    WHAT IT ALSO COVERS, said rather than discovered later: a bundle the USER unpacked there --
+    `FR-0045` invites exactly that -- is a skill directory by this definition and is mirrored too.
+    That is the wanted direction (the two providers see the same skills), and it is the reason this
+    reads the disk instead of any list the kit keeps.
+    """
+    base = os.path.join(repo, ".claude", "skills")
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        return []
+    return [name for name in names
+            if os.path.isfile(os.path.join(base, name, "SKILL.md"))]
+
+
 def remove_owned_outputs(repo, files, dirs):
     """Remove a validated, generator-owned output set."""
     for relative in sorted(files):
@@ -1275,9 +1304,7 @@ def main():
     if "codex" in providers:
         desired_files.update((".codex/config.toml", ".codex/hooks.json"))
         desired_files.update(".codex/agents/%s.toml" % role for role, _meta, _body in specialists)
-        desired_dirs.update(
-            ".agents/skills/%s" % role for role, _meta, _body in roles
-            if os.path.isdir(os.path.join(repo, ".claude", "skills", role)))
+        desired_dirs.update(".agents/skills/%s" % name for name in native_skill_sources(repo))
 
     if previous_manifest is None:
         owned_files, owned_dirs = legacy_owned_outputs(repo)
@@ -1314,11 +1341,9 @@ def main():
                       encoding="utf-8", newline="\n") as fh:
                 fh.write(gen_codex_agent(role, meta, body, tiers, aliases))
             generated_files.append(rel)
-        for role, _meta, _body in roles:
-            source = os.path.join(repo, ".claude", "skills", role)
-            if not os.path.isdir(source):
-                continue
-            relative = ".agents/skills/%s" % role
+        for name in native_skill_sources(repo):
+            source = os.path.join(repo, ".claude", "skills", name)
+            relative = ".agents/skills/%s" % name
             target = os.path.join(stage_repo, relative)
             os.makedirs(os.path.dirname(target), exist_ok=True)
             if os.path.isdir(target):

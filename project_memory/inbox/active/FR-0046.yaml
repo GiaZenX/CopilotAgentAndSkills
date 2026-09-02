@@ -29,3 +29,18 @@ status: OPEN
 revision: 1
 approval_ref: null
 created: '2026-08-16T17:40:57'
+triage_result: 'CORRECTION 2026-09-01 (stream B implementer, confirmed independently
+  by the stream B verifier against git history and the three copies): the ''MEASURED
+  2026-08-16 -- ALL THREE are the update-kit path (old-V2 -> new-V2), NOT migration;
+  the earlier V1 guess was wrong (measured)'' sentence in this item is FALSE. The
+  kernel arrived with commit 9e4419b on 2026-07-24 23:02; the copies carry 2026.07.17-8,
+  2026.07.18-3 and 2026.07.17-9 -- all BEFORE the kernel. None has .claude/kernel,
+  scripts/harness.py, .claude/kit_state.json or project_memory/generated/; all carry
+  the V1 monoliths (tasks.yaml, bugs.yaml, process_definitions.yaml). update-kit is
+  therefore NOT reachable on any of them; they are V1 stocks and the relevant path
+  is the installer preflight + migration, which is what TSK-0101 measured (stock classification
+  with a no-write proof: 0 writes on all three after the fix, 193 writes before).
+  The lead''s 2026-08-16 measurement was wrong; the ''V1 guess'' it dismissed was
+  right. The field test itself was driven on a synaipse copy made ''mixed'' (install
+  -> validate -> pin refuses -> unpin -> rollback byte-identical over the recorded
+  set). FR-0041''s reference to this measurement inherits the same correction.'

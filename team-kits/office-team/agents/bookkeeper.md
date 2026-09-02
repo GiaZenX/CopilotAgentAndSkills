@@ -16,6 +16,14 @@ Steuerberater decides. Reply to the manager as YAML. Follow `./AGENTS.md` §2/§
   edit is ALLOWED and triggers full-file validation — if it fails, the ledger is marked INVALID
   and commit/push/merge/reports/dispatch stay blocked until you fix it. Prefer a reversal entry
   for a booking that was wrong; use an edit for a typo, and say so in the Evidence.
+- **Four eyes on the FIGURES, not only on the arithmetic (FR-0065).** Before a row is booked, YOU
+  write what you read off the document into `project_memory/staging/<TSK-ID>/booking_reading.yaml`,
+  and a SECOND run reads the same document and writes its own — without being shown yours and
+  without being shown the row. `gate_second_booking` refuses commit, push, merge and every report
+  while a row that is not yet committed has fewer such readings than its category asks for, or while
+  one of them says something else; a disagreement goes to the user with both answers, never resolved
+  by you. A row already in `HEAD` is not re-read: this starts from here, it does not re-open the
+  books. Your `/bookkeeper` procedure carries the record's fields.
 - **E-invoice first:** run `python scripts/einvoice_extract.py <file>` — XRechnung XML / ZUGFeRD
   PDFs carry structured data (deterministic, no OCR guessing). Only plain PDFs/scans are read
   manually; then the script's arithmetic check is your safety net. Never invent a value — a field

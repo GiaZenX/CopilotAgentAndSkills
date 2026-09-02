@@ -8,9 +8,12 @@ on its exit code (0 = allow, 2 = block for guards/gates, 1 = red for quality.py)
 """
 import ast
 import contextlib
+import csv
 import fnmatch
 import glob
 import hashlib
+import importlib
+import importlib.util
 import io
 import json
 import os
@@ -4791,8 +4794,14 @@ def _office_project(tmp_path):
     """
     repo = tmp_path / "office"
     (repo / "scripts").mkdir(parents=True)
-    for name in ("proc_hash.py", "process_doc.py"):
-        shutil.copy(os.path.join(OFFICE_SCRIPTS, name), str(repo / "scripts" / name))
+    # EVERY shipped script, not a pair of names. The pair was an enumeration and it broke the day a
+    # script started importing a sibling: `process_doc` renders the Ablage TREE through
+    # `filing_plan.tree_lines` (FR-0031), and with only two names copied the fixture measured the
+    # "broken bridge" branch instead of the renderer. A scaffold installs the whole directory, so
+    # this is also what a real project looks like.
+    for name in sorted(os.listdir(OFFICE_SCRIPTS)):
+        if name.endswith(".py"):
+            shutil.copy(os.path.join(OFFICE_SCRIPTS, name), str(repo / "scripts" / name))
     ignore = shutil.ignore_patterns("__pycache__")
     shutil.copytree(OFFICE_HOOKS, str(repo / ".claude" / "hooks"), ignore=ignore)
     shutil.copytree(os.path.join(ROOT, "team-kits", "kernel"), str(repo / ".claude" / "kernel"),
@@ -6095,6 +6104,9 @@ STATE_FILES_NOT_SHIPPED = {
     "filing_reading.yaml": (KIT_ONLY, "kernel schema (team-kits/kernel/schemas/), not state -- one "
                                       "run's own classification, the record gate_second_reading "
                                       "counts (FR-0035)"),
+    "booking_reading.yaml": (KIT_ONLY, "kernel schema (team-kits/kernel/schemas/), not state -- one "
+                                       "run's own reading of a document into ledger fields, the "
+                                       "record gate_second_booking counts (FR-0065)"),
     # a placeholder in a note ABOUT glob semantics, not a file anyone is sent to
     "x.yaml": (ANY, "the `deploy/sub/x.yaml` example in research_guidelines.yaml, showing that `*` "
                     "crosses directory separators"),
@@ -6116,6 +6128,8 @@ STATE_DIRS_NOT_SHIPPED = {
     ".audit": "hook event log, created by notify_agent_events on its first write",
     ".filing": "the filing-reading attestations, created by record_filing_reading on its first "
                "write; a template copy would be an attestation nobody made (FR-0035)",
+    ".books": "the booking-reading attestations, created by record_booking_reading on its first "
+              "write; a template copy would be an attestation nobody made (FR-0065)",
     "architecture": "the research kit ships none, and the one line naming it says exactly that",
     "archive/**": "created on demand when an item or document is filed; the layout is data, "
                   "not a template (item type + year, or the filing plan's rule paths)",
@@ -7638,7 +7652,15 @@ MIGRATION_DOC_TREES = ("docs/", "radar/")
 # The list is an ENUMERATION, which is what it may not silently be, so
 # `test_the_migration_code_exemption_is_neither_dead_nor_free` measures both ends of it: an entry
 # that no longer exists, and an entry the sweep would not have flagged anyway.
-MIGRATION_CODE_FILES = ("tools/test_migrate.py",)
+# `tools/test_kitupdate.py` joined the list in TSK-0104 for exactly the reason above, and the reason
+# is a property of the file rather than a favour: since FR-0044 the installer CLASSIFIES the stock it
+# is about to be written over, so measuring it means building a real V1 state directory -- the two
+# tokens this sweep finds are the `_write(...)` arguments of `_v1_stock`, run by
+# `test_a_v1_stock_is_refused_and_the_installer_writes_nothing` on every pass. A stale one raises
+# there. Found by the MERGE, not by the stream: stream B never ran this test (its DEC-0050 selection
+# took `test_hooks.py -k "scaffold or preset or settings"`), and stream A ran the whole file against
+# a tree that did not yet carry B's fixture.
+MIGRATION_CODE_FILES = ("tools/test_migrate.py", "tools/test_kitupdate.py")
 
 # Trees that are not the repo's content: git's own store, caches, and the sandbox an e2e run builds.
 _SWEEP_SKIP_DIRS = frozenset((".git", ".pytest_cache", "__pycache__", "node_modules",
@@ -10205,6 +10227,761 @@ def test_an_agent_cannot_write_the_attestation_store_through_the_registered_chai
                "tool_input": {"file_path": os.path.join(str(repo), *parts), "content": "x"}}
     code, said = _through_the_chain(repo, payload)
     assert code == 2 and "gate_write_scope" in said, said
+
+
+
+# ---------------- office kit: the four-eyes BOOKING rule (FR-0065) ----------------
+# The booking twin of the block above. The fixture is a real ledger with a real validator beside it,
+# because `gate_second_booking` runs BEHIND `gate_ledger_valid` in one chained command and a project
+# without `scripts/ledger_add.py` never reaches the second gate at all -- which is the chain order
+# the settings file calls load-bearing.
+BOOK_DOC = "archive/finance/incoming_invoices/2026/2026-01-15_ACME_invoice.pdf"
+LEDGER_HEADER = ("id,doc_date,payment_date,direction,doc_type,counterparty,invoice_no,net,"
+                 "vat_rate,gross,vat_treatment,category,source,reverses,note\n")
+# 214.20 x 1.19 = 254.90 -- the row the invoice really says, and the one the readings agree with.
+GOOD_ROW = ("L2026-0001,2026-01-15,2026-01-20,expense,invoice,ACME GmbH,RE-1,214.20,19.00,254.90,"
+            "standard,goods,%s,,\n" % BOOK_DOC)
+# BUG-0072's own figures: 14.28 x 1.19 = 16.99. It RECONCILES, so `ledger_add --validate` calls the
+# file clean -- which is exactly the catch class the arithmetic layer does not have.
+RECONCILING_WRONG_ROW = (
+    "L2026-0001,2026-01-15,2026-01-20,expense,invoice,ACME GmbH,RE-1,14.28,19.00,16.99,"
+    "standard,goods,%s,,\n" % BOOK_DOC)
+MASTER_DATA = (
+    "categories:\n"
+    "  expense:\n"
+    "    - key: goods\n"
+    '      label_de: "Wareneinkauf"\n'
+    "    - key: postage\n"
+    '      label_de: "Porto"\n'
+    "      second_reading: false\n"
+    "  income: []\n"
+    "counterparties: []\n")
+# What a reader says it read off the document, for the good row. `source` is the join; every other
+# key is a ledger column the row has to match.
+GOOD_READING = {"source": BOOK_DOC, "doc_date": "2026-01-15", "direction": "expense",
+                "doc_type": "invoice", "counterparty": "ACME GmbH", "net": "214.20",
+                "vat_rate": "19", "gross": "254.90", "vat_treatment": "standard",
+                "category": "goods"}
+
+
+def _git_in(repo, *args):
+    return subprocess.run(["git"] + list(args), cwd=str(repo), capture_output=True, text=True,
+                          timeout=60)
+
+
+def _booking_project(repo, row=GOOD_ROW, master=MASTER_DATA, commit=False, git=True):
+    """A scaffolded office project with books, its validator, and a git history if it is asked for."""
+    capture_root_item(repo, status=None)
+    write(str(repo / "project_memory" / "master_data.yaml"), master)
+    write(str(repo / BOOK_DOC.replace("/", os.sep)), "an invoice for 214.20 net\n")
+    os.makedirs(str(repo / "scripts"), exist_ok=True)
+    shutil.copy(os.path.join(OFFICE_SCRIPTS, "ledger_add.py"),
+                str(repo / "scripts" / "ledger_add.py"))
+    write(str(repo / "ledger" / "2026.csv"), LEDGER_HEADER + row)
+    if git:
+        _git_in(repo, "init", "-q")
+        _git_in(repo, "config", "user.email", "t@example.invalid")
+        _git_in(repo, "config", "user.name", "t")
+        if commit:
+            _git_in(repo, "add", "-A")
+            _git_in(repo, "commit", "-q", "-m", "books")
+    return repo
+
+
+def _record_booking_reading(repo, run, name, entries, task="TSK-0001"):
+    """Write one staged booking-reading record and ATTEST it the way a real write does.
+
+    Through the registered PostToolUse chain with `agent_id` set to `run`, for `_record_reading`'s
+    reason: the run identity has to come from the payload and not from anything this helper writes,
+    or the property under test goes unmeasured.
+    """
+    path = str(repo / "project_memory" / "staging" / task / name)
+    body = "task_id: %s\nrole: bookkeeper\nreadings:\n" % task
+    for entry in entries:
+        first = True
+        for key in sorted(entry):
+            body += "%s%s: %s\n" % ("  - " if first else "    ", key, entry[key])
+            first = False
+    write(path, body)
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "Write", "cwd": str(repo),
+               "tool_input": {"file_path": path}}
+    if run:
+        payload["agent_id"] = run
+    _through_the_chain(repo, payload, event="PostToolUse")
+    return path
+
+
+def _commit_chain(repo, command="git commit -m books"):
+    return _through_the_chain(repo, {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+                                     "cwd": str(repo), "tool_input": {"command": command}})
+
+
+def _office_module(name):
+    sys.path.insert(0, OFFICE_HOOKS)
+    return importlib.import_module(name)
+
+
+def _ledger_add_module():
+    """The SHIPPED project script, imported so a test reads the column list that RUNS."""
+    spec = importlib.util.spec_from_file_location(
+        "_shipped_ledger_add", os.path.join(OFFICE_SCRIPTS, "ledger_add.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_booking_reading_asks_for_exactly_the_ledger_columns_a_document_carries():
+    """The schema's per-entry keys and the ledger's columns are ONE statement, held together here.
+
+    The comparison a booking reading is judged by is "every declared key except `source` is a ledger
+    column and the row's value for it must match", so the two spellings drifting apart is the whole
+    failure mode: a column the schema forgets is a field nobody re-reads, a key the schema invents is
+    a comparison against a column that does not exist.
+
+    BOTH DIRECTIONS, and the exemptions carry their reason in `_bookings.NOT_READ_OFF_THE_DOCUMENT`
+    rather than here -- a column that is neither declared nor exempted turns this red on the day it
+    ships, and so does an exemption for a column the schema requires anyway. Read off the SHIPPED
+    script and the SHIPPED schema, never off a list in this file.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.schemas import load_schema
+    bookings = _office_module("_bookings")
+    columns = set(_ledger_add_module().COLUMNS)
+    declared = set((load_schema("booking_reading")["fields"]["readings"] or {})["item_required"])
+    exempt = set(bookings.NOT_READ_OFF_THE_DOCUMENT)
+    assert exempt <= columns, ("these are exempted from the booking reading and are not ledger "
+                               "columns at all: %s" % sorted(exempt - columns))
+    assert declared == columns - exempt, (
+        "the schema declares %s and the ledger's columns minus the exemptions are %s"
+        % (sorted(declared), sorted(columns - exempt)))
+    assert bookings.SOURCE in declared, "the join key is not one of the declared keys"
+    assert set(bookings.AMOUNT_KEYS) <= declared, sorted(bookings.AMOUNT_KEYS)
+
+
+def test_the_ledger_canonicalises_exactly_the_columns_the_booking_comparison_reads_as_numbers(
+        tmp_path):
+    """Why `AMOUNT_KEYS` is a named set and not "whatever parses as a number" -- measured on the
+    script that RUNS.
+
+    The ledger rewrites the three amounts to two decimals before saving, so a reader who wrote `19`
+    and a row that says `19.00` are one answer and a text comparison would call them a disagreement.
+    The OTHER direction is what forbids the general rule: `invoice_no` is stored verbatim, so `007`
+    stays `007` -- and comparing it as a number would make it agree with `7`, which is a false
+    agreement about the one field that identifies a document.
+    """
+    repo = _booking_project(tmp_path, row="", git=False)
+    (tmp_path / "ledger" / "2026.csv").unlink()
+    result = subprocess.run(
+        [sys.executable, str(repo / "scripts" / "ledger_add.py"), "--year", "2026",
+         "--direction", "expense", "--doc-type", "invoice", "--doc-date", "2026-01-15",
+         "--payment-date", "2026-01-20", "--counterparty", "ACME GmbH", "--invoice-no", "007",
+         "--net", "100", "--vat-rate", "19", "--gross", "119", "--vat-treatment", "standard",
+         "--category", "goods", "--source", BOOK_DOC],
+        capture_output=True, text=True, timeout=120)
+    assert result.returncode == 0, result.stdout + result.stderr
+    with open(str(repo / "ledger" / "2026.csv"), encoding="utf-8") as handle:
+        saved = list(csv.DictReader(handle))[0]
+    bookings = _office_module("_bookings")
+    assert set(bookings.AMOUNT_KEYS) == {"net", "vat_rate", "gross"}, bookings.AMOUNT_KEYS
+    for key, typed in (("net", "100"), ("vat_rate", "19"), ("gross", "119")):
+        assert saved[key] != typed and float(saved[key]) == float(typed), (key, saved[key])
+    assert saved["invoice_no"] == "007", (
+        "a non-amount column is stored verbatim, so comparing it as a number would let 007 agree "
+        "with 7: %r" % saved["invoice_no"])
+
+
+def test_a_row_nobody_read_twice_blocks_the_commit_through_the_registered_chain(tmp_path):
+    """The gap FR-0065 names, closed: a figure that goes to the Finanzamt on one reading does not
+    reach a commit.
+
+    MEASURED OPEN before this round: the row below passes `ledger_add --validate` (the amounts
+    reconcile), so every registered hook of a `git commit` answered rc 0 with nobody but the booking
+    run having ever seen the document. Through the chain and not against the gate alone, because
+    "the ledger is broken data" and "nobody read this row twice" have to be two refusals a role can
+    tell apart -- and because the gate ahead is what would otherwise have stopped the chain.
+    """
+    repo = _booking_project(tmp_path)
+    code, said = _commit_chain(repo)
+    assert code == 2, said
+    assert "gate_second_booking" in said, said
+    assert "gate_ledger_valid" not in said, (
+        "the ledger itself is valid here; only the second reading is missing: %s" % said)
+    assert "L2026-0001" in said and BOOK_DOC in said, said
+
+
+def test_a_wrong_but_reconciling_row_is_refused_although_the_arithmetic_holds(tmp_path):
+    """BUG-0072's own figures, and the catch class the arithmetic layer does not have.
+
+    14.28 x 1.19 = 16.99 reconciles, so the validator calls the file clean -- measured here in the
+    same run, by running the shipped validator over the fixture. Two attested readings say the
+    document reads 214.20/254.90, and the refusal names the DISAGREEMENT rather than a missing
+    reading, because those two send a role to different places.
+    """
+    repo = _booking_project(tmp_path, row=RECONCILING_WRONG_ROW)
+    valid = subprocess.run([sys.executable, str(repo / "scripts" / "ledger_add.py"), "--validate",
+                            str(repo / "ledger" / "2026.csv")],
+                           capture_output=True, text=True, timeout=120)
+    assert valid.returncode == 0, (
+        "the fixture is meant to RECONCILE -- otherwise this measures the arithmetic layer: %s"
+        % valid.stderr)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [GOOD_READING])
+    _record_booking_reading(repo, "run-b", "read_b.yaml", [GOOD_READING])
+    code, said = _commit_chain(repo)
+    assert code == 2 and "gate_second_booking" in said, said
+    assert "DISAGREEMENT" in said, said
+    # BOTH sides of the disagreement, named per FIELD: the row's 14.28 and the readers' 214.20. A
+    # refusal that named only "they differ" sends a bookkeeper back to the paper with nothing to
+    # look at, which is the whole content of BUG-0072 on one line.
+    assert "net (row 14.28, read 214.2" in said, (
+        "the refusal must name the field and BOTH answers: %s" % said)
+
+
+def test_two_independent_booking_readings_that_agree_let_the_commit_through(tmp_path):
+    """The counter-direction, without which every refusal above is satisfied by refusing everything."""
+    repo = _booking_project(tmp_path)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [GOOD_READING])
+    _record_booking_reading(repo, "run-b", "read_b.yaml", [GOOD_READING])
+    code, said = _commit_chain(repo)
+    assert code == 0, said
+
+
+def test_two_booking_readings_from_one_run_are_not_two_readings(tmp_path):
+    """What independence is measured ON: the run, as the PROVIDER names it -- the same property
+    `test_two_readings_from_one_run_are_not_two_readings` holds for filing, on the other store."""
+    repo = _booking_project(tmp_path)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [GOOD_READING])
+    _record_booking_reading(repo, "run-a", "read_b.yaml", [GOOD_READING])
+    code, said = _commit_chain(repo)
+    assert code == 2 and "gate_second_booking" in said, said
+    assert "run-a" in said, said
+
+
+def test_a_row_already_in_head_is_not_booked_again(tmp_path):
+    """THE MIGRATION ANSWER, and it is a derivation rather than a flag or a baseline file.
+
+    A real ledger carries rows booked before this layer existed, and a mechanism that refused every
+    one of them would be worse than none (FR-0065 says exactly that). What makes a row old is that
+    its fields already stand in the file as `HEAD` has it -- nothing is enumerated and no baseline
+    file is written: the baseline IS `HEAD`, and what moves `HEAD` is judged exactly as far as
+    `gate_ledger_valid.requires_a_sound_ledger` recognises a commit, no further. THAT REACH IS A
+    LIMIT AND NOT A GUARANTEE, and this docstring claimed the opposite for a round -- a commit a
+    SCRIPT performs is not one this gate reads, so a row can be carried into `HEAD` past it and is
+    grandfathered from then on (`H99`, measured). What is asserted below is the migration property
+    itself and not that property's reach. Both halves in one run: the committed row passes, and one
+    unread row added to the same file refuses again while the committed one stays out of the finding.
+    """
+    repo = _booking_project(tmp_path, commit=True)
+    code, said = _commit_chain(repo)
+    assert code == 0, said
+    second = GOOD_ROW.replace("L2026-0001", "L2026-0002").replace("RE-1", "RE-2")
+    write(str(repo / "ledger" / "2026.csv"), LEDGER_HEADER + GOOD_ROW + second)
+    code, said = _commit_chain(repo)
+    assert code == 2 and "gate_second_booking" in said and "L2026-0002" in said, said
+    assert "L2026-0001" not in said, "the committed row was judged again: %s" % said
+
+
+def test_a_ledger_git_cannot_answer_for_stands_the_booking_gate_down_and_says_so(tmp_path):
+    """H89, measured rather than argued: without git this layer cannot tell an old row from a new one.
+
+    It STANDS DOWN for that ledger instead of refusing, and the reason is a deadlock rather than
+    leniency -- refusing would sit on the commit that would have grandfathered the rows, which is the
+    failure `gate_ledger_valid`'s header records as "a corrupt marker with no ledger present
+    deadlocked the repo". The stand-down is not silent: it is written into the project's audit log,
+    which is where a reader finds that the layer did not look.
+    """
+    repo = _booking_project(tmp_path, git=False)
+    code, said = _commit_chain(repo)
+    assert code == 0, said
+    log = str(repo / "project_memory" / ".audit")
+    found = ""
+    for name in sorted(os.listdir(log)) if os.path.isdir(log) else []:
+        with open(os.path.join(log, name), encoding="utf-8") as handle:
+            found += handle.read()
+    assert "gate_second_booking" in found and "stood down" in found, (
+        "the stand-down left no trace at all, so nothing tells a reader the layer did not look: %r"
+        % found[:2000])
+
+
+def test_a_category_the_user_released_needs_one_booking_reading_and_never_none(tmp_path):
+    """The USER's lever, and the one thing it may not do.
+
+    `master_data.yaml` is the document the user owns for the ledger's vocabulary, exactly as the
+    filing plan is the one they own for the archive, and the lever is spelled the same
+    (`second_reading: false`) and answered by the same function. All three states in one run: the
+    released category with NO reading is still refused; with ONE reading it passes; and a category
+    nobody released is refused on one reading.
+    """
+    row = GOOD_ROW.replace(",goods,", ",postage,")
+    reading = dict(GOOD_READING, category="postage")
+    repo = _booking_project(tmp_path, row=row)
+    code, said = _commit_chain(repo)
+    assert code == 2 and "gate_second_booking" in said, (
+        "`second_reading: false` releases the SECOND reading, never the first: %s" % said)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [reading])
+    code, said = _commit_chain(repo)
+    assert code == 0, said
+    write(str(repo / "ledger" / "2026.csv"), LEDGER_HEADER + GOOD_ROW)
+    _record_booking_reading(repo, "run-c", "read_c.yaml", [GOOD_READING])
+    code, said = _commit_chain(repo)
+    assert code == 2 and "gate_second_booking" in said, (
+        "a category the user did not release still asks for two: %s" % said)
+
+
+def test_a_reading_of_a_zero_rated_invoice_is_a_reading(tmp_path):
+    """`vat_rate: 0` is an ANSWER, and a record carrying it must not be dropped as unanswered.
+
+    Kleinunternehmer, reverse charge and exempt invoices all read 0 there, and YAML parses that as
+    the integer zero — which is falsy. A recogniser that tested per-entry keys for TRUTH therefore
+    threw away every such reading, so the row could never be covered and the project would have been
+    walled off its own commits by a refusal pointing at records that were there.
+    `_readings.stated` is what decides it; this is the case that decided `_readings.stated`.
+    """
+    row = ("L2026-0001,2026-01-15,2026-01-20,expense,invoice,ACME GmbH,RE-1,100.00,0.00,100.00,"
+           "kleinunternehmer,goods,%s,,\n" % BOOK_DOC)
+    reading = dict(GOOD_READING, net="100.00", vat_rate=0, gross="100.00",
+                   vat_treatment="kleinunternehmer")
+    repo = _booking_project(tmp_path, row=row)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [reading])
+    _record_booking_reading(repo, "run-b", "read_b.yaml", [reading])
+    code, said = _commit_chain(repo)
+    assert code == 0, said
+
+
+def test_the_booking_gate_stands_at_the_shell_moments_and_not_at_a_dispatch(tmp_path):
+    """WHERE it asks, both halves, off the reader the two ledger gates share.
+
+    A commit is a moment a figure leaves the project and is refused. A specialist DISPATCH is not,
+    and it is deliberately not judged here although `requires_a_sound_ledger` names it: the second
+    reading is written by a second spawn, so refusing the spawn would refuse the only route out of
+    the refusal. Measured through the gate itself on both payloads, against the same unread ledger.
+    """
+    repo = _booking_project(tmp_path)
+    spawn = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(repo),
+             "tool_input": {"subagent_type": "bookkeeper", "prompt": "read the invoice"}}
+    result = run_hook_process("gate_second_booking.py", spawn, repo, hooks_dir=OFFICE_HOOKS)
+    assert result.returncode == 0, result.stderr
+    commit = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(repo),
+              "tool_input": {"command": "git commit -m books"}}
+    result = run_hook_process("gate_second_booking.py", commit, repo, hooks_dir=OFFICE_HOOKS)
+    assert result.returncode == 2 and "gate_second_booking" in result.stderr, result.stderr
+    plain = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(repo),
+             "tool_input": {"command": "ls ledger"}}
+    assert run_hook_process("gate_second_booking.py", plain, repo,
+                            hooks_dir=OFFICE_HOOKS).returncode == 0
+
+
+def _hooks_with_a_budget_of(tmp_path, budget, name):
+    """A copy of the SHIPPED office hooks whose booking budget is `budget` seconds.
+
+    A real hook directory and a real process, because the claim is about what the gate DOES when its
+    own clock runs out -- monkeypatching a module inside the test process would measure an import,
+    not the registered file. The only edit is the constant; everything else is the shipped code.
+    """
+    copy = str(tmp_path / name)
+    shutil.copytree(OFFICE_HOOKS, copy, ignore=shutil.ignore_patterns("__pycache__"))
+    path = os.path.join(copy, "_bookings.py")
+    with open(path, encoding="utf-8") as handle:
+        source = handle.read()
+    sys.path.insert(0, OFFICE_HOOKS)
+    import _bookings
+    marker = "TOTAL_BUDGET = %d" % _bookings.TOTAL_BUDGET
+    assert marker in source, "the budget constant is not spelled where this test patches it"
+    with open(path, "w", encoding="utf-8", newline="") as handle:
+        handle.write(source.replace(marker, "TOTAL_BUDGET = %s" % budget, 1))
+    return copy
+
+
+def test_a_booking_check_that_runs_out_of_time_refuses_instead_of_being_killed(tmp_path):
+    """A KILLED hook is a silent ALLOW, so this one stops itself first -- and says which it was.
+
+    The row/reading join is linear in BOTH, and this module's own limits multiply past any deadline:
+    8 MB of ledger is roughly 55 000 rows and `_readings.MAX_FILES` allows 400 reading files.
+    Measured on this host as the shipped hook process, with every reading about ONE document (the
+    worst case, because no index narrows it): 0.41 s at 120 rows, 1.41 s at 480, 3.82 s at 1920 --
+    2.0 ms per row, so `_compat.HOOK_DEADLINE_SECONDS` is reachable by a large enough uncommitted
+    batch, and on a slower host much sooner. `gate_ledger_valid` carries the same constant for the
+    same reason; the two run in ONE chained process, which is why this one's is smaller.
+
+    THE TWO PLACES THE CLOCK IS READ ARE MEASURED APART, and that is a correction of this test's own
+    first cut: it patched the budget to 0, which is caught by the FILE loop before a single row is
+    walked -- so deleting the ROW check left the test green (measured as that mutation). A budget
+    that is still in the future when the file is opened and gone by the time the rows are walked is
+    what reaches the second branch, and the two say different things because they leave the reader in
+    different places: "this file was not checked at all" against "N of its M rows were never looked
+    at".
+
+    AND THE OTHER END: with the shipped budget the same call passes, so this is not "0 refuses
+    everything".
+    """
+    repo = _booking_project(tmp_path)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [GOOD_READING])
+    _record_booking_reading(repo, "run-b", "read_b.yaml", [GOOD_READING])
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(repo),
+               "tool_input": {"command": "git commit -m books"}}
+    assert run_hook_process("gate_second_booking.py", payload, repo,
+                            hooks_dir=OFFICE_HOOKS).returncode == 0
+
+    gone = run_hook_process("gate_second_booking.py", payload, repo,
+                            hooks_dir=_hooks_with_a_budget_of(tmp_path, "0", "hooks-budget-0"))
+    assert gone.returncode == 2, gone.stdout + gone.stderr
+    assert "NOT CHECKED" in gone.stderr and "ran out" in gone.stderr, gone.stderr
+    assert "never looked at" not in gone.stderr, (
+        "the file was never opened, so no row count may be claimed: %s" % gone.stderr)
+
+    # ...and a budget that expires while the ROWS are being walked: the file loop lets it through
+    # (the deadline is still in the future there), the `git` read spends it, and the row walk stops.
+    during = run_hook_process(
+        "gate_second_booking.py", payload, repo,
+        hooks_dir=_hooks_with_a_budget_of(tmp_path, "0.001", "hooks-budget-tiny"))
+    assert during.returncode == 2, during.stdout + during.stderr
+    assert "never looked at" in during.stderr, (
+        "the ROW-level stop was never reached, so nothing measures it: %s" % during.stderr)
+    for message in (gone.stderr, during.stderr):
+        assert "smaller batches" in message, (
+            "a budget refusal has to carry its own remedy, not the one for a missing reading: %s"
+            % message)
+
+
+def _booking_store():
+    """The attestation store's path parts, composed by the RUNNING code -- `_attestation_store`'s
+    reason verbatim: a literal typed here would stay green if the store moved into `staging/`."""
+    bookings = _office_module("_bookings")
+    readings = _office_module("_readings")
+    return readings.store_path("project_memory",
+                               bookings.BOOKING).replace(os.sep, "/").split("/")
+
+
+@pytest.mark.parametrize("spelling", ["plain", "through a cd"])
+def test_an_agent_cannot_write_the_booking_attestation_store_through_the_registered_chain(
+        tmp_path, spelling):
+    """The booking store is only worth what its write protection is worth, and it is a DIFFERENT
+    directory from the filing one -- so the measurement is repeated rather than inherited."""
+    repo = _booking_project(tmp_path)
+    parts = _booking_store()
+    command = ("echo x >> %s" % "/".join(parts) if spelling == "plain"
+               else "cd %s && echo x >> %s" % (parts[0], "/".join(parts[1:])))
+    code, said = _commit_chain(repo, command)
+    assert code == 2 and "gate_write_scope" in said, said
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
+               "tool_input": {"file_path": os.path.join(str(repo), *parts), "content": "x"}}
+    code, said = _through_the_chain(repo, payload)
+    assert code == 2 and "gate_write_scope" in said, said
+
+
+def test_a_document_swapped_after_the_booking_readings_is_not_the_document_they_read(tmp_path):
+    """The readings are bound to the document's BYTES, not to its path.
+
+    Nothing in this kit refuses an overwrite of a filed document, so without the binding two honest
+    readings of invoice A would authorise the figures of whatever lies at that path when the commit
+    is made. The digest is taken by `record_booking_reading` and not carried in the record, for
+    `_readings.source_digests`' reason: the hook has the filesystem and the role does not.
+    """
+    repo = _booking_project(tmp_path)
+    _record_booking_reading(repo, "run-a", "read_a.yaml", [GOOD_READING])
+    _record_booking_reading(repo, "run-b", "read_b.yaml", [GOOD_READING])
+    assert _commit_chain(repo)[0] == 0
+    write(str(repo / BOOK_DOC.replace("/", os.sep)), "a different invoice entirely\n")
+    code, said = _commit_chain(repo)
+    assert code == 2 and "gate_second_booking" in said, said
+    assert "replaced since" in said, said
+
+
+
+# ---------------- office kit: the binding Aktenplan draft and its TREE (FR-0031) ----------------
+# The shipped plan starts with `rules: []` and `gate_filing` fails closed on it, so the FIRST
+# document a fresh office project ever files is refused -- the entry gate's own instructions warn
+# about exactly that. `scripts/filing_plan.py` is the proposal half of the route that already
+# exists; nothing here writes the plan, the USER's approval and `add-filing-rule` do.
+OFFICE_TEMPLATE_STATE = os.path.join(ROOT, "team-kits", "office-team", "templates",
+                                     "project_memory")
+DRAFT_PROFILE = (
+    "business:\n"
+    '  name: "Muster"\n'
+    "document_sources:\n"
+    '  - what: "Rechnungen von meinen Lieferanten"\n'
+    "    document_types: [supplier_invoice]\n"
+    '  - what: "Was ich meinen Kunden schreibe"\n'
+    "    document_types: [sales_invoice, delivery_note]\n")
+
+
+def _draft_project(tmp_path, profile=DRAFT_PROFILE, plan="rules: []\n"):
+    """An office repo with the enforcement layer, the shipped state template, and a filled profile."""
+    repo = _office_project(tmp_path)
+    shutil.copytree(OFFICE_TEMPLATE_STATE, str(repo / "project_memory"),
+                    ignore=shutil.ignore_patterns("__pycache__"), dirs_exist_ok=True)
+    write(str(repo / "project_memory" / "business_profile.yaml"), profile)
+    write(str(repo / "project_memory" / "filing_plan.yaml"), plan)
+    return repo
+
+
+def _rule_flags_from(output):
+    """[{manifest parameter: value}] parsed off the `add-filing-rule` lines the draft PRINTS.
+
+    Read out of the script's own output rather than out of its functions, because the claim FR-0031
+    makes is about a command line a MANAGER copies: a test that called `draft()` directly would stay
+    green while the printed line lost a flag.
+    """
+    found = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line.startswith("python scripts/harness.py add-filing-rule "):
+            continue
+        parts = re.findall(r'--([a-z-]+) "([^"]*)"', line)
+        found.append({name.replace("-", "_"): value for name, value in parts})
+    return found
+
+
+def test_the_filing_plan_draft_derives_one_rule_per_class_the_owner_named(tmp_path):
+    """THE DERIVATION, and its one input: the classes the OWNER named in the onboarding interview.
+
+    Nothing in the draft knows what a business receives -- `business_profile.yaml`'s
+    `document_sources` is the same field `kernel.filing.uncovered_document_sources` compares the
+    plan against, so a class this proposes a rule for is exactly a class that reader would otherwise
+    report as an uncovered drawer. What is asserted is the count, the classes, and that every
+    printed command line builds a manifest the KERNEL's own approval builder accepts -- because a
+    draft whose lines the approval route refuses is a draft that ends in the text editor it exists
+    to replace.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import approvals
+    repo = _draft_project(tmp_path)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    flags = _rule_flags_from(result.stdout)
+    assert [one["document_types"] for one in flags] == \
+        ["supplier_invoice", "sales_invoice", "delivery_note"], result.stdout
+    assert [one["rule_id"] for one in flags] == ["FP-001", "FP-002", "FP-003"], result.stdout
+    for one in flags:
+        manifest = approvals.filing_rule_subject_manifest(reason="drafted at onboarding", **one)
+        assert manifest["path_template"].startswith("archive/"), manifest
+    # ...and nothing was written: the plan is a kit document and this script is a PROPOSAL
+    with open(str(repo / "project_memory" / "filing_plan.yaml"), encoding="utf-8") as handle:
+        assert handle.read() == "rules: []\n"
+
+
+def test_the_draft_makes_no_retention_number_up(tmp_path):
+    """The one field the draft refuses to fill, and it refuses on purpose.
+
+    `approvals.filing_rule_subject_manifest` requires a retention, so the draft has to put SOMETHING
+    there -- and a keeping period the kit chose would be one the user signs without deciding. The
+    shipped plan's own header says the DE defaults come with "the user's Steuerberater confirms", so
+    the draft carries the question into the approval instead of a number.
+    """
+    repo = _draft_project(tmp_path)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    for one in _rule_flags_from(result.stdout):
+        assert "Steuerberater" in one["retention"], one
+        assert not any(ch.isdigit() for ch in one["retention"]), (
+            "the draft proposed a keeping PERIOD, which is the user's decision: %r" % one["retention"])
+
+
+def test_the_draft_proposes_nothing_for_a_class_the_plan_already_files(tmp_path):
+    """A second rule for one class is a second answer to where its documents go.
+
+    `filing.apply` refuses a duplicate ID; this refuses a duplicate CLASS, which is the failure that
+    would survive renumbering. Numbering also continues past the ids the plan carries, so a draft run
+    on a half-filled plan does not collide with it.
+    """
+    plan = ("rules:\n"
+            "  - id: FP-001\n"
+            '    path_template: "archive/supplier_invoice/<year>/"\n'
+            "    document_types: [supplier_invoice]\n")
+    repo = _draft_project(tmp_path, plan=plan)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    flags = _rule_flags_from(result.stdout)
+    assert [one["document_types"] for one in flags] == ["sales_invoice", "delivery_note"], \
+        result.stdout
+    assert "FP-001" not in [one["rule_id"] for one in flags], result.stdout
+
+
+def test_a_class_that_cannot_be_a_folder_name_is_reported_and_not_filed_somewhere_nobody_meant(
+        tmp_path):
+    """A class name carrying a separator would build a deeper tree than the user described.
+
+    Silently mangling it is worse than saying so: leaving it out keeps it visible to
+    `uncovered_document_sources` -- the reader the session briefing prints -- instead of covering it
+    with a rule nobody meant.
+    """
+    profile = ("document_sources:\n"
+               '  - what: "Belege"\n'
+               "    document_types: [\"finance/receipts\", receipt]\n")
+    repo = _draft_project(tmp_path, profile=profile)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "NOT PROPOSED" in result.stdout and "finance/receipts" in result.stdout
+    assert [one["document_types"] for one in _rule_flags_from(result.stdout)] == ["receipt"], \
+        result.stdout
+
+
+def test_a_class_name_that_would_become_shell_syntax_is_not_proposed(tmp_path):
+    """DATA MAY NOT BECOME SYNTAX, and the failing case here is an ORDINARY typo, not an attack.
+
+    The draft PRINTS two command lines per rule and the manager's own procedure tells the role to run
+    them, so every value in those lines is data that a shell is about to parse. The first cut of
+    `usable_segment` listed the characters it refused and therefore said nothing about the ones that
+    matter most: a profile naming the class `inv$(whoami)` produced a printed
+    `--path-template "archive/inv$(whoami)/<year>/"` at rc 0. An owner typing a `$` or an `&` into a
+    drawer name is the ordinary way in.
+
+    WHAT IS ASSERTED ABOUT THE LINE, and it is the property rather than a character list somebody
+    liked: every value stands inside a DOUBLE-QUOTED word, so the only characters that can leave one
+    are the ones a shell acts on THERE -- `$` and a backtick (both shells), a backslash (bash), and a
+    `"` that closes the word early. `&`, `;` and parentheses are literal inside `"..."` in bash and in
+    PowerShell and are deliberately NOT asserted against; a test that forbade them would be measuring
+    a rule the code does not have. The quote count per line is checked too, which is what catches an
+    early close.
+
+    BOTH ENDS: the three offending classes are reported and get no rule, and the ordinary word beside
+    them IS proposed, so this is not "refuse everything".
+    """
+    profile = ('document_sources:\n'
+               '  - what: "Belege"\n'
+               '    document_types: ["inv$(whoami)", "a&b", "c;d", Pruefbericht]\n')
+    repo = _draft_project(tmp_path, profile=profile)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [one["document_types"] for one in _rule_flags_from(result.stdout)] == ["Pruefbericht"], \
+        result.stdout
+    assert result.stdout.count("NOT PROPOSED") == 3, result.stdout
+    lines = [line for line in result.stdout.splitlines()
+             if "harness.py request-approval" in line or "harness.py add-filing-rule" in line]
+    assert lines, result.stdout
+    for line in lines:
+        for character in ("$", "`", chr(92)):
+            assert character not in line, (
+                "a printed command line carries %r, which a shell acts on inside a double-quoted "
+                "word: %s" % (character, line))
+        assert line.count('"') % 2 == 0, "a value closed its own quoted word: %s" % line
+
+
+def test_a_class_name_windows_cannot_make_a_folder_of_is_not_proposed(tmp_path):
+    """A name that passes every character test and STILL cannot become a folder.
+
+    `CON`, `PRN`, `AUX`, `NUL`, `COM1`..`COM9`, `LPT1`..`LPT9` are device names Windows keeps, stem
+    included -- `con.txt` is reserved too. They are letters and digits, so the alphabet rule says
+    yes, and the failure they produce is the least readable kind: the plan takes the rule, the user
+    approves it, and the FILING fails much later with an OS error nobody connects back to the
+    onboarding. `con` is a plausible German abbreviation for a drawer, so this is a typo case and
+    not a corner.
+
+    BOTH ENDS: the reserved names are reported and get no rule, and `console` -- which merely starts
+    with one -- IS proposed, because the rule is about the whole stem and not a prefix.
+    """
+    profile = ('document_sources:\n'
+               '  - what: "Belege"\n'
+               '    document_types: [CON, nul, com1, LPT9, con.notiz, console]\n')
+    repo = _draft_project(tmp_path, profile=profile)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert [one["document_types"] for one in _rule_flags_from(result.stdout)] == ["console"], \
+        result.stdout
+    assert result.stdout.count("NOT PROPOSED") == 5, result.stdout
+
+
+def test_an_owners_own_words_stay_readable_in_the_printed_reason(tmp_path):
+    """The counter-direction: the substitution may not eat the sentence it protects.
+
+    `--reason` is prose the USER reads on the approval card, so a filter that flattened it would
+    trade one defect for another. Umlauts, punctuation, spaces, `&` and `%` all survive -- none of
+    them does anything inside a double-quoted word in either shell -- while `$` does not.
+    """
+    profile = ('document_sources:\n'
+               '  - what: "Rechnungen fuer Pruefungen & Zoll, 100% davon Papier ($ und `)"\n'
+               '    document_types: [supplier_invoice]\n')
+    repo = _draft_project(tmp_path, profile=profile)
+    result = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert result.returncode == 0, result.stdout + result.stderr
+    line = [one for one in result.stdout.splitlines() if "request-approval" in one][0]
+    assert "Rechnungen fuer Pruefungen & Zoll, 100% davon Papier" in line, line
+    assert "$" not in line and "`" not in line, line
+
+
+def test_the_verfahrensdokumentation_renders_the_plan_as_the_tree_from_the_one_renderer(tmp_path):
+    """The user's steering: the machine-readable tree IS the plan, and whatever renders it renders
+    THE TREE -- never a second hand-written copy.
+
+    So this asserts identity and not similarity: the lines in the generated Verfahrensdokumentation
+    are the ones `filing_plan.tree_lines` produces for the same rules. A renderer copied into
+    `process_doc.py` would drift the way the two plan READERS drifted in 2026-08-03, which is the
+    measurement that made "one reader" this kit's rule for this document.
+    """
+    plan = ("rules:\n"
+            "  - id: FP-001\n"
+            '    path_template: "archive/finance/incoming_invoices/<year>/"\n'
+            "    document_types: [invoice]\n"
+            '    filename_template: "YYYY-MM-DD_<counterparty>_<doctype>"\n'
+            "  - id: FP-002\n"
+            '    path_template: "archive/finance/outgoing_invoices/<year>/"\n'
+            "    document_types: [sales_invoice]\n")
+    repo = _draft_project(tmp_path, plan=plan)
+    printed = _run_office_script(repo, "filing_plan.py", "--tree")
+    assert printed.returncode == 0, printed.stdout + printed.stderr
+    rendered = _run_office_script(repo, "process_doc.py")
+    document = open(str(repo / "docs" / "verfahrensdokumentation.md"), encoding="utf-8").read()
+    assert rendered.returncode == 0, rendered.stdout + rendered.stderr
+
+    sys.path.insert(0, os.path.join(str(repo), ".claude", "hooks"))
+    sys.path.insert(0, os.path.join(str(repo), "scripts"))
+    filing_plan = importlib.import_module("filing_plan")
+    importlib.reload(filing_plan)
+    import gate_filing
+    rules, _reason = gate_filing.rules(str(repo))
+    lines = filing_plan.tree_lines(rules)
+    assert len(lines) >= 6, lines
+    for line in lines:
+        assert line in document, ("the Verfahrensdokumentation does not carry the renderer's own "
+                                  "line %r" % line)
+        assert line in printed.stdout, "`--tree` and the document are not one renderer: %r" % line
+
+
+def test_a_fresh_office_project_files_its_first_document_without_the_user_editing_yaml(tmp_path):
+    """FR-0031 END TO END, which is the only assertion that measures the dead end it names.
+
+    The state before: `rules: []`, `gate_filing` fails closed, no tool write reaches the plan, and
+    the project's route was "ask the user to open a text editor". The route now: the manager runs
+    the draft, the USER answers the kernel's approval question, `add-filing-rule` writes exactly
+    that, and the first document is filed -- with the two classification readings FR-0035 asks for,
+    through the registered chain. Every step here is the shipped one; the only thing this test plays
+    is the user's ANSWER, which is the one part no software may perform.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from conftest import mint_via_hook
+    from kernel import approvals, filing
+    from kernel.state import ProjectState
+
+    repo = _draft_project(tmp_path)
+    inbox = "inbox/scan_0001.pdf"
+    write(str(repo / inbox.replace("/", os.sep)), "a supplier invoice\n")
+    filed = "archive/supplier_invoice/2026/2026-01-15_ACME_supplier_invoice.pdf"
+
+    # BEFORE: the empty plan refuses the filing, which is the dead end this item is about.
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(repo),
+               "tool_input": {"command": "mv %s %s" % (inbox, filed)}}
+    code, said = _through_the_chain(repo, payload)
+    assert code == 2 and "gate_filing" in said, said
+
+    draft = _run_office_script(repo, "filing_plan.py", "--draft")
+    assert draft.returncode == 0, draft.stdout + draft.stderr
+    flags = [one for one in _rule_flags_from(draft.stdout)
+             if one["document_types"] == "supplier_invoice"]
+    assert len(flags) == 1, draft.stdout
+
+    state = ProjectState(str(repo / "project_memory"))
+    manifest = approvals.filing_rule_subject_manifest(reason="onboarding draft", **flags[0])
+    mint_via_hook(state, approvals.create_pending_request(
+        state, "filing_rule", manifest=manifest,
+        approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY))
+    filing.apply(state, manifest)
+
+    _record_reading(repo, "run-a", "read_a.yaml", [(inbox, filed, "supplier invoice")])
+    _record_reading(repo, "run-b", "read_b.yaml", [(inbox, filed, "supplier invoice")])
+    code, said = _through_the_chain(repo, payload)
+    assert code == 0, said
+    # ...and the user never opened an editor: the plan's bytes were written by the kernel alone.
+    with open(str(repo / "project_memory" / "filing_plan.yaml"), encoding="utf-8") as handle:
+        assert "supplier_invoice" in handle.read()
 
 
 def test_fs_tripwire_blocks_archive_delete(tmp_path):

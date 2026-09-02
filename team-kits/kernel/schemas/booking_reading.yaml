@@ -1,0 +1,65 @@
+# ONE run's own reading of a source DOCUMENT into the fields of a ledger row (FR-0065): what this
+# reader read off the paper, before and independently of anybody booking it.
+#
+# WHY THIS EXISTS. Booking had ONE reader plus arithmetic. BUG-0072 is the live case: the kit's own
+# extractor returned 14.28 where the invoice said 214.20 net, and nothing in the pipeline would have
+# caught it -- the bookkeeper's own cross-check did. The arithmetic layer (`ledger_add.validate_row`,
+# net x (1 + vat) = gross) catches a triple that does not reconcile; it cannot catch a triple that
+# reconciles and belongs to a different document, a transposition that still adds up, or the wrong
+# category. That second catch-class needs a second pair of eyes, which is what this record is.
+#
+# WHY IT IS THE SAME SHAPE AS `filing_reading` AND NOT A REVIEW OF THE BOOKED ROW. A reviewer who
+# is shown the row agrees with the row; the user asked for a reader that arrives at the figures
+# WITHOUT being given them. So both readings are records of the same shape, written by different
+# runs, and the ROW has to agree with all of them -- see `filing_reading`'s header for the same
+# argument in its own words.
+#
+# WHAT READS IT:
+#   * `record_booking_reading` (PostToolUse) recognises a staged record by the LIST FIELD and the
+#     per-entry keys declared below -- read off this file, never spelled in the hook -- and appends
+#     WHO the provider says wrote those exact bytes, the bytes of the document it names as `source`,
+#     and the reading's own values, into `project_memory/.books/readings.jsonl`;
+#   * `gate_second_booking` (PreToolUse) refuses commit/push/merge/report/dispatch while a ledger
+#     row that is not already in `HEAD` is not covered by as many attested readings, from as many
+#     DIFFERENT runs, as the row's category asks for.
+#
+# WHICH KEYS ARE HERE, AS A DERIVATION AND NOT A TASTE. Every per-entry key below is a COLUMN of the
+# ledger the row is compared against; the columns that are absent are the ones a reader cannot get
+# off the document, and each carries its reason in `_bookings.NOT_READ_OFF_THE_DOCUMENT`.
+# `tools/test_hooks.py::test_a_booking_reading_asks_for_exactly_the_ledger_columns_a_document_carries`
+# holds the two spellings together in both directions -- a ledger column that is neither declared
+# here nor exempted there turns it red on the day it ships, and so does an exemption that is
+# declared here anyway.
+#
+# THERE IS DELIBERATELY NO `source_sha256` FIELD, for `filing_reading`'s reason verbatim: the hook
+# has the filesystem and the role does not, so the document binding is taken at attestation time.
+schema: booking_reading
+# WHICH ROLE WRITES THIS FILE. `tools/test_role_contracts.py` walks every schema carrying this key
+# and holds THAT role's shipped SKILL to the field names below. The bookkeeper is named because the
+# bookkeeper's own reading is the first one; the SECOND reading is written by a different run, and
+# which role that is, is the manager's dispatch decision and not a property of this contract -- the
+# same gap `filing_reading` names, for the same reason (`writer_role` takes one role).
+writer_role: bookkeeper
+version: 1
+strict: true
+max_serialized_bytes: 262144
+fields:
+  task_id:
+    type: str
+    required: true
+    pattern: '^TSK-\d{4,}$'
+  role:
+    type: str
+    required: true
+  readings:
+    type: list
+    item_type: dict
+    required: true
+    # source           the document this reader read, path relative to the project root -- the same
+    #                  spelling the ledger row's own `source` column carries.
+    # Everything else  the value this reader read for that ledger column. The amounts are compared
+    #                  as NUMBERS (`214.2` and `214.20` are one answer); every other key is compared
+    #                  as text, case included, because a disagreement is a question for the user and
+    #                  never something this layer smooths over.
+    item_required: [source, doc_date, direction, doc_type, counterparty, net, vat_rate, gross,
+                    vat_treatment, category]

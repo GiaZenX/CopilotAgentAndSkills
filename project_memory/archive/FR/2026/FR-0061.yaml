@@ -13,7 +13,12 @@ request_text: 'Radar 2026-08-29 item 2 (source: radar/2026-08-29-claude.md, chan
   check: does a writing line pass?). Record which way the classifier reads each; log
   any under-read as a measured hole in the hole list WITH the chain, or record that
   the gate already covers it. Measurement round, no code change unless a hole is found.'
-status: OPEN
+status: CONVERTED
 revision: 1
 approval_ref: null
 created: '2026-08-29T10:24:38'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  VERWERFEN -- covered by TSK-0098 (workshop), BUG-0082 (kits) and DEC-0056 (no scaffolding
+  beyond the house for the deliberate-insider class).'
+resulting_item: DEC-0056
+closed_at: '2026-09-02T08:48:43'

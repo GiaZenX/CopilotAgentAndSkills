@@ -1,0 +1,54 @@
+id: TSK-0105
+product_requirement: FR-0069
+derives_from: FR-0069
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/kernel/**
+- team-kits/*/hooks/**
+- team-kits/*/templates/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- team-kits/*/skills/humanizer/**
+- team-kits/gen_provider_artifacts.py
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0069.yaml
+- project_memory/inbox/active/FR-0007.yaml
+- project_memory/inbox/active/FR-0012.yaml
+- project_memory/inbox/active/FR-0062.yaml
+- project_memory/inbox/active/FR-0057.yaml
+- project_memory/inbox/active/FR-0064.yaml
+- project_memory/staging/FR-survey-2026-09-02.md
+expected_outputs:
+- 'design brief before design work: read the repo first, ask only what is not derivable,
+  ONE interaction (FR-0069)'
+- 'comment discipline in all constitutions and role texts: no explanatory comments;
+  a comment names a measured limit or a why the code cannot say -- measured against
+  real specialist output before any ceiling (FR-0007, user-sharpened)'
+- decision-in-prose catcher as a verifier duty, not a gate (FR-0012); report-gap duty
+  sentence mirrored into dev and research constitutions (FR-0062 second half)
+- QA test-scope measure from DEC-0050 in the quality-engineer role where it acts,
+  after measuring what QA starts today (FR-0057)
+- 'memory: per role decided with the Canyon measurement: reviewer/second-reader roles
+  lose the key red-first, implementer-type roles keep it measured (FR-0064)'
+- mirrors byte-identical; ratchets provisional; provisional stamp; hole numbers H105-H107
+  only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:56:24'

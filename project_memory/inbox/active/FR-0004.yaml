@@ -15,5 +15,5 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:59:52'
-triage_result: 'wanted: the II.12 comparison and the side-install are both still open,
-  measured by docs/reviews/2026-08-08-v2-plan-status.md itself (assessment TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter.'

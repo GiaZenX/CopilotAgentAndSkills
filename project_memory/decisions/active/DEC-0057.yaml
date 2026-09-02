@@ -1,0 +1,75 @@
+id: DEC-0057
+title: Parallel implementer streams in separate worktrees, merged as ONE release --
+  a measured pilot, with the rules that make the 2026-08-04 failure impossible to
+  repeat
+context: 'User request 2026-08-31: ''wir haben so viele offene FR und die beruehren
+  sich nicht direkt. Waere es nicht sinnvoll mehrere parallele implementer alles umsetzen
+  zu lassen? auf jeweils separate branches und es dann zu mergen?'' and, on the version
+  question, ''Was wenn sie jeweils eine version zb 7.x pflegen und sie dann gemeinsam
+  in eine 7 mergen? Ich wuerde mir diesen parallelen workflow wuenschen das loest
+  einiges viel schneller.'' THE MEASURED HISTORY THIS MUST NOT REPEAT (CLAUDE.md):
+  on 2026-08-04 two implementers ran on genuinely disjoint trees (.claude/ and team-kits/);
+  the files did not collide, but `pytest tools/` spans both -- nine tests fell, seven
+  only because one implementer changed team-kits/ while the other ran its final pass;
+  neither could deliver a green suite, and one rightly refused to stamp a foreign
+  in-flight change. Separate worktrees fix exactly that half (each suite runs against
+  a quiet tree). WHAT WORKTREES DO NOT FIX, listed so the rules below are derivable
+  from them: (1) the kit stamp is a content hash over the whole kit -- two streams
+  both stamp -N, the merged content has a third hash; (2) the ratchets (tools/lead_package_sizes.json,
+  tools/constitution_section_pins.json + their journal lines in docs/reviews/phase0-disposition.md)
+  record numbers of shared files; (3) H-numbers and item ids are allocated from a
+  directory; (4) DEC-0050''s full suite is a criterion on the FINAL tree; (5) gate
+  3 (gate_commit_evidence) computes its digest over CLAUDE_PROJECT_DIR, i.e. the main
+  tree, and knows nothing of a worktree -- a `git commit` inside a stream cannot carry
+  an honest verdict today; (6) the open items only LOOK disjoint: most of them land
+  in the same three files (PM skill, designer skill, constitution).'
+decision: 'PILOT with two streams and a merge round, measured, then kept or dropped
+  on numbers. RULES: (a) A stream is a git worktree of feat/harness-v2 under C:/Offline
+  Repos/v2-testbed/_worktrees/<stream>/ with one TSK whose allowed_scope IS the stream''s
+  ownership; two streams'' allowed_scopes must be disjoint at the FILE level, and
+  the lead checks that before spawning. (b) The stream runs the ordinary implementer
+  -> verifier loop inside its worktree (verifier in a copy outside, as always; scratch
+  under _round-scratch/<TSK>/). Streams run only their DEC-0050 affected suites --
+  the full suite belongs to the merge, not to the streams. (c) Shared bookkeeping
+  is NOT written by streams: project_memory/ stays on main (the lead captures items
+  there; streams write only staging/<TSK>/); H-numbers are reserved by the lead per
+  stream BEFORE spawning and named in the order; ratchet files may be re-recorded
+  inside a stream to keep its suite green but are ALWAYS re-recorded on the merge
+  with a note. (d) Stream stamps are PROVISIONAL: a stream runs bump_kit_version.py
+  for its own suite, but no stream stand is ever installed to the global store --
+  that is the user''s ''7.x'': provisional stamps, one release. (e) Streams do not
+  commit (gate 3 cannot judge a worktree honestly, and changing gate 3 for this would
+  be scaffolding bigger than the house, DEC-0056): a finished stream hands over as
+  its worktree diff; the MERGE ROUND applies the streams in a fixed order onto main
+  (git apply --3way), re-stamps, re-records ratchets, runs the full suite ONCE, sends
+  the verifier at the SEAM only (files both streams touched, the hole list, the ratchets,
+  the stamp), records one EVD, commits, pushes, rolls out. (f) The lead may not write
+  kit code in a worktree either -- gate 1 does not reach there, so this one is held
+  by the role, and said here so it is not mistaken for permission. (g) MEASURED EXIT:
+  the pilot records per stream wall-clock from spawn to verifier PASS, number of seam
+  findings at merge, suite runs (streams + merge), and token spend; it is kept if
+  the merge round cost less than one serial round would have and the seam produced
+  no finding that a serial run would have avoided by construction. Either outcome
+  is recorded as a follow-up DEC.'
+consequences: 'First pair: stream A = the design cluster (FR-0068 frontend-design,
+  FR-0070 webapp-testing, FR-0045 design-system export, FR-0071 skill selection derived
+  from the task) in dev-team skills/agents plus whatever kernel derivation FR-0071
+  needs; stream B = rollout safety (FR-0041 pin+rollback, FR-0044 stock classification,
+  FR-0055 remote-control default, FR-0046 field test on copies) in install/scaffold/kitupdate.
+  Both may touch kernel files and all three VERSION files -- that is the expected
+  seam and the merge round''s job. What does NOT parallelise and stays serial: anything
+  that must change gate files in .claude/, anything whose scope cannot be stated as
+  a disjoint file set, and the merge itself. Cost honesty for the user: parallel streams
+  save WALL-CLOCK, not tokens (two rounds cost two rounds) and not suite time in the
+  streams (they skip the full suite; the merge pays it once) -- the lead''s attention
+  is the real bottleneck and is stated as such. Neighbours: DEC-0050 (test scope per
+  round), DEC-0056 (no scaffolding beyond the house -- the worktree/patch route was
+  chosen over teaching gate 3 about worktrees for exactly that reason), the CLAUDE.md
+  paragraph on the 2026-08-04 incident.'
+source: Nutzerwunsch 2026-08-31 in der Sitzung (zwei Nachrichten, Zitate im Kontext);
+  gemessene Vorgeschichte CLAUDE.md 'Es schreibt immer nur einer' und 'getrennte Baeume
+  sind keine getrennte Pruefung' (2026-08-04); Gate-3-Digest-Verhalten aus gate_commit_evidence.py
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-01T21:18:55'

@@ -59,5 +59,7 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T23:10:54'
-triage_result: 'wanted: no cut-critic role exists in any kit; DEC-0012 explicitly
-  widened its mandate to the five order-line failure forms (assessment TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter -- ''verstehe nicht ganz was der Sinn ist''; the user restated his real
+  wish instead, captured as FR-0074 (plan-level approval + autonomous work-through).
+  Stays a smaller, separate concern.'

@@ -134,6 +134,29 @@ the same route a PROC does (step 3) and you touch no hashed content before that 
 reproduction a specialist can run without you, and its fix is proven by re-running the PROC's own
 trigger and recording that run as an Evidence item — never by a "done" string (step 4).
 
+## The Aktenplan at onboarding: a binding DRAFT, and a tree the user can see
+A fresh project's `filing_plan.yaml` carries `rules: []`, `gate_filing` fails closed on that, and no
+tool write reaches the file — so the FIRST document the project ever files is refused and the only
+route left used to be asking the user to open a text editor. Close that in the onboarding session,
+right after `business_profile.yaml` carries the interview's `document_sources`:
+1. `python scripts/filing_plan.py --draft` proposes one rule per document class the OWNER named, and
+   prints the archive TREE those rules would produce plus the two command lines per rule. It writes
+   nothing.
+2. Put the TREE in front of the user — that is the thing they can judge, not a rule list — and say
+   which two parts are the kit's proposal rather than their answer: the `<year>` folder under each
+   class and the file-name shape. The retention is deliberately blank and is a question for their
+   Steuerberater.
+3. For each rule the user wants: `request-approval filing_rule …` with the flags the draft printed,
+   the user ANSWERS, then `add-filing-rule` with the same flags. Amend a flag the user changed
+   before you ask — the approval binds exactly what you typed.
+4. `python scripts/filing_plan.py --tree` afterwards, so the user sees the archive they now have.
+   The same renderer fills the Ablage section of the Verfahrensdokumentation, so there is one tree
+   and never a second hand-written copy of the structure.
+A class the draft says it can NOT propose stays uncovered on purpose: its name is a FOLDER name and
+a word on the command lines the draft prints, and only letters, digits, `_`, `-` and `.` are safe as
+both — a `$`, a `&` or a space in a drawer name would otherwise end up as shell syntax in a line you
+are told to run. Ask the user what that folder should be called. Occasion: `FR-0031`.
+
 ## What you OWN (the content — the kernel writes it)
 The `PROC` items, the `FR` inbox, the `CR` and `BUG` items, the Decision items you record, plus the two
 plain config artifacts `business_profile.yaml` and `project_config.yaml` and the frozen

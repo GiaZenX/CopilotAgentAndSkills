@@ -25,6 +25,19 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-05T07:00:07'
-triage_result: 'wanted: no kit constitution carries the SR-0008 comment discipline
-  (grep over team-kits/dev-team/constitution/AGENTS.md: only the language note) (assessment
-  TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey), sharpened: generell keine Kommentare
+  im Code -- der Code muss so geschrieben sein, dass aus dem Code herauslesbar ist,
+  was Funktionen, Methoden, Schleifen tun; mehr Kommentar = mehr Output-Tokens und
+  mehr Gelegenheit fuer Fehlbehauptungen. The user asked whether the kits already
+  carry this (measured: no -- only the language note), how it could be blocked, and
+  whether it makes sense. LEAD ANSWER recorded with him: (1) yes on cost and yes on
+  the false-claim risk -- the verifier caught six such comments on 2026-09-02 alone;
+  (2) rule for the kits: no EXPLANATORY comments; a comment may only name a measured
+  limit/hole with its measurement, or a WHY the code cannot express -- never a WHAT;
+  docstrings that restate a signature are the same defect; (3) no prose-heuristic
+  gate (house rule) -- but MEASURE first how much comment the specialists write in
+  a real project before anyone builds a ceiling, and only then decide whether a per-file
+  comment-ratio tripwire is honest; (4) zero comments would be too strict: the NOT
+  CONTAINED / measured-limit sentences the verifiers rely on are comments and stay.
+  Scope: constitution + role texts of all three kits, mirrored; pairs with FR-0010
+  if that comes.'

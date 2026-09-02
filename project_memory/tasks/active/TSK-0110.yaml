@@ -1,0 +1,40 @@
+id: TSK-0110
+product_requirement: FR-0036
+derives_from: FR-0036
+type: docs
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- docs/**
+- tools/test_repo_hygiene.py
+- tools/test_disposition.py
+forbidden_scope:
+- team-kits/**
+- docs/POST_V2_WISHLIST.md
+- docs/HARNESS_V2_SPEC.md
+- docs/reviews/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0036.yaml
+expected_outputs:
+- 'one measured pass over wishlist sections 1-10: each section has its FR pointer,
+  a thin FR, or a superseded mark -- written as a list in the protocol for the LEAD
+  to apply (the wishlist itself is forbidden here: every other stream appends to it)'
+- 'docs cleanup: prose with NO wire (no test reads it, no hole entry, no EVD artifact_ref,
+  no living item) moves to a docs archive directory; every move verified by the full
+  tools/ suite in the worktree and an EVD-reference check -- moved artifact refs broke
+  evidence twice before'
+- 'no hole numbers reserved: this stream may not write the hole list; findings go
+  to the protocol'
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:56:32'

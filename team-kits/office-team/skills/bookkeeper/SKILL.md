@@ -28,10 +28,24 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    counterparties. A category that file does not carry — including the case where it carries none
    at all, which is how it ships — is a PROPOSAL to the manager and a named gap in your envelope,
    never a silent invention: book the entry under the name you propose, say in the same envelope
-   that the vocabulary does not carry it and that nothing can add it (step 4), and then use that
+   that the vocabulary does not carry it and that nothing can add it (step 5), and then use that
    same name every time, because comparability is the whole point (Q1 "Porto" vs Q2
    "Versandkosten" destroys it).
-3. **Book:** `python scripts/ledger_add.py --year <y> --direction expense|income --doc-type
+3. **Read it into a record BEFORE you book it, and let a second run do the same.** The arithmetic
+   check says the amounts add up, not that they came off the right document — that is BUG-0072 in
+   one sentence, and it is why a row that is not yet in `HEAD` needs as many independent readings as
+   its category asks for (two, unless `master_data.yaml` carries `second_reading: false` for that
+   category, which asks for one and never for none). Write
+   `project_memory/staging/<TSK-ID>/booking_reading.yaml` with `task_id`, `role` and a `readings`
+   list; each entry names `source` (the archive path of the document you read) plus the figures you
+   read for `doc_date`, `direction`, `doc_type`, `counterparty`, `net`, `vat_rate`, `gross`,
+   `vat_treatment` and `category`. Write what the PAPER says, not what the row says — the second
+   reader is not shown your record and must not be handed your answer. `record_booking_reading`
+   stamps WHICH RUN wrote it and what the document looked like then; you cannot state either
+   yourself. `gate_second_booking` refuses commit, push, merge and every report while a row is
+   short of readings or disagrees with one, and it names the field and both answers. A
+   disagreement is never yours to resolve: put BOTH readings to the manager for the USER.
+4. **Book:** `python scripts/ledger_add.py --year <y> --direction expense|income --doc-type
    invoice|credit_note|refund|fee --doc-date … --payment-date …|--open --counterparty … --invoice-no …
    --net … --vat-rate … --gross … --vat-treatment standard|reverse_charge|kleinunternehmer|oss
    --category … --source <archive path>` — the script validates (arithmetic, duplicates, schema)
@@ -39,7 +53,7 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    Prefer a reversal entry (`--doc-type reversal --reverses <entry id>`) for a wrong
    BOOKING — it keeps the history readable; edit for a typo and say so in the Evidence.
    `--import <csv> --year <y>` books a whole batch, validated as a merged whole before saving.
-4. **Master data — you own its CONTENT, and no TOOL writes the file.** `master_data.yaml` is a kit
+5. **Master data — you own its CONTENT, and no TOOL writes the file.** `master_data.yaml` is a kit
    document (constitution §6): `gate_write_scope` refuses every tool write under `project_memory/`.
    Measured in pilot 4 (`P4-12`): the write was refused, the booking went through and the missing
    category was reported — and until `apply-proposal` shipped, that report was where it ended. It
@@ -48,7 +62,7 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    category you want CORRECTED or REMOVED
    is not on that route and goes to the user as old-and-new lines. Never rewrite history, and never
    work around the refusal.
-5. **Commentary:** after a report run, write `reports/<report>_notes.md` — anomalies (duplicate
+6. **Commentary:** after a report run, write `reports/<report>_notes.md` — anomalies (duplicate
    suspicion, invoice-number gaps, VAT oddities, reverse-charge items, unpaid/open list),
    plain language. The numbers themselves come ONLY from `euer_report.py`.
 

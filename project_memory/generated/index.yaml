@@ -1,4 +1,4 @@
-generated_at: '2026-08-31T22:25:38'
+generated_at: '2026-09-02T11:16:32'
 items:
 - id: BUG-0001
   type: BUG
@@ -511,7 +511,7 @@ items:
   title: 'The design draft reaches the user UNSEEN: no kit duty renders and reviews
     a DSN before the user sees it, and the product-designer has no tool to look at
     his own work'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0077
@@ -559,6 +559,45 @@ items:
   title: 'The kits'' gate_write_scope misses a glob-expanded path to the enforcement
     layer: `python .cla*de/hooks/gate_approval.py` is rc 0 where the literal spelling
     is rc 2'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0083
+  type: BUG
+  title: 'Kernel: report._root_of resolves ONE hop while _hangs_from is transitive
+    -- the research chain RQ -> HYP -> EXP -> TSK the constitution documents cannot
+    be created (H92)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0084
+  type: BUG
+  title: 'Kernel: an approval on a HYP covers NO content and never invalidates --
+    it mints (APR-0003), unlocks dispatch, survives every edit of the HYP, and takes
+    the task out of the QA-debt check (H93, security-relevant)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0085
+  type: BUG
+  title: 'Research kit: the rendered report (project_memory/reports/*) has NO write
+    route -- section 6 assigns it to the report-writer, section 17 makes it a completeness
+    condition, and gate_write_scope refuses every write there (H94, BUG-0071 class)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0086
+  type: BUG
+  title: 'Kernel: the task-origin check falls OPEN on ambiguous parentage -- an item
+    with two parents gets _root_of None and dispatch skips the root comparison, in
+    every kit (verifier B2 / H95)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0087
+  type: BUG
+  title: tools/test_hooks_v2.py:9428 is an assert-or-True -- a test that cannot fail,
+    standing next to the hook time-budget checks
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -922,6 +961,38 @@ items:
   type: DEC
   title: Gates guard against ERROR, not against INTENT -- no more hardening rounds
     against a deliberate insider, and the cost side is part of every gate decision
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0057
+  type: DEC
+  title: Parallel implementer streams in separate worktrees, merged as ONE release
+    -- a measured pilot, with the rules that make the 2026-08-04 failure impossible
+    to repeat
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0058
+  type: DEC
+  title: 'Plan-level approval: the user approves the derived goal list ONCE; afterwards
+    the team works the whole plan and asks only for the irreversible and the taste-bound
+    (merge/push, design choices, money, anything leaving the house)'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0059
+  type: DEC
+  title: Model tier per round is the orchestrator choice, announced briefly -- in
+    the workshop the lead decides per stream, in the kits the PM decides per task
+    and tells the user in one line
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0060
+  type: DEC
+  title: 'DEC-0057 pilot verdict: parallel streams in worktrees are KEPT -- they bought
+    wall-clock, not tokens, and the merge round paid a measured seam; four rules learned
+    become part of the procedure'
   status: VALID
   revision: 1
   approval_ref: null
@@ -1369,6 +1440,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0075
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1407,24 +1484,10 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0014
-  type: FR
-  title: Das Office-Kit ist als Workflow nie getestet -- ein Pilot gegen die gemessenen
-    V1-Schmerzen fehlt
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0015
   type: FR
   title: 'BuyPlugGo-Ziel: Produktpflege ueber die API durch einen Subagenten -- bisher
     von nichts angearbeitet'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0016
-  type: FR
-  title: Der Apparat kann ein Bild nicht in den Chat stellen -- UI-Rueckkopplung verpufft
-    an Dateipfaden
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1487,21 +1550,21 @@ items:
   type: FR
   title: 'Containerisierte Harness-Umgebung: gekapselt vom Rechner, globale Dateien
     trennbar, Vollzugriff nur wo noetig'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0028
   type: FR
   title: 'Office-Team ist werkzeug- und produktgruppen-agnostisch: Regeln statt Anbindungen,
     Workflows einmal beibringen'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0029
   type: FR
   title: Research-Team hat noch nie einen Piloten gesehen -- ein Workflow-Pilot nach
     dem Muster der dev-Piloten
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0031
@@ -1515,55 +1578,55 @@ items:
   type: FR
   title: 'Office: standardisiertes Finanz-HTML-Dashboard -- Einnahmen/Ausgaben, offene
     Posten, EUeR auf einen Blick'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0033
   type: FR
   title: 'Office: Schriftverkehr-Faehigkeit -- Angebote, Mahnungen, Kundenkorrespondenz
     als Rolle oder beibringbarer Workflow'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0034
   type: FR
   title: 'Office: Fristen und Wiedervorlagen -- aktive Erinnerungen statt stiller
     Faelligkeiten'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0036
   type: FR
   title: 'Wunsch-Prosa-Abgleich: jeder Abschnitt 1-10 der POST_V2_WISHLIST traegt
     ein FR oder einen Verweis'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0037
   type: FR
   title: Pfadlaengen-Warnung des Validators fehlt (II.4-Zusage)
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0038
   type: FR
   title: 'Auditor-Routine: Faelligkeitsdatensatz und SessionStart-Melder (der Hook
     meldet, der PM spawnt)'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0039
   type: FR
   title: INV.verified bekommt einen Produzenten und einen Merge-Blocker (check ->
     Testname -> sammelbar)
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0040
   type: FR
   title: 'EVD unterscheidet Teillauf nicht von Volllauf -- Umfang und Befehl des Laufs
     werden Pflicht (moeglicher DEC: Vertragsaenderung an unveraenderlichem Typ)'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0041
@@ -1582,7 +1645,7 @@ items:
 - id: FR-0043
   type: FR
   title: Latenz-Bench aus II.12 in den ausgelieferten CI-Workflow (klein, nicht blockierend)
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0044
@@ -1609,21 +1672,21 @@ items:
 - id: FR-0047
   type: FR
   title: Modell-Stufe je Rolle festnageln und stilles Herunterstufen sichtbar machen
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0048
   type: FR
   title: Entry agent breaks the German-report rule itself -- fix user/claude/CLAUDE.md
     wording and roll out to the home directory (user approval required)
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0054
   type: FR
   title: 'Kernel contract: optional BUG->SR link (related_sr) so software bugs can
     hang under the system requirement they hit -- post-release'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0055
@@ -1636,7 +1699,7 @@ items:
   type: FR
   title: Die QS-Rolle der Kits kennt kein Mass fuer den Testumfang -- in einem grossen
     Nutzerprojekt wird daraus dieselbe Explosion wie in TSK-0083
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0058
@@ -1650,35 +1713,28 @@ items:
   type: FR
   title: 'Claude Code 2.1.246: /cd binds the target project''s settings/hooks/MCP/skills/agents
     IMMEDIATELY -- measure what that does to the restart model and the gate story'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0060
   type: FR
   title: 'BOM tripwire: a role/skill/gate .md starting with a UTF-8 BOM must fail
     a structural test -- a silently unloaded role is an unbound gate'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0061
-  type: FR
-  title: Measure the kits' command-line classifier against unrelated $()/backtick
-    substitutions -- Anthropic just fixed the same over-match class in its own matcher
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0062
   type: FR
   title: Per-project kit-gap log, kernel-written, harvested by the harness lead --
     so live findings stop requiring full-session reads
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0064
   type: FR
   title: 'Evaluate subagent memory (memory: frontmatter) for the harness roles --
     implementer maybe, verifier NO by design'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0065
@@ -1693,7 +1749,7 @@ items:
   type: FR
   title: A kernel route for REPLACING/deleting in a kit document -- old-vs-new shown
     per spot in the approval card -- so the last remaining hand edit disappears
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0068
@@ -1708,7 +1764,7 @@ items:
   type: FR
   title: 'A design BRIEF before any design work: read the existing repo first, then
     ask the user only what cannot be derived from it'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: FR-0070
@@ -1724,6 +1780,30 @@ items:
     the role -- plus a tripwire that a shipped skill no route reaches makes the suite
     red
   status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0072
+  type: FR
+  title: 'A humanizer skill for every kit: texts a role writes for people (product
+    copy, letters, reports, chat replies) read as written by a person, not by an AI'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: FR-0073
+  type: FR
+  title: 'An invoice WRITER for the office kit: clean, norm-conformant e-invoices
+    (XRechnung / ZUGFeRD, EN 16931) from ledger and master data, validated before
+    they leave the house'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0074
+  type: FR
+  title: 'Plan-level approval and autonomous work-through: the masterplan is worked
+    out meticulously, every product goal is walked through against it WITH the PM
+    own proposals, and once all goals are confirmed the team works the whole plan
+    without further questions except the necessary ones'
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: PR-0001
@@ -1799,7 +1879,73 @@ items:
   status: DRAFT
   revision: 1
   approval_ref: null
-- id: TSK-0099
+- id: TSK-0100
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0101
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0102
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0103
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0104
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0105
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0106
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0107
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0108
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0109
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0110
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0111
   type: TSK
   title: null
   status: READY

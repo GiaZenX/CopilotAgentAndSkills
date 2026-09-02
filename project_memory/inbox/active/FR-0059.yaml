@@ -17,15 +17,12 @@ request_text: 'User-supplied changelog quote 2026-08-29 (2.1.246): ''/cd picks u
   immediately vs still needs restart (agent: binding? statusline? permissions?), and
   version availability. Then a MEASUREMENT plan for our own rigs. Source: user message
   2026-08-29.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-29T08:29:01'
 source: docs/reviews/2026-08-29-cd-rebinding-research.md
-triage_result: 'Research done 2026-08-29 (Sonnet, sourced): /cd is NOT model-invocable
-  (no self-shedding of gates via prompt injection -- human-typed only, trust dialog
-  lists the hooks interactively); the restart assumption is broken for /cd since 2.1.246
-  for hooks/settings/MCP/skills; whether the agent: session binding switches too is
-  UNDOCUMENTED and the key open question; CLAUDE_PROJECT_DIR stays at the start dir;
-  this host ran 2.1.239 at research time. Measurement plan (9 steps) in the doc; ceremony
-  changes only after a measuring round.'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, MESSEN -- and tell the user what to type; his question whether /cd works in
+  the VS Code extension or Claude Desktop: CLI + VS Code extension are the same Claude
+  Code, the Desktop app is a different program -- the round records the measured answer.'

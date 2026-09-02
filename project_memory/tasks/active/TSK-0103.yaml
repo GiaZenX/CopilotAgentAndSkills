@@ -1,0 +1,41 @@
+id: TSK-0103
+product_requirement: FR-0029
+derives_from: FR-0029
+type: test
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/research-team/**
+- tools/test_e2e*.py
+- tools/test_research*.py
+- docs/pilot/**
+- docs/reviews/**
+forbidden_scope:
+- team-kits/dev-team/**
+- team-kits/office-team/**
+- team-kits/kernel/**
+- scaffold_team.*
+- install.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0029.yaml
+- project_memory/inbox/active/FR-0042.yaml
+- tools/test_e2e.py
+- docs/pilot
+expected_outputs:
+- E2E chain test for the research chain RQ -> HYP -> EXP -> Report in the test stand,
+  red-first (FR-0042)
+- a research-team workflow pilot run on a scaffolded copy, in the pattern of the dev
+  pilots, with a dated findings doc under docs/pilot/ (FR-0029)
+- every kit gap found is a FINDING for the lead to capture, not a fix in kernel/ or
+  other kits; research-team files may be fixed
+- affected suites green; provisional stamp; hole numbers H92-H94 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-01T21:22:11'

@@ -1,11 +1,12 @@
 {
-  "_comment": "agents-and-skills USER (~/.claude) defaults. The installer only adds top-level defaults missing from ~/.claude/settings.json; existing personal values (including theme and statusLine) always win. `permissions.allow`/`deny` are UNIONED without duplicates; existing values of all other permission sub-keys win. The `hooks` key is likewise UNIONED per event so the global BUG-0016 handover guard and the BUG-0059 kit-bridge notice install even for a user who already runs their own global hooks (see user/merge_settings.py). Both global hooks carry a `timeout`: a hook the host kills leaves no verdict, and for the SessionStart notice the budget also has to cover the one subprocess it runs (the project's own entry point, asked whether it carries `update-kit`). Deliberately NOT shipped (your machine, your call — set them yourself if wanted): permissions.defaultMode (bypassPermissions removes your veto GLOBALLY, against the official warning to use it only in isolated environments; the kits ship web-capable roles), remoteControlAtStartup, effortLevel (cost). The previous file is backed up under ~/.claude/backups/.",
+  "_comment": "agents-and-skills USER (~/.claude) defaults. The installer only adds top-level defaults missing from ~/.claude/settings.json; existing personal values (including theme and statusLine) always win. `permissions.allow`/`deny` are UNIONED without duplicates; existing values of all other permission sub-keys win. The `hooks` key is likewise UNIONED per event so the global BUG-0016 handover guard and the BUG-0059 kit-bridge notice install even for a user who already runs their own global hooks (see user/merge_settings.py). Both global hooks carry a `timeout`: a hook the host kills leaves no verdict, and for the SessionStart notice the budget also has to cover the one subprocess it runs (the project's own entry point, asked whether it carries `update-kit`). `remoteControlAtStartup` ships as false so a fresh installation starts with remote control OFF rather than on the provider default; it is a plain top-level default, so a machine that already sets it keeps its own value — true included (FR-0055). Deliberately NOT shipped (your machine, your call — set them yourself if wanted): permissions.defaultMode (bypassPermissions removes your veto GLOBALLY, against the official warning to use it only in isolated environments; the kits ship web-capable roles), effortLevel (cost). The previous file is backed up under ~/.claude/backups/.",
   "statusLine": {
     "type": "command",
     "command": "python ~/.claude/statusline.py",
     "padding": 1
   },
   "theme": "dark",
+  "remoteControlAtStartup": false,
   "alwaysThinkingEnabled": true,
   "telemetryEnabled": false,
   "attribution": {

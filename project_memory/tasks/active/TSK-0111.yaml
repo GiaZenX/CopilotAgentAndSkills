@@ -1,0 +1,57 @@
+id: TSK-0111
+product_requirement: FR-0072
+derives_from: FR-0072
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/dev-team/skills/humanizer/**
+- team-kits/office-team/skills/humanizer/**
+- team-kits/research-team/skills/humanizer/**
+- team-kits/repo_kit_owned.txt
+- NOTICES.md
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/product-designer/**
+- team-kits/*/skills/product-editor/**
+- team-kits/*/skills/marketing-planner/**
+- team-kits/*/skills/project-manager/**
+- team-kits/*/skills/report-writer/**
+- team-kits/*/skills/frontend-design/**
+- team-kits/*/skills/webapp-testing/**
+- team-kits/kernel/**
+- team-kits/*/hooks/**
+- team-kits/*/templates/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0072.yaml
+- team-kits/dev-team/skills/frontend-design/SKILL.md
+- team-kits/dev-team/constitution/AGENTS.md
+expected_outputs:
+- 'a shared REFERENCE skill (FR-0071 model) written from measured PROPERTIES, not
+  phrase lists: sentence-length variance, dash/colon density, hedging depth, discourse-marker
+  frequency, rule-of-three; plus a German layer (Nominalstil vs Verbalstil, Anglicisms,
+  missing Modalpartikel) -- learned from the named MIT sources, not copied; Wikipedia
+  CC BY-SA orientation only'
+- 'no user dialogue assumed: the role opens it mid-task on text it already has; the
+  FR''s own test stands: before/after on the user''s real shop copy, judged by him
+  -- prepare the pair, the judgement is his'
+- byte-identical across the three kits (KIT_SPECIFIC names no reason); the role-text
+  sentences naming it are SEAM items for stream E; provisional stamp; hole numbers
+  H120-H122 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:57:16'

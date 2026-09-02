@@ -1,0 +1,48 @@
+id: TSK-0104
+product_requirement: FR-0058
+derives_from: FR-0058
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+- NOTICES.md
+- README.md
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+forbidden_scope:
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/decisions/active/DEC-0057.yaml
+- project_memory/staging/TSK-0100/round-protocol.md
+- project_memory/staging/TSK-0101/round-protocol.md
+- project_memory/staging/TSK-0102/round-protocol.md
+- project_memory/staging/TSK-0103/round-protocol.md
+expected_outputs:
+- the four stream patches applied onto main in the fixed order B, A, C, D with every
+  conflict resolved and recorded (DEC-0057 e)
+- 'SEAM work no stream could do: cli.py verbs pin-kit/unpin-kit/rollback-kit (B/S1)
+  and report-gap (C) plus the constitution duty sentence that names it (C seam test
+  must go green); session_status.py names the pin instead of offering the update (B/S2),
+  mirrored byte-identical across kits; gen_provider_artifacts.py mirrors REFERENCE
+  skills for Codex (A/F2); both scaffold twins copy a skill dir when it is in the
+  preset OR when the kit ships no agents/<name>.md for it (A/H83); README command
+  surface lines (B/S3)'
+- hole-list summary table carries every entry H82-H101 the streams added (pre-existing
+  H82 omission fixed); ratchets re-recorded once on the merged tree with notes; all
+  three kits re-stamped ONCE as the release
+- 'full tools/ suite once on the merged tree; verifier at the seam only; DEC-0057
+  g numbers recorded: per-stream wall-clock, seam findings count, suite runs, token
+  spend; merge hole numbers H102-H104 only'
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T00:04:09'

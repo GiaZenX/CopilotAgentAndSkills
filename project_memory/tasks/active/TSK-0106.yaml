@@ -1,0 +1,56 @@
+id: TSK-0106
+product_requirement: BUG-0083
+derives_from: BUG-0083
+type: bugfix
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/kernel/**
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/*/hooks/**
+- team-kits/*/templates/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- team-kits/gen_provider_artifacts.py
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/bugs/active/BUG-0083.yaml
+- project_memory/bugs/active/BUG-0084.yaml
+- project_memory/bugs/active/BUG-0085.yaml
+- project_memory/bugs/active/BUG-0086.yaml
+- project_memory/inbox/active/FR-0017.yaml
+- project_memory/inbox/active/FR-0018.yaml
+- project_memory/inbox/active/FR-0037.yaml
+- project_memory/inbox/active/FR-0039.yaml
+- project_memory/inbox/active/FR-0040.yaml
+- project_memory/inbox/active/FR-0054.yaml
+- project_memory/inbox/active/FR-0067.yaml
+expected_outputs:
+- research chain RQ->HYP->EXP->TSK creatable and dispatchable; origin check transitive
+  and fail-closed on ambiguity; no approval on a kind APPROVAL_TRANSITIONS does not
+  list; QA-debt filter derived from ROOT_TYPE_BY_KIT (BUG-0083/0084/0086)
+- a sanctioned route for the rendered research report (BUG-0085) -- decided measuring,
+  freeze-report shape likely
+- 'kernel bookkeeping: heading nodes (FR-0017), soft duplicate hint (FR-0018), path-length
+  warning (FR-0037), INV.verified producer + merge blocker (FR-0039), EVD run-scope
+  field after its DEC (FR-0040), related_sr (FR-0054), replace/delete route for kit
+  documents with its own security weighing (FR-0067)'
+- role/constitution text these need is a SEAM item for stream E, listed verbatim in
+  the protocol -- not written here
+- red-first per fix; provisional stamp; hole numbers H108-H110 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:56:26'

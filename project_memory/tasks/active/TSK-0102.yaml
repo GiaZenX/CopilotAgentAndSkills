@@ -1,0 +1,45 @@
+id: TSK-0102
+product_requirement: FR-0065
+derives_from: FR-0065
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/office-team/**
+- team-kits/kernel/gaplog.py
+- team-kits/kernel/ledger*.py
+- team-kits/kernel/schemas/**
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/dev-team/**
+- team-kits/research-team/**
+- team-kits/kernel/kitupdate.py
+- team-kits/kernel/cli.py
+- team-kits/kernel/state.py
+- scaffold_team.*
+- install.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0065.yaml
+- project_memory/inbox/active/FR-0062.yaml
+- project_memory/inbox/active/FR-0031.yaml
+- team-kits/office-team/hooks/gate_second_reading.py
+expected_outputs:
+- 'four eyes for BOOKING: a second independent pass booking-row-vs-source-document,
+  enforced where measurable, with the catch classes named (FR-0065)'
+- 'per-project kit-gap log written by the kernel, harvestable by the lead (FR-0062)
+  -- NOTE cli.py is stream A territory: if the log needs a CLI verb, deliver the kernel
+  module + tests and list the cli.py wiring as a SEAM item'
+- office onboarding produces a binding filing-plan draft and a rendered directory
+  tree (FR-0031)
+- red-first; affected suites green; provisional stamp; hole numbers H89-H91 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-01T21:22:10'

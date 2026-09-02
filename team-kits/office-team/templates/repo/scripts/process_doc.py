@@ -84,6 +84,11 @@ def main(argv=None):
         # the filing plan's ONE reader (see the module docstring). Imported after `_kernel`, whose
         # import arms the exit-2 excepthook that `disarm()` below takes back off again.
         import gate_filing  # type: ignore[import-not-found]
+        # THE tree renderer, imported rather than re-written: the user's steering (FR-0031) is that
+        # the machine-readable tree IS the plan, and "whatever renders it renders the tree, not a
+        # second hand-written copy" is the same single-reader rule this file's own header records
+        # for `gate_filing.rules`.
+        import filing_plan  # type: ignore[import-not-found]
     except BaseException as exc:  # noqa: BLE001 — a broken bridge names itself, never tracebacks
         return _fail("the hook helpers next to the kernel could not be loaded (%r)." % (exc,),
                      "a partial checkout or a half-finished kit update is the usual cause; "
@@ -111,9 +116,9 @@ def main(argv=None):
         lines += ["> **UNVOLLSTÄNDIG:** %s. Dieser Entwurf beschreibt die Ablage NICHT — "
                   "`gate_filing` verweigert aus demselben Grund jede Ablage." % reason, ""]
     else:
-        lines.append("Quelle: `project_memory/%s` — eine Zeile je Regel, alle Felder der Regel."
-                     % gate_filing.PLAN)
-        lines.append("")
+        lines.append("Quelle: `project_memory/%s` — der Baum ist der Plan; darunter eine Zeile "
+                     "je Regel mit allen Feldern der Regel." % gate_filing.PLAN)
+        lines += ["", "```"] + filing_plan.tree_lines(rules) + ["```", ""]
         # Every field EXCEPT the path is rendered without being named: which fields a rule carries
         # is the plan's business (its header states them), and a list of them here would be a
         # second schema that goes stale the day a project adds `owner:` to its rules.

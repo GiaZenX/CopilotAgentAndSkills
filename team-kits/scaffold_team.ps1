@@ -9,7 +9,10 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Team,
-    [string]$Preset = ""
+    [string]$Preset = "",
+    # Replay the bundle the LAST install replaced (FR-0041). The .sh twin spells the same switch
+    # `--rollback`; `kernel.kitupdate.rollback_command` picks the spelling off the script it names.
+    [switch]$Rollback
 )
 
 $ErrorActionPreference = "Stop"
@@ -28,14 +31,14 @@ $repo = (Get-Location).Path
 $script:SameVersion = $false
 $installedVersionFile = Join-Path $repo ".claude\kit_version"
 $stagedVersionFile = Join-Path $kit "VERSION"
-if ((Test-Path $installedVersionFile) -and (Test-Path $stagedVersionFile)) {
+if ((-not $Rollback) -and (Test-Path $installedVersionFile) -and (Test-Path $stagedVersionFile)) {
     $script:SameVersion = ((Get-Content $installedVersionFile -TotalCount 1) -eq (Get-Content $stagedVersionFile -TotalCount 1))
 }
 if ($script:SameVersion) {
     Write-Host "NOTE: kit '$Team' is already at the staged version -- re-applying managed files/roles only. This does NOT resolve .claude/kit_update_pending.* merge tasks (work through them and DELETE the file)." -ForegroundColor Yellow
 }
 
-Write-Host "Scaffolding team '$Team' into $repo" -ForegroundColor Cyan
+if (-not $Rollback) { Write-Host "Scaffolding team '$Team' into $repo" -ForegroundColor Cyan }
 
 function Test-ReparsePoint {
     param([string]$Path)
@@ -79,6 +82,15 @@ function Get-NormalizedSha256 {
 
 function Assert-SafeRepoPath {
     param([string]$Path)
+    # A CONTROLLED PATH NAMES NO `..`. `GetFullPath` below already refuses a word that RESOLVES out
+    # of the repository, so this adds the one case it accepts: a parent step that happens to come
+    # back inside. It is here so the two twins refuse the same PARENT STEP -- the .sh carries the
+    # argument and the measurement (a `../victim.txt` line in a snapshot's RESTORE_SET), and also
+    # the measured limit: an ABSOLUTE word is answered differently by the two twins, and here it
+    # aborts the run through `GetFullPath` rather than through this refusal (`H88`).
+    if ($Path -match '(^|[\\/])\.\.([\\/]|$)') {
+        throw "Controlled scaffold path escapes the repository: $Path"
+    }
     $repoFull = [IO.Path]::GetFullPath($repo).TrimEnd('\', '/')
     $full = [IO.Path]::GetFullPath($Path)
     $prefix = $repoFull + [IO.Path]::DirectorySeparatorChar
@@ -128,6 +140,155 @@ function Assert-NoReparseTree {
     }
 }
 
+# WHAT AN INSTALL PUTS BACK WHEN IT IS UNDONE, and why it is not the same set it BACKS UP -- the
+# .sh twin carries the argument at the same place. `$restorable` is what this installer OWNS;
+# `$keptOnly` is backed up and never restored, because both are files it READS and never writes.
+# The set is DATA, used by the backup pass, by the manifest inside the snapshot and by the restore.
+# `.claude/kit_state.json` is on it because the run REWRITES it: until 2026-09-01 it was neither
+# backed up nor restored, so an abort left the NEW bundle's trust hash beside the OLD bundle.
+# Measured on the abort path:
+# `tools/test_kitupdate.py::test_an_aborted_install_puts_the_trust_record_back_with_the_bundle`.
+# Spelled with forward slashes: either twin may be the one that replays a snapshot.
+$restorable = @(
+    "CLAUDE.md", "AGENTS.md", ".claude/settings.json", ".claude/agents", ".claude/hooks",
+    ".claude/kernel", ".claude/skills", ".claude/team_kit_roles.txt",
+    ".claude/provider_artifacts.json", ".claude/kit_version", ".claude/kit_state.json",
+    ".codex", ".agents/skills", ".github/hooks", ".github/agents")
+$keptOnly = @("AGENTS.override.md", ".claude/settings.local.json")
+
+function Restore-FromSnapshot {
+    param([string]$Snapshot, [string[]]$Paths)
+    foreach ($relative in $Paths) {
+        $native = $relative.Replace("/", [IO.Path]::DirectorySeparatorChar)
+        $target = Join-Path $repo $native
+        $saved = Join-Path $Snapshot $native
+        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+        if (Test-Path -LiteralPath $saved) {
+            $parent = Split-Path -Parent $target
+            if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+                New-Item -ItemType Directory -Force -Path $parent | Out-Null
+            }
+            Copy-Item -LiteralPath $saved -Destination $target -Recurse -Force
+        }
+    }
+}
+
+$providerPython = Get-Command python -ErrorAction SilentlyContinue
+if (-not $providerPython) { $providerPython = Get-Command python3 -ErrorAction SilentlyContinue }
+if (-not $providerPython) { throw "Python 3.8+ with PyYAML is required to validate provider configuration." }
+# No stderr redirect: under EAP=Stop, 2>$null on a native command turns stderr into a
+# terminating NativeCommandError and the friendly message below becomes unreachable.
+& $providerPython.Source -c "import importlib.util, sys; sys.exit(0 if (sys.version_info >= (3, 8) and importlib.util.find_spec('yaml')) else 1)"
+if ($LASTEXITCODE -ne 0) { throw "Python 3.8+ with PyYAML is required to validate provider configuration." }
+
+# FROM THIS SCRIPT'S OWN DIRECTORY, not from the staging the kit sits in -- the same source
+# `gen_provider_artifacts.py` and `preset_config.py` are taken from. What this reads is the
+# PROJECT, so the reader belongs to the installer that is running; `write_kit_state.py` is the
+# opposite case and says so where it is started.
+$preflightSource = @'
+import sys
+from kernel import kitupdate
+sys.exit(kitupdate.preflight_cli(sys.argv[1:]))
+'@
+function Invoke-Preflight {
+    param([string[]]$Extra = @())
+    $previousPythonPath = $env:PYTHONPATH
+    $env:PYTHONPATH = $PSScriptRoot
+    try {
+        & $providerPython.Source -B -c $preflightSource $repo $kit @Extra
+        $code = $LASTEXITCODE
+    } finally {
+        $env:PYTHONPATH = $previousPythonPath
+    }
+    if ($code -ne 0) { exit $code }
+}
+
+if ($Rollback) {
+    # THE PIN IS ASKED HERE TOO, and it is the whole reason this branch is not the first thing the
+    # script does: a rollback replaces the installed bundle exactly as an update does. Until
+    # 2026-09-01 it sat in front of every check, and a pinned project could be rolled back to a
+    # bundle its own pin then refused to update OR repair.
+    Invoke-Preflight @("rollback")
+    # ROLLBACK (FR-0041): replay the bundle the LAST install replaced. Newest snapshot by name --
+    # the stamps are `yyyyMMdd-HHmmss` plus a collision suffix, so lexical order is chronological
+    # -- and only one carrying its own RESTORE_SET is a candidate: in an older snapshot, which
+    # paths the installer OWNED is exactly what nobody recorded.
+    $backups = Join-Path $repo ".claude\backups"
+    $chosen = $null
+    if (Test-Path -LiteralPath $backups) {
+        foreach ($candidate in (Get-ChildItem -LiteralPath $backups -Directory | Sort-Object Name -Descending)) {
+            if (Test-Path -LiteralPath (Join-Path $candidate.FullName "RESTORE_SET")) {
+                $chosen = $candidate
+                break
+            }
+        }
+    }
+    if (-not $chosen) {
+        throw "No snapshot under .claude/backups/ carries a RESTORE_SET, so there is no previous bundle this installer can replay; nothing was changed. Snapshots written before 2026-09-01 do not record which paths the installer owned -- restore those by hand."
+    }
+    Assert-NoReparseTree $chosen.FullName
+    # EVERY LINE IS JUDGED BEFORE THE FIRST ONE IS ACTED ON -- the POSIX twin carries the argument
+    # and the measurements; what stands here is the same rule in this spelling. A line passes if
+    # this installer OWNS it (`$restorable`) or the snapshot HOLDS A COPY of it; only a line that is
+    # neither is refused, because `Restore-FromSnapshot` deletes a target before it looks for a
+    # saved copy and a foreign manifest would use that to delete a file with nothing to put back.
+    #
+    # READ AS UTF-8 WITH BOM DETECTION, and this half is a PIN rather than a fix -- said so because
+    # the POSIX twin's matching comment describes a real defect and this one does not. THIS twin is
+    # also the one that WRITES the mark (its own RESTORE_SET starts with `efbbbf`, measured
+    # 2026-09-02), and `Get-Content` happened to strip it, so the BOM never hurt here: with the
+    # strip removed this reader still replayed the first path at rc 0. What it hurt was the POSIX
+    # twin replaying THIS twin's snapshot. `ReadAllText` states the decoding instead of inheriting a
+    # `Get-Content` default that differs between PowerShell editions, so the two twins now answer a
+    # BOM by the same stated rule rather than by two defaults that happen to agree.
+    $setPaths = @()
+    $foreign = @()
+    $manifestText = [IO.File]::ReadAllText((Join-Path $chosen.FullName "RESTORE_SET"))
+    foreach ($line in ($manifestText -split "`r?`n")) {
+        $entry = $line.Trim()
+        if (-not $entry -or $entry.StartsWith("#")) { continue }
+        $native = $entry.Replace("/", [IO.Path]::DirectorySeparatorChar)
+        Assert-SafeRepoPath (Join-Path $repo $native)
+        if (($restorable -notcontains $entry) -and
+            -not (Test-Path -LiteralPath (Join-Path $chosen.FullName $native))) {
+            $foreign += $entry
+        }
+        $setPaths += $entry
+    }
+    if ($foreign.Count -gt 0) {
+        throw "This snapshot's RESTORE_SET names path(s) this installer does not own and did not save a copy of: $($foreign -join ', '). Replaying it would DELETE them with nothing to put back, so nothing was changed. A manifest written by this installer names only paths it backs up; report where this snapshot came from rather than retrying."
+    }
+    Restore-FromSnapshot $chosen.FullName $setPaths
+    Write-Host "  [rollback] replayed .claude/backups/$($chosen.Name) ($($setPaths.Count) recorded path(s))" -ForegroundColor Yellow
+    # The transition this project announced has been undone, so the announcement goes with it; the
+    # RESTART marker is raised for the reason a fresh install raises it -- the bundle under the
+    # running session just changed again, and only a session start reads the new one.
+    $updatedFrom = Join-Path $repo ".claude\kit_updated_from"
+    if (Test-Path -LiteralPath $updatedFrom) { Remove-Item -LiteralPath $updatedFrom -Force }
+    $claudeDir = Join-Path $repo ".claude"
+    if (-not (Test-Path -LiteralPath $claudeDir)) { New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null }
+    @(
+        "# agents-and-skills handover marker (BUG-0016, DEC-0032)",
+        "# A ROLLBACK replayed .claude/backups/$($chosen.Name) over team '$Team'. Until the next restart the",
+        "# global handover guard refuses product-code writes and further derivation in this session.",
+        "# A SessionStart(startup) hook clears this file on the next real restart. Safe to delete."
+    ) | Set-Content -LiteralPath (Join-Path $claudeDir "HANDOVER_PENDING") -Encoding utf8
+    # WHAT IT DID NOT PUT BACK, derived rather than claimed: everything under .claude/ that is not
+    # one of the recorded paths. Naming them is the difference between a rollback and a promise.
+    $recorded = @($setPaths | ForEach-Object { $_.ToLowerInvariant() })
+    $untouched = @()
+    foreach ($entry in (Get-ChildItem -LiteralPath $claudeDir -Force)) {
+        if ($entry.Name -eq "backups") { continue }
+        if ($recorded -contains (".claude/" + $entry.Name).ToLowerInvariant()) { continue }
+        $untouched += ".claude/" + $entry.Name
+    }
+    if ($untouched.Count -gt 0) {
+        Write-Host "  [rollback] left as they are (not part of the recorded set): $($untouched -join ' ')" -ForegroundColor Yellow
+    }
+    Write-Host "Rollback done. RESTART the session -- the replayed hooks and agents only load at session start." -ForegroundColor Cyan
+    exit 0
+}
+
 $cfg = Join-Path $repo "project_memory\project_config.yaml"
 if (-not (Test-Path $cfg)) {
     throw "project_memory/project_config.yaml is required before scaffolding; no files were changed."
@@ -153,15 +314,20 @@ if (Test-Path -LiteralPath $repoTemplatePreflight) {
         Assert-NoReparseTree (Join-Path $repo $relative)
     }
 }
-$providerPython = Get-Command python -ErrorAction SilentlyContinue
-if (-not $providerPython) { $providerPython = Get-Command python3 -ErrorAction SilentlyContinue }
-if (-not $providerPython) { throw "Python 3.8+ with PyYAML is required to validate provider configuration." }
-# No stderr redirect: under EAP=Stop, 2>$null on a native command turns stderr into a
-# terminating NativeCommandError and the friendly message below becomes unreachable.
-& $providerPython.Source -c "import importlib.util, sys; sys.exit(0 if (sys.version_info >= (3, 8) and importlib.util.find_spec('yaml')) else 1)"
-if ($LASTEXITCODE -ne 0) { throw "Python 3.8+ with PyYAML is required to validate provider configuration." }
 & $providerPython.Source "$PSScriptRoot\gen_provider_artifacts.py" --repo $repo --project-config $cfg --check-config-only
 if ($LASTEXITCODE -ne 0) { throw "Invalid provider configuration; no scaffold files were changed." }
+# PRE-FLIGHT (FR-0044/II.12): WHICH STOCK lies here, and may it be written over at all? It runs
+# before the first file moves and after the checks that own a FILE of their own -- the config's
+# existence and its provider block. Both orders are safe (each refuses and writes nothing), and the
+# order is decided by which message a reader can act on: a `project_config.yaml` that does not parse
+# is that check's finding, not a sentence about V1 backlog records. That this does not cost the V1
+# verdict is measured rather than assumed -- all three field copies under C:/Offline Repos/v2-pilot
+# carry a pre-kernel config and all three PASS `--check-config-only` (rc 0, 2026-09-02), so the
+# stock verdict is still what they meet. After the snapshot there is a way back; after the
+# enforcement layer has been replaced over a state no command can read there is none. The verdict,
+# the refusals and the fail-closed rule live in `kernel.kitupdate.preflight_cli`; this line only
+# starts it, so the two twins cannot come to classify a project differently.
+Invoke-Preflight
 $configJson = & $providerPython.Source -c "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8-sig'))))" $cfg
 if ($LASTEXITCODE -ne 0) { throw "Could not read validated project_config.yaml." }
 $configData = $configJson | ConvertFrom-Json
@@ -237,51 +403,30 @@ function Backup-Local {
         Copy-Item -LiteralPath $p -Destination $dst -Recurse -Force
     }
 }
-Backup-Local (Join-Path $repo "CLAUDE.md") "CLAUDE.md"
-Backup-Local (Join-Path $repo "AGENTS.md") "AGENTS.md"
-Backup-Local (Join-Path $repo "AGENTS.override.md") "AGENTS.override.md"
-Backup-Local (Join-Path $repo ".claude\settings.json") ".claude\settings.json"
-Backup-Local (Join-Path $repo ".claude\settings.local.json") ".claude\settings.local.json"
-Backup-Local (Join-Path $repo ".claude\agents") ".claude\agents"
-Backup-Local (Join-Path $repo ".claude\hooks") ".claude\hooks"
-Backup-Local (Join-Path $repo ".claude\kernel") ".claude\kernel"
-Backup-Local (Join-Path $repo ".claude\skills") ".claude\skills"
-Backup-Local (Join-Path $repo ".claude\team_kit_roles.txt") ".claude\team_kit_roles.txt"
-Backup-Local (Join-Path $repo ".claude\provider_artifacts.json") ".claude\provider_artifacts.json"
-Backup-Local (Join-Path $repo ".claude\kit_version") ".claude\kit_version"
-Backup-Local (Join-Path $repo ".codex") ".codex"
-Backup-Local (Join-Path $repo ".agents\skills") ".agents\skills"
-Backup-Local (Join-Path $repo ".github\hooks") ".github\hooks"
-Backup-Local (Join-Path $repo ".github\agents") ".github\agents"
-if (Test-Path $bdir) { Write-Host "  [ok] backed up existing team files -> .claude/backups/$stamp" -ForegroundColor Green }
+foreach ($relative in ($restorable + $keptOnly)) {
+    $native = $relative.Replace("/", [IO.Path]::DirectorySeparatorChar)
+    Backup-Local (Join-Path $repo $native) $native
+}
+if (Test-Path $bdir) {
+    # The snapshot carries its OWN restore contract, so a rollback months later replays the set the
+    # run that made it owned rather than today's.
+    $restorable | Set-Content -LiteralPath (Join-Path $bdir "RESTORE_SET") -Encoding utf8
+    Write-Host "  [ok] backed up existing team files -> .claude/backups/$stamp" -ForegroundColor Green
+}
 if (Test-Path -LiteralPath (Join-Path $repo "AGENTS.override.md")) {
     throw "Repository AGENTS.override.md takes precedence over the team constitution. It was backed up and left untouched; merge/remove it only after explicit user review, then rerun scaffolding."
 }
 
 function Restore-ScaffoldSnapshot {
-    $relativePaths = @(
-        "CLAUDE.md", "AGENTS.md", ".claude\settings.json", ".claude\agents",
-        ".claude\hooks", ".claude\kernel", ".claude\skills", ".claude\team_kit_roles.txt",
-        ".claude\provider_artifacts.json", ".claude\kit_version", ".codex",
-        ".agents\skills", ".github\hooks", ".github\agents")
-    foreach ($relative in $relativePaths) {
-        $target = Join-Path $repo $relative
-        $saved = Join-Path $bdir $relative
-        if (Test-Path -LiteralPath $target) {
-            Remove-Item -LiteralPath $target -Recurse -Force
-        }
-        if (Test-Path -LiteralPath $saved) {
-            $parent = Split-Path -Parent $target
-            if ($parent -and -not (Test-Path -LiteralPath $parent)) {
-                New-Item -ItemType Directory -Force -Path $parent | Out-Null
-            }
-            Copy-Item -LiteralPath $saved -Destination $target -Recurse -Force
-        }
-    }
+    # THE RUN'S OWN SET, not a second copy of it: `$restorable` is what was backed up above and what
+    # the snapshot's RESTORE_SET records, so an abort undoes exactly the paths this run owns.
+    Restore-FromSnapshot $bdir $restorable
 }
 
 # Treat the Claude base plus all generated provider artifacts as one logical layer. Any normal
-# failure before provider generation completes restores the byte-for-byte scaffold snapshot.
+# failure before provider generation completes restores the snapshot byte for byte OVER THE PATHS
+# THIS INSTALLER OWNS (`$restorable`) -- not over the whole project: records the run writes outside
+# that set (the update markers, the pending lists) stay where the failed run left them.
 try {
 $agentsSrc = Join-Path $kit "agents"
 $agentsDst = Join-Path $repo ".claude\agents"
@@ -505,10 +650,15 @@ if (Test-Path $kernelSrc) {
 # it does not inject them -- measured 2026-08-02 for a role bound as the session agent, and
 # unmeasured for the subagent-spawn path (tools/provider_observations.json). Each agent file
 # names the retrieval route, which is why the skill directory has to be installed at all.
+#
+# A SKILL DIRECTORY WHOSE NAME IS NO ROLE OF THIS KIT BELONGS TO EVERY PRESET -- see the POSIX twin
+# for the measurement (H83): the preset filter is a ROLE filter, and a reference skill belongs to no
+# role by construction (constitution 1a), so it was dropped from every preset but `team`.
 if (Test-Path $skillsSrc) {
     if (-not (Test-Path $skillsDst)) { New-Item -ItemType Directory -Force -Path $skillsDst | Out-Null }
     Get-ChildItem -Path $skillsSrc -Directory | ForEach-Object {
-        if ($presetRoles -and $_.Name -ne $lead -and $presetRoles -notcontains $_.Name) { return }
+        $isRole = Test-Path -LiteralPath (Join-Path $agentsSrc "$($_.Name).md")
+        if ($isRole -and $presetRoles -and $_.Name -ne $lead -and $presetRoles -notcontains $_.Name) { return }
         $d = Join-Path $skillsDst $_.Name
         if (Test-Path $d) { Remove-Item $d -Recurse -Force }
         Copy-Item $_.FullName $d -Recurse -Force

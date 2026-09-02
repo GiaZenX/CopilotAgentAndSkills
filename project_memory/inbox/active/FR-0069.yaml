@@ -24,7 +24,9 @@ request_text: 'User request 2026-08-31, in the same breath as FR-0068: ''ausserd
   one is measured twice in Canyon: no brief beyond ambition, and a process rule leaking
   into the visual instruction) and its cost to the legitimate path.'
 related_pr: BUG-0076
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-31T17:29:27'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- next design round, with the humanizer (FR-0072) for UI text.'

@@ -1,0 +1,77 @@
+id: DEC-0060
+title: 'DEC-0057 pilot verdict: parallel streams in worktrees are KEPT -- they bought
+  wall-clock, not tokens, and the merge round paid a measured seam; four rules learned
+  become part of the procedure'
+context: 'DEC-0057 (g) demanded numbers before the parallel workflow is kept or dropped.
+  FIRST GENERATION, 2026-09-01 21:20 -> 2026-09-02, four streams from c155a5f: A design
+  (TSK-0100, 4 FRs), B rollout (TSK-0101, 4 FRs), C office (TSK-0102, 3 FRs), D research
+  (TSK-0103, 2 FRs) = 13 FRs. WALL-CLOCK spawn -> first implementer report: A 1h30,
+  B 1h19, C ~2h05, D 1h27; to final PASS incl. reworks: A ~3h00 (2 verifier rounds),
+  B ~3h15 (2), C ~4h40 (3), D 3h00 (3). All four FAILed their first verification --
+  every time on prose overclaims and one unmeasured edge case (a path with spaces,
+  mention vs invocation, a bracket spelling, a regex over-blanking prose), never on
+  the mechanism. Parallel wall-clock first spawn -> last stream PASS: ~4h45; the serial
+  equivalent at the day''s per-round average (~3h15 incl. verification) would have
+  been ~13h. TOKENS: implementers 0.35-0.69 M each, verifiers 0.19-0.31 M per round
+  -- per stream the same as a serial round; parallelism bought time, not tokens, exactly
+  as DEC-0057 predicted. Suite time inside streams: ~zero saved for A and C (kernel
+  changes need every tools/ file). MERGE ROUND (TSK-0104, 01:50 -> ~10:30 incl. three
+  reworks): 66 files, 14 conflicting files / 16 hunks / 9 content decisions (7 VERSION
+  hunks are none); the seam-notes listed 6 seam files BEFORE the merge and the merge
+  found them all; SURPRISES not in the seam notes: 12 -- five properties of the united
+  tree, four of the implementer''s own measurement errors (incl. a scaffold test that
+  could not fail because three presets shared one project), two pre-existing defects
+  (the RESTORE_SET BOM cross-twin skip; the assert-or-True BUG-0087), and exactly
+  ONE that a serial run would have prevented by construction (B''s test files spelled
+  V1 monolith paths the sweep reads -- visible only on the united tree). The merge
+  verifier ran three rounds (FAIL: protocol spelled the V1 paths + the seam tripwire''s
+  duty half was dead because the seam itself put the verb into the command list; FAIL:
+  H88(a4) claimed unclosability with numbers measured at the wrong caller; PASS after
+  the RESTORE_SET ownership guard was built in both twins, red-first, plus a pre-existing
+  cross-twin BOM defect found and closed on the way). The gate suite .claude/hooks/test_gates.py
+  -- run separately by rule -- was NOT run by the merge implementer and had three
+  hole entries without a verdict span (H83, H84, H87 rewritten by the merge) and one
+  bare test name (H86); the lead fixed all four before commit: a fifth rule -- the
+  gate suite''s hole-list tripwires run in the merge round too. Stamps: streams provisional
+  (-1..-6), release 2026.09.02-10 after the last merge rework; full tools/ suite on
+  the release tree 4151 passed, 14 skipped, 0 failed (52:11). The user, mid-pilot,
+  asked for MORE parallelism (''ich haette gerne alles parallel'') and then accepted
+  the file-ownership limit; seven streams (TSK-0105..0111) are cut for the second
+  generation with a tier cast per DEC-0059.'
+decision: 'KEPT. The parallel workflow of DEC-0057 stays the normal way to work a
+  disjoint backlog, with four rules added from the measurement: (1) after EVERY stream
+  patch lands in the merge, run the pin/ratchet tests (test_shortening_net, test_context_budget)
+  before the next patch -- the office stream''s red pin test was missed because its
+  DEC-0050 suite selection was by ''what I touched'', and pinned files are affected
+  BY CONSTRUCTION; (2) a stream''s affected-suite selection is derived from the files
+  it changes and the tests that READ them, not from the topic; (3) the seam file list
+  is written BEFORE spawning (seam-notes) and is the merge round''s contract -- this
+  generation found no seam file the list did not name; (4) a tripwire whose one end
+  follows from its other end is prose -- the same test (gap command + duty) went dead
+  twice in two rounds because a change of the SAME round made ''told'' a theorem of
+  ''wired''; read an invocation, not a mention, and mutate BOTH ends separately in
+  red-first. Kept as is: no stream commits (gate 3 judges the main tree), provisional
+  stamps, one release stamp, the verifier at the seam only, project_memory written
+  only by the lead on main. The lead''s attention is the measured ceiling (seven streams
+  = ~35 reports); the mitigation is the discipline already used -- every verdict and
+  finding written to staging files the moment it arrives, so a context compaction
+  loses nothing.'
+consequences: 'Second generation runs now: E texts (Fable), F kernel (Opus), G office
+  (Opus), H measurements (Opus), I dashboard (design pass Fable, build Opus), J hygiene
+  (Opus), K humanizer (Fable) -- TSK-0105..0111, branching from the 2026.09.02-10
+  release commit, hole numbers H105-H122 reserved per stream, seam items reported
+  not written, VERSION files inside every allowed_scope (the generation-1 items forbade
+  what their outputs required, B7/C-F6). The (g) table gains a tier column so Fable
+  vs Opus is compared on the same generation (DEC-0059). Not measured and not claimed:
+  that seven streams merge as cleanly as four -- the seam grows with the number of
+  appenders to the hole list, the ratchets and the stamps, and the second merge round
+  measures that. Neighbours: DEC-0057 (the pilot), DEC-0059 (tiers), DEC-0050 (test
+  scope), DEC-0056 (no scaffolding beyond the house -- the merge round did NOT teach
+  gate 3 about worktrees; the patch route sufficed).'
+source: Messung der ersten Stream-Generation und der Merge-Runde TSK-0104 (seam-notes.md,
+  merge-protocol.md, vier Stream-Protokolle, acht Pruefberichte), 2026-09-01/02; Nutzerentscheidungen
+  2026-09-02 (mehr Parallelitaet, Stufen-Besetzung)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-02T11:16:32'

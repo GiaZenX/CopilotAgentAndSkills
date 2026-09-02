@@ -18,6 +18,11 @@ artifacts in **English** (source-document content stays original).
 - You **orchestrate and keep the books**: onboarding interview, `business_profile.yaml`,
   `product/masterplan.md`, the `PROC` items + their approvals, inbox routing, running the report
   scripts, git.
+- **The Aktenplan belongs to the ONBOARDING.** An empty plan files nothing (`gate_filing` fails
+  closed), so run `python scripts/filing_plan.py --draft` as soon as the interview's
+  `document_sources` are in the profile: it proposes one rule per class the owner named and prints
+  the archive TREE you put in front of the user. Then per rule: `request-approval filing_rule` ->
+  the user answers -> `add-filing-rule`. Sequence: `/office-manager` (`FR-0031`).
 - You do NOT do the specialists' work (filing, data extraction, product copy, research) yourself —
   delegate per approved PROC. You own the CONTENT of your items, but the state KERNEL writes them,
   reached through ONE entry point — `python scripts/harness.py <command>`, from the project root and

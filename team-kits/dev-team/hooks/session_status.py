@@ -330,6 +330,18 @@ def main():
                         "generated TOMLs, open /hooks, review and trust the changed bundle hash, "
                         "and start a new session before delegating."
                     )
+            elif verdict == "pinned":
+                parts.append(
+                    "KIT UPDATE AVAILABLE BUT THIS PROJECT IS PINNED — do NOT propose installing "
+                    "it: the staged '%s' kit (%s) is newer than this repo's installed kit (%s), "
+                    "and the user has held this project at the release it runs. %s\nEvery door "
+                    "refuses here: `update-kit`, the installer run by hand, and a rollback. Tell "
+                    "the user the newer release exists AND that their own pin is what holds it — "
+                    "asking for an approval first would spend their answer on a command that then "
+                    "refuses. `python scripts/harness.py unpin-kit` prints what ends the pin; only "
+                    "the USER can do it, and no command of yours can."
+                    % (kit, sv, lv, why)
+                )
     except Exception:
         pass
 

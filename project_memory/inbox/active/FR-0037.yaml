@@ -11,7 +11,9 @@ request_text: 'TSK-0069 side check N2 (FR or BUG -- lead read II.4 as a shipped 
   early-warning finding for stocks approaching the limit without extended-length paths
   (OneDrive, deep filing trees). Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
   N2.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-16T14:05:40'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- small, Kleinkram block.'

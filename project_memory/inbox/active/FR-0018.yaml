@@ -18,5 +18,6 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-12T06:23:54'
-triage_result: 'wanted: capture still detects only duplicate ids, no similarity hint;
-  wished as help, not enforcement (assessment TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- small kernel round; only if it measurably helps without nagging on
+  every capture.'

@@ -717,6 +717,43 @@ def test_the_briefing_offers_the_command_and_not_the_dead_end(tmp_path, kit):
     assert "You cannot run either yourself" not in briefing, briefing
 
 
+@pytest.mark.parametrize("kit", KITS)
+def test_a_pinned_project_hears_about_its_pin_instead_of_an_offer(tmp_path, kit):
+    """The briefing may not ask for an OK that only `update-kit` will then refuse (`H87`).
+
+    MEASURED BEFORE THE FIX, on the shipped hook as a process against a pinned project: the text
+    said "KIT UPDATE AVAILABLE … On their OK you install it YOURSELF" and named the pin with no
+    word. So the PM proposed, the user said yes, the approval was minted -- and the refusal came
+    afterwards. Nothing was installed, which is why this was a price and not a hole; what it cost
+    was a pointless question and a minted permission that opens nothing.
+
+    NOT SILENCED, and that is the other end of the same assertion: the newer release is still
+    reported. A file that makes a message stop is `BUG-0078`'s marker class, and the repair for
+    this was to move the fact one step earlier -- so the offer to install has to be gone AND the
+    comparison has to still be there, in the same briefing.
+
+    Run over all three kits because the wording is per kit (`KIT_SPECIFIC_HOOKS`) while the verdict
+    behind it is the mirrored `_kernel.kit_update_verdict`.
+    """
+    repo = tmp_path / kit
+    home = tmp_path / "home"
+    _write(str(repo / "CLAUDE.md"), "<!-- agents-and-skills:team-kit %s -->\n" % kit)
+    _write(str(repo / ".claude" / "kit_version"), _stamp(OLD, "a" * 64))
+    _write(str(home / ".claude" / "team-kits" / kit / "VERSION"), _stamp(NEW, "b" * 64))
+    _write(str(repo / kitupdate.PIN_FILE),
+           "version: %s\n# pinned by the user: this project ships on Friday\n" % OLD)
+    result = _hook(os.path.join(TEAM_KITS, kit, "hooks", "session_status.py"),
+                   {"hook_event_name": "SessionStart", "cwd": str(repo)}, repo,
+                   env={"USERPROFILE": str(home), "HOME": str(home)})
+    briefing = json.loads(result.stdout.strip().splitlines()[-1])[
+        "hookSpecificOutput"]["additionalContext"]
+    assert "PINNED" in briefing, briefing
+    assert "ships on Friday" in briefing, "the pin's own words are not shown"
+    assert "kit_pin" in briefing, briefing
+    assert NEW in briefing and OLD in briefing, "the comparison itself went silent"
+    assert "On their OK you install it YOURSELF" not in briefing, briefing
+
+
 # -- end to end ---------------------------------------------------------------------------------
 
 def _scaffolded(tmp_path, kit="dev-team"):
@@ -1349,3 +1386,718 @@ def test_a_pending_list_that_cannot_be_read_is_never_called_resolved(tmp_path):
     quiet = _session_start(repo, home)
     assert "KIT MERGE BACKLOG" not in quiet.stdout, quiet.stdout
     assert not pending.exists(), "a readable, resolved list must still be deleted"
+
+
+# -- which stock is on disk, and what an installer does with it (FR-0044) ------------------------
+
+# A V1 RECORD IN THE SHAPE THE PRE-KERNEL HARNESS WROTE IT, taken from this repository's own
+# history rather than invented: `git show 9e4419b~1:team-kits/dev-team/templates/project_memory/
+# tasks.yaml` documents exactly this schema (an id-keyed mapping under a top-level `tasks:`, with
+# `status`, `owner` and `derives_from`). It is the shape the three field copies under
+# C:/Offline Repos/v2-pilot carry; what was counted in them is `H86` in
+# `docs/POST_V2_WISHLIST.md`, not a second copy of the figures here.
+V1_MONOLITH = """# tasks.yaml -- owned by: Backend / Frontend
+tasks:
+  TSK-0001:
+    derives_from: SR-0001
+    owner: backend
+    title: "the first task this project ever had"
+    status: DONE
+  TSK-0002:
+    derives_from: SR-0001
+    owner: frontend
+    title: "the second"
+    status: TODO
+"""
+
+
+def _v1_stock(root, kit=KIT, staging=None):
+    """A project as the PRE-KERNEL installer left it: monolith state, and a .claude with no kernel.
+
+    `staging` adds the kit's own `project_config.yaml`, and it is not convenience: the stock
+    pre-flight sits BEHIND the two checks that own that file (it exists, its provider block
+    parses), so without a config the run stops there and a test of the stock verdict would be
+    measuring a different refusal. That ordering is itself measured -- all three field copies
+    carry a pre-kernel config that PASSES the provider check, which is exactly why they got as
+    far as being written over.
+
+    WHAT MAKES IT A V1 STOCK IS THE STATE, not the absence of `.claude`. The pre-kernel scaffold
+    wrote `.claude/kit_version`, `.claude/team_kit_roles.txt`, `.claude/hooks` and `.claude/agents`
+    exactly as today's does -- read off `git show 9e4419b~1:team-kits/scaffold_team.sh` -- so a
+    classifier that asked those files would answer "V2" for all three field copies. This fixture
+    therefore carries them, and the verdict has to come from somewhere else.
+    """
+    _write(str(root / "project_memory" / "tasks.yaml"), V1_MONOLITH)
+    _write(str(root / "project_memory" / "progress.yaml"), "metrics:\n  tasks:\n    todo: 1\n")
+    _write(str(root / ".claude" / "kit_version"), _stamp(OLD, "a" * 64))
+    _write(str(root / ".claude" / "team_kit_roles.txt"),
+           (ROLES_MANIFEST_HEADER % (kit, 1)) + "\nproject-manager\n")
+    _write(str(root / ".claude" / "hooks" / "gate.py"), "# a pre-kernel hook\n")
+    _write(str(root / ".claude" / "agents" / "project-manager.md"), "---\nname: pm\n---\n")
+    _write(str(root / "AGENTS.md"), "# the pre-kernel constitution\n")
+    if staging is not None:
+        source = os.path.join(str(staging), kit, "templates", "project_memory",
+                              "project_config.yaml")
+        _write(str(root / "project_memory" / "project_config.yaml"),
+               _read(source).replace('name: ""', 'name: "Feldkopie"').replace(
+                   "stacks: [TODO]", "stacks: [python]"))
+    return root
+
+
+def _v2_state(root):
+    """The kernel's own area, which is what says a V2 kernel owns this state."""
+    _write(str(root / "project_memory" / "generated" / "index.yaml"), "items: {}\n")
+    _write(str(root / "project_memory" / "product" / "active" / "PR-0001.yaml"),
+           "id: PR-0001\nstatus: DRAFT\n")
+
+
+def test_a_stock_is_classified_from_two_independent_readings(tmp_path):
+    """greenfield / v2 / v1 / mixed, and the four are the cross product of TWO readings.
+
+    Arranged as those two readings and not as four fixtures: a V1 monolith is laid down or not, a
+    kernel area is laid down or not, and the verdict follows. That is what makes this a definition
+    rather than four cases -- a fifth spelling of "an old project" cannot appear without one of the
+    two readings changing.
+    """
+    pytest.importorskip("yaml")
+    for v1, v2, expected in ((False, False, kitupdate.GREENFIELD),
+                             (False, True, kitupdate.V2_STOCK),
+                             (True, False, kitupdate.V1_STOCK),
+                             (True, True, kitupdate.MIXED_STOCK)):
+        root = tmp_path / ("v1%s-v2%s" % (v1, v2))
+        _write(str(root / "project_memory" / "project_config.yaml"), "project:\n  preset: solo\n")
+        if v1:
+            _v1_stock(root)
+        if v2:
+            _v2_state(root)
+        answer = kitupdate.classify(str(root))
+        assert answer["stock"] == expected, (expected, answer)
+        assert not answer["unreadable"], answer["unreadable"]
+    # ...and a project with no state directory at all is the same answer as an empty one, not an
+    # error: the installer asks this question before it asks for anything else.
+    assert kitupdate.classify(str(tmp_path / "nothing"))["stock"] == kitupdate.GREENFIELD
+
+
+def test_a_v2_project_is_not_called_v1_by_the_records_its_own_kernel_wrote(tmp_path):
+    """The counter-direction, and the one that decides whether this classifier is usable at all.
+
+    A V2 item file IS an id-keyed mapping with a `status`, so a reader that simply looked for the
+    id shape would call every V2 project a V1 stock and refuse every update. What keeps them apart
+    is the coverage's KERNEL verdict: the kernel's own area is not searched for records at all.
+    """
+    pytest.importorskip("yaml")
+    root = tmp_path / "project"
+    _write(str(root / "project_memory" / "project_config.yaml"), "project:\n  preset: solo\n")
+    _v2_state(root)
+    _write(str(root / "project_memory" / "tasks" / "active" / "TSK-0007.yaml"),
+           "id: TSK-0007\nstatus: READY\ntitle: an ordinary V2 item\n")
+    answer = kitupdate.classify(str(root))
+    assert answer["stock"] == kitupdate.V2_STOCK, answer
+    assert not answer["v1_documents"], answer["v1_documents"]
+
+
+def test_a_document_the_reading_could_not_open_is_its_own_verdict(tmp_path):
+    """"Did not look" may not come back as "looked and found none" -- and the VERDICT is what says so.
+
+    The first cut of this test asserted the printed sentence and nothing else, and the sentence was
+    the only thing that was true: the verdict stayed `greenfield` and the installer ran. So this
+    asserts the verdict, and its neighbour below asserts the decision on a real run.
+    """
+    pytest.importorskip("yaml")
+    root = tmp_path / "project"
+    _write(str(root / "project_memory" / "project_config.yaml"), "project:\n  preset: solo\n")
+    _write(str(root / "project_memory" / "broken.yaml"), "tasks: {TSK-0001: [unclosed\n")
+    answer = kitupdate.classify(str(root))
+    assert answer["stock"] == kitupdate.UNKNOWN_STOCK, answer
+    assert answer["unreadable"], answer
+    assert "broken.yaml" in kitupdate.describe_stock(answer)
+    with pytest.raises(StateError, match="unknown is not empty"):
+        kitupdate.assert_the_stock_may_be_written_over(answer)
+
+
+def test_a_reading_that_did_not_complete_over_a_LIVE_v2_project_still_installs(tmp_path):
+    """The other side of the same derivation, or `unknown` would be an over-refusal.
+
+    Where the kernel owns part of the state, the two possibilities an unread document leaves are
+    `v2` and `mixed` -- and both are written over. An unreadable kit document would otherwise stop
+    every update of an ordinary project, which is the shape a fail-closed reader falls into when
+    nobody measures the direction that must stay open.
+    """
+    pytest.importorskip("yaml")
+    root = tmp_path / "project"
+    _write(str(root / "project_memory" / "project_config.yaml"), "project:\n  preset: solo\n")
+    _v2_state(root)
+    _write(str(root / "project_memory" / "broken.yaml"), "tasks: {TSK-0001: [unclosed\n")
+    answer = kitupdate.classify(str(root))
+    assert answer["stock"] == kitupdate.V2_STOCK, answer
+    assert answer["unreadable"], answer
+    kitupdate.assert_the_stock_may_be_written_over(answer)
+
+
+# THE TWO SPELLINGS OF THE REAL INSTALLER, as a parameter rather than as a choice this file makes:
+# the pre-flight and the rollback are new behaviour in BOTH twins, and a proof run against one of
+# them says nothing about the other. A twin whose interpreter this host does not have skips.
+TWINS = ("powershell", "bash")
+
+
+def _staging(tmp_path):
+    """This repo's kits, staged in a throwaway home -- the tree a real installer runs out of."""
+    home = tmp_path / "home"
+    staging = home / ".claude" / "team-kits"
+    shutil.copytree(TEAM_KITS, str(staging), ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    return home, staging
+
+
+def _run_installer(staging, repo, kit, home, twin, *extra):
+    """Start the REAL installer, in the twin asked for -- or skip when this host cannot.
+
+    WHICH BASH, and why it is not `shutil.which("bash")`: on Windows that answers WSL's, which can
+    neither see a Windows path nor reach the interpreter the scaffold needs. `test_hooks`
+    already derives the pair (executable, path spelling) that CAN run a scaffold here, by running
+    the scaffold's own precondition -- so this asks that reader rather than growing a second one.
+    """
+    if twin == "powershell":
+        if os.name != "nt" or not shutil.which("powershell"):
+            pytest.skip("the scaffold's PowerShell twin runs on Windows")
+        argv = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+                os.path.join(str(staging), "scaffold_team.ps1"), "-Team", kit] + list(extra)
+        home_spelled = str(home)
+    else:
+        from test_hooks import _scaffold_shell
+        shell, spelling = _scaffold_shell(home)
+        if shell is None:
+            pytest.skip("no bash on this machine that can run the scaffold")
+        argv = [shell, spelling(os.path.join(str(staging), "scaffold_team.sh")), kit] + list(extra)
+        home_spelled = spelling(str(home))
+    return subprocess.run(argv, cwd=str(repo), capture_output=True, text=True, encoding="utf-8",
+                          errors="replace", timeout=900,
+                          env=dict(os.environ, HOME=home_spelled, USERPROFILE=str(home)))
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_a_v1_stock_is_refused_and_the_installer_writes_nothing(tmp_path, twin):
+    """THE NO-WRITE PROOF the 2026-08-16 side check could not run for want of a V1 stock (its 5.6).
+
+    Not "the message says nothing was changed": the whole project tree is hashed before the run and
+    after it, file by file, and the two readings have to be equal. The stock is the pre-kernel shape
+    (see `_v1_stock`), so the run is a real V2 scaffold meeting a real V1 project.
+
+    WHY IT MATTERS, measured on the three field copies the same day: all three carry a
+    `.claude/kit_version` and a `.claude/team_kit_roles.txt` and would have been installed over --
+    leaving a V2 enforcement layer that refuses every tool write to a state directory no V2 command
+    can read, with no route back from inside the project.
+    """
+    pytest.importorskip("yaml")
+    home, staging = _staging(tmp_path)
+    repo = tmp_path / "project"
+    _v1_stock(repo, kit="dev-team", staging=staging)
+    before = _fingerprint(repo)
+    result = _run_installer(staging, repo, "dev-team", home, twin)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "V1 stock" in (result.stdout + result.stderr), result.stdout + result.stderr
+    assert "migrate --dry-run" in (result.stdout + result.stderr), result.stdout + result.stderr
+    assert _fingerprint(repo) == before, "the installer wrote into a V1 stock"
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_a_stock_whose_reading_did_not_complete_is_not_written_over(tmp_path, twin):
+    """THE DECISION, not the sentence -- the half the first cut of this round got wrong.
+
+    A V1 stock whose only monolith cannot be parsed used to classify as `greenfield` and take the
+    install at rc 0 (measured against a real BuyPlugGo copy with one unbalanced `[`): the printed
+    line said the reading might be short while the run went ahead over the V1 state. Same
+    instrument as its neighbour -- the whole tree hashed before and after a real installer run.
+    """
+    pytest.importorskip("yaml")
+    home, staging = _staging(tmp_path)
+    repo = tmp_path / "project"
+    _v1_stock(repo, kit="dev-team", staging=staging)
+    _write(str(repo / "project_memory" / "tasks.yaml"), "tasks: {TSK-0001: [unclosed\n")
+    before = _fingerprint(repo)
+    result = _run_installer(staging, repo, "dev-team", home, twin)
+    # THE TREE FIRST, and the verdict is not asserted here at all: this test exists because
+    # the verdict and the message were both consulted while the DECISION went the other way.
+    assert _fingerprint(repo) == before, "the installer wrote over a stock it could not read"
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "unknown is not empty" in (result.stdout + result.stderr), \
+        result.stdout + result.stderr
+
+
+def test_a_refusal_that_lists_five_documents_says_how_many_it_did_not_list(tmp_path):
+    """"7 document(s)" followed by five names reads as the whole list -- the rest is counted.
+
+    The two it dropped in the field copies were the two largest (`H86`), which is exactly the pair
+    a reader would want to see.
+    """
+    pytest.importorskip("yaml")
+    root = tmp_path / "project"
+    for number in range(7):
+        _write(str(root / "project_memory" / ("store%d.yaml" % number)),
+               "tasks:\n  TSK-000%d:\n    status: TODO\n    title: a record\n" % number)
+    answer = kitupdate.classify(str(root))
+    assert answer["stock"] == kitupdate.V1_STOCK
+    with pytest.raises(StateError) as refused:
+        kitupdate.assert_the_stock_may_be_written_over(answer)
+    assert "and 2 more" in str(refused.value), str(refused.value)
+    assert "and 2 more" in kitupdate.describe_stock(answer)
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_a_greenfield_project_still_installs(tmp_path, twin):
+    """The counter-direction of the pre-flight: it may not become a refusal of ordinary work.
+
+    Without it the proof above would be satisfied by an installer that refuses everything, which is
+    the shape a fail-closed reader falls into when nothing measures the other direction.
+    """
+    pytest.importorskip("yaml")
+    home, staging = _staging(tmp_path)
+    repo = tmp_path / "project"
+    source = os.path.join(str(staging), "dev-team", "templates", "project_memory",
+                          "project_config.yaml")
+    _write(str(repo / "project_memory" / "project_config.yaml"),
+           _read(source).replace('name: ""', 'name: "Probe"').replace("stacks: [TODO]",
+                                                                      "stacks: [python]"))
+    result = _run_installer(staging, repo, "dev-team", home, twin)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "[preflight] stock: greenfield" in result.stdout, result.stdout
+    assert (repo / ".claude" / "kit_version").is_file()
+
+
+# -- the pin (FR-0041): a project that may not be replaced by the staged release ------------------
+
+def test_a_pinned_project_refuses_the_update_and_says_how_the_pin_is_lifted(project):
+    """The refusal names the pin, the release it holds, and the one step that ends it.
+
+    Before the installer, not after: a pin whose refusal came out of the scaffold would already
+    have a snapshot and a half-run behind it.
+    """
+    approve(project)
+    _write(str(project["repo"] / kitupdate.PIN_FILE),
+           "version: %s\n# pinned 2026-09-01 by the user: this project ships on Friday\n" % OLD)
+    with pytest.raises(StateError) as refused:
+        kitupdate.apply(project["state"])
+    assert "PINNED to %s %s" % (KIT, OLD) in str(refused.value), str(refused.value)
+    assert "kit_pin" in str(refused.value)
+    assert "delete that file" in str(refused.value)
+    assert "ships on Friday" in str(refused.value), "the pin's own words are not shown"
+    assert not ran(project)
+    assert installed_version(project) == OLD
+
+
+def test_a_pin_that_names_the_release_being_installed_is_not_a_refusal(project):
+    """Re-applying the pinned release itself is a repair, and a pin that stopped it would trap.
+
+    The counter-direction of the test above: without it, the pin could be a refusal of everything,
+    and a half-installed project would have no way back except deleting the record.
+    """
+    staged = kitupdate.identity(_read(str(project["kit"] / "VERSION")))
+    kitupdate.assert_not_pinned(str(project["repo"]), KIT, staged)      # no pin at all
+    _write(str(project["repo"] / kitupdate.PIN_FILE), "version: %s\n" % NEW)
+    kitupdate.assert_not_pinned(str(project["repo"]), KIT, staged)      # pinned to what goes in
+    # ...and a pin that states the exact TREE as well is satisfied by the same install.
+    _write(str(project["repo"] / kitupdate.PIN_FILE),
+           "kit: %s\nversion: %s\ncontent: %s\n" % (KIT, NEW, staged["content"]))
+    kitupdate.assert_not_pinned(str(project["repo"]), KIT, staged)
+
+
+def test_a_pin_does_not_let_another_kit_in_at_the_same_version(project):
+    """`bump_kit_version.py` stamps all three kits with ONE version -- so a version is not a bundle.
+
+    Measured 2026-09-01 against a real scaffold: a project pinned to `dev-team 2026.09.01-4` took
+    `office-team 2026.09.01-4` at rc 0, enforcement layer and constitution replaced, and the pin
+    said nothing. What the pin is compared against now is the kit as well.
+    """
+    staged = kitupdate.identity(_read(str(project["kit"] / "VERSION")))
+    _write(str(project["repo"] / kitupdate.PIN_FILE), "version: %s\n" % NEW)
+    kitupdate.assert_not_pinned(str(project["repo"]), KIT, staged)
+    with pytest.raises(StateError, match="is not that bundle"):
+        kitupdate.assert_not_pinned(str(project["repo"]), "another-team", staged)
+    # ...and the same the other way round: the record itself may name the kit it holds.
+    _write(str(project["repo"] / kitupdate.PIN_FILE),
+           "kit: another-team\nversion: %s\n" % NEW)
+    with pytest.raises(StateError, match="is not that bundle"):
+        kitupdate.assert_not_pinned(str(project["repo"]), KIT, staged)
+
+
+def test_a_pin_stops_a_rollback_too(project):
+    """A pin says "stay as it is", and a rollback changes the bundle exactly as an update does.
+
+    Measured before the fix: a project pinned to a release it did not run could be rolled back at
+    rc 0, and afterwards NEITHER an update NOR a repair passed the pin -- the only bundle it
+    admitted was the one no longer installed. The twin-level half is
+    `test_a_pin_stops_a_rollback_in_both_twins`.
+    """
+    kitupdate.assert_no_pin_blocks_a_rollback(str(project["repo"]))      # no pin, no refusal
+    _write(str(project["repo"] / kitupdate.PIN_FILE), "version: %s\n" % OLD)
+    with pytest.raises(StateError, match="a rollback would replace its bundle"):
+        kitupdate.assert_no_pin_blocks_a_rollback(str(project["repo"]))
+
+
+def test_the_kit_pin_routes_print_and_never_write(project, capsys):
+    """`pin-kit` / `unpin-kit` / `rollback-kit` name the user's deed, and none of them does it.
+
+    THE GAP THEY CLOSE (`H87`): the mechanism refused at all three doors while nothing on the entry
+    point's surface mentioned it -- measured on a field copy, 25 subcommands, no pin, no rollback --
+    so a user who wanted to hold their project at a release was sent to a text editor by whoever
+    happened to know the file name.
+
+    WHY THEY PRINT AND DO NOT ACT is one property and not three exceptions: a session may pull a
+    lever that only ever ADDS a refusal, never one that removes it. Setting a pin adds; LIFTING one
+    removes the only thing between this session and a replaced enforcement layer, and a rollback
+    replaces that layer outright -- which `update-kit` may do only on a minted approval, and no
+    approval kind covers a rollback. So the whole tree is hashed around all three calls, in both
+    project states (pinned and not), and the sentences are asserted second.
+    """
+    repo, root = project["repo"], str(project["state"].root)
+    pin_path = str(repo / kitupdate.PIN_FILE)
+
+    before = _fingerprint(repo)
+    assert cli.main(["--root", root, "pin-kit"]) == 0
+    printed = capsys.readouterr().out
+    assert kitupdate.PIN_FILE.replace(os.sep, "/") in printed.replace(os.sep, "/"), printed
+    # THE RELEASE THIS PROJECT RUNS, not the staged one: a pin naming the release it is about to be
+    # moved to would hold it at a bundle it has never had.
+    assert "version: %s" % OLD in printed and NEW not in printed, printed
+    assert cli.main(["--root", root, "unpin-kit"]) == 0
+    assert "nothing pins this project" in capsys.readouterr().out
+    assert cli.main(["--root", root, "rollback-kit"]) == 0
+    assert "no snapshot" in capsys.readouterr().out
+    assert _fingerprint(repo) == before, "a pin route wrote into the project"
+    assert not os.path.exists(pin_path)
+
+    _write(pin_path, "version: %s\n# the user's own words\n" % OLD)
+    pinned = _fingerprint(repo)
+    assert cli.main(["--root", root, "unpin-kit"]) == 0
+    printed = capsys.readouterr().out
+    assert "the user's own words" in printed, printed
+    assert "the USER deletes that file" in printed, printed
+    assert cli.main(["--root", root, "pin-kit"]) == 0
+    assert "ALREADY pinned" in capsys.readouterr().out
+    assert cli.main(["--root", root, "rollback-kit"]) == 0
+    assert "PINNED" in capsys.readouterr().out
+    assert _fingerprint(repo) == pinned, "a pin route removed or rewrote the user's pin"
+
+
+def test_a_pin_record_that_cannot_be_read_still_pins(project):
+    """An unreadable pin is not an unpinning -- that is the one way a pin may not end."""
+    approve(project)
+    _write(str(project["repo"] / kitupdate.PIN_FILE), "this record lost its stamp\n")
+    with pytest.raises(StateError) as refused:
+        kitupdate.apply(project["state"])
+    assert "at a release nothing states" in str(refused.value), str(refused.value)
+    assert not ran(project)
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_the_installer_itself_refuses_a_pinned_project_and_writes_nothing(tmp_path, twin):
+    """The OTHER door: a user starting the scaffold by hand meets the same pin.
+
+    `update-kit` is not the only way into a project's enforcement layer -- the user runs the
+    installer directly, and `update-kit` starts that same installer as a child. One reading in
+    front of the installer covers both doors; a check living only in the command would leave the
+    door the user uses open.
+    """
+    pytest.importorskip("yaml")
+    home, staging = _staging(tmp_path)
+    repo = tmp_path / "project"
+    source = os.path.join(str(staging), "dev-team", "templates", "project_memory",
+                          "project_config.yaml")
+    _write(str(repo / "project_memory" / "project_config.yaml"),
+           _read(source).replace('name: ""', 'name: "Probe"').replace("stacks: [TODO]",
+                                                                      "stacks: [python]"))
+    _write(str(repo / kitupdate.PIN_FILE),
+           "kit: dev-team\nversion: 2026.01.01-1\n# not this release\n")
+    before = _fingerprint(repo)
+    result = _run_installer(staging, repo, "dev-team", home, twin)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "PINNED to dev-team 2026.01.01-1" in (result.stdout + result.stderr), \
+        result.stdout + result.stderr
+    assert _fingerprint(repo) == before, "the installer wrote into a pinned project"
+
+
+# -- the rollback (FR-0041): the previous bundle, replayed from the snapshot the scaffold wrote ---
+
+def _restore_set(repo):
+    """The newest snapshot's own restore contract, read the way a rollback reads it."""
+    backups = os.path.join(str(repo), kitupdate.BACKUPS_DIR)
+    stamp = sorted(os.listdir(backups), reverse=True)[0]
+    with open(os.path.join(backups, stamp, kitupdate.RESTORE_SET), encoding="utf-8-sig") as handle:
+        return [line.strip() for line in handle if line.strip()]
+
+
+def _bundle_state(fingerprint, paths):
+    """The recorded paths' bytes out of a whole-tree reading -- so "byte-identical" is a comparison.
+
+    Taken from a fingerprint rather than from the disk because the reading that matters is the one
+    from BEFORE the install whose snapshot names the paths: a greenfield install backs nothing up,
+    so the restore set only exists after the second run.
+    """
+    seen = {}
+    for name, body in fingerprint.items():
+        relative = name.replace(os.sep, "/")
+        if any(relative == entry or relative.startswith(entry + "/") for entry in paths):
+            seen[relative] = body
+    return seen
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_a_rollback_restores_the_previous_bundle_byte_for_byte(tmp_path, twin):
+    """FR-0041's second half, measured as an equality of bytes over the set the snapshot records.
+
+    Two REAL installs of two different releases, then the rollback. What is compared is every path
+    the snapshot's own RESTORE_SET names -- which is the honest scope of the claim: records the
+    installer writes OUTSIDE that set (the update markers, the pending lists) are not undone, and
+    the rollback says so itself.
+
+    `.claude/kit_state.json` is asserted to be in that set AND to have changed between the two
+    installs, because it is the path this round added: the run rewrites it, and until 2026-09-01 it
+    was neither backed up nor restored, so an undo put the old bundle back and left the new
+    bundle's trust hash beside it. The ABORT path (`restore_scaffold_snapshot`) replays the same
+    set through the same function against the run's own snapshot; what is measured here is the set
+    and the replay, not an aborted run.
+    """
+    pytest.importorskip("yaml")
+    home, staging = _staging(tmp_path)
+    repo = tmp_path / "project"
+    source = os.path.join(str(staging), "dev-team", "templates", "project_memory",
+                          "project_config.yaml")
+    _write(str(repo / "project_memory" / "project_config.yaml"),
+           _read(source).replace('name: ""', 'name: "Probe"').replace("stacks: [TODO]",
+                                                                      "stacks: [python]"))
+    first = _run_installer(staging, repo, "dev-team", home, twin)
+    assert first.returncode == 0, first.stdout + first.stderr
+    before = _fingerprint(repo)
+
+    # A SECOND RELEASE, stamped the way the harness stamps one: an edited kit whose VERSION carries
+    # its own real hash, or `write_kit_state` refuses it and this test measures that instead.
+    kit_dir = str(staging / "dev-team")
+    hook = os.path.join(kit_dir, "hooks", "session_status.py")
+    with open(hook, "a", encoding="utf-8") as handle:
+        handle.write("\n# the next release changed this file\n")
+    _write(os.path.join(kit_dir, "VERSION"), _stamp("2099.12.31-9", hashing.kit_hash(kit_dir)))
+
+    second = _run_installer(staging, repo, "dev-team", home, twin)
+    assert second.returncode == 0, second.stdout + second.stderr
+    paths = _restore_set(repo)
+    assert ".claude/kit_state.json" in paths, paths
+    was = _bundle_state(before, paths)
+    now = _bundle_state(_fingerprint(repo), paths)
+    assert now != was, "the second install changed nothing, so the rollback below proves nothing"
+    assert now[".claude/kit_state.json"] != was[".claude/kit_state.json"], \
+        "the trust record did not move, so restoring it would be untested"
+
+    flag = "-Rollback" if twin == "powershell" else "--rollback"
+    undone = _run_installer(staging, repo, "dev-team", home, twin, flag)
+    assert undone.returncode == 0, undone.stdout + undone.stderr
+    assert "[rollback] replayed" in undone.stdout, undone.stdout
+    assert _bundle_state(_fingerprint(repo), paths) == was, \
+        "the previous bundle did not come back byte for byte"
+    # ...and the announcement of a transition that has been undone goes with it, while the restart
+    # marker stays: the bundle under a running session just changed again.
+    assert not (repo / ".claude" / "kit_updated_from").exists()
+    assert (repo / kitupdate.HANDOVER_MARKER).is_file()
+
+
+def test_a_snapshot_without_a_restore_set_is_not_offered_as_the_previous_bundle(tmp_path):
+    """A pre-2026-09-01 snapshot does not record which paths the installer OWNED.
+
+    Replaying "everything in it" would put back files the installer only reads -- a user's
+    `settings.local.json` among them -- so such a snapshot is skipped, named, and the reading says
+    there is nothing to replay rather than replaying the wrong thing.
+    """
+    repo = tmp_path / "project"
+    _write(str(repo / kitupdate.BACKUPS_DIR / "20260102-120000" / "CLAUDE.md"), "old\n")
+    assert kitupdate.previous_bundle(str(repo)) is None
+    assert "no snapshot" in kitupdate.restorable(str(repo), KIT)
+    # An OLDER one that does carry a set is the answer -- and the newer one it had to walk past is
+    # named rather than silently dropped, because that is the snapshot a reader can see in the
+    # directory and would otherwise expect to be the one replayed.
+    _write(str(repo / kitupdate.BACKUPS_DIR / "20260101-120000" / kitupdate.RESTORE_SET),
+           "CLAUDE.md\n.claude/hooks\n")
+    found = kitupdate.previous_bundle(str(repo))
+    assert found["stamp"] == "20260101-120000"
+    assert found["entries"] == ["CLAUDE.md", ".claude/hooks"]
+    assert found["skipped"] == ["20260102-120000"]
+
+
+def test_both_installer_twins_record_the_same_restore_set(tmp_path):
+    """The .sh and the .ps1 agree about what an install owns -- measured, not read off the source.
+
+    Each twin is run against its own fresh project and the RESTORE_SET it wrote is compared entry
+    by entry. Reading the two scripts can only compare two declarations; this compares the two
+    ARTEFACTS, which is what a rollback months later actually replays -- and either twin may be the
+    one replaying a snapshot the other wrote, so a difference here is a rollback that puts back a
+    different tree depending on which shell the user has. WHAT THIS DOES NOT MEASURE is either twin
+    READING the other's manifest; that direction, and what each does with a line it should refuse,
+    is `test_neither_twin_replays_a_snapshot_that_points_out_of_the_repository`.
+
+    The source-level half is `tools/test_hooks_v2.py::test_both_scaffolds_manage_the_kernel_as_one_
+    layer`; it stays because it is the one that still says something on a runner with only one of
+    the two interpreters, where this test skips.
+    """
+    pytest.importorskip("yaml")
+    recorded = {}
+    for twin in TWINS:
+        home, staging = _staging(tmp_path / twin)
+        repo = tmp_path / twin / "project"
+        source = os.path.join(str(staging), "dev-team", "templates", "project_memory",
+                              "project_config.yaml")
+        body = _read(source).replace('name: ""', 'name: "Probe"').replace("stacks: [TODO]",
+                                                                         "stacks: [python]")
+        _write(str(repo / "project_memory" / "project_config.yaml"), body)
+        # Something for the FIRST run to back up, or a greenfield install writes no snapshot at all
+        # and this test would compare two absences.
+        _write(str(repo / "CLAUDE.md"), "# what was here before\n")
+        first = _run_installer(staging, repo, "dev-team", home, twin)
+        assert first.returncode == 0, first.stdout + first.stderr
+        recorded[twin] = _restore_set(repo)
+    assert recorded["powershell"] == recorded["bash"], recorded
+    assert ".claude/kernel" in recorded["bash"], recorded["bash"]
+
+
+def _installed_project(tmp_path, twin, name="project"):
+    """A real project with the kit really installed -- the starting point a rollback needs."""
+    pytest.importorskip("yaml")
+    home, staging = _staging(tmp_path)
+    repo = tmp_path / name
+    source = os.path.join(str(staging), "dev-team", "templates", "project_memory",
+                          "project_config.yaml")
+    _write(str(repo / "project_memory" / "project_config.yaml"),
+           _read(source).replace('name: ""', 'name: "Probe"').replace("stacks: [TODO]",
+                                                                     "stacks: [python]"))
+    # Something for the install to back up, or a greenfield run writes no snapshot at all.
+    _write(str(repo / "CLAUDE.md"), "# what was here before\n")
+    result = _run_installer(staging, repo, "dev-team", home, twin)
+    assert result.returncode == 0, result.stdout + result.stderr
+    return home, staging, repo
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_a_pin_stops_a_rollback_in_both_twins(tmp_path, twin):
+    """The THIRD door, at the installer -- and nothing moves when it refuses.
+
+    A rollback replaces the installed bundle just as an update does. It used to run BEFORE every
+    check, so a pinned project could be rolled back to a bundle its own pin then refused to update
+    or repair -- a state with no way out but deleting the record.
+    """
+    home, staging, repo = _installed_project(tmp_path, twin)
+    _write(str(repo / kitupdate.PIN_FILE), "kit: dev-team\nversion: 2099.12.31-9\n")
+    before = _fingerprint(repo)
+    flag = "-Rollback" if twin == "powershell" else "--rollback"
+    refused = _run_installer(staging, repo, "dev-team", home, twin, flag)
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "PINNED" in (refused.stdout + refused.stderr), refused.stdout + refused.stderr
+    assert _fingerprint(repo) == before, "a pinned project was rolled back"
+    # ...and with the pin gone the same rollback runs, or this would measure a rollback that is
+    # simply broken.
+    os.remove(str(repo / kitupdate.PIN_FILE))
+    undone = _run_installer(staging, repo, "dev-team", home, twin, flag)
+    assert undone.returncode == 0, undone.stdout + undone.stderr
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_neither_twin_replays_a_manifest_line_it_does_not_own(tmp_path, twin):
+    """A snapshot this installer did not write may not use the rollback to DELETE a file.
+
+    THE MECHANISM, and why the obvious guard is the wrong one: `restore_from_snapshot` removes a
+    target BEFORE it looks for a saved copy, and that order is correct for a path the installer
+    owns -- a second install records 15 paths of which 2 have no copy in the snapshot because the
+    install CREATED them, and a faithful rollback removes exactly those (measured 2026-09-02:
+    `.github/hooks`, `.github/agents`). So "only delete when a copy exists" would leave the
+    install's own additions standing. What the order cannot survive is a manifest from somewhere
+    else: measured on real installs in BOTH twins, a RESTORE_SET whose single line was
+    `docs/note.md` deleted that file at rc 0 with "Rollback done." printed over it.
+
+    WHAT SEPARATES THE TWO IS A SECOND, INDEPENDENT OWNERSHIP RECORD -- `RESTORABLE` / `$restorable`,
+    the set the script itself backs up. The manifest cannot be its own proof; it is the thing in
+    doubt. A line passes if it is in that set OR the snapshot holds a copy of it, and the second
+    half is measured here too: an older snapshot naming a path that has since left `RESTORABLE`
+    carries its own copy and stays playable, so this refusal cannot break forward compatibility.
+
+    Both directions in both twins, because the cut is written twice, and the ordinary rollback runs
+    in the same test so the refusal cannot be satisfied by an installer that refuses everything.
+    """
+    home, staging, repo = _installed_project(tmp_path, twin)
+    flag = "-Rollback" if twin == "powershell" else "--rollback"
+    snapshot = os.path.join(str(repo), kitupdate.BACKUPS_DIR,
+                            sorted(os.listdir(str(repo / kitupdate.BACKUPS_DIR)))[-1])
+    manifest = os.path.join(snapshot, kitupdate.RESTORE_SET)
+    kept = _read(manifest)
+
+    # (1) a line this installer does not own and did not save: refused, named, file untouched
+    victim = repo / "docs" / "note.md"
+    _write(str(victim), "a file the user wrote after the install\n")
+    _write(manifest, "docs/note.md\n")
+    refused = _run_installer(staging, repo, "dev-team", home, twin, flag)
+    said = refused.stdout + refused.stderr
+    assert refused.returncode != 0, said
+    assert "docs/note.md" in said, said
+    assert _read(str(victim)).startswith("a file the user wrote"), "the rollback deleted it anyway"
+
+    # (2) forward compatibility: a path no longer in RESTORABLE, but the snapshot HAS it
+    _write(os.path.join(snapshot, "docs", "legacy.md"), "what an older release owned\n")
+    _write(manifest, kept + "docs/legacy.md\n")
+    replayed = _run_installer(staging, repo, "dev-team", home, twin, flag)
+    assert replayed.returncode == 0, replayed.stdout + replayed.stderr
+    assert _read(str(repo / "docs" / "legacy.md")) == "what an older release owned\n"
+
+
+@pytest.mark.parametrize("writer,reader", [("powershell", "bash"), ("bash", "powershell")])
+def test_neither_twin_replays_a_snapshot_that_points_out_of_the_repository(tmp_path, writer,
+                                                                          reader):
+    """A snapshot's manifest is DATA, and the twin that reads it may not be the one that wrote it.
+
+    Measured 2026-09-01: with `../victim.txt` in a RESTORE_SET, the POSIX twin compared the word
+    against `$REPO/` as TEXT, matched, and its restore then `rm -rf`'d a file OUTSIDE the
+    repository at rc 0, while the PowerShell twin refused the same line. Both directions are run
+    here -- one twin writes the snapshot, the other reads it -- because the twins are two readers
+    of one artefact and a rule only one of them holds is not a rule.
+    """
+    home, staging, repo = _installed_project(tmp_path, writer)
+    victim = tmp_path / "victim.txt"
+    _write(str(victim), "a file outside the repository\n")
+    stamp = sorted(os.listdir(os.path.join(str(repo), kitupdate.BACKUPS_DIR)), reverse=True)[0]
+    manifest = os.path.join(str(repo), kitupdate.BACKUPS_DIR, stamp, kitupdate.RESTORE_SET)
+    with open(manifest, "a", encoding="utf-8") as handle:
+        handle.write("../victim.txt\n")
+
+    flag = "-Rollback" if reader == "powershell" else "--rollback"
+    refused = _run_installer(staging, repo, "dev-team", home, reader, flag)
+    # THE FILE FIRST: what this guards is a deletion, so that is what the red run has to show.
+    assert victim.is_file(), "the rollback deleted a file outside the repository"
+    assert _read(str(victim)) == "a file outside the repository\n"
+    assert refused.returncode != 0, refused.stdout + refused.stderr
+    assert "escapes the repository" in (refused.stdout + refused.stderr), \
+        refused.stdout + refused.stderr
+
+
+@pytest.mark.parametrize("twin", TWINS)
+def test_an_aborted_install_puts_the_trust_record_back_with_the_bundle(tmp_path, twin):
+    """The ABORT path, run rather than argued -- and the record this round added to its set.
+
+    `.claude/kit_state.json` is what `doctor` measures `hook_trust` against, and the run REWRITES it
+    (`write_kit_state.py`) before its last step. Until 2026-09-01 it was in neither the backup nor
+    the restore, so a failure after that step put the OLD bundle back and left the NEW bundle's
+    hash beside it -- a project whose enforcement layer reads as untrusted for a reason nobody
+    wrote. The abort is forced at the installer's own last step: `.codex` is a directory this
+    project's providers make it write into, and a FILE of that name is a failure it cannot pass.
+    """
+    home, staging, repo = _installed_project(tmp_path, twin)
+    record = repo / ".claude" / "kit_state.json"
+    assert record.is_file(), "this project has no trust record, so nothing here is measured"
+    was = _read(str(record))
+
+    # A SECOND RELEASE, or the run would be a same-version repair and rewrite nothing.
+    kit_dir = str(staging / "dev-team")
+    with open(os.path.join(kit_dir, "hooks", "session_status.py"), "a", encoding="utf-8") as handle:
+        handle.write("\n# the next release changed this file\n")
+    _write(os.path.join(kit_dir, "VERSION"), _stamp("2099.12.31-9", hashing.kit_hash(kit_dir)))
+    shutil.rmtree(str(repo / ".codex"))
+    _write(str(repo / ".codex"), "a file where the installer needs a directory\n")
+
+    aborted = _run_installer(staging, repo, "dev-team", home, twin)
+    assert aborted.returncode != 0, aborted.stdout + aborted.stderr
+    assert "rollback" in (aborted.stdout + aborted.stderr).lower(), aborted.stdout + aborted.stderr
+    assert _read(str(record)) == was, "the aborted run left the new bundle's trust record behind"
+    assert _read(str(repo / ".claude" / "kit_version")) != _read(
+        os.path.join(kit_dir, "VERSION")), "the aborted run left the new stamp behind"

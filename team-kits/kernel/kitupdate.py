@@ -45,6 +45,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 
 from . import approvals, presets, trays
 from .hashing import BundleSourceMissing, hook_bundle_hash, kit_hash, modified_bundle_files
@@ -137,6 +138,20 @@ def identity(text: str) -> dict:
         if separator and key.strip() in _STAMP_FIELDS and key.strip() not in values:
             values[key.strip()] = value.strip()
     return values
+
+
+_KIT_LINE = re.compile(r"^\s*kit\s*:\s*(\S+)\s*$", re.MULTILINE)
+
+
+def _kit_line(text: str):
+    """A pin record's optional `kit:` -- the one field a VERSION file does not carry.
+
+    Not folded into `identity`: that function reads what a kit says about ITSELF, and the two files
+    it reads (a staged `VERSION`, an installed `kit_version`) have no such line. A pin is a
+    different record and may name the kit it holds.
+    """
+    found = _KIT_LINE.search(str(text or ""))
+    return found.group(1) if found else None
 
 
 def _stamp(path: str) -> dict:
@@ -281,6 +296,324 @@ def assert_the_staging_is_its_own_stamp(directory: str) -> None:
             % (directory, STAGED_VERSION_FILE, measured[:12], claimed[:12]))
 
 
+# -- which STOCK is on disk, and whether it may be written over (FR-0044, II.11/5) --------------
+
+# The stocks an installer can meet. The first four are not four cases somebody listed: they are
+# the cross product of TWO readings of the state directory -- does a V2 kernel own state here, and
+# does a V1 record still lie here.
+#
+# THE FIFTH IS THE CROSS PRODUCT'S OWN PRECONDITION, and it was missing for one round. That product
+# only describes a reading that COMPLETED: a document the reading could not open might hold V1
+# records or might not, and where that difference decides whether an installer may write, the
+# answer is neither of the four. `classify` says exactly where it decides (there is one such place,
+# derived rather than listed) and `tools/test_kitupdate.py::test_a_stock_whose_reading_did_not_
+# complete_is_not_written_over` measures the DECISION rather than the sentence.
+GREENFIELD = "greenfield"
+V2_STOCK = "v2"
+V1_STOCK = "v1"
+MIXED_STOCK = "mixed"
+UNKNOWN_STOCK = "unknown"
+
+
+def _v1_reading(root: str) -> dict:
+    """{"kernel_area", "v1_documents", "unreadable"} for the state directory under `root`.
+
+    THE RECOGNISER IS `migrate`'s OWN, and this is its third reader rather than a third rule:
+    `migrate.build_plan` translates the records, `report._check_no_v1_records_outside_the_archive`
+    refuses a merge over them, and this one decides whether an installer may write here at all. All
+    three ask `search_coverage` which files may be looked at and `scan_document` what a V1 record
+    is; a rule of this module's own is how the installer and the validator would come to disagree
+    about the same file.
+
+    THE OTHER HALF IS THE SAME WALK'S `KERNEL` VERDICT -- the area the V2 kernel's own path builders
+    can name (items, `generated/`, `approvals/`, `archive/`). It is what tells a V1 project from a
+    V2 one, and the version STAMP is not: the pre-kernel installer wrote `.claude/kit_version` and
+    `.claude/team_kit_roles.txt` too, so every field project of that vintage carries both
+    (`git show 9e4419b~1:team-kits/scaffold_team.sh`, and the readings are in `H86`).
+
+    WHAT IT WILL SPEND IS BOUNDED BY `report`'s two caps rather than by numbers of this module's
+    own, and a document the caps or a parse error kept it from is reported in `unreadable`. WHAT
+    THAT DOES TO THE VERDICT is the half the previous version of this paragraph left out, and it is
+    the deciding half: where an unread document could still change the answer -- no kernel area of
+    its own AND no V1 record found yet -- the verdict is `unknown` and the install is REFUSED, not
+    annotated. Only where the answer stands either way (`v1` already found, or a live kernel area,
+    which leaves `v2` and `mixed` and both are written over) does the reading merely say it may be
+    short. A message is not a protection; `H86` (e) carries what that sentence cost. What the bound
+    costs on real stocks, and what this reading does not see, is `H86` in
+    `docs/POST_V2_WISHLIST.md`.
+    """
+    # Lazy, for `report`'s own reason: `migrate` imports `report` while `report` imports `migrate`
+    # only inside its functions, so a module-scope import here would fix an order for both.
+    import yaml
+
+    from . import migrate, report
+    state = ProjectState(os.path.join(root, trays.STATE_DIRNAME))
+    coverage = migrate.search_coverage(state)
+    reading = {"kernel_area": [rel for rel, verdict, _why in coverage if verdict == migrate.KERNEL],
+               "v1_documents": {}, "unreadable": []}
+    for where, why in migrate.unlistable_notes(coverage):
+        reading["unreadable"].append((where, why))
+    spent = 0
+    for rel in sorted(rel for rel, verdict, _why in coverage if verdict == migrate.SEARCHED):
+        path = os.path.join(state.root, *rel.split("/"))
+        try:
+            size = os.path.getsize(path)
+        except OSError as exc:
+            reading["unreadable"].append((rel, "could not be measured (%s)" % exc))
+            continue
+        if size > report.DOCUMENT_MAX_BYTES or spent + size > report.DOCUMENT_SCAN_MAX_BYTES:
+            reading["unreadable"].append(
+                (rel, "is %d bytes and this reading is bounded to %d per document and %d in total"
+                 % (size, report.DOCUMENT_MAX_BYTES, report.DOCUMENT_SCAN_MAX_BYTES)))
+            continue
+        spent += size
+        try:
+            with open(path, encoding="utf-8-sig") as handle:
+                payload = yaml.safe_load(handle)
+        except (OSError, yaml.YAMLError) as exc:
+            reading["unreadable"].append((rel, "could not be parsed (%s)" % exc))
+            continue
+        held = [key for _ordinal, key, record in migrate.scan_document(payload)
+                if migrate._declares_status(record)
+                and migrate._is_backlog_type(migrate.V1_ID_RE.match(key).group(1))]
+        if held:
+            reading["v1_documents"][rel] = held
+    return reading
+
+
+def classify(root: str) -> dict:
+    """Which stock an installer would be writing over here -- `{"stock", ...the readings}`.
+
+    WHERE AN INCOMPLETE READING CHANGES THE ANSWER, and where it does not -- derived, so it cannot
+    drift into a list of cases. A document this reading could not open is a document that might
+    hold V1 records. Ask what that would change:
+
+      * a V1 record was already found -> the verdict is `v1`/`mixed` whatever else is in there;
+      * the kernel owns part of this state -> the two remaining possibilities are `v2` and `mixed`,
+        and BOTH are written over (see `assert_the_stock_may_be_written_over`), so the unread
+        document cannot change the decision;
+      * neither -> the two remaining possibilities are `greenfield` and `v1`, and those two differ
+        in exactly the decision this reading exists for. That is the one place where "did not look"
+        may not be resolved as "looked and found none", and it is `unknown`.
+
+    NEVER RAISES for a state that is simply absent: a project with no state directory is
+    `greenfield`, which is the answer, not an error. Everything else is the caller's decision --
+    `assert_the_stock_may_be_written_over` is where a verdict becomes a refusal.
+    """
+    if not os.path.isdir(os.path.join(root, trays.STATE_DIRNAME)):
+        return {"stock": GREENFIELD, "kernel_area": [], "v1_documents": {}, "unreadable": [],
+                "root": root}
+    reading = _v1_reading(root)
+    if reading["v1_documents"]:
+        stock = MIXED_STOCK if reading["kernel_area"] else V1_STOCK
+    elif reading["kernel_area"]:
+        stock = V2_STOCK
+    elif reading["unreadable"]:
+        stock = UNKNOWN_STOCK
+    else:
+        stock = GREENFIELD
+    return dict(reading, stock=stock, root=root)
+
+
+def _v1_summary(answer: dict) -> str:
+    """The documents holding records, and -- when the list is cut -- HOW MANY are not shown.
+
+    A refusal that says "7 document(s)" and then names five reads as the whole list, and the two it
+    dropped were the largest ones in the field copies (`H86`). The count is part of the sentence.
+    """
+    documents = sorted(answer["v1_documents"])
+    shown = ", ".join("%s (%d)" % (rel, len(answer["v1_documents"][rel])) for rel in documents[:5])
+    rest = len(documents) - 5
+    return shown + (" and %d more" % rest if rest > 0 else "")
+
+
+def _unreadable_summary(answer: dict) -> str:
+    return "; ".join("%s %s" % (where, why) for where, why in answer["unreadable"][:5])
+
+
+def describe_stock(answer: dict) -> str:
+    """One line for the installer's own output -- the verdict plus what it rests on."""
+    if answer["stock"] in (V1_STOCK, MIXED_STOCK):
+        detail = "V1 backlog records in %s" % _v1_summary(answer)
+    elif answer["stock"] == V2_STOCK:
+        detail = "%d file(s) in the kernel's own area, no V1 backlog record" % len(
+            answer["kernel_area"])
+    elif answer["stock"] == UNKNOWN_STOCK:
+        # THE DOCUMENTS ARE NAMED HERE TOO, not only in the refusal: this is the line a person
+        # watching the install reads, and a verdict they cannot act on is a verdict they report.
+        detail = ("nothing of this harness's kernel is here and %d document(s) could not be read, "
+                  "so whether V1 records lie in them is not known: %s"
+                  % (len(answer["unreadable"]), _unreadable_summary(answer)))
+    else:
+        detail = "no state this harness wrote"
+    short = (" -- %d document(s) could not be read: %s"
+             % (len(answer["unreadable"]), _unreadable_summary(answer))
+             if answer["unreadable"] and answer["stock"] != UNKNOWN_STOCK else "")
+    return "%s (%s)%s" % (answer["stock"], detail, short)
+
+
+def assert_the_stock_may_be_written_over(answer: dict) -> None:
+    """A V2 kit is not installed over a V1 stock -- spec II.11/5's "existing repos stay pinned".
+
+    WHY ONLY THE `v1` VERDICT REFUSES, and `mixed` does not. A `v1` stock has no V2 kernel: its
+    whole state is monoliths this harness's kernel cannot read, and installing over it leaves a
+    project whose enforcement layer refuses every tool write to a state directory no command can
+    read either -- there is no route back from inside. A `mixed` stock HAS a live V2 installation,
+    the update is legitimately about that installation, and its V1 remnants are a finding the
+    validator already makes on every run (SR-0001). Refusing there would stop the update of every
+    project that ever carried a remnant, which is over-refusal and not a pin.
+
+    ...AND WHY `unknown` REFUSES TOO. It is the same refusal for the same reason: the reading that
+    would have told `greenfield` from `v1` did not finish, and `greenfield` is the answer that
+    permits the overwrite. Until 2026-09-01 this branch did not exist -- measured against a real
+    BuyPlugGo copy whose single monolith carried one unbalanced `[`: the verdict was `greenfield`,
+    the installer ran to rc 0 and put the V2 enforcement layer over the V1 state, and the only
+    thing that said anything was the printed line. A MESSAGE that says "this may be short" beside a
+    DECISION that proceeds is the reassuring half of the claim without the protecting half.
+
+    NOTHING IS WRITTEN ON EITHER REFUSING PATH, and that is measured rather than promised:
+    `tools/test_kitupdate.py::test_a_v1_stock_is_refused_and_the_installer_writes_nothing` and
+    `tools/test_kitupdate.py::test_a_stock_whose_reading_did_not_complete_is_not_written_over`
+    hash the project tree before and after a real `scaffold_team` run.
+    """
+    if answer["stock"] == UNKNOWN_STOCK:
+        raise StateError(
+            "which stock lies in this project cannot be established: nothing here belongs to this "
+            "harness's kernel, and %d document(s) of its state could not be read (%s) -- so "
+            "whether they hold V1 backlog records is unknown, and unknown is not empty. Refused "
+            "(fail-closed); nothing was changed. Remedy: repair or move the document(s) named "
+            "above (an editor or a shell outside the session), then run the installer again; "
+            "`python scripts/harness.py migrate --dry-run` refuses the same files for the same "
+            "reason and names them too."
+            % (len(answer["unreadable"]), _unreadable_summary(answer)))
+    if answer["stock"] != V1_STOCK:
+        return
+    raise StateError(
+        "this project's state is a V1 stock (%d document(s) still hold V1 backlog records: %s) and "
+        "no part of it belongs to this harness's kernel -- refused; nothing was changed. Installing "
+        "over it would replace the enforcement layer while leaving a state directory no command "
+        "here can read, and that layer then refuses every tool write to it. Remedy: the project "
+        "stays on what it runs today until its records are imported -- `python "
+        "scripts/harness.py migrate --dry-run` names every record that needs an answer first."
+        % (len(answer["v1_documents"]), _v1_summary(answer)))
+
+
+# -- the pin: a project that may not be replaced by the staged release (FR-0041) ----------------
+
+# WHERE A PIN IS RECORDED. One file, and it carries the same two-line vocabulary every other stamp
+# in this harness carries (`identity`), because what a pin names is a BUNDLE: the release this
+# project is held at. It lives under `.claude/` for the reason every enforcement record does -- a
+# session's own tool writes are refused there, so a pin is the user's statement and not a role's.
+PIN_FILE = os.path.join(".claude", "kit_pin")
+
+
+def pin_in_force(root: str) -> dict:
+    """The pin this project carries, or None -- `{"version", "content", "text", "path"}`.
+
+    IN FORCE EVEN WHEN IT IS UNREADABLE. A pin file whose stamp cannot be read still says that
+    somebody pinned this project; reading it as "no pin" would make a damaged record an unpinning,
+    which is the one way a pin may not end. `version` is then None and the refusal says so.
+
+    `kit` is optional in the record and filled in from the installation when absent (`pinned_kit`);
+    it is read here so that a pin has one reader rather than two.
+    """
+    path = os.path.join(root, PIN_FILE)
+    if not os.path.exists(path):
+        return None
+    try:
+        text = presets.read_text(path)
+    except OSError as exc:
+        return {"version": None, "content": None, "text": "unreadable (%s)" % exc, "path": path}
+    stamp = identity(text)
+    return {"version": stamp.get("version"), "content": stamp.get("content"),
+            "kit": _kit_line(text), "text": text.strip(), "path": path}
+
+
+def pinned_kit(root: str, pin: dict) -> str:
+    """WHICH KIT the pin holds this project at -- its own `kit:` line, else the one installed here.
+
+    A pin that states no kit still pins one: "stay as you are" is about the installation that is
+    here, and the ownership manifest is what says which kit that is. When neither can be read the
+    answer is None, and the caller refuses on it -- see `assert_not_pinned`.
+    """
+    if pin.get("kit"):
+        return pin["kit"]
+    try:
+        return presets.installation(root)["kit"]
+    except StateError:
+        return None
+
+
+def _bundle_words(kit: str, stamp: dict) -> str:
+    """A bundle in one phrase -- kit plus whichever stamp fields are stated, hashes shortened."""
+    stated = [(field, stamp.get(field)) for field in _STAMP_FIELDS if stamp.get(field)]
+    if not stated:
+        return "%s at a release nothing states" % (kit or "an unnamed kit")
+    return "%s %s" % (kit or "an unnamed kit",
+                      " ".join(value[:16] for _field, value in stated))
+
+
+def assert_not_pinned(root: str, kit: str, to_stamp: dict) -> None:
+    """Refuse to put a DIFFERENT bundle on a pinned project, and say how the pin is lifted.
+
+    A PIN HOLDS A BUNDLE, AND A BUNDLE IS NOT A VERSION STRING. For one round this compared the
+    version alone, and `tools/bump_kit_version.py` stamps all three kits with the SAME version --
+    so a project pinned to `dev-team 2026.09.01-4` took `office-team 2026.09.01-4` at rc 0, its
+    enforcement layer and its constitution replaced, while the pin said nothing (measured
+    2026-09-01, `tools/test_kitupdate.py::test_a_pin_does_not_let_another_kit_in_at_the_same_
+    version`). What is compared now is every part of the bundle the record can be held to: the KIT
+    always (`pinned_kit`), and each stamp field the pin STATES. A field the pin does not state is
+    not invented -- `content:` in particular is the exact tree, and demanding it of a pin that only
+    names a version would turn every repair into a refusal.
+
+    THE SAME BUNDLE IS NOT A MOVE, which is why the comparison is an equality and not a ban:
+    re-applying the pinned release is a repair, and a pin that stopped repairs would leave a
+    half-installed project with no way back short of deleting the record.
+
+    WHAT THIS PIN DELIBERATELY DOES NOT DO is silence the session briefing's "KIT UPDATE AVAILABLE"
+    nag: that hook computes its offer from `relation` and knows nothing of this file, so a pinned
+    project is still told an update exists and hears about the pin when the update is REFUSED. It is
+    the noisy failure rather than the silent one (BUG-0078's marker class is the silent one), and
+    the cost is that the user learns of their own pin one step later than they could (`H87`).
+    """
+    pin = pin_in_force(root)
+    if pin is None:
+        return
+    held = pinned_kit(root, pin)
+    stated = {field: pin[field] for field in _STAMP_FIELDS if pin.get(field)}
+    if held and held == kit and stated and all(
+            (to_stamp or {}).get(field) == value for field, value in stated.items()):
+        return
+    raise StateError(
+        "this project is PINNED to %s and %s is not that bundle -- refused; nothing was changed. "
+        "The pin is %s and it says:\n%s\nRemedy: this is the user's decision to reverse, not a "
+        "retry -- they delete that file from a shell outside this session, and the install runs. "
+        "Re-applying the pinned bundle itself stays allowed."
+        % (_bundle_words(held, stated), _bundle_words(kit, to_stamp or {}),
+           PIN_FILE.replace(os.sep, "/"), pin["text"]))
+
+
+def assert_no_pin_blocks_a_rollback(root: str) -> None:
+    """A pin stops a ROLLBACK as well, and that is the whole meaning of the word.
+
+    THE THIRD DOOR, and it was open for one round. A rollback replaces the installed bundle exactly
+    as an update does -- only with an older one -- so a pin that let it through was not "stay as
+    you are". What it produced was worse than a gap: measured 2026-09-01, a project pinned to
+    2099.12.31-9 was rolled back to 2026.09.01-4 at rc 0 with the pin still in place, and after
+    that NEITHER an update NOR a repair could run, because the only bundle the pin admits is the
+    one that is no longer installed. Refusing here is the direction that leaves the project usable
+    (`tools/test_kitupdate.py::test_a_pin_stops_a_rollback_in_both_twins`).
+    """
+    pin = pin_in_force(root)
+    if pin is None:
+        return
+    raise StateError(
+        "this project is PINNED and a rollback would replace its bundle just as an update does -- "
+        "refused; nothing was changed. The pin is %s and it says:\n%s\nRemedy: the user deletes "
+        "that file from a shell outside this session if the pin is to end, then the rollback runs."
+        % (PIN_FILE.replace(os.sep, "/"), pin["text"]))
+
+
 def waiting_for_a_restart(root: str) -> list:
     """The restart markers this project still carries -- see `RESTART_MARKERS` for what that proves."""
     return [marker for marker in RESTART_MARKERS
@@ -320,6 +653,9 @@ def _plan(state: ProjectState) -> dict:
     kit = presets.installation(root)["kit"]
     answer = relation(root, kit)
     assert_updatable(answer)
+    # ...AND THE PIN AHEAD OF THE HASHING: a pinned project is not going to install anything, so
+    # it may not be told first that some staging it will never read no longer matches its stamp.
+    assert_not_pinned(root, kit, answer["to"])
     assert_the_staging_is_its_own_stamp(answer["kit_dir"])
     assert_no_restart_is_pending(root)
     return dict(answer, root=root, manifest=approvals.kit_update_subject_manifest(
@@ -646,6 +982,86 @@ def _pending_templates(root: str) -> str:
                "the file's own and an entry may already match again)"))
 
 
+# -- the previous bundle, and how it is replayed (FR-0041) --------------------------------------
+
+# WHERE THE INSTALLER PUTS THE BUNDLE IT REPLACES, and the one file inside a snapshot that says
+# which of its paths a rollback puts back. Both twins of `scaffold_team` write that file at the
+# moment they take the snapshot, so the set a rollback replays is the set the run that MADE it
+# owned -- an older snapshot is replayed by its own contract and not by today's idea of one. This
+# module only READS it: the replay is the installer's, for `presets`' reason (a second
+# implementation would be a second answer to "what is installed").
+BACKUPS_DIR = os.path.join(".claude", "backups")
+RESTORE_SET = "RESTORE_SET"
+
+
+def rollback_command(kit: str) -> str:
+    """The installer line that replays the previous bundle, in the spelling THIS host would run.
+
+    The flag follows the twin `presets.installer_command` picked -- the same two-twins fact, read
+    off the script it returned rather than guessed at, so a host without PowerShell is told the
+    bash spelling.
+    """
+    argv = presets.installer_command(kit)
+    flag = "-Rollback" if any(part.endswith(".ps1") for part in argv) else "--rollback"
+    return " ".join(argv + [flag])
+
+
+def previous_bundle(root: str) -> dict:
+    """The snapshot a rollback would replay -- `{"stamp", "path", "entries"}` -- or None.
+
+    THE NEWEST ONE, because that is the one the LAST install wrote and therefore the one holding
+    the bundle this project ran before it. The stamps sort by name because the installer builds
+    them from `YYYYmmdd-HHMMSS` plus a collision suffix, so lexical order is chronological order.
+
+    A SNAPSHOT WITHOUT A RESTORE SET IS NOT A CANDIDATE, and it is not silently skipped either: it
+    predates the manifest, so which of its paths the installer OWNED is exactly what nobody
+    recorded, and replaying "everything in it" would put back files the installer only reads (a
+    user's `settings.local.json` among them). `skipped` names them so a reader is told why the
+    snapshot they can see is not the one offered.
+    """
+    directory = os.path.join(root, BACKUPS_DIR)
+    try:
+        stamps = sorted(os.listdir(directory), reverse=True)
+    except OSError:
+        return None
+    skipped = []
+    for stamp in stamps:
+        path = os.path.join(directory, stamp)
+        manifest = os.path.join(path, RESTORE_SET)
+        if not os.path.isfile(manifest):
+            if os.path.isdir(path):
+                skipped.append(stamp)
+            continue
+        try:
+            entries = [line.strip() for line in presets.read_text(manifest).splitlines()
+                       if line.strip()]
+        except OSError:
+            skipped.append(stamp)
+            continue
+        return {"stamp": stamp, "path": path, "entries": entries, "skipped": skipped}
+    return None
+
+
+def restorable(root: str, kit: str) -> str:
+    """One sentence about what a rollback could put back here -- for a refusal that has to say it.
+
+    It is a READING and never a promise: the snapshot is named, the number of paths it would put
+    back is the manifest's own, and the line says what a rollback does NOT undo, because the
+    installer writes records outside the set it owns (`tools/test_kitupdate.py::test_a_rollback_
+    restores_the_previous_bundle_byte_for_byte` measures the set it does).
+    """
+    found = previous_bundle(root)
+    if found is None:
+        return ("no snapshot under %s carries a restore set, so there is no bundle this harness "
+                "can replay -- restore by hand from %s if one is there"
+                % (BACKUPS_DIR.replace(os.sep, "/"), BACKUPS_DIR.replace(os.sep, "/")))
+    return ("the bundle this project ran before the last install is in %s/%s and %s puts its %d "
+            "recorded path(s) back; records the installer writes outside that set (the update "
+            "markers, the pending lists) are not undone by it"
+            % (BACKUPS_DIR.replace(os.sep, "/"), found["stamp"], rollback_command(kit),
+               len(found["entries"])))
+
+
 def _after_a_failed_install(root, kit, kit_dir, was, command, reason):
     """Refuse with the state the run actually left -- read through both readers, never asserted.
 
@@ -688,9 +1104,11 @@ def _after_a_failed_install(root, kit, kit_dir, was, command, reason):
     return StateError(
         "%s THE INSTALLATION HAD ALREADY MOVED: it was [%s], and after running the installer once "
         "more to complete it, it is [%s]%s. %s; %s. Remedy: report BOTH readings to the user and "
-        "stop -- this session may not work under them either way; the backups of the run are under "
-        ".claude/backups/, and a repair scaffold is a step for a shell outside this session."
-        % (reason, _describe(was), _describe(repaired), repair_note, marker, UNREAD))
+        "stop -- this session may not work under them either way. The way back is named rather "
+        "than left to a directory listing: %s. Either that or a repair scaffold is a step for a "
+        "shell outside this session."
+        % (reason, _describe(was), _describe(repaired), repair_note, marker, UNREAD,
+           restorable(root, kit)))
 
 
 def apply(state: ProjectState) -> dict:
@@ -744,3 +1162,71 @@ def apply(state: ProjectState) -> dict:
                 "installed": _describe(now),
                 "marker": ensure_restart_is_forced(root, plan["kit"]),
                 "pending_templates": _pending_templates(root)}
+
+
+# -- the installer's own pre-flight, as a process (FR-0044) -------------------------------------
+
+# What the installer is about to do, in the two words this reader tells apart. An INSTALL puts a
+# staged bundle on top of whatever is here, so it asks about the stock AND the pin; a ROLLBACK puts
+# a bundle this project already ran back, so the stock is not its question -- but the pin is,
+# because a pin says "stay as it is" and a rollback changes it too.
+INSTALL = "install"
+ROLLBACK = "rollback"
+
+
+def preflight_cli(argv) -> int:
+    """`<root> <kit-dir> [rollback]` -- may the installer touch this project? 0 yes, 1 no.
+
+    WHY THE INSTALLER ASKS THIS AND NOT THE OTHER WAY ROUND. Every door into a project's
+    enforcement layer goes through `scaffold_team` -- the user running it, `update-kit` starting it
+    as a child, and the rollback -- so one reading placed in front of the installer covers all
+    three, while a check living only in `update-kit` would leave the doors the user uses open.
+    That is also why the verdict must be reached before the first file moves: after the snapshot
+    there is a way back, but after the bundle is replaced over a state no command can read there is
+    none.
+
+    FAILS CLOSED, and that is a decision about IRREVERSIBILITY rather than about defence
+    (DEC-0056 (c)): a reading this function could not complete leaves "may this be overwritten"
+    unanswered, and the overwrite it guards is not undoable from inside the project afterwards. Two
+    things carry that, and for one round only the second existed: the `unknown` VERDICT, which is
+    the reading failing at one document (`classify`), and this `except`, which is the reading
+    failing altogether. The message says what to report, so a defect in this reader is a stop with
+    a name and not a mystery.
+    """
+    root = argv[0] if argv else "."
+    kit_dir = argv[1] if len(argv) > 1 else ""
+    doing = argv[2] if len(argv) > 2 else INSTALL
+    try:
+        if doing == ROLLBACK:
+            assert_no_pin_blocks_a_rollback(root)
+            return 0
+        # THE STAGED RELEASE IS READ HERE, out of the kit directory the installer was started from,
+        # rather than parsed in the shell: `identity` is the one reader of a kit stamp, and a second
+        # one written in bash and PowerShell would be two more. The kit is that directory's own
+        # name for the same reason -- it is what `presets.kit_dir` builds the path from.
+        staged = _stamp(os.path.join(kit_dir, STAGED_VERSION_FILE))
+        kit = os.path.basename(os.path.normpath(kit_dir)) if kit_dir else None
+        answer = classify(root)
+        sys.stdout.write("  [preflight] stock: %s\n" % describe_stock(answer))
+        if answer["stock"] == MIXED_STOCK:
+            # NOT a refusal -- see `assert_the_stock_may_be_written_over` for why a live V2
+            # installation with V1 remnants is updated rather than stopped. It is said out loud
+            # here because the validator's finding about the same documents only reaches whoever
+            # runs the validator, and the person watching this install may be neither.
+            sys.stdout.write(
+                "  [preflight] this project holds BOTH: the update goes ahead, and the V1 records "
+                "above stay a second copy of state nothing points at until `python "
+                "scripts/harness.py migrate --dry-run` is worked through\n")
+        assert_the_stock_may_be_written_over(answer)
+        assert_not_pinned(root, kit, staged)
+    except StateError as refused:
+        sys.stderr.write("%s\n" % refused)
+        return 1
+    except Exception as exc:                                  # noqa: BLE001 -- see the docstring
+        sys.stderr.write(
+            "the installer's pre-flight could not establish whether %s may be written over (%s: "
+            "%s) -- refused (fail-closed); nothing was changed. Remedy: report the gap and name "
+            "this message; it is a defect in the reading, not something to retry.\n"
+            % (root, type(exc).__name__, exc))
+        return 1
+    return 0

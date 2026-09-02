@@ -7,11 +7,22 @@
 set -Eeuo pipefail
 
 TEAM="${1:-}"
-PRESET="${2:-}"
 if [ -z "$TEAM" ]; then
-  echo "Usage: scaffold_team.sh <team> [preset]" >&2
+  echo "Usage: scaffold_team.sh <team> [preset] [--rollback]" >&2
   exit 1
 fi
+# The flag is read out of ALL remaining words rather than out of one position: the callers are a
+# user typing the line and `kernel.kitupdate.rollback_command`, and a flag that only worked in
+# position 2 would make "preset plus rollback" a silent preset named `--rollback`.
+PRESET=""
+ROLLBACK=0
+shift
+for argument in "$@"; do
+  case "$argument" in
+    --rollback) ROLLBACK=1 ;;
+    *) PRESET="$argument" ;;
+  esac
+done
 
 KITS_ROOT="$HOME/.claude/team-kits"
 KIT="$KITS_ROOT/$TEAM"
@@ -46,6 +57,7 @@ REPO="$(pwd)"
 # A literal CR in the pattern, not a `\r` escape: BSD sed (macOS, which this script supports) does
 # not understand `\r`. Only the terminator is dropped, so a CR inside a value stays visible.
 CR=$'\r'
+BOM=$'\xef\xbb\xbf'   # a byte-order mark is not part of a path -- see the rollback reader
 no_cr() { "$@" | sed "s/${CR}\$//"; }
 
 # Same-version detection (audit): a redundant re-run stays ALLOWED (it legitimately re-syncs
@@ -53,20 +65,41 @@ no_cr() { "$@" | sed "s/${CR}\$//"; }
 # resolving merge tasks, and must NOT reset the merge-backlog escalation counter (a PM who
 # "updated again just to be safe" used to silently restart the nag from session 1).
 SAME_VERSION=0
-if [ -f "$REPO/.claude/kit_version" ] && [ -f "$KIT/VERSION" ] \
+if [ "$ROLLBACK" -eq 0 ] && [ -f "$REPO/.claude/kit_version" ] && [ -f "$KIT/VERSION" ] \
     && [ "$(no_cr head -n 1 "$REPO/.claude/kit_version")" = "$(no_cr head -n 1 "$KIT/VERSION")" ]; then
   SAME_VERSION=1
   echo "NOTE: kit '$TEAM' is already at the staged version -- re-applying managed files/roles only. This does NOT resolve .claude/kit_update_pending.* merge tasks (work through them and DELETE the file)."
 fi
 
-echo "Scaffolding team '$TEAM' into $REPO"
+if [ "$ROLLBACK" -eq 0 ]; then echo "Scaffolding team '$TEAM' into $REPO"; fi
 
+# A CONTROLLED PATH NAMES NO `..`, and that is a rule about where its words COME FROM rather than
+# a normalisation: everything this installer hands to the check below it composed itself out of
+# `$REPO` and a name from its own tables, and none of those carries a parent step. Since 2026-09-01
+# it is also handed DATA -- the lines of a snapshot's RESTORE_SET -- and that is the reading this
+# refusal exists for. Measured 2026-09-01 with `../victim.txt` in a snapshot's manifest: the
+# comparison here was TEXTUAL (`case "$target" in "$REPO"/*`), the word matched the prefix, and
+# `rm -rf` in the restore deleted a file OUTSIDE the repository at rc 0 -- while the .ps1 twin,
+# which resolves through `GetFullPath`, refused the same line. The twins now refuse the same PARENT
+# STEP for the same reason (`tools/test_kitupdate.py::test_neither_twin_replays_a_snapshot_that_
+# points_out_of_the_repository`).
+#
+# THEY DO NOT ANSWER AN ABSOLUTE WORD ALIKE, and "no `..`" is an enumeration where the property is
+# "a RESTORE_SET line is REPO-RELATIVE". Measured 2026-09-02 with one absolute path in a manifest,
+# real installer, both twins: this one reads it as repo-relative (the caller hands over
+# `$REPO/$line`), finds nothing under that name in the snapshot and ends at rc 0 with the tree
+# unchanged; the .ps1 twin ends at rc 1 -- but on an unhandled `GetFullPath` exception rather than
+# through its own refusal. Neither writes outside the repository, so this is a divergence and not
+# the deletion above; it stands with that measurement in `H88`.
 assert_safe_repo_path() {
   local target="$1" rel current component
   case "$target" in
     "$REPO") return 0 ;;
     "$REPO"/*) rel="${target#"$REPO"/}" ;;
     *) echo "Controlled scaffold path escapes the repository: $target" >&2; exit 1 ;;
+  esac
+  case "/$rel/" in
+    */../*) echo "Controlled scaffold path escapes the repository: $target" >&2; exit 1 ;;
   esac
   current="$REPO"
   local -a parts=()
@@ -112,6 +145,163 @@ assert_no_symlink_tree() {
   fi
 }
 
+# WHAT AN INSTALL PUTS BACK WHEN IT IS UNDONE, and why it is not the same set it BACKS UP.
+# `RESTORABLE` is what this installer OWNS: every path it overwrites, prunes or stamps. Those are
+# the paths a rollback may replace without destroying somebody else's work, and the paths an
+# aborted run must be undone across. `KEPT_ONLY` is backed up and never restored -- both are files
+# this installer READS and never writes (a user's local settings, a repository override that stops
+# the scaffold), so putting an older copy of one back would overwrite an edit the installer never
+# made. The set is DATA here, used three times: the backup pass, the manifest inside the snapshot
+# and the restore below, so a path added to it cannot be forgotten by one of the three.
+# `.claude/kit_state.json` is on the list because the run REWRITES it (`write_kit_state.py`): until
+# 2026-09-01 it was neither backed up nor restored, so an abort after that step restored the old
+# bundle and left the NEW bundle's trust hash beside it -- `doctor` then reports `hook_trust`
+# against a bundle that is not there. Measured on the ABORT path, which is this list's own path:
+# `tools/test_kitupdate.py::test_an_aborted_install_puts_the_trust_record_back_with_the_bundle`.
+RESTORABLE=(
+  CLAUDE.md AGENTS.md .claude/settings.json .claude/agents .claude/hooks .claude/kernel
+  .claude/skills .claude/team_kit_roles.txt .claude/provider_artifacts.json .claude/kit_version
+  .claude/kit_state.json .codex .agents/skills .github/hooks .github/agents)
+KEPT_ONLY=(AGENTS.override.md .claude/settings.local.json)
+
+in_restorable() { # repo-relative path -> 0 when THIS installer owns it
+  local candidate="$1" known
+  for known in "${RESTORABLE[@]}"; do
+    [ "$known" = "$candidate" ] && return 0
+  done
+  return 1
+}
+
+restore_from_snapshot() {
+  # $1 = snapshot directory, $2... = the repo-relative paths to put back.
+  local snapshot="$1" relative target saved parent
+  shift
+  for relative in "$@"; do
+    target="$REPO/$relative"
+    saved="$snapshot/$relative"
+    if [ -e "$target" ] || [ -L "$target" ]; then rm -rf -- "$target"; fi
+    if [ -e "$saved" ] || [ -L "$saved" ]; then
+      parent="$(dirname "$target")"
+      mkdir -p "$parent"
+      cp -R "$saved" "$target"
+    fi
+  done
+}
+
+PYBIN="$(command -v python3 || command -v python || true)"
+if [ -z "$PYBIN" ] || ! "$PYBIN" -c 'import sys, yaml; assert sys.version_info >= (3, 8)' 2>/dev/null; then
+  echo "Python 3.8+ with PyYAML is required to validate provider configuration." >&2
+  exit 1
+fi
+# FROM THIS SCRIPT'S OWN DIRECTORY, not from the staging the kit sits in -- the same source
+# `gen_provider_artifacts.py` and `preset_config.py` are taken from. What this reads is the
+# PROJECT, so the reader belongs to the installer that is running; `write_kit_state.py` is the
+# opposite case and says so where it is started.
+PREFLIGHT_PATH="$(cd "$(dirname "$0")" && pwd)"
+preflight() {
+  PYTHONPATH="$PREFLIGHT_PATH" "$PYBIN" -B -c 'import sys
+from kernel import kitupdate
+sys.exit(kitupdate.preflight_cli(sys.argv[1:]))' "$REPO" "$KIT" "$@" || exit 1
+}
+
+if [ "$ROLLBACK" -eq 1 ]; then
+  # THE PIN IS ASKED HERE TOO, and it is the whole reason this branch is not the first thing the
+  # script does: a rollback replaces the installed bundle exactly as an update does. Until
+  # 2026-09-01 it sat in front of every check, and a pinned project could be rolled back to a
+  # bundle its own pin then refused to update OR repair.
+  preflight rollback
+  # ROLLBACK: replay the bundle the LAST install replaced (FR-0041). The snapshot is chosen by
+  # name because the stamps are `YYYYmmdd-HHMMSS` plus a collision suffix, so lexical order is
+  # chronological; and only a snapshot carrying its own RESTORE_SET is a candidate, because in an
+  # older one which paths the installer OWNED is exactly what nobody recorded.
+  BACKUPS="$REPO/.claude/backups"
+  CHOSEN=""
+  if [ -d "$BACKUPS" ]; then
+    while IFS= read -r candidate; do
+      [ -n "$candidate" ] || continue
+      if [ -f "$BACKUPS/$candidate/RESTORE_SET" ]; then CHOSEN="$candidate"; break; fi
+    done < <(ls -1 "$BACKUPS" 2>/dev/null | sort -r)
+  fi
+  if [ -z "$CHOSEN" ]; then
+    echo "No snapshot under .claude/backups/ carries a RESTORE_SET, so there is no previous bundle this installer can replay; nothing was changed. Snapshots written before 2026-09-01 do not record which paths the installer owned -- restore those by hand." >&2
+    exit 1
+  fi
+  SNAP="$BACKUPS/$CHOSEN"
+  assert_no_symlink_tree "$SNAP"
+  # EVERY LINE IS JUDGED BEFORE THE FIRST ONE IS ACTED ON, and this loop is where the judging has
+  # to happen: `restore_from_snapshot` DELETES a target before it looks for a saved copy, and that
+  # order is right for a path this installer owns -- 2 of the 15 lines a second install records
+  # have no copy in the snapshot because the install CREATED them, and a faithful rollback removes
+  # exactly those (measured 2026-09-02 on a real second install: 15 lines, 2 without a copy,
+  # `.github/hooks` and `.github/agents`, neither of them present in the project). What that order
+  # cannot survive is a manifest this installer did not write: a hand-copied or damaged snapshot
+  # naming `docs/note.md` deleted that file at rc 0 with "Rollback done." printed over it, in BOTH
+  # twins. So the refusal is not about the delete order, it is about OWNERSHIP -- and the proof of
+  # ownership is not the manifest (the manifest is the thing in doubt) but `RESTORABLE`, the set
+  # this script itself backs up, which is a second and independent record.
+  #
+  # A LINE PASSES IF IT IS OURS **OR** THE SNAPSHOT HOLDS A COPY OF IT. The second half is what
+  # keeps an OLDER snapshot playable after a path leaves `RESTORABLE`: it carries its own copy, so
+  # replaying it destroys nothing. Only a line that is neither is refused, and that combination is
+  # what a foreign manifest looks like. Measured: zero refusals on a real second install.
+  #
+  # THE BOM IS STRIPPED, AND THAT IS NOT COSMETIC: the PowerShell twin writes its own RESTORE_SET
+  # WITH a UTF-8 BOM (measured 2026-09-02 on a real install, bytes `efbbbf` in front of the first
+  # line). So the mark is not a sign of a foreign manifest -- it is what OUR OTHER TWIN produces,
+  # and refusing on it would refuse our own snapshots. Two measurements decided it, both on the
+  # shipped cross-twin case (ps1 writes, this twin replays): WITHOUT the strip and before the
+  # ownership rule below, this twin replayed at rc 0 and silently never put the FIRST recorded path
+  # back -- a rollback that reports success and skipped a file; and WITHOUT the strip but WITH the
+  # rule, it refuses its own twin's manifest at rc 1, because `<BOM>CLAUDE.md` is a name nobody
+  # owns. A byte-order mark is not part of a path. A BOM in front of a line that is NOT ours is
+  # still refused, by the rule above, on the line's content.
+  set_paths=()
+  foreign=()
+  first_line=1
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ "$first_line" -eq 1 ]; then line="${line#"$BOM"}"; first_line=0; fi
+    line="${line%$CR}"
+    case "$line" in ''|'#'*) continue;; esac
+    assert_safe_repo_path "$REPO/$line"
+    if ! in_restorable "$line" && [ ! -e "$SNAP/$line" ] && [ ! -L "$SNAP/$line" ]; then
+      foreign+=("$line")
+    fi
+    set_paths+=("$line")
+  done < "$SNAP/RESTORE_SET"
+  if [ "${#foreign[@]}" -gt 0 ]; then
+    echo "This snapshot's RESTORE_SET names path(s) this installer does not own and did not save a copy of: ${foreign[*]}. Replaying it would DELETE them with nothing to put back, so nothing was changed. A manifest written by this installer names only paths it backs up; report where this snapshot came from rather than retrying." >&2
+    exit 1
+  fi
+  restore_from_snapshot "$SNAP" "${set_paths[@]}"
+  echo "  [rollback] replayed .claude/backups/$CHOSEN (${#set_paths[@]} recorded path(s))"
+  # The transition this project announced has been undone, so the announcement goes with it; the
+  # RESTART marker is raised for the same reason a fresh install raises it -- the bundle under the
+  # running session just changed again, and only a session start reads the new one.
+  rm -f "$REPO/.claude/kit_updated_from"
+  mkdir -p "$REPO/.claude"
+  {
+    echo "# agents-and-skills handover marker (BUG-0016, DEC-0032)"
+    echo "# A ROLLBACK replayed .claude/backups/$CHOSEN over team '$TEAM'. Until the next restart the"
+    echo "# global handover guard refuses product-code writes and further derivation in this session."
+    echo "# A SessionStart(startup) hook clears this file on the next real restart. Safe to delete."
+  } > "$REPO/.claude/HANDOVER_PENDING"
+  # WHAT IT DID NOT PUT BACK, derived rather than claimed: everything the installer leaves under
+  # .claude/ that is not one of the recorded paths. Naming them is the difference between a
+  # rollback and a promise that the project is exactly as it was.
+  untouched=""
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in backups) continue;; esac
+    if [ "${set_paths[*]}" != "${set_paths[*]/.claude\/$entry/}" ]; then continue; fi
+    untouched="$untouched .claude/$entry"
+  done < <(ls -1A "$REPO/.claude" 2>/dev/null)
+  if [ -n "$untouched" ]; then
+    echo "  [rollback] left as they are (not part of the recorded set):$untouched"
+  fi
+  echo "Rollback done. RESTART the session -- the replayed hooks and agents only load at session start."
+  exit 0
+fi
+
 CFG="$REPO/project_memory/project_config.yaml"
 if [ ! -f "$CFG" ]; then
   echo "project_memory/project_config.yaml is required before scaffolding; no files were changed." >&2
@@ -145,13 +335,20 @@ if [ -d "$KIT/templates/repo" ]; then
     assert_no_symlink_tree "$REPO/$relative"
   done < <(find -P "$KIT/templates/repo" -type f -print0)
 fi
-PYBIN="$(command -v python3 || command -v python || true)"
-if [ -z "$PYBIN" ] || ! "$PYBIN" -c 'import sys, yaml; assert sys.version_info >= (3, 8)' 2>/dev/null; then
-  echo "Python 3.8+ with PyYAML is required to validate provider configuration." >&2
-  exit 1
-fi
 "$PYBIN" "$(cd "$(dirname "$0")" && pwd)/gen_provider_artifacts.py" \
   --repo "$REPO" --project-config "$CFG" --check-config-only
+# PRE-FLIGHT (FR-0044/II.12): WHICH STOCK lies here, and may it be written over at all? It runs
+# before the first file moves and after the checks that own a FILE of their own -- the config's
+# existence and its provider block. Both orders are safe (each refuses and writes nothing), and the
+# order is decided by which message a reader can act on: a `project_config.yaml` that does not parse
+# is that check's finding, not a sentence about V1 backlog records. That this does not cost the V1
+# verdict is measured rather than assumed -- all three field copies under C:/Offline Repos/v2-pilot
+# carry a pre-kernel config and all three PASS `--check-config-only` (rc 0, 2026-09-02), so the
+# stock verdict is still what they meet. After the snapshot there is a way back; after the
+# enforcement layer has been replaced over a state no command can read there is none. The verdict,
+# the refusals and the fail-closed rule live in `kernel.kitupdate.preflight_cli`; this line only
+# starts it, so the two twins cannot come to classify a project differently.
+preflight
 # settings.local.json: only ENFORCEMENT-replacing keys block the scaffold. `permissions` is
 # where Claude Code records every "Always allow" grant and `model` is a legitimate local
 # preference — blocking on those made every actively used project unable to take kit updates.
@@ -223,43 +420,25 @@ backup_local() {
   mkdir -p "$(dirname "$dst")"
   cp -R "$1" "$dst"
 }
-backup_local "$REPO/CLAUDE.md" "CLAUDE.md"
-backup_local "$REPO/AGENTS.md" "AGENTS.md"
-backup_local "$REPO/AGENTS.override.md" "AGENTS.override.md"
-backup_local "$REPO/.claude/settings.json" ".claude/settings.json"
-backup_local "$REPO/.claude/settings.local.json" ".claude/settings.local.json"
-backup_local "$REPO/.claude/agents" ".claude/agents"
-backup_local "$REPO/.claude/hooks" ".claude/hooks"
-backup_local "$REPO/.claude/kernel" ".claude/kernel"
-backup_local "$REPO/.claude/skills" ".claude/skills"
-backup_local "$REPO/.claude/team_kit_roles.txt" ".claude/team_kit_roles.txt"
-backup_local "$REPO/.claude/provider_artifacts.json" ".claude/provider_artifacts.json"
-backup_local "$REPO/.claude/kit_version" ".claude/kit_version"
-backup_local "$REPO/.codex" ".codex"
-backup_local "$REPO/.agents/skills" ".agents/skills"
-backup_local "$REPO/.github/hooks" ".github/hooks"
-backup_local "$REPO/.github/agents" ".github/agents"
-[ -d "$BDIR" ] && echo "  [ok] backed up existing team files -> .claude/backups/$STAMP"
+for relative in "${RESTORABLE[@]}" "${KEPT_ONLY[@]}"; do
+  backup_local "$REPO/$relative" "$relative"
+done
+if [ -d "$BDIR" ]; then
+  # The snapshot carries its OWN restore contract, so a rollback months later replays the set the
+  # run that made it owned rather than today's. Repo-relative and POSIX-spelled, because either
+  # twin of this installer may be the one that replays it.
+  printf '%s\n' "${RESTORABLE[@]}" > "$BDIR/RESTORE_SET"
+  echo "  [ok] backed up existing team files -> .claude/backups/$STAMP"
+fi
 if [ -f "$REPO/AGENTS.override.md" ] || [ -L "$REPO/AGENTS.override.md" ]; then
   echo "Repository AGENTS.override.md takes precedence over the team constitution. It was backed up and left untouched; merge/remove it only after explicit user review, then rerun scaffolding." >&2
   exit 1
 fi
 
 restore_scaffold_snapshot() {
-  local relative target saved parent
-  for relative in \
-    CLAUDE.md AGENTS.md .claude/settings.json .claude/agents .claude/hooks .claude/kernel .claude/skills \
-    .claude/team_kit_roles.txt .claude/provider_artifacts.json .claude/kit_version .codex \
-    .agents/skills .github/hooks .github/agents; do
-    target="$REPO/$relative"
-    saved="$BDIR/$relative"
-    if [ -e "$target" ] || [ -L "$target" ]; then rm -rf -- "$target"; fi
-    if [ -e "$saved" ] || [ -L "$saved" ]; then
-      parent="$(dirname "$target")"
-      mkdir -p "$parent"
-      cp -R "$saved" "$target"
-    fi
-  done
+  # THE RUN'S OWN SET, not a second copy of it: `RESTORABLE` is what was backed up above and what
+  # the snapshot's RESTORE_SET records, so an abort undoes exactly the paths this run owns.
+  restore_from_snapshot "$BDIR" "${RESTORABLE[@]}"
 }
 
 ROLLBACK_ACTIVE=1
@@ -531,12 +710,22 @@ fi
 # it does not inject them -- measured 2026-08-02 for a role bound as the session agent, and
 # unmeasured for the subagent-spawn path (tools/provider_observations.json). Each agent file
 # names the retrieval route, which is why the skill directory has to be installed at all.
+#
+# A SKILL DIRECTORY WHOSE NAME IS NO ROLE OF THIS KIT BELONGS TO EVERY PRESET. The preset filter
+# below is a ROLE filter, and it is right for a role's procedure skill; a reference skill belongs
+# to no role by construction (constitution 1a), so filtering it by the role list dropped it from
+# every preset but `team`. Measured 2026-09-01 against a real installer run into a throwaway HOME:
+# preset `team` -> 11 skills including both reference skills, preset `solo` -> 5, neither of them.
+# The failure was SILENT ABSENCE, not a dangling pointer -- the derivation reads the project's own
+# .claude/skills, so a work order simply names nothing (H83). The question "is this name a role" is
+# asked of the kit's own agents directory rather than of a list, so a reference skill added
+# tomorrow is covered the day it ships.
 if [ -d "$SKILLS_SRC" ]; then
   mkdir -p "$SKILLS_DST"
   for d in "$SKILLS_SRC"/*/; do
     [ -e "$d" ] || continue
     name="$(basename "$d")"
-    in_preset "$name" || continue
+    if [ -f "$AGENTS_SRC/$name.md" ] && ! in_preset "$name"; then continue; fi
     rm -rf "$SKILLS_DST/$name"
     cp -R "$d" "$SKILLS_DST/$name"
     echo "  [ok] skill: $name"

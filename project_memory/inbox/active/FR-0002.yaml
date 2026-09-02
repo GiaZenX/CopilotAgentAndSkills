@@ -22,6 +22,6 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T16:59:50'
-triage_result: 'wanted: F1 still ships rules: [] in team-kits/office-team/templates/project_memory/filing_plan.yaml;
-  mitigated only by the entry-file instruction; deferred behind dev-team by DEC-0033
-  (assessment TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- F1 is done via FR-0031/TSK-0102; F2-F6 as one template round, F7/F8
+  as own packages.'

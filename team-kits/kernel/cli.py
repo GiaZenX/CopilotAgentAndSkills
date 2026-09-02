@@ -49,8 +49,8 @@ import subprocess
 import sys
 import time
 
-from . import (approvals, board, checkpoints, dispatch, documents, filing, hashing, kitupdate,
-               migrate, presets, report, staging)
+from . import (approvals, board, checkpoints, dispatch, documents, filing, gaplog, hashing,
+               kitupdate, migrate, presets, report, staging)
 from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
@@ -702,6 +702,34 @@ def build_parser() -> argparse.ArgumentParser:
         kitupdate.COMMAND,
         help="install the kit release staged on this machine over this project (needs a minted "
              "`%s` approval; refuses a downgrade and stops the session afterwards)" % kitupdate.KIND)
+    # THE ROUTES TO THE PIN AND THE ROLLBACK (FR-0041, the seam `H87` names). The MECHANISM is built
+    # and measured at all three doors (`kitupdate.assert_not_pinned`,
+    # `kitupdate.assert_no_pin_blocks_a_rollback`); what nobody could do from a session was FIND it.
+    # Measured on the shipped entry point of a field copy: 25 subcommands, no pin, no rollback -- so
+    # a user who wanted to hold their project at a release was sent to a text editor by whoever
+    # happened to know the file name.
+    #
+    # THEY PRINT AND THEY DO NOT ACT, which is the design and not a half-build. A pin is the USER's
+    # statement about their own project -- that is why it lives where a session's tool writes are
+    # refused (`kitupdate.PIN_FILE`) -- and the two levers differ in direction: setting one only
+    # ever ADDS a refusal, lifting one removes the only thing standing between this session and a
+    # replaced enforcement layer. The rollback is the same argument once more: it replaces the
+    # installed bundle exactly as the update command one block up does, and that one may only do it
+    # on a minted approval, which no kind covers a rollback with. So these three name the deed the user does
+    # outside the session, filled in with this project's own bundle, and
+    # `tools/test_kitupdate.py::test_the_kit_pin_routes_print_and_never_write` holds them to it.
+    sub.add_parser(
+        "pin-kit",
+        help="PRINTS how to hold this project at the release it runs -- the file and the two lines "
+             "the user puts in it; writes nothing itself")
+    sub.add_parser(
+        "unpin-kit",
+        help="PRINTS the pin this project carries and the file the user deletes to lift it; "
+             "removes nothing itself")
+    sub.add_parser(
+        "rollback-kit",
+        help="PRINTS which previous bundle could be replayed here and the installer line that does "
+             "it; installs nothing itself")
     # THE THIRD DEAD END OF THE SAME FAMILY (FR-0049 step 5). An office project meeting a document
     # class its Aktenplan does not know could not file it -- correctly -- and could not grow the
     # plan either: `filing_plan.yaml` is a kit document, so no tool write reaches it and, until
@@ -742,6 +770,20 @@ def build_parser() -> argparse.ArgumentParser:
                 name, " -- NOT typed here: %s, and a value is refused" % entry[1] if entry
                 else "; the approval is looked up by the manifest these flags build, so they are "
                      "the ones the user was shown"))
+    # THE REPORTING HALF of the dead-end family BUG-0041/BUG-0068/BUG-0070 (FR-0062). A session that
+    # hits an infrastructure boundary tells the user -- and the report dies in the chat. This books
+    # it into the project's own log instead, where the kit's maintainer reads it across repos. The
+    # KERNEL is the writer, so the agent-write refusal under `project_memory/` stays intact; nothing
+    # forces a session to call it, and `kernel/gaplog.py` says so rather than implying otherwise.
+    gap = sub.add_parser(
+        gaplog.COMMAND,
+        help="record a kit gap in this project's own log (what you tried, what refused you)")
+    gap.add_argument("--tried", required=True,
+                     help="what this session was trying to do, in its own words")
+    gap.add_argument("--refused", required=True,
+                     help="the message that stopped it, verbatim")
+    gap.add_argument("--title", default="", help="a one-line name (defaults to the start of --tried)")
+    gap.add_argument("--item", default="", help="the item this happened under, if there is one")
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
     sub.add_parser("sweep-leases", help="return expired leases to READY")
@@ -996,6 +1038,74 @@ def _pin_utf8() -> None:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError, OSError):
             pass
+
+
+# The three routes to the pin and the rollback, in one name so the dispatch cannot grow a fourth
+# spelling the parser does not carry. Their subparsers above argue why they print rather than act.
+KIT_PIN_ROUTES = ("pin-kit", "unpin-kit", "rollback-kit")
+
+
+def _kit_pin_route(state: ProjectState, command: str) -> int:
+    """Answer one of `KIT_PIN_ROUTES` out of this project's own bundle -- and write nothing.
+
+    ONE BODY FOR THREE QUESTIONS because all three stand on the same two readings: which release is
+    installed here (`kitupdate.relation`) and whether a pin already stands (`kitupdate.pin_in_force`).
+    Three bodies would have been three readings of one file, i.e. three places for them to disagree.
+
+    THE DEED IS NAMED AS A FILE, never as a shell line, and that is the one place this differs from
+    `kitupdate.rollback_command`: creating or deleting a file is something the user can do in a file
+    manager, while a command line would have to pick a shell for a reader whose shell nobody here
+    knows. The rollback keeps its command because it starts the INSTALLER, and which twin that is
+    `presets.installer_command` already decides.
+    """
+    root = presets.repo_root(state)
+    kit = presets.installation(root)["kit"]
+    pin = kitupdate.pin_in_force(root)
+    path = os.path.join(root, kitupdate.PIN_FILE)
+    if command == "rollback-kit":
+        print(kitupdate.restorable(root, kit))
+        if pin is not None:
+            # SAID HERE AND NOT LEFT TO THE REFUSAL, because the refusal comes after the user has
+            # already started the installer: `kitupdate.assert_no_pin_blocks_a_rollback` stands in
+            # the installer's own pre-flight, and this command exists to be read BEFORE that.
+            print("...but this project is PINNED, and a pin stops a rollback exactly as it stops "
+                  "an update. Lift it first: %s" % path)
+        return 0
+    if command == "unpin-kit":
+        if pin is None:
+            print("nothing pins this project: there is no %s. `pin-kit` prints how to make one."
+                  % path)
+            return 0
+        print("this project is PINNED by %s, which says:\n%s" % (path, pin["text"]))
+        print("To lift it, the USER deletes that file. This command does not, and no command does: "
+              "the pin is the only thing standing between a session and a replaced enforcement "
+              "layer, so lifting it is the user's act and not a role's.")
+        return 0
+    if pin is not None:
+        print("this project is ALREADY pinned by %s, which says:\n%s" % (path, pin["text"]))
+        print("`unpin-kit` prints how that ends.")
+        return 0
+    installed = kitupdate.relation(root, kit)["from"]
+    version = installed.get("version")
+    if not version:
+        print("this project's own release stamp (%s) is not readable, so there is no release to "
+              "name in a pin -- report that gap rather than pinning a project to nothing."
+              % kitupdate.INSTALLED_VERSION_FILE.replace(os.sep, "/"))
+        return 1
+    print("To hold this project at the release it runs, the USER creates %s with these two lines:"
+          % path)
+    print("kit: %s" % kit)
+    print("version: %s" % version)
+    # WHAT THE PIN WILL THEN REFUSE, said here because a user who cannot picture the effect cannot
+    # judge the decision -- and all three doors are measured, not assumed
+    # (`tools/test_kitupdate.py::test_the_installer_itself_refuses_a_pinned_project_and_writes_nothing`,
+    # `::test_a_pinned_project_refuses_the_update_and_says_how_the_pin_is_lifted`,
+    # `::test_a_pin_stops_a_rollback_in_both_twins`).
+    print("From then on `%s`, the installer run by hand, and a rollback all refuse any other "
+          "bundle here; re-installing this same one stays allowed. This command wrote nothing -- "
+          "the file is the user's statement, which is why a session cannot make it."
+          % kitupdate.COMMAND)
+    return 0
 
 
 def main(argv=None) -> int:
@@ -1259,6 +1369,16 @@ def main(argv=None) -> int:
             # BUG-0074 cost three unfrozen wireframes one document over.
             print("the staged proposal is unchanged and still in %s" % args.proposal)
             return 0
+        if args.command == gaplog.COMMAND:
+            entry = gaplog.record(state, args.tried, args.refused, args.title, args.item)
+            print("kit gap %s: %s" % (entry["id"],
+                                      "recorded" if entry["recorded"] else "already recorded"))
+            # THE USER STILL HEARS IT IN THIS TURN. The log is for the kit's maintainer, not a
+            # substitute for telling the person whose work just stopped (§8 of every constitution).
+            print("NOT done here: the user has not been told. Say it to them in this same turn.")
+            return 0
+        if args.command in KIT_PIN_ROUTES:
+            return _kit_pin_route(state, args.command)
         if args.command == kitupdate.COMMAND:
             result = kitupdate.apply(state)
             print("%s kit: %s -> %s" % (result["kit"], result["from"], result["to"]))

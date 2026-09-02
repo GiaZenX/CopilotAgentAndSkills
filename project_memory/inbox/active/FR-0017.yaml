@@ -17,6 +17,5 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-12T06:23:53'
-triage_result: 'wanted: the kernel knows no grouping/heading node type (backlog_types.py:
-  only PR->SR->TSK parents and class); explicitly deferred until backlogs grow (assessment
-  TSK-0055)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- with FR-0024 (the kanban needs the grouping) or as a kernel round.'

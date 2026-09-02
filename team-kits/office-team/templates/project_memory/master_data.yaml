@@ -2,6 +2,20 @@
 # Stable vocabulary for the ledger. Without it the bookkeeper invents categories ad hoc
 # (Q1 "Porto", Q2 "Versandkosten" -> quarterly comparisons become worthless). Append-only;
 # category names align to Anlage-EÜR lines so the Steuerberater maps them 1:1.
+#
+# `second_reading` IS THE ONE FIELD A HOOK DECIDES ON HERE, and it is the user's lever, not the
+# kit's (FR-0065) — the same field, spelled the same way, that a `filing_plan.yaml` rule carries for
+# documents. Every category asks for TWO independent readings of the source document before a row
+# booked under it may be committed, pushed, merged or reported: a second run that was not shown the
+# first answer and not shown the row has to read the same figures off the same paper, or nothing
+# leaves the project and both answers go to the user. `gate_second_booking` is what refuses;
+# `record_booking_reading` is what makes the readings countable. The ONLY way to release a category
+# is `second_reading: false` — the value YAML itself reads as the boolean false. Absent, `true`, a
+# word or a list all mean "two", so a typo cannot quietly open a category. A RELEASE IS ONE READING,
+# NEVER NONE: what the user gives up is the second opinion, not the record. Start with everything at
+# two (that is what an unfilled field means) and release a category only where the user has decided
+# the class is routine enough. A row already in `HEAD` is never re-read — the rule starts where it
+# was switched on and does not re-open the books.
 
 categories:
   expense: []
@@ -11,6 +25,7 @@ categories:
   #  - key: shipping
   #    label_de: "Versandkosten"
   #    euer_line: "Übrige Betriebsausgaben"
+  #    second_reading: false      # user's decision: one reading here, never none
   income: []
   #  - key: sales_shop
   #    label_de: "Umsätze Onlineshop"

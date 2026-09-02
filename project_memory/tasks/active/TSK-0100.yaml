@@ -1,0 +1,47 @@
+id: TSK-0100
+product_requirement: FR-0068
+derives_from: FR-0068
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/dev-team/**
+- team-kits/kernel/**
+- team-kits/repo_kit_owned.txt
+- tools/**
+- docs/**
+- NOTICES.md
+forbidden_scope:
+- team-kits/kernel/kitupdate.py
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0068.yaml
+- project_memory/inbox/active/FR-0070.yaml
+- project_memory/inbox/active/FR-0045.yaml
+- project_memory/inbox/active/FR-0071.yaml
+- docs/research/2026-08-31-skill-survey.md
+- docs/research/2026-07-27-adoption-anthropic.md
+expected_outputs:
+- frontend-design and webapp-testing vendored as REFERENCE skills beside the designer,
+  Apache-2.0 duties met (license copy, modifications marked, NOTICES.md line), process
+  assumptions rewritten, content kept
+- the design-system export (FR-0045) consumable as a drop-in skill with its schema
+  frozen from the real bundle
+- 'which reference skills a work order names is DERIVED from the task (FR-0071), with
+  a both-directions tripwire: a shipped skill no route reaches is red, a route naming
+  an unshipped skill is red'
+- red-first for every fix; affected suites green; kits stamped provisionally (DEC-0057
+  d)
+- hole entries use reserved numbers H83-H85 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-01T21:19:41'

@@ -14,3 +14,10 @@ status: OPEN
 revision: 1
 approval_ref: null
 created: '2026-08-16T14:06:25'
+triage_result: 'CORRECTION 2026-09-01: the FR-0046 measurement this item leans on
+  (three pilot copies as old-V2 update-kit stocks) was wrong -- they are V1 stocks;
+  see FR-0046 triage_result. The pin/rollback mechanism itself was built and measured
+  in TSK-0101 (stream B) on a synaipse copy made mixed; the verifier found and the
+  rework closes: pin compared version not bundle (kit swap passed), rollback was a
+  third door the pin did not guard, bash twin replayed a RESTORE_SET path outside
+  the repo.'

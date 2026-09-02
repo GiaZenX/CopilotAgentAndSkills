@@ -14,5 +14,6 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T09:40:37'
-triage_result: 'wanted: post-release; the suite-span constraint is measured (2026-08-04
-  incident), the isolation design is the actual work'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- parallel same-role specialists in the dev kit, derived from the DEC-0057
+  stream mechanics (worktrees, per-feature test areas, merge discipline).'

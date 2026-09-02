@@ -25,7 +25,10 @@ request_text: 'Gemessen im Repo, 2026-08-24: gate_test_coverage der Kits erzwing
   es beim harness auch ausarten?''), bevor irgendjemand danach gesucht hat. Ungemessen
   ist bisher, wie sich die QS-Rolle in einem Projekt mit langer Suite tatsaechlich
   verhaelt -- kein Pilot hat ein Projekt gross genug werden lassen.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-24T13:45:04'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- measure first what QA starts today on a small change in a long-suite
+  project, then the DEC-0050 measure into the role where it acts.'

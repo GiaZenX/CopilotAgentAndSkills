@@ -42,6 +42,7 @@ from .backlog_types import (
     field_elements,
     parse_id,
 )
+from . import references
 from .lock import ext_path
 from .schemas import validate
 from .state import ProjectState, StateError, _now_iso
@@ -92,6 +93,10 @@ COMMAND_TOOLS = ("Bash", "PowerShell")
 HAND_BACK_KEY = "hand_back"
 HAND_BACK_SELF = "self"
 HAND_BACK_LEAD = "lead"
+# The reference skills a dispatch names (FR-0071). Like `checkpoint` and `hand_back` this is a
+# POINTER carried in the header and NOT one of the three keys `parse_header` decides on, so it
+# grants nothing; `kernel.references` computes it from the task.
+REFERENCES_KEY = "references"
 
 
 class DispatchError(StateError):
@@ -257,6 +262,17 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
                               task.get("assigned_role"))
         if path:
             lease[HAND_BACK_KEY] = path
+        # ...AND THE REFERENCE SKILLS THIS TASK NAMES (FR-0071), derived here for the third time
+        # for the same reason: this is the one moment a dispatch is composed, and the TASK is what
+        # decides -- its `assigned_role` and its `type`, both frozen plan fields. The alternative
+        # was leaving the pick to the role, which is the habitual-pick failure the item names.
+        # Absent when nothing matches, so "this kit ships no reference skills" and "none applies to
+        # this task" are the same envelope, and the key grants nothing either way.
+        reference_skills = references.for_task(
+            references.skills_dir(os.path.dirname(state.root)),
+            task.get("assigned_role"), task.get("type"))
+        if reference_skills:
+            lease[REFERENCES_KEY] = reference_skills
         state._write_yaml_atomic(lease_path, lease)
         task["status"] = LEASE_MINTED_STATUS
         task["leased_at"] = _now_iso()
@@ -313,7 +329,11 @@ def role_tools(definitions: str, role: str):
     try:
         with open(path, encoding="utf-8") as handle:
             text = handle.read()
-    except OSError:
+    except (OSError, UnicodeDecodeError):
+        # THE NEIGHBOUR OF THE SAME DEFECT, fixed in the same shape. Here the file is one the
+        # installer writes, so no measured chain reaches it -- `kernel.references._frontmatter`
+        # carries the one that was measured, and this is the identical line rather than a second
+        # answer to "what does this reader do with a file it cannot decode".
         return None
     if not text.startswith("---"):
         return None
@@ -380,6 +400,17 @@ def dispatch_header(lease: dict) -> str:
     # the constitution describes is the one its own toolset can walk (BUG-0048).
     if lease.get(HAND_BACK_KEY):
         body[HAND_BACK_KEY] = lease[HAND_BACK_KEY]
+    # ...AND WHICH REFERENCE SKILLS THIS ORDER NAMES (FR-0071). Same standing as the two above: a
+    # pointer, in the one part of the prompt that reaches the specialist verbatim, so that the
+    # choice is in the ORDER rather than in the role's habits. The role still has to open them --
+    # a name in a header is not a loaded file.
+    # NOT a local called `named`: `test_backlog_types._key_read_aliases` follows one binding by NAME
+    # and is scope-blind, so a second `named` in this module inherits this one's key and the
+    # unrelated `"; ".join(named)` at the bottom of the file is reported as an unguarded read of a
+    # reference-list field (measured, red).
+    reference_skills = lease.get(REFERENCES_KEY)
+    if reference_skills:
+        body[REFERENCES_KEY] = reference_skills
     return HEADER_PREFIX + json.dumps(body, sort_keys=True)
 
 

@@ -17,14 +17,5 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T09:41:09'
-triage_result: 'wanted: post-release, sliced (one provider = one measured round).
-  RESEARCHED 2026-08-15, full findings in docs/research/2026-08-15-multi-provider-eigene-oberflaeche.md:
-  subscription-backed Anthropic-compatible routes CONFIRMED for Kimi (own coding-plan
-  endpoint) and Qwen (coding plan lists Claude Code officially, BUT ToS forbids script/batch
-  use -- open tension with headless dispatch); DeepSeek native endpoint, pay-per-token
-  only; local runtimes all speak Anthropic natively now; Gemini/OpenAI subscription
-  routes CLOSED (own-tool-only per primary docs), API+proxy only; Qoder is a consumer
-  not a provider (gray reverse-engineering only); Anthropic own-subscription-through-SDK
-  works today, paused policy change is a watched risk, third-party serving forbidden.
-  Field reports on model discipline (Kimi false tool successes, Qwen tool-call failures)
-  make the per-provider gate-discipline measurement mandatory before any claim.'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Spaeter -- keep; one provider = one measured round when it comes.'

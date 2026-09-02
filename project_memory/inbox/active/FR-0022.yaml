@@ -9,5 +9,5 @@ status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T09:40:38'
-triage_result: 'wanted: post-release comfort feature; pairs with FR-0021 (parallel
-  instances make names necessary, not just nice)'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  Zusammen mit der Oberflaeche -- paired with FR-0024, builds when the UI builds.'

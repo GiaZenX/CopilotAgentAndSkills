@@ -1,0 +1,39 @@
+id: TSK-0108
+product_requirement: FR-0059
+derives_from: FR-0059
+type: test
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0059.yaml
+- project_memory/inbox/active/FR-0060.yaml
+- project_memory/inbox/active/FR-0047.yaml
+- docs/reviews/2026-08-29-cd-rebinding-research.md
+- team-kits/model_tiers.yaml
+expected_outputs:
+- '/cd measured per the 9-step plan on our rigs: what rebinds live, what needs a restart,
+  whether the agent binding switches; the exact line the user types, and whether it
+  applies in the VS Code extension (FR-0059)'
+- BOM tripwire over every tracked role/skill/gate .md, both ends (FR-0060)
+- every pinned model tier resolves to a known alias/tier in model_tiers.yaml, and
+  a silent fallback becomes a visible, logged event (FR-0047) -- a kit file change
+  these need is a SEAM item
+- measurement docs under docs/reviews/; hole numbers H114-H116 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:56:29'

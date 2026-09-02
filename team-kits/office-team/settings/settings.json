@@ -66,7 +66,7 @@
       },
       {
         "matcher": "Bash|PowerShell",
-        "_comment": "A `timeout` ON A REGISTRATION IS A KILL WINDOW, and a killed gate is a silent allow -- so an entry may name one only where the hook refuses BEFORE it, and must name one where the hook cannot finish inside the default. Measured 2026-08-23 on claude.exe 2.1.239 (tools/provider_observations.json -> hook_deadlines): an entry with `timeout: 5` whose hook needed 20 s was KILLED and the refused command RAN, with nothing on the user's channel to say a gate had been killed; an entry naming NO timeout survived 310 s and 560 s and was killed at 900 s, so a default window exists too and sits near 600 s. Three entries here carried 60/120 on the assumption that a window HELPS a gate that has no bound of its own -- it does the opposite, and they lost it. No entry here needs one: the slowest of the 28 measured 0.405 s as a real process, and the only gate that bounds a child at all (`gate_ledger_valid`) stops itself at `TOTAL_BUDGET`, far inside the default. `tools/test_hooks.py::test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default` measures the rule off the shipped file and off each gate's own code. What no window buys back is a hook that hangs inside its own process: nothing in `_compat` notices a deadline, so `_compat.HOOK_DEADLINE_SECONDS` is a budget the hooks give themselves and not one anything enforces.",
+        "_comment": "A `timeout` ON A REGISTRATION IS A KILL WINDOW, and a killed gate is a silent allow -- so an entry may name one only where the hook refuses BEFORE it, and must name one where the hook cannot finish inside the default. Measured 2026-08-23 on claude.exe 2.1.239 (tools/provider_observations.json -> hook_deadlines): an entry with `timeout: 5` whose hook needed 20 s was KILLED and the refused command RAN, with nothing on the user's channel to say a gate had been killed; an entry naming NO timeout survived 310 s and 560 s and was killed at 900 s, so a default window exists too and sits near 600 s. Three entries here carried 60/120 on the assumption that a window HELPS a gate that has no bound of its own -- it does the opposite, and they lost it. No entry here needs one: the slowest of the 28 measured 0.405 s as a real process, and the only gate that bounds a child at all (`gate_ledger_valid`) stops itself at `TOTAL_BUDGET`, far inside the default. `tools/test_hooks.py::test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default` measures the rule off the shipped file and off each gate's own code. The ledger pair is ONE chained command and its ORDER IS load-bearing, unlike the filing chain's below: `_gate.py` stops at the first refusal, and a ledger whose rows are broken data has to be reported as that before anybody is sent back to a document to read it a second time (FR-0065). `gate_second_booking` acts on the SHELL moments of `gate_ledger_valid.requires_a_sound_ledger` only and deliberately not on a dispatch -- the second reading is written by a second spawn, so refusing the spawn would refuse the way out of the refusal; that is why it is not in the `Agent|Task` chain below. It names no window either: the only child it starts is a `git` read capped at `_bookings.GIT_TIMEOUT`, and the worst case that reader can reach (two probes plus one per ledger file) stays far inside the ~600 s default -- which `test_a_registration_names_a_window_exactly_when_its_gate_can_outlive_the_default` does NOT see, because it reads each GATE file's own `timeout=` keywords and this one's bound lives in `_bookings`. What no window buys back is a hook that hangs inside its own process: nothing in `_compat` notices a deadline, so `_compat.HOOK_DEADLINE_SECONDS` is a budget the hooks give themselves and not one anything enforces.",
         "hooks": [
           {
             "type": "command",
@@ -74,7 +74,7 @@
           },
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_ledger_valid.py gate_second_booking.py"
           },
           {
             "type": "command",
@@ -145,11 +145,11 @@
     "PostToolUse": [
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell",
-        "_comment": "The recorder that makes the four-eyes filing rule decidable: it stamps WHICH RUN wrote each staged classification reading, from the `agent_id` this call's payload carries. Registered on every event a file can arrive through, and in its OWN entry rather than chained behind `gate_ledger_valid`, because a chain stops at the first non-zero exit and that gate exits 2 here on a broken ledger -- which has nothing to do with filing and would silently stop attesting.",
+        "_comment": "The recorders that make the four-eyes rules decidable: they stamp WHICH RUN wrote each staged reading, from the `agent_id` this call's payload carries -- `record_filing_reading` for a document's classification (FR-0035), `record_booking_reading` for a ledger row's figures (FR-0065). ONE chained command whose order is NOT load-bearing: both exit 0 unconditionally, so neither can stop the other, and they write into two different stores. Registered on every event a file can arrive through, and in its OWN entry rather than chained behind `gate_ledger_valid`, because a chain stops at the first non-zero exit and that gate exits 2 here on a broken ledger -- which has nothing to do with filing and would silently stop attesting.",
         "hooks": [
           {
             "type": "command",
-            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" record_filing_reading.py"
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" record_filing_reading.py record_booking_reading.py"
           }
         ]
       },

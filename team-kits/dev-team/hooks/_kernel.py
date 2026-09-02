@@ -570,21 +570,34 @@ def kit_update_verdict(repo_root, kit):
     `tools/test_kitupdate.py::test_a_briefing_whose_kernel_is_unreachable_still_reports_the_kit_
     comparison` runs the hook without one.
 
-    Verdicts: `unclear` / `downgrade` / `content` / `update` / `none` (nothing to say).
+    Verdicts: `unclear` / `downgrade` / `content` / `update` / `pinned` / `none` (nothing to say).
     """
     try:
         kitupdate = kernel_module("kitupdate", repo_root)
         answer = kitupdate.relation(repo_root, kit)
+        pin = kitupdate.pin_in_force(repo_root)
     except BaseException as exc:  # noqa: BLE001 -- see above: no kernel is an answer, not silence
         return ("unclear", "unreadable", "unreadable",
                 "the state kernel that decides which is newer could not be reached (%s)" % exc)
     sentences = {kitupdate.UNREADABLE: "unclear", kitupdate.UNREADABLE_ORDER: "unclear",
                  kitupdate.DOWNGRADE: "downgrade", kitupdate.CONTENT_MISMATCH: "content",
                  kitupdate.UPDATE_AVAILABLE: "update"}
-    return (sentences.get(answer["verdict"], "none"),
+    verdict = sentences.get(answer["verdict"], "none")
+    why = "at least one of the two stamps carries no readable version"
+    # THE PIN CHANGES EXACTLY ONE SENTENCE, and picking which one is why this lives beside the
+    # verdict rather than in a kit's wording. Three of the four sentences already say "do NOT
+    # install"; only `update` ASKS the user for an OK, and on a pinned project that question is one
+    # nobody can answer usefully -- measured 2026-09-01 (TSK-0101): a pinned project was told "On
+    # their OK you install it YOURSELF", the user said yes, the approval was minted, and only
+    # `update-kit` then refused. The offer is not silenced (that is BUG-0078's marker class); it is
+    # replaced by the same fact one step earlier. `H87` carries the measurement.
+    if verdict == "update" and pin is not None:
+        verdict = "pinned"
+        why = "%s says:\n%s" % (kitupdate.PIN_FILE.replace(os.sep, "/"), pin["text"])
+    return (verdict,
             answer["from"].get("version") or "no version stamp",
             answer["to"].get("version") or "unreadable",
-            "at least one of the two stamps carries no readable version")
+            why)
 
 
 def pending_merge_backlog(repo_root):

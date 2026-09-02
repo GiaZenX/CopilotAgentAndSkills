@@ -23,6 +23,7 @@ tracked-and-ignored OUTSIDE that tree is a new tool trace that must be untracked
 """
 import ast
 import glob
+import io
 import os
 import re
 import shutil
@@ -519,3 +520,41 @@ def test_the_decision_pointer_reader_can_tell_a_citation_from_a_literal():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
+
+
+# ---------------- the hole list is answerable to its own summary table --------------------------
+
+_HOLE_ENTRY_RX = re.compile(r"^###\s+(H\d+)\b", re.MULTILINE)
+# A row of the summary table: the first cell is one H-number, or the closed-list row's several.
+_HOLE_ROW_RX = re.compile(r"^\|\s*(H\d+(?:\s*,\s*H\d+)*)\s*\|", re.MULTILINE)
+
+
+def test_every_hole_has_a_row_in_the_summary_and_every_row_has_a_hole():
+    """The overview table of `docs/POST_V2_WISHLIST.md`, against the entries it summarises.
+
+    THE MEASURED DRIFT: the table calls itself "Die offenen Einträge auf einen Blick", and a reader
+    who opens it to see what is still open gets an answer that is short by whatever the last rounds
+    appended. On 2026-09-02 it was short by FIFTEEN -- H82 from TSK-0099 and everything four
+    parallel streams wrote (H83-H95, H99) -- because appending an entry and adding a row are two
+    acts and only the first one is obvious. Nothing could say so, which is why this exists rather
+    than a rule that somebody remembers.
+
+    HELD IN BOTH DIRECTIONS, since either half alone rots: an entry without a row is a hole missing
+    from the overview, and a row without an entry is an overview promising a section that is gone.
+    The subject is DERIVED from the document both times -- every `### H<n>` heading, every first
+    table cell that is H-numbers -- so a renumbering moves the check with it.
+    """
+    path = os.path.join(ROOT, "docs", "POST_V2_WISHLIST.md")
+    with io.open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    entries = set(_HOLE_ENTRY_RX.findall(text))
+    rows = {name.strip() for cell in _HOLE_ROW_RX.findall(text) for name in cell.split(",")}
+    assert len(entries) >= 90, (
+        "only %d hole entries found — the reader stopped matching the document" % len(entries))
+    missing = sorted(entries - rows, key=lambda name: int(name[1:]))
+    assert not missing, (
+        "these holes have an entry but no row in the summary table, so the overview is short by "
+        "them: %s" % ", ".join(missing))
+    orphans = sorted(rows - entries, key=lambda name: int(name[1:]))
+    assert not orphans, (
+        "the summary table has rows for holes that have no entry any more: %s" % ", ".join(orphans))

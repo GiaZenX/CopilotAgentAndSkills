@@ -1,0 +1,47 @@
+id: TSK-0109
+product_requirement: FR-0032
+derives_from: FR-0032
+type: ui
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/office-team/templates/repo/tools/**
+- team-kits/office-team/templates/repo/dashboards/**
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/kernel/**
+- team-kits/*/hooks/**
+- team-kits/office-team/templates/project_memory/**
+- team-kits/office-team/templates/repo/scripts/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0032.yaml
+- team-kits/dev-team/skills/frontend-design/SKILL.md
+- team-kits/dev-team/skills/webapp-testing/SKILL.md
+expected_outputs:
+- 'TWO-STEP by the user''s own design: a design pass (Fable, frontend-design skill)
+  that lays out pages/tabs/filters -- dashboard, invoices, open items, EUeR, threshold
+  watch -- recorded in staging; then the build (Opus): a read-only HTML finance dashboard
+  generated from ledger + master data, auto-regenerated like the backlog dashboard,
+  rendered and sighted before it is shown (BUG-0076 doctrine)'
+- the user names the BuyPlugGo template location when the round starts -- content
+  reference only, not copied
+- office skill sentences that must name it are SEAM items for stream E; red-first;
+  provisional stamp; hole numbers H117-H119 only
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T08:56:30'

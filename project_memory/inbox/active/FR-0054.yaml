@@ -12,7 +12,9 @@ request_text: 'User question 2026-08-18 during the board-v2 design (''manche Bug
   the user via AskUserQuestion (option ''Jetzt unter PR, spaeter SR-Link''). Note
   the existing L9 residue while in there: related_pr/target_pr check existence, not
   root membership -- the new field should not repeat that gap.'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-08-18T09:16:26'
+triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
+  JA, BAUEN -- small kernel round.'
