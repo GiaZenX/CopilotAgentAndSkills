@@ -21,7 +21,12 @@ request_text: 'User finding 2026-08-29, in his real office project, on the heels
   interim exists (the user''s PM offers a sampled second pass as a PROC) -- this item
   is the KIT mechanism so every project gets it enforced, not remembered. Lineage:
   FR-0035 (filing twin), BUG-0072 (the live near-miss), P4 pilot bookkeeper findings.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-29T13:03:04'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0102 (DEC-0057 stream generation 1, merged
+  in TSK-0104): four eyes for booking: gate_second_booking, second independent pass
+  bound to row and document bytes, per-category lever'
+resulting_item: TSK-0102
+closed_at: '2026-09-02T11:17:50'

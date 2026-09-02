@@ -24,7 +24,12 @@ request_text: 'User request 2026-08-31: ''bitte Bau dem Designer folgenden Skill
   with FR-0045 (the user''s real Claude Design export is itself directly consumable
   as a skill) -- same shape, same drop-in point, so weigh doing both in one round.'
 related_pr: BUG-0076
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-31T17:29:08'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0100 (DEC-0057 stream generation 1, merged
+  in TSK-0104): frontend-design vendored as a reference skill, Apache-2.0 duties met,
+  process assumptions rewritten, content kept'
+resulting_item: TSK-0100
+closed_at: '2026-09-02T11:17:19'

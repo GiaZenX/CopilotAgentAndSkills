@@ -41,7 +41,8 @@ expected_outputs:
 - hole entries use reserved numbers H83-H85 only
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-01T21:19:41'
+closed_at: '2026-09-02T11:17:09'

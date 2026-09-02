@@ -42,7 +42,8 @@ expected_outputs:
   spend; merge hole numbers H102-H104 only'
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-02T00:04:09'
+closed_at: '2026-09-02T11:17:15'

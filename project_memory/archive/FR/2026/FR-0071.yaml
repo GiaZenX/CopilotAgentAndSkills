@@ -30,7 +30,12 @@ request_text: 'User question 2026-08-31, on hearing that reference skills would 
   it in a pilot transcript or state plainly that it is a design-time precaution and
   keep it cheap.'
 related_pr: BUG-0076
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-31T19:32:36'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0100 (DEC-0057 stream generation 1, merged
+  in TSK-0104): reference skills a work order names are derived from the task (kernel/references.py);
+  both-direction tripwire'
+resulting_item: TSK-0100
+closed_at: '2026-09-02T11:17:31'

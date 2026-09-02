@@ -23,15 +23,13 @@ request_text: 'User proposal 2026-08-29, after the second live dead-end in his r
   sentence with its honest limit (no hook can force the PM to call it -- prose duty,
   same class as FR-0052). Fits the BUG-0041/BUG-0068/BUG-0070 dead-end family as the
   REPORTING half: the gaps will keep coming; this makes them cheap to collect.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-29T10:57:54'
-triage_result: 'USER VERDICT 2026-09-02: second half JA, IN ALLE DREI (duty sentence
-  mirrored into dev and research constitutions after the merge). PLUS a measured source
-  the harvester must read: the platform-written .claude/agent-memory/<role>/*.md files
-  in real projects already hold kit-friction findings the specialists wrote for themselves
-  (Canyon: gate_write_scope_dotclaude_substring, gate_write_scope_fires_on_prose_too,
-  staging_write_via_tool_not_shell, shared_worktree_commit_race, ...). tools/harvest_kit_gaps.py
-  should harvest those alongside the kernel gaplog -- they are the kit-gap log nobody
-  asked for, written by the roles that hit the gaps.'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0102 (DEC-0057 stream generation 1, merged
+  in TSK-0104): kernel gaplog + harvest tool; report-gap verb wired in TSK-0104; duty
+  sentence in office only -- second half (dev+research duty) goes to stream E per
+  the user''s verdict'
+resulting_item: TSK-0102
+closed_at: '2026-09-02T11:17:56'

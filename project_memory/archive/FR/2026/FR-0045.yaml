@@ -27,7 +27,11 @@ request_text: 'User reminder 2026-08-16: is the Claude Design feature still on t
   as the machine-readable spine, not an invented triple. Open: whether a PROTOTYPE/handoff
   export (as opposed to a design-system export) has a different shape -- only this
   one kind was measured.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-16T17:31:50'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0100 (DEC-0057 stream generation 1, merged
+  in TSK-0104): design-system export schema frozen from the user''s real bundle; kit_design_system_check.py'
+resulting_item: TSK-0100
+closed_at: '2026-09-02T11:17:27'

@@ -10,14 +10,12 @@ request_text: 'TSK-0069 side check N8. Measured: kitupdate.relation knows seven 
   this (side check section 6). Related: N13/FR classification (without stock classification
   there is no place a pin would be decided). Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
   N8.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-16T14:06:25'
-triage_result: 'CORRECTION 2026-09-01: the FR-0046 measurement this item leans on
-  (three pilot copies as old-V2 update-kit stocks) was wrong -- they are V1 stocks;
-  see FR-0046 triage_result. The pin/rollback mechanism itself was built and measured
-  in TSK-0101 (stream B) on a synaipse copy made mixed; the verifier found and the
-  rework closes: pin compared version not bundle (kit swap passed), rollback was a
-  third door the pin did not guard, bash twin replayed a RESTORE_SET path outside
-  the repo.'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0101 (DEC-0057 stream generation 1, merged
+  in TSK-0104): pin + rollback as kernel mechanisms; cli verbs print (TSK-0104 seam);
+  pin guards all three doors'
+resulting_item: TSK-0101
+closed_at: '2026-09-02T11:17:34'

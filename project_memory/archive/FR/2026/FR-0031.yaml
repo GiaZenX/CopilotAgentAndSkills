@@ -20,7 +20,12 @@ request_text: 'User steering 2026-08-15: the office kit must ALWAYS produce a bi
   and only THEN is the file placed -- never file first and fix the tree later. Fits
   gate_filing''s fail-closed line and FR-0035''s four-eyes move. Source: user messages
   2026-08-15.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T23:03:15'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0102 (DEC-0057 stream generation 1, merged
+  in TSK-0104): filing_plan.py --draft/--tree: onboarding derives a binding filing
+  plan, no invented retention'
+resulting_item: TSK-0102
+closed_at: '2026-09-02T11:17:53'

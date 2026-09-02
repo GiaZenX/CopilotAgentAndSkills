@@ -1,4 +1,4 @@
-generated_at: '2026-09-02T11:16:32'
+generated_at: '2026-09-02T11:18:48'
 items:
 - id: BUG-0001
   type: BUG
@@ -1446,6 +1446,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0076
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1560,20 +1566,6 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0029
-  type: FR
-  title: Research-Team hat noch nie einen Piloten gesehen -- ein Workflow-Pilot nach
-    dem Muster der dev-Piloten
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0031
-  type: FR
-  title: 'Office: Standard-Aktenplan-Entwurf beim Onboarding + gerenderter Verzeichnisbaum
-    als sichtbare Wahrheit'
-  status: OPEN
-  revision: 1
-  approval_ref: null
 - id: FR-0032
   type: FR
   title: 'Office: standardisiertes Finanz-HTML-Dashboard -- Einnahmen/Ausgaben, offene
@@ -1629,44 +1621,10 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0041
-  type: FR
-  title: Kit-Pinning und Rollback aufs vorige Bundle als Mechanismus (II.11/5) --
-    Vorbedingung der seitlichen RC
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0042
-  type: FR
-  title: E2E-Kettentest fuer die Research-Kette (RQ -> HYP -> EXP -> Report) im Testbestand
-  status: OPEN
-  revision: 1
-  approval_ref: null
 - id: FR-0043
   type: FR
   title: Latenz-Bench aus II.12 in den ausgelieferten CI-Workflow (klein, nicht blockierend)
   status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0044
-  type: FR
-  title: Der Installer klassifiziert den vorgefundenen Bestand (greenfield/V2/V1/mixed)
-    mit No-write-Nachweis auf V1
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0045
-  type: FR
-  title: Claude-Design-Buendelformat als Designer-Vertragsschema festschreiben --
-    ein echter Export verifiziert die Dateinamen
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0046
-  type: FR
-  title: Feldtest des Update-/Migrationswegs an echten alten Projektkopien (BuyPlugGo,
-    synaipse, tradingbot)
-  status: OPEN
   revision: 1
   approval_ref: null
 - id: FR-0047
@@ -1687,12 +1645,6 @@ items:
   title: 'Kernel contract: optional BUG->SR link (related_sr) so software bugs can
     hang under the system requirement they hit -- post-release'
   status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0055
-  type: FR
-  title: installer ships remoteControlAtStartup=false as a user-scope default
-  status: OPEN
   revision: 1
   approval_ref: null
 - id: FR-0057
@@ -1723,26 +1675,11 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0062
-  type: FR
-  title: Per-project kit-gap log, kernel-written, harvested by the harness lead --
-    so live findings stop requiring full-session reads
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0064
   type: FR
   title: 'Evaluate subagent memory (memory: frontmatter) for the harness roles --
     implementer maybe, verifier NO by design'
   status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0065
-  type: FR
-  title: 'Four eyes for BOOKING: the figures that go to the tax office have thinner
-    assurance than the question which folder a PDF lands in -- the booking twin of
-    FR-0035'
-  status: OPEN
   revision: 1
   approval_ref: null
 - id: FR-0067
@@ -1752,34 +1689,11 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0068
-  type: FR
-  title: Vendor Anthropic's frontend-design skill as a SKILL beside the designer (not
-    into the role) -- the July rejection was a role-budget argument that does not
-    apply to a skill file
-  status: OPEN
-  revision: 1
-  approval_ref: null
 - id: FR-0069
   type: FR
   title: 'A design BRIEF before any design work: read the existing repo first, then
     ask the user only what cannot be derived from it'
   status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0070
-  type: FR
-  title: Adopt Anthropic's webapp-testing skill (Apache-2.0) -- the same execution
-    model our specialists have, and the capability BUG-0076's design loop needs
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0071
-  type: FR
-  title: Which reference skill a role opens is DERIVED from the task, not chosen by
-    the role -- plus a tripwire that a shipped skill no route reaches makes the suite
-    red
-  status: OPEN
   revision: 1
   approval_ref: null
 - id: FR-0072
@@ -1877,36 +1791,6 @@ items:
   type: TSK
   title: null
   status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0100
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0101
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0102
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0103
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0104
-  type: TSK
-  title: null
-  status: READY
   revision: 1
   approval_ref: null
 - id: TSK-0105

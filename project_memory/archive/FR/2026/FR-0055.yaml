@@ -10,7 +10,12 @@ request_text: 'User 2026-08-21: Remote Control soll nirgends standardmaessig akt
   aus ist statt Provider-Default. Betrifft user/claude/settings.json samt Kommentar;
   faehrt mit dem FR-0048-Halb-2-Home-Rollout mit.'
 source: user request 2026-08-21 (in-session, pilot-4 window)
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-22T11:01:58'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0101 (DEC-0057 stream generation 1, merged
+  in TSK-0104): user-scope defaults ship remoteControlAtStartup=false, personal true
+  wins'
+resulting_item: TSK-0101
+closed_at: '2026-09-02T11:17:42'

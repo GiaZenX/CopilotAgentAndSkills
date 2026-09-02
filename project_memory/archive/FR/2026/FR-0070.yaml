@@ -20,7 +20,11 @@ request_text: 'Found 2026-08-31 in the skill survey (docs/research/2026-08-31-sk
   or is a shared REFERENCE skill several roles may open (the lead''s proposed rule
   of 2026-08-31: one procedure skill per role, any number of shared reference skills).'
 related_pr: BUG-0076
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-31T17:53:38'
+triage_result: 'DELIVERED 2026-09-02 by TSK-0100 (DEC-0057 stream generation 1, merged
+  in TSK-0104): webapp-testing vendored as a reference skill'
+resulting_item: TSK-0100
+closed_at: '2026-09-02T11:17:23'

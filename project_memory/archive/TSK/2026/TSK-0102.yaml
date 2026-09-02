@@ -39,7 +39,8 @@ expected_outputs:
 - red-first; affected suites green; provisional stamp; hole numbers H89-H91 only
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-01T21:22:10'
+closed_at: '2026-09-02T11:17:12'

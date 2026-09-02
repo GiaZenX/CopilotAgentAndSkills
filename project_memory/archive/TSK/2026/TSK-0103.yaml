@@ -35,7 +35,8 @@ expected_outputs:
 - affected suites green; provisional stamp; hole numbers H92-H94 only
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-01T21:22:11'
+closed_at: '2026-09-02T11:17:14'
