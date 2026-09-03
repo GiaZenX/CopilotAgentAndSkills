@@ -25,7 +25,7 @@ acceptance_criteria:
     project; red-first via the inverted pin test
 - id: AC-2
   text: dev and office chains unchanged (their existing origin tests stay green)
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-09-01T23:17:59'

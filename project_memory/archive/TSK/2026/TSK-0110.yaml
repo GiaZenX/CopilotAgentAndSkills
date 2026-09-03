@@ -34,7 +34,8 @@ expected_outputs:
   to the protocol'
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-02T08:56:32'
+closed_at: '2026-09-03T04:06:04'

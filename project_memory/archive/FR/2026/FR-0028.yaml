@@ -14,7 +14,7 @@ request_text: 'User steering (2026-08-15, verbatim intent): the office team must
   belong in project_memory (master_data, product_catalog, taught PROCs), never in
   shipped kit texts. Source: user message 2026-08-15; pilot 4 half 3 (TSK-0066) carries
   the first measurement.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T22:41:54'
@@ -22,3 +22,4 @@ triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUser
   JA, BAUEN -- clarified: taught PROCs live per repo (two businesses = two repos,
   nothing crosses automatically). Round = measure teach -> next session same repo
   -> holds; plus a test that no shipped kit text names Shopify or a product group.'
+closed_at: '2026-09-03T04:06:11'

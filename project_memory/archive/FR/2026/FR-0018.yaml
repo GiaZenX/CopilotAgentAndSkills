@@ -14,10 +14,11 @@ request_text: 'Heute gibt es KEINEN inhaltlichen Dubletten-Schutz -- nur die Id-
   statt Warnung bei jedem, Schwelle, nur beim Anlegen zeigen). Prioritaet: hoeher
   als die Gliederung, weil echte Korrektheits-Gefahr -- aber als Hilfe, nicht als
   Zwang.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-12T06:23:54'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   JA, BAUEN -- small kernel round; only if it measurably helps without nagging on
   every capture.'
+closed_at: '2026-09-03T04:06:10'

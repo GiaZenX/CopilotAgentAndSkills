@@ -51,7 +51,8 @@ expected_outputs:
   H120-H122 only
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-02T08:57:16'
+closed_at: '2026-09-03T04:06:05'

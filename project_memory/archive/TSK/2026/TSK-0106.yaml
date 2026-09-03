@@ -50,7 +50,8 @@ expected_outputs:
 - red-first per fix; provisional stamp; hole numbers H108-H110 only
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-02T08:56:26'
+closed_at: '2026-09-03T04:06:00'

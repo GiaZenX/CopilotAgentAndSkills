@@ -1,0 +1,15 @@
+id: EVD-0078
+kind: review
+related:
+- TSK-0114
+result: pass
+summary: verifier PASS for diff:b9cfe1fd67c993db875914af03621cd76f9b18d579c1744211a4b6826ee324c2
+  -- outside project_memory this state is byte-identical to the verified release dc930cc
+  (EVD-0077 names its pre-commit digest); this record opens the close-out commit,
+  which carries kernel-written state only (archives, DEC-0063, logbook, handover prompt)
+artifact_refs:
+- staging/generation-2-streams.md
+- staging/TSK-0114/merge-protocol.md
+revision: 1
+approval_ref: null
+created: '2026-09-03T04:07:31'

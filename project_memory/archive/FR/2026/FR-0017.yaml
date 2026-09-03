@@ -13,9 +13,10 @@ request_text: 'Reine Gliederungsebenen OHNE Inhalt (kein Titel-Body, keine Besch
   existiert nur die Eltern-Hierarchie PR->SR->TSK und ein class-Feld, keine reine
   Gliederungsebene. Prioritaet: nice, sobald Backlogs groesser werden -- unter dem
   Dubletten-Schutz.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-12T06:23:53'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   JA, BAUEN -- with FR-0024 (the kanban needs the grouping) or as a kernel round.'
+closed_at: '2026-09-03T04:06:09'

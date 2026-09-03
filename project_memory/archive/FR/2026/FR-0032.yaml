@@ -14,7 +14,7 @@ request_text: 'User steering 2026-08-15: ''dann noch ein standardisiertes HTML D
   sie mir gefallen'' -- but improve FILTERABILITY and DESIGN: less overloaded, the
   important numbers directly visible, typically modern. The user names the template''s
   location when the round starts. Source: user messages 2026-08-15.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-15T23:03:26'
@@ -22,3 +22,4 @@ triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUser
   JA, ANGEPASST -- ''mit dem frontend-design Skill grundlegend neu denken; nicht alles
   auf eine Seite; Dashboard, Rechnungen, filterbar, Tabs''. Two-step round (the user''s
   own proposal): design pass on Fable with the frontend-design skill, build on Opus.'
+closed_at: '2026-09-03T04:06:12'

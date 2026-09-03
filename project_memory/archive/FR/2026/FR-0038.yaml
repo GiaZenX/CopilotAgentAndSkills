@@ -9,10 +9,11 @@ request_text: 'TSK-0069 side check N4. Measured: kernel/dispatch.py:1577-1582 co
   process itself -- the shape is ''the hook REPORTS, the PM spawns'', never ''automation
   starts the weekly run''. Source: docs/reviews/2026-08-16-tsk0069-ii12-side-check.md
   N4.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-16T14:05:52'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   JA, BAUEN -- with FR-0034 (same session-start surface); the hook reports, the PM
   spawns (DEC-0028).'
+closed_at: '2026-09-03T04:06:15'

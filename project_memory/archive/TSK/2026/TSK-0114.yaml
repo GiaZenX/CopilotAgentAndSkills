@@ -80,7 +80,8 @@ dependencies:
 - TSK-0112
 - TSK-0113
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-02T19:23:11'
+closed_at: '2026-09-03T04:06:08'

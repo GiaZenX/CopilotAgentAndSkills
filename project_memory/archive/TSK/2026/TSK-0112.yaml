@@ -52,7 +52,8 @@ expected_outputs:
 dependencies:
 - TSK-0107
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-02T15:49:16'
+closed_at: '2026-09-03T04:06:06'

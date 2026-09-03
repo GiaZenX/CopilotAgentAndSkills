@@ -1,0 +1,68 @@
+id: DEC-0063
+title: 'Generation 2 verdict (DEC-0057 (g), DEC-0059, DEC-0050): seven streams merged
+  as dc930cc -- parallel streams KEPT with a cap of four to five, the merge round
+  is a verification of its own, Opus is the implementer floor and Fable stays a design-pass
+  tier, and a full run that itself yields findings is followed by full runs of every
+  suite that reads what changed'
+context: 'Numbers from project_memory/staging/generation-2-streams.md ((g) table,
+  2026-09-02/03). Seven streams E-K from 6d18407, cut by kit area (DEC-0060), merged
+  in TSK-0114 on feat/harness-v2 as dc930cc with EVD-0077. Spawn -> last PASS ~12
+  h wall-clock (F), incl. two operational incidents that killed every running agent
+  (a Stop click 14:05, a rate limit 17:05; nothing lost on disk, ~10-20 min re-read
+  per stream). First-pass findings per stream: E 6, F 14, G 16 (+3 item), H 10, I
+  13, J 10, K 9; rework rounds 1-4; verifier re-verifies converged to 0 in every stream.
+  Tiers: Fable implementers E (6 -> 0 in one rework), I design pass (26 min, 0 findings,
+  design accepted by the user), K (reworks 1+2 on Fable added 5 and 6 NEW prose findings;
+  reworks 3+4 on Opus added 2 and 0, and rejected two of the lead''s own claims before
+  writing them); Opus implementers F/G/H/I-build/J collected 10-16 first-pass findings
+  each -- tier did not decide the first-pass count, it decided the rework trajectory.
+  Verifiers Opus throughout (two first verifiers before the Stop not logged by tier).
+  Dominant failure class in EVERY stream: a sentence claims more than the code measures
+  (docstrings, hole-list entries, templates, protocol counts). Merge: eight seam files
+  measured, all named; six merge findings that no stream could see (contracts crossing
+  streams: F''s registered route vs E''s role-route test, G''s template retention
+  vs a test G did not run, F''s kernel rule vs a test_hooks_v2 fixture, I''s generator
+  vs G''s legal_form test); the merge round took 3 h 43 build + 1 h 36 rework + two
+  verifier passes (1 h 15 + 2 h 50, the second re-running test_hooks_v2, test_hooks
+  and test_gates in full). DEC-0050: the implementer''s full run lay BEFORE the last
+  rework because the full run itself found five findings whose fixes touched three
+  kit files; the verifier covered every changed file with full runs of its reading
+  suites (2137 / 902+13 / 489) -- letter violated, substance measured, damage zero.
+  Lead attention: seven streams x 3-5 rounds each was the measured ceiling; the user
+  reflected that grouping FRs by shared files had not been proposed by the lead although
+  the data sat in DEC-0060 for a day (-> DEC-0062, FR-0084).'
+decision: '(1) DEC-0057 (g): the parallel workflow is KEPT as the normal way; the
+  merge round is a VERIFICATION OF ITS OWN, not a formality -- six of its findings
+  were invisible to every stream, so a merge without its own verifier pass would have
+  shipped them. (2) Generation size: four to five streams, cut by file ownership and
+  grouped by shared files (DEC-0062); seven merged cleanly but the seam and the lead''s
+  rounds were the cost. (3) DEC-0059 tiers: Opus is the floor for implementers; Fable
+  is used for a DESIGN PASS (measured 0 findings, user-accepted) and not for reworks
+  that touch measured claims (measured: each Fable rework added a new universal claim;
+  the Opus reworks added none). Verifier tier stays Opus. (4) DEC-0050 reading: the
+  full suite runs once after the last rework and before the stamp -- and when that
+  run itself yields findings, their fixes are followed by FULL runs of every suite
+  that reads the changed files (not -k selections), recorded in the protocol with
+  the file list; the verifier re-runs those suites in full as the release arbiter.
+  A second full run is the alternative, not the default. (5) Every order to an implementer
+  carries the sentence ''measure every new property claim before handover'' and every
+  hole-list citation carries its module prefix; the hole-list name checker now reads
+  fences, table rows and tools/ names (H121 closed). (6) Operational: agents interrupted
+  by a Stop or a rate limit are RESUMED with context kept where the agent is still
+  addressable, else re-spawned onto the on-disk state with a ''Vorgefunden'' section
+  first; nothing is re-built from memory.'
+consequences: 'Generation 3 is cut under DEC-0062 (proposal in the logbook: A Board
+  & Plan, B Office Finance, C Approvals & Evidence, D Parallel specialists, E Design
+  gates), with hole numbers reserved per stream up front (H126+; H125 is the open
+  delete-verb hole of the office guard) and seams named at cut time. FR-0021 carries
+  the same mechanics into the kits; FR-0084 adds the event-bound review. The (g) table
+  stays in the logbook as the record; this DEC is the reading. Open from generation
+  2: FR-0072''s own test (the user''s taste) not passed -- a small follow-up after
+  his pick; FR-0047''s visible-fallback hook is a kit seam; FR-0002 F7/F8; the three
+  project-auditor description lines (N2); H122-H125 open with chains.'
+source: project_memory/staging/generation-2-streams.md; TSK-0114 merge-protocol.md;
+  EVD-0077; commit dc930cc; DEC-0057, DEC-0059, DEC-0060, DEC-0050, DEC-0062
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T04:05:40'

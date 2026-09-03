@@ -1,4 +1,4 @@
-generated_at: '2026-09-03T04:03:36'
+generated_at: '2026-09-03T04:07:32'
 items:
 - id: BUG-0001
   type: BUG
@@ -567,7 +567,7 @@ items:
   title: 'Kernel: report._root_of resolves ONE hop while _hangs_from is transitive
     -- the research chain RQ -> HYP -> EXP -> TSK the constitution documents cannot
     be created (H92)'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0084
@@ -575,7 +575,7 @@ items:
   title: 'Kernel: an approval on a HYP covers NO content and never invalidates --
     it mints (APR-0003), unlocks dispatch, survives every edit of the HYP, and takes
     the task out of the QA-debt check (H93, security-relevant)'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0085
@@ -583,7 +583,7 @@ items:
   title: 'Research kit: the rendered report (project_memory/reports/*) has NO write
     route -- section 6 assigns it to the report-writer, section 17 makes it a completeness
     condition, and gate_write_scope refuses every write there (H94, BUG-0071 class)'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0086
@@ -591,7 +591,7 @@ items:
   title: 'Kernel: the task-origin check falls OPEN on ambiguous parentage -- an item
     with two parents gets _root_of None and dispatch skips the root comparison, in
     every kit (verifier B2 / H95)'
-  status: OPEN
+  status: TRIAGED
   revision: 1
   approval_ref: null
 - id: BUG-0087
@@ -1024,6 +1024,16 @@ items:
   title: Streams are cut by FILE OWNERSHIP and FRs that touch the same files or functions
     are GROUPED into one stream -- parallelism across streams, grouping inside them;
     a stream is capped by one round's attention, not by a number of FRs
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0063
+  type: DEC
+  title: 'Generation 2 verdict (DEC-0057 (g), DEC-0059, DEC-0050): seven streams merged
+    as dc930cc -- parallel streams KEPT with a cap of four to five, the merge round
+    is a verification of its own, Opus is the implementer floor and Fable stays a
+    design-pass tier, and a full run that itself yields findings is followed by full
+    runs of every suite that reads what changed'
   status: VALID
   revision: 1
   approval_ref: null
@@ -1489,6 +1499,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0078
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1531,19 +1547,6 @@ items:
   type: FR
   title: 'BuyPlugGo-Ziel: Produktpflege ueber die API durch einen Subagenten -- bisher
     von nichts angearbeitet'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0017
-  type: FR
-  title: Backlog-Gliederung durch inhaltslose Ordnungsknoten (Heading = Parent von
-    Requirements, Document = Parent von Headings)
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0018
-  type: FR
-  title: Weicher Dubletten-Hinweis beim Anlegen eines PR/SR -- ohne Fehlalarm-Flut
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1596,65 +1599,10 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0028
-  type: FR
-  title: 'Office-Team ist werkzeug- und produktgruppen-agnostisch: Regeln statt Anbindungen,
-    Workflows einmal beibringen'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0032
-  type: FR
-  title: 'Office: standardisiertes Finanz-HTML-Dashboard -- Einnahmen/Ausgaben, offene
-    Posten, EUeR auf einen Blick'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0033
   type: FR
   title: 'Office: Schriftverkehr-Faehigkeit -- Angebote, Mahnungen, Kundenkorrespondenz
     als Rolle oder beibringbarer Workflow'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0034
-  type: FR
-  title: 'Office: Fristen und Wiedervorlagen -- aktive Erinnerungen statt stiller
-    Faelligkeiten'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0036
-  type: FR
-  title: 'Wunsch-Prosa-Abgleich: jeder Abschnitt 1-10 der POST_V2_WISHLIST traegt
-    ein FR oder einen Verweis'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0037
-  type: FR
-  title: Pfadlaengen-Warnung des Validators fehlt (II.4-Zusage)
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0038
-  type: FR
-  title: 'Auditor-Routine: Faelligkeitsdatensatz und SessionStart-Melder (der Hook
-    meldet, der PM spawnt)'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0039
-  type: FR
-  title: INV.verified bekommt einen Produzenten und einen Merge-Blocker (check ->
-    Testname -> sammelbar)
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0040
-  type: FR
-  title: 'EVD unterscheidet Teillauf nicht von Volllauf -- Umfang und Befehl des Laufs
-    werden Pflicht (moeglicher DEC: Vertragsaenderung an unveraenderlichem Typ)'
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1677,13 +1625,6 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0054
-  type: FR
-  title: 'Kernel contract: optional BUG->SR link (related_sr) so software bugs can
-    hang under the system requirement they hit -- post-release'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0057
   type: FR
   title: Die QS-Rolle der Kits kennt kein Mass fuer den Testumfang -- in einem grossen
@@ -1698,31 +1639,10 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
-- id: FR-0059
-  type: FR
-  title: 'Claude Code 2.1.246: /cd binds the target project''s settings/hooks/MCP/skills/agents
-    IMMEDIATELY -- measure what that does to the restart model and the gate story'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0060
-  type: FR
-  title: 'BOM tripwire: a role/skill/gate .md starting with a UTF-8 BOM must fail
-    a structural test -- a silently unloaded role is an unbound gate'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0064
   type: FR
   title: 'Evaluate subagent memory (memory: frontmatter) for the harness roles --
     implementer maybe, verifier NO by design'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0067
-  type: FR
-  title: A kernel route for REPLACING/deleting in a kit document -- old-vs-new shown
-    per spot in the approval card -- so the last remaining hand edit disappears
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1903,65 +1823,5 @@ items:
   type: TSK
   title: null
   status: DRAFT
-  revision: 1
-  approval_ref: null
-- id: TSK-0105
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0106
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0107
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0108
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0109
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0110
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0111
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0112
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0113
-  type: TSK
-  title: null
-  status: READY
-  revision: 1
-  approval_ref: null
-- id: TSK-0114
-  type: TSK
-  title: null
-  status: READY
   revision: 1
   approval_ref: null

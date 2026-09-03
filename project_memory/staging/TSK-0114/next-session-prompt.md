@@ -1,4 +1,4 @@
-# Prompt für die nächste Session (Entwurf — die Zeilen mit «…» werden nach dem Commit gefüllt)
+# Prompt für die nächste Session
 
 Kopiere den Block unten als erste Nachricht in die neue Session. Er zeigt nur; die Autorität ist der
 Zustand auf der Platte.
@@ -6,7 +6,9 @@ Zustand auf der Platte.
 ---
 
 Weiter nach Generation 2. Stand: Der Merge der sieben Ströme (TSK-0114) ist geprüft und committet
-(«Commit-Hash», Kits «dev/office/research-Stempel»). Lies in dieser Reihenfolge, bevor du etwas tust:
+(Commit `dc930cc` auf `feat/harness-v2`, Beweismittel EVD-0077; Kits dev/office `2026.09.02-12`,
+research `2026.09.02-11`; NICHT gepusht — Push nur auf Wort des Nutzers). Lies in dieser Reihenfolge,
+bevor du etwas tust:
 
 1. `project_memory/staging/generation-2-streams.md` — das Rundenlogbuch; die letzten Einträge tragen
    das Merge-Urteil, die Nahttabelle und die (g)-Tabelle für DEC-0060.
@@ -55,5 +57,12 @@ Worktrees OHNE die `.git`-Datei; Scratch nur unter `_round-scratch/<TSK>/`; voll
 ein Stempel im Merge; Testnamen in der Löcherliste mit Präfix; `forbidden_scope: project_memory/**`
 nimmt `staging/<id>/` aus (im Item sagen).
 
+Abgeschlossen im Zustand: TSK-0105–0114 CANCELLED (= über dc930cc geliefert) und archiviert; die
+gelieferten FRs MERGED und archiviert; `DEC-0063` = Urteil der Generation 2 (Parallelität behalten,
+Merge-Runde ist eigene Prüfung, Deckel 4–5 Ströme, Stufen-Lesart, DEC-0050-Lesart); `DEC-0062`
+Schnittregel; `FR-0084` Rückschau; H122–H125 offen mit Ketten.
+
 Offen beim Nutzer, ohne Eile: Geschmacksurteil Humanizer-Paar (drei Fassungen); Push der Generation 2
-(«ja/nein»); Antwort auf die Fünf-Ströme-Frage.
+(ja/nein); Antwort auf die Fünf-Ströme-Frage; vier Ein-Klick-Freigaben für BUG-0083–0086 (in dc930cc
+behoben und geprüft; der Kernel lässt TRIAGED → APPROVED nur auf eine vom Nutzer geprägte Freigabe zu —
+`request-approval scope BUG-00xx` stellt die Frage; für BUG-0083 ist sie schon gestellt).
