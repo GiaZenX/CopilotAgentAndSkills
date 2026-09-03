@@ -1,0 +1,7 @@
+id,doc_date,payment_date,direction,doc_type,counterparty,invoice_no,net,vat_rate,gross,vat_treatment,category,source,reverses,note
+L2026-0001,2026-02-01,,income,reversal,Nordlicht GmbH,RE-2025-001,1000.00,19.00,1190.00,standard,sales_local,archive/finanzen/2026/ausgang/STORNO-RE-2025-001.pdf,L2025-0001,Storno der Rechnung aus dem Vorjahr
+L2026-0002,2026-02-10,2026-02-20,income,invoice,Werft Süd,RE-2026-001,5000.00,19.00,5950.00,standard,sales_local,archive/finanzen/2026/ausgang/RE-2026-001.pdf,,
+L2026-0003,2026-03-05,2026-03-10,expense,invoice,Werkzeug Meyer,WM-2026-14,800.00,19.00,952.00,standard,purchases,archive/finanzen/2026/eingang/WM-2026-14.pdf,,
+L2026-0004,2026-04-02,2026-04-10,income,invoice,Kundin Wien,RE-2026-002,100.00,21.00,121.00,oss,sales_eu,archive/finanzen/2026/ausgang/RE-2026-002.pdf,,"OSS: österreichische USt, keine deutsche Zahllast"
+L2026-0005,2026-05-02,2026-05-05,expense,invoice,Versicherung Nord,VN-2026-3,200.00,0.00,200.00,exempt,insurance,archive/finanzen/2026/eingang/VN-2026-3.pdf,,
+L2026-0006,2026-06-01,2026-06-01,income,credit_note,Werft Süd,GS-2026-001,500.00,19.00,595.00,standard,sales_local,archive/finanzen/2026/ausgang/GS-2026-001.pdf,,Gutschrift auf RE-2026-001

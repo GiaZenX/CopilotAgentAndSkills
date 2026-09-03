@@ -57,7 +57,7 @@ def approve_scope(state, item_id):
 def make_ready_task(state):
     pr = state.capture("PR", dict(PR_FIELDS))
     approve_scope(state, pr["id"])
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     state.transition(task["id"], "READY")
     return pr, state.read_item(task["id"])
 
@@ -228,11 +228,67 @@ def test_revoke(state):
     assert approvals.revoke(state, apr["id"])["revoked"] is True
 
 
+def test_a_hypothesis_cannot_be_given_a_scope_approval(state):
+    """The measured chain of BUG-0084, at the door it enters through.
+
+    On a scaffolded research project `request-approval scope HYP-0001` was rc 0 and the mint
+    produced a real APR that unlocked dispatch -- while covering nothing: the pair walks no edge,
+    the scope manifest of a HYP is `{item, revision}` because the type shares no field with
+    `_SCOPE_FIELDS`, and `HASHED_FIELDS` names no HYP field, so no later edit ever invalidated it.
+    The control in the same breath is the question above it, whose scope approval is real.
+    """
+    state.capture("RQ", {"title": "q", "class": "exploratory", "question": "why", "motivation": "m",
+                         "acceptance_criteria": [{"id": "AC-1", "text": "x"}],
+                         "out_of_scope": [], "priority": "high"})
+    state.capture("HYP", {"derives_from": "RQ-0001", "statement": "s",
+                          "testable_prediction": "p"})
+    with pytest.raises(ApprovalError) as exc:
+        approvals.create_pending_request(state, "scope", "HYP-0001")
+    assert "no scope approval exists for a HYP" in str(exc.value), exc.value
+    assert approvals.create_pending_request(state, "scope", "RQ-0001")["kind"] == "scope"
+    assert os.listdir(os.path.join(state.root, "approvals", "pending")), "the control minted none"
+
+
+def test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge(state):
+    """AC-2 of BUG-0084 over EVERY type of all three kits, and in both directions.
+
+    The types come from `backlog_types.AUTOMATA` rather than from a list here, so a type a kit
+    adds tomorrow arrives judged; the kinds come from `item_derived_kinds()`, which asks
+    `item_subject_manifest` itself. What the pairs may do is read off `APPROVAL_TRANSITIONS` --
+    the same table the guard reads, which is the point: the guard must not hold a second opinion
+    about which pairs exist.
+
+    That the RUNNING request path consults this guard is what
+    `test_a_hypothesis_cannot_be_given_a_scope_approval` measures; this one measures its verdict.
+    """
+    listed = set(approvals.APPROVAL_TRANSITIONS)
+    seen = set()
+    for item_type in sorted(backlog_types.AUTOMATA):
+        if item_type not in backlog_types.ACTIVE_DIRS:
+            continue
+        for kind in approvals.item_derived_kinds():
+            refused = None
+            try:
+                approvals._assert_the_pair_commits_an_edge("%s-0001" % item_type, kind)
+            except ApprovalError as exc:
+                refused = str(exc)
+            if (item_type, kind) in listed:
+                assert refused is None, "%s/%s commits an edge and was refused: %s" % (
+                    item_type, kind, refused)
+                seen.add((item_type, kind))
+            else:
+                assert refused is not None, (
+                    "%s/%s commits no transition and was let through" % (item_type, kind))
+                assert item_type in refused and kind in refused, refused
+    assert seen == {pair for pair in listed if pair[1] in approvals.item_derived_kinds()}, (
+        "a listed pair was never reached -- the derivation over AUTOMATA missed a type")
+
+
 # -- dispatch ------------------------------------------------------------------
 
 def test_create_task_denormalizes_root_revision(state):
     pr = state.capture("PR", dict(PR_FIELDS))
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     assert task["root_revision"] == 1
     with pytest.raises(DispatchError, match="kernel-set"):
         dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], root_revision=7))
@@ -249,14 +305,14 @@ def test_lease_happy_path_and_header_roundtrip(state):
 def test_lease_requires_ready(state):
     pr = state.capture("PR", dict(PR_FIELDS))
     approve_scope(state, pr["id"])
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     with pytest.raises(DispatchError, match="not READY"):
         dispatch.create_lease(state, task["id"])
 
 
 def test_lease_requires_an_approval_by_either_route(state):
     pr = state.capture("PR", dict(PR_FIELDS))
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     state.transition(task["id"], "READY")
     with pytest.raises(DispatchError, match="no subagent without a user approval"):
         dispatch.create_lease(state, task["id"])
@@ -729,7 +785,7 @@ def test_non_ui_task_needs_no_design_ref(state):
     pr = state.capture("PR", dict(PR_FIELDS))
     state.update_item(pr["id"], {"design_refs": ["DSN-0001"]})
     approve_scope(state, pr["id"])
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     state.transition(task["id"], "READY")
     lease = dispatch.create_lease(state, task["id"])
     header = dispatch.parse_header(dispatch.dispatch_header(lease))
@@ -741,8 +797,11 @@ def test_non_ui_task_needs_no_design_ref(state):
 def _analysis_task(state, **overrides):
     """A task under an UNAPPROVED root -- the draft-analysis situation."""
     pr = state.capture("PR", dict(PR_FIELDS))
-    fields = dict(TSK_FIELDS, product_requirement=pr["id"], type="analysis",
-                  assigned_role="software-architect")
+    # `derives_from` follows the root rather than keeping `TSK_FIELDS`' PR-0001: a task whose
+    # origin is ANOTHER root is refused at creation, and in a test that captures a second root
+    # first the helper was building exactly that (`report.origin_root_conflict`).
+    fields = dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"],
+                  type="analysis", assigned_role="software-architect")
     fields.update(overrides)
     task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
@@ -1345,7 +1404,7 @@ def test_a_forged_scope_approval_on_the_root_is_refused_as_a_dispatch_error(stat
     reach the user as "internal error -- the harness is broken" instead of "this approval is not
     proven" (spec II.13 wants the remedy named)."""
     pr = state.capture("PR", dict(PR_FIELDS))
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     state.transition(task["id"], "READY")
     state._write_yaml_atomic(
         os.path.join(state.root, "approvals", "APR-0001.yaml"),
@@ -1379,7 +1438,7 @@ def test_a_draft_task_can_still_be_re_planned(state):
     """The freeze must not make planning impossible -- DRAFT is where re-planning belongs."""
     pr = state.capture("PR", dict(PR_FIELDS))
     approve_scope(state, pr["id"])
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     assert state.update_item(task["id"], {"allowed_scope": ["src/", "tests/"]})[
         "allowed_scope"] == ["src/", "tests/"]
 
@@ -1854,7 +1913,8 @@ def _possible_statuses(node, constants=None):
     kindly here, and nothing else in this reader would catch it either.
     """
     from kernel.backlog_types import AUTOMATA, INVALIDATION_TARGET
-    from kernel.state import _NON_AUTOMATON_INITIAL_STATUS, migration_writable_statuses
+    from kernel import state as kernel_state
+    from kernel.state import migration_writable_statuses
 
     constants = constants or {}
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
@@ -1876,8 +1936,21 @@ def _possible_statuses(node, constants=None):
         if node.func.id == "widest_status":
             return {backlog_types.widest_status()}
     if (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name)
-            and node.value.id == "_NON_AUTOMATON_INITIAL_STATUS"):
-        return set(_NON_AUTOMATON_INITIAL_STATUS.values())
+            and node.value.id.upper() == node.value.id):
+        # A LOOKUP IN A KERNEL MAP, whatever the index is. The NAME has to be a module-level
+        # constant of `kernel.state` -- published, and spelled as a constant -- so that a LOCAL
+        # variable whose name happens to collide with one cannot be read as bounded; that
+        # collision is the shape this whole check exists for. The index is deliberately not read:
+        # what bounds the write is the map's own values, so a writer that picks its status out of
+        # `kernel.state`'s vocabulary is bounded by that vocabulary even when the choice is
+        # computed -- and one that picks it out of something the kernel does not publish is
+        # unbounded and stays a finding. (`_NON_AUTOMATON_INITIAL_STATUS` used to be named here on
+        # its own; it is one such map and needs no case of its own.)
+        published = getattr(kernel_state, node.value.id, None)
+        values = (published.values() if isinstance(published, dict)
+                  else published if isinstance(published, (tuple, list, frozenset, set)) else None)
+        if values is not None and all(isinstance(one, str) for one in values):
+            return set(values)
     return None
 
 
@@ -2768,6 +2841,52 @@ def _approval_bound_statuses():
         for status in automaton.states - reached:
             bound.setdefault(status, set()).add(item_type)
     return bound
+
+
+def test_a_revision_card_shows_every_spot_and_is_never_a_count():
+    """FR-0067's own condition: a card that says "n Einträge geändert" is not an approval.
+
+    THE BOUND IS ON THE NUMBER OF SPOTS, NEVER ON THEIR CONTENT. So the three assertions are one
+    rule read three ways: under the bound every spot stands in the question verbatim; over it the
+    builder REFUSES with the count instead of shortening the list; and a revision that replaces
+    and deletes nothing is sent to the route whose question promises more.
+
+    ALL THREE CHANNELS ARE MEASURED, additions included, because that is where the promise broke:
+    a revision that also grew a list printed "instruments: 3 Einträge hinzu" beside the sentence
+    saying every spot stands there "niemals als Anzahl" (measured 2026-09-02). The additive route
+    may count -- its own card says a list's entries are in the file -- and this one may not.
+
+    The deletions are asserted to be readable as deletions in the card, because that is the
+    "louder" half of the FR -- a replaced value can still be looked up in the document afterwards,
+    a deleted one exists nowhere.
+    """
+    spots = ["language: ERSETZT, bisher de", "language: neu en",
+             "counterparties: GELÖSCHT -- bisher []",
+             "instruments: Eintrag hinzu bratsche"]
+    manifest = approvals.document_revision_subject_manifest(
+        "master_data.yaml", "staging/TSK-0001/master_data.yaml", "aaaa", "bbbb",
+        spots[:2], [spots[2]], [spots[3]], "Steuerberater gewechselt")
+    request = {"kind": "document_revision", "item": None, "revision": None,
+               "subject_manifest": manifest, "subject_manifest_hash": "0" * 64,
+               "request_id": "REQ-1", "mint_code": "1234"}
+    question = approvals.build_question(request)["question"]
+    for spot in spots:
+        assert spot in question, question
+    assert question.index("GELÖSCHT WIRD") < question.index("ERSETZT WIRD"), question
+
+    too_many = ["stelle_%d: ERSETZT -- bisher a -- neu b" % index
+                for index in range(approvals.MAX_PROPOSAL_CHANGES + 1)]
+    with pytest.raises(ApprovalError) as refused:
+        approvals.document_revision_subject_manifest(
+            "master_data.yaml", "staging/TSK-0001/master_data.yaml", "aaaa", "bbbb",
+            too_many, [], [], "zu viel auf einmal")
+    assert str(len(too_many)) in str(refused.value) and "split it into steps" in str(refused.value)
+
+    with pytest.raises(ApprovalError) as additive:
+        approvals.document_revision_subject_manifest(
+            "master_data.yaml", "staging/TSK-0001/master_data.yaml", "aaaa", "bbbb",
+            [], [], ["categories.expense: 1 Eintrag hinzu"], "nur eine Ergänzung")
+    assert "REPLACES or DELETES" in str(additive.value)
 
 
 def test_no_direct_status_write_can_produce_a_status_an_approval_commits():

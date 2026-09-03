@@ -1,0 +1,15 @@
+id: FR-0078
+title: 'Wunschliste §1/1a: ein GATE auf genau EIN primaeres Ziel pro View, plus die
+  SKILL-Zeile mit Verfahren statt Adjektiv'
+related_pr: FR-0074
+request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V2_WISHLIST.md
+  sections 1 and 1a (Fuehrung und Rangfolge). The section names the gate/skill split
+  itself; no item carries it. Wanted: a gate (or design-review check) that refuses
+  a view without exactly one primary goal named in its brief, and the product-designer/frontend-design
+  SKILL line that states the PROCEDURE (how the goal is chosen and shown) instead
+  of an adjective. Acceptance: a planted view with two primary goals is refused with
+  a sentence; the SKILL sentence is measured against the kit text.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T19:50:08'

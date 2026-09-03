@@ -3,10 +3,12 @@
 SessionStart() — inject business state so the Office Manager wakes up knowing the situation.
 
 Briefs the manager (role, git branch, first-message procedure), counts the inbox, flags DUE
-quarterly reports (a completed quarter with ledger entries but no generated report), flags STALE
-compliance-register entries (past review_by), and carries the platform nags: kit-update pending
-(escalating) + model/effort sync. Stdlib + git only for the core; yaml parts are best-effort.
-Cannot block; emits additionalContext.
+quarterly reports (a completed quarter with ledger entries but no generated report), prints the
+DUTY REGISTER `_duties` derives (tax rhythm, retention, unpaid invoices, review dates, the recurring
+audit run — FR-0034/FR-0038), and carries the platform nags: kit-update pending (escalating) +
+model/effort sync. Stdlib + git only for the core; yaml parts are best-effort.
+Cannot block; emits additionalContext. Nothing it prints ACTS: the register proposes and the user
+decides, and no hook here starts a model process (`DEC-0028`).
 """
 import datetime
 import json
@@ -152,25 +154,6 @@ def due_reports(cwd):
     return due
 
 
-def stale_register_entries(cwd):
-    p = os.path.join(cwd, "project_memory", "compliance_register.yaml")
-    if not os.path.isfile(p):
-        return 0
-    try:
-        import yaml  # type: ignore[import-untyped]
-        doc = yaml.safe_load(open(p, encoding="utf-8", errors="ignore").read()) or {}
-    except Exception:
-        return 0
-    today = datetime.date.today().isoformat()
-    stale = 0
-    for entry in (doc.get("register") or []):
-        if isinstance(entry, dict):
-            rb = str(entry.get("review_by") or "")
-            if rb and rb < today:
-                stale += 1
-    return stale
-
-
 def main():
     # BOUNDED read (spec II.4): a raw `json.load(sys.stdin)` buffers a payload of any size.
     # `tolerate_overflow=True` because this hook only INFORMS; it must never refuse a call.
@@ -293,14 +276,31 @@ def main():
     except Exception:
         pass
 
+    # WHAT THIS BUSINESS OWES ON A DATE (FR-0034, FR-0038). One register, many feeds — the tax
+    # rhythm, the filing plan's retention, the ledger's unpaid invoices, the compliance register's
+    # review dates and the recurring audit run. The compliance-register nag that used to stand here
+    # is one of those feeds now: two paragraphs each naming half of what is due is how the two
+    # wordings drifted apart. The derivation, the budget and every honest limit live in `_duties`;
+    # this adapter only prints. IT PROPOSES AND NOTHING MORE — for the audit feed that is `DEC-0028`
+    # (the hook reports, the PM spawns), for the rest the kit's approval-before-action line.
+    #
+    # AND IF THE REGISTER ITSELF CANNOT BE LOADED, THE BRIEFING SAYS SO. A swallowed failure here
+    # produced a briefing with no deadlines in it, which a manager reads as a business with no
+    # deadlines — the same wrong reading the kit-merge nag above refuses to allow. Measured by
+    # `tools/test_office_duties.py::test_a_missing_duty_register_is_a_line_in_the_briefing_rather_than_silence`,
+    # which runs a copy of this hook with `_duties.py` taken away.
     try:
-        stale = stale_register_entries(cwd)
-        if stale:
-            parts.append(
-                "COMPLIANCE REGISTER: %d entr%s past review_by — schedule a compliance-researcher "
-                "watch run (per its PROC)." % (stale, "y is" if stale == 1 else "ies are"))
-    except Exception:
-        pass
+        import _duties
+        duty_briefing = _duties.briefing(cwd)
+        if duty_briefing:
+            parts.append(duty_briefing)
+    except Exception as exc:
+        parts.append(
+            "DUTY REGISTER UNAVAILABLE (%s): the session-start deadline register could not be run "
+            "here, so NOTHING in this briefing says what this business owes — tax deadlines, "
+            "retention, unpaid invoices, review dates and the recurring audit run are all unread. "
+            "Do not read their absence as a quiet business; tell the user the register did not "
+            "load." % exc.__class__.__name__)
 
     # THE WALLS. A kit document a registered gate refuses work over, still carrying its shipped
     # template, is the one project state no session can work its way out of — and until now it was
@@ -452,7 +452,7 @@ def main():
             if backlog is not None and suffix in backlog:
                 if not backlog[suffix]["read"]:
                     # EXISTS and could not be opened: what it asks for is UNKNOWN, never "nothing".
-                    # Reading the empty entry list as "resolved" deleted a real backlog (BUG-0068).
+                    # Reading the empty entry list as "resolved" would delete a backlog nobody read (BUG-0068).
                     unreadable.append(p)
                     really_checked = False
                     continue

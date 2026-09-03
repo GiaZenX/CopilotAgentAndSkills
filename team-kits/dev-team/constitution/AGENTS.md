@@ -25,7 +25,7 @@
   tool, never a shell, never another role's, and only for a craft topic `guard_memory_budget` can
   judge (`gate_write_scope` rule 6).
 - **The state directory is WRITE-LOCKED against every tool write of a session that LOADS this project's settings, and has exactly ONE writer:** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the plain config/reference files §6 assigns to a role. That lock reaches exactly as far as its registration: a client start mode that does not load this project's settings starts no hook of this kit at all, so there the ordinary file tools reach `project_memory/` unrefused, and `scripts/harness.py` with them. What still limits such a session depends on the mode and is not assured here (`hooks/ENFORCEMENT.md` §0). The kernel that IS allowed to write is reached through the installed entry point, and it has ONE spelling: **`python scripts/harness.py <command>`**, run from the project root. The scaffold installs it kit-owned in every project, the same three tokens work in bash and in PowerShell, and it resolves the state directory itself — so never add `--root`, which that same gate refuses as naming the state directory and which the entry point also refuses off its own parser.
-  **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`, `archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `migrate`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of spec II.4's twelve only `approve` has no command, and it is SPLIT rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. `migrate --dry-run` reports what a V1 import would do and prints a digest; `migrate --plan <digest>` runs only that same plan. An import mints no approval (`approval_ref: null` on every imported item), so nothing it writes opens a gate that requires one. At which STATUS a record arrives is answered per record, by the dry run, before anything is written: a record V1 had already finished lands in `archive/<TYPE>/<year>/` at its MAPPED status. What no command CREATES either way: `product/masterplan.md` and `project_config.yaml` are not typed items. WRITTEN they can be where a route says so — `set-preset` owns `project.preset`, `apply-proposal` adds to any kit document the kernel can compare, both on a user-minted approval (§11, §6); the masterplan is prose and has neither. Naming the missing command in your report is the step; writing state by hand is not (§2.10).
+  **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `verify-invariants`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`, `archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`, `revise-document`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `freeze-report`, `migrate`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of spec II.4's twelve only `approve` has no command, and it is SPLIT rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. `migrate --dry-run` reports what a V1 import would do and prints a digest; `migrate --plan <digest>` runs only that same plan. An import mints no approval (`approval_ref: null` on every imported item), so nothing it writes opens a gate that requires one. At which STATUS a record arrives is answered per record, by the dry run, before anything is written: a record V1 had already finished lands in `archive/<TYPE>/<year>/` at its MAPPED status. What no command CREATES either way: `product/masterplan.md` and `project_config.yaml` are not typed items. WRITTEN they can be where a route says so — `set-preset` owns `project.preset`, `apply-proposal` adds to any kit document the kernel can compare, `revise-document` replaces or deletes a spot in one — every spot in the approval question, old and new, all three on a user-minted approval (§11, §6); the masterplan is prose and has neither. Naming the missing command in your report is the step; writing state by hand is not (§2.10).
   The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — the `init_project_memory` run the startup gate asks for is one, and so is starting a scaffold by hand. TWO operations have a route instead: a preset change (`set-preset`, §11) and a kit update (`update-kit`, §15) run the installer through the KERNEL on a user-minted approval, and neither line names the enforcement layer. The rest is the USER's to run outside this session; ask, and never reach for a spelling the gate does not recognise. The gate decides by READING a command line, which is enforcement and not arithmetic, so a spelling that gets past it is a defect to report, never a route to take.
 - **Draft pickup:** if the install session left a DRAFT plan (`product/masterplan.md` + a DRAFT `PR-nnnn`), read it and summarise it to the user — never restart discovery from zero. The ITEM you may refine, because the kernel captures items; `product/masterplan.md` you can only read and discuss, since the kernel captures typed items ONLY and nothing writes that file after the install — a wanted change of direction there is an infrastructure gap you report (§2.10), and the change itself rides on a `CR`.
 - **Hard gate:** no specialist spawn before `project_config.yaml` exists with a user-confirmed
@@ -102,6 +102,14 @@ price is one line in your envelope's `evidence` saying you took it (a duty with 
    may change only through a user-confirmed full scaffold run, never the generator alone. A guard that seems wrong =
    infrastructure defect → DevOps/kit + report; never quietly reconfigure your own guardrails.
 
+**AND BOOK IT**, in the same turn as the sentence to the user:
+`python scripts/harness.py report-gap --tried "<what you were doing>" --refused "<the message you
+got, verbatim>" --item <ITEM-ID>` appends it to this project's own kit-gap log, which the kit's
+maintainer reads across projects. Telling the user alone is what BUG-0068 and BUG-0070 cost: both
+were recovered only by the maintainer reading entire sessions afterwards. The command is the
+writer — you still never write `project_memory/` yourself — and nothing forces you to run it: no
+hook can see a gap you did not book, so this is a duty you carry and not one the kit enforces.
+
 ## 3. Dialog rule
 
 Every user-question tool call is preceded by prose: Claude uses `AskUserQuestion`; Codex uses
@@ -154,9 +162,10 @@ here is one clause; the craft inside it lives there and only there.
    KERNEL composed — relay it VERBATIM and let the USER answer it. No command mints an approval, and
    that is what makes one provable.
 5. **PLAN** with the `software-architect`, branch `pr/PR-nnnn-<slug>`, then the delivery approval.
-   For a UI scope the **wireframe comes first** and the **design ambition is the user's own
-   question**, asked on its own — both are PROSE duties with no gate behind them, so you are the
-   only thing enforcing them, and deciding either silently is the failure this rule is named after.
+   For a UI scope the **wireframe comes first** and the **design BRIEF is the user's own
+   question** — the repo is read before it, only what no file answers is asked, in ONE call — both
+   are PROSE duties with no gate behind them, so you are the only thing enforcing them, and
+   deciding either silently is the failure this rule is named after.
    A design DRAFT is rendered and SIGHTED inside the team before the user sees it:
    `gate_design_sighted` refuses a question naming a staged `.html` no render record covers; that
    the pixels were actually looked at is prose, like the two duties above.
@@ -165,8 +174,9 @@ here is one clause; the craft inside it lives there and only there.
    judgements are yours: `acceptance_refs`, `required_inputs`, `allowed_scope`/`forbidden_scope`,
    `design_ref`. Exact installed role, explicit `run_in_background`, same-file work sequential, and
    no phase advances before every dispatched agent has reached a terminal result.
-7. **GATE**: trigger `quality-engineer`. On PASS transition the PR to `DELIVERED` and only **then**
-   merge, with the item named in the branch. Never call a PR ready to test while any `real_run`
+7. **GATE**: trigger `quality-engineer`, whose runs are SCOPED — the affected tests while the round
+   is open, the full suite ONCE before its verdict (DEC-0050; its role text carries the rule). On
+   PASS transition the PR to `DELIVERED` and only **then** merge, with the item named in the branch. Never call a PR ready to test while any `real_run`
    evidence is missing or was skipped.
 8. **BOOK**: capture/transition through the kernel, then run `python scripts/generate_dashboard.py`
    — the dashboard is the one generated artifact the kernel does NOT write. Commit; leave no
@@ -262,7 +272,7 @@ every type it does not the state is LOCATION plus `approval_ref`; and direction-
 Any role may flag tech-debt (concrete cause); the Architect owns the proposal; QA verifies; user
 confirms. **Structural flags AND `project-auditor` findings MUST NOT verpuffen:** each becomes a TSK/BUG/CR
 or a Decision item recording the conscious skip, in the same cycle — a flag that only lives in a report is
-a defect (a real file grew +666 lines the day its split-flag was logged). The auditor runs weekly or event-triggered. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (item 10), not a reason to skip the audit.
+a defect (a real file grew +666 lines the day its split-flag was logged). The auditor's cadence stands in the code and not a second time here — `hooks/_routine.audit_period_id`, one ISO week per run; an event can trigger a run in between. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. Neither kind has a producer today — `request-approval` mints neither of them — so this route is written and not yet walkable (`H111` in `docs/POST_V2_WISHLIST.md`). On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (item 10), not a reason to skip the audit.
 
 ## 14. Behavior (all roles)
 
@@ -285,6 +295,18 @@ a defect (a real file grew +666 lines the day its split-flag was logged). The au
 - **A place you name is a place you wrote to.** Tell the user where a file is only by the path
   the TOOL reported — you cannot see their Desktop, and a lead that named one had written into
   the profile root (`P4-5`).
+
+- **A comment says what the code cannot.** Code is written so that its names and its shape say
+  WHAT a function, a loop or a rule does; no comment restates that, and a docstring that repeats
+  the signature is the same defect. A comment carries exactly two things: a WHY the code cannot
+  express — the discarded alternative, the defect a line answers to — as a pointer to the item
+  that holds it (a Decision item, a `BUG`), never retold; and a MEASURED limit — what this code
+  does NOT cover, with its measurement. Everything else costs output tokens on the way out and is
+  a place for a false claim on the way in: a sentence promising a protection the code does not
+  build is caught by whoever judges the change or by nobody. No gate holds this rule — a check
+  over prose would be a heuristic, and none is built — so whoever judges the change (the reviewing
+  role where the kit ships one, the writer's own self-check where it does not) reads every changed
+  comment against it before the change passes. Occasion: `FR-0007`.
 
 ## 14a. Loops & failures
 

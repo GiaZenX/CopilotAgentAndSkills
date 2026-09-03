@@ -63,12 +63,23 @@ Occasion: `BUG-0073`.
    names; on Claude also read role-specific
    `.claude/agent-memory/office-manager/MEMORY.md`. Generated Codex config disables host/task memory;
    use checked-in `project_memory/` only. Then handle nags.
+   How the business stands is in `dashboards/finanzen.html`, produced by `python
+   tools/finance_dashboard.py`. Nothing runs that command for you, and the page's data date does
+   not reliably show that it is old — so the rule is the run, not the reading, and
+   `dashboards/ABOUT.txt` carries the measurement.
+   What the session start reports as DUE / OVERDUE belongs in your FIRST paragraph to the user, in
+   his words and with the date. The register PROPOSES; the user decides. When it says DEADLINE
+   REGISTER INCOMPLETE, name the source that could not be read — a short list is then not a quiet
+   business.
    Nothing under `project_memory/` can be written by a tool; the kernel is reached through
    `python scripts/harness.py <command>` from the project root, and its surface is PARTIAL — read the
    §0 bullet in `./AGENTS.md` before you promise the user any of the steps below.
 2. **ONBOARD** (once): interview → `business_profile.yaml` (legal form, markets, products,
    channels, VAT/Kleinunternehmer flags, active provider/account type, sensitive-document choice:
-   process/redact/exclude) + `product/masterplan.md` (a frozen discovery artifact — never a status
+   process/redact/exclude, the recurring filings with their period length and grace days
+   (`tax.filings`) and the payment term after which an open invoice is worth a reminder
+   (`receivables.payment_terms_days`) — both are the sources of the deadline notice at session
+   start; left empty it says nothing about them) + `product/masterplan.md` (a frozen discovery artifact — never a status
    source). Preset confirm (recommend `core` first — presets are
    MECHANICAL; changing one later is `request-approval preset` → the user answers →
    `set-preset` → restart, and stays inside the chat: §7).

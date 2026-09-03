@@ -4566,41 +4566,192 @@ def test_the_hole_list_judges_every_entry_it_carries():
             % ", ".join(names))
 
 
+# A FENCE LINE IS NOTHING BUT ITS MARKER, plus the optional info string a fence may carry: three or
+# more backticks or three or more tildes, and after that run no marker of the same kind on the same
+# line -- because a line that carries its marker twice is a long inline code span, a SENTENCE and
+# not a block. Reading such a line as a fence made the shift depend on how many of them an entry
+# happens to hold: an odd number was loud and an EVEN number silent (measured 2026-09-03, plant
+# A7). The tilde form is read for the same reason the backtick form is; before this it was
+# invisible, which is the harmless direction and still a spelling the reader did not know.
+_FENCE_LINE_RX = re.compile(r"^(`{3,}|~{3,})(.*)$")
+
+
+# A CODE SPAN IS A RUN OF BACKTICKS, CONTENT, AND A RUN OF THE SAME LENGTH -- the rule markdown
+# itself uses, and not "one backtick, text, one backtick". A run of three inside a SENTENCE is the
+# short way to write a span that contains backticks, and reading it as two ordinary delimiters
+# shifted every pairing behind it: measured 2026-09-03 (plant A7), two such lines around a planted
+# ghost and the reader stayed silent -- an ODD number of them was loud, an EVEN number was not.
+_CODE_SPAN_RX = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
+
+
+def _fence_marker(line):
+    """The character a line opens or closes a fenced block with, or None."""
+    found = _FENCE_LINE_RX.match(line.strip())
+    if not found or found.group(1)[0] in found.group(2):
+        return None
+    return found.group(1)[0]
+
+
+def _prose_of(body):
+    """The lines of an entry that carry PROSE -- its fenced blocks cut out.
+
+    A fence line opens a block and the next fence line OF THE SAME MARKER closes it; what stands
+    between them is a transcript, not a sentence, and it carries no spans. Without this cut the
+    third backtick of a fence opened a span of its own and everything after it in the entry paired
+    against the wrong delimiter, so a name behind a fence was looked up by nobody -- measured
+    2026-09-02 (H121): a planted name that does not exist is reported BEFORE a fence and passes
+    silently after one, and the live instance was H46's own citation.
+    """
+    kept, opened = [], None
+    for line in body:
+        marker = _fence_marker(line)
+        if marker and (opened is None or marker == opened):
+            opened = None if opened else marker
+            continue
+        if opened is None:
+            kept.append(line)
+    assert opened is None, "an entry opens a fenced block it never closes"
+    return "\n".join(kept)
+
+
+def _hole_citation_sources():
+    """{H<n>: the lines that cite FOR it} -- its entry AND the summary row that judges it.
+
+    THE TABLE CITES TOO: the row over an entry says what would notice a relapse, and rows carry
+    such names today. `_hole_entries` starts an entry at its `### H<n>` heading, so every one of
+    those citations went unread -- a ghost planted in a row passed (measured 2026-09-03, plant A6).
+
+    A CORPUS OF ITS OWN AND NOT A WIDER `_hole_entries`, because four other readers ask
+    entry-shaped questions of that one: `_stated_verdict` takes the last `**Urteil ...**` span of a
+    body, and `test_the_hole_list_judges_every_entry_it_carries` compares a ROW against that span.
+    Folding the row into the body would put both sides of that comparison in one place.
+    """
+    lines = _hole_section()
+    sources = {name: list(body) for name, body in _hole_entries(lines).items()}
+    for line in lines:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or not re.search(r"H\d+", cells[0]) or set(cells[1]) <= set("- "):
+            continue
+        for name in re.findall(r"H\d+", cells[0]):
+            sources.setdefault(name, []).append(line)
+    return sources
+
+
+def _tests_by_module():
+    """{test name: {module stem, ...}} over every test file a hole-list entry may name.
+
+    THE CORPUS IS WHERE THE TESTS LIVE, and that is not one file: an entry of this list closes a
+    defect anywhere in this repo, and the test that would notice a reopening lives where the defect
+    lived -- under `tools/` for the kits and the kernel, here for the four gates. Read against
+    `test_gates.py` alone, every citation of a `tools/` test was a FALSE RED and the
+    module-qualified spelling that avoids it was skipped outright, so the two limits covered for
+    each other (measured 2026-09-02, TSK-0109 N11).
+
+    Parsed, never searched as text: a name that only stands in a docstring would otherwise answer
+    for itself.
+    """
+    files = [os.path.join(HOOKS, "test_gates.py")]
+    tools = os.path.join(ROOT, "tools")
+    files += [os.path.join(tools, name) for name in sorted(os.listdir(tools))
+              if name.startswith("test_") and name.endswith(".py")]
+    out = {}
+    for path in files:
+        stem = os.path.splitext(os.path.basename(path))[0]
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef) and node.name.startswith("test_"):
+                out.setdefault(node.name, set()).add(stem)
+    return out
+
+
+# A CITATION AND WHERE IT CLAIMS TO LIVE. The entries write a test name in four spellings: bare, a
+# module name and a dot in front of it, a file path and a double colon in front of it, and an
+# ellipsis with a double colon for "the same file as the citation before it". (Written out rather
+# than shown, because a backticked example here would be a citation to this file's own readers --
+# measured, it turned two of them red.) So the NAME is what stands after the last separator and the
+# MODULE is what stands before it, with the ellipsis form carrying no module at all: reading the
+# tail is what makes the four one question instead of four cases. WHAT IS NOT READ HERE: a citation
+# whose module is abbreviated to an ellipsis is looked up in every test file of this repo, so it
+# can resolve against a file the writer did not mean -- the abbreviation says less than the writing
+# rule assumes.
+_CITATION_SPLIT_RX = re.compile(r"::|\.")
+_DECORATION = "…._"
+
+
+def _cited_test(span):
+    """(module stem or None, the cited name) for a span that cites a test, else None.
+
+    TWO SHAPES ARE PROSE ABOUT CITATIONS AND NOT CITATIONS, and both stand in the list today. A span
+    whose CONTENT carries a backtick is a span SHOWING a span -- the doubled-backtick idiom an entry
+    uses to quote the shape a pointer has -- and a span holding the naming prefix ALONE, with no
+    name behind it, describes a convention rather than a test. The reader that pairs by run length
+    (2026-09-03) is the first one to see either of them, so both are excluded here rather than
+    edited out of the document. (Neither shape is shown here in backticks: this file's own prose is
+    read by `test_every_check_this_apparatus_claims_in_its_own_prose_is_one_that_exists`, and an
+    example written as a span is a claim to it -- measured, three times in this round.)
+    """
+    if "`" in span:
+        return None
+    tail = _CITATION_SPLIT_RX.split(span)[-1]
+    if not tail.lstrip(_DECORATION).startswith("test_") or tail.strip(_DECORATION) == "test":
+        return None
+    qualifier = span[:len(span) - len(tail)].rstrip(":.").strip(_DECORATION)
+    if not qualifier:
+        return None, tail
+    return os.path.splitext(os.path.basename(qualifier.replace("\\", "/")))[0], tail
+
+
 def test_every_test_the_hole_list_names_is_one_that_exists():
     """A closed entry names the test that goes red without its fix. That name is checkable.
 
     THE CLAIM AN ENTRY MAKES ABOUT ITSELF is "this is closed, and here is what would notice if it
     were reopened". A name that no longer resolves turns that into a claim nothing checks -- the
-    same rot the constitution's prose had, one document further on. So the names are read out of
-    the hole list and looked up in the SYNTAX TREE of this file, not searched for as text: a name
-    that only appears in a docstring would otherwise answer for itself.
+    same rot the constitution's prose had, one document further on.
 
     Names are matched loosely on purpose (`…refuses_a_line…`): the entries abbreviate long test
     names, and demanding the full spelling would make the entries harder to read without checking
-    anything more. What is asserted is that exactly one test answers to each.
+    anything more. So the name is looked up EXACTLY first and only as a substring when nothing
+    answers exactly -- over one file a prefix was unambiguous by luck, over the whole corpus a
+    name that is the beginning of a longer one is not.
+
+    THE CORPUS IS THE ENTRY AND ITS SUMMARY ROW (`_hole_citation_sources`), because the row cites
+    too and every one of those names went unread until 2026-09-03.
+
+    WHAT THIS STILL DOES NOT READ, and all three are named rather than claimed away. A citation
+    INSIDE a fenced block is not a span here -- the remedy is a writing rule and not code, cite the
+    test in prose and leave the fence for what ran. A module abbreviated to an ellipsis is looked
+    up in every test file of this repo, so it can resolve against a file the writer did not mean.
+    And a summary ROW is only read when it falls into exactly three cells: a cell carrying the
+    column separator inside a code span makes four of them, and `_hole_citation_sources` drops such
+    a row without a word. Measured 2026-09-03 against the shipped list: no row has that shape, so
+    the blind field is empty today rather than merely small -- and the writing rule is the same
+    kind as the other two, a table cell carries no column separator.
     """
-    defined = {node.name for node in ast.walk(ast.parse(open(
-        os.path.join(HOOKS, "test_gates.py"), encoding="utf-8").read()))
-        if isinstance(node, ast.FunctionDef) and node.name.startswith("test_")}
-    assert defined, "this file defines no tests at all"
+    defined = _tests_by_module()
+    assert defined, "no test file in this repo defines a test at all"
     named, wrong = 0, []
-    for entry, body in sorted(_hole_entries(_hole_section()).items()):
-        text = "\n".join(body)
-        # WHAT IS INSIDE THE BACKTICKS, WITH THE LINE BREAKS TAKEN OUT: the entries wrap long names
-        # across lines, and a name read as two halves resolves to nothing. A span carrying a dot is
-        # a file name and not a test.
-        spans = [re.sub(r"\s+", "", span) for span in re.findall(r"`([^`]+)`", text, re.DOTALL)]
-        for cited in sorted({span for span in spans
-                             if span.lstrip("…._").startswith("test_") and "." not in span}):
+    for entry, body in sorted(_hole_citation_sources().items()):
+        # WITH THE LINE BREAKS TAKEN OUT: the entries wrap long names across lines, and a name read
+        # as two halves resolves to nothing.
+        spans = {re.sub(r"\s+", "", found.group(2))
+                 for found in _CODE_SPAN_RX.finditer(_prose_of(body))}
+        for span in sorted(spans):
+            citation = _cited_test(span)
+            if citation is None:
+                continue
+            module, cited = citation
             stem = cited.strip("_.…")
-            matching = [name for name in defined if stem in name]
+            matching = sorted(name for name, where in defined.items()
+                              if (name == stem or (stem not in defined and stem in name))
+                              and (module is None or module in where))
             named += 1
             if len(matching) != 1:
-                wrong.append("%s names `%s`, and %d tests in %s answer to it"
-                             % (entry, cited, len(matching), "test_gates.py"))
+                wrong.append("%s names `%s`, and %d tests answer to it in %s"
+                             % (entry, span, len(matching), module or "any test file of this repo"))
     assert not wrong, "\n".join(wrong)
     assert named >= 5, (
-        "the hole list names %d test(s) of this file -- an entry that claims to be closed and "
+        "the hole list names %d test(s) -- an entry that claims to be closed and "
         "names nothing that would notice is the claim this test exists for" % named)
 
 

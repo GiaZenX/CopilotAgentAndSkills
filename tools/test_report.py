@@ -24,6 +24,7 @@ from kernel.backlog_types import (  # noqa: E402
     QA_EVIDENCE_KINDS,
     REQUIRED_FIELDS,
 )
+from kernel.lock import PORTABLE_PATH_MAX_CHARS, ext_path  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
 
 
@@ -105,6 +106,363 @@ def test_item_budget_enforced(state):
     pr = state.capture("PR", dict(PR_FIELDS, problem="x" * 13000))
     found = errors(report.validate_state(state))
     assert any(pr["id"] == f["item"] and "budget" in f["message"] for f in found)
+
+
+def test_a_state_tree_past_the_portable_path_limit_is_warned_once(tmp_path):
+    """FR-0037: spec II.4 promised this warning and only the extended-length half was built.
+
+    Measured before the check existed: a state tree copied under a 309-character root produced
+    exactly one finding from `validate_state`, and it was about `user_story` -- nothing named a
+    path length, while the kernel happily kept writing through `lock.ext_path`.
+
+    Three properties in one place, because each of them was a way to get this wrong: it is a
+    WARNING (a merge that stops on tree depth gets worked around), it fires ONCE for a tree
+    rather than once per item, and it reads only the paths the scan already opened -- a render
+    deeper inside a staging directory is the named blind spot, measured in the second half.
+    """
+    deep = os.path.join(str(tmp_path), *(["a-directory-with-a-long-name"] * 8))
+    root = os.path.join(deep, "project_memory")
+    os.makedirs(ext_path(root))
+    deep_state = ProjectState(root)
+    deep_state.capture("PR", dict(PR_FIELDS))
+    deep_state.capture("PR", dict(PR_FIELDS, title="second requirement"))
+    findings = report.validate_state(deep_state)
+    named = [f for f in findings if "longer than %d characters" % PORTABLE_PATH_MAX_CHARS
+             in f["message"]]
+    assert len(named) == 1, [f["message"] for f in findings]
+    assert named[0]["severity"] == "warning", named[0]
+    assert errors(findings) == [], errors(findings)
+
+    shallow = ProjectState(str(tmp_path / "pm"))
+    os.makedirs(ext_path(shallow.root))
+    pr = shallow.capture("PR", dict(PR_FIELDS))
+    buried = os.path.join(shallow.staging_root(), pr["id"],
+                          *(["a-directory-with-a-long-name"] * 8))
+    os.makedirs(ext_path(buried))
+    with io.open(ext_path(os.path.join(buried, "render.tex")), "w", encoding="utf-8") as fh:
+        fh.write("x")
+    assert len(os.path.abspath(os.path.join(buried, "render.tex"))) > PORTABLE_PATH_MAX_CHARS
+    assert not [f for f in report.validate_state(shallow)
+                if "longer than" in f["message"]], "the blind spot named above closed silently"
+
+
+def test_a_bug_may_name_the_system_requirement_it_hit_but_only_under_its_own_root(state):
+    """FR-0054: `related_sr`, optional, and judged on ROOT MEMBERSHIP rather than existence.
+
+    The FR names the residue it must not repeat: `related_pr` and `target_pr` are checked for
+    resolvability and for nothing else, so they accept a requirement out of a foreign tree. The
+    third assertion below is that difference -- an SR that exists, resolves, and belongs to
+    another root.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    elsewhere = state.capture("PR", dict(PR_FIELDS, title="Another product"))
+    sr = state.capture("SR", {"title": "prices round half up", "derives_from": pr["id"],
+                              "contract": "half up", "affected_components": ["pricing"]})
+    stray = state.capture("SR", {"title": "foreign contract", "derives_from": elsewhere["id"],
+                                 "contract": "x", "affected_components": ["y"]})
+    named = state.capture("BUG", {
+        "title": "rounds down", "related_pr": pr["id"], "related_sr": sr["id"],
+        "observed": "o", "expected": "e", "repro": "r", "severity": "low",
+        "acceptance_criteria": ["fixed"]})
+    make_bug(state, pr["id"])          # the field stays optional: no stored item is forced to it
+    assert errors(report.validate_state(state)) == []
+
+    crossed = state.capture("BUG", {
+        "title": "wrong tree", "related_pr": pr["id"], "related_sr": stray["id"],
+        "observed": "o", "expected": "e", "repro": "r", "severity": "low",
+        "acceptance_criteria": ["fixed"]})
+    found = [f for f in errors(report.validate_state(state)) if f["item"] == crossed["id"]]
+    assert found, [f["message"] for f in report.validate_state(state)]
+    assert "related_sr" in found[0]["message"] and stray["id"] in found[0]["message"]
+    assert pr["id"] in found[0]["remedy"]
+    # ...and the bug that named the right one is not the one being complained about
+    assert not [f for f in errors(report.validate_state(state)) if f["item"] == named["id"]]
+
+
+# A REQUIREMENT THE SIZE OF A REAL ONE. The hint refuses to compare items with less content
+# than `report.DUPLICATE_HINT_MIN_WORDS`, and the fixtures these tests used to carry were smaller
+# than the smallest item in any real store -- which is why an earlier version of this test scored
+# two DIFFERENT requirements at 0.429 and had to be argued with. Measured against prose of the
+# length a project really writes, the same pair is noise.
+RICH_PR = dict(
+    PR_FIELDS,
+    title="Bezahlvorgang mit gespeicherten Zahlungsmitteln",
+    problem=("Kundinnen brechen den Bezahlvorgang ab, weil sie ihre Kartendaten bei jeder "
+             "Bestellung neu eintippen muessen; die Abbruchquote steigt vor allem auf dem "
+             "Telefon, wo das Formular ueber mehrere Bildschirme laeuft."),
+    goal=("Ein einmal bestaetigtes Zahlungsmittel steht bei der naechsten Bestellung bereit, "
+          "sodass der Bezahlvorgang aus einer Bestaetigung besteht und nicht aus einem Formular."),
+    acceptance_criteria=[
+        {"id": "AC-1", "text": "Ein gespeichertes Zahlungsmittel erscheint im Bezahlvorgang"},
+        {"id": "AC-2", "text": "Das Loeschen eines Zahlungsmittels wirkt sofort"},
+    ],
+    out_of_scope=["Rechnungskauf", "Ratenzahlung", "Gutscheine"],
+    user_story=("Als wiederkehrende Kundin moechte ich mit einem gespeicherten Zahlungsmittel "
+                "bezahlen, damit die Bestellung nicht an der Tastatur haengt."),
+)
+
+
+def test_the_duplicate_hint_stays_quiet_on_ordinary_neighbours(state):
+    """FR-0018 makes silence the condition: "only build it if it grips without nagging".
+
+    THREE PAIRS, AND EACH HOLDS ONE THING. An unrelated requirement of the same project is silent
+    -- that is what a backlog looks like, and a hint firing there is the nagging the FR forbids.
+    A NEIGHBOUR that shares the subject and asks something else is silent too, and it is the LOWER
+    edge of the band: it sits between the two candidate thresholds, so a threshold low enough to
+    nag turns this test red. A RE-REQUEST -- the same requirement written again in other words --
+    is found, and it is the UPPER edge: a threshold high enough to go quiet turns it red as well.
+
+    Both edges are on the THRESHOLD and not on the word floor, which is the correction this test
+    needed: after the fixtures grew to real prose, the neighbour pair had drifted so far apart
+    that the lower mutation stayed green here and only the floor test still caught anything, while
+    this docstring went on claiming both edges (measured 2026-09-02, verification of rework 1).
+    The scores of the three pairs are in the TSK-0106 protocol; the band they sit in is
+    `report.DUPLICATE_HINT_SIMILARITY`.
+    """
+    state.capture("PR", dict(RICH_PR))
+    unrelated = dict(
+        RICH_PR, title="Ruecksendungen ohne Anruf beim Kundendienst",
+        problem=("Wer etwas zurueckschicken will, muss beim Kundendienst anrufen; die Leitung "
+                 "ist morgens besetzt und die Pakete bleiben tagelang liegen."),
+        goal=("Eine Ruecksendung wird im Konto angemeldet, das Etikett kommt per Mail, und der "
+              "Kundendienst sieht den Vorgang ohne Anruf."),
+        acceptance_criteria=[{"id": "AC-1", "text": "Etikett kommt ohne Anruf"}],
+        out_of_scope=["Reparaturen", "Umtausch im Laden"],
+        user_story=("Als Kaeuferin moechte ich eine Ruecksendung selbst anmelden, damit ich "
+                    "niemanden anrufen muss."))
+    assert report.similar_items(state, "PR", unrelated) == []
+
+    # THE LOWER EDGE: the same subject, a different requirement -- the shape of the closest pair
+    # this project's own store holds. Silent here, and loud under any threshold below the band.
+    neighbour = dict(
+        RICH_PR, title="Abgelaufene Zahlungsmittel im Bezahlvorgang",
+        problem=("Kundinnen brechen den Bezahlvorgang ab, weil ein gespeichertes Zahlungsmittel "
+                 "abgelaufen ist und die Bestellung ohne Hinweis stehen bleibt; die Abbruchquote "
+                 "steigt vor allem auf dem Telefon, wo die stille Ablehnung gar nicht auffaellt."),
+        goal=("Ein abgelaufenes Zahlungsmittel wird im Bezahlvorgang gezeigt, sodass die "
+              "Bestellung nicht an einer stillen Ablehnung haengt."),
+        acceptance_criteria=[{"id": "AC-1", "text": "Ein abgelaufenes Zahlungsmittel wird gezeigt"}],
+        out_of_scope=["Rechnungskauf", "Ratenzahlung", "Gutscheine"],
+        user_story=("Als Kundin moechte ich sehen, dass mein gespeichertes Zahlungsmittel "
+                    "abgelaufen ist, bevor ich die Bestellung abschicke."))
+    assert report.similar_items(state, "PR", neighbour) == []
+
+    # THE UPPER EDGE: the same requirement asked a second time, worded freshly rather than copied
+    # -- which is the case the FR describes (an agent whose context ran over). Found here, and
+    # silent under any threshold above the band.
+    again = dict(
+        RICH_PR, title="Zahlungsmittel merken und beim naechsten Kauf anbieten",
+        problem=("Kundinnen brechen den Bezahlvorgang ab, weil sie ihre Kartendaten bei jeder "
+                 "Bestellung neu eintippen muessen; auf dem Telefon zieht sich das Formular ueber "
+                 "mehrere Bildschirme."),
+        goal=("Ein bestaetigtes Zahlungsmittel steht bei der naechsten Bestellung bereit, sodass "
+              "aus dem Formular eine Bestaetigung wird."))
+    near = report.similar_items(state, "PR", again)
+    assert [row["id"] for row in near] == ["PR-0001"], near
+    assert near[0]["score"] >= report.DUPLICATE_HINT_SIMILARITY
+
+
+def test_the_duplicate_hint_reads_a_word_in_any_script_not_only_in_ascii(state):
+    """The tokenizer decides what a WORD is, and `[a-z0-9]` decided it for one alphabet.
+
+    A German word came apart at its umlauts -- `Prüfung` read as `fung`, `Größe` as `e` and `Gr`,
+    both under the length floor -- so the comparison ran on fragments nobody wrote, and two items
+    were as similar as their leftovers happened to be. Read off the running function rather than
+    off the regex, so a second reader spelled differently but broken the same way is still red.
+
+    THE LIMIT THIS DOES NOT CLOSE, measured in the same test rather than promised away: a script
+    that does not separate words -- Japanese here -- yields ONE token per phrase, so such a store
+    stays under `DUPLICATE_HINT_MIN_WORDS` and the hint is SILENT for it. Silence is the safe
+    direction (no false alarm, nothing refused), and it is named in the TSK-0106 protocol; what
+    would close it is a segmenter, which is not a thing a kernel three kits share should carry.
+    """
+    words = report._content_words({"title": "Prüfung der Größe"}, ())
+    assert words == {"prüfung", "der", "größe"}, words
+
+    phrase = report._content_words({"title": "支払い方法の保存"}, ())
+    assert len(phrase) == 1, phrase          # one run of letters: no word boundaries to find
+    assert len(phrase) < report.DUPLICATE_HINT_MIN_WORDS
+
+
+def test_the_duplicate_hint_says_nothing_about_items_too_small_to_compare(state):
+    """A ratio over a handful of words is decided by a single shared one.
+
+    Measured on two unrelated bugs of four content words each -- "404 -> 200" and "500 -> 200":
+    they share the response code and the severity and score 0.5, over a threshold calibrated on
+    items that carry fifty words and more. Nothing about the tokenizer fixes that; the pair simply
+    does not say enough to be compared.
+
+    Both edges of the floor, and the band between them is wide: the noise cases live at four to
+    eight content words, the SMALLEST item in this project's own store carries 49 and the smallest
+    union of an honest pair is 93 (measured 2026-09-02).
+    """
+    tiny = {"related_pr": "PR-0001", "severity": "high", "repro": "1 2 3",
+            "acceptance_criteria": [{"id": "AC-1", "text": "x"}]}
+    state.capture("PR", dict(RICH_PR))
+    state.capture("BUG", dict(tiny, title="404", observed="404", expected="200"))
+    other = dict(tiny, title="500", observed="500", expected="200", repro="4 5 6")
+    assert report.similar_items(state, "BUG", other) == []
+
+    # ...and the floor is a floor and not a mute: a bug that says as much as a real one is found
+    wordy = {"related_pr": "PR-0001", "severity": "high",
+             "observed": ("Der Bezahlvorgang bricht mit einer leeren Seite ab, sobald ein "
+                          "gespeichertes Zahlungsmittel gewaehlt wird; im Protokoll steht nur eine "
+                          "Zeitueberschreitung ohne Angabe des Dienstes."),
+             "expected": ("Der Bezahlvorgang laeuft mit einem gespeicherten Zahlungsmittel durch, "
+                          "und eine Zeitueberschreitung nennt den Dienst, der nicht geantwortet "
+                          "hat."),
+             "repro": ("Bestellung anlegen, gespeichertes Zahlungsmittel waehlen, bestaetigen; "
+                       "die leere Seite erscheint nach etwa dreissig Sekunden."),
+             "acceptance_criteria": [{"id": "AC-1", "text": "Der Bezahlvorgang laeuft durch"}]}
+    stored = state.capture("BUG", dict(wordy, title="Leere Seite beim Bezahlen"))
+    again = dict(wordy, title="Bezahlen endet auf einer leeren Seite")
+    assert [row["id"] for row in report.similar_items(state, "BUG", again)] == [stored["id"]]
+
+
+def test_the_duplicate_hint_covers_every_type_whose_content_the_kernel_defines(state):
+    """Both ends of a derivation, because the alternative was a list of two type names.
+
+    `HASHED_FIELDS` is the kernel's own answer to "what is this item's substance" -- the fields
+    whose change invalidates an approval -- so the hint covers exactly the types that have one and
+    guesses for none. The counter-direction is what makes it a derivation rather than a filter
+    that happens to agree today: a type with no such definition yields nothing even when two of
+    its items are byte-identical.
+
+    Items are written into the store directly. The hint reads files, not automata, and building a
+    contract-valid pair for seven types would measure the fixtures instead of the rule.
+    """
+    from kernel.backlog_types import ACTIVE_DIRS, HASHED_FIELDS
+    covered, uncovered = [], []
+    for item_type, directory in sorted(ACTIVE_DIRS.items()):
+        if item_type in ("WFR", "DSN"):
+            continue                    # stored per revision, not as one active file
+        target = os.path.join(state.root, *directory.split("/"))
+        os.makedirs(target, exist_ok=True)
+        fields = HASHED_FIELDS.get(item_type) or ("title",)
+        # AS MUCH CONTENT AS A REAL ITEM: the hint refuses to compare anything smaller
+        # (`report.DUPLICATE_HINT_MIN_WORDS`), so a one-line fixture would measure that floor
+        # instead of the type coverage this test is about.
+        body = {"id": "%s-0001" % item_type,
+                "title": "a rounding rule for prices in every currency"}
+        for field in fields:
+            body[field] = ("prices are rounded half up in every currency, and the rounded amount "
+                           "is what the invoice shows, what the ledger records and what the "
+                           "customer pays; a difference between them is a defect regardless of "
+                           "which of the three is closer to the calculated value")
+        yaml.safe_dump(body, open(os.path.join(target, body["id"] + ".yaml"), "w",
+                                  encoding="utf-8"), sort_keys=False)
+        twin = dict(body, id="%s-0002" % item_type)
+        found = [row["id"] for row in report.similar_items(state, item_type, twin)]
+        (covered if item_type in HASHED_FIELDS else uncovered).append((item_type, found))
+    assert covered and all(found == ["%s-0001" % t] for t, found in covered), covered
+    assert uncovered and all(found == [] for _t, found in uncovered), uncovered
+
+
+def test_an_invariant_whose_check_resolves_to_no_test_is_an_error_and_a_resolving_one_is_not(
+        tmp_path):
+    """FR-0039/II.12, the validator half: three states, and only one of them stops a merge.
+
+    An invariant is what a project's guards read to decide which code they govern, so one whose
+    check names no test is a rule with nothing behind it -- an ERROR, which is what makes it a
+    merge blocker (`gate_memory_complete.state_errors`; measured through the real hook in
+    `test_hooks.test_an_invariant_whose_check_names_no_test_blocks_the_merge`).
+
+    The other two are deliberately NOT errors: a check that resolves while the item still reads
+    `unverified` is bookkeeping, so it is a warning naming the command that fixes it, and a
+    verified item with a resolving check is silent. An error there would block every merge of
+    every project the day it captured its first invariant.
+    """
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    st = ProjectState(str(root))
+    st.capture("PR", dict(PR_FIELDS))
+    inv = st.capture("INV", {"scope": "compounder/", "source": "PR-0001", "text": "pure",
+                             "check": {"kind": "test", "ref": "tests/test_rules.py::test_pure"}})
+    blocking = [f for f in errors(report.validate_state(st)) if f["item"] == inv["id"]]
+    assert blocking, report.validate_state(st)
+    assert "does not exist" in blocking[0]["message"]
+    assert "verify-invariants" in blocking[0]["remedy"]
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_rules.py").write_text(
+        "def test_pure():\n    pass\n", encoding="utf-8")
+    findings = report.validate_state(st)
+    assert not [f for f in errors(findings) if f["item"] == inv["id"]], findings
+    stale = [f for f in findings if f["item"] == inv["id"]]
+    assert stale and stale[0]["severity"] == "warning"
+    assert "verify-invariants" in stale[0]["remedy"]
+
+    st.record_invariant_verification(inv["id"])
+    assert not [f for f in report.validate_state(st) if f["item"] == inv["id"]]
+
+
+def test_an_invariant_whose_check_this_kernel_cannot_read_blocks_nothing(tmp_path):
+    """The third answer, and the reason it exists: a rule nobody can satisfy is not a rule.
+
+    The kernel decides "is this test there" by PARSING the file, and that reaches Python. A dev
+    project whose tests are TypeScript would otherwise have every one of its invariants reported
+    as unverifiable -- an ERROR, and `gate_memory_complete` blocks a push on those -- with no
+    command in the project that could ever clear it. Measured while building this: with the
+    unreadable case answered as "not resolved", exactly that happened.
+
+    So the answer is UNDECIDED: a warning that says whose question it is, no error, and the
+    producer leaves the item unverified rather than verifying it on a shrug. The limit is `H110`.
+    """
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    st = ProjectState(str(root))
+    st.capture("PR", dict(PR_FIELDS))
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "rules.test.ts").write_text("test('is pure', () => {});\n",
+                                                    encoding="utf-8")
+    inv = st.capture("INV", {"scope": "src/", "source": "PR-0001", "text": "pure",
+                             "check": {"kind": "test", "ref": "src/rules.test.ts::is pure"}})
+    findings = [f for f in report.validate_state(st) if f["item"] == inv["id"]]
+    assert findings and findings[0]["severity"] == "warning", findings
+    assert "cannot read as a test file" in findings[0]["message"]
+    assert not errors(report.validate_state(st))
+
+    item, resolved, reason = st.record_invariant_verification(inv["id"])
+    assert item["status"] == "unverified", reason
+    assert resolved is None, reason
+
+
+def test_one_scan_parses_each_test_file_once(tmp_path, monkeypatch):
+    """`validate_state` runs inside a merge gate, so what it costs is not a detail.
+
+    Invariants of one project point at the same few test files, and the resolution parses the file
+    the check names. Measured without the cache: 30 invariants against one 0.5 MB test file cost
+    6.1-6.9 s per scan; with it, 0.22-0.26 s. The kits register NO timeout for the gate that waits
+    for this (measured on a scaffolded project), and a hook the provider kills reads as "carry on"
+    -- so the cost is an enforcement question, not a comfort one.
+
+    Counted at `ast.parse` itself rather than timed: a stopwatch measures the machine, a call
+    count measures the rule.
+    """
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    st = ProjectState(str(root))
+    st.capture("PR", dict(PR_FIELDS))
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_rules.py").write_text(
+        "def test_a():\n    pass\n\n\ndef test_b():\n    pass\n\n\ndef test_c():\n    pass\n",
+        encoding="utf-8")
+    for name in ("a", "b", "c"):
+        st.capture("INV", {"scope": "%s/" % name, "source": "PR-0001", "text": "rule %s" % name,
+                           "check": {"kind": "test",
+                                     "ref": "tests/test_rules.py::test_%s" % name}})
+    parses = []
+    real = report.ast.parse
+
+    def counted(*args, **kwargs):
+        parses.append(kwargs.get("filename") or (args[1] if len(args) > 1 else "?"))
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(report.ast, "parse", counted)
+    findings = report.validate_state(st)
+    assert not errors(findings), findings
+    mine = [one for one in parses if str(one).endswith("test_rules.py")]
+    assert len(mine) == 1, mine
 
 
 def test_orphaned_staging_flagged(state):
@@ -193,8 +551,13 @@ def test_a_parent_binding_pointing_nowhere_is_an_error_for_every_type_that_has_o
             os.makedirs(os.path.dirname(state.active_path(item_id)), exist_ok=True)
             state._write_yaml_atomic(state.active_path(item_id), item)
             expected.add((item_id, field))
+    # ` -> ` is the reference check's own message shape, and reading it is what keeps this
+    # measuring THAT check: the origin check speaks about the same hand-written items in prose
+    # ("... names no parent binding at all ..."), and without the shape its whole sentence
+    # arrived here as a field name.
     reported = {(f["item"], field) for f in errors(report.validate_state(state))
-                for field in [f["message"].split(" ->")[0]] if "PR-0099" in f["message"]}
+                for field in [f["message"].split(" ->")[0]]
+                if "PR-0099" in f["message"] and " ->" in f["message"]}
     assert reported == expected, (
         "the validator judged %s of the parent bindings; %s went unreported"
         % (sorted(reported), sorted(expected - reported)))
@@ -387,6 +750,111 @@ def test_a_task_deriving_from_its_own_roots_tree_is_fine(state):
     root = state.capture("PR", dict(PR_FIELDS))
     bug = make_bug(state, root["id"])
     make_task(state, root["id"], bug["id"])
+    assert errors(report.validate_state(state)) == []
+
+
+RQ_FIELDS = {
+    "title": "Chunk size", "class": "normal",
+    "question": "Does a dynamic chunk size lower the error rate?",
+    "motivation": "every misfiling costs rework",
+    "acceptance_criteria": [{"id": "AC-1", "text": "error rate of both arms with interval"}],
+    "out_of_scope": [], "priority": "high",
+}
+
+
+def make_question(state, title="Chunk size"):
+    return state.capture("RQ", dict(RQ_FIELDS, title=title))
+
+
+def make_hypothesis(state, question_id):
+    return state.capture("HYP", {
+        "derives_from": question_id, "statement": "dynamic beats fixed",
+        "testable_prediction": "at least 5 points lower, alpha = 0.05"})
+
+
+def make_experiment(state, parents):
+    return state.capture("EXP", {
+        "derives_from": parents, "design": "within-subject over 400 documents",
+        "variables": {"independent": ["chunking"], "dependent": ["error rate"]},
+        "success_criteria": ["difference of the error rates with a 95% interval"],
+        "evidence_refs": []})
+
+
+def test_a_task_on_an_origin_two_levels_under_its_root_is_fine(state):
+    """The research kit's own chain RQ -> HYP -> EXP -> TSK, on the validator side (BUG-0083).
+
+    The dev kit cannot show this: every dev task origin sits ONE level under the root, which is
+    why a check that resolved the single immediate parent passed there for a year and made the
+    documented research chain uncreatable. Its refusing counterpart at creation is
+    `test_approvals_dispatch.test_a_task_may_derive_from_an_experiment_two_levels_under_its_root`.
+    """
+    question = make_question(state)
+    hypothesis = make_hypothesis(state, question["id"])
+    experiment = make_experiment(state, hypothesis["id"])
+    make_task(state, question["id"], experiment["id"])
+    assert errors(report.validate_state(state)) == []
+
+
+def test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused(state):
+    """Ambiguous parentage fails CLOSED -- the second half of the same two functions (BUG-0086).
+
+    Measured before the fix on a scaffolded research project: an EXP with two parents resolved to
+    NO root at all, both callers read that as "nothing to compare" and a task under a FOREIGN root
+    was created with rc 0 and validated with zero errors. The finding names the parent that leaves
+    the root, because "ambiguous" without it is not actionable.
+    """
+    question = make_question(state)
+    other = make_question(state, title="Another question")
+    hypothesis = make_hypothesis(state, question["id"])
+    stray = make_hypothesis(state, other["id"])
+    experiment = make_experiment(state, [hypothesis["id"], stray["id"]])
+    task = make_task(state, question["id"], experiment["id"])
+    found = errors(report.validate_state(state))
+    mine = [f for f in found if f["item"] == task["id"] and "ambiguous origin" in f["message"]]
+    assert mine, found
+    assert stray["id"] in mine[0]["message"] and other["id"] in mine[0]["message"], mine
+
+
+def test_an_origin_whose_only_parent_hangs_from_two_roots_is_refused(state):
+    """The level the `all` in `_reaches_on_every_path` really guards -- and it had no test.
+
+    `origin_root_conflict` walks the ORIGIN's own parents itself, so an origin with two parents is
+    refused whatever the recursion does. The `all` starts deciding one level further in: an origin
+    with a SINGLE parent whose own parentage straddles two roots. Measured 2026-09-02 with `any` in
+    its place: seven modules, 645 passed -- nothing saw it.
+
+    The message is measured too, because counting strays said both things at once here ("belongs to
+    RQ-0001/RQ-0002, not to RQ-0001"): every parent strays, and the root is nevertheless among the
+    ends. Which sentence is true is decided by where the paths END.
+    """
+    question = make_question(state)
+    other = make_question(state, title="Another question")
+    straddling = make_hypothesis(state, [question["id"], other["id"]])
+    experiment = make_experiment(state, [straddling["id"]])
+    conflict = report.origin_root_conflict(state, experiment["id"], question["id"])
+    assert conflict, "an origin whose grandparent straddles two roots was accepted"
+    assert "ambiguous origin" in conflict, conflict
+    assert straddling["id"] in conflict and other["id"] in conflict, conflict
+    assert "not to %s" % question["id"] not in conflict, conflict
+
+    # ...and the same state seen through the validator, so the finding a role reads is the one
+    task = make_task(state, question["id"], experiment["id"])
+    mine = [f for f in errors(report.validate_state(state))
+            if f["item"] == task["id"] and "ambiguous origin" in f["message"]]
+    assert mine, report.validate_state(state)
+
+
+def test_an_origin_whose_parents_all_hang_from_the_root_is_still_accepted(state):
+    """The counter-direction of the ambiguity rule: several parents are not a defect by themselves.
+
+    Without this the fail-closed half could be satisfied by refusing every multi-parent origin --
+    and that would refuse the chain the research kit's own end-to-end test walks, where an
+    experiment hangs from the hypothesis it tests AND the question that pays for it.
+    """
+    question = make_question(state)
+    hypothesis = make_hypothesis(state, question["id"])
+    experiment = make_experiment(state, [hypothesis["id"], question["id"]])
+    make_task(state, question["id"], experiment["id"])
     assert errors(report.validate_state(state)) == []
 
 
@@ -734,11 +1202,15 @@ def test_a_technical_enabler_may_run_alongside(state):
 
 # -- qa_verdicts: the definition the merge gate reads (spec II.2 Evidence) -----
 
-def evd(state, kind="test", result="pass", related=("PR-0001",), created=None):
-    """An Evidence item, optionally back-dated so ORDER can be asserted independently of clock."""
+def evd(state, kind="test", result="pass", related=("PR-0001",), created=None, **run):
+    """An Evidence item, optionally back-dated so ORDER can be asserted independently of clock.
+
+    `**run` carries the optional run record (`run_command`/`run_scope`); left out it produces the
+    record shape every project already holds, which is what most callers here are about.
+    """
     item = state.capture("EVD", {"kind": kind, "result": result, "related": list(related),
                                  "summary": "s",
-                                 "artifact_refs": ["staging/TSK-0001/run.log"]})
+                                 "artifact_refs": ["staging/TSK-0001/run.log"], **run})
     if created is not None:
         path = state.active_path(item["id"])
         stored = state._read_yaml(path)
@@ -863,6 +1335,59 @@ def test_a_task_of_a_kit_that_produces_no_delivery_verdict_is_not_asked_for_one(
     drive_task_to(state, delivered["id"], "DONE")
     assert [f for f in warnings_of(report.validate_state(state))
             if f["item"] == delivered["id"]], "the PR-rooted task is the control and must be asked"
+
+
+def test_a_task_under_every_kit_root_is_asked_for_its_delivery_verdict(state):
+    """The other direction of the same term (BUG-0084 AC-3): the RESEARCH root is asked too.
+
+    Its sibling above measures the exclusion an office project needs; nothing measured the
+    inclusion, and an enumeration `{"PR"}` would have passed it -- a research project would then
+    have booked accepted work with no verdict and no finding, which is precisely the blindness
+    BUG-0060 recorded for the dev kit. Both roots of `ROOT_TYPE_BY_KIT` are walked here through
+    `validate_state`, so a kit that gains a root type arrives asked.
+    """
+    from kernel.backlog_types import ROOT_TYPE_BY_KIT
+    assert set(ROOT_TYPE_BY_KIT.values()) == {"PR", "RQ"}, (
+        "a new kit root type needs a branch in this test's builder below: %s" % ROOT_TYPE_BY_KIT)
+    question = make_question(state)
+    experiment = make_experiment(state, make_hypothesis(state, question["id"])["id"])
+    task = make_task(state, question["id"], experiment["id"])
+    drive_task_to(state, task["id"], "DONE")
+    assert [f for f in warnings_of(report.validate_state(state)) if f["item"] == task["id"]], (
+        "an accepted research task carries no QA debt -- the filter dropped the RQ root")
+
+
+def test_a_pass_from_a_partial_run_is_not_merge_evidence_and_a_fail_still_is(state):
+    """FR-0040: an Evidence that says what its run covered, and a merge that reads it.
+
+    Until this pair of fields, `REQUIRED_FIELDS["EVD"]` named the verdict, the summary and the
+    artefacts and nothing named the RUN -- so a pass from `pytest -k one_test` and a pass from the
+    whole suite were the same record, while `EVIDENCE_RESULTS`' own comment and `gate_git`'s
+    refusal text both told the reader that a partial run is not merge evidence.
+
+    BOTH DIRECTIONS, because the rule is an asymmetry and not a filter: a partial PASS is dropped
+    (it cannot show the absence of a defect), a partial FAIL is kept (it can show one), and an
+    Evidence that declares no scope is unchanged -- which is the half the field's optionality
+    leaves open and H108 carries.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    partial = dict(run_command="python -m pytest tools/ -k checkout", run_scope="selection")
+
+    evd(state, kind="test", result="pass", related=(root["id"],), **partial)
+    assert "test" not in report.qa_verdicts(state, root["id"]), (
+        "a pass from a selection opened the merge")
+
+    evd(state, kind="test", result="fail", related=(root["id"],), **partial)
+    assert report.qa_verdicts(state, root["id"])["test"]["result"] == "fail", (
+        "a FAIL from a selection was dropped with the passes -- a partial run can show a defect")
+
+    evd(state, kind="test", result="pass", related=(root["id"],),
+        run_command="python -m pytest tools/", run_scope="full")
+    assert report.qa_verdicts(state, root["id"])["test"]["result"] == "pass"
+
+    evd(state, kind="review", result="pass", related=(root["id"],))
+    assert report.qa_verdicts(state, root["id"])["review"]["result"] == "pass", (
+        "an Evidence that declares no scope stopped counting -- that is a contract change")
 
 
 def test_qa_verdicts_ignores_audit_evidence_and_other_items(state):

@@ -62,7 +62,14 @@ You run as the **Bookkeeper** — preparation only, never tax advice. Procedure 
    category you want CORRECTED or REMOVED
    is not on that route and goes to the user as old-and-new lines. Never rewrite history, and never
    work around the refusal.
-6. **Commentary:** after a report run, write `reports/<report>_notes.md` — anomalies (duplicate
+6. **Refresh the finance page:** after a booking session run `python tools/finance_dashboard.py`.
+   It rewrites `dashboards/finanzen.html` — the year's income and expenses, the open items with
+   their dunning candidates, the EÜR figures per quarter and the § 19 UStG threshold watch. The
+   page writes nothing back; it only shows what the ledger says. Nothing runs the command for
+   you, and the masthead's data date does not reliably show that the page is old (a back-dated
+   booking leaves it unchanged) — so the rule is the run, not the reading; `dashboards/ABOUT.txt`
+   carries the measurement.
+7. **Commentary:** after a report run, write `reports/<report>_notes.md` — anomalies (duplicate
    suspicion, invoice-number gaps, VAT oddities, reverse-charge items, unpaid/open list),
    plain language. The numbers themselves come ONLY from `euer_report.py`.
 

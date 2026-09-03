@@ -1,0 +1,58 @@
+id: TSK-0112
+product_requirement: FR-0038
+derives_from: FR-0038
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/dev-team/hooks/_routine.py
+- team-kits/research-team/hooks/_routine.py
+- team-kits/office-team/hooks/_routine.py
+- team-kits/dev-team/hooks/session_status.py
+- team-kits/research-team/hooks/session_status.py
+- team-kits/office-team/hooks/session_status.py
+- team-kits/office-team/hooks/_duties.py
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/kernel/**
+- team-kits/*/agents/**
+- team-kits/*/constitution/**
+- team-kits/*/skills/**
+- team-kits/*/templates/**
+- team-kits/*/settings/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0038.yaml
+- project_memory/tasks/active/TSK-0107.yaml
+- project_memory/staging/TSK-0107/stream-protocol.md
+- team-kits/office-team/hooks/_duties.py
+- team-kits/office-team/hooks/_audit.py
+- tools/test_hooks.py
+expected_outputs:
+- 'the routine feed of FR-0038 (auditor run record -> overdue notice; the hook REPORTS,
+  the PM spawns, DEC-0028) cut out of office _duties.py into a `_routine.py` mirrored
+  byte-identical in all three kits (precedent: _audit.py), called from every kit''s
+  session_status.py; office _duties.py keeps calling the shared module'
+- 'measured as a PROCESS on a scaffolded dev-team AND research-team project (pilot
+  copies under C:/Offline Repos/v2-testbed only): the overdue notice appears at session
+  start and disappears after a recorded auditor run (the H112 chain, once per kit)'
+- mirror tripwire both ends red-measured for the new module; red-first for every fix;
+  provisional stamps for every kit touched
+- no hole numbers reserved for this item -- a residue goes to the protocol for the
+  merge round; role/constitution sentences naming the notice are SEAM items (stream
+  E / merge)
+dependencies:
+- TSK-0107
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T15:49:16'

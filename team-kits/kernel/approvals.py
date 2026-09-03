@@ -56,7 +56,8 @@ from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso, names_a_drive
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
-             "kit_update", "filing_correction", "filing_rule", "document_proposal")
+             "kit_update", "filing_correction", "filing_rule", "document_proposal",
+             "document_revision")
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
@@ -81,8 +82,13 @@ APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "
 # `kernel.documents`): it is bound to one before-and-after, so the clock only bounds how long an
 # UNUSED one lingers -- and that is a standing permission to write into the project's own
 # configuration and reference documents.
+# `document_revision` (FR-0067) for `document_proposal`'s reason and one step further: it is
+# the only route that may REPLACE or DELETE something a kit document already records, so an
+# unused one lingering past the conversation is a standing permission to unsay what the
+# project decided.
 EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update",
-                            "filing_correction", "filing_rule", "document_proposal"))
+                            "filing_correction", "filing_rule", "document_proposal",
+                            "document_revision"))
 # kinds that may authorise a specialist dispatch through the ROOT item's
 # approval_ref ALONE, i.e. on nothing but the fact that the root presents them.
 # analysis/routine deliberately excluded and NOT because they authorise nothing:
@@ -667,11 +673,83 @@ def document_proposal_subject_manifest(kit_document, proposal, base, proposed, c
             "proposed": str(proposed), "changes": described, "reason": _one_line(reason)}
 
 
+def document_revision_subject_manifest(kit_document, proposal, base, proposed, replacements,
+                                       deletions, additions, reason) -> dict:
+    """What revising a kit document is bound to: this document, this version, and EVERY spot.
+
+    THE SPOTS ARE THE SUBJECT, and that is the difference to its additive sibling. There the
+    question may name a place and leave the value in the file the checksum binds, because nothing
+    that stands is being unsaid. Here something IS: a value the project recorded is replaced, or
+    it goes. So every spot carries the old text and the new one, and the card shows them -- an
+    approval to unsay something that did not say what is being unsaid would be a signature on a
+    file, not on a change.
+
+    THEREFORE NEVER SUMMARISED. `MAX_PROPOSAL_CHANGES` bounds how many spots one question may
+    carry, and a revision with more is REFUSED with the number -- exactly as the additive route
+    refuses, and for the sharper reason: "n Einträge geändert" is the one card this project may
+    never print (FR-0067's own condition, and the reason the prose channel of H76(a) does not
+    widen here -- the values shown are the document's own, folded to one line each like every
+    other descriptor, and their number is capped rather than their content trimmed).
+
+    THREE LISTS, because the card is louder about the deletions and reads their kind off the
+    structure rather than out of the descriptor text. Both directions are measured by
+    `tools/test_approvals_dispatch.py::test_a_revision_card_shows_every_spot_and_is_never_a_count`.
+    """
+    document = filed_position(kit_document)
+    staged = filed_position(proposal)
+    if not is_project_position(document):
+        raise ApprovalError(
+            "a document revision names a file INSIDE this project's state directory, and %r is not "
+            "one. Remedy: name it relative to the state directory, e.g. `--kit-document "
+            "content_guidelines.yaml`." % str(kit_document or ""),
+            user_text="Es wurde keine Freigabe erteilt: die genannte Datei liegt nicht in diesem "
+                      "Projekt. " + NEXT_START_OVER)
+    if not is_project_position(staged) or not staged.lower().startswith(_PROPOSAL_PREFIX):
+        raise ApprovalError(
+            "a revision is a file in the task's own proposal area (`%s<TSK-ID>/<name>`), and %r is "
+            "not one. Remedy: stage the document as it should stand and name it there."
+            % (_PROPOSAL_PREFIX, str(proposal or "")),
+            user_text="Es wurde keine Freigabe erteilt: der genannte Vorschlag liegt nicht im "
+                      "Vorschlagsbereich des Vorgangs. " + NEXT_START_OVER)
+    shown = {name: [_one_line(one, 120) for one in _typed_list(value)]
+             for name, value in (("replacements", replacements), ("deletions", deletions),
+                                 ("additions", additions))}
+    if not shown["replacements"] and not shown["deletions"]:
+        raise ApprovalError(
+            "a document revision REPLACES or DELETES something, and neither was given -- an "
+            "addition goes through the route whose question promises that nothing existing "
+            "changes. Remedy: this list is derived by the command from the two files; report the "
+            "gap if it arrived empty.",
+            user_text="Es wurde keine Freigabe erteilt: es wurde nicht gesagt, was die Revision am "
+                      "Dokument ersetzt oder löscht. " + NEXT_START_OVER)
+    total = sum(len(one) for one in shown.values())
+    if total > MAX_PROPOSAL_CHANGES:
+        raise ApprovalError(
+            "this revision touches %d places in %s, and an approval question the user cannot read "
+            "through is not an approval -- at most %d are shown, and shortening the list would ask "
+            "them to sign what they were not told. Remedy: split it into steps and ask for each."
+            % (total, document, MAX_PROPOSAL_CHANGES),
+            user_text="Es wurde keine Freigabe erteilt: die Revision ändert zu viele Stellen auf "
+                      "einmal, um sie in einer Frage lesbar zu zeigen. " + NEXT_START_OVER)
+    if not str(base or "") or not str(proposed or ""):
+        raise ApprovalError(
+            "a document revision is bound to the bytes of both files, and %s could not be hashed. "
+            "Remedy: report the gap and name the file."
+            % ("the document" if not base else "the staged revision"),
+            user_text="Es wurde keine Freigabe erteilt: eine der beiden Dateien konnte nicht "
+                      "gelesen werden. " + NEXT_START_OVER)
+    return {"kit_document": document, "proposal": staged, "base": str(base),
+            "proposed": str(proposed), "replacements": shown["replacements"],
+            "deletions": shown["deletions"], "additions": shown["additions"],
+            "reason": _one_line(reason)}
+
+
 LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest,
                           "kit_update": kit_update_subject_manifest,
                           "filing_correction": filing_correction_subject_manifest,
                           "filing_rule": filing_rule_subject_manifest,
-                          "document_proposal": document_proposal_subject_manifest}
+                          "document_proposal": document_proposal_subject_manifest,
+                          "document_revision": document_revision_subject_manifest}
 
 # How long an approval minted from a command-line manifest stays valid. Every kind in this map is
 # in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
@@ -1054,6 +1132,49 @@ def item_derived_kinds() -> tuple:
     return tuple(derived)
 
 
+def _assert_the_pair_commits_an_edge(item_id: str, kind: str) -> None:
+    """An item-derived approval exists only where `APPROVAL_TRANSITIONS` pairs its type with it.
+
+    FAIL-CLOSED, and the measurement is a hypothesis (BUG-0084): on a scaffolded research project
+    `request-approval scope HYP-0001` returned rc 0, the mint produced APR-0003, and dispatch
+    opened on it. That approval covered nothing at all, and each of the three reasons is a
+    property of this pair rather than of that project:
+      * (HYP, scope) is in no row of `APPROVAL_TRANSITIONS`, so the mint walked no edge -- the
+        approval bought a stamp, not a state;
+      * `item_subject_manifest(kind="scope")` intersects `_SCOPE_FIELDS` with the item's fields
+        and a HYP shares none, so the user signed a hash over `{item, revision}` and no content;
+      * `HASHED_FIELDS` names no HYP field, so `state` never bumps that revision -- every later
+        edit of the hypothesis left the signature standing.
+    The three compound: an approval that covers no content and can never be invalidated, on an
+    item whose automaton nothing gates. Refusing the REQUEST is where it costs least -- the user
+    is never shown a question whose answer buys nothing (the shape BUG-0039 records).
+
+    WHAT THIS DOES NOT CLAIM, because the same table says so a few lines up: a pair that IS listed
+    still only promises the EDGE, not that its manifest describes the item's content. `PROC/scope`
+    and both `delivery` manifests cover one field of their type's hashed set or none -- named at
+    `_SCOPE_FIELDS` and at `APPROVAL_TRANSITIONS`, measured over all ten pairs there, and NOT
+    closed by this check.
+
+    `tools/test_approvals_dispatch.test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge`
+    holds it against every type of all three kits' automata.
+    """
+    item_type, _number = parse_id(item_id)
+    if (item_type, kind) in APPROVAL_TRANSITIONS:
+        return
+    available = sorted({pair[1] for pair in APPROVAL_TRANSITIONS if pair[0] == item_type})
+    remedy = ("this type carries no user approval at all -- its authorisation rides on the item "
+              "it hangs from, so request the approval there"
+              if not available else
+              "%s takes %s" % (item_type, "/".join(available)))
+    raise ApprovalError(
+        "no %s approval exists for a %s: the pair commits no transition, so minting one would "
+        "record a signature over content nothing re-checks and open nothing. Remedy: %s."
+        % (kind, item_type, remedy),
+        user_text="Es wurde keine Freigabe erteilt: für diesen Eintrag gibt es diese Art von "
+                  "Freigabe nicht. " + NEXT_START_OVER,
+    )
+
+
 def create_pending_request(
     state: ProjectState,
     kind: str,
@@ -1098,7 +1219,11 @@ def create_pending_request(
             item = state.read_item(item_id)
             revision = item.get("revision")
             if manifest is None:
+                # the manifest FIRST, so a kind that is not item-derived at all keeps its own
+                # refusal (`item_subject_manifest`) instead of being reported as an unapprovable
+                # pair; neither branch has written anything yet
                 manifest = item_subject_manifest(item, kind)
+                _assert_the_pair_commits_an_edge(item_id, kind)
         if manifest is None:
             raise ApprovalError(
                 "kind %r needs an explicit manifest (analysis: question/scope/"
@@ -1328,10 +1453,48 @@ def _document_proposal_target_form(manifest: dict) -> str:
                _render_manifest_value(EXPIRY_FIELD, manifest.get(EXPIRY_FIELD))))
 
 
+def _document_revision_target_form(manifest: dict) -> str:
+    """A staged revision as the person deciding it reads it: what is UNSAID, then what changes.
+
+    THE DELETIONS COME FIRST AND ARE NAMED AS SUCH. A replaced value still leaves a value in the
+    document that the user can look at afterwards; a deleted one exists nowhere any more -- there
+    is no second copy and no revision number to go back to. That is the loudness FR-0067 asks for,
+    and it is structure rather than tone: the card reads the deletions out of their own key of the
+    manifest, so a spot cannot be quietly filed under the softer heading.
+
+    EVERY SPOT STANDS IN THE QUESTION, in full and never as a number. That is this card's whole
+    reason to exist -- the additive card may name a place because nothing is being unsaid, and
+    here it would ask the user to sign the disappearance of a sentence they were never shown. Both
+    halves are measured:
+    `tools/test_approvals_dispatch.py::test_a_revision_card_shows_every_spot_and_is_never_a_count`
+    for the order and the refusal over the bound, and
+    `tools/test_kernel.py::test_the_question_a_document_revision_asks_shows_every_field_the_hash_covers`
+    for the rule that nothing the hash binds may be missing from the sentence.
+    """
+    deletions = manifest.get("deletions") or []
+    replacements = manifest.get("replacements") or []
+    additions = manifest.get("additions") or []
+    return ("eine Überarbeitung des Dokuments »%s« aus dem Vorschlag »%s«: %s%s%s (Grund: %s; "
+            "diese Freigabe ist die einzige, die etwas ÜBERSCHREIBT oder LÖSCHT, was in dem "
+            "Dokument schon steht -- was gelöscht wird, steht danach nirgendwo mehr, und jede "
+            "betroffene Stelle steht oben im Wortlaut, alt und neu, niemals als Anzahl. Sie gilt "
+            "für genau diese Fassung des Dokuments (Prüfsumme %s) und genau diesen Vorschlag "
+            "(Prüfsumme %s), und nur bis %s)"
+            % (manifest.get("kit_document") or "?", manifest.get("proposal") or "?",
+               ("GELÖSCHT WIRD: %s. " % "; ".join(deletions)) if deletions else "",
+               ("ERSETZT WIRD: %s. " % "; ".join(replacements)) if replacements else "",
+               ("Außerdem kommt hinzu: %s." % "; ".join(additions)) if additions else "",
+               manifest.get("reason") or "kein Grund angegeben",
+               _render_manifest_value("base", manifest.get("base")),
+               _render_manifest_value("proposed", manifest.get("proposed")),
+               _render_manifest_value(EXPIRY_FIELD, manifest.get(EXPIRY_FIELD))))
+
+
 TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form,
                 "filing_correction": _filing_correction_target_form,
                 "filing_rule": _filing_rule_target_form,
-                "document_proposal": _document_proposal_target_form}
+                "document_proposal": _document_proposal_target_form,
+                "document_revision": _document_revision_target_form}
 
 
 def build_question(request: dict) -> dict:

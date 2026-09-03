@@ -190,6 +190,71 @@ def test_inv_capture_starts_unverified(state):
     assert inv["status"] == "unverified"
 
 
+def test_an_invariant_is_verified_by_its_check_and_unverified_when_it_stops_resolving(tmp_path):
+    """FR-0039: `verified` had no producer at all -- `backlog_types` said so in a comment.
+
+    Measured before this existed: `state.transition("INV-0001", "verified")` raised "unknown item
+    type 'INV'", because the type has no automaton, and no other kernel path wrote the field. So
+    the vocabulary carried a status nothing could reach.
+
+    BOTH DIRECTIONS IN ONE TEST, because they are one rule: the status is a measurement, so it
+    follows the repository. The test file is written, the invariant verifies; the test is renamed
+    out from under it, and the same command takes it back. A producer that only ever moved
+    forwards would leave a `verified` invariant standing on a check that resolves to nothing.
+    """
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    st = ProjectState(str(root))
+    (tmp_path / "tests").mkdir()
+    suite = tmp_path / "tests" / "test_rules.py"
+    suite.write_text("def test_no_io_in_the_compounder():\n    pass\n", encoding="utf-8")
+    inv = st.capture("INV", {"scope": "compounder/", "source": "PR-0001", "text": "pure, no I/O",
+                             "check": {"kind": "test",
+                                       "ref": "tests/test_rules.py::test_no_io_in_the_compounder"}})
+    assert st.read_item(inv["id"])["status"] == "unverified"
+
+    item, resolved, reason = st.record_invariant_verification(inv["id"])
+    assert item["status"] == "verified", reason
+    assert resolved is True, reason
+    assert st.read_item(inv["id"])["status"] == "verified"
+
+    suite.write_text("def test_something_else():\n    pass\n", encoding="utf-8")
+    item, resolved, reason = st.record_invariant_verification(inv["id"])
+    assert item["status"] == "unverified"
+    assert resolved is False, reason
+    assert "does not define" in reason, reason
+
+    with pytest.raises(StateError):
+        st.record_invariant_verification("PR-0001")
+
+
+def test_an_item_may_carry_an_outline_area_but_not_a_third_level(state):
+    """FR-0017: the outline is an ATTRIBUTE, on every captured type, and two levels deep.
+
+    Three properties, and the third is the FR's condition rather than a nicety: an outline that
+    can grow without limit is the over-fragmentation the user made a precondition of building
+    this at all, so the depth is refused where it is written and not reported afterwards.
+
+    The type spread is the second: `area` reaches every type `capture` creates
+    (`UNIVERSAL_OPTIONAL_FIELDS`), because grouping is orthogonal to what an item is -- a per-type
+    pair would have to be reopened for the next kit's backlog.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS, area="Frontend/Checkout"))
+    assert state.read_item(pr["id"])["area"] == "Frontend/Checkout"
+    inv = state.capture("INV", {"scope": "frontend", "source": "PR-0001", "text": "no I/O",
+                                "check": {"kind": "test", "ref": "t.py::t"},
+                                "area": "Frontend"})
+    assert state.read_item(inv["id"])["area"] == "Frontend"
+
+    with pytest.raises(StateError) as refused:
+        state.capture("PR", dict(PR_FIELDS, area="Frontend/Checkout/Payment"))
+    assert "at most 2" in str(refused.value) and "3 levels deep" in str(refused.value)
+
+    # ...and an item that names no area is untouched by any of it
+    plain = state.capture("PR", dict(PR_FIELDS))
+    assert "area" not in state.read_item(plain["id"])
+
+
 def _inv_fields(scope):
     return {"scope": scope, "source": "PR-0001",
             "check": {"kind": "test", "ref": "tests/test_it.py::test_it"},

@@ -1,0 +1,241 @@
+{
+  "what": "TSK-0109 phase 2 -- the BUILT dashboard, rendered from the shipped generator and sighted before handover (BUG-0076)",
+  "rendered_at": "2026-09-02T19:02:22",
+  "frozen_clock": "2026-09-02T10:00:00",
+  "generator": "team-kits/office-team/templates/repo/tools/finance_dashboard.py",
+  "states": {
+    "regular": {
+      "stdout": "[finance_dashboard] dashboards/finanzen.html Â· 318 Buchungen aus 2 Ledgerdatei(en) Â· Ledger gÃ¼ltig",
+      "sha256": "1917297f4c92ce4232153c836bfc60e11c6feeb238b6cc9dfda900526958b4d3",
+      "images": [
+        "regular-ueberblick-1280.png",
+        "regular-rechnungen-1280.png",
+        "regular-rechnungen-1280-filter-einnahmen-offen.png",
+        "regular-rechnungen-1280-detail-open.png",
+        "regular-offene-posten-1280.png",
+        "regular-offene-posten-1280-nur-mahnkandidaten.png",
+        "regular-euer-1280.png",
+        "regular-kleinunternehmer-1280.png",
+        "regular-ueberblick-390.png",
+        "regular-rechnungen-390.png",
+        "regular-offene-posten-390.png",
+        "regular-euer-390.png",
+        "regular-kleinunternehmer-390.png",
+        "regular-ueberblick-1280-dark.png",
+        "regular-rechnungen-1280-dark.png",
+        "regular-offene-posten-1280-dark.png",
+        "regular-euer-1280-dark.png",
+        "regular-kleinunternehmer-1280-dark.png",
+        "regular-ueberblick-390-dark.png",
+        "regular-euer-390-dark.png",
+        "regular-noscript-1280.png"
+      ],
+      "errors": [],
+      "fold_390": {
+        "viewport_height": 844,
+        "first_booking_top": 1623,
+        "kpi_block_bottom": 773
+      },
+      "noscript": {
+        "views_in_dom": 5,
+        "dunning_stamps": 0,
+        "age_cells": 5,
+        "first_age_text": "—",
+        "invoice_rows_shown": 318
+      }
+    },
+    "empty": {
+      "stdout": "[finance_dashboard] dashboards/finanzen.html Â· 0 Buchungen aus 0 Ledgerdatei(en) Â· Ledger gÃ¼ltig",
+      "sha256": "23d10d2e34d6017f89c02d2258fffe85a77120870247733ccc3a9bf6531de478",
+      "images": [
+        "empty-ueberblick-1280.png",
+        "empty-rechnungen-1280.png",
+        "empty-offene-posten-1280.png",
+        "empty-euer-1280.png",
+        "empty-kleinunternehmer-1280.png",
+        "empty-ueberblick-390.png",
+        "empty-rechnungen-390.png",
+        "empty-offene-posten-390.png",
+        "empty-euer-390.png",
+        "empty-kleinunternehmer-390.png",
+        "empty-ueberblick-1280-dark.png",
+        "empty-rechnungen-1280-dark.png",
+        "empty-offene-posten-1280-dark.png",
+        "empty-euer-1280-dark.png",
+        "empty-kleinunternehmer-1280-dark.png",
+        "empty-ueberblick-390-dark.png",
+        "empty-euer-390-dark.png",
+        "empty-noscript-1280.png"
+      ],
+      "errors": [],
+      "fold_390": {
+        "viewport_height": 844,
+        "first_booking_top": null,
+        "kpi_block_bottom": null
+      },
+      "noscript": {
+        "views_in_dom": 5,
+        "dunning_stamps": 0,
+        "age_cells": 0,
+        "first_age_text": null,
+        "invoice_rows_shown": 0
+      }
+    },
+    "alarm": {
+      "stdout": "[finance_dashboard] dashboards/finanzen.html Â· 318 Buchungen aus 2 Ledgerdatei(en) Â· Ledger UNGÃœLTIG (Befunde stehen auf der Seite)",
+      "sha256": "25b5b55b14d8c5c1837060fdcc959535304c35b7b9a37a81699921c6594f0e31",
+      "images": [
+        "alarm-ueberblick-1280.png",
+        "alarm-rechnungen-1280.png",
+        "alarm-rechnungen-1280-filter-einnahmen-offen.png",
+        "alarm-rechnungen-1280-detail-open.png",
+        "alarm-offene-posten-1280.png",
+        "alarm-offene-posten-1280-nur-mahnkandidaten.png",
+        "alarm-euer-1280.png",
+        "alarm-kleinunternehmer-1280.png",
+        "alarm-ueberblick-390.png",
+        "alarm-rechnungen-390.png",
+        "alarm-offene-posten-390.png",
+        "alarm-euer-390.png",
+        "alarm-kleinunternehmer-390.png",
+        "alarm-ueberblick-1280-dark.png",
+        "alarm-rechnungen-1280-dark.png",
+        "alarm-offene-posten-1280-dark.png",
+        "alarm-euer-1280-dark.png",
+        "alarm-kleinunternehmer-1280-dark.png",
+        "alarm-ueberblick-390-dark.png",
+        "alarm-euer-390-dark.png",
+        "alarm-noscript-1280.png"
+      ],
+      "errors": [],
+      "fold_390": {
+        "viewport_height": 844,
+        "first_booking_top": 1921,
+        "kpi_block_bottom": 1026
+      },
+      "noscript": {
+        "views_in_dom": 5,
+        "dunning_stamps": 0,
+        "age_cells": 9,
+        "first_age_text": "—",
+        "invoice_rows_shown": 318
+      }
+    },
+    "crossyear": {
+      "stdout": "[finance_dashboard] dashboards/finanzen.html Â· 10 Buchungen aus 2 Ledgerdatei(en) Â· Ledger gÃ¼ltig",
+      "sha256": "c249ad107a4bb6caa76687d5b32cad855eb806ca9a3eb813b8990d479154d92a",
+      "images": [
+        "crossyear-ueberblick-1280.png",
+        "crossyear-rechnungen-1280.png",
+        "crossyear-rechnungen-1280-filter-einnahmen-offen.png",
+        "crossyear-rechnungen-1280-detail-open.png",
+        "crossyear-offene-posten-1280.png",
+        "crossyear-offene-posten-1280-nur-mahnkandidaten.png",
+        "crossyear-euer-1280.png",
+        "crossyear-ueberblick-390.png",
+        "crossyear-rechnungen-390.png",
+        "crossyear-offene-posten-390.png",
+        "crossyear-euer-390.png",
+        "crossyear-ueberblick-1280-dark.png",
+        "crossyear-rechnungen-1280-dark.png",
+        "crossyear-offene-posten-1280-dark.png",
+        "crossyear-euer-1280-dark.png",
+        "crossyear-ueberblick-390-dark.png",
+        "crossyear-euer-390-dark.png",
+        "crossyear-noscript-1280.png"
+      ],
+      "errors": [],
+      "fold_390": {
+        "viewport_height": 844,
+        "first_booking_top": 1579,
+        "kpi_block_bottom": 776
+      },
+      "noscript": {
+        "views_in_dom": 4,
+        "dunning_stamps": 0,
+        "age_cells": 1,
+        "first_age_text": "—",
+        "invoice_rows_shown": 10
+      }
+    },
+    "founding": {
+      "stdout": "[finance_dashboard] dashboards/finanzen.html Â· 1 Buchungen aus 1 Ledgerdatei(en) Â· Ledger gÃ¼ltig",
+      "sha256": "92e0d5a3b62720d45bb28602d24c74f0895a25e9a355502af7797e9b3479bdde",
+      "images": [
+        "founding-ueberblick-1280.png",
+        "founding-rechnungen-1280.png",
+        "founding-rechnungen-1280-filter-einnahmen-offen.png",
+        "founding-offene-posten-1280.png",
+        "founding-offene-posten-1280-nur-mahnkandidaten.png",
+        "founding-euer-1280.png",
+        "founding-kleinunternehmer-1280.png",
+        "founding-ueberblick-390.png",
+        "founding-rechnungen-390.png",
+        "founding-offene-posten-390.png",
+        "founding-euer-390.png",
+        "founding-kleinunternehmer-390.png",
+        "founding-ueberblick-1280-dark.png",
+        "founding-rechnungen-1280-dark.png",
+        "founding-offene-posten-1280-dark.png",
+        "founding-euer-1280-dark.png",
+        "founding-kleinunternehmer-1280-dark.png",
+        "founding-ueberblick-390-dark.png",
+        "founding-euer-390-dark.png",
+        "founding-noscript-1280.png"
+      ],
+      "errors": [],
+      "fold_390": {
+        "viewport_height": 844,
+        "first_booking_top": 1678,
+        "kpi_block_bottom": 783
+      },
+      "noscript": {
+        "views_in_dom": 5,
+        "dunning_stamps": 0,
+        "age_cells": 0,
+        "first_age_text": null,
+        "invoice_rows_shown": 1
+      }
+    },
+    "unclear": {
+      "stdout": "[finance_dashboard] dashboards/finanzen.html Â· 318 Buchungen aus 2 Ledgerdatei(en) Â· Ledger gÃ¼ltig",
+      "sha256": "84354569cc0a31d6cb920a9f9a9d1afffa36fe166661755da08bfeea85261f06",
+      "images": [
+        "unclear-ueberblick-1280.png",
+        "unclear-rechnungen-1280.png",
+        "unclear-rechnungen-1280-filter-einnahmen-offen.png",
+        "unclear-rechnungen-1280-detail-open.png",
+        "unclear-offene-posten-1280.png",
+        "unclear-offene-posten-1280-nur-mahnkandidaten.png",
+        "unclear-euer-1280.png",
+        "unclear-kleinunternehmer-1280.png",
+        "unclear-ueberblick-390.png",
+        "unclear-rechnungen-390.png",
+        "unclear-offene-posten-390.png",
+        "unclear-euer-390.png",
+        "unclear-kleinunternehmer-390.png",
+        "unclear-ueberblick-1280-dark.png",
+        "unclear-rechnungen-1280-dark.png",
+        "unclear-offene-posten-1280-dark.png",
+        "unclear-euer-1280-dark.png",
+        "unclear-kleinunternehmer-1280-dark.png",
+        "unclear-ueberblick-390-dark.png",
+        "unclear-euer-390-dark.png",
+        "unclear-noscript-1280.png"
+      ],
+      "errors": [],
+      "fold_390": {
+        "viewport_height": 844,
+        "first_booking_top": 1622,
+        "kpi_block_bottom": 773
+      },
+      "noscript": {
+        "views_in_dom": 5,
+        "dunning_stamps": 0,
+        "age_cells": 5,
+        "first_age_text": "—",
+        "invoice_rows_shown": 318
+      }
+    }
+  }
+}

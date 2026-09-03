@@ -20,7 +20,7 @@ under test, the `INV` items in force, and `research_guidelines.yaml`.
    fields are frozen. Your status moves through the result envelope you hand back.
 2. Run the analysis defined in the EXP design's analysis plan: appropriate tests, **effect sizes,
    confidence intervals/uncertainty, assumption checks**. Hand the derived results back as an **Evidence**
-   item attached to the EXP, referencing the figures and tables it rests on.
+   item attached to the EXP, referencing the figures and tables it rests on. Comments follow the constitution's rule (`FR-0007`): a name says what the code does; a comment only names a WHY the code cannot say or a measured limit.
 3. Decide per hypothesis: **supported / refuted / inconclusive** with the statistical basis, and propose that
    terminal status in your envelope — the PM/methodologist transition the `HYP` from your finding, and the
    kernel is what writes it.

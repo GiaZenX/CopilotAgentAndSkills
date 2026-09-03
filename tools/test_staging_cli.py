@@ -192,6 +192,87 @@ def test_frozen_revision_numbers_never_reused(state):
     assert ".r02." in second["frozen"]
 
 
+# -- report freeze (BUG-0085) --------------------------------------------------
+
+RQ_FIELDS = {"title": "Chunk size", "class": "normal", "question": "does it help?",
+             "motivation": "rework costs", "out_of_scope": [], "priority": "high",
+             "acceptance_criteria": [{"id": "AC-1", "text": "error rate with interval"}]}
+
+
+def _research_subject(state):
+    """An RQ with an EXP under it, plus the tray the research kit ships."""
+    state.capture("RQ", dict(RQ_FIELDS))
+    state.capture("HYP", {"derives_from": "RQ-0001", "statement": "s",
+                          "testable_prediction": "p"})
+    state.capture("EXP", {"derives_from": "HYP-0001", "design": "d", "variables": ["v"],
+                          "success_criteria": [{"id": "SC-1", "text": "s"}], "evidence_refs": []})
+    os.makedirs(os.path.join(state.root, staging.REPORTS_DIRNAME), exist_ok=True)
+
+
+def test_a_report_is_filed_by_the_kernel_and_never_overwrites_one(state):
+    """BUG-0085: the rendered report had no write route at all, and now has exactly one.
+
+    Measured on a scaffolded research project 2026-09-01: `Write project_memory/reports/EXP-0002
+    .tex` came back rc 2 while the same bytes under `staging/<task>/` were rc 0, so §6's owner
+    could render a report and never file it, and §17 made that report a completeness condition.
+
+    Three properties in one place because they are one operation: the bytes land in the tray, the
+    subject records them where its own contract has a field for it, and a second file of the same
+    name is REFUSED -- a filed report is delivered material, and this is the class DEC-0056 keeps
+    at maximum thoroughness. The refusal leaves the staged bytes where they were, which is what
+    makes it a refusal rather than a loss.
+    """
+    _research_subject(state)
+    stage_file(state, "TSK-0001", "EXP-0001.tex", content="Der Arm zeigt 5 Punkte.")
+    filed = staging.freeze_report(state, "TSK-0001", "EXP-0001", "EXP-0001.tex")
+
+    assert filed["filed"] == "reports/EXP-0001.tex"
+    with open(os.path.join(state.root, "reports", "EXP-0001.tex"), encoding="utf-8") as handle:
+        assert handle.read() == "Der Arm zeigt 5 Punkte."
+    assert state.read_item("EXP-0001")["evidence_refs"] == ["reports/EXP-0001.tex"]
+    assert filed["recorded_on"] == "evidence_refs"
+    assert not os.path.exists(os.path.join(staging.staging_dir(state, "TSK-0001"),
+                                           "EXP-0001.tex")), "the staged copy was not consumed"
+
+    stage_file(state, "TSK-0001", "EXP-0001.tex", content="ein zweiter Lauf")
+    with pytest.raises(StagingError) as exc:
+        staging.freeze_report(state, "TSK-0001", "EXP-0001", "EXP-0001.tex")
+    assert "already exists" in str(exc.value), exc.value
+    with open(os.path.join(state.root, "reports", "EXP-0001.tex"), encoding="utf-8") as handle:
+        assert handle.read() == "Der Arm zeigt 5 Punkte.", "the standing report was replaced"
+    assert os.path.exists(os.path.join(staging.staging_dir(state, "TSK-0001"), "EXP-0001.tex")), (
+        "the refusal consumed the staged bytes it refused to file")
+
+
+def test_a_report_for_a_subject_without_the_field_is_filed_and_says_so(state):
+    """The funding report §17 names is written for the QUESTION, and an RQ has no `evidence_refs`.
+
+    Which item can RECORD the reference is read off the field contracts
+    (`backlog_types.DECLARED_REQUIRED_FIELDS`), so this needs no type list -- and the command must
+    not imply a binding it did not write, which is why `recorded_on` is None here and the CLI
+    prints that in words rather than an empty list that reads like an empty field.
+    """
+    _research_subject(state)
+    stage_file(state, "TSK-0001", "fzulg_application_RQ-0001.md", content="# Antrag")
+    filed = staging.freeze_report(state, "TSK-0001", "RQ-0001", "fzulg_application_RQ-0001.md")
+    assert filed["recorded_on"] is None
+    assert os.path.isfile(os.path.join(state.root, "reports",
+                                       "fzulg_application_RQ-0001.md"))
+    assert "evidence_refs" not in state.read_item("RQ-0001")
+
+
+def test_a_project_whose_kit_ships_no_reports_tray_is_refused_rather_than_given_one(state):
+    """The tray is a KIT decision: the research kit ships it with its render templates, and a dev
+    project has none. Creating one here would file a report where nothing in that project reads it
+    -- `scripts/report_lint.py` is shipped by the research kit alone -- so the refusal names the
+    route a project without the tray does have."""
+    state.capture("PR", dict(PR_FIELDS))
+    stage_file(state, "TSK-0001", "result.md", content="# result")
+    with pytest.raises(StagingError) as exc:
+        staging.freeze_report(state, "TSK-0001", "PR-0001", "result.md")
+    assert "no reports/ tray" in str(exc.value) and "evidence" in str(exc.value), exc.value
+
+
 # -- rejection path ------------------------------------------------------------
 
 def test_rejected_staging_is_archived_never_deleted(state):
@@ -269,6 +350,163 @@ def test_cli_evidence_captures_a_typed_item_the_merge_gate_can_read(state, capsy
     assert item["related"] == [pr["id"]]
     assert item["artifact_refs"] == ["staging/TSK-0001/coverage.html"]
     assert "status" not in item
+
+
+def test_capture_names_the_neighbours_it_found_and_captures_the_item_anyway(state, capsys):
+    """FR-0018 at the surface: a HINT, on the one occasion a machine can give one for free.
+
+    Three properties, and every one of them is a way this could have become the hard block the FR
+    forbids: the exit code is 0, the id is on stdout where a caller parses it, and the neighbours
+    are on stderr. The fourth is that the new item does not match itself -- the comparison runs
+    before the capture, so a hint naming the id that was just minted is impossible rather than
+    filtered.
+    """
+    # AS LONG AS A REAL REQUIREMENT: below `report.DUPLICATE_HINT_MIN_WORDS` the hint says
+    # nothing at all, and a fixture under that floor would measure the floor instead of the route.
+    rich = dict(PR_FIELDS,
+                problem=("Kundinnen brechen den Bezahlvorgang ab, weil sie ihre Kartendaten bei "
+                         "jeder Bestellung neu eintippen muessen; die Abbruchquote steigt vor "
+                         "allem auf dem Telefon, wo das Formular ueber mehrere Bildschirme "
+                         "laeuft."),
+                goal=("Ein einmal bestaetigtes Zahlungsmittel steht bei der naechsten Bestellung "
+                      "bereit, sodass der Bezahlvorgang aus einer Bestaetigung besteht und nicht "
+                      "aus einem Formular."),
+                out_of_scope=["Rechnungskauf", "Ratenzahlung", "Gutscheine"],
+                user_story=("Als wiederkehrende Kundin moechte ich mit einem gespeicherten "
+                            "Zahlungsmittel bezahlen, damit die Bestellung nicht an der Tastatur "
+                            "haengt."))
+    state.capture("PR", dict(rich))
+    again = dict(rich, title="Checkout flow, second attempt")
+    assert run_cli_with_body(state, json.dumps(again), "capture", "PR") == 0
+    out = capsys.readouterr()
+    assert out.out.startswith("PR-0002 "), out.out
+    listed = [line for line in out.err.splitlines() if line.startswith("[similar] ")
+              and ": " in line]
+    assert listed == ["[similar] PR-0001: Checkout flow"], out.err
+    assert "PR-0002" in out.err and "nothing here was refused" in out.err
+
+    # ...and an item that resembles nothing says nothing at all
+    other = dict(
+        rich, title="Warehouse restocking",
+        problem=("Ware geht aus, ohne dass jemand es merkt: der Bestand wird von Hand gezaehlt "
+                 "und die Nachbestellung faellt aus, wenn der Zaehltag auf einen Feiertag faellt."),
+        goal=("Der Bestand loest die Nachbestellung selbst aus, sobald er unter die Menge faellt, "
+              "die eine Woche Verkauf deckt."),
+        out_of_scope=["Lieferantenwechsel", "Preisverhandlung"],
+        user_story=("Als Inhaber moechte ich, dass nachbestellt wird, bevor das Regal leer ist, "
+                    "damit kein Verkauf ausfaellt."),
+        acceptance_criteria=[{"id": "AC-1", "text": "Nachbestellung wird ausgeloest"}])
+    assert run_cli_with_body(state, json.dumps(other), "capture", "PR") == 0
+    assert "[similar]" not in capsys.readouterr().err
+
+
+def test_verify_invariants_records_what_the_check_resolves_to_and_exits_on_the_gap(
+        tmp_path, capsys):
+    """FR-0039 at the surface: the producer takes no status, only which invariants to re-measure.
+
+    The exit code is the same convention `validate` uses -- 1 means there is something to fix --
+    and it rests on the same condition the merge blocker reads, so a role running this and a gate
+    reading the store cannot disagree.
+    """
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    st = ProjectState(str(root))
+    assert run_cli(st, "verify-invariants") == 0
+    assert "no active invariants" in capsys.readouterr().out
+
+    inv = st.capture("INV", {"scope": "compounder/", "source": "PR-0001", "text": "pure",
+                             "check": {"kind": "test", "ref": "tests/test_rules.py::test_pure"}})
+    assert run_cli(st, "verify-invariants") == 1
+    printed = capsys.readouterr().out
+    assert inv["id"] in printed and "unverified" in printed
+
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "tests" / "test_rules.py").write_text("def test_pure():\n    pass\n",
+                                                      encoding="utf-8")
+    assert run_cli(st, "verify-invariants", inv["id"]) == 0
+    assert "verified" in capsys.readouterr().out
+    assert st.read_item(inv["id"])["status"] == "verified"
+
+    # ...and an invariant this kernel cannot READ is neither met nor unmet: it gets its own line
+    # and does NOT set the exit code. Measured before it did: an undecidable check made this
+    # command exit 1 while `validate` exited 0 with a warning, on the same store in the same
+    # second -- so the comment claiming the two "cannot disagree" was false where it mattered,
+    # and a project whose tests are not Python got a permanent non-zero from the command its own
+    # role text sends it to (H110).
+    (tmp_path / "web").mkdir()
+    (tmp_path / "web" / "rules.spec.js").write_text("test('is pure', () => {});\n",
+                                                    encoding="utf-8")
+    other = st.capture("INV", {"scope": "web/", "source": "PR-0001", "text": "pure",
+                               "check": {"kind": "test", "ref": "web/rules.spec.js::is pure"}})
+    assert run_cli(st, "verify-invariants") == 0
+    printed = capsys.readouterr().out
+    assert "%s undecided" % other["id"] in printed, printed
+    assert "could not be decided" in printed and "H110" in printed, printed
+    assert run_cli(st, "validate") == 0
+
+
+def test_capture_shows_the_outline_when_a_body_invents_a_new_level(state, capsys):
+    """FR-0017's protection, at the moment the FR's own rule is about.
+
+    "A new heading only when a requirement really fits none of the existing ones" is a judgement
+    no machine makes; what a machine can do is put the outline in front of the writer at the
+    moment they invent a level. So the hint fires on a level nobody uses yet and stays silent on
+    one that exists -- the second half is what keeps it from being noise on every capture.
+    """
+    state.capture("PR", dict(PR_FIELDS, area="Frontend/Checkout"))
+    body = dict(PR_FIELDS, title="Refunds", area="Payments/Refunds")
+    assert run_cli_with_body(state, json.dumps(body), "capture", "PR") == 0
+    err = capsys.readouterr().err
+    assert "[outline] Payments/Refunds is a new level" in err, err
+    assert "Frontend/Checkout" in err
+
+    again = dict(PR_FIELDS, title="More refunds", area="Payments/Refunds")
+    assert run_cli_with_body(state, json.dumps(again), "capture", "PR") == 0
+    assert "[outline]" not in capsys.readouterr().err
+
+    # ...and a body the kernel REFUSES gets no advice about a level it never created: the hint
+    # sits behind the write, and a third outline level is refused there.
+    refused = dict(PR_FIELDS, title="Too deep", area="Payments/Refunds/Partial")
+    assert run_cli_with_body(state, json.dumps(refused), "capture", "PR") == 1
+    printed = capsys.readouterr()
+    assert "[outline]" not in printed.err, printed.err
+    assert "at most 2" in printed.err
+
+
+def test_cli_evidence_records_the_run_behind_the_verdict_or_neither_half_of_it(state, capsys):
+    """FR-0040 at the surface a role types: `--run-command` and `--run-scope`, together or not.
+
+    The pair is the statement -- the scope is what the merge reads and the command is what an
+    auditor re-runs it against -- so half of it is refused, and the refusal names the missing
+    half rather than dying inside the item write. What the declaration then BUYS is measured one
+    layer down, in `test_report.test_a_pass_from_a_partial_run_is_not_merge_evidence_and_a_fail_
+    still_is`; here the question is only whether the surface carries it at all.
+
+    The legal call runs after the refusal for the reason its neighbour below states: a bare
+    "it exited non-zero" would be satisfied by argparse rejecting the whole subcommand.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    common = ("evidence", "--kind", "test", "--result", "pass", "--related", pr["id"],
+              "--summary", "suite green", "--artifact-ref", "staging/TSK-0001/run.log")
+    assert run_cli(state, *common, "--run-scope", "full") == 1
+    assert "run_command" in capsys.readouterr().err
+
+    assert run_cli(state, *common, "--run-scope", "selection",
+                   "--run-command", "python -m pytest tools/ -k checkout") == 0
+    capsys.readouterr()
+    path = os.path.join(state.root, *ACTIVE_DIRS["EVD"].split("/"), "EVD-0001.yaml")
+    with open(path, encoding="utf-8") as handle:
+        item = yaml.safe_load(handle)
+    assert item["run_scope"] == "selection"
+    assert item["run_command"] == "python -m pytest tools/ -k checkout"
+
+    # ...and a record that declares nothing carries neither key, rather than two nulls that would
+    # read as an answered question
+    assert run_cli(state, *common) == 0
+    with open(os.path.join(state.root, *ACTIVE_DIRS["EVD"].split("/"), "EVD-0002.yaml"),
+              encoding="utf-8") as handle:
+        plain = yaml.safe_load(handle)
+    assert "run_scope" not in plain and "run_command" not in plain
 
 
 def test_cli_evidence_refuses_a_verdict_outside_the_vocabulary(state, capsys):
@@ -1395,7 +1633,8 @@ CANARY = "OUTSIDE-CANARY-8f2a"
 ARTEFACTS = ("WFR-0001.drawio.svg", "ARC-0001.drawio.svg")
 VALID_FREEZE_BODY = {
     "staging_key": "PR-0001", "wfr_id": "WFR-0001", "arc_id": "ARC-0001", "dsn_id": "DSN-0001",
-    "root_id": "PR-0001", "source_name": "preview.html", "title": "t", "scope": "s",
+    "root_id": "PR-0001", "subject_id": "PR-0001", "source_name": "preview.html",
+    "title": "t", "scope": "s",
     "derives_from": ["PR-0001"], "scope_apr_ref": None, "approval_ref": None,
 }
 
@@ -1411,6 +1650,10 @@ def _freeze_fixture(work, sibling):
     """
     root = os.path.join(str(work), "project_memory")
     os.makedirs(os.path.join(root, "staging", "PR-0001"), exist_ok=True)
+    # the tray `freeze_report` files into: it is shipped by the research kit, and the freeze
+    # refuses outright where it is absent, so a fixture without it would take that command out of
+    # both parametrisations below without saying so
+    os.makedirs(os.path.join(root, staging.REPORTS_DIRNAME), exist_ok=True)
     state = ProjectState(root)
     state.capture("PR", dict(PR_FIELDS))
     for directory, preview in ((os.path.join(root, "staging", "PR-0001"), "<html>inside</html>"),
@@ -1491,7 +1734,8 @@ def test_every_caller_that_composes_a_staged_path_has_an_escape_battery():
     is in neither list is red, which is the whole point.
     """
     covered = {("staging", "staging_dir"), ("staging", "freeze_design"),
-               ("cli", "_submitted_envelope"), ("documents", "proposal_path")}
+               ("staging", "freeze_report"), ("cli", "_submitted_envelope"),
+               ("documents", "proposal_path")}
     found = _contained_child_callers()
     assert found, "the derivation found no caller at all — staging.py's shape changed"
     assert found == covered, (

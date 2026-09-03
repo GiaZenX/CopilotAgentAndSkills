@@ -955,6 +955,29 @@ def test_the_answering_rule_claims_no_enforcement_it_does_not_have():
 
 
 # ====================== 6. the language of the values a lead types into an approval (BUG-0073)
+def _positioned_manifest_parameters():
+    """Every manifest parameter a builder in `kernel.approvals` turns into a FILE POSITION.
+
+    Read off the running module's own source: a parameter handed to `filed_position` is a path the
+    kernel resolves against the project, which is what distinguishes it from prose a user reads.
+    Derived rather than named, because the pair this exists for (`kit_document`, `proposal`) grew
+    from one approval kind to two in a single round, and a list here would have had to be reopened
+    in exactly that round.
+    """
+    import ast
+
+    from kernel import approvals as approvals_module
+    with io.open(approvals_module.__file__, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    found = set()
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "filed_position"):
+            found |= {argument.id for argument in node.args if isinstance(argument, ast.Name)}
+    assert found, "no manifest parameter is turned into a position -- this reader stopped matching"
+    return found
+
+
 def _value_language_anchors():
     """The two names the value-language rule must send a reader to, both read off the shipped CLI.
 
@@ -969,6 +992,16 @@ def _value_language_anchors():
     cannot dismiss as one command's peculiarity. Today that is one key; a second one arriving is a
     second free-typed value the rule owes the user a sentence about, and it arrives here demanding
     it instead of passing unnoticed.
+
+    A POSITION IS NOT SUCH A VALUE, and that exception is a measurement rather than a convenience:
+    on 2026-09-02 a second document approval kind (`document_revision`, FR-0067) shipped, which
+    made `kit_document` and `proposal` typed by more than one kind -- and this reader, anchored on
+    all three names at once, matched ZERO sections in every kit and reported the rule as missing
+    everywhere. Both are file positions: the builders hand them to `approvals.filed_position`,
+    which is what makes them paths rather than prose, and a rule about which LANGUAGE a value is
+    written in has nothing to say about a path. So the exception is read off the builders
+    themselves -- a parameter a builder positions is not a free-typed value -- and a genuinely new
+    PROSE key still arrives here demanding its sentence.
 
     BOTH ARE READ IN THEIR BACKTICKED SPELLING, and that is a measurement rather than a taste. Bare,
     these two names are ordinary English: run over the shipped tree on 2026-08-30 the bare pair
@@ -996,7 +1029,9 @@ def _value_language_anchors():
         key for builder in approvals.LINE_MANIFEST_BUILDERS.values()
         for key in cli.manifest_parameters(builder)
         if key not in cli.LINE_MANIFEST_RESOLVERS)
-    shared = sorted(key for key, count in typed.items() if count > 1)
+    positions = _positioned_manifest_parameters()
+    shared = sorted(key for key, count in typed.items()
+                    if count > 1 and key not in positions)
     assert shared, (
         "no manifest value is typed on the line by more than one approval kind -- the subject this "
         "reader anchors on is gone: %s" % sorted(typed))
@@ -1688,3 +1723,252 @@ def test_no_document_owner_is_routed_at_one_the_command_would_refuse(tmp_path):
                         "%s/%s is told to stage %s, and `%s` refuses that document -- it is not a "
                         "YAML mapping this command can compare"
                         % (name, role, one, documents.COMMAND))
+
+
+# ---------------------------------------------------------------------------------------------
+# FR-0064 / FR-0057 / FR-0007 (TSK-0105): which roles must read FRESH, what a verdict role says
+# about the scope of its runs, and which constitution paragraphs are ONE text across the kits.
+# ---------------------------------------------------------------------------------------------
+
+def _verdict_roles(kit):
+    """The roles `gate_subagent_output` demands a `verdict:` from, read off the constant the
+    shipped hook decides on -- the part that runs, not a name list kept here."""
+    path = os.path.join(kit, "hooks", "gate_subagent_output.py")
+    with io.open(path, encoding="utf-8") as handle:
+        tree = ast.parse(handle.read())
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and any(
+                isinstance(target, ast.Name) and target.id == "VERDICT_ROLES"
+                for target in node.targets):
+            return tuple(ast.literal_eval(node.value))
+    raise AssertionError("%s decides on no VERDICT_ROLES constant" % path)
+
+
+def _four_eyes_writers():
+    """Every role a kernel schema names as `writer_role`: the record it writes is what another run
+    or another role is judged against (the filing and booking loops), so its reading has to be its
+    own. Read off the schemas, which is where the loops are defined."""
+    import yaml
+    out = set()
+    for path in glob.glob(os.path.join(TEAM_KITS, "kernel", "schemas", "*.yaml")):
+        with io.open(path, encoding="utf-8") as handle:
+            data = yaml.safe_load(handle) or {}
+        if isinstance(data, dict) and data.get("writer_role"):
+            out.add(str(data["writer_role"]))
+    return out
+
+
+def test_no_role_whose_reading_must_be_fresh_carries_a_craft_memory():
+    """A role that judges, or reads for a four-eyes gate, starts every run with nothing (FR-0064).
+
+    WHICH ROLES, derived twice from running code and never listed: the verdict roles
+    `gate_subagent_output` demands a `verdict:` from, and the `writer_role` of every kernel schema
+    -- the roles whose record a gate counts per run or a second role judges. A role memory is
+    loaded at the start of every run of that role, so for these it is a channel from the last run
+    into the next one: a verdict that remembers the last round's clearances is not a fresh reading,
+    and a bookkeeper's second reading is a second run of the SAME role.
+
+    MEASURED, both halves. In a real project on the shipped dev kit the quality-engineer's memory
+    held eleven topics, three of them gating decisions (how to re-gate a fix round, when a green
+    static check is overruled by the page). And the office channel was measured OPEN on the
+    shipped hooks: a bookkeeper memory note carrying a document's figures (gross, net, VAT, the
+    invoice number) passed every one of the six `Write`-registered hook stages of the office
+    settings at rc 0, key or no key -- the budget guard refuses an item id in such a note and
+    nothing about figures. The key is what turns the platform's loading on, so the key is what
+    this test holds; the write side stays open and is H105's named remainder.
+
+    What it cannot see: a memory tree an OLDER kit version wrote for such a role -- no installer,
+    no scaffold and no kernel path names `agent-memory`, so an update takes the key and leaves
+    the tree (H105 b) -- and whether the platform loads such a tree without the key, which is
+    outside the shipped tree and unmeasured.
+    """
+    import gen_provider_artifacts
+    writers = _four_eyes_writers()
+    judged, offenders = {"verdict": [], "four-eyes": []}, []
+    for kit in _kit_dirs():
+        verdict = set(_verdict_roles(kit))
+        for role in sorted(verdict | writers):
+            if not os.path.isfile(os.path.join(kit, "agents", role + ".md")):
+                continue
+            front, body = _role_definition(kit, role)
+            name = "%s/%s" % (os.path.basename(kit), role)
+            judged["verdict" if role in verdict else "four-eyes"].append(name)
+            if front.get(gen_provider_artifacts.MEMORY_FRONTMATTER_KEY):
+                offenders.append("%s carries `%s:`" % (
+                    name, gen_provider_artifacts.MEMORY_FRONTMATTER_KEY))
+            if gen_provider_artifacts.MEMORY_DUTY_RX.search(_reading_view(body)):
+                offenders.append("%s is told to consult a memory" % name)
+    assert not offenders, (
+        "these roles judge or read for a four-eyes gate and still carry state from their last "
+        "run into the next:\n  " + "\n  ".join(offenders))
+    # both sources have to have contributed a shipped role, or one of the two readers has
+    # stopped reading and the assertion above judged half the subject
+    for source, names in judged.items():
+        assert names, "no shipped role came out of the %s source -- its reader found nothing" % source
+
+
+# The two halves of the scope a verdict role owes (DEC-0050, FR-0057): the AFFECTED tests while
+# the round is open, and the FULL run ONCE before the verdict. Read as words because the subject
+# is the text the role receives; what the role then does is measured by nobody here.
+_AFFECTED_RX = re.compile(r"\baffected\b", re.IGNORECASE)
+_FULL_ONCE_RX = re.compile(r"\bfull\b.{0,200}?\bonce\b|\bonce\b.{0,200}?\bfull\b", re.IGNORECASE)
+
+
+def _do_section(path):
+    """The `## Do` section of a skill, as it reads."""
+    with io.open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    blocks = [block for block in _markdown_sections(text) if block.startswith("## Do")]
+    assert len(blocks) == 1, (path, len(blocks))
+    return _reading_view(blocks[0])
+
+
+def test_every_verdict_role_states_the_scope_of_its_runs():
+    """The verdict roles carry DEC-0050's measure where they act, in both texts they receive.
+
+    FR-0057 measured the gap: the quality-engineer's description said `run the tests` -- no
+    scope, no moment -- and the skill's staged-testing line stood alone, so the description a
+    session reads at the spawn and the procedure it opens later disagreed about what a gate
+    costs. What is held here is the SPLIT itself, in the description (frontmatter, parsed) and in
+    the procedure's `## Do` section: the affected tests while the round is open, the full run
+    once before the verdict. A role that names only one half has a rule with no other end.
+
+    MEASURED where it acts, in a real project on the shipped kit: a re-gate after a fix round ran
+    fifteen instruments and the full pipeline exactly once (141 s), and the developers' own
+    verification runs stayed on the affected stack (`quality.py --only liquid`) -- so the text is
+    holding what the roles already do, and the explosion FR-0057 feared has a rule against it in
+    the place a session reads first. Not seen here: whether a run obeyed; no gate reads a run's
+    scope, and that limit stands in the hole list.
+    """
+    judged, offenders = [], []
+    for kit in _kit_dirs():
+        for role in _verdict_roles(kit):
+            if not os.path.isfile(os.path.join(kit, "agents", role + ".md")):
+                continue
+            front, _body = _role_definition(kit, role)
+            texts = {"description": _reading_view(str(front.get("description", ""))),
+                     "skill `## Do`": _do_section(os.path.join(kit, "skills", role, "SKILL.md"))}
+            for label, text in texts.items():
+                judged.append("%s/%s %s" % (os.path.basename(kit), role, label))
+                missing = [name for name, pattern in (("affected", _AFFECTED_RX),
+                                                      ("full ... once", _FULL_ONCE_RX))
+                           if not pattern.search(text)]
+                if missing:
+                    offenders.append("%s/%s %s lacks %s" % (
+                        os.path.basename(kit), role, label, ", ".join(missing)))
+    assert not offenders, "\n  ".join(["a verdict role names only half of its scope:"] + offenders)
+    assert len(judged) >= 4, judged
+
+
+# A paragraph the constitutions SHARE is one text in all three, or this table says why it is
+# not. The rule is a definition -- a bold lead-in that opens a paragraph in AT LEAST TWO of the
+# constitutions marks shared text, and shared text stands in all three, byte-identical -- and this
+# is its exception list, each entry with the reason, measured at both ends by the test below: an
+# entry whose paragraph has become identical in all three is dead, and one whose lead-in opens a
+# paragraph in fewer than two files never needed to be here. Two kinds of reason live here: a
+# paragraph the three kits carry in kit-specific wording, and one only two kits carry as a
+# paragraph of its own.
+KIT_SPECIFIC_PARAGRAPHS = {
+    "**A dispatch does not survive a session end**":
+        "names the kit's own lead title (lead / manager) in the relay sentence",
+    "**READ**":
+        "the work-loop list is one block, and each kit's loop names its own items and roles",
+    "**Single source of truth.**":
+        "the hard-enforcement list is one block, and each kit lists its own directories and gates",
+    "**WHO BOOKS THAT ENVELOPE IN depends on your toolset, and your dispatch header says "
+    "which path is yours**":
+        "names the kit's own lead title (lead / manager)",
+    "**Your procedure document is NOT in your context.**":
+        "names the kit's own lead skill",
+    "**A place you name is a place you wrote to.**":
+        "office carries the same rule inline in its one-paragraph Behavior section, not as a "
+        "paragraph of its own",
+    "**Presets are MECHANICAL**":
+        "office carries the preset rule inline in its Models & presets paragraph",
+    "**This local constitution is AUTHORITATIVE for this repository**":
+        "office spells the lead-in with the full stop inside the bold, and the section 0 block "
+        "is kit-specific in every kit",
+    "**Two-level acceptance:**":
+        "office has no two-level acceptance -- its unit of approval is the PROC",
+    "**User = customer**":
+        "office describes its roles in section 5 in its own shape",
+}
+
+_LEAD_IN_RX = re.compile(r"\A\s*(?:[-*]\s+|\d+\.\s+)?(\*\*[^*\n]+?\*\*)")
+
+
+def _paragraphs_by_lead_in(path):
+    """{bold lead-in: paragraph} for every blank-line-separated block that opens with one.
+
+    THE FIRST OCCURRENCE PER FILE is the one kept. No constitution opens two paragraphs with the
+    same lead-in today; if one did, the second would be invisible here, and that is a limit of
+    this reader rather than a rule about the text.
+    """
+    with io.open(path, encoding="utf-8") as handle:
+        text = handle.read()
+    out = {}
+    for block in re.split(r"\n[ \t]*\n", text):
+        found = _LEAD_IN_RX.match(block)
+        if found:
+            out.setdefault(found.group(1), block.strip("\n"))
+    return out
+
+
+def test_a_paragraph_the_constitutions_share_is_one_text():
+    """Shared constitution text stands in ALL kits, byte-identical, as the mirrored hooks do.
+
+    THE SUBJECT IS DERIVED: a paragraph that opens with the same bold lead-in in at least two
+    constitutions is shared text, and shared text drifts one file at a time -- the report-gap
+    duty (FR-0062) stood in the office constitution alone for one release while the other two
+    named the command in their surface list and sent nobody to it, and the comment rule
+    (FR-0007) is three copies of one paragraph by construction. `KIT_SPECIFIC_PARAGRAPHS` names
+    the shared lead-ins that legitimately differ or legitimately stop at two kits, with the
+    reason, and both of ITS ends are measured here too.
+
+    WHY "AT LEAST TWO" AND NOT "ALL THREE" -- the verifier's measurement (TSK-0105, mut/m4): with
+    "all three" as the subject, deleting a shared paragraph from ONE kit removed it from the
+    subject instead of failing it, and the only thing that noticed was a floor on the number of
+    shared lead-ins -- a count that grows, so inserting one more shared paragraph and deleting
+    the comment rule from office left the test green. A paragraph two kits open the same way is
+    the property; the third kit's copy is what is held.
+    """
+    kits = _kit_dirs()
+    per_kit = {os.path.basename(kit): _paragraphs_by_lead_in(
+        os.path.join(kit, "constitution", "AGENTS.md")) for kit in kits}
+    carriers = {}
+    for kit, paragraphs in per_kit.items():
+        for lead in paragraphs:
+            carriers.setdefault(lead, set()).add(kit)
+    shared = {lead for lead, kits_with_it in carriers.items() if len(kits_with_it) >= 2}
+    assert shared, "no two constitutions share a bold lead-in, so this test judged nothing"
+    never_needed = [lead for lead in KIT_SPECIFIC_PARAGRAPHS if lead not in shared]
+    assert not never_needed, (
+        "these exceptions name a lead-in that opens a paragraph in fewer than two constitutions: %s"
+        % never_needed)
+    missing, drifted, identical_exceptions = [], [], []
+    for lead in sorted(shared):
+        bodies = {kit: per_kit[kit][lead] for kit in carriers[lead]}
+        everywhere = carriers[lead] == set(per_kit)
+        one_text = len(set(bodies.values())) == 1
+        if lead in KIT_SPECIFIC_PARAGRAPHS:
+            if everywhere and one_text:
+                identical_exceptions.append(lead)
+            continue
+        if not everywhere:
+            missing.append("%s stands in %s and not in %s" % (
+                lead, ", ".join(sorted(carriers[lead])),
+                ", ".join(sorted(set(per_kit) - carriers[lead]))))
+            continue
+        if not one_text:
+            parted = next((position for position in range(min(map(len, bodies.values())))
+                           if len({body[position] for body in bodies.values()}) > 1),
+                          min(map(len, bodies.values())))
+            drifted.append("%s -- the copies agree up to %d characters, then read:\n    %s" % (
+                lead, parted, "\n    ".join("%s: ...%s" % (kit, body[parted:parted + 100])
+                                            for kit, body in sorted(bodies.items()))))
+    assert not identical_exceptions, (
+        "these exceptions are dead: the paragraph is one text in all three kits now: %s"
+        % identical_exceptions)
+    assert not missing, "\n  ".join(
+        ["shared constitution text is absent from a kit and no exception says why:"] + missing)
+    assert not drifted, "\n  ".join(["shared constitution text differs between kits:"] + drifted)

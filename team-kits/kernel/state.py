@@ -37,6 +37,8 @@ import time
 import yaml
 
 from .backlog_types import (
+    AREA_FIELD,
+    AREA_MAX_DEPTH,
     ACTIVE_DIRS,
     AUTOMATA,
     EVIDENCE_KINDS,
@@ -47,8 +49,11 @@ from .backlog_types import (
     LEGACY_FIELD,
     NON_AUTOMATON_STATUSES,
     NONEMPTY_FIELDS,
+    area_segments,
     PARENT_FIELDS,
     REQUIRED_FIELDS,
+    RUN_RECORD_FIELDS,
+    RUN_SCOPES,
     TASK_TYPES,
     TSK_PLAN_FIELDS,
     TransitionError,
@@ -785,6 +790,30 @@ class ProjectState:
                 "same claim as leaving the field out. Remedy: %s"
                 % (item_type, ", ".join(hollow), _NONEMPTY_REMEDY[item_type])
             )
+        # ONE STATEMENT, DECLARED WHOLE (FR-0040, DEC-0061):
+        # `run_scope` is what the merge reads and
+        # `run_command` is what an auditor re-runs it against, so half of the pair is either an
+        # unbacked claim or a record nothing can act on. Capture-only, like `NONEMPTY_FIELDS`
+        # above and for the same reason: the only type that carries the pair is immutable.
+        partial = [name for name in RUN_RECORD_FIELDS if fields.get(name)]
+        if partial and len(partial) != len(RUN_RECORD_FIELDS):
+            raise StateError(
+                "capture %s names %s without %s -- the two are one statement about the run "
+                "behind this record: the scope is what the merge reads and the command is what "
+                "it can be checked against. Remedy: pass both, or neither."
+                % (item_type, ", ".join(partial),
+                   ", ".join(name for name in RUN_RECORD_FIELDS if name not in partial)))
+        # THE OUTLINE STAYS AN OUTLINE (FR-0017). Two levels is what the field is for -- a
+        # document holds headings, a heading holds requirements -- and a third one is refused
+        # here rather than tidied away later, because an outline nobody can take in at a glance
+        # is the over-fragmentation the FR makes a condition of building this at all.
+        depth = len(area_segments(fields.get(AREA_FIELD)))
+        if depth > AREA_MAX_DEPTH:
+            raise StateError(
+                "capture %s names an %s %d levels deep (%r); the outline carries at most %d -- a "
+                "document and a heading under it. Remedy: put the requirement under an existing "
+                "heading, or shorten the path."
+                % (item_type, AREA_FIELD, depth, fields.get(AREA_FIELD), AREA_MAX_DEPTH))
         _assert_single_value_fields(item_type, fields)
         self._assert_origins_resolve(item_type, fields, also_existing)
 
@@ -1054,6 +1083,51 @@ class ProjectState:
         self._regenerate_index_locked()
         return item
 
+    def record_invariant_verification(self, item_id: str) -> tuple:
+        """Set an INV's status from what its `check` RESOLVES TO -- the producer II.12 lacked.
+
+        NOT A TRANSITION, and that is the decision rather than a workaround for `INV` having no
+        automaton. Every other status in this kernel records a DECISION -- someone approved,
+        someone delivered -- and the automaton exists so that a decision cannot skip its
+        predecessor. `verified` records a MEASUREMENT of the repository: the check names a test and
+        the test is there. A role may not choose it, and neither may this method: the value comes
+        from `report.invariant_check_resolution` and the caller passes no status at all.
+
+        THEREFORE BOTH DIRECTIONS. A check that stops resolving -- a renamed or deleted test --
+        takes the item back to `unverified` on the next run, because a verification that outlives
+        its evidence is worse than none: `report._check_invariant_checks` blocks the merge on the
+        unresolvable check either way, and an item left reading `verified` beside that error is
+        the state telling a reader two different things.
+
+        RETURNS `(item, resolved, reason)` and not just the item, because `unverified` covers
+        two different facts -- "the test is not there" and "this kernel cannot read the file" --
+        and a caller that wants to act differently on them (`kernel.cli`'s exit code does) would
+        otherwise have to resolve the check a second time, on a store that may have moved.
+
+        `tools/test_state.py::test_an_invariant_is_verified_by_its_check_and_unverified_when_it_
+        stops_resolving` measures both directions.
+        """
+        item_type, _ = parse_id(item_id)
+        if item_type != "INV":
+            raise StateError(
+                "%s is not an invariant: only an INV carries a check to verify. Remedy: move the "
+                "item's status with `transition`." % item_id)
+        from . import report as _report
+        with self.lock:
+            item = self.read_item(item_id)
+            resolved, reason = _report.invariant_check_resolution(self, item)
+            # `resolved is True` and not truthiness: the reader answers None for a check it
+            # cannot read at all (a test file in another language), and an invariant this kernel
+            # cannot confirm stays unverified -- it may not be verified on a shrug, and the
+            # validator says so as a warning rather than blocking a merge on it (`H110`).
+            item["status"] = INVARIANT_STATUSES[1 if resolved is True else 0]
+            self._write_yaml_atomic(self.active_path(item_id), item)
+            self._regenerate_index_locked()
+            # The reason goes into no FIELD: the item's contract declares none for it, and a
+            # note stored beside a status is a second place for one fact to go stale. The caller
+            # prints it; the validator derives the same sentence again.
+            return item, resolved, reason
+
     def transition(self, item_id: str, to_status: str, approved_retry: bool = False) -> dict:
         with self.lock:
             return self._transition_locked(item_id, to_status, approved_retry)
@@ -1284,6 +1358,14 @@ _AUTOMATON_TYPES = frozenset(
 _NON_AUTOMATON_INITIAL_STATUS = {item_type: values[0]
                                  for item_type, values in NON_AUTOMATON_STATUSES.items()}
 
+# THE TWO STATES AN INVARIANT CAN BE IN, read out of the same vocabulary and in its declared order
+# (unverified first). `record_invariant_verification` picks one of them BY MEASUREMENT, which is
+# why they are a pair here and not two literals at the write: the value is never a caller's choice.
+# Read as a bound on that writer by
+# `tools/test_approvals_dispatch.py::test_no_direct_status_write_can_produce_a_status_an_approval_commits`,
+# which refuses any status write in this kernel whose range it cannot derive from a kernel map.
+INVARIANT_STATUSES = tuple(NON_AUTOMATON_STATUSES["INV"])
+
 
 # Which field an item names its parent through is `backlog_types.PARENT_FIELDS`,
 # derived there from the type's field contract -- the SAME definition the reference
@@ -1320,6 +1402,10 @@ _CLOSED_VOCABULARY = {
     ("EVD", "result"): (EVIDENCE_RESULTS,
                         "the verdict is what the merge gate reads; an unknown "
                         "value is not a fail, so the gate would go quiet"),
+    ("EVD", "run_scope"): (RUN_SCOPES,
+                           "the scope decides whether a PASS is merge evidence at all "
+                           "(`report._delivery_evidence`), and an unknown value would "
+                           "read as neither -- the run would open the merge unexamined"),
 }
 
 

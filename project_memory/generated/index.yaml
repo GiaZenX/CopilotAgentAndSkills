@@ -1,4 +1,4 @@
-generated_at: '2026-09-02T11:18:48'
+generated_at: '2026-09-03T04:03:36'
 items:
 - id: BUG-0001
   type: BUG
@@ -601,6 +601,22 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
+- id: BUG-0088
+  type: BUG
+  title: 'A kit update removes the memory: key from a role but leaves the agent-memory
+    tree an older kit version wrote -- no installer, scaffold or kernel path names
+    agent-memory (stream E verifier F3)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0089
+  type: BUG
+  title: 'kernel `update` refuses a frozen work-order field with the remedy ''transition
+    the task back to DRAFT'' -- but the TSK automaton forbids READY -> DRAFT (allowed:
+    CANCELLED, LEASED); the printed remedy cannot be walked'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -993,6 +1009,21 @@ items:
   title: 'DEC-0057 pilot verdict: parallel streams in worktrees are KEPT -- they bought
     wall-clock, not tokens, and the merge round paid a measured seam; four rules learned
     become part of the procedure'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0061
+  type: DEC
+  title: Eine Evidenz erklaert ihren Lauf -- Umfang und Befehl werden Vertragsfelder
+    von EVD, optional getragen und am Merge gelesen; die Pflicht bleibt eine Nutzerentscheidung
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0062
+  type: DEC
+  title: Streams are cut by FILE OWNERSHIP and FRs that touch the same files or functions
+    are GROUPED into one stream -- parallelism across streams, grouping inside them;
+    a stream is capped by one round's attention, not by a number of FRs
   status: VALID
   revision: 1
   approval_ref: null
@@ -1452,6 +1483,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0077
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1720,6 +1757,81 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
+- id: FR-0075
+  type: FR
+  title: 'Backlog dashboard rebuilt the way the finance dashboard was: frontend-design
+    pass first, sighted with screenshots, trimmed for UI/UX/usability -- not the KPI-tile
+    default look'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0076
+  type: FR
+  title: 'Office: a shipped standard category vocabulary mapped to the lines of the
+    current Anlage EUeR, EUeR report summed per form line, and an AfA HINT (not a
+    calculation) for purchases above the GWG limit'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0077
+  type: FR
+  title: 'Wunschliste §1c: die mechanisch pruefbaren Haelften der Standard-Haertung
+    bauen (C1/C2/C3 axe-Lauf + Tastaturpfad + prefers-reduced-motion/:focus-visible;
+    B2/B3 Farbliterale)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0078
+  type: FR
+  title: 'Wunschliste §1/1a: ein GATE auf genau EIN primaeres Ziel pro View, plus
+    die SKILL-Zeile mit Verfahren statt Adjektiv'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0079
+  type: FR
+  title: 'Wunschliste §2: Termine fuer die Timeline als eigener Vorgangstyp (MST)
+    statt als Feld'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0080
+  type: FR
+  title: 'Wunschliste §3: Umsetzungsplan und Mindmap als .drawio.svg, generiert statt
+    gepflegt'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0081
+  type: FR
+  title: 'Wunschliste §5: Kontenrahmen (SKR03/SKR04) + Konto-zu-EUeR-Zeile-Abbildung
+    als jahresversionierte Vorlage mit benanntem Rechtsraum'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0082
+  type: FR
+  title: 'Wunschliste §7: EVIDENCE_RESULTS += blocked -- gate_git schliesst darauf
+    wie auf fail, und der Ehrlichkeitssatz wird mitgebaut'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0083
+  type: FR
+  title: 'Wunschliste §10: Freigabe ueber das Claude Agent SDK (canUseTool) erteilen
+    -- ein programmatisch gepraegter Token bleibt von einem menschlich gepraegten
+    unterscheidbar'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0084
+  type: FR
+  title: 'Rueckschau als EREIGNIS, nicht als Routine: der Projekt-Auditor (kits) und
+    der Harness-Lead (this repo) ask ''ginge das billiger/besser?'' at phase changes,
+    releases and repeated findings -- and every TSK plan names the way it rejected'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1830,6 +1942,24 @@ items:
   revision: 1
   approval_ref: null
 - id: TSK-0111
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0112
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0113
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0114
   type: TSK
   title: null
   status: READY

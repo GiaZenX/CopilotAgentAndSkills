@@ -101,11 +101,12 @@ def test_a_role_declares_exactly_its_own_procedure_skill():
 
     THE PROPERTY IS MEASURED OVER EVERY KIT AND ITS TEXT STANDS IN ONE, which is a mismatch worth
     stating rather than leaving to be discovered: only `dev-team`'s constitution carries §1a today,
-    because only dev-team ships reference skills, while the tree happens to satisfy the rule in all
-    three (measured: every shipped role declares exactly its own skill). Widening the text is a
-    change to the other two kits' constitutions and belongs to whoever gives them a shared skill;
-    narrowing the test to dev-team would let the other two drift into a shape the rule forbids
-    while nothing said so.
+    while all three kits now ship a reference skill (`humanizer`, FR-0072 -- the office and research
+    copies arrived without a constitution sentence, because the constitutions are stream E's text
+    and not the skill round's; `TSK-0105` carries that seam). The tree satisfies the rule in all
+    three regardless (measured: every shipped role declares exactly its own skill), and narrowing
+    the test to dev-team would let the other two drift into a shape the rule forbids while nothing
+    said so.
     """
     seen = 0
     for kit_dir in _kit_dirs():

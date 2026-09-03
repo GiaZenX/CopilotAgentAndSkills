@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Repo hygiene: git must not TRACK a file it also IGNORES, a file name must not lie about whose
 report it holds, a test must not leave its `sys.path` entry to the next test, a PowerShell
-launcher must not be started where nobody asked whether this host has one, and a shipped kit file
-must not point at a decision this store no longer holds.
+launcher must not be started where nobody asked whether this host has one, a shipped kit file
+must not point at a decision this store no longer holds, and a statement that answers for a claim by
+naming a test must name one that exists. One member of this file REPORTS instead of judging --
+prose under `docs/` that nothing reads any more -- and says so in its own name.
 
 WHY THIS IS THE RIGHT SUBJECT, and not "is ModuleAnalysisCache absent". A `.gitignore` rule has no
 effect on a path git already tracks, so a tool trace that was committed once (a PowerShell module
@@ -29,11 +31,16 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import warnings
 
 import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RESEARCH = os.path.join(ROOT, "docs", "research")
+
+sys.path.insert(0, os.path.join(ROOT, "tools"))
+from test_model_pins import under_an_agents_directory  # noqa: E402 -- ONE role predicate, shared
 
 
 def _tracked_and_ignored():
@@ -53,11 +60,7 @@ def test_git_tracks_no_ignored_file_outside_canonical_state():
     to be untracked (`git rm --cached`) for the rule to mean anything. `project_memory/` is excluded
     because it is gate-protected canonical state a harness session cannot untrack (H37).
     """
-    if not shutil.which("git"):
-        pytest.skip("git not on PATH")
-    if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT,
-                      capture_output=True, text=True).returncode != 0:
-        pytest.skip("not a git work tree")
+    _require_git()
     offenders = [path for path in _tracked_and_ignored()
                  if not path.startswith("project_memory/")]
     assert not offenders, (
@@ -74,17 +77,143 @@ def test_the_known_out_of_scope_trace_is_still_the_only_exception():
     should be removed; if a SECOND ignored file appears under project_memory/, it surfaces here
     rather than hiding behind the prefix.
     """
-    if not shutil.which("git"):
-        pytest.skip("git not on PATH")
-    if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT,
-                      capture_output=True, text=True).returncode != 0:
-        pytest.skip("not a git work tree")
+    _require_git()
     excused = [path for path in _tracked_and_ignored()
                if path.startswith("project_memory/")]
     assert excused == ["project_memory/.audit/hook_events.jsonl"], (
         "the project_memory/ exclusion in test_git_tracks_no_ignored_file_outside_canonical_state "
         "no longer covers exactly the audit log H37 names -- update the exclusion and H37: %s"
         % excused)
+
+
+# ---------------- nothing a client parses from byte zero may start with a BOM ------------------
+
+BOM = b"\xef\xbb\xbf"
+
+
+def _tracked_files():
+    """Repo-relative paths git TRACKS -- what actually ships, rather than what a walk turns up."""
+    result = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", timeout=60)
+    assert result.returncode == 0, result.stderr
+    return [path for path in result.stdout.split("\0") if path]
+
+
+def read_from_byte_zero(relative, head):
+    """Why a machine reads this file's FIRST bytes as structure -- or None when it does not.
+
+    A PROPERTY OF THE FILE, not of its location, and that is the point: a role definition, a skill,
+    a settings file and a kit shim are all files whose opening bytes are a token some parser has to
+    match exactly, and those trees are not enumerated anywhere here. The classification takes a BOM
+    off FIRST, so a file that carries one is still recognised as the kind of file that must not --
+    otherwise the byte that breaks the reader would also hide the file from this check.
+    """
+    body = head[len(BOM):] if head.startswith(BOM) else head
+    first = body.split(b"\n", 1)[0].strip()
+    if relative.endswith(".json"):
+        return "a JSON parser starts at byte 0"
+    if first == b"---":
+        return "the frontmatter delimiter has to be the first line"
+    if first.startswith(b"<!-- agents-and-skills:team-kit"):
+        return "the kit marker is read off line 1"
+    return None
+
+
+def _heads():
+    """(relative path, first bytes) for every tracked file, small reads only."""
+    for relative in _tracked_files():
+        path = os.path.join(ROOT, relative.replace("/", os.sep))
+        if not os.path.isfile(path):
+            continue
+        with open(path, "rb") as handle:
+            yield relative, handle.read(400)
+
+
+def test_no_file_a_parser_reads_from_byte_zero_starts_with_a_bom():
+    """FR-0060: an editor's UTF-8 BOM turns a definition into a file some reader cannot open.
+
+    WHAT IS MEASURED AND WHAT IS NOT, because the two point in opposite directions and the honest
+    version is the mixed one: on the client this round ran against, a role file WITH a BOM loaded
+    and spawned fine. The floor below which it is silently skipped comes from the radar item, not
+    from a run here. What was measured is the other reason -- our own `.claude/hooks/_harness.py`
+    opens `.claude/settings.json` with `json.load`, which a BOM breaks. Both, with the attribution
+    on each, in `docs/reviews/2026-09-02-model-pin-and-bom-measurement.md` (findings 5 to 7).
+
+    The subject is DERIVED (`read_from_byte_zero`), so the JSON a hook registration lives in and the
+    kit marker on line 1 of a constitution are covered by the same sentence as the role files.
+    """
+    if not shutil.which("git"):
+        pytest.skip("git not on PATH")
+    offenders = [(relative, reason) for relative, head in _heads()
+                 for reason in [read_from_byte_zero(relative, head)]
+                 if reason and head.startswith(BOM)]
+    assert not offenders, (
+        "these files begin with a UTF-8 BOM, which the reader that opens them cannot see past: %s"
+        % ", ".join("%s (%s)" % pair for pair in offenders))
+
+
+# The two loaders whose subject this is, named once so the counter-check can assert that BOTH are
+# still represented -- a predicate that quietly lost one half would otherwise stay green on the
+# other. The strings are the reason each file is in the subject, and they read out in the failure.
+ROLE_LOADER = "the file sits under an agents directory"
+SKILL_LOADER = "the file is named SKILL.md"
+
+
+def is_a_definition_a_client_loads(relative):
+    """Why this tracked file is a definition whose first bytes a parser matches -- or None.
+
+    ONE CLAUSE PER LOADER, and each is a key the path carries in its own right: a role is any `.md`
+    below an `agents` directory (`under_an_agents_directory`, imported from `test_model_pins`
+    rather than restated -- a second definition of THAT NAME here is caught by `ruff` (F811), a
+    second function under another name is caught by nothing), a skill is the file NAMED `SKILL.md`.
+
+    THE SUBJECT IS WIDER THAN WHAT THE CLIENT LOADS, and that is the trade rather than an oversight.
+    The measurement is section 5a of
+    `docs/reviews/2026-09-02-model-pin-and-bom-measurement.md`: of five opening shapes placed under
+    `agents/`, the client's own `init` list named the one whose first line is the frontmatter
+    delimiter and dropped the other four without a word. Making that rule the subject would be
+    circular -- the file this check exists for is a role that LOST its delimiter, and it would
+    classify itself out. So the subject stays the location, and the price is friction, named here
+    rather than discovered: a document filed between the roles is asked for a delimiter no loader
+    wants from it. The remedy for such a file is to move it, not to widen this.
+
+    A ROUND BEFORE THIS ONE SUBTRACTED "opens as prose" here to buy that friction back. It bought
+    nothing: on the tracked tree it removed no file at all, disabling it changed no test result,
+    and it recognised one spelling of "document" out of the four the client drops.
+    """
+    if os.path.basename(relative) == "SKILL.md":
+        return SKILL_LOADER
+    if under_an_agents_directory(relative):
+        return ROLE_LOADER
+    return None
+
+
+def test_every_shipped_role_and_skill_definition_is_a_file_that_check_looks_at():
+    """The other end: a definition that lost its delimiter drops OUT of the check above silently.
+
+    Both halves are derived from the tracked tree (`is_a_definition_a_client_loads`), so a fourth
+    kit and a role in a new subdirectory join the subject by existing. Red when a definition stops
+    opening the way its loader expects, and red when the classifier stops recognising one.
+
+    BOTH LOADERS HAVE TO BE REPRESENTED, asserted rather than assumed: the predicate carries two
+    clauses, and a version that silently lost one would still find enough files to pass a count.
+    """
+    if not shutil.which("git"):
+        pytest.skip("git not on PATH")
+    definitions = [(relative, head, reason) for relative, head in _heads()
+                   for reason in [is_a_definition_a_client_loads(relative)] if reason]
+    assert len(definitions) > 20, (
+        "only %d role/skill definitions found -- the tracked-file reader stopped matching the tree"
+        % len(definitions))
+    for loader in (ROLE_LOADER, SKILL_LOADER):
+        assert any(reason == loader for _relative, _head, reason in definitions), (
+            "no tracked file is in the subject because %r -- that half of the predicate now "
+            "matches nothing" % loader)
+    unseen = [relative for relative, head, _reason in definitions
+              if not read_from_byte_zero(relative, head)]
+    assert not unseen, (
+        "these definitions do not open the way their loader expects, so the BOM check above never "
+        "looks at them: %s" % unseen)
 
 
 def _shipped_roles():
@@ -518,6 +647,167 @@ def test_the_decision_pointer_reader_can_tell_a_citation_from_a_literal():
     assert found("`rm -f \"x/DEC-0001.yaml\"` rc 0") == []                  # a measured command
 
 
+# ============ a shipped kit file may not point at a test that does not exist (SR-0008) ==========
+#
+# The pointer form the house rule asks for on the OTHER side of the line. `.claude/hooks/` has its
+# own reader for this (`test_gates._points_into_this_file`), and it only ever resolves names into
+# ONE file -- its own suite. A kit hook cites across files, so the shape it can be held to is the
+# FULLY QUALIFIED one: a file plus a name in it. That is also the only shape that is unambiguous
+# here -- a bare `test_something` in kit prose is as often a fixture, a directory or a suite name.
+#
+# WHAT STAYS UNREAD, named rather than discovered later: a citation that gives only the test NAME,
+# and a name written outside backticks. Measured over the shipped tree with the wider reader (every
+# `test_*` word, backticks or not): 114 distinct names, 136 sites that resolve to nothing -- almost
+# all of them suite FILE names (`test_hooks_v2`) or halves of a name broken across a line. A reader
+# that reported those would be a reader nobody could keep green, and it is the qualified half that
+# carries a rotting claim to a reviewer anyway.
+#
+# THE NAME MUST BE A TEST NAME, which is the difference between a node id and a module-qualified
+# CONSTANT written with the same separator (`test_gates.py::RESERVED_WORD_CELLS`). The subject here
+# is a claim answered for by a TEST; a constant cited that way points at something this reader has
+# no business resolving.
+_NODE_ID_RX = re.compile(r"\A(?P<path>[\w./-]*test_[\w-]+\.py)::(?P<name>test_\w*)\Z")
+# A CODE SPAN THAT MAY CROSS LINES, which is why `_DELIMITED_RX` above is not reused: that one is
+# line-bounded, and a line-bounded reader is blind to the wrapped citation -- which is the shape the
+# one real offender of this round was written in. Measured: with the line-bounded span the sweep
+# below found 0 offenders over the unrepaired tree; with this one, 1.
+_CODE_SPAN_RX = re.compile(r"`([^`]+)`", re.DOTALL)
+# WHERE A SUITE FILE LIVES when the citation gives no directory -- the two directories this repo
+# collects tests from. `.claude/hooks/test_gates.py` is not run by `pytest tools/` and is still a
+# suite of this repo, so a hole entry citing it must resolve here too.
+_SUITE_DIRS = ("tools", ".claude/hooks")
+
+
+def _test_citations(text):
+    """(offset, file, test name) for every pytest node id `text` cites, out of its backtick spans.
+
+    GLUED BEFORE IT IS READ, and whitespace is not the only thing taken out: these names are long
+    enough that they wrap, and the next line continues with a comment marker of its own. A name read
+    as two halves resolves to nothing, and the check would then depend on where an editor broke the
+    line rather than on what the statement claims. Citations in the shipped tree are written that
+    way, the round's own offender among them.
+
+    THE DECORATION AROUND A NODE ID IS NOT PART OF IT: a parametrised case is cited by its case id,
+    and a span at the end of a sentence carries the punctuation. Both are cut, which is what makes
+    `test_the_test_pointer_reader_reads_the_shapes_a_kit_file_writes` a floor rather than a
+    restatement.
+    """
+    found = []
+    for span in _CODE_SPAN_RX.finditer(text):
+        glued = re.sub(r"[\s#]+", "", span.group(1))
+        glued = re.sub(r"\[[^\]]*\]\Z", "", glued).rstrip(".,;:)")
+        hit = _NODE_ID_RX.match(glued)
+        if hit:
+            found.append((span.start(), hit.group("path"), hit.group("name")))
+    return found
+
+
+def _defined_in(cited):
+    """The function names the suite file `cited` names, or `None` when there is no such file.
+
+    A citation without a directory is looked for in the suite directories, because that is how these
+    sentences are written -- the hole list says `test_gates.py::…` and means the one file of that
+    name this repo has.
+
+    Parsed, never searched: a name that appears in a docstring is not a test, and a check satisfied
+    by its own prose is the failure mode this repo has hit twice.
+    """
+    candidates = [cited] if "/" in cited else ["%s/%s" % (one, cited) for one in _SUITE_DIRS]
+    for candidate in candidates:
+        path = os.path.join(ROOT, *candidate.split("/"))
+        if not os.path.isfile(path):
+            continue
+        with open(path, encoding="utf-8") as handle:
+            tree = ast.parse(handle.read())
+        return {node.name for node in ast.walk(tree)
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    return None
+
+
+def _texts_that_answer_for_a_claim():
+    """(relative path, text) for every file of this repo that answers for a claim with a test.
+
+    The shipped kit tree, plus this repo's own `docs/` -- the hole list is where "here is the test
+    that would notice" carries the most weight, and `.claude/hooks/test_gates.py` already holds the
+    UNQUALIFIED half of that claim (a bare name there must resolve inside test_gates.py itself). The
+    two readers do not overlap: that one skips any span carrying a dot, this one requires the file.
+
+    `docs/research/` is out, and the reason is what it holds: field notes ABOUT other projects,
+    which cite those projects' suites (`tests/perf/test_pricing.py::test_p95` is one). A pointer
+    into a suite this repo does not have is not a claim this repo can keep. That ONE directory, by
+    its full path and not by its name -- `research-team/templates/project_memory/research/` is a
+    shipped state directory and has nothing to do with it.
+    """
+    excluded = os.path.join(ROOT, "docs", "research")
+    for top in ("team-kits", "docs"):
+        for base, subdirs, names in os.walk(os.path.join(ROOT, top)):
+            subdirs[:] = [name for name in subdirs
+                          if name != "__pycache__"
+                          and os.path.join(base, name) != excluded]
+            for name in sorted(names):
+                path = os.path.join(base, name)
+                try:
+                    with open(path, encoding="utf-8") as handle:
+                        yield os.path.relpath(path, ROOT).replace(os.sep, "/"), handle.read()
+                except (OSError, UnicodeDecodeError):
+                    continue
+
+
+def test_every_test_pointer_this_repo_writes_resolves():
+    """A statement that answers for a claim by naming a test must name one that exists (SR-0008).
+
+    A property claim becomes a test and the sentence NAMES it -- that is the whole mechanism by which
+    a claim rots visibly instead of quietly. A named test that does not exist puts the mechanism back
+    where it started, and worse: the sentence now reads as measured.
+
+    MEASURED RED on the tree before the repair of this round: 122 node ids judged in `team-kits/`,
+    ONE unresolved -- `office-team/hooks/_duties.py` gave the session-start budget arithmetic to
+    `tools/test_hooks_v2.py`, while the test lives in `tools/test_office_duties.py`. The claim it
+    carries ("raising either turns red") was true; the file it sent a reader to was not.
+    """
+    judged, offenders = 0, []
+    for rel, text in _texts_that_answer_for_a_claim():
+        for offset, path, name in _test_citations(text):
+            judged += 1
+            defined = _defined_in(path)
+            if defined is None or name not in defined:
+                offenders.append("%s:%d cites %s::%s -- %s"
+                                 % (rel, text[:offset].count("\n") + 1, path, name,
+                                    "no such suite file" if defined is None else "no such test"))
+    assert not offenders, (
+        "these statements answer for a claim with a test nobody can run, so the claim reads as "
+        "measured and is not:\n  " + "\n  ".join(offenders))
+    assert judged >= 150, (
+        "only %d test pointers judged -- the reader stopped matching, and then the assertion "
+        "above is vacuously true" % judged)
+
+
+def test_the_test_pointer_reader_reads_the_shapes_a_kit_file_writes():
+    """The floor under the sweep, so "read nothing" and "read every word" both fail here.
+
+    Each probe is the shape of a citation that really stands in the shipped tree, plus the two
+    non-citations the reader must stay quiet on: a suite FILE named without a test in it, and a bare
+    name, which this reader deliberately does not judge.
+    """
+    def read(text):
+        return [(path, name) for _offset, path, name in _test_citations(text)]
+
+    one = ("tools/test_office_duties.py", "test_a_project_that_owes_nothing_gets_no_paragraph")
+    assert read("measured by `%s::%s`" % one) == [one]
+    assert read("measured by `%s::\n    # %s` today" % one) == [one], "a wrapped node id"
+    assert read("`%s::%s[Bash]` covers it." % one) == [one], "a parametrised case id"
+    assert read("see `%s::%s`." % one) == [one], "a full stop inside the span"
+    assert read("the budget lives in `tools/test_office_duties.py`") == [], "a file is not a name"
+    assert read("held by `test_a_project_that_owes_nothing_gets_no_paragraph`") == [], (
+        "an unqualified name is the half this reader does not judge -- see the comment above")
+    assert read("`test_gates.py::RESERVED_WORD_CELLS` is a table") == [], (
+        "a module-qualified constant is not a test pointer")
+    assert one[1] in _defined_in(one[0])
+    assert _defined_in("test_gates.py"), "a bare suite file name must resolve in a suite directory"
+    assert _defined_in("tools/test_no_such_suite.py") is None
+    assert _defined_in("test_no_such_suite.py") is None
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
 
@@ -558,3 +848,857 @@ def test_every_hole_has_a_row_in_the_summary_and_every_row_has_a_hole():
     orphans = sorted(rows - entries, key=lambda name: int(name[1:]))
     assert not orphans, (
         "the summary table has rows for holes that have no entry any more: %s" % ", ".join(orphans))
+
+
+# ---------------- prose under docs/ that nothing reads any more (FR-0036) ----------------------
+
+# How long a docs file may sit unread before the hint names it. The reporter must not nag a file
+# that is still going to be read: this repo has a docs report that lay unreferenced for weeks and
+# then became the source a SHIPPED skill cites. The interval that was measured, and the reason this
+# number stands above it rather than at it, are in FR-0036's round protocol -- not repeated here,
+# because a number in a second place is the defect SR-0008 is about.
+_DOCS_GRACE_DAYS = 60
+
+
+def _is_a_record(rel):
+    """True where this file lies in an ARCHIVE, so what it names it records rather than reads.
+
+    One rule for both archives this repo keeps -- the item store's and `docs/archive/` -- because
+    they are the same thing said about two kinds of paper. An archived item RECORDS the decision
+    that once named a document; the archive's own index RECORDS the move it carried out. Neither
+    reads the file today, and if either counted as reading, nothing could ever be archived at all:
+    the index a move writes would keep its own subject alive for ever.
+
+    It also decides what the hint may NAME: a file inside an archive is unread on purpose, and it
+    is where this reporter's own remedy puts things, so naming it again would make the hint grow
+    without end. Both halves are measured -- `test_the_docs_wire_reader_answers_both_ways` for the
+    pointer half, `test_every_archived_file_is_named_by_the_index_above_it` for the file half.
+    """
+    return "archive" in rel.split("/")
+
+# A pointer is a WHOLE file name, and both ends of it have to be said. On the left, a name may be
+# preceded by anything a file name is not -- which is how `docs/pilot/x.md` counts for `x.md` while
+# `prefix-x.md` does not. On the right the dot is deliberately allowed through, so a name at the end
+# of a sentence still reads, while a longer suffix does not: without this half `run.json` matched
+# inside `run.jsonl`, and the live-log files under `docs/reviews/` were reported unread while a
+# review protocol cited every one of them (measured for FR-0036; how many they are and how big
+# that block is belongs in the round protocol, because both grow).
+_NAME_BOUNDARY = r"(?<![A-Za-z0-9_.-])"
+_NAME_END = r"(?![A-Za-z0-9_-])"
+
+
+def _carried_under(prefix):
+    """Every file the repo CARRIES under `prefix`, repo-relative.
+
+    Both subjects in this section -- the documents the hint may name and the archive the tripwire
+    judges -- are the files the REPO carries, never the files the filesystem happens to hold, and
+    they read it through the same door as the corpus does. A walk with a skip list was the defect:
+    an ignored artifact under `docs/archive/` (a `*.log` a tool leaves behind, a `Thumbs.db` the
+    Explorer writes -- both refused by `.gitignore`) is neither archived prose nor a document, and
+    it turned `test_every_archived_file_is_named_by_the_index_above_it` hard red on a tree nobody
+    had changed. Measured before and after in FR-0036's rework rig (`rework1/b2_ignored.py`).
+    """
+    prefix = prefix.rstrip("/") + "/"
+    return [rel for rel in _carried_files() if rel.startswith(prefix)]
+
+
+def _docs_candidates():
+    """Every file the repo carries under `docs/`, outside an archive, that the hint may name."""
+    return sorted(rel for rel in _carried_under("docs") if not _is_a_record(rel))
+
+
+def _wire_class(rel):
+    """Which kind of wire a pointer FROM this file would be, or None where it is a record.
+
+    Derived from what the file is FOR, never from a list of names. The four kinds are FR-0036's,
+    and one of them is WIDER than the work order's wording -- named here rather than left to be
+    believed: CODE under `tools/` or `.claude/hooks/` that spells the name, which INCLUDES a test
+    that reads the file and is not limited to one. Measured for FR-0036 on this tree, documents
+    exist whose CODE class comes from no test at all: two review protocols under `docs/reviews/`
+    are named only by `.claude/hooks/_harness.py` -- the gates' shared body -- and one of them also
+    by `gate_lead_write_scope.py` (`rework1/n3_code_class.py`). Both carry other wires besides;
+    what they do NOT have is a test. Calling this class TEST was a claim the reader does not build,
+    which is why it is called CODE. Then the hole list; canonical state (an Evidence
+    `artifact_ref` or a living item's `source:`); and -- added because the measurement found it and
+    the work order did not -- a SHIPPED kit file, which is code that ships rather than a note
+    somebody may drop.
+
+    EVERYTHING ELSE THE REPO CARRIES IS PROSE, and that is the fifth kind rather than a hole: a
+    document named only in `README.md`, in a role definition under `.claude/agents/` or in a
+    round protocol is named, and the hint has to stay quiet about it. Falling through to None
+    instead would have made the reader narrower than the pass that decided FR-0036's first move
+    set, which read the whole tree by hand -- and narrower in the loud direction.
+
+    `project_memory/staging/` is PROSE and not ITEM for the same honesty: staging holds proposals
+    that are not state yet (CLAUDE.md, "Der Zustand dieses Projekts"). Either way it keeps a file
+    out of the hint; the class is what the failure message claims, so it may not claim canon.
+    """
+    if _is_a_record(rel):
+        return None
+    if rel.endswith(".py") and (rel.startswith("tools/") or rel.startswith(".claude/hooks/")):
+        return "CODE"
+    if rel == "docs/POST_V2_WISHLIST.md":
+        return "HOLE"
+    if rel.startswith("project_memory/staging/"):
+        return "PROSE"
+    if rel.startswith("project_memory/"):
+        return "ITEM"
+    if rel.startswith("team-kits/"):
+        return "KIT"
+    return "PROSE"
+
+
+def _joined_literals(tree):
+    """Every path an `os.path.join(...)` in `tree` spells out in literals.
+
+    WHY THIS IS NOT OPTIONAL, and it is the half a text search cannot have: the wire that keeps the
+    six role reports alive is `RESEARCH = os.path.join(ROOT, "docs", "research")` in this very file
+    -- a test that reads the DIRECTORY and never writes any single file's path. A reader that only
+    looked for spelled-out paths would report all six as unread and invite somebody to archive the
+    subject of `test_every_research_role_report_is_named_after_the_role_its_own_text_is_about`.
+
+    The literals are the leading RUN after any non-literal head (`ROOT`), and the run stops at the
+    first non-literal, so a `join(ROOT, "docs", name, "x.md")` contributes `docs` and not a spliced
+    path no call ever produces.
+
+    A FIXTURE PATH IS READ HERE TOO and cannot be told apart -- `os.path.join(snapshot, "docs",
+    "legacy.md")` in `test_kitupdate.py` builds a path inside a temporary tree, and this reader sees
+    the same two literals a real pointer would leave. Today those name files and wire nothing; a
+    fixture that named a real directory would wire everything under it. That error makes the hint
+    say LESS, which is the direction it is allowed to be wrong in.
+    """
+    out = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "join"):
+            continue
+        run, started = [], False
+        for argument in node.args:
+            if isinstance(argument, ast.Constant) and isinstance(argument.value, str):
+                run.append(argument.value)
+                started = True
+            elif started:
+                break
+        if run:
+            out.add("/".join(part.strip("/") for part in run).strip("/"))
+    return out
+
+
+def _wires_over(candidates, corpus, directories=()):
+    """{docs path: {wire class, ...}} for `candidates`, read out of `corpus` and `directories`.
+
+    `corpus` is (relative path, text) pairs; `directories` are path fragments a RUNNING test builds
+    with `os.path.join`, which wire every file beneath them as CODE. Both are parameters rather than read
+    inside, so the floor test below can hand this reader a corpus it controls and see both answers.
+
+    THE SUBJECT IS THE FILE NAME, and there is deliberately no second reader for the full path. An
+    earlier draft had both, and the path half turned out to decide nothing: a pointer that spells
+    the path contains the name, so every wire the path half found the name half found too, and no
+    mutation of it could go red. It also needed a list of file EXTENSIONS to know what a name looks
+    like -- an enumeration, and the wrong kind: the alternation here is built from the candidates
+    themselves, so it can never be short by a suffix nobody thought of.
+
+    WHAT IT COSTS, stated rather than left to be found: a candidate whose name is generic enough
+    to turn up in a sentence about something else is wired by that sentence -- `docs/` does carry
+    such names. Which ones they are on a given day is a measurement and belongs in FR-0036's round
+    protocol, not in a comment that would rot; what belongs here is the direction of the error,
+    which is the hint saying LESS, and that is the one it may err in.
+    """
+    wires = {rel: set() for rel in candidates}
+    if not candidates:
+        return wires
+    by_name = {}
+    for rel in candidates:
+        by_name.setdefault(os.path.basename(rel), []).append(rel)
+    reader = re.compile(_NAME_BOUNDARY + "(?:%s)" % "|".join(
+        re.escape(name) for name in sorted(by_name)) + _NAME_END)
+    for holder, text in corpus:
+        klass = _wire_class(holder)
+        if klass is None:
+            continue
+        for name in set(reader.findall(text)):
+            for rel in by_name.get(name, ()):
+                if rel != holder:
+                    wires[rel].add(klass)
+    for fragment in directories:
+        prefix = fragment.rstrip("/") + "/"
+        for rel in candidates:
+            if rel.startswith(prefix):
+                wires[rel].add("CODE")
+    return wires
+
+
+# Beyond this a file is not prose anybody points with, and reading it would cost the round more
+# than the answer is worth. One constant, two readers: the corpus and the test that checks it drops
+# nothing else.
+_TOO_BIG_FOR_PROSE = 4_000_000
+
+
+def _require_git():
+    """Skip unless git can answer at all: on PATH, and standing in a work tree.
+
+    ONE ANSWER TO ONE QUESTION, and the second half was bought with a false promise. The corpus is
+    git's own answer to what this repo carries, so where git cannot answer there is no reader --
+    and a reader that found nothing reports every document as unread. The hint above calls itself
+    fail-open; measured on a `git archive` extract (a tree with no `.git` at all), four members of
+    this file FAILED instead of skipping, the hint among them. The two members that predate this
+    section asked the fuller question already and skipped cleanly, so the file held two answers to
+    one question -- they now ask it here, in one place.
+    """
+    if not shutil.which("git"):
+        pytest.skip("git not on PATH")
+    if subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], cwd=ROOT,
+                      capture_output=True, text=True).returncode != 0:
+        pytest.skip("not a git work tree")
+
+
+def _carried_files():
+    """Every path this repo CARRIES, repo-relative: tracked, or new and not ignored.
+
+    The subject is git's own answer to "is this file part of me", and it is that rather than a walk
+    with a skip list for the same reason the wire classes are derived: a list of caches to step over
+    is an enumeration, and a build tool nobody has installed yet adds the next entry to it.
+    """
+    result = subprocess.run(
+        ["git", "ls-files", "-c", "-o", "--exclude-standard", "-z"],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120)
+    if result.returncode != 0:
+        raise AssertionError(
+            "git could not list what this repo carries, so nothing below has a subject: %s"
+            % result.stderr.strip()[:300])
+    # `-z` because a path is not a line: git quotes anything else, and a quoted path is a path this
+    # reader would then have to un-quote.
+    return sorted(part for part in result.stdout.split(chr(0)) if part)
+
+
+def _reference_corpus():
+    """(relative path, text) for everything this repo CARRIES that can hold a pointer into `docs/`.
+
+    WHY THE WHOLE REPO AND NOT THE DIRECTORIES THAT OBVIOUSLY HOLD POINTERS: the first cut read
+    five named tops (`tools`, `.claude/hooks`, `team-kits`, `docs`, `project_memory`), while the
+    manual pass that decided FR-0036's move set read the whole tree -- so the instrument that
+    SHIPS was blind to `README.md`, `HARNESS_LOG.md`, `.claude/agents/` and `install.sh`, and a
+    document cited only from one of those would have been reported as unread. Measured on the tree
+    of 2026-09-02, the wider corpus changes one file's wire set and no move decision; the reason to
+    widen it is not today's answer but that the narrow one errs in the LOUD direction, which is the
+    one this hint may not err in.
+    """
+    for rel in _carried_files():
+        full = os.path.join(ROOT, rel.replace("/", os.sep))
+        try:
+            if os.path.getsize(full) > _TOO_BIG_FOR_PROSE:
+                continue
+            with io.open(full, encoding="utf-8") as handle:
+                text = handle.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        yield rel, text
+
+
+def _directory_wires():
+    """Path fragments the RUNNING tests build with `os.path.join`, off their parsed source."""
+    fragments = set()
+    for pattern in (os.path.join(ROOT, "tools", "*.py"),
+                    os.path.join(ROOT, ".claude", "hooks", "*.py")):
+        for path in sorted(glob.glob(pattern)):
+            try:
+                with io.open(path, encoding="utf-8") as handle:
+                    tree = ast.parse(handle.read(), os.path.basename(path))
+            except (OSError, SyntaxError, UnicodeDecodeError):
+                continue
+            fragments |= {f for f in _joined_literals(tree) if f.startswith("docs/")}
+    return fragments
+
+
+def _age_in_days(rel):
+    """Days since the last commit that touched `rel`, or None when git cannot say."""
+    result = subprocess.run(
+        ["git", "log", "-1", "--format=%ct", "--", rel],
+        cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    stamp = result.stdout.strip()
+    if result.returncode != 0 or not stamp.isdigit():
+        return None
+    return (time.time() - int(stamp)) / 86400.0
+
+
+def _stale_unwired(wires, age_of):
+    """The files the hint names: no wire at all, and last touched longer ago than the grace period.
+
+    Split out of the report below with `age_of` as a parameter for one reason: on the tree as it
+    stands the list is EMPTY, so a threshold left inside the report would be a rule nothing ever
+    exercised -- `test_the_docs_hint_fires_only_past_the_grace_period` hands it two ages and reads
+    both answers.
+    """
+    named = []
+    for rel in sorted(wires):
+        if wires[rel]:
+            continue
+        age = age_of(rel)
+        if age is not None and age > _DOCS_GRACE_DAYS:
+            named.append("%s (%d days)" % (rel, age))
+    return named
+
+
+def _report_stale(stale):
+    """Emit the hint. A warning and not an assertion, on purpose -- see the report test."""
+    if stale:
+        warnings.warn(
+            "docs prose nothing reads any more, last touched over %d days ago -- candidates for "
+            "docs/archive/<year>/, to be judged one by one and never moved on doubt (FR-0036):\n  "
+            % _DOCS_GRACE_DAYS + "\n  ".join(stale), UserWarning)
+
+
+def test_docs_prose_nothing_reads_any_more_is_reported_not_failed():
+    """A hint for the lead, deliberately FAIL-OPEN over WHAT it finds: it names files, and no
+    finding of its own ever blocks a round.
+
+    IT DOES BLOCK WHEN THE REPO ITSELF CANNOT BE READ, and that is the honest half of the sentence:
+    fewer than 20 candidates under `docs/`, or `git ls-files` failing while git is on PATH and a
+    work tree is there, are not judgements about a document -- they say this reader has no subject,
+    and a reader without a subject would otherwise report every file as unread
+    (`test_a_corpus_that_cannot_be_listed_says_so_instead_of_reading_as_empty`). Where git cannot
+    answer at all, `_require_git` skips instead.
+
+    WHY A REPORT AND NOT A GATE (DEC-0056, no scaffolding beyond the house): whether a document is
+    still wanted is a judgement. FR-0036's own pass found a handback whose patches no longer apply
+    but which still names two OPEN bugs, and a research report that lay unread for weeks and then
+    became a shipped skill's source. A check that failed on either would have been wrong both times,
+    and the remedy for a wrong failure is to weaken it until it says nothing. So this warns.
+
+    THE SUBJECT IS DERIVED, not listed: every file under `docs/` outside `docs/archive/` that
+    NOTHING THE REPO CARRIES names -- no code under `tools/` or `.claude/hooks/`, no hole entry, no
+    living item, no shipped kit file and no other prose either -- and whose last commit is older
+    than `_DOCS_GRACE_DAYS`. Prose counts, although it is the weakest of the five kinds
+    `_wire_class` knows, for the same reason as the grace period: any of them keeps a file out of
+    the hint. `docs/archive/` is out because it is where this hint's own remedy puts things.
+
+    "WHAT THE REPO CARRIES" IS GIT'S ANSWER, AND THAT IS THE LIMIT OF THE SENTENCE: a mention in a
+    file git ignores -- a run log, an audit trail, a generated dashboard -- is invisible here, so
+    what this reporter may claim is "nothing git carries names it" and never "nothing names it".
+    Measured on this tree for FR-0036: outside the tool caches there is no uncarried file at all,
+    so the blind spot is empty today rather than merely small (`rework1/n1_ignored_corpus.py`).
+
+    WHAT THIS DOES NOT SEE, said here rather than left to be discovered. A pointer BUILT at run time
+    is invisible to it, except for the one built form it does read -- an `os.path.join` of literals,
+    which is how a test names a whole directory. And it reads text, so a file named in a sentence
+    that calls it obsolete counts as read. Both errors point the same way: towards saying nothing.
+    That is the direction a fail-open hint should err in.
+    """
+    _require_git()
+    candidates = _docs_candidates()
+    assert len(candidates) >= 20, (
+        "only %d files under docs/ -- this reporter is looking at the wrong tree" % len(candidates))
+    wires = _wires_over(candidates, _reference_corpus(), _directory_wires())
+    _report_stale(_stale_unwired(wires, _age_in_days))
+
+
+_WIRE_PROBE_CORPUS = [
+    ("tools/test_something.py", 'path = "docs/pilot/read-by-a-test.md"'),
+    ("docs/POST_V2_WISHLIST.md", "die Messung steht in `docs/pilot/read-by-a-hole.md`"),
+    ("project_memory/evidence/EVD-0001.yaml", "artifact_refs:\n- ../docs/pilot/read-by-an-evd.md"),
+    ("project_memory/decisions/active/DEC-0001.yaml",
+     "source: docs/pilot/read-by-a-decision.md, Abschnitt 2"),
+    ("project_memory/archive/DEC/2026/DEC-0002.yaml",
+     "source: docs/pilot/named-only-by-an-archived-item.md"),
+    ("team-kits/dev-team/skills/x/SKILL.md", "see docs/pilot/read-by-a-shipped-skill.md"),
+    ("docs/pilot/some-other-note.md", "compare docs/pilot/read-by-nothing-but-prose.md"),
+    # Holders OUTSIDE the directories that obviously hold pointers. Both are real places this repo
+    # keeps prose in, and both were invisible to the first cut of the corpus below.
+    ("README.md", "der Werkstattbericht nennt docs/pilot/read-by-the-repo-readme.md"),
+    (".claude/agents/harness-verifier.md", "lies docs/pilot/read-by-a-role-definition.md"),
+    # The spelling a review protocol and a kit skill really use: the file name, no path.
+    ("tools/test_something_else.py", 'REPORT = "named-only-by-its-file-name.md"'),
+    # A name that only LOOKS like a pointer because a longer name ends with it.
+    ("docs/POST_V2_WISHLIST.md", "siehe irgendwas-suffix-of-a-longer-name.md"),
+    # ... and the other end: a name that is a PREFIX of the one actually cited.
+    ("tools/test_logs.py", 'LOG = "run.jsonl"'),
+    # A document naming ITSELF is not a reader of itself.
+    ("docs/pilot/names-only-itself.md", "dies ist docs/pilot/names-only-itself.md"),
+]
+_WIRE_PROBE_FILES = [
+    "docs/pilot/read-by-a-test.md", "docs/pilot/read-by-a-hole.md",
+    "docs/pilot/read-by-an-evd.md", "docs/pilot/read-by-a-decision.md",
+    "docs/pilot/named-only-by-an-archived-item.md", "docs/pilot/read-by-a-shipped-skill.md",
+    "docs/pilot/read-by-nothing-but-prose.md", "docs/pilot/read-by-nothing.md",
+    "docs/research/under-a-directory-a-test-walks.md",
+    "docs/pilot/named-only-by-its-file-name.md", "docs/pilot/suffix-of-a-longer-name.md",
+    "docs/pilot/names-only-itself.md", "docs/logs/run.json", "docs/logs/run.jsonl",
+    "docs/pilot/read-by-the-repo-readme.md", "docs/pilot/read-by-a-role-definition.md",
+]
+
+
+def test_the_docs_wire_reader_answers_both_ways():
+    """The floor under the report above, because a fail-open hint cannot fail on its own.
+
+    A reader that found NOTHING would name every document in the repo; one that found EVERYTHING
+    would name none -- and the second failure is silent, which is the shape this repo has been
+    burned by. Both are asserted against a corpus this test writes, so the answers do not move when
+    the tree does.
+
+    THE DECISION SOURCE IS ITS OWN PROBE and not an example of the others. CLAUDE.md answers a
+    question about the INTENDED state from `decisions/active/` first, so prose a DEC's `source:`
+    points at is load-bearing exactly the way a test's subject is; FR-0036's work order asked for
+    that half to be measured rather than assumed, and `read-by-a-decision.md` is the measurement.
+    The counter-probe beside it is the ARCHIVED decision: a closed item's pointer is a record, not
+    a reader, and a file kept alive by one could never be archived at all.
+    """
+    wires = _wires_over(_WIRE_PROBE_FILES, _WIRE_PROBE_CORPUS, {"docs/research"})
+    assert wires["docs/pilot/read-by-a-test.md"] == {"CODE"}
+    assert wires["docs/pilot/read-by-a-hole.md"] == {"HOLE"}
+    assert wires["docs/pilot/read-by-an-evd.md"] == {"ITEM"}
+    assert wires["docs/pilot/read-by-a-decision.md"] == {"ITEM"}
+    assert wires["docs/pilot/read-by-a-shipped-skill.md"] == {"KIT"}
+    assert wires["docs/research/under-a-directory-a-test-walks.md"] == {"CODE"}
+    # An archived item RECORDS a decision that was made; it does not read the file today. This is
+    # the one class the reader deliberately drops, and dropping it is what makes archiving possible
+    # at all -- an archived TSK naming a document would otherwise keep it alive for ever.
+    assert wires["docs/pilot/named-only-by-an-archived-item.md"] == set()
+    # Prose naming prose is a KIND OF ITS OWN and still keeps the file out of the hint, because the
+    # hint's whole job is to err towards silence. Two dead notes naming each other are a false
+    # negative this accepts; a round still writing around a document is the case it buys.
+    assert wires["docs/pilot/read-by-nothing-but-prose.md"] == {"PROSE"}
+    # A file the repo's own README or a role definition names is NAMED. Everything the repo carries
+    # can hold a pointer, so PROSE is the class a holder falls through to rather than a hole -- the
+    # measured defect was a reader blind to both of these, which makes the hint speak too much.
+    assert wires["docs/pilot/read-by-the-repo-readme.md"] == {"PROSE"}
+    assert wires["docs/pilot/read-by-a-role-definition.md"] == {"PROSE"}
+    assert wires["docs/pilot/read-by-nothing.md"] == set()
+    # A pointer that spells only the FILE NAME is how a review protocol and a kit skill cite, and
+    # it is the ONLY form the reader has: every assertion above is also a name hit, so without this
+    # one an empty reader would still look right for the wrong reason.
+    assert wires["docs/pilot/named-only-by-its-file-name.md"] == {"CODE"}
+    # BOTH ENDS OF A NAME, and each one has cost this repo something. A longer name that ENDS with
+    # a candidate's name is a different file; and a candidate whose name is a PREFIX of the one
+    # actually cited is a different file too -- that second direction is the defect an extension
+    # list had here, where `run.json` matched inside `run.jsonl`.
+    assert wires["docs/pilot/suffix-of-a-longer-name.md"] == set()
+    assert wires["docs/logs/run.jsonl"] == {"CODE"}
+    assert wires["docs/logs/run.json"] == set()
+    assert wires["docs/pilot/names-only-itself.md"] == set()
+
+
+def test_the_directory_reader_takes_the_literal_run_and_stops_at_the_first_hole():
+    """`_joined_literals`, on parsed source rather than on a claim about it.
+
+    The `directories` argument above is handed in ready-made, so nothing there reaches the parser
+    that produces it in the running suite. These three shapes are the ones the tree actually has: a
+    directory built off `ROOT`, a single file built the same way, and a join with a variable in the
+    middle -- which must contribute the run BEFORE the variable and never a spliced path.
+    """
+    tree = ast.parse(
+        "RESEARCH = os.path.join(ROOT, 'docs', 'research')\n"
+        "SPEC = os.path.join(ROOT, 'docs', 'HARNESS_V2_SPEC.md')\n"
+        "OTHER = os.path.join(ROOT, 'docs', name, 'x.md')\n")
+    found = _joined_literals(tree)
+    assert "docs/research" in found
+    assert "docs/HARNESS_V2_SPEC.md" in found
+    assert "docs/x.md" not in found, (
+        "a path was spliced across a variable, so a fixture could wire a file no call names: %s"
+        % sorted(found))
+
+
+def test_the_docs_hint_fires_only_past_the_grace_period():
+    """The floor under the threshold, which the tree cannot exercise: today nothing is old enough.
+
+    Three answers are read, because each of them has failed somewhere in this repo before: a wired
+    file is never named however old it is, an unwired file YOUNGER than the grace period is not
+    named either -- that is the whole point of the period, and a report without it would have nagged
+    `docs/research/2026-07-27-adoption-anthropic.md` off the tree weeks before a shipped skill began
+    citing it -- and an unwired file past the period reaches the warning, not an assertion.
+    """
+    wires = {"docs/pilot/old-and-unread.md": set(),
+             "docs/pilot/young-and-unread.md": set(),
+             "docs/pilot/old-but-read.md": {"CODE"}}
+    ages = {"docs/pilot/old-and-unread.md": _DOCS_GRACE_DAYS + 1,
+            "docs/pilot/young-and-unread.md": _DOCS_GRACE_DAYS - 1,
+            "docs/pilot/old-but-read.md": _DOCS_GRACE_DAYS * 10}
+    stale = _stale_unwired(wires, ages.get)
+    assert stale == ["docs/pilot/old-and-unread.md (%d days)" % (_DOCS_GRACE_DAYS + 1)], stale
+    with pytest.warns(UserWarning, match="old-and-unread"):
+        _report_stale(stale)
+    with warnings.catch_warnings(record=True) as quiet:
+        warnings.simplefilter("always")
+        _report_stale([])
+    assert not quiet, "the hint spoke with nothing to report: %s" % [str(w.message) for w in quiet]
+
+
+def test_the_running_tree_shows_every_wire_kind_this_reader_claims_to_see():
+    """The second floor, on the REAL tree: each kind must occur, or it is untested here.
+
+    The probe above proves the reader can recognise a kind; this proves the kind exists in this
+    repo, so a reader that quietly stopped matching one of them cannot hide behind a corpus that
+    never had it.
+    """
+    _require_git()
+    candidates = _docs_candidates()
+    wires = _wires_over(candidates, _reference_corpus(), _directory_wires())
+    seen = set().union(*wires.values()) if wires else set()
+    missing = {"CODE", "HOLE", "ITEM", "KIT", "PROSE"} - seen
+    assert not missing, (
+        "no file under docs/ is reached by a %s pointer any more -- either the tree changed or this "
+        "reader stopped matching that kind, and the hint above then reports too much"
+        % ", ".join(sorted(missing)))
+
+
+# ---------------- the archive is accountable: what may lie there, and what may not ------------
+
+# Where the reporter above sends prose nothing reads any more, and the one place in this file that
+# spells it: `_is_a_record` decides membership everywhere else.
+_ARCHIVE = "docs/archive"
+
+# An entry in an archive index is the first backticked token in the SECOND cell of a table row,
+# spelled relative to the index. THE COLUMN IS FIXED HERE AND NO HEADER IS PARSED: each index says
+# in its own prose that column two holds the file, and that sentence is a promise made TO this
+# reader, not one it checks. Prose beside the table is not an entry: the reason column names
+# directories and tools, and a reader that took every backticked word would call each of them a
+# line pointing at nothing. A pipe INSIDE a cell would split it wrongly; no index carries one, and
+# this is the reader's stated limit.
+_INDEX_CELL_TOKEN = re.compile(r"`([^`]+)`")
+
+
+def _archive_files():
+    """Every file the repo carries under `docs/archive/`, repo-relative."""
+    return sorted(_carried_under(_ARCHIVE))
+
+
+def _index_entries(text):
+    """The files an index accounts for, as it spells them."""
+    entries = []
+    for line in text.splitlines():
+        if not line.startswith("|"):
+            continue
+        cells = line.split("|")
+        if len(cells) < 4:
+            continue
+        hit = _INDEX_CELL_TOKEN.search(cells[2])
+        if hit:
+            entries.append(hit.group(1).strip())
+    return entries
+
+
+def _index_verdict(index_dir, entries, files):
+    """(files no entry accounts for, entries naming a file the repo does not carry) -- both ends.
+
+    An index is an ENUMERATION, and this repo's rule for one is that it gets a tripwire measuring
+    BOTH ends: the entry that has gone dead, and the entry that was never written. A file that
+    arrived in the archive with no line saying why is the second end, and it is not hypothetical --
+    the four files under `docs/archive/staging-of-archived-items/` sat there for three weeks with
+    no record in the archive at all, and the reason had to be recovered from a review protocol.
+
+    Pure, and parameters rather than a walk inside, so `test_the_index_reader_answers_both_ways`
+    can read both answers off a set it controls.
+    """
+    prefix = index_dir.rstrip("/") + "/"
+    named = {entry.strip("/") for entry in entries}
+    present = {rel[len(prefix):] for rel in files if rel.startswith(prefix)}
+    return sorted(present - named), sorted(named - present)
+
+
+def _indexed_archive():
+    """{index path: (its directory, its entries, the files it is responsible for)}.
+
+    A file belongs to the NEAREST index at or above it, so a year folder's own index accounts for
+    that year and the archive's top index accounts for what lies outside one -- no file is owed
+    twice and none is owed nowhere. An index never accounts for itself or for another index: an
+    index is the archive's apparatus, not archived prose.
+    """
+    files = _archive_files()
+    indexes = [rel for rel in files if os.path.basename(rel) == "README.md"]
+    out = {}
+    for index in indexes:
+        directory = os.path.dirname(index)
+        deeper = [os.path.dirname(other) + "/" for other in indexes
+                  if other != index and os.path.dirname(other).startswith(directory + "/")]
+        owed = [rel for rel in files
+                if rel.startswith(directory + "/") and rel not in indexes
+                and not any(rel.startswith(sub) for sub in deeper)]
+        with io.open(os.path.join(ROOT, index.replace("/", os.sep)), encoding="utf-8") as handle:
+            entries = _index_entries(handle.read())
+        out[index] = (directory, entries, owed)
+    return out
+
+
+def test_every_archived_file_is_named_by_the_index_above_it():
+    """Moving a document is the one act in this repo that makes a file hard to find again.
+
+    WHAT ERROR THIS CATCHES, and it has occurred here (DEC-0056 asks both questions of a check;
+    its point (c) keeps thoroughness maximal exactly for archived documents). On 2026-08-13 the
+    closure round moved five staging directories into `docs/archive/`; one of them, TSK-0022, had
+    to be brought back because three Evidence records point their `artifact_refs` into it, and an
+    EVD is immutable -- `docs/reviews/2026-08-13-tsk0055-closure-round.md` records the round. The
+    other four stayed, and until this index existed nothing in the archive said they were there or
+    why. The cost to the legitimate path is one table row per move.
+
+    THE SUBJECT IS WHAT GIT CARRIES, ON BOTH SIDES, and the window that leaves is measured rather
+    than guessed: a deleted archive file whose deletion is not staged is still listed by
+    `git ls-files`, so this passes until the deletion is staged (measured for FR-0036 -- green
+    unstaged, red staged). Reading the disk beside it would answer a question this file has decided
+    twice already; the archive's subject is the repo, not the filesystem.
+
+    THE ARCHIVE IS NOT SEARCHED FOR POINTERS INTO IT, and that limit is deliberate rather than
+    missed: a round protocol or a hole entry may name an archived path perfectly legitimately while
+    describing the move, so a check refusing every mention would fire on the honest case. What must
+    not dangle is a POINTER THAT HAS TO RESOLVE, and that is the neighbouring test on
+    `artifact_ref`s.
+    """
+    _require_git()
+    accounted = _indexed_archive()
+    assert accounted, "docs/archive/ carries no index at all -- nothing here judges anything"
+    for index, (directory, entries, owed) in sorted(accounted.items()):
+        orphans, dead = _index_verdict(directory, entries, owed)
+        assert not orphans, (
+            "%s does not account for what lies under it: %s -- an archived file with no line "
+            "saying why it is here is a file nobody will dare to touch again"
+            % (index, ", ".join(orphans)))
+        assert not dead, (
+            "%s names files this repo does not carry: %s -- the subject here is what git carries, "
+            "so a deletion shows up once it is staged" % (index, ", ".join(dead)))
+    covered = {rel for _, (_, _, owed) in accounted.items() for rel in owed}
+    stray = [rel for rel in _archive_files()
+             if rel not in covered and os.path.basename(rel) != "README.md"]
+    assert not stray, (
+        "no index above these files accounts for them -- a new archive folder needs its own "
+        "README.md index: %s" % ", ".join(stray))
+
+
+def test_the_index_reader_answers_both_ways():
+    """The floor under the tripwire above: it has to say YES and NO on a set this test controls.
+
+    A comparator that returned nothing would pass on any archive at all, which is the silent half
+    of an enumeration going wrong. Three answers: the matched case, the file no entry names, and
+    the entry naming a file that is not there.
+    """
+    entries = _index_entries(
+        "| verschoben am | Datei | Grund |\n"
+        "|---|---|---|\n"
+        "| 2026-09-02 | `pilot/moved.md` (aus `docs/pilot/`) | kein Verweis |\n"
+        "| 2026-09-02 | `pilot/gone.md` | kein Verweis |\n"
+        "beside the table, `tools/test_repo_hygiene.py` is named and is not an entry\n")
+    assert entries == ["pilot/moved.md", "pilot/gone.md"], entries
+    orphans, dead = _index_verdict(
+        "docs/archive/2026", entries,
+        ["docs/archive/2026/pilot/moved.md", "docs/archive/2026/pilot/arrived-silently.md"])
+    assert orphans == ["pilot/arrived-silently.md"], orphans
+    assert dead == ["pilot/gone.md"], dead
+    assert _index_verdict("docs/archive/2026", ["pilot/moved.md"],
+                          ["docs/archive/2026/pilot/moved.md"]) == ([], [])
+
+
+# ---------------- evidence must name a file that is there (FR-0036) --------------------------
+
+_STORE = os.path.join(ROOT, "project_memory")
+
+# An `artifact_ref` value, in the two shapes the store writes: a block list under the key, and the
+# inline list on the key's own line. The key name is read whole -- singular and plural are the same
+# field with the same duty, and a reader that knew only one would call the other one absent.
+_YAML_KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):")
+_YAML_ITEM = re.compile(r"^\s*-\s+(\S.*?)\s*$")
+
+
+def _refs_in(text):
+    """Every `artifact_ref`/`artifact_refs` value in one YAML document, as written.
+
+    The key is read at the document's top level, which is where the kernel writes it: when this was
+    measured for FR-0036, not one document in the store carried an indented one. How many carry it
+    at all is in the round protocol -- that count grows with every round, and a growing number in a
+    comment is a number that will be wrong.
+    """
+    out, collecting = [], False
+    for line in text.splitlines():
+        key = _YAML_KEY.match(line)
+        if key:
+            collecting = key.group(1) in ("artifact_ref", "artifact_refs")
+            rest = line.split(":", 1)[1].strip()
+            if collecting and rest and rest != "[]":
+                out.extend(part.strip().strip("'\"")
+                           for part in rest.strip("[]").split(",") if part.strip())
+                collecting = False
+            continue
+        if collecting:
+            item = _YAML_ITEM.match(line)
+            if item:
+                out.append(item.group(1).strip("'\""))
+            elif line.strip():
+                collecting = False
+    return [ref for ref in out if ref and ref != "null"]
+
+
+def _store_refs():
+    """(holder, ref) for every artifact_ref the item store carries, archived records included.
+
+    An archived item is not a READER (`_is_a_record`), but its evidence is still a record of what
+    was measured, and a record pointing at nothing is the same defect one shelf further back.
+    """
+    out = []
+    for dirpath, subdirs, names in os.walk(_STORE):
+        subdirs[:] = [name for name in subdirs if name != "__pycache__"]
+        for name in sorted(names):
+            if not name.endswith((".yaml", ".yml")):
+                continue
+            path = os.path.join(dirpath, name)
+            holder = os.path.relpath(path, ROOT).replace(os.sep, "/")
+            try:
+                with io.open(path, encoding="utf-8") as handle:
+                    text = handle.read()
+            except (OSError, UnicodeDecodeError):
+                continue
+            out.extend((holder, ref) for ref in _refs_in(text))
+    return out
+
+
+def _ref_candidates(ref):
+    """(rooting, absolute path) for every place this store has really meant by an `artifact_ref`.
+
+    TWO ROOTINGS OCCUR AND BOTH ARE LOAD-BEARING: some refs are repo-relative (`docs/reviews/...`),
+    the others resolve under the state root (`staging/...`, and `../docs/...` which climbs back out
+    of it). Nothing enforces either spelling, so a reader that knew one convention would call most
+    of the store dangling -- and one that knew only the other would call the rest of it dangling.
+    That both rootings are REACHABLE is asserted on synthetic input in
+    `test_a_ref_that_climbs_out_of_the_repo_resolves_nowhere`, deliberately NOT against the store:
+    a store that one day writes one spelling everywhere is the repair of that split, not a defect,
+    and a check that reddened on it would send the reader to this file instead of to the store.
+
+    A ROOTING COUNTS ONLY WHERE IT STAYS INSIDE THIS REPO, so a ref that climbs out of the tree
+    resolves NOWHERE instead of being satisfied by whatever happens to sit beside the repo -- a
+    check answered by its own environment rather than by the change under it. That property is
+    `test_a_ref_that_climbs_out_of_the_repo_resolves_nowhere`; today's store holds no such ref, so
+    without that test the clause would be a claim nothing exercises.
+    """
+    ref = ref.replace("\\", "/")
+    for rooting, base in (("state", _STORE), ("repo", ROOT)):
+        full = os.path.normpath(os.path.join(base, ref))
+        if _inside(full, ROOT):
+            yield rooting, full
+
+
+def _inside(path, tree):
+    """True where `path` lies under `tree` -- compared as paths, never as strings."""
+    return os.path.normcase(os.path.normpath(path)).startswith(
+        os.path.normcase(os.path.normpath(tree)) + os.sep)
+
+
+def test_every_artifact_ref_still_resolves_where_it_points():
+    """A moved document must not leave evidence pointing at nothing -- it has here.
+
+    WHY THIS FAILS INSTEAD OF WARNING, next to a reporter that only warns: whether a document is
+    still wanted is a judgement, but whether the file an Evidence record names is THERE is a fact.
+    An EVD is immutable, so a broken ref cannot be repaired by editing the record; the move has to
+    be undone or the file restored. `docs/archive/README.md` carries the case measured for this
+    round -- a staging directory that went into the archive on 2026-08-13 and had to come back,
+    because three EVDs point into it. `FR-0036` records a second occurrence, which this round did
+    not re-measure and does not claim.
+
+    WHAT IT DOES NOT COVER: a ref that resolves to the WRONG file of the right name, and prose
+    pointers, which no ref discipline reaches. The reporter above is the reader for those, and it
+    warns rather than judging.
+    """
+    refs = _store_refs()
+    dangling, answered = [], set()
+    for holder, ref in refs:
+        rooting = next((label for label, full in _ref_candidates(ref) if os.path.exists(full)),
+                       None)
+        if rooting is None:
+            dangling.append("%s -> %s" % (holder, ref))
+        else:
+            answered.add(rooting)
+    assert not dangling, (
+        "artifact_refs that resolve nowhere in this repo: %s" % ", ".join(dangling))
+    assert answered, (
+        "%d refs were read and not one of them resolved anywhere -- this reader has no subject, "
+        "and a check without a subject cannot report a broken ref" % len(refs))
+
+
+def test_the_corpus_drops_a_carried_file_only_where_it_cannot_be_read():
+    """Every file this repo carries is offered to the wire reader, and the exceptions are physical.
+
+    THE DEFECT THIS REFUSES WAS THIS FILE'S OWN. The first cut of `_reference_corpus` read five
+    named top-level directories, while the manual pass that decided FR-0036's move set read the
+    whole tree -- so a document cited only from `README.md`, from `HARNESS_LOG.md` or from a role
+    definition under `.claude/agents/` was invisible to the instrument that SHIPS, and the hint
+    would have named it as unread. A directory filter is what this test exists to catch: the only
+    reasons a carried file may be missing from the corpus are that it is not UTF-8 text or that it
+    is larger than prose gets.
+    """
+    _require_git()
+    carried = _carried_files()
+    assert len(carried) > 100, "git listed %d files -- this is not the repo" % len(carried)
+    read = {rel for rel, _ in _reference_corpus()}
+    dropped = []
+    for rel in carried:
+        if rel in read:
+            continue
+        full = os.path.join(ROOT, rel.replace("/", os.sep))
+        try:
+            if not os.path.isfile(full) or os.path.getsize(full) > _TOO_BIG_FOR_PROSE:
+                continue
+            with io.open(full, encoding="utf-8") as handle:
+                handle.read()
+        except (OSError, UnicodeDecodeError):
+            continue
+        dropped.append(rel)
+    assert not dropped, (
+        "the wire reader is not offered these files, and each of them can hold a pointer into "
+        "docs/: %s" % ", ".join(dropped[:20]))
+
+
+def test_a_ref_that_climbs_out_of_the_repo_resolves_nowhere():
+    """The containment half of `_ref_candidates`, which the store itself does not exercise.
+
+    A ref may climb out of the state root -- `../docs/...` is how a record in `project_memory/`
+    names a file in the repo, and it is the reason two rootings exist at all. Climbing out of the
+    REPO is a different thing: nothing this repo carries answers it, so it must dangle rather than
+    be resolved by a sibling directory on the same disk. The `..`-form is asserted alive in the
+    same breath, because a containment clause that swallowed it would silence the check by making
+    every state-relative ref dangle in the opposite direction.
+
+    IT ALSO CARRIES THE BOTH-ROOTINGS FLOOR, on input this test writes rather than on the store:
+    the reader offers `state` and `repo` for a plain relative ref, and only `state` for one that
+    climbs. The test above used to read that floor off the store instead, which made the store's
+    two spellings load-bearing -- repairing them into one convention reddened a reader that was
+    perfectly correct (measured on 57 files / 59 refs, `rework1/m1_refs.py`).
+    """
+    assert [rooting for rooting, _ in
+            _ref_candidates("staging/TSK-0110/round-protocol.md")] == ["state", "repo"]
+    assert [rooting for rooting, _ in
+            _ref_candidates("../docs/reviews/phase0-disposition.md")] == ["state"]
+    assert list(_ref_candidates("../../somewhere-else/note.md")) == []
+    assert list(_ref_candidates("../../../note.md")) == []
+
+
+def test_the_subjects_are_what_the_repo_carries_not_what_lies_on_the_disk(monkeypatch):
+    """Both subjects read git, and a filesystem walk would not notice this test at all.
+
+    THE DEFECT THIS HOLDS DOWN, measured rather than imagined: while `_archive_files` walked the
+    disk with a skip list, an ignored file under `docs/archive/2026/` -- a `*.log` a tool leaves
+    behind, the `Thumbs.db` the Explorer writes, both refused by `.gitignore` -- turned
+    `test_every_archived_file_is_named_by_the_index_above_it` hard red on a tree nobody had
+    changed. Nothing in the suite CREATES such a file, so nothing in the suite would have caught
+    the walk coming back; this test is what does, because a walk ignores the stub below and
+    answers with the real tree.
+    """
+    monkeypatch.setitem(globals(), "_carried_files", lambda: [
+        "docs/note.md", "docs/archive/2026/README.md", "docs/archive/2026/pilot/moved.md",
+        "tools/test_repo_hygiene.py", "README.md"])
+    assert _docs_candidates() == ["docs/note.md"]
+    assert _archive_files() == ["docs/archive/2026/README.md",
+                                "docs/archive/2026/pilot/moved.md"]
+
+
+def test_a_corpus_that_cannot_be_listed_says_so_instead_of_reading_as_empty(monkeypatch):
+    """A reader that cannot list is not a reader that found nothing.
+
+    The branch below is unreachable while git works, so nothing on a healthy host exercises it --
+    and an unreachable branch that returns an EMPTY list is the shape this file is built against:
+    every subject downstream (the documents, the archive, the corpus) would silently become empty,
+    the hint would say nothing, and the archive tripwire would report "no index at all" while the
+    real cause is that `git ls-files` failed.
+    """
+    class _Failed:
+        returncode = 128
+        stdout = ""
+        stderr = "fatal: not a git repository"
+
+    monkeypatch.setitem(globals(), "subprocess",
+                        type("_Stub", (), {"run": staticmethod(lambda *a, **k: _Failed())}))
+    with pytest.raises(AssertionError, match="git could not list"):
+        _carried_files()

@@ -1,0 +1,38 @@
+id: FR-0084
+title: 'Rueckschau als EREIGNIS, nicht als Routine: der Projekt-Auditor (kits) und
+  der Harness-Lead (this repo) ask ''ginge das billiger/besser?'' at phase changes,
+  releases and repeated findings -- and every TSK plan names the way it rejected'
+related_pr: FR-0021
+request_text: 'User 2026-09-03 (chat, after DEC-0062): ''am Ende nach der Umsetzung
+  nie gefragt: ginge das auch besser? ... beim Code: ist das der richtige Weg? ...
+  das kommt selten von euch, da ihr mehr auf umsetzen fokussiert seid'' -- and the
+  boundary in the same breath: asking it at every small thing (''macht das Sinn? waere
+  es nicht cool wenn? ist die UI noch nutzerfreundlich?'') is too much. MEASURED in
+  this repo: reflection appeared only where the procedure DEMANDED a measurement of
+  a claim (K implementer rejected the lead''s order with reasons; J verifier downgraded
+  its own finding; G implementer refused a field) and not where no slot existed (the
+  grouping-by-files insight of DEC-0062 came from the user after the data had sat
+  in DEC-0060 for a day). Wanted, two halves, both bounded: (1) a REVIEW bound to
+  EVENTS, not to time or items -- after a phase completes, after a merge/release,
+  when a finding class repeats (e.g. ''prose claims more than the code measures''
+  in every stream of generation 2), when a decision''s premise changes -- carried
+  by the roles that already run at those moments: the project-auditor of the kits
+  (weekly or event-triggered, ''the hook reports, the PM spawns'', FR-0038/TSK-0112)
+  and the harness-lead''s DEC follow-up here; four measured questions, three lines
+  to the user, decisions stay his: what did the last rounds cost most; which finding
+  class repeated; which decision''s premise no longer holds; what would make the next
+  round cheaper. (2) EVERY TSK PLAN (implementer, before building) names in one line
+  the alternative way it rejected and why -- the frontend-design skill already does
+  this for design (''would another brief have produced the same?'', measured in TSK-0109:
+  tiles rejected) and it generalises to code; the verifier reads that line as a claim.
+  NOT wanted: per-item questioning, taste questions (those are the user''s, FR-0074),
+  a ''creativity'' instruction in a role text. Where it lives: dev/office/research
+  constitutions + project-auditor role (kits; can ride with FR-0021''s PM procedure),
+  .claude/agents/harness-lead.md (this repo; an implementer edits it, gate 1 refuses
+  the lead). Acceptance: the review questions are asked by the auditor run at the
+  named events and appear in the session brief; a TSK plan without the rejected-alternative
+  line is refused by the plan check; measured on a pilot copy.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T22:59:10'

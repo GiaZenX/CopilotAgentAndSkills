@@ -52,11 +52,15 @@ import time
 from . import (approvals, board, checkpoints, dispatch, documents, filing, gaplog, hashing,
                kitupdate, migrate, presets, report, staging)
 from .backlog_types import (
+    AREA_FIELD,
+    AREA_SEPARATOR,
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
     REQUIRED_FIELDS,
+    RUN_SCOPES,
     TASK_TYPES,
     TransitionError,
+    area_segments,
     field_elements,
 )
 from .schemas import load_schema
@@ -102,6 +106,7 @@ FREEZE_OPERATIONS = {
     "architecture": staging.freeze_architecture,
     "design": staging.freeze_design,
     "wireframe": staging.freeze_wireframe,
+    "report": staging.freeze_report,
 }
 FREEZE_COMMANDS = {"freeze-" + kind: operation for kind, operation in FREEZE_OPERATIONS.items()}
 
@@ -325,8 +330,13 @@ def _proposal_key(key):
     describe two different writes (`presets._plan`'s reason, one document over).
     """
     def resolve(state: ProjectState, args):
-        return documents.change_plan(state, getattr(args, "kit_document", None),
-                                     getattr(args, "proposal", None)).get(key)
+        # WHICH PLAN, decided by the KIND and never by the key name (FR-0067). The two document
+        # routes share `base` and `proposed`, and the additive planner REFUSES a replacement -- so
+        # a resolver that always asked that one would answer a revision's question with the
+        # refusal of the other route, about a write the user is entitled to be shown.
+        kind = getattr(args, "kind", None) or documents.KIND_BY_COMMAND[args.command]
+        return documents.PLAN_BY_KIND[kind](state, getattr(args, "kit_document", None),
+                                            getattr(args, "proposal", None)).get(key)
     return resolve
 
 
@@ -343,7 +353,7 @@ LINE_MANIFEST_RESOLVERS.update(
 LINE_MANIFEST_RESOLVERS.update(
     (name, (_proposal_key(name),
             "derived from the document and the staged proposal named on this line"))
-    for name in ("base", "proposed", "changes"))
+    for name in ("base", "proposed", "changes", "replacements", "deletions", "additions"))
 
 
 def _line_manifest(state: ProjectState, kind: str, builder, args) -> dict:
@@ -426,6 +436,14 @@ def build_parser() -> argparse.ArgumentParser:
     # somebody looks for the human-readable view under `generated/`.
     sub.add_parser("generate-index",
                    help="regenerate generated/index.yaml and the board rebuilt with it")
+    # THE PRODUCER OF `INV.verified` (FR-0039). It takes no status: what an invariant's check
+    # resolves to is a measurement of the repository, not a choice, so the only argument is WHICH
+    # invariants to re-measure -- none means all of them.
+    verify = sub.add_parser("verify-invariants",
+                            help="re-measure every invariant's check and record what it resolves "
+                                 "to; exits 1 while one of them resolves to no test")
+    verify.add_argument("item_ids", nargs="*", metavar="INV-nnnn",
+                        help="the invariants to re-measure (default: every active one)")
     brief = sub.add_parser("generate-session-brief", help="regenerate generated/session_brief.yaml")
     brief.add_argument("--kit", required=True)
     brief.add_argument("--kit-version", required=True)
@@ -456,6 +474,18 @@ def build_parser() -> argparse.ArgumentParser:
                           help="where the raw proof lives, relative to the state directory "
                                "(e.g. staging/TSK-0007/coverage.html; repeatable) -- evidence "
                                "references its artefacts, never inlines them")
+    # WHAT THE RUN COVERED (FR-0040). Optional on the flag surface because the field is optional
+    # on the type, and the type's reason is in `backlog_types.RUN_SCOPES`: an `EVD` is immutable,
+    # so a duty added here reaches only new records anyway. What the pair buys is read at the
+    # merge -- a PASS declaring `selection` is not a delivery verdict -- and the kernel refuses
+    # one of the two without the other, so a role cannot claim a scope without naming the run.
+    evidence.add_argument("--run-command", metavar="LINE",
+                          help="the command line that produced this verdict, verbatim -- what an "
+                               "auditor re-runs (needs --run-scope)")
+    evidence.add_argument("--run-scope", choices=sorted(RUN_SCOPES),
+                          help="whether that command covered the whole surface or a selection; a "
+                               "passing `selection` is recorded and does NOT open a merge "
+                               "(needs --run-command)")
     # THE GENERIC ITEM PRODUCER (spec II.4 `capture`). Its body arrives on STDIN as JSON, and both
     # halves of that are forced rather than chosen:
     #   * STDIN, because an item's fields include lists of mappings (`acceptance_criteria:
@@ -767,6 +797,32 @@ def build_parser() -> argparse.ArgumentParser:
         proposal.add_argument(
             "--" + name.replace("_", "-"), metavar=name.upper(),
             help="the approved proposal's %s%s" % (
+                name, " -- NOT typed here: %s, and a value is refused" % entry[1] if entry
+                else "; the approval is looked up by the manifest these flags build, so they are "
+                     "the ones the user was shown"))
+    # THE OTHER HALF OF THAT DEAD END (FR-0067). The command above (`documents.COMMAND`) adds;
+    # this one is the only route that may overwrite or remove what a kit document already records,
+    # which until now was
+    # the one change left to the user's own editor -- and a hand edit into a kit document is the
+    # write no gate and no hash ever sees. Its flags come from ITS builder's signature for the same
+    # reason, and the two commands share every flag name they share a meaning for.
+    #
+    # THE SPELLING COMES FROM THE MODULE and not from this comment, twice over: the name above is
+    # `documents.COMMAND` because a literal here would be a second place the command is spelled --
+    # and because a block of this file that names three subcommands in code spans reads as a
+    # PRESENTATION of the whole command surface to
+    # `test_hooks.test_every_span_that_presents_the_command_surface_names_all_of_it`, which then
+    # requires it to name all of them. Measured twice in this round, once per added comment.
+    revision = sub.add_parser(
+        documents.REVISION_COMMAND,
+        help="apply a user-approved staged revision to a kit document -- may REPLACE and DELETE, "
+             "and every spot stands in the approval question (needs a minted `%s` approval; same "
+             "flags as the request that opened it)" % documents.REVISION_KIND)
+    for name in manifest_parameters(approvals.LINE_MANIFEST_BUILDERS[documents.REVISION_KIND]):
+        entry = LINE_MANIFEST_RESOLVERS.get(name)
+        revision.add_argument(
+            "--" + name.replace("_", "-"), metavar=name.upper(),
+            help="the approved revision's %s%s" % (
                 name, " -- NOT typed here: %s, and a value is refused" % entry[1] if entry
                 else "; the approval is looked up by the manifest these flags build, so they are "
                      "the ones the user was shown"))
@@ -1172,6 +1228,35 @@ def main(argv=None) -> int:
             print(state.generate_index())
             print(state.generated_path(board.FILENAME))
             return 0
+        if args.command == "verify-invariants":
+            wanted = list(args.item_ids) or [
+                stem for stem, _path in state.iter_active_items("INV")]
+            if not wanted:
+                print("no active invariants")
+                return 0
+            refuted = undecided = 0
+            for item_id in wanted:
+                item, resolved, reason = state.record_invariant_verification(item_id)
+                # THREE OUTCOMES, THREE LINES, and the third one is why this is not a boolean: an
+                # invariant this kernel cannot READ is neither met nor unmet, and printing it as
+                # "unverified: ..." beside a non-zero exit told a project whose tests are not
+                # Python that its state is broken, for ever, with nothing to fix.
+                print("%s %s: %s" % (item["id"],
+                                     item["status"] if resolved is not None else "undecided",
+                                     reason))
+                refuted += resolved is False
+                undecided += resolved is None
+            if undecided:
+                print("%d invariant(s) could not be decided here -- that is the reader's limit, "
+                      "not a finding about this project (H110): the check names a test file this "
+                      "kernel does not parse, and whether that test exists is a question for the "
+                      "project's own runner." % undecided)
+            # 1 = "there is something to fix", exactly as `validate` uses it -- and it is the SAME
+            # condition the state validator turns into an ERROR and the merge blocker, so a role
+            # running this and a gate reading the store cannot disagree. Measured before this
+            # counted the way it does: an undecidable check made this exit 1 while `validate`
+            # exited 0 with a warning, on the same store in the same second.
+            return 1 if refuted else 0
         if args.command == "generate-session-brief":
             print(report.generate_session_brief(state, args.kit, args.kit_version, args.enforcement))
             return 0
@@ -1182,6 +1267,11 @@ def main(argv=None) -> int:
                 "result": args.result,
                 "summary": args.summary,
                 "artifact_refs": list(args.artifact_refs),
+                # dropped when unanswered rather than written as null: the pair is refused
+                # half-declared in `state.capture_preflight`, and a `None` is an answer there
+                **{name: value for name, value in
+                   (("run_command", args.run_command), ("run_scope", args.run_scope))
+                   if value is not None},
             })
             print("%s %s: %s" % (item["id"], item["kind"], item["result"]))
             return 0
@@ -1207,6 +1297,20 @@ def main(argv=None) -> int:
             # real project, and the loss was noticed days later. The freeze now takes only the file
             # it froze, and what is LEFT is named -- a role reading this can see its own unfrozen
             # work is still there instead of assuming it either way.
+            # ...and, for the freeze whose subject RECORDS the reference, which item now carries
+            # it. `freeze_report` files a rendered report and appends its path to the subject's
+            # `evidence_refs` when that item's contract declares the field -- and when it does not
+            # (a report written for a question rather than an experiment), `recorded_on` is None
+            # and this says so, because a command that stayed silent there would let a role assume
+            # a binding the state does not hold (BUG-0085).
+            subject = result.get("subject")
+            if subject is not None:
+                field = result.get("recorded_on")
+                print("%s %s: %s" % (
+                    subject["id"], field or staging.REPORT_REF_FIELD,
+                    ", ".join(str(ref) for ref in field_elements(subject.get(field))) or
+                    ("-- this item's contract has no such field, so the report is filed and "
+                     "referenced by nothing but its own name")))
             staged = result.get("staging") or {}
             print("staging: %s %s; still staged: %s" % (
                 staged.get("artifact") or "-",
@@ -1220,9 +1324,35 @@ def main(argv=None) -> int:
             # the CURRENT root (spec II.2) and `dispatch.create_task` is the one thing that reads
             # it. Letting a hand-written body carry that field would be a second producer of one
             # value, and the value decides whether a lease is allowed at all.
+            near = report.similar_items(state, args.item_type, body)
+            outline = report.standing_areas(state)
             item = (dispatch.create_task(state, body) if args.item_type == "TSK"
                     else state.capture(args.item_type, body))
+            # FR-0017: an area nobody uses yet is a NEW outline level, and the FR's rule is that
+            # one is invented only when nothing existing fits -- so the outline that already
+            # exists is put in front of the writer at exactly that moment, and nowhere else.
+            # AFTER the capture, because a body the kernel REFUSES (an area three levels deep, a
+            # missing field) never became a level at all, and advising a writer about a level
+            # that was not created is the noise this hint is bounded to avoid. The outline itself
+            # is read BEFORE the write, so the new item cannot recommend itself.
+            invented = AREA_SEPARATOR.join(area_segments(body.get(AREA_FIELD)))
+            if invented and invented not in outline:
+                sys.stderr.write(
+                    "[outline] %s is a new level; the backlog already carries: %s\n"
+                    % (invented, ", ".join(outline) or "no outline at all"))
             print("%s %s" % (item["id"], item.get("status") or "-"))
+            # THE SOFT HALF OF FR-0018, and it is soft in three ways at once: it is computed
+            # BEFORE the capture so the new item cannot match itself, it goes to stderr AFTER the
+            # id has been printed to stdout, and it changes no exit code. A duplicate is a
+            # judgement about meaning, which the role that just wrote the item is better at than
+            # any word count -- what the kernel owes is the moment and the neighbours.
+            for row in near:
+                sys.stderr.write("[similar] %s: %s\n" % (row["id"], row["title"] or "-"))
+            if near:
+                sys.stderr.write(
+                    "[similar] %s was captured all the same -- nothing here was refused. If one "
+                    "of the above is the same requirement, retire this one and extend that.\n"
+                    % item["id"])
             return 0
         if args.command == "create-task":
             task = dispatch.create_task(state, {
@@ -1368,6 +1498,14 @@ def main(argv=None) -> int:
             # bytes into a document, it does not consume the task's workspace -- the lesson
             # BUG-0074 cost three unfrozen wireframes one document over.
             print("the staged proposal is unchanged and still in %s" % args.proposal)
+            return 0
+        if args.command == documents.REVISION_COMMAND:
+            builder = approvals.LINE_MANIFEST_BUILDERS[documents.REVISION_KIND]
+            result = documents.apply_revision(
+                state, _line_manifest(state, documents.REVISION_KIND, builder, args))
+            print("%s revised (%d bytes): %s" % (result["document"], result["bytes"],
+                                                 ", ".join(result["changes"])))
+            print("the staged revision is unchanged and still in %s" % args.proposal)
             return 0
         if args.command == gaplog.COMMAND:
             entry = gaplog.record(state, args.tried, args.refused, args.title, args.item)

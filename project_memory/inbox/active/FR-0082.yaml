@@ -1,0 +1,15 @@
+id: FR-0082
+title: 'Wunschliste §7: EVIDENCE_RESULTS += blocked -- gate_git schliesst darauf wie
+  auf fail, und der Ehrlichkeitssatz wird mitgebaut'
+related_pr: FR-0040
+request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V2_WISHLIST.md
+  section 7 (Ein dritter Evidence-Ausgang). Measured: no FR carries it; FR-0040 (now
+  built with DEC-0061, run scope) is the neighbour, not the same wish -- it records
+  the SCOPE of a run, this wants a third OUTCOME. Acceptance (the section''s last
+  paragraph, verbatim as criterion): a ''blocked'' evidence closes the merge like
+  ''fail''; the recorded sentence says WHAT blocked and that nothing was checked --
+  a blocked without that sentence reads as a checked fact and is refused by the kernel.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T19:50:11'

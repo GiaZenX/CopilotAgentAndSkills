@@ -1,0 +1,16 @@
+id: FR-0083
+title: 'Wunschliste §10: Freigabe ueber das Claude Agent SDK (canUseTool) erteilen
+  -- ein programmatisch gepraegter Token bleibt von einem menschlich gepraegten unterscheidbar'
+related_pr: FR-0074
+request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V2_WISHLIST.md
+  section 10 (Die Freigabe programmatisch erteilen). Measured: no item carries it;
+  FR-0024 and FR-0047 name the SDK in a different sense. The section is partly corrected
+  in place (TSK-0097, 2026-08-30: the ''headless unerreichbar'' premise was refuted,
+  chain at H80), so this FR carries the WISH, not the refuted premise. Acceptance:
+  an approval minted through canUseTool carries a provenance the kernel can read and
+  prints as such on the card; a gate that requires a human-minted token refuses the
+  programmatic one with a sentence; measured red-first.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T19:50:12'

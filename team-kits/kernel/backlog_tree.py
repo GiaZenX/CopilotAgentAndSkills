@@ -27,9 +27,12 @@ from __future__ import annotations
 from collections import namedtuple
 
 from .backlog_types import (
+    AREA_FIELD,
+    AREA_SEPARATOR,
     DECLARED_REQUIRED_FIELDS,
     PARENT_FIELDS,
     ROOT_TYPE_BY_KIT,
+    area_segments,
     field_elements,
 )
 
@@ -111,20 +114,39 @@ class Node:
         self.depth, self.parent, self.children = 0, None, []
 
     def grouped_children(self, view: View) -> list:
-        """[(type, [node, ...]), ...] -- the children of this node, one group per type.
+        """[(type, area, [node, ...]), ...] -- the children of this node, per type and per area.
 
         GROUPED BY TYPE RATHER THAN "the bugs get a group of their own": FR-0053 asks for the bugs
         of a root to stand apart from its system requirements, and the property behind that ask is
         that a reader wants one kind of thing at a time. Applied to every type it needs no case for
         the one that prompted it, and a type added to a view is grouped the day it ships.
+
+        AND THEN BY `area`, which is the outline FR-0017 asks for, on the surface a person reads.
+        The field is optional and orthogonal to the type, so the second key changes nothing for a
+        project that sets none: every child falls into the one group with the empty area and the
+        page is what it was. An area is a path (`backlog_types.area_segments`), so its segments
+        read as the heading they are.
+
+        ORDER: the view's type order first, then areas alphabetically with the UNFILED group LAST
+        -- a reader looking for what is not sorted yet finds it in one place, at the end, instead
+        of under whichever name happens to sort before "A".
+        `test_board.test_children_of_one_parent_stand_under_their_outline_area` holds both.
         """
-        by_type: dict = {}
+        grouped: dict = {}
         for child in self.children:
-            by_type.setdefault(child.item_type, []).append(child)
-        order = [item_type for item_type in view.children if item_type in by_type]
-        order += sorted(item_type for item_type in by_type if item_type not in view.children)
-        return [(item_type, sorted(by_type[item_type], key=lambda node: node.item_id))
-                for item_type in order]
+            body = child.body if isinstance(child.body, dict) else {}
+            area = AREA_SEPARATOR.join(area_segments(body.get(AREA_FIELD)))
+            grouped.setdefault((child.item_type, area), []).append(child)
+        types = [item_type for item_type in view.children
+                 if any(key[0] == item_type for key in grouped)]
+        types += sorted({key[0] for key in grouped} - set(types))
+        out = []
+        for item_type in types:
+            areas = {key[1] for key in grouped if key[0] == item_type}
+            for area in sorted(areas, key=lambda one: (one == "", one)):
+                out.append((item_type, area,
+                            sorted(grouped[(item_type, area)], key=lambda node: node.item_id)))
+        return out
 
 
 def parents_of(node: Node) -> list:

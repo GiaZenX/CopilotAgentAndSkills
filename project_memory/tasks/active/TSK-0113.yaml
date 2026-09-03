@@ -1,0 +1,72 @@
+id: TSK-0113
+product_requirement: FR-0034
+derives_from: FR-0034
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/office-team/hooks/**
+- team-kits/office-team/templates/project_memory/**
+- team-kits/office-team/templates/repo/scripts/**
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/kernel/**
+- team-kits/dev-team/hooks/**
+- team-kits/research-team/hooks/**
+- team-kits/office-team/templates/repo/tools/**
+- team-kits/office-team/templates/repo/dashboards/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0034.yaml
+- project_memory/inbox/active/FR-0038.yaml
+- project_memory/inbox/active/FR-0028.yaml
+- project_memory/inbox/active/FR-0002.yaml
+- docs/office-kit-from-field.md
+- project_memory/tasks/active/TSK-0107.yaml
+- project_memory/staging/TSK-0107/stream-protocol.md
+expected_outputs:
+- 'RE-CUT of TSK-0107 after its verifier (16 findings, 3 of them against the item):
+  same worktree g2-office, same patch; TSK-0107 stays as the historical order (the
+  kernel forbids READY -> DRAFT, see the BUG captured alongside)'
+- 'FR-0034 duties register (five feeds) + session-start notice; PROPERTY to test,
+  not to state: every feed reports the CURRENT obligation only -- a decade-old year-partitioned
+  archive under one retention rule must not push the one due tax deadline out of the
+  briefing (verifier P1)'
+- FR-0038 run record + overdue notice in the OFFICE kit here; the kit-independent
+  routine feed for dev-team and research-team is TSK-0112 (verifier P4), same worktree,
+  after this item
+- FR-0028 recall measured as a process (rc 2 empty / hash / holds in session 2 / rc
+  2 bypass / rc 2 other repo) with no step that cannot fail (verifier P9); FR-0002
+  F2-F6 with legal basis stated as read, no primary source claimed
+- session_status.py STAYS office-specific under KIT_SPECIFIC_HOOKS with its reason,
+  both tripwire ends measured red (supersedes TSK-0107's 'mirrored byte-identical'
+  line -- the exception is older than the item, verifier I2)
+- 'neutrality, defined: no shipped office-kit text -- role texts, constitution, skills,
+  and templates read as RAW LINES (YAML comments included) -- names a selling platform
+  or a pilot product/category; test both ends; what the test cannot define is named
+  as a limit in the protocol, not claimed (verifier I3, P8)'
+- every shipped template retention value is readable by the register or deliberately
+  empty (verifier P2); no shipped text claims a refusal guard_fs_tripwire does not
+  build -- a pointer to the guard's own head instead (verifier P3, DEC-0056 exception);
+  a missing register module is a visible line at session start, not silence (P10)
+- hole numbers H111-H113 only (H113's limit sentence corrected to what is measured);
+  residues without a number (P4 until TSK-0112, P11 day boundary, P12 DELETE_VERBS
+  enumeration) go to the protocol for the merge round
+dependencies:
+- TSK-0107
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T15:51:09'

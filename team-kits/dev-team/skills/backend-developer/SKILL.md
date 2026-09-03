@@ -22,7 +22,7 @@ those SR items, the `INV` items in force (they carry the language and area rules
    fields are frozen. Your status moves through the result envelope you hand back
    (`SUBMITTED` or `FAILED`) — never by editing the file, which `gate_write_scope` refuses anyway.
 2. Implement the server-side code in `src/**` against the SRs and the coding guidelines, inside
-   `allowed_scope`.
+   `allowed_scope`. Comments follow the constitution's rule (`FR-0007`): a name says what the code does; a comment only names a WHY the code cannot say or a measured limit.
 3. Write **unit tests** for your code in `tests/**`.
    **Staged testing (cost discipline, mirrors QA's rule):** in your dev loop run ONLY the failing +
    affected tests (single files / `-k`), and run `scripts/quality.py` at most ONCE right before handing

@@ -41,7 +41,8 @@ If the brief does not pin down what the product or subject is, pin it yourself b
 > what they're building, or designs you've made before – use that as a hint." In this kit the brief
 > is the work order plus the items it names (`required_inputs`), and the constitution's memory
 > boundary (§0) forbids project state in an agent's own memory — a preference remembered privately is one nobody
-> can review. Read the design-ambition Decision item and the root's acceptance criteria instead. If
+> can review. Read the design-brief Decision item (ambition, what it must achieve and for whom, tone,
+> what it must not become) and the root's acceptance criteria instead. If
 > what you need is genuinely missing, say so in `followups` and hand back: the manager asks the
 > user, you do not.
 

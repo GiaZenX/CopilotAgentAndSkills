@@ -39,7 +39,7 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "33f080bc4755ab56",
+        "digest": "05952224435a9a53",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -53,7 +53,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "6f4a5b0337da8542",
+        "digest": "e508dbbdc4d38f81",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -71,13 +71,13 @@
         ]
       },
       "13. Refactoring & findings": {
-        "digest": "f8471bb0d64282ca",
+        "digest": "8ea92452aca165b4",
         "hooks": [
           "gate_write_scope"
         ]
       },
       "14. Behavior (all roles)": {
-        "digest": "c630c560f3f29a18",
+        "digest": "a6402b6456c18bfd",
         "hooks": []
       },
       "14a. Loops & failures": {
@@ -93,7 +93,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "53007e0ef7d1ac0e",
+        "digest": "028b6828dd3c47f0",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -136,7 +136,7 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "aa31e31e5bd548d5",
+        "digest": "8c6de26fde3bdb53",
         "hooks": [
           "gate_design_sighted",
           "gate_write_scope",
@@ -268,7 +268,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "19a524d64f870fac",
+        "digest": "a3972b0bb09942f2",
         "hooks": [
           "gate_design_sighted",
           "gate_dispatch",
@@ -302,7 +302,7 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "ff7c20d8b8152448",
+        "digest": "3f64c18ed9d0152a",
         "hooks": [
           "gate_filing"
         ]
@@ -318,7 +318,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "7b4ca15380bb2cb6",
+        "digest": "af844e6cf8aa7e41",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -335,7 +335,7 @@
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "66da6266001ebb06",
+        "digest": "e55d462cc4f13b5f",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -385,14 +385,14 @@
         ]
       },
       "5. Roles (presets: `core` = records-clerk + filing-reviewer + bookkeeper; `commerce` adds": {
-        "digest": "6ccdd690694523f3",
+        "digest": "0eb934d129966350",
         "hooks": [
           "gate_second_reading",
           "gate_write_scope"
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "5b40af9f07c156cd",
+        "digest": "8ae6b8c2912edabc",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output"
@@ -406,7 +406,7 @@
         ]
       },
       "8. Behavior": {
-        "digest": "ee46c9b92e43d23b",
+        "digest": "e659be6c8447e81d",
         "hooks": []
       },
       "9. Git & data": {
@@ -495,7 +495,7 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "cf1e5eac3c17a18c",
+        "digest": "e25d07af0dcba347",
         "hooks": [
           "gate_proc_approved",
           "session_status"
@@ -540,7 +540,7 @@
         "hooks": []
       },
       "What you are and are not": {
-        "digest": "08829383e0175b53",
+        "digest": "51085d436f31f2a1",
         "hooks": []
       },
       "Work loop (sequence + ungated duties: constitution §5a; the `project-manager` SKILL is REGISTERED, NOT loaded — open it before executing a step)": {
@@ -554,7 +554,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "965f17c2a06b019c",
+        "digest": "6d8b904f2c6db18a",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -572,13 +572,13 @@
         ]
       },
       "13. Method changes & findings": {
-        "digest": "14352cc0d5818387",
+        "digest": "04a5ef411d0b9ca3",
         "hooks": [
           "gate_write_scope"
         ]
       },
       "14. Behavior (all roles)": {
-        "digest": "2488899f1f341929",
+        "digest": "301e08aab5f8ae0b",
         "hooks": []
       },
       "14a. Loops & failures": {
@@ -598,7 +598,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "5dd40ec5f730eb3c",
+        "digest": "a9a2d59254c4ae03",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -638,7 +638,7 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "5ef5a0acf16564ff",
+        "digest": "5ac5154acc9f102a",
         "hooks": [
           "gate_write_scope",
           "guard_agent_spawn",

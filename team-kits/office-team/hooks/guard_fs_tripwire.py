@@ -85,6 +85,12 @@ trays to protect, so there is no false positive to remove.
 WHAT THIS DOES NOT SEE, so each stays a decision rather than a discovery:
 
   * a removal performed inside another program (`python -c "os.remove(...)"`);
+  * a removal a shell command asks for with a FLAG instead of a verb. `find archive -name '*.pdf'
+    -delete` is one command line, its invocation is `find`, and both readings below key on a delete
+    VERB (`DELETE_VERBS`), so neither sees it — measured rc 0 on 2026-09-02 against a project whose
+    archive held the file it names. Named here rather than closed: adding `find` to the verbs would
+    refuse every `find` that only lists, and reading its flags is a second parser for one command's
+    grammar. It is a residual of the same shape as `tar --remove-files` below;
   * a token, or a `cd` argument, the shell rewrites before use — a variable, a glob, `~`. `_filing`
     resolves none of them and this guard blocks on none; uncertainty -> exit 0 is this guard's
     contract, and a guess about an unresolvable name would break it;

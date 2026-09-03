@@ -8,6 +8,7 @@ sends a role to it -- landed in TSK-0104 and is held from both sides by
 `test_the_gap_command_and_the_duty_that_names_it_arrive_together`; the verb itself is driven end to
 end by `test_the_gap_verb_books_through_the_entry_point`.
 """
+import glob
 import json
 import os
 import re
@@ -18,9 +19,11 @@ import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from kernel.gaplog import COMMAND, LOG_DIR, LOG_NAME, MAX_FIELD, entries, entry_id, record  # noqa: E402
 from kernel.state import ProjectState, StateError  # noqa: E402
+import lead_package  # noqa: E402
 
 HARVEST_TOOL = os.path.join(ROOT, "tools", "harvest_kit_gaps.py")
 
@@ -244,20 +247,32 @@ def test_the_gap_command_and_the_duty_that_names_it_arrive_together():
     deleted from the constitution, this test GREEN, one mention left. A surface list names a
     command; only a text that spells the INVOCATION sends a role to run it, and the duty is the
     second kind.
+
+    EVERY KIT, since TSK-0105 (FR-0062's second half): the duty paragraph is the same text in the
+    three constitutions, and the surface list is in all three, so the office-only reading left the
+    other two kits naming the command and sending nobody to it. Which files count per kit is
+    derived -- the constitution plus the agent file and the skill of whichever role the kit's
+    settings bind as its lead. Measured red in a clone with the paragraph removed from the dev
+    constitution alone: wired True, dev told [], the other two kits green.
     """
     from kernel import cli as cli_module
     surface = set(cli_module.build_parser()._subparsers._group_actions[0].choices)
-    kit = os.path.join(ROOT, "team-kits", "office-team")
-    texts = {path: open(path, encoding="utf-8").read() for path in
-             (os.path.join(kit, "constitution", "AGENTS.md"),
-              os.path.join(kit, "agents", "office-manager.md"),
-              os.path.join(kit, "skills", "office-manager", "SKILL.md"))}
     wired = COMMAND in surface
-    told = [path for path, body in texts.items() if _CALLS_THE_COMMAND.search(body)]
-    assert wired == bool(told), (
-        "`%s` is wired in kernel/cli.py: %s; the office texts naming it: %s. One without the other "
-        "is either a route nobody is told about or a role sent to a command that does not exist."
-        % (COMMAND, wired, [os.path.basename(one) for one in told]))
+    kits = sorted(glob.glob(os.path.join(ROOT, "team-kits", "*", "constitution", "AGENTS.md")))
+    assert len(kits) >= 3, kits
+    for constitution in kits:
+        kit = os.path.dirname(os.path.dirname(constitution))
+        lead = lead_package.lead_role(kit)
+        texts = {path: open(path, encoding="utf-8").read() for path in
+                 (constitution,
+                  os.path.join(kit, "agents", "%s.md" % lead),
+                  os.path.join(kit, "skills", lead, "SKILL.md"))
+                 if os.path.isfile(path)}
+        told = [path for path, body in texts.items() if _CALLS_THE_COMMAND.search(body)]
+        assert wired == bool(told), (
+            "`%s` is wired in kernel/cli.py: %s; the %s texts naming it: %s. One without the other "
+            "is either a route nobody is told about or a role sent to a command that does not exist."
+            % (COMMAND, wired, os.path.basename(kit), [os.path.basename(one) for one in told]))
 
 
 def test_the_gap_verb_books_through_the_entry_point(project, capsys):

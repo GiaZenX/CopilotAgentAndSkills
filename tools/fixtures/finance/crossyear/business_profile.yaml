@@ -1,0 +1,6 @@
+business:
+  name: Nordwind Handel
+  legal_form: Einzelunternehmen
+tax:
+  kleinunternehmer: false
+  fiscal_year: calendar

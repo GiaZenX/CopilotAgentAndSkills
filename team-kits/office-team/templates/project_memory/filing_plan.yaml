@@ -41,7 +41,69 @@
 # non-empty run of characters INSIDE ONE path segment: it never spans a `/`, and a segment may mix
 # literals and placeholders (`<Modell>_<Prozessor>`, `2026-<Monat>`). Everything else is literal, so
 # `archive/finance/<year>/` covers `archive/finance/2026` and not `archive/finance/2026/q1`.
-# retention: DE defaults (Belege 8 years, Bücher 10 — the user's Steuerberater confirms; source noted).
+#
+# -- RETENTION: A SPAN, ITS LEGAL BASIS, AND AN HONESTY NOTE (F2) --------------------------------
+# `retention` is free text and it carries BOTH halves: how long, and the rule that says so --
+# `retention: "8y (§ 147 AO; mit dem Steuerberater bestaetigen)"`. The span is what the session-start
+# duty register reads (`_duties.retention_duties` in the hook directory); the basis is what it prints
+# back to the user, so the number can be CHECKED instead of trusted.
+#
+# EVERY RULE CARRIES THE KEY, and it has exactly two honest forms. A span the reader can count, as
+# above -- or `retention: null`, which says "this drawer has no span anybody can count from a year
+# folder" and is a legitimate answer for a tray, a quarantine, or a retention that starts when
+# something happens rather than when a year ends. What must NOT stand there is a sentence with no
+# number in it: the reader reports a retention it cannot turn into a span as UNREADABLE, and a
+# project that copied such a rule is told its deadline register is INCOMPLETE at every single
+# session start, forever.
+#
+# WHAT THIS KIT KNOWS ABOUT THE GERMAN DEFAULTS, stated as what it is: the usual starting points are
+# 8 years for Buchungsbelege (receipts, invoices) and 10 years for Buecher, Inventare and
+# Jahresabschluesse, the 8 coming from the shortening of § 147 AO by the Viertes
+# Buerokratieentlastungsgesetz. THE KIT READ NO PRIMARY SOURCE FOR ANY OF THAT and ships none: no
+# Gesetzestext, no Bundesgesetzblatt entry, and the transitional rules and the exceptions were not
+# checked at all. So these are a STARTING POINT for the conversation with the Steuerberater, not a
+# statement of law, and no rule below ships with one.
+# WHAT THE WATCHER CAN AND CANNOT SEE: it holds a rule's span against the YEAR FOLDERS directly under
+# the rule's literal path (`archive/finance/incoming/2018/`). A plan not partitioned by year gets no
+# retention reminder -- a limit of the watcher, never permission to keep documents forever. And it
+# never proposes a deletion: a span that ran out produces a REVIEW duty, and the quarantine below is
+# where a reviewed document goes.
+#
+# -- NAMING IS A SCHEME, NOT A HABIT (F3) -------------------------------------------------------
+# `filename_template` belongs on every rule, and the shape this kit recommends is
+#   "YYYY-MM-DD_<counterparty>_<doctype>"
+# -- sortable by date, greppable by counterparty, self-describing. Deviations are legitimate and
+# belong on the RULE that deviates rather than in somebody's head: a bank statement reads better as
+# "YYYY-MM_<account>_statement" (no day), a contract as "YYYY-MM-DD_<counterparty>_<subject>_v<n>",
+# a Kaufbeleg as "YYYY-MM-DD_<vendor>_receipt". Without the field every filing decides anew what a
+# file is called, and after a hundred documents the stock is unsortable -- measured in the field over
+# four weeks of real operation.
+#
+# -- EINGANG AND ARCHIV: THE BOUNDARY IS A DEFINITION (F4) --------------------------------------
+# The INBOX lies beside the archive at the repo root, never inside it, and it has NO subfolders. A
+# document nobody can classify does NOT go into an inbox subfolder -- it goes into a node INSIDE the
+# archive (`archive/_unsorted/`, which a plan carries a rule for like any other class).
+# THE REASON IS MECHANICAL, which is why this is a definition and not a preference: moves WITHIN the
+# archive are ordinary work, while a shell move that takes something OUT of it meets
+# `guard_fs_tripwire` unless the user has minted an approval for that document (what that guard does
+# and does not see is at its own head, not here). Put the clarification node in the inbox and every
+# unclear document has to be carried across that line by hand -- a step a real business stopped
+# performing within weeks, which is why the boundary is written down here as a definition instead of
+# being rediscovered by every project.
+#
+# -- NOTHING IS DELETED; THERE IS A QUARANTINE (F5) ---------------------------------------------
+# A document recognised as superseded, damaged or duplicated moves -- with a logged reason -- into a
+# quarantine node inside the archive (`archive/_quarantine/`, again a rule of its own). NOBODY ON
+# THE TEAM EMPTIES IT: the quarantine is where a document waits for its owner, and this plan's job is
+# only to give it a rule so `gate_filing` lets a document be filed there at all. For business
+# documents an erroneous deletion is not repairable, and an agent that may delete will delete
+# eventually.
+# THAT IS A RULE OF THE TEAM, AND THE WALL UNDER IT IS NARROWER THAN THE RULE. `guard_fs_tripwire`
+# refuses shell deletions under `archive/` and shell moves out of it, with one door: an approval the
+# USER mints for one document at a time. WHAT IT DOES NOT SEE IT WRITES DOWN ITSELF -- read the
+# "WHAT THIS DOES NOT SEE" list at the head of `.claude/hooks/guard_fs_tripwire.py` in your own
+# project before you rely on the wall for anything. This file does not repeat that list, because a
+# second copy of it here would go on promising whatever the first copy stopped covering.
 #
 # THIS FILE SHIPS EMPTY, AND AN EMPTY PLAN FILES NOTHING: `gate_filing` fails closed on it, so the
 # first document a fresh project meets is refused. That is not a dead end — the manager runs
@@ -61,7 +123,7 @@ rules: []
 #    filename_template: "YYYY-MM-DD_<counterparty>_<doctype>"
 #    required_metadata: [date, counterparty, amount_gross]
 #    collision_policy: suffix        # suffix | quarantine — never overwrite, never delete
-#    retention: "8y (BEG IV; confirm with Steuerberater)"
+#    retention: "8y (§ 147 AO; starting point — confirm with Steuerberater)"
 #    examples: ["archive/finance/incoming_invoices/2026/2026-03-04_ACME_invoice.pdf"]
 #  - id: FP-002
 #    path_template: "archive/products/datasheets/"
@@ -69,6 +131,29 @@ rules: []
 #    filename_template: "YYYY-MM-DD_<supplier>_<doctype>"
 #    required_metadata: [date, supplier]
 #    collision_policy: suffix
-#    retention: "while product active + 3y"
+#    retention: null                 # while the product is active, then three years -- no span
+#                                    # this watcher can count, because the clock starts when the
+#                                    # product is discontinued and nothing records that
 #    second_reading: false           # user's decision: one reading here, never none
 #    examples: ["archive/products/datasheets/2026-01-09_ACME_datasheet.pdf"]
+#  # THE TWO RULES EVERY PLAN NEEDS AND EVERY DRAFT FORGETS (F4/F5). Without them the first
+#  # unclassifiable document and the first superseded one have nowhere to go that `gate_filing`
+#  # will accept, and the inbox becomes the place they stay.
+#  - id: FP-900
+#    path_template: "archive/_unsorted/"
+#    document_types: [unclassified]
+#    filename_template: "YYYY-MM-DD_<source>_unclassified"
+#    required_metadata: [date]
+#    collision_policy: suffix
+#    retention: null                 # a tray, not a drawer: the duty here is to CLASSIFY, and
+#                                    # there is no span to run out
+#    examples: ["archive/_unsorted/2026-05-02_scan_unclassified.pdf"]
+#  - id: FP-901
+#    path_template: "archive/_quarantine/<year>/"
+#    document_types: [superseded, damaged, duplicate]
+#    filename_template: "YYYY-MM-DD_<counterparty>_<doctype>_quarantined"
+#    required_metadata: [date, reason]     # the logged reason IS the point of this node
+#    collision_policy: suffix
+#    retention: null                 # the span of the class the document came from applies, and
+#                                    # this node does not know it; only the owner empties it
+#    examples: ["archive/_quarantine/2026/2026-05-02_ACME_invoice_quarantined.pdf"]

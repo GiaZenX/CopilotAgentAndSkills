@@ -19,7 +19,10 @@ stable API.
 
 ## Do
 1. **Consume, never mutate:** your scripts under `tools/` read the tracked data and write rendered
-   output under `dashboards/` (or a path the PROC names inside those two trees). No writes to the
+   output under `dashboards/` (or a path the PROC names inside those two trees). `tools/finance_dashboard.py`
+   and `tools/finance_dashboard.template.html` ARE the finance page; `dashboards/finanzen.html` is
+   their result and is overwritten on every run, so a hand edit of the generated file is gone at
+   the next one: change the presentation in those two files, never in the output. No writes to the
    ledger, any `project_memory/*.yaml`, `scripts/**`, `inbox/`, `archive/`, `outbox/` or the
    enforcement layer — a tool that "needs" to fix data returns that as a finding for the owning
    role instead.
@@ -27,7 +30,8 @@ stable API.
    randomness); static HTML/Markdown with inlined CSS/JS, zero external requests. Business
    documents' content stays out of dashboards unless the PROC explicitly names it (a dashboard is
    overview, not a copy of the archive).
-3. **Honest numbers:** money figures come from the ledger via explicit, commented aggregation;
+3. **Honest numbers:** money figures come from the ledger via explicit aggregation whose names say
+   what it sums (a comment is not what makes a figure honest — the constitution's rule, `FR-0007`);
    label them EÜR-style (income/expense per Zufluss/Abfluss), list open items separately, and show
    the source file + row count next to every total so the user can recompute.
 4. **Self-verify (no QA exists here):** run the tool on the real data, open the output, hand-check

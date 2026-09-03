@@ -121,6 +121,23 @@ sie muss ihre Quelle und ihren Stichtag nennen.
 
 ---
 
+## Stand (2026-09-02, TSK-0107 -- Generation 2, Strom G)
+
+Der Stand gehoert in dieses Dokument, weil die Prosa hier liegt und `FR-0002` nur den Zustand
+traegt. Was gebaut ist, ist gegen den ausgelieferten Baum gemessen; jede Zeile nennt die Stelle,
+nicht den Satz.
+
+| Punkt | Stand | Wo |
+|---|---|---|
+| F1 | **gebaut** (FR-0031 / TSK-0102) | der Aktenplan wird mit Regelentwurf statt leer uebergeben |
+| F2 | **gebaut** | `filing_plan.yaml`: `retention` traegt Spanne UND Rechtsgrundlage, dazu der Ehrlichkeitsvermerk (kein primaerer Gesetzestext gelesen). Der Waechter darauf ist `_duties.retention_duties` |
+| F3 | **gebaut** | `filing_plan.yaml`: `filename_template` als Schema mit den drei benannten Abweichungen |
+| F4 | **gebaut** | `filing_plan.yaml`: Eingang neben dem Archiv, Klaerungsknoten INNERHALB (`archive/_unsorted/`), plus die Regel `FP-900` im Beispielblock |
+| F5 | **gebaut** | `filing_plan.yaml`: Quarantaeneknoten `archive/_quarantine/` plus Regel `FP-901`; die Wand darunter ist der vorhandene `guard_fs_tripwire` |
+| F6 | **war schon ausgeliefert, jetzt gemessen** | `templates/repo/.gitignore` trug beide Haelften bereits; neu ist der Stolperdraht `tools/test_hooks_v2.py::test_the_office_gitignore_still_lets_the_tray_seeds_into_a_fresh_clone`, der die `dir/*`-plus-Negation-Falle mit `git check-ignore` in beide Richtungen misst |
+| F7 | **offen, eigenes Paket** | zwei Verfahrensvorlagen (Eingangsroutine, unabhaengige Projektpruefung). Braucht PROC-Vorlagen im Kit und einen Rollentext, der sie nennt -- beides ausserhalb von TSK-0107 |
+| F8 | **offen, eigenes Paket** | die Jahresansicht. Liegt beim Dashboard-Strom, nicht bei der Vorlagenarbeit; die Bedingung aus Abschnitt 5 der Wunschliste gilt weiter (nach `generated/`, nicht committet, Quelle und Stichtag genannt) |
+
 ## Reihenfolge
 
 **F1 zuerst und allein blockierend** — solange der Aktenplan leer ausgeliefert wird, verweigert

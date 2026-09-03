@@ -372,11 +372,55 @@ REQUIRED_FIELDS = {
 # `ARC`/`WFR`/`DSN` rounds were about.
 # The comment above lists the same four fields in prose; this is that sentence
 # in a form the derivation can read.
+# WHAT THE RUN BEHIND AN EVIDENCE COVERED (FR-0040). Until this pair existed, a pass from
+# `pytest -k one_test` and a pass from the whole suite were the SAME record: `REQUIRED_FIELDS`
+# named the verdict, the summary and the artefacts, and no field named the run -- while
+# `EVIDENCE_RESULTS` below and `gate_git`'s own refusal text both told the reader that a partial
+# run is not merge evidence. That sentence is what these two fields make true.
+#
+# TWO FIELDS BECAUSE THEY ARE TWO DIFFERENT THINGS, and only the second is machine-readable:
+# `run_command` is the line that was executed, which is what an auditor re-runs, and `run_scope`
+# is the claim about it. The kernel cannot DERIVE the second from the first -- what counts as the
+# whole suite is a fact about the project's test runner, not about a string -- so the claim is the
+# role's and the command is what it can be checked against. That limit is the honest one and it is
+# stated here rather than papered over with a list of `pytest` flags, which would be a rule about
+# one runner in a kernel three kits share.
+#
+# ONLY THE PASS SIDE IS FILTERED (`report._delivery_evidence`), and the asymmetry is the argument:
+# a run over part of the work can show a defect, so a `fail` from a selection is a fail; it cannot
+# show the absence of one, so a `pass` from a selection opens nothing.
+# DECISION: DEC-0061. FR-0040 asked for the decision FIRST, and a built file that embodies one
+# names its number (CLAUDE.md) -- so a reader who arrives here through the code lands on the same
+# record as one who greps the decisions.
+RUN_SCOPES = frozenset(("full", "selection"))
+PARTIAL_RUN_SCOPE = "selection"
+
+# The two of them are ONE statement and are declared together or not at all: a scope with no
+# command is a claim with nothing behind it, and a command with no scope is a record the merge
+# cannot read. Enforced in `state.capture_preflight`; the decision is DEC-0061.
+RUN_RECORD_FIELDS = ("run_command", "run_scope")
+
+
 OPTIONAL_FIELDS = {
     "PR": ("user_story",),      # optional for class == technical_enabler
     "FR": ("related_pr",),
+    # THE SYSTEM SIDE OF A BUG (FR-0054). `related_pr` is the product root a bug is filed under
+    # and it stays mandatory; a bug in the software rather than in the product hits a SYSTEM
+    # requirement, and until this field existed there was nowhere to say which. Optional, so no
+    # stored item changes and no migration is forced -- and a parent binding
+    # (`_BINDING_FIELD_NAMES`), which is what makes the system tree place the bug under the SR
+    # instead of under the root, and what makes `report._check_bug_system_link` judge it.
+    "BUG": ("related_sr",),
     "PROC": ("derives_from",),
     "TSK": ("design_ref",),     # required only when the UI scope has a frozen design
+    # OPTIONAL and not required, and the reason is the type: an `EVD` is immutable, so a field
+    # made required here would turn every Evidence a project already holds into a validator error
+    # with no command that could repair it. What that costs is counted where it is judged -- H108
+    # in `docs/POST_V2_WISHLIST.md` -- and not a second time here. What the merge demands instead
+    # is that a PASS carry the declaration -- `report._delivery_evidence` -- which an undeclared
+    # record satisfies by being superseded, the one route an immutable type does have.
+    # See RUN_SCOPES.
+    "EVD": RUN_RECORD_FIELDS,
 }
 
 # Required fields for which an EMPTY value is the same lie as absence. A list-valued
@@ -393,6 +437,51 @@ OPTIONAL_FIELDS = {
 #     What the kernel can check is that the verdict names where to look; whether the
 #     artefact holds up is the auditor's job, and it cannot even start without a path.
 NONEMPTY_FIELDS = {"EVD": ("related", "artifact_refs")}
+
+# -- the backlog's own outline (FR-0017) ---------------------------------------
+#
+# WHAT THE FIELD IS. `area` is a path of names -- "Frontend/Login" -- and nothing else: it carries
+# no text, no owner and no status, because an outline level that can hold content is a second
+# place for a requirement to live. That was the FR's open design question, and the round decided
+# it MEASURING rather than by taste: the alternative (a contentless HEADING item type) is a type
+# in `ACTIVE_DIRS`, and a type there is a prefix in `guard_no_adhoc.ITEM_TYPES` in all three kits'
+# hooks, a directory in all three template trees and a line in three constitutions -- measured by
+# turning `test_hooks.test_no_adhoc_covers_every_item_type` red with a type that nothing else
+# needed. An attribute costs one field and no file outside the kernel. The decision and its
+# measurement are in the TSK-0106 protocol.
+#
+# ON EVERY CAPTURED TYPE, which is the definition rather than the pair the FR names ("both
+# backlogs"): grouping is orthogonal to what an item IS, the two backlogs are two kits' root types
+# plus what hangs under them, and a per-type list would have to be reopened for the next kit.
+AREA_FIELD = "area"
+AREA_SEPARATOR = "/"
+# TWO LEVELS, which is the outline the FR describes (a document holds headings, a heading holds
+# requirements) and at the same time the whole protection against a tree nobody can read: depth is
+# refused at capture, so an outline cannot grow a third level by accident. The other half is at
+# the moment the FR's own rule is about -- a new level is invented -- and it is a HINT rather than
+# a count: `report.standing_areas`, printed by `cli` when a body names an area no item carries yet.
+# No threshold anywhere, because "1000 headings" has no number that separates it from 999 honest
+# ones; what separates them is whether the writer saw the outline they already had.
+AREA_MAX_DEPTH = 2
+# Every type `capture` creates may carry it. Read by `_contract_fields`, so it reaches the field
+# contract, the validator's field duties and `schemas` through the one derivation they all use.
+UNIVERSAL_OPTIONAL_FIELDS = (AREA_FIELD,)
+
+
+def area_segments(value) -> list:
+    """The outline levels a raw `area` value names -- [] when it names none.
+
+    ONE READER for a shape three places ask about (capture's refusal, the validator's warning and
+    anything that groups by it), because a second split is a second answer about what "Frontend/"
+    means.
+    """
+    if isinstance(value, (list, tuple)):
+        parts = [str(one) for one in value]
+    elif value is None or value == "":
+        return []
+    else:
+        parts = str(value).split(AREA_SEPARATOR)
+    return [part.strip() for part in parts if str(part).strip()]
 
 # -- the reference graph: through which field an item names what it belongs to --
 #
@@ -435,7 +524,7 @@ NONEMPTY_FIELDS = {"EVD": ("related", "artifact_refs")}
 # `DSN.root` is the frozen design revision's binding to the PR/RQ it was frozen
 # against (`staging.freeze_design`); the name is generic, the meaning is not.
 _BINDING_FIELD_NAMES = ("product_requirement", "derives_from", "related_pr",
-                        "target_pr", "related", "root")
+                        "target_pr", "related", "related_sr", "root")
 
 
 def field_elements(value) -> list:
@@ -472,7 +561,8 @@ def field_elements(value) -> list:
 def _contract_fields() -> dict:
     """{item type -> set of field names its contracts declare}, over BOTH sources, in full."""
     from .schemas import item_field_contracts
-    fields = {item_type: set(names) for item_type, names in REQUIRED_FIELDS.items()}
+    fields = {item_type: set(names) | set(UNIVERSAL_OPTIONAL_FIELDS)
+              for item_type, names in REQUIRED_FIELDS.items()}
     for item_type, names in OPTIONAL_FIELDS.items():
         fields.setdefault(item_type, set()).update(names)
     for item_type, declared in item_field_contracts().items():
@@ -775,6 +865,7 @@ QA_EVIDENCE_KINDS = EVIDENCE_KINDS - PROJECT_EVIDENCE_KINDS
 # that could not decide is a `fail` whose `summary` says why -- spec II.10a
 # already rules that a partial run is not merge evidence.
 EVIDENCE_RESULTS = frozenset(("pass", "fail"))
+
 
 # Types that are a RECORD of something that already happened rather than a piece of
 # living state. What separates them from every other type is that they have no

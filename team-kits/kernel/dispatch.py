@@ -154,10 +154,11 @@ def _assert_origins_belong_to_root_locked(state: ProjectState, root: dict, field
     executable at all: an item's fields are frozen outside DRAFT and no command rewrites them.
     An item that cannot be created wrong needs no remedy for having been.
 
-    ONE definition of "which item does this one hang from", and it is the VALIDATOR'S:
-    `report._root_of` over `backlog_types.PARENT_FIELDS`. Imported here rather than re-walked --
-    a second implementation of that walk is precisely the drift `_parents_of` was rebuilt to end,
-    and the two answers have to agree or this refuses what `validate` accepts.
+    ONE definition of "does this origin belong to that root", and it is the VALIDATOR'S:
+    `report.origin_root_conflict` over `backlog_types.PARENT_FIELDS`. Imported here rather than
+    re-walked -- a second implementation of that walk is precisely the drift `_parents_of` was
+    rebuilt to end, and the two answers have to agree or this refuses what `validate` accepts.
+    The refusal below therefore quotes that function's sentence rather than composing its own.
 
     SEVERITY IS KEPT IN STEP with the validator on purpose: `_check_task_origins` calls the
     cross-root case an ERROR and the archived/terminal origin a WARNING, so only the first is
@@ -165,30 +166,21 @@ def _assert_origins_belong_to_root_locked(state: ProjectState, root: dict, field
     """
     # deferred: `report` imports `state` and `approvals`, never `dispatch`, so this is a leaf
     # import rather than a cycle -- and by the time a task is created, both halves are loaded
-    from .report import _root_of
+    from .report import origin_root_conflict
 
     for origin in field_elements(fields.get("derives_from")):
         origin = str(origin or "")
-        if not origin or origin == root["id"]:
-            continue
-        try:
-            origin_type, _number = parse_id(origin)
-        except ValueError:
-            continue          # free-text provenance note, not an item reference
-        origin_item, _archived = _read_item_any(state, origin)
-        if not isinstance(origin_item, dict):
-            continue          # a phantom origin is refused by `state._assert_origins_resolve`
-        origin_root = _root_of(origin_type, origin_item)
-        if origin_root and origin_root != root["id"]:
+        conflict = origin_root_conflict(state, origin, root["id"])
+        if conflict:
             raise DispatchError(
-                "derives_from %s belongs to %s, not to this task's root %s -- refused at "
-                "creation (spec II.8). The dispatch gate resolves acceptance_refs against the "
-                "ORIGIN, so this task would be judged against another root's criteria, and "
-                "`python scripts/harness.py validate` reports it as an error that blocks every "
-                "merge. Remedy: create the task under %s, or name an origin that hangs from %s "
-                "-- the fields of an existing task are frozen outside DRAFT, which is why this "
-                "is refused now rather than reported later."
-                % (origin, origin_root, root["id"], origin_root, root["id"])
+                "derives_from %s -- refused at creation (spec II.8). The dispatch gate resolves "
+                "acceptance_refs against the ORIGIN, so this task would be judged against another "
+                "root's criteria, and `python scripts/harness.py validate` reports it as an error "
+                "that blocks every merge. Remedy: create the task under the root the origin really "
+                "hangs from, or name an origin that hangs from %s -- the fields of an existing "
+                "task are frozen outside DRAFT, which is why this is refused now rather than "
+                "reported later."
+                % (conflict, root["id"])
             )
 
 

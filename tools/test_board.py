@@ -133,7 +133,8 @@ class _Board(HTMLParser):
         self.tab_counts = {}       # {view key: the number the tab CLAIMS}
         self.nodes = {}            # {(view, id): {type, parent, depth, unassigned}}
         self.node_titles = {}
-        self.groups = []           # [(view, parent id, type, count), ...]
+        self.groups = []
+        self.group_areas = []      # {(view, parent, type, area, count)} -- FR-0017's outline           # [(view, parent id, type, count), ...]
         self.refs = []             # [(detail id, id it links to), ...]
         self.attributes = []       # [(tag, attribute, value), ...] -- everything, for the guards
         self.elements = []         # [(tag, {attribute: value}), ...] -- element by element
@@ -204,6 +205,9 @@ class _Board(HTMLParser):
         if "data-group" in attrs:
             self.groups.append((view, attrs["data-group-parent"], attrs["data-group"],
                                 int(attrs["data-count"])))
+            self.group_areas.append((view, attrs["data-group-parent"], attrs["data-group"],
+                                     attrs.get("data-group-area", ""),
+                                     int(attrs["data-count"])))
         if tag == "li" and "data-warning" in attrs:
             self.warnings.append([attrs["data-warning"], attrs["data-type"], "", view])
 
@@ -580,6 +584,8 @@ _WRITERS_THE_BOARD_DOES_NOT_RENDER = {
     ("documents.py", "apply"): "a kit DOCUMENT -- `layout.is_project_document` is what it refuses "
                                "anything else by, so what it writes can never be an item and has "
                                "no card",
+    ("documents.py", "apply_revision"): "the same kit DOCUMENT through the same refusal, on the "
+                                        "route that may replace and delete (FR-0067)",
     ("presets.py", "_after_a_failed_install"): "a .claude marker file",
     ("kitupdate.py", "ensure_restart_is_forced"): "a .claude marker file",
 }
@@ -972,6 +978,46 @@ def test_a_task_hangs_under_the_item_it_was_cut_from_and_not_under_the_root(tmp_
     assert page.nodes[("system", under_root["id"])]["depth"] == 1
     assert page.nodes[("system", sr["id"])]["parent"] == pr["id"]
     assert page.nodes[("system", pr["id"])]["depth"] == 0
+
+
+def test_a_bug_that_names_a_system_requirement_hangs_under_it_rather_than_under_the_root(tmp_path):
+    """FR-0054, the half a reader sees: the system tree could only group bugs under the product
+    root, because `related_pr` was the only binding a BUG had.
+
+    NO CASE FOR THE NEW FIELD ANYWHERE IN THE RENDERER -- it is a binding field, and the placement
+    rule (deepest resolvable parent) does the rest. Both directions, because a renderer that
+    simply preferred the new field would pass the first assertion and fail the second: the bug
+    that names no SR still hangs from the root.
+    """
+    state, pr, sr, plain, _under_sr, _under_root = _dev_store(tmp_path)
+    named = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"], related_sr=sr["id"]))
+    page = _read_board(state)
+    assert page.nodes[("system", named["id"])]["parent"] == sr["id"]
+    assert page.nodes[("system", named["id"])]["depth"] == 2
+    assert page.nodes[("system", plain["id"])]["parent"] == pr["id"]
+    assert page.nodes[("system", plain["id"])]["depth"] == 1
+
+
+def test_children_of_one_parent_stand_under_their_outline_area(tmp_path):
+    """FR-0017 on the surface a person reads: the grouping is what an outline IS.
+
+    Until this, `area` reached the page only as a field on a card -- the backlog had an outline
+    nothing was outlined by. The tree already groups a parent's children per type (FR-0053); the
+    area is the second key of that same grouping, so nothing new decides where an item goes.
+
+    Three properties, and the third is what keeps the field optional: an item that names no area
+    keeps the group it always had, the groups of one type are ordered by area, and the UNFILED
+    group comes last -- a reader looking for what is not sorted yet finds it in one place.
+    """
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    state.capture("SR", dict(SR_FIELDS, derives_from=pr["id"], area="Zahlung/Karten"))
+    state.capture("SR", dict(SR_FIELDS, derives_from=pr["id"], area="Anmeldung"))
+    state.capture("SR", dict(SR_FIELDS, derives_from=pr["id"]))
+    page = _read_board(state)
+    mine = [(area, count) for view, parent, item_type, area, count in page.group_areas
+            if view == "system" and parent == pr["id"] and item_type == "SR"]
+    assert mine == [("Anmeldung", 1), ("Zahlung/Karten", 1), ("", 1)], mine
 
 
 def test_a_bug_stands_in_a_group_of_its_own_under_the_root_it_was_recorded_against(tmp_path):

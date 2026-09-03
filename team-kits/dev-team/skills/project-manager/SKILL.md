@@ -118,13 +118,29 @@ Occasion: `BUG-0073`.
    scope-APR for a missing wireframe, and none refuses a freeze that names no approval, so YOU are the only
    thing enforcing "no UI scope approved without a wireframe". Waiving it needs an explicit user Decision
    item, never your own call.
-   (a0) **The design AMBITION is the user's call — ask before any visual work:** full **exploration** (2–3
-   directions to choose from) or a deliberately **minimal**/utilitarian UI? **NEVER decide this silently** or
-   ship a single design / "document one as-built" without that confirmation (the synaipse failure mode).
-   Record it as a **Decision item** — nothing else remembers it. Minimal → ONE restrained spec (same quality
-   bar, no alternatives) and you skip (a)–(b).
-   **At exploration ambition the same question collects the REFERENCES**, and the Decision item records them
-   as URLs: the product's CURRENT site (if one exists) and the products whose look the user loves — the
+   (a0) **The design BRIEF comes before any visual work, and the repo comes before the question.**
+   First READ what the project already answers and write it down as the brief's derived half — the
+   stack and its build, the palette and typography in use, the product vocabulary (names, categories,
+   units), the current site or app where one exists; none of that is asked. Then ask the user ONLY
+   what no file answers, in ONE question call (prose first; each item its own question with options
+   and free text, never an interview — a non-developer answers one good block well and a list badly):
+   the AMBITION, which is the user's call and never yours — full **exploration** (2–3 directions
+   to choose from) or a deliberately
+   **minimal**/utilitarian UI; at exploration its free text is where the REFERENCES arrive —, what
+   the design must ACHIEVE and for WHOM, the TONE, and what it must NOT become. **NEVER decide any of it silently** or ship a single design / "document one
+   as-built" without that confirmation (the synaipse failure mode). Record both halves as ONE
+   **Decision item**, the brief, kept apart — nothing else remembers it. Minimal → ONE restrained
+   spec (same quality bar, no alternatives) and you skip (a)–(b).
+   **The brief says what the design must ACHIEVE, never how the code must be WRITTEN.** A process
+   rule — no hardcoded shop data, a file budget, a licence constraint — is an `INV` or a guideline
+   for the frontend and QA; carried into the design order it arrives in the mockup as a visible
+   instruction. A real project marked every placeholder in its draft because the PM had turned the
+   owner's no-hardcode rule into a design requirement, and the owner rejected the draft on sight;
+   the same project's only brief had been the ambition (`FR-0069` records both). What this costs the
+   legitimate path: one read of the repo before the first design question, and one question call
+   carrying four items instead of one.
+   **At exploration ambition the AMBITION item's free text collects the REFERENCES** — a fifth question
+   is more than one call carries — and the Decision item records them as URLs: the product's CURRENT site (if one exists) and the products whose look the user loves — the
    free-text option in (b) is where most of them arrive. Those URLs are the only source the designer's
    render loop has for its comparison shots; a Decision item that names none silently reduces the internal
    review to "does it look broken" instead of "does it hold up next to what he admires". A real user had to

@@ -1,0 +1,57 @@
+id: DEC-0062
+title: Streams are cut by FILE OWNERSHIP and FRs that touch the same files or functions
+  are GROUPED into one stream -- parallelism across streams, grouping inside them;
+  a stream is capped by one round's attention, not by a number of FRs
+context: 'User decision 2026-09-02 23:5x, while the generation-2 merge (TSK-0114)
+  ran: ''das zusammenfassen mehrerer FR die die gleichen Dateien und Funktionen des
+  Programms beruehren ... so eingefleischt haben ... so beschleunigen wir nicht nur
+  durch Parallelisierung sondern auch durch Zusammenfassung.'' MEASURED in generation
+  2 (project_memory/staging/generation-2-streams.md, (g) table): seven streams cut
+  by kit area merged with a SEAM that grew with the count -- six streams appended
+  to docs/POST_V2_WISHLIST.md, two (I, K) edited the same docstring in tools/test_hooks.py,
+  three (F, G, I) delivered constitution sentences that may only be written after
+  E''s texts; the merge became a round of its own (TSK-0114). Inside streams the opposite
+  held: G carried four FRs (FR-0034/0038/0028/0002) on one file set and its register/template/guard
+  defects were found TOGETHER by one verifier; F carried eleven items on team-kits/kernel/**
+  and its verifier measured the whole contract in one pass. The cost side is measured
+  too: F and G were the two longest streams (~11-12 h spawn -> PASS, 14 and 16 first-pass
+  findings) -- size, not grouping, is what a round pays for. The lead''s attention
+  was the ceiling (DEC-0060): seven streams x three to five verify/rework rounds.'
+decision: '(1) A generation is cut by FILE OWNERSHIP: every stream owns a disjoint
+  set of files (DEC-0057 rule), and the cut is DERIVED from the paths each FR would
+  touch -- read the FR, list the files, then draw the streams; never from item numbers,
+  never from topic words. (2) FRs whose paths overlap go into ONE stream (one TSK
+  with the primary FR as product_requirement and the others in required_inputs/expected_outputs,
+  all set to MERGED at delivery) -- grouped, they are built by one implementer who
+  reads the shared file once and verified by one verifier who measures one contract;
+  split, they collide in the merge. (3) A stream is CAPPED by what one implementer
+  can carry through one build round and one verifier through one pass (measured this
+  generation: a kernel stream of eleven items and an office stream of four FRs were
+  the ceiling, ~4 h build + 1 h verify per round); a group that would exceed it is
+  split along the next file boundary, and the split is recorded as a seam BEFORE the
+  streams start, not discovered in the merge. (4) What a group must not hide: every
+  FR in it keeps its own red-first test and its own acceptance line in expected_outputs;
+  the verifier reports per FR. (5) Shared files that no stream can own alone (the
+  hole list, the constitutions, mirrored files, tools/test_hooks.py) are named as
+  SEAMS in every item at cut time with the apply order and the arbiter test; the merge
+  round applies them, streams report them. (6) The same rule goes into the kits with
+  FR-0021: the PM cuts parallel specialists by file ownership and groups requirements
+  that share files, with the same cap.'
+consequences: 'Fewer merge collisions and fewer duplicate readings of the same file
+  -- the seam is the measure, and it shrinks when the cut follows the files. What
+  grouping does NOT save: tokens per FR (each keeps its red tests) and the verifier''s
+  first pass (a bigger stream collects more findings, measured 14-16). What it costs:
+  a grouped stream fails as a whole -- one blocking finding holds every FR in it;
+  the cap in (3) bounds that. Generation 3 is the first cut under this rule (proposal
+  in the logbook 2026-09-02 23:5x: A Board & Plan = FR-0075+0079+0080, B Office Finance
+  = FR-0076, C Approvals & Evidence = FR-0074+0082+0083+BUG-0089, D Parallel specialists
+  = FR-0021, E Design gates = FR-0077+0078); its (g) numbers say whether the cap is
+  right. Enforcement: none by a gate (a cut is judgement) -- the tripwire is the merge
+  round''s seam table: a collision the cut did not name as a seam is a finding against
+  the cut, recorded in the generation''s DEC follow-up.'
+source: User 2026-09-02 (chat, while TSK-0114 ran); DEC-0057, DEC-0060; project_memory/staging/generation-2-streams.md
+  (g) table and seam notes
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-02T22:35:54'

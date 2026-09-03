@@ -1,0 +1,36 @@
+id: FR-0076
+title: 'Office: a shipped standard category vocabulary mapped to the lines of the
+  current Anlage EUeR, EUeR report summed per form line, and an AfA HINT (not a calculation)
+  for purchases above the GWG limit'
+request_text: 'User wish 2026-09-02 (asked after seeing the finance dashboard of TSK-0109):
+  ''werden die Posten auch so gebucht wie es das Finanzamt macht? Buerobedarf, Speisen,
+  Handelsware, AfA ... in welche Zeilen sie in der Erklaerung reingehoeren'' -- explicitly
+  WITHOUT building for a GmbH (''ich will kein Geruest fuer ein Haus bauen das noch
+  nicht existiert''). Measured today: team-kits/office-team/templates/project_memory/master_data.yaml
+  carries the category vocabulary with an `euer_line` per category, but only as commented
+  EXAMPLES (goods -> ''Waren, Roh- und Hilfsstoffe'', ... -> ''Uebrige Betriebsausgaben'',
+  ''Betriebseinnahmen''); the vocabulary is filled at onboarding by the user, and
+  the office pilot once stalled on an empty one (P4-12, DEC-0053/BUG-0071). scripts/euer_report.py
+  sums per CATEGORY (''## Nach Kategorie''), never per EUeR line; no asset register,
+  no depreciation anywhere. Wanted, small: (1) a SHIPPED default vocabulary (Wareneinkauf,
+  Buerobedarf, Bewirtung, Porto, Software/Hosting, Werbung, Reisekosten, Telefon/Internet,
+  Versicherungen, Beitraege/Gebuehren, Fremdleistungen, Miete, ... and the income
+  lines) where each category carries the LINE NUMBER of the current official Anlage
+  EUeR form (the form year is a property of the vocabulary, not of the code -- line
+  numbers change between form years); the user can rename or add, the kit ships the
+  base; (2) euer_report.py sums per form line in addition to per category, so the
+  Steuerberater maps 1:1; (3) AfA only as a HINT: a booking whose net exceeds the
+  GWG limit (800 EUR net today; the limit is a profile/vocabulary value, not a constant)
+  is flagged ''Anlagegut -- mit der Steuerberatung klaeren'', no asset register, no
+  depreciation arithmetic. NOT wanted, decided with the user: anything for a GmbH
+  (Bilanz, doppelte Buchfuehrung, SKR03/04, E-Bilanz) -- the ledger already records
+  what every legal form needs (document, net/VAT/gross, counterparty, category); if
+  a GmbH comes, the ledger is exported and handed over, not rebuilt. Relation to TSK-0109:
+  the finance dashboard''s EUeR tab should show the per-line sums once they exist
+  (follow-up, not this stream). Legal caveat stays on every page: replaces no tax
+  advice.'
+related_pr: FR-0032
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T13:39:16'

@@ -511,6 +511,26 @@ def test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements
     assert not offenders, offenders
 
 
+def test_every_captured_type_declares_the_outline_field_and_none_declares_it_twice():
+    """FR-0017: `area` is a CONTRACT field of every type `capture` creates, not a loose key.
+
+    The distinction is the one `PROC.derives_from` and `FR.related_pr` cost a round each: a field
+    the contract does not declare is invisible to everything that derives from the contract --
+    `_contract_fields`, and through it the field-name universe the reference sweep bounds itself
+    with. `capture` stores an undeclared key just as happily, which is exactly why its presence in
+    the store proves nothing and this reads the derivation instead.
+
+    The counter-direction is the second assertion: it comes from ONE place, so no type carries it
+    twice and no type's own `OPTIONAL_FIELDS` has to repeat it.
+    """
+    contracts = backlog_types._contract_fields()
+    missing = sorted(item_type for item_type in backlog_types.REQUIRED_FIELDS
+                     if backlog_types.AREA_FIELD not in contracts.get(item_type, ()))
+    assert not missing, missing
+    assert not [item_type for item_type, names in backlog_types.OPTIONAL_FIELDS.items()
+                if backlog_types.AREA_FIELD in names]
+
+
 def test_the_single_value_fields_are_contract_fields_nothing_resolves_elementwise():
     """One end of the `SINGLE_VALUE_FIELDS` enumeration: the entry that has gone DEAD (DEC-0043).
 

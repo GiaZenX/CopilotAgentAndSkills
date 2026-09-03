@@ -25,7 +25,7 @@ Your `TSK` — `derives_from` names the `EXP`, `acceptance_refs` the criteria yo
 3. Collect raw data with **provenance** (what/when/conditions/instrument) and hand it back as an **Evidence**
    item attached to the EXP — the raw files stay on disk (dataset paths, `staging/<task-id>/` for anything
    in flight) and the Evidence references them with their checksums. Never silently drop outliers — flag them.
-4. Write analysis code in `src/**` inside `allowed_scope`; add tests for non-trivial computation.
+4. Write analysis code in `src/**` inside `allowed_scope`; add tests for non-trivial computation. Comments follow the constitution's rule (`FR-0007`): a name says what the code does; a comment only names a WHY the code cannot say or a measured limit.
 5. Commit after the task (Conventional Commits). NEVER push. Flag missing guidelines to the PM.
 
 ## Files you WRITE

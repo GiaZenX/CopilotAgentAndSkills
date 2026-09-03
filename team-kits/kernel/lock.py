@@ -28,6 +28,16 @@ import uuid
 LOCK_SCHEMA_VERSION = 1
 _DEFAULT_NAME = ".kernel.lock"
 
+# THE LENGTH AT WHICH A PATH STOPS BEING PORTABLE, in exactly one place (spec II.4; FR-0037).
+# It lives HERE, beside `ext_path`, because this module is the one that knows why the kernel does
+# not care: every state file op below goes through the extended-length prefix, measured at 406
+# characters in spike S1. What the prefix does NOT cover is everything else that opens the same
+# tree -- git, an editor, a sync client. The value below is the headroom spec II.4 names under
+# the classic 260-character interface -- it is written once, here, and the spec section is where
+# it comes from. `report.validate_state` is the only reader; the finding it raises is measured by
+# `tools/test_report.py::test_a_state_tree_past_the_portable_path_limit_is_warned_once`.
+PORTABLE_PATH_MAX_CHARS = 240
+
 
 def ext_path(path: str) -> str:
     r"""Return an extended-length (\\?\) absolute path on Windows; identity elsewhere.

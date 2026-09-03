@@ -24,6 +24,10 @@ Follow `./AGENTS.md` §2/§5/§6.
   but a second authority nobody reads; prose describing the change is not one either, and that
   half the kernel refuses by itself — it compares CONTENT and never the file name, so the NAME is
   yours to get right. What `apply-proposal` refuses — a replacement, a correction, a deletion —
+  has its own route, `revise-document`, on its own approval: you stage the file the same way, and
+  the question shows the user every replaced and every deleted spot with its old and its new
+  wording, while outside those spots the revision may not lose a line. A revision that only ADDS
+  is refused there and belongs back on the additive route. Where neither route reaches, the edit
   stays the user's own editor step: give them the old lines and the new ones, and say that this
   one is theirs to apply. Never ask them to paste a file you invented. Yours is
   `staging/<TSK-ID>/marketing_plan.yaml`; stage it, then ask the manager, who puts the kernel's

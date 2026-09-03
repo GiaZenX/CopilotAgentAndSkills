@@ -21,6 +21,15 @@ venv/
 # project status in git and produce a merge conflict on every parallel branch.
 project_memory/generated/
 
+# the generated finance page, for the reason directly above: `tools/finance_dashboard.py` rebuilds
+# it from the ledger, so a committed copy is an always-stale second answer plus a merge conflict on
+# every branch. `dir/*` plus a negation and never `dir/`, for the reason the inbox/archive/outbox
+# rules below give. What stays tracked is what the kit SHIPS in that folder, and what a run writes
+# is what does not -- both ends in
+# tools/test_hooks_v2.py::test_the_office_gitignore_keeps_the_generated_dashboard_out_of_git.
+dashboards/*
+!dashboards/ABOUT.txt
+
 # the state kernel's cross-process lock (and the remnants a stale-break leaves behind). It names a
 # live PID on THIS machine; committed, a clone would inherit a lock nobody holds.
 project_memory/.kernel.lock

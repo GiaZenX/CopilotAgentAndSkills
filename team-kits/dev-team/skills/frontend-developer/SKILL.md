@@ -30,7 +30,7 @@ relevant `src/**`/`tests/**`/`frontend/**`.
    mockup's **markup + CSS as the BASE** and wire the app logic INTO it, so the build is faithful by
    construction. **NEVER recolor/retrofit an existing layout** with the new tokens — that is the named
    failure mode (a real run shipped four "recolored" slices the user rejected). That one file supplies both
-   the tokens and the structure; if it does not answer a question, ask — do not invent.
+   the tokens and the structure; if it does not answer a question, ask — do not invent. Comments follow the constitution's rule (`FR-0007`): a name says what the code does; a comment only names a WHY the code cannot say or a measured limit.
 3. Write **component/unit tests** co-located under `frontend/**` as `*.test.*` / `*.spec.*`
    — `gate_test_coverage` blocks the merge if the `frontend/` area has no tests.
    **jsdom-green is NOT browser-green:** secure-context-only APIs (`crypto.randomUUID`,

@@ -917,6 +917,129 @@ def test_a_task_under_its_own_root_is_still_creatable(tmp_path):
     assert task["status"] == "DRAFT"
 
 
+def _research_chain(state, question_title="q", parents="HYP-0001"):
+    """RQ -> HYP -> EXP, captured directly -- the chain the research constitution documents."""
+    state.capture("RQ", {"title": question_title, "class": "exploratory", "question": "why",
+                         "motivation": "m", "acceptance_criteria": [{"id": "AC-1", "text": "x"}],
+                         "out_of_scope": [], "priority": "high"})
+    state.capture("HYP", {"derives_from": state.read_item("RQ-0001")["id"],
+                          "statement": "s", "testable_prediction": "p"})
+    state.capture("EXP", {"derives_from": parents, "design": "d", "variables": ["v"],
+                          "success_criteria": [{"id": "SC-1", "text": "s"}], "evidence_refs": []})
+
+
+def _research_task(state, root_id, origin_id):
+    return {"product_requirement": root_id, "derives_from": origin_id, "type": "research",
+            "assigned_role": "researcher", "acceptance_refs": ["AC-1"], "allowed_scope": ["src/"],
+            "forbidden_scope": [], "required_inputs": [], "expected_outputs": [],
+            "dependencies": []}
+
+
+def test_a_task_may_derive_from_an_experiment_two_levels_under_its_root(tmp_path):
+    """The research kit's documented chain RQ -> HYP -> EXP -> TSK is creatable (BUG-0083).
+
+    Measured on a scaffolded research project before the fix: `create-task --product-requirement
+    RQ-0001 --derives-from EXP-0001` came back rc 1, "derives_from EXP-0001 belongs to HYP-0001",
+    because the origin's root was resolved ONE hop up while the merge gate resolved the same
+    binding transitively. The kit's own constitution, its `ROOT_TYPE_BY_KIT` entry and the
+    refusal's own remedy ("name an origin that hangs from RQ-0001") all said the chain was legal.
+    Its validator-side counterpart is
+    `test_report.test_a_task_on_an_origin_two_levels_under_its_root_is_fine`.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.report import validate_state
+    from kernel.state import ProjectState
+
+    state = ProjectState(_template_state(tmp_path))
+    _research_chain(state)
+    task = dispatch.create_task(state, _research_task(state, "RQ-0001", "EXP-0001"))
+    assert task["status"] == "DRAFT"
+    assert [f for f in validate_state(state) if f["severity"] == "error"] == []
+
+
+def test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation(tmp_path):
+    """Ambiguous parentage fails CLOSED at the creation gate too (BUG-0086).
+
+    An origin with several parents used to resolve to NO root, and both readers treated "no root"
+    as "nothing to compare" -- so this exact call was rc 0 on a scaffolded project while the
+    single-parent control was correctly refused. The refusal names the parent that leaves the
+    root: the remedy differs from the cross-root case, where the whole origin belongs elsewhere.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.report import validate_state
+    from kernel.state import ProjectState
+
+    state = ProjectState(_template_state(tmp_path))
+    _research_chain(state)
+    state.capture("RQ", {"title": "other", "class": "exploratory", "question": "why else",
+                         "motivation": "m", "acceptance_criteria": [{"id": "AC-1", "text": "x"}],
+                         "out_of_scope": [], "priority": "high"})
+    state.capture("HYP", {"derives_from": "RQ-0002", "statement": "s2",
+                          "testable_prediction": "p2"})
+    state.capture("EXP", {"derives_from": ["HYP-0001", "HYP-0002"], "design": "d",
+                          "variables": ["v"], "success_criteria": [{"id": "SC-1", "text": "s"}],
+                          "evidence_refs": []})
+    with pytest.raises(dispatch.DispatchError) as exc:
+        dispatch.create_task(state, _research_task(state, "RQ-0001", "EXP-0002"))
+    assert "HYP-0002" in str(exc.value) and "RQ-0002" in str(exc.value), exc.value
+    assert [f for f in validate_state(state) if f["severity"] == "error"] == []
+
+
+def test_a_task_may_not_derive_from_a_ROOT_item_of_another_tree(tmp_path):
+    """The third way the old check fell open, found by this round's own suite rather than reported.
+
+    `_root_of` answered "no parents" with None exactly as it answered "several parents" with None,
+    and both callers read None as "skip" -- so an origin that is itself a ROOT (a second PR) was
+    accepted under any other root, with the same damage the cross-root case has: the dispatch gate
+    resolves `acceptance_refs` against the ORIGIN, so PR-0002's criteria become resolvable for a
+    task serving PR-0001. It surfaced when the transitive check turned seven fixture states in
+    `tools/test_approvals_dispatch.py` red -- states that named `PR-0001` as origin under a
+    different root because nothing had ever refused it.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    state = ProjectState(_template_state(tmp_path))
+    state.capture("PR", _pr_fields())
+    state.capture("PR", dict(_pr_fields(), title="another root"))
+    with pytest.raises(dispatch.DispatchError) as exc:
+        dispatch.create_task(state, {
+            "product_requirement": "PR-0002", "derives_from": "PR-0001", "type": "implementation",
+            "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"],
+            "allowed_scope": ["src/"], "forbidden_scope": [], "required_inputs": [],
+            "expected_outputs": [], "dependencies": [],
+        })
+    assert "PR-0001" in str(exc.value) and "PR-0002" in str(exc.value), exc.value
+
+
+def test_an_origin_whose_parents_all_hang_from_the_root_is_still_creatable(tmp_path):
+    """The counter-direction: several parents are not a defect, only a MIXED parentage is.
+
+    Without this the fail-closed half above could be satisfied by refusing every multi-parent
+    origin, and the shipped research end-to-end test walks exactly such a chain -- an experiment
+    hanging from the hypothesis it tests and from the question that pays for it.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import dispatch
+    from kernel.state import ProjectState
+
+    state = ProjectState(_template_state(tmp_path))
+    _research_chain(state, parents=["HYP-0001", "RQ-0001"])
+    task = dispatch.create_task(state, _research_task(state, "RQ-0001", "EXP-0001"))
+    assert task["status"] == "DRAFT"
+
+
 # ---------------- the approval surface a role can actually reach ----------------
 
 def test_the_transition_refusal_names_a_command_that_walks_the_edge(tmp_path):
@@ -1040,9 +1163,17 @@ def test_a_generic_document_writer_is_named_only_for_the_documents_it_would_writ
 
     root = _office_state(tmp_path)
     named = [entry["command"] for entry in layout.partial_writers("master_data.yaml", root)]
-    assert named == [documents.COMMAND], named
-    assert [entry["command"] for entry in layout.partial_writers("filing_plan.yaml", root)] == [
-        "add-filing-rule", documents.COMMAND]
+    # EVERY ROUTE THIS MODULE HAS, read off `KIND_BY_COMMAND` -- the map a route needs to exist
+    # at all -- and NOT off `DOCUMENT_WRITES`, which is the registration under test here: an
+    # expectation taken from the registration is an identity, and it was measured as one (a
+    # revision route deleted out of `DOCUMENT_WRITES` left both readings equal). This is how
+    # `REVISION_WRITES` could be declared and reach no gate for a whole round.
+    assert sorted(named) == sorted(documents.KIND_BY_COMMAND), named
+    # The filing plan has an owner of its own for one FIELD, and the generic routes for the rest;
+    # the third element was a literal too, and it hid the second generic route the same way.
+    plan_routes = [entry["command"] for entry in layout.partial_writers("filing_plan.yaml", root)]
+    assert plan_routes[0] == "add-filing-rule", plan_routes
+    assert sorted(plan_routes[1:]) == sorted(documents.KIND_BY_COMMAND), plan_routes
     for no_route in ("product/masterplan.md", "README.md", "tasks/active/TSK-0001.yaml",
                      "approvals/pending/x.yaml", "staging/TSK-0001/master_data.yaml",
                      "does_not_exist.yaml"):
@@ -1501,6 +1632,273 @@ def test_a_staged_proposal_is_applied_only_when_the_user_approved_exactly_it(tmp
     assert "adds nothing" in str(again.value)
 
 
+def _revised(document=MASTER_DATA):
+    """`document` as a REVISION of itself: one scalar rewritten, one answered key removed."""
+    return document.replace('language: "de"', 'language: "en"').replace("counterparties: []\n", "")
+
+
+def _approved_revision(state, kit_document, proposal, reason="Steuerberater gewechselt"):
+    """Mint a `document_revision` approval for this before-and-after, through the REAL hook."""
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from conftest import mint_via_hook
+    from kernel import approvals, documents
+
+    plan = documents.revision_plan(state, kit_document, proposal)
+    manifest = approvals.document_revision_subject_manifest(
+        kit_document, proposal, plan["base"], plan["proposed"], plan["replacements"],
+        plan["deletions"], plan["additions"], reason)
+    request = approvals.create_pending_request(
+        state, documents.REVISION_KIND, manifest=manifest,
+        approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY)
+    question = approvals.build_question(request)["question"]
+    mint_via_hook(state, request)
+    return manifest, question
+
+
+def test_a_revision_writes_exactly_the_spots_the_card_showed_and_the_other_route_refuses_it(
+        tmp_path):
+    """FR-0067: the one class of change that was still a hand edit into a kit document.
+
+    `apply-proposal` refuses a replacement by design -- that is the first assertion, and it is what
+    makes this a second route rather than a widening of the first: the additive card promises the
+    user that nothing existing changes, and that promise stays true.
+
+    WHAT THE CARD OWES IS THE SPOT, WITH BOTH VALUES. A deleted sentence exists nowhere afterwards,
+    so a question naming a place and leaving the value in the file would ask the user to sign the
+    disappearance of something they were never shown. Both spots are asserted verbatim IN THE
+    QUESTION TEXT the user reads, and the deletion is asserted to stand under its own, louder
+    heading.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import documents
+    from kernel.state import StateError
+
+    state = _document_project(tmp_path)
+    staged = _stage_proposal(state, _revised())
+
+    with pytest.raises(StateError) as refused:
+        documents.change_plan(state, "master_data.yaml", staged)
+    assert "only ADDS" in str(refused.value), refused.value
+
+    plan = documents.revision_plan(state, "master_data.yaml", staged)
+    assert plan["replacements"] == ["language: ERSETZT, bisher de", "language: neu en"], plan
+    assert plan["deletions"] == ["counterparties: GELÖSCHT -- bisher []"], plan
+
+    manifest, question = _approved_revision(state, "master_data.yaml", staged)
+    assert "GELÖSCHT WIRD: counterparties" in question, question
+    assert "ERSETZT WIRD: language: ERSETZT, bisher de; language: neu en" in question, question
+
+    result = documents.apply_revision(state, manifest)
+    assert result["bytes"]
+    written = open(os.path.join(state.root, "master_data.yaml"), encoding="utf-8").read()
+    assert 'language: "en"' in written and "counterparties:" not in written
+    # ...and everything the card did NOT name is still there, comments included
+    assert "# Append-only; category names align to Anlage-EUeR lines." in written
+    assert '      label_de: "Versandkosten"' in written
+
+
+def test_the_two_document_routes_each_resolve_their_own_plan_on_the_command_line(tmp_path, capsys):
+    """The subtle half of FR-0067's wiring: `base` and `proposed` are keys BOTH routes carry.
+
+    A resolver that always asked the additive planner would answer a revision's question with that
+    planner's refusal -- about a write the user is entitled to be shown -- and the new command
+    would be unreachable from the command line while every unit test passed. So the plan is chosen
+    by the KIND, and this measures it where it decides: the shipped entry point, both directions.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import cli
+
+    state = _document_project(tmp_path)
+    revision = _stage_proposal(state, _revised())
+    assert cli.main(["--root", state.root, "request-approval", "document_revision",
+                     "--kit-document", "master_data.yaml", "--proposal", revision,
+                     "--reason", "Steuerberater gewechselt"]) == 0
+    asked = capsys.readouterr().out
+    assert "document_revision" in asked and "GELÖSCHT WIRD" in asked, asked
+
+    addition = _stage_proposal(state, _with_new_category(), name="added.yaml")
+    assert cli.main(["--root", state.root, "request-approval", "document_proposal",
+                     "--kit-document", "master_data.yaml", "--proposal", addition,
+                     "--reason", "Steuerberaterrechnung"]) == 0
+    assert "FÜGT nur HINZU" in capsys.readouterr().out
+
+
+# The live case FR-0067 was filed for (2026-08-30): a REWRITTEN rule, and the rule is a block
+# scalar -- a value that takes several lines and therefore moves its own lines when it changes.
+_WITH_RULE = MASTER_DATA + (
+    "claims_policy: >\n"
+    "  Belege muessen zur Rechnung passen.\n"
+    "  Unbelegte Angaben werden nicht geschrieben.\n"
+    "# the rule above is read by every role that files a document\n")
+_RULE_REWRITTEN = MASTER_DATA + (
+    "claims_policy: >\n"
+    "  Belege muessen zur Rechnung UND zum Kontoauszug passen.\n"
+    "# the rule above is read by every role that files a document\n")
+
+
+def test_a_revision_may_rewrite_a_value_that_takes_several_lines(tmp_path):
+    """The shape the FR was filed for, and the one a one-line test cannot reach.
+
+    A scalar standing on its own line is blanked by the skeleton anyway -- it carries no comment,
+    so nothing of the user's can hide in it. A BLOCK scalar does not: it occupies lines, and
+    rewriting it makes those lines disappear. Only the paths the card shows as replaced may do
+    that, which is what puts `replace` into the skeleton's blank set beside `fill`.
+
+    The counter-direction is the comment line UNDER the rule: it is outside the replaced value, so
+    it still has to survive, and it does.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import documents
+
+    state = _document_project(tmp_path, document=_WITH_RULE)
+    staged = _stage_proposal(state, _RULE_REWRITTEN)
+    plan = documents.revision_plan(state, "master_data.yaml", staged)
+    assert len(plan["replacements"]) == 2, plan
+    assert "Rechnung passen" in plan["replacements"][0], plan["replacements"]
+    assert "Kontoauszug" in plan["replacements"][1], plan["replacements"]
+    assert plan["deletions"] == [] and plan["additions"] == [], plan
+
+    manifest, question = _approved_revision(state, "master_data.yaml", staged)
+    # BOTH values in the card: the old text the user is unsaying and the new one they are signing
+    assert "Rechnung passen" in question and "Kontoauszug" in question, question
+    documents.apply_revision(state, manifest)
+    written = open(os.path.join(state.root, "master_data.yaml"), encoding="utf-8").read()
+    assert "Kontoauszug" in written
+    assert "# the rule above is read by every role that files a document" in written
+
+
+_WITH_INNER_COMMENT = MASTER_DATA.replace(
+    "    - key: shipping\n",
+    "    # diese Zeile erklaert, warum Versand eine eigene Kategorie ist\n"
+    "    - key: shipping\n")
+
+
+_WITH_LIST = MASTER_DATA.replace("counterparties: []\n", "counterparties:\n  - Sparkasse\n")
+
+
+def test_a_revision_that_also_grows_a_list_shows_every_added_entry_and_no_count(tmp_path):
+    """The card's own promise, on the channel that broke it: additions.
+
+    `apply-proposal`'s question may summarise a list's growth -- it tells the user the entries are
+    in the file it binds by checksum, and nothing there is being unsaid. This card says the
+    opposite in the sentence the user signs ("jede betroffene Stelle steht oben im Wortlaut, alt
+    und neu, niemals als Anzahl"), and it printed "instruments: 3 Einträge hinzu" right beside it
+    (measured 2026-09-02) -- the untrue reassurance standing next to the very thing it denies, one
+    document route over from where verifier finding F2 measured it the first time.
+
+    Both halves: every added entry stands in the question, and the count does not.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import documents
+
+    state = _document_project(tmp_path, document=_WITH_LIST)
+    grown = _WITH_LIST.replace("  - Sparkasse\n", "  - Sparkasse\n  - Volksbank\n  - Postbank\n")
+    revised = grown.replace('language: "de"', 'language: "en"')
+    staged = _stage_proposal(state, revised)
+    plan = documents.revision_plan(state, "master_data.yaml", staged)
+    assert plan["additions"] == ["counterparties: Eintrag hinzu Volksbank",
+                                 "counterparties: Eintrag hinzu Postbank"], plan["additions"]
+
+    _manifest, question = _approved_revision(state, "master_data.yaml", staged)
+    assert "Volksbank" in question and "Postbank" in question, question
+    assert "2 Eintr" not in question, question
+
+
+def test_a_comment_that_a_deletion_would_take_with_it_stands_in_the_card(tmp_path):
+    """The residue a cut leaves, closed rather than listed -- measured before it was.
+
+    A deletion CUTS its entry out of the line comparison, or the entry's own disappearance would
+    be reported as a lost line. Measured on 2026-09-02 with a comment standing between two list
+    entries: removing one entry was accepted, the card named the entry, and the comment was gone
+    without appearing anywhere in the question.
+
+    So the comments are compared a second time on the uncut skeletons. A comment the document ends
+    up without is a spot like any other: shown, and counted against the number of places one
+    question may carry.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import documents
+
+    state = _document_project(tmp_path, document=_WITH_INNER_COMMENT)
+    without_entry = _WITH_INNER_COMMENT.replace(
+        "    # diese Zeile erklaert, warum Versand eine eigene Kategorie ist\n"
+        "    - key: shipping\n"
+        '      label_de: "Versandkosten"\n', "")
+    staged = _stage_proposal(state, without_entry)
+    plan = documents.revision_plan(state, "master_data.yaml", staged)
+    assert any("Kommentar entfällt" in one and "eigene Kategorie" in one
+               for one in plan["deletions"]), plan["deletions"]
+
+    _manifest, question = _approved_revision(state, "master_data.yaml", staged)
+    assert "eigene Kategorie" in question, question
+
+
+def test_a_revision_may_not_lose_a_line_outside_the_spots_it_shows(tmp_path):
+    """The complement of the card, and the reason `revision_plan` runs the skeleton at all.
+
+    A replacement blanks its own value line and a deletion cuts its own entry -- everything else is
+    still held line for line. Here the revision does a legitimate replacement AND quietly drops the
+    document's own field-list comment, which no card shows and no user approved.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import documents
+    from kernel.state import StateError
+
+    state = _document_project(tmp_path)
+    sneaky = MASTER_DATA.replace('language: "de"', 'language: "en"').replace(
+        "# Append-only; category names align to Anlage-EUeR lines.\n", "")
+    staged = _stage_proposal(state, sneaky)
+    with pytest.raises(StateError) as refused:
+        documents.revision_plan(state, "master_data.yaml", staged)
+    assert "does not carry this line" in str(refused.value)
+    assert MASTER_DATA == open(os.path.join(state.root, "master_data.yaml"),
+                               encoding="utf-8").read()
+
+
+@pytest.mark.parametrize("what,proposal,says", [
+    ("a revision that only adds", _with_new_category(), "only adds"),
+    ("a list that both gains and loses at once",
+     MASTER_DATA.replace('      label_de: "Wareneinkauf"\n', '      label_de: "Wareneingang"\n'
+                         "    - key: tools\n" '      label_de: "Werkzeug"\n'),
+     "which entry became which is a guess"),
+])
+def test_a_revision_the_kernel_cannot_name_spot_by_spot_is_refused(tmp_path, what, proposal, says):
+    """Two shapes that would each end in a card the user cannot act on.
+
+    An addition belongs to the route whose question promises MORE, so sending it here would have
+    the user sign the weaker sentence for a write the stronger one covers. And a list that gained
+    and lost in one step has no alignment the kernel can derive -- naming a spot there would show
+    the user a change that did not happen, which is the one thing this card may not do.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import documents
+    from kernel.state import StateError
+
+    state = _document_project(tmp_path)
+    staged = _stage_proposal(state, proposal)
+    with pytest.raises(StateError) as refused:
+        documents.revision_plan(state, "master_data.yaml", staged)
+    assert says in str(refused.value), (what, str(refused.value))
+    assert MASTER_DATA == open(os.path.join(state.root, "master_data.yaml"),
+                               encoding="utf-8").read()
+
+
 @pytest.mark.parametrize("what,proposal,says", [
     ("a dropped top-level key", MASTER_DATA.replace("counterparties: []\n", ""), "drops `"),
     ("a dropped list entry", MASTER_DATA.replace(
@@ -1606,6 +2004,42 @@ def test_the_question_a_document_proposal_asks_shows_every_field_the_hash_covers
         "Steuerberaterrechnung braucht die Kategorie")
     request = approvals.create_pending_request(
         state, documents.KIND, manifest=manifest,
+        approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY)
+    question = approvals.build_question(request)["question"]
+    for key, value in (request.get("subject_manifest") or {}).items():
+        if key == approvals.EXPIRY_FIELD:
+            continue            # rendered as a date by `_render_manifest_value`, not as its float
+        for shown in (value if isinstance(value, list) else [value]):
+            rendered = approvals._render_manifest_value(key, shown)
+            assert rendered in question, (
+                "the hash covers %s=%r and the question does not show it:\n%s"
+                % (key, shown, question))
+    assert approvals.build_question(request)["question"] == question, "not deterministic"
+
+
+def test_the_question_a_document_revision_asks_shows_every_field_the_hash_covers(tmp_path):
+    """The same measurement as its additive sibling, for the wider of the two writes.
+
+    This approval is the only one that unsays something a kit document already records, so the
+    rule "the user is shown everything the hash covers" is not a formality here: a spot the hash
+    binds and the sentence omits is a deletion nobody was told about. Every hashed value -- both
+    paths, every replaced and deleted and added spot, the reason, both checksums -- has to appear
+    in the question, and the question has to be deterministic from the request, which the approval
+    gate needs to rebuild it character for character.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals, documents
+
+    state = _document_project(tmp_path)
+    proposal = _stage_proposal(state, _revised())
+    plan = documents.revision_plan(state, "master_data.yaml", proposal)
+    manifest = approvals.document_revision_subject_manifest(
+        "master_data.yaml", proposal, plan["base"], plan["proposed"], plan["replacements"],
+        plan["deletions"], plan["additions"], "Der Steuerberater wurde gewechselt")
+    request = approvals.create_pending_request(
+        state, documents.REVISION_KIND, manifest=manifest,
         approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY)
     question = approvals.build_question(request)["question"]
     for key, value in (request.get("subject_manifest") or {}).items():
@@ -1888,8 +2322,9 @@ def test_no_shipped_kit_document_refuses_the_fill_its_own_template_asks_for(tmp_
         return documents.change_plan(state, relative, "staging/TSK-0001/" + relative)
 
     def _owners(root, relative):
+        mine = {entry["command"] for entry in documents.DOCUMENT_WRITES}
         return [entry["command"] for entry in layout.partial_writers(relative, root)
-                if entry["command"] != documents.COMMAND]
+                if entry["command"] not in mine]
 
     filled = lists_filled = 0
     for kit in ("dev-team", "office-team", "research-team"):

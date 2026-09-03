@@ -34,7 +34,7 @@ import shutil
 import time
 import xml.etree.ElementTree as ET
 
-from .backlog_types import ACTIVE_DIRS, field_elements, parse_id
+from .backlog_types import ACTIVE_DIRS, DECLARED_REQUIRED_FIELDS, field_elements, parse_id
 from .lock import ext_path
 from .schemas import validate
 from .state import (
@@ -82,6 +82,34 @@ def architecture_revisions_dir(state: ProjectState) -> str:
     `ACTIVE_DIRS["ARC"]`.
     """
     return os.path.join(state.root, "architecture", "revisions")
+
+
+# The tray a RENDERED report is filed into, and the field an item records it in.
+#
+# WHY THIS DIRECTORY HAS A KERNEL WRITER AT ALL (BUG-0085). The research kit assigns the rendered
+# report to the report-writer (constitution §6), makes it a completeness condition (§17), ships the
+# tray with its render templates -- and every route into it was refused: measured 2026-09-01 on a
+# scaffolded project, `Write project_memory/reports/EXP-0002.tex` came back rc 2, while the same
+# bytes under `staging/<task>/` were rc 0. `apply-proposal` cannot cover it by its own contract
+# (both sides must parse as a YAML mapping, and it never creates a document), so the report was
+# required and unwritable at once. This is the second half of the move the role can already do:
+# it stages the render, and `freeze_report` files it.
+#
+# WHICH ITEM RECORDS THE REFERENCE is derived from the field contracts, not from a type: an item
+# whose contract declares `evidence_refs` gets the filed path appended, which today is the `EXP`
+# whose ANALYZED state the validator refuses without one (`report._check_experiment_reports`). A
+# subject without the field -- the `RQ` a funding report is written for -- is filed all the same
+# and the return says where the reference did NOT go, rather than the command implying a binding
+# it did not write.
+REPORTS_DIRNAME = "reports"
+REPORT_REF_FIELD = "evidence_refs"
+
+
+def reports_dir(state: ProjectState) -> str:
+    """Where `freeze_report` lands a rendered report -- asked by `kernel.layout`, like the sibling
+    above, so the tray is declared as kernel-written rather than left looking like a kit document
+    with no writer."""
+    return os.path.join(state.root, REPORTS_DIRNAME)
 
 
 def contained_child(base: str, name: str, what: str) -> str:
@@ -381,6 +409,66 @@ def freeze_design(
                                revision_name(dsn_id, revision, ".html")))
         updated_root = state._update_item_locked(root_id, {"design_refs": refs})
         return {"frozen": frozen, "manifest": manifest, "root": updated_root, "staging": staged}
+
+
+def freeze_report(
+    state: ProjectState, staging_key: str, subject_id: str, source_name: str,
+) -> dict:
+    """File a rendered report out of a task's staging area into `reports/` -- see REPORTS_DIRNAME.
+
+    THE NAME IS THE WRITER'S and is carried over unchanged, because it is read by something: the
+    kit's `scripts/report_lint.py` discovers a report by its POSITION (a file lying directly in a
+    directory called `reports`) and prints that name at every finding, and §17's own examples are
+    per-experiment names. A revision suffix here would be a second naming convention for one file,
+    with the lint, the constitution and this function each holding a copy.
+
+    AN EXISTING REPORT IS NEVER OVERWRITTEN, and that is the one place this is stricter than its
+    siblings: a frozen design gets the next revision number, so nothing it wrote can be lost. Here
+    the name comes from the caller, so the same name twice would replace a delivered artifact --
+    the class DEC-0056 keeps at maximum thoroughness (an irreversible change to the user's own
+    material). The refusal names the standing file and leaves the staged bytes where they are.
+
+    `tools/test_staging_cli.py::test_a_report_is_filed_by_the_kernel_and_never_overwrites_one`
+    holds both halves; the end-to-end route is
+    `tools/test_research_chain.py::test_a_rendered_report_reaches_the_tray_through_the_kernel`.
+    """
+    subject_type, _number = parse_id(subject_id)
+    source = contained_child(staging_dir(state, staging_key), source_name, "staged file name")
+    with state.lock:
+        tray = reports_dir(state)
+        if not os.path.isdir(ext_path(tray)):
+            raise StagingError(
+                "this project has no %s/ tray, so there is nowhere to file a report -- refused. "
+                "The tray is shipped by the kit that renders reports; a project of another kit "
+                "delivers its results as Evidence artefacts instead. Remedy: record the artefact "
+                "as Evidence: `python scripts/harness.py evidence --kind "
+                "<test|review|acceptance> --related <item-id> --result <pass|fail> --summary "
+                "\"what it shows\" --artifact-ref <staged path>`."
+                % REPORTS_DIRNAME)
+        if not os.path.exists(ext_path(source)) or os.path.getsize(ext_path(source)) == 0:
+            raise StagingError(
+                "staged report %s is missing or empty. Remedy: let the report-writer render it "
+                "into the task's staging directory first." % source)
+        subject = state.read_item(subject_id)
+        target = contained_child(tray, source_name, "staged file name")
+        if os.path.exists(ext_path(target)):
+            raise StagingError(
+                "%s/%s already exists -- refused rather than replaced. A filed report is a "
+                "delivered artefact, and this command would overwrite it with no second copy "
+                "anywhere. Remedy: render under a name that says which run it is, or let the "
+                "user retire the standing report first."
+                % (REPORTS_DIRNAME, source_name))
+        shutil.copyfile(ext_path(source), ext_path(target))
+        filed = "%s/%s" % (REPORTS_DIRNAME, source_name)
+        recorded = None
+        if REPORT_REF_FIELD in DECLARED_REQUIRED_FIELDS.get(subject_type, ()):
+            refs = field_elements(subject.get(REPORT_REF_FIELD))
+            refs.append(filed)
+            subject = state._update_item_locked(subject_id, {REPORT_REF_FIELD: refs})
+            recorded = REPORT_REF_FIELD
+        staged = consume_staged_artifact(state, source)
+        return {"frozen": target, "filed": filed, "file_hash": _file_hash(target),
+                "subject": subject, "recorded_on": recorded, "staging": staged}
 
 
 def clear_staging(state: ProjectState, key: str, mode: str, _locked: bool = False) -> str:

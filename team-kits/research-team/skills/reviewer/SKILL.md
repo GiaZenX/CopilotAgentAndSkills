@@ -38,14 +38,19 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
   left unanswered closes the merge exactly as a `fail` does, and the refusal names which one is missing.
 
 ## Do
-1. **Review** — check analysis code + procedure against `research_guidelines.yaml` and the design. Your
+1. **Review** — check analysis code + procedure against `research_guidelines.yaml` and the design.
+   **Comments are reviewed like code (`FR-0007`):** a changed comment that restates what the code does,
+   or promises a protection the code does not build, is a finding — the constitution's rule is the bar,
+   and this review is the only place a CHANGED comment is judged. Your
    findings become an Evidence item (`kind: review`) whose `related` names the task/EXP and whose
    `artifact_refs` point at the logs.
 2. **Reproduce + run the pipeline** — re-run from recorded seeds/versions and confirm the reported numbers
    reproduce; verify the **reproducibility pipeline is green** (format, lint, types, analysis-code tests,
    clean re-run reproduces, deps audited + licenses, secret/PII scan, provenance). State explicitly whether
-   the numbers reproduced — "could not check" and "reproduced" are not the same result. Record THIS run as
-   its own Evidence item (`kind: test`): it is the executed half of your verdict, and the merge gate waits
+   the numbers reproduced — "could not check" and "reproduced" are not the same result. **Scope the runs (DEC-0050):**
+   while the round is open only the failing + affected tests; the full pipeline and the clean re-run
+   exactly ONCE, right before your verdict — a repetition proves nothing the first run did not. Record
+   THIS run as its own Evidence item (`kind: test`): it is the executed half of your verdict, and the merge gate waits
    for it separately from your reading of the work.
 3. **Validity** — check every `INV` item in force (correct statistics, assumptions met, conclusions supported).
    **An `INV` whose referenced test does not

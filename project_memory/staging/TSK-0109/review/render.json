@@ -1,0 +1,62 @@
+{
+  "rendered_at": "2026-09-02T11:44:01",
+  "frozen_clock": "2026-09-02T10:00:00",
+  "drafts": {
+    "mockup-alarm.html": {
+      "sha256": "784db2c97ae50199513eddaeafea1dda53e4ae9af220b827283f3625862a380d",
+      "images": [
+        "review/alarm-ueberblick-1280.png",
+        "review/alarm-rechnungen-1280.png",
+        "review/alarm-offene-posten-1280.png",
+        "review/alarm-euer-1280.png",
+        "review/alarm-kleinunternehmer-1280.png",
+        "review/alarm-ueberblick-390.png",
+        "review/alarm-rechnungen-390.png",
+        "review/alarm-offene-posten-390.png",
+        "review/alarm-euer-390.png",
+        "review/alarm-kleinunternehmer-390.png"
+      ],
+      "errors": []
+    },
+    "mockup-empty.html": {
+      "sha256": "a2ed32915c9d22a6d4ea043b4069eb45eadec887d4969f91bc63dd32e63eab2e",
+      "images": [
+        "review/empty-ueberblick-1280.png",
+        "review/empty-rechnungen-1280.png",
+        "review/empty-offene-posten-1280.png",
+        "review/empty-euer-1280.png",
+        "review/empty-kleinunternehmer-1280.png",
+        "review/empty-ueberblick-390.png",
+        "review/empty-rechnungen-390.png",
+        "review/empty-offene-posten-390.png",
+        "review/empty-euer-390.png",
+        "review/empty-kleinunternehmer-390.png"
+      ],
+      "errors": []
+    },
+    "mockup-regular.html": {
+      "sha256": "50b7e5b82ae24348b486e65a631eda7cf576fba228222cd3ca97cc725f7f2770",
+      "images": [
+        "review/regular-ueberblick-1280.png",
+        "review/regular-rechnungen-1280.png",
+        "review/regular-rechnungen-1280-filter-einnahmen-offen.png",
+        "review/regular-rechnungen-1280-detail-open.png",
+        "review/regular-offene-posten-1280.png",
+        "review/regular-offene-posten-1280-nur-mahnkandidaten.png",
+        "review/regular-euer-1280.png",
+        "review/regular-kleinunternehmer-1280.png",
+        "review/regular-ueberblick-390.png",
+        "review/regular-rechnungen-390.png",
+        "review/regular-offene-posten-390.png",
+        "review/regular-euer-390.png",
+        "review/regular-kleinunternehmer-390.png",
+        "review/regular-ueberblick-1280-dark.png",
+        "review/regular-rechnungen-1280-dark.png",
+        "review/regular-offene-posten-1280-dark.png",
+        "review/regular-euer-1280-dark.png",
+        "review/regular-kleinunternehmer-1280-dark.png"
+      ],
+      "errors": []
+    }
+  }
+}

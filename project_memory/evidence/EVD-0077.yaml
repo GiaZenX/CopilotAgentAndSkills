@@ -1,0 +1,28 @@
+id: EVD-0077
+kind: review
+related:
+- TSK-0114
+- TSK-0105
+- TSK-0106
+- TSK-0108
+- TSK-0109
+- TSK-0110
+- TSK-0111
+- TSK-0112
+- TSK-0113
+result: pass
+summary: 'verifier PASS for diff:85ea59adf19c072fe1ed0245f11c090821c4f237e3c30e46d916fb75f60c18cd
+  -- generation-2 merge (TSK-0114): seven streams each PASS by their own verifier;
+  merge verifier PASS after one rework (0 B / 0 M / 3 N text residues closed before
+  this record); full tools/ suite 4362 collected green (implementer, part A run twice),
+  gate suite 489, test_hooks_v2 2137 + test_hooks 902/13 re-run in full by the verifier
+  on the shipped tree; one release stamp dev/office 2026.09.02-12, research 2026.09.02-11'
+artifact_refs:
+- staging/TSK-0114/merge-protocol.md
+- staging/generation-2-streams.md
+run_command: python -B -m pytest tools/ -q (three parts, each file once) + python
+  -B -m pytest .claude/hooks/test_gates.py -q
+run_scope: full
+revision: 1
+approval_ref: null
+created: '2026-09-03T04:03:36'

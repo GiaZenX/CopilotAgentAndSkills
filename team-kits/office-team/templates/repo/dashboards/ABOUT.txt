@@ -1,0 +1,41 @@
+DASHBOARDS — generated pages, nobody edits them by hand.
+
+finanzen.html is the finance dashboard: income and expenses of the year, the invoice list with
+filters, open items with dunning candidates, the EÜR figures per quarter, and the § 19 UStG
+threshold watch where business_profile.yaml says the business uses the Kleinunternehmer rule. It
+is rendered from ledger/<year>.csv plus project_memory/master_data.yaml and
+project_memory/business_profile.yaml — nothing else, and it writes nothing back.
+
+Rebuild it with:
+
+    python tools/finance_dashboard.py
+
+Then open dashboards/finanzen.html by double-click. The page needs no network and no server; it
+carries its own style and its one script.
+
+IT DOES NOT REBUILD ITSELF YET. Nothing runs that command for you today, so after a booking the
+page is as old as its last run, and NOTHING ON THE PAGE RELIABLY SAYS SO. The masthead prints the
+youngest date the ledger carries ("Datenstand"), which moves only when the new booking is younger
+than everything before it: enter a June receipt in September and the page is stale with an
+unchanged masthead (measured 2026-09-02). So the rule is the run, not the reading: run the command
+after a booking session, or whenever the numbers should be current.
+
+EDITING THE PAGE IS POINTLESS AND WORSE THAN POINTLESS: the next run overwrites it, and a
+hand-edited figure would be a number in this project that no ledger row backs. Change the data, or
+change tools/finance_dashboard.py and tools/finance_dashboard.template.html — those two are the
+page.
+
+If the ledger has a broken row, the page still renders and says so in a red banner at the top,
+with the validator's own findings; the sums are then marked as not dependable. The command that
+shows the detail is `python scripts/ledger_add.py --validate ledger/<year>.csv`. A direct edit
+of ledger/<year>.csv is ALLOWED and is always re-validated (user decision V2 I.3/1), exactly
+as a booking through scripts/ledger_add.py is; what this page shows is whatever the ledger
+says after that.
+
+WHY THIS FILE IS NOT CALLED README.txt. A directory of this kit whose shipped content is nothing
+but a README is a DOCUMENT TRAY — the definition and the consequence are in the kernel's trays.py,
+and the consequence is that the ad-hoc file-name guard stands down inside a tray. inbox/, archive/
+and outbox/ are trays, because what lands there comes from outside the project. This directory is
+the opposite: everything in it is written by a command in this repo, so it keeps the guard. Both
+ends of that are measured in the kit workshop (test_the_dashboards_directory_is_not_a_document_tray
+in its own suite), not in this project.

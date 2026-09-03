@@ -1,0 +1,30 @@
+id: FR-0075
+title: 'Backlog dashboard rebuilt the way the finance dashboard was: frontend-design
+  pass first, sighted with screenshots, trimmed for UI/UX/usability -- not the KPI-tile
+  default look'
+request_text: 'User wish 2026-09-02, while stream I (TSK-0109, FR-0032) was under
+  verification: ''und auch unser backlog muss definitiv angepasst werden''. Measured
+  today: the backlog dashboard of FR-0030 ships as team-kits/dev-team/templates/repo/scripts/generate_dashboard.py
+  + progress.dashboard.template.html (only dev-team ships it; the kernel board under
+  generated/ comes from kernel/board.py). The finance designer (Fable, frontend-design
+  skill, TSK-0109 phase 1) named that template as the AI-default look it deliberately
+  rejected: KPI tiles with radius and shadow, gradient bars, pills as status -- ''the
+  answer to every dashboard prompt'', which makes everything equally important. Wanted:
+  the same two-step round as FR-0032 -- (1) design pass with the frontend-design skill
+  against a brief (who reads the board, what they look for first: what is blocked,
+  what waits on the user, what is in flight; states: empty project, healthy, blocked),
+  sighted in the BUG-0076 loop (Playwright, 1280 + 390 px, dark, every tab/filter),
+  recorded in staging; (2) build on the existing generator with the existing data
+  contract (generated/index.yaml, the rollups) -- no new writer, no new fields unless
+  the design pass measures a missing one and reports it as a seam. Kept from FR-0030:
+  the refresh trigger, the kit ownership, the one-file property. Open, to be decided
+  in the round: whether the kernel board (kernel/board.py, all kits) and the dev-team
+  HTML board become ONE renderer with two outputs, or stay two -- today they are two
+  sources for the same numbers, and the design pass should measure whether they ever
+  disagree. Not a bug: the current board works; this is a design and usability request,
+  filed as FR per the user''s standing rule.'
+related_pr: FR-0032
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T13:02:54'

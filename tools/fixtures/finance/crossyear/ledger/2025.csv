@@ -1,0 +1,5 @@
+id,doc_date,payment_date,direction,doc_type,counterparty,invoice_no,net,vat_rate,gross,vat_treatment,category,source,reverses,note
+L2025-0001,2025-11-15,,income,invoice,Nordlicht GmbH,RE-2025-001,1000.00,19.00,1190.00,standard,sales_local,archive/finanzen/2025/ausgang/RE-2025-001.pdf,,"offen zum Jahreswechsel, im Februar storniert"
+L2025-0002,2025-12-20,,income,invoice,Werft Süd,RE-2025-002,2000.00,19.00,2380.00,standard,sales_local,archive/finanzen/2025/ausgang/RE-2025-002.pdf,,"offen, nicht storniert"
+L2025-0003,2025-03-01,2025-03-20,income,invoice,Nordlicht GmbH,RE-2025-003,3000.00,19.00,3570.00,standard,sales_local,archive/finanzen/2025/ausgang/RE-2025-003.pdf,,
+L2025-0004,2025-03-05,2025-03-10,expense,invoice,Papierhaus Nord,PN-2025-88,500.00,19.00,595.00,standard,office_supplies,archive/finanzen/2025/eingang/PN-2025-88.pdf,,

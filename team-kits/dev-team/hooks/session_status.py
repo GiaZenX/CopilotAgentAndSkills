@@ -6,6 +6,11 @@ Reinforces the "session 1 = setup, session 2+ = work" model: when the project-ma
 session agent starts, it is reminded that it IS the PM, told the git branch, and pointed
 at project_memory/ to read before acting. Stdlib + git only (no YAML dependency), so it
 never fails on a fresh machine. Cannot block; emits additionalContext.
+
+It also names the recurring project audit when it is due for the current ISO week (FR-0038).
+That answer is not this kit's own: role, run record and wording live in the shared `_routine`,
+mirrored in all three kits. The hook REPORTS it; the PM proposes it to the user and spawns it
+(`DEC-0028`).
 """
 import sys
 import os
@@ -257,6 +262,24 @@ def main():
     except BaseException:
         pass
 
+    # THE RECURRING AUDIT RUN THIS PROJECT OWES (FR-0038). The record, the weekly period and the
+    # wording all live in the shared `_routine`, so the three kits cannot drift into three answers;
+    # this adapter only prints. IT PROPOSES AND NOTHING MORE -- `DEC-0028`: the hook reports, the PM
+    # spawns. AND IF THE MODULE CANNOT BE LOADED THE BRIEFING SAYS SO, because a swallowed failure
+    # here reads as "nothing is due" -- the same wrong reading the kit-merge notice below refuses to
+    # allow (`tools/test_routine_feed.py::
+    # test_a_missing_routine_module_is_a_line_in_the_briefing_rather_than_silence`).
+    try:
+        import _routine
+        routine_notice = _routine.notice(cwd)
+        if routine_notice:
+            parts.append(routine_notice)
+    except Exception as exc:
+        parts.append(
+            "ROUTINE CHECK UNAVAILABLE (%s): whether the recurring project audit is due could not "
+            "be determined here, so this briefing says nothing about it. Do not read that as a run "
+            "that happened." % exc.__class__.__name__)
+
     # kit-update detection: compare the repo's installed kit stamp with the staged kit version.
     try:
         kit = ""
@@ -379,7 +402,7 @@ def main():
             if backlog is not None and suffix in backlog:
                 if not backlog[suffix]["read"]:
                     # EXISTS and could not be opened: what it asks for is UNKNOWN, never "nothing".
-                    # Reading the empty entry list as "resolved" deleted a real backlog (BUG-0068).
+                    # Reading the empty entry list as "resolved" would delete a backlog nobody read (BUG-0068).
                     unreadable.append(p)
                     really_checked = False
                     continue

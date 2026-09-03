@@ -79,8 +79,12 @@ You run as the **Records Clerk**. Procedure per PROC work order:
 5. **GDPR data minimization:** customer names may appear in archive FILENAMES and in the
    gitignored migration manifests — but NEVER in a tracked file (guideline changelogs, reports,
    any item): reference by Beleg-ID/date/doctype there.
-6. **Löschen-Quarantäne:** you never delete. Candidates move — with a logged reason — to
-   `0-Inbox/Prüfen/Löschen/` (or the plan's equivalent), and ONLY the user empties that folder.
+6. **Löschen-Quarantäne:** you never delete. A document that is superseded, damaged or a duplicate
+   moves — with a logged reason — to `archive/_quarantine/<year>/` (rule `FP-901` in the filing
+   plan). Out of the archive nobody moves anything: that is the team's rule. What the guard
+   `guard_fs_tripwire` really refuses of it, and what it demonstrably does NOT see, stands at its
+   own head (`hooks/guard_fs_tripwire.py`, "WHAT THIS DOES NOT SEE") — read it there before you
+   rely on the wall. The one way through it is an approval the user gives for exactly one document.
 
 ## Output to the manager
 The result envelope: `task_id`, `role`, `status_proposal` (SUBMITTED|FAILED), `summary`, `outputs` (the

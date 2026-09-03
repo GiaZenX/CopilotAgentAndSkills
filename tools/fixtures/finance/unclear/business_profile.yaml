@@ -1,0 +1,6 @@
+business:
+  name: Halbe Antwort
+  legal_form: Einzelunternehmen
+tax:
+  kleinunternehmer: "true"
+  fiscal_year: calendar

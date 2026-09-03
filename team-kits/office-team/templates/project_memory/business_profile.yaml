@@ -1,6 +1,9 @@
 # business_profile.yaml — owned by: Manager
-# Filled ONCE in the onboarding interview; everything else (categories, PROCs, register scope,
-# report layout) derives from it. Update only with the user (it is their business).
+# Filled in the onboarding interview; everything else (categories, PROCs, register scope, report
+# layout, the deadline register) derives from it. It is not a one-way door: a role stages the file
+# as it should stand and `python scripts/harness.py apply-proposal` adds what is new once the USER
+# has approved exactly those bytes (additions only — nothing already here is rewritten that way).
+# Update only with the user (it is their business).
 # GIT HISTORY IS FOREVER: record only what operations truly needs. Trading name + legal form
 # yes; the owner's PRIVATE address, personal tax IDs or bank details do NOT belong in a tracked
 # file (a real deployment committed owner PII on day 1) — keep those in the user's own records
@@ -18,10 +21,27 @@ business:
   # never asks for the value. The DELIVERY address is deliberately not here — it may legitimately
   # differ per shipment and is no part of "is this invoice ours".
   billing_address: ""         # e.g. "Musterstr. 1, 12345 Musterstadt" — or "" / "see user records"
-  legal_form: ""              # e.g. Einzelunternehmen / GbR / UG / GmbH
+  # THE FORMS THIS KIT IS BUILT FOR are the ones that account by Einnahmenüberschussrechnung
+  # (§ 4 Abs. 3 EStG): Einzelunternehmen, Freiberufler, GbR. Everything downstream assumes it —
+  # the ledger's columns, `scripts/euer_report.py`, the categories in `master_data.yaml`.
+  # A BUSINESS REQUIRED TO KEEP BOOKS ACCOUNTS DIFFERENTLY, and for that case this kit builds
+  # nothing, deliberately (`FR-0076`, the user's own decision): no Bilanz, no double entry, no
+  # chart of accounts. A Kapitalgesellschaft (GmbH, UG) is in that group from its first day
+  # (§ 6 and § 238 HGB), and a sole trader or partnership joins it above the thresholds of
+  # § 141 AO. As everywhere in this kit, THE PARAGRAPHS ARE NAMED SO THEY CAN BE CHECKED, not
+  # because a primary source was read: none was, and none is shipped.
+  # NOTHING HERE CHECKS THE VALUE. The finance page prints it in its masthead and that is the
+  # whole of it: no hook and no script of this kit puts the value in a comparison or a branch —
+  # measured on the shipped tree — so writing "GmbH" refuses
+  # nothing and warns nobody. What it costs is silent: the reports this kit generates are then
+  # the wrong ones for that business. The LEDGER records what every legal form needs (document,
+  # net/VAT/gross, counterparty, category), so the way out of the wrong kit is an export and a
+  # handover, never a rebuild.
+  legal_form: ""              # e.g. Einzelunternehmen / Freiberufler / GbR
   country: "DE"
   markets: []                 # where products/services are sold, e.g. [DE, AT, EU]
-  channels: []                # e.g. [own-shop, amazon, ebay, local]
+  channels: []                # e.g. [own-shop, marketplace, retail, wholesale] — name the
+                              # ones THIS business sells through, in its own words
   products_services: ""       # one paragraph: what is sold
   product_categories: []      # drives the compliance register scope, e.g. [electronics, textiles]
 
@@ -30,6 +50,37 @@ tax:
   vat_id: ""                  # USt-IdNr. if any (never a secret; still optional)
   oss: null                   # true/false — EU One-Stop-Shop registered?
   fiscal_year: "calendar"
+  # THE RECURRING FILINGS THIS BUSINESS OWES, AND THEIR RHYTHM — the source every tax deadline in
+  # the session-start duty register is derived from (FR-0034; the reader is `_duties.filing_duties`
+  # in the hook directory). Nothing in the kit knows what a Umsatzsteuer-Voranmeldung IS: a filing
+  # here is a PERIOD LENGTH plus a LAG, so a business with different filings, or in another
+  # country, describes its own and gets the same reminders.
+  #   what                   the filing's name, in your words — it is printed back to you
+  #   period_months          how long ONE period is; it must divide the calendar year (1/2/3/4/6/12)
+  #   due_days_after_period  how many days after the period ENDS the filing is due
+  #   legal_basis            where those two numbers come from — printed with the reminder, so it
+  #                          can be checked instead of trusted
+  # THE NUMBERS ARE YOURS AND YOUR STEUERBERATER'S, and the kit ships none of them: a deadline the
+  # kit invented would be a claim it cannot back, and a wrong one reaches a tax office. An empty
+  # list is a legitimate answer — the register then names no tax deadline and does not nag for one.
+  # A Dauerfristverlängerung (§ 46 UStDV) is not a second entry; it moves `due_days_after_period`.
+  # A SHIFTED FISCAL YEAR IS NOT PLACED: with `fiscal_year` other than "calendar" the register says
+  # at session start that it derives no tax deadline here, rather than computing a period wrongly.
+  # THE REMINDER NEVER FILES ANYTHING and holds no record that you DID file: an entry stays listed
+  # until the next period closes.
+  filings: []
+  #   - what: "Umsatzsteuer-Voranmeldung"
+  #     period_months: 1                 # 3 = quarterly, 12 = once a year
+  #     due_days_after_period: 10
+  #     legal_basis: "§ 18 Abs. 1 UStG; mit Dauerfristverlängerung § 46 UStDV +1 Monat"
+
+# WHEN AN UNPAID OUTGOING INVOICE BECOMES A DUNNING CANDIDATE — your terms, never the kit's.
+# The duty register reads `ledger/<year>.csv` for income rows that carry no `payment_date` and names
+# the ones older than this (FR-0034). LEFT UNSET THE FEED IS OFF and reports nothing: a reminder
+# about somebody else's money rests on what you agreed with them, so the kit invents no 14 and no 30.
+# It PROPOSES a candidate; it writes no dunning letter and sends nothing (the kit never sends).
+receivables:
+  payment_terms_days: null    # e.g. 14 — days from the invoice date until you expect payment
 
 # Privacy honesty (constitution §2.7): processing a document sends its content to the active
 # provider under the USER'S account terms. The user decides knowingly what the kit may process.
@@ -42,7 +93,7 @@ privacy:
 
 revenue_sources: []           # company-specific — WHERE income data comes from, e.g.
 #   - kind: shop_export       #   [shop_export, psp_export, bank_statement, manual]
-#     detail: "Shopify order export CSV, monthly"
+#     detail: "monthly order export CSV from the shop system"
 
 # EVERY KIND OF PAPER THIS BUSINESS HAS, in the owner's own words, with the names the filing plan
 # will use for it. This is the list `filing_plan.yaml` is DERIVED from: a source named here whose

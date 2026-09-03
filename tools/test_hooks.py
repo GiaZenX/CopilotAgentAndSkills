@@ -886,19 +886,27 @@ def capture_root_item(repo, fields=None, status="DELIVERED"):
     return item
 
 
-def capture_invariant(repo, scope, value=None, text=None, source="PR-0001"):
+def capture_invariant(repo, scope, value=None, text=None, source="PR-0001",
+                      check_ref="tests/test_invariants.py::test_it"):
     """Give a repo an `INV` item — the V2 home of every rule and every config knob.
 
     Through the kernel, for the same reason `capture_root_item` is: `report.py` enforces that an
     `INV` carries EXACTLY ONE of `text` or `value`, so a hand-written fixture could set both and
     the readers under test would be measured against a file no project can have.
+
+    WHICH TEST THE CHECK NAMES IS THE CALLER'S, because since FR-0039 it decides two things at
+    once and they pull apart. An invariant whose check resolves to no test is a validator ERROR,
+    so a caller that asserts a CLEAN MERGE has to write that test -- and `gate_test_coverage`
+    counts any `test_*.py` under `tests/` or under the governed area as coverage, so a caller
+    asserting a REFUSED PUSH must keep it out of both. Measured: writing it unconditionally here
+    turned three refusal assertions green at once.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
     from kernel.state import ProjectState
     root = os.path.join(str(repo), "project_memory")
     os.makedirs(root, exist_ok=True)
     fields = {"scope": scope, "source": source,
-              "check": {"kind": "test", "ref": "tests/test_invariants.py::test_it"}}
+              "check": {"kind": "test", "ref": check_ref}}
     if value is not None:
         fields["value"] = value
     else:
@@ -1247,6 +1255,30 @@ def test_memory_complete_reports_the_validator_verdict_not_its_own(prd_repo):
     result = run_hook_process("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo)
     assert result.returncode == 2
     assert "duplicate id" in result.stderr
+
+
+def test_an_invariant_whose_check_names_no_test_blocks_the_merge(prd_repo):
+    """FR-0039/II.12 at the place the FR asks for it: the merge, through the shipped hook process.
+
+    The gate needed no change. It relays the state validator's ERROR findings
+    (`gate_memory_complete.state_errors`), so the new finding for an invariant whose check
+    resolves to nothing arrives there by construction -- and this is the measurement of that
+    sentence rather than its restatement.
+
+    BOTH ENDS, in one repository: the merge is refused while the check names a file that is not
+    there, and writing exactly that test opens the same merge. The second half is what keeps the
+    rule from being an unclearable block -- and it also shows the item may still read
+    `unverified` (a warning) without stopping anything.
+    """
+    capture_invariant(prd_repo, "compounder/", text="pure, no I/O")
+    blocked = run_hook_process("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo)
+    assert blocked.returncode == 2, blocked.stdout + blocked.stderr
+    assert "tests/test_invariants.py" in blocked.stderr, blocked.stderr
+
+    write(str(prd_repo / "tests" / "test_invariants.py"),
+          "def test_it():\n    return None\n")
+    opened = run_hook_process("gate_memory_complete.py", _merge_payload(prd_repo), prd_repo)
+    assert opened.returncode == 0, opened.stdout + opened.stderr
 
 
 def test_freezing_a_second_wireframe_revision_does_not_block_every_merge(tmp_path):
@@ -2437,6 +2469,8 @@ def _kit_files_by_name(rel_dir, suffixes=None):
     by_name = {}
     for kit in KITS:
         directory = os.path.join(ROOT, "team-kits", kit, *rel_dir)
+        if not os.path.isdir(directory):
+            continue          # a directory only some kits ship -- the caller derives which
         for name in sorted(os.listdir(directory)):
             path = os.path.join(directory, name)
             if not os.path.isfile(path):
@@ -2446,6 +2480,30 @@ def _kit_files_by_name(rel_dir, suffixes=None):
             with open(path, "rb") as handle:
                 by_name.setdefault(name, {})[kit] = handle.read()
     return by_name
+
+
+def _shipped_code_dirs():
+    """Every directory under `templates/repo/` that a kit ships CODE into, as path parts.
+
+    The property, not the two names it happens to be today: a directory whose shipped content is
+    code is one where a second kit's copy can drift, and that is what the mirror rule is for. Read
+    off the kits rather than listed, so a new one is covered the day it ships.
+
+    "Code" is `.py` OR `.html`, the same pair the comparison below covers -- anchored on `.py`
+    alone, a directory shipping only a template (the shell of a generated page is exactly that)
+    would have been collected by nobody while the rule claimed to cover it. The blind spot was
+    empty when it was found; that is the reason to close it, not to keep it.
+    """
+    found = set()
+    for kit in KITS:
+        base = os.path.join(ROOT, "team-kits", kit, "templates", "repo")
+        for directory, _subdirs, files in os.walk(base):
+            if os.path.basename(directory) == "__pycache__":
+                continue
+            if any(name.endswith((".py", ".html")) for name in files):
+                relative = os.path.relpath(directory, base)
+                found.add(() if relative == "." else tuple(relative.split(os.sep)))
+    return sorted(found)
 
 
 def _assert_mirrored(label, by_name, exceptions):
@@ -2679,8 +2737,14 @@ def test_the_shipped_readers_of_a_single_value_field_still_read_one_value(tmp_pa
 
     capture_root_item(tmp_path)
     write(str(tmp_path / "api" / "service.py"), "def f():\n    return 1\n")
-    area = capture_invariant(tmp_path, "api/", text="pure, no I/O")
-    knob = capture_invariant(tmp_path, "max_file_lines", value=400)
+    # THE CHECK'S TEST LIVES OUTSIDE `tests/` AND OUTSIDE THE AREA, and that is what lets this one
+    # fixture assert both things at once (FR-0039): the invariant resolves, so the merge below is
+    # clean, while `gate_test_coverage` -- which counts a test only under `tests/` or under the
+    # governed area itself -- still sees `api/` uncovered and refuses the push.
+    write(str(tmp_path / "checks" / "test_rules.py"), "def test_it():\n    return None\n")
+    ref = "checks/test_rules.py::test_it"
+    area = capture_invariant(tmp_path, "api/", text="pure, no I/O", check_ref=ref)
+    knob = capture_invariant(tmp_path, "max_file_lines", value=400, check_ref=ref)
     mod = _kit_checks_mod()
     push = {"tool_name": "Bash", "cwd": str(tmp_path),
             "tool_input": {"command": "git push origin main"}}
@@ -2821,11 +2885,31 @@ def test_shared_kit_files_identical():
 
     The SCRIPTS half used to be the old shape again — three typed filenames — so `kit_browser_checks.py`
     was unpinned here and `generate_dashboard.py` plus its HTML shell would have drifted silently the
-    day research got a copy. Same derivation now, same burden of proof."""
+    day research got a copy. Same derivation now, same burden of proof.
+
+    PRESENCE is not this rule's question in either direction: it compares the copies of the kits
+    that ship a name and never asks whether a kit is MISSING one -- `format_on_write.py` ships in
+    dev and research and not in office, on purpose, and no clause here has an opinion about the
+    third kit. Which hooks a kit ships is decided by its registration, and that is held elsewhere
+    in both directions, measured on a copy outside the repo (TSK-0111, H120 in
+    docs/POST_V2_WISHLIST.md): a registered name that is not shipped fails
+    `test_hooks_v2.test_every_registered_hook_script_is_shipped_by_its_kit`, a shipped name nobody
+    wrote a rule-home for fails `test_every_hook_documented_in_its_constitution`.
+    A presence half HERE would need an exception entry per kit-specific hook -- the office kit
+    alone ships a set of hooks no other kit has (`comm` over the three directories; the count and
+    the date it was taken are in that entry, not here) -- which is the enumeration the rule above
+    was rewritten to remove.
+
+    And `templates/repo/scripts` was itself a typed directory, which is the same shape one level up:
+    when the office kit shipped `templates/repo/tools/finance_dashboard.py` (TSK-0109) that code was
+    outside every derivation here, and a second kit's copy of it would have drifted unmeasured. The
+    directories are DERIVED now — `_shipped_code_dirs` says which ones and what counts as code —
+    so the day a third kit gets one it is pinned without an edit here."""
     _assert_mirrored("hooks", _kit_files_by_name(("hooks",)), KIT_SPECIFIC_HOOKS)
-    _assert_mirrored("templates/repo/scripts",
-                     _kit_files_by_name(("templates", "repo", "scripts"), (".py", ".html")),
-                     KIT_SPECIFIC_SCRIPTS)
+    for parts in _shipped_code_dirs():
+        _assert_mirrored("/".join(("templates", "repo") + parts),
+                         _kit_files_by_name(("templates", "repo") + parts, (".py", ".html")),
+                         KIT_SPECIFIC_SCRIPTS)
 
 
 def _registered_entries(kit):
@@ -11156,11 +11240,33 @@ def test_the_shipped_filing_plan_is_understood_by_both_of_its_readers(tmp_path):
     result = _run_office_script(repo, "process_doc.py")
     assert result.returncode == 0, result.stdout + result.stderr
     rendered = open(str(rendered_at), encoding="utf-8").read()
+    # EVERY FIELD THE RULE CARRIES, and not two this test names. Naming them was an enumeration,
+    # and it fell over the day the shipped plan answered `retention: null` for its two general
+    # rules (TSK-0113): the assertion crashed on the None instead of judging the rendering. What
+    # the docstring claims is the general sentence, so this asks the general question.
     for rule in rules:
         assert rule["path_template"] in rendered, rendered
-        assert rule["retention"] in rendered, (
-            "a field the renderer names nowhere in code is missing — the rule is rendered by a "
-            "list of fields somebody typed, not by what the rule carries:\n%s" % rendered)
+        for key, value in sorted(rule.items()):
+            if key == "path_template" or value in (None, "", [], {}):
+                continue
+            for element in (value if isinstance(value, (list, tuple)) else [value]):
+                assert str(element) in rendered, (
+                    "a field the renderer names nowhere in code is missing — the rule is rendered "
+                    "by a list of fields somebody typed, not by what the rule carries. Missing "
+                    "%s: %r\n%s" % (key, element, rendered))
+    # AND THE OTHER DIRECTION for the answer that is a null: a rule whose plan says it has no
+    # countable span must not be given one here. The renderer leaves such a field out entirely, so
+    # what this holds is that nothing was invented -- that the DOCUMENT is then silent about the
+    # retention of those drawers is a residue, carried in the round's protocol and not claimed away
+    # here.
+    for rule in rules:
+        if rule.get("retention") is not None:
+            continue
+        line = next(one for one in rendered.splitlines()
+                    if rule["path_template"] in one and one.lstrip().startswith("- "))
+        assert "retention" not in line, (
+            "the plan answers `retention: null` for %s and the rendering states a span anyway: %s"
+            % (rule.get("id"), line))
 
 
 def test_the_renderer_writes_the_gates_verdict_instead_of_an_em_dash(tmp_path):
@@ -13838,6 +13944,42 @@ def test_the_four_commands_spec_ii4_named_are_runnable_by_the_role_that_needs_th
     assert not cached, cached
 
 
+def test_every_route_the_kernel_has_into_a_kit_document_is_named_by_the_gate_that_refuses_one(
+        tmp_path):
+    """A refusal that denies a route the harness HAS is BUG-0041's shape, and it came back.
+
+    `documents.REVISION_WRITES` was declared and registered nowhere, so `layout.partial_writers` --
+    the derivation both kit gates build their route sentences from -- knew only the additive
+    command. Measured on the installed `gate_write_scope.py` of a scaffolded research project: a
+    `Write project_memory/methodology.yaml` came back rc 2 naming `apply-proposal` and "never a
+    change, never a removal", which is the sentence from BEFORE this round -- a role wanting to
+    correct a recorded rule was told its only route refuses exactly that.
+
+    THE EXPECTATION COMES FROM THE OTHER SIDE OF THE MODULE, and that is what gives this teeth:
+    `KIND_BY_COMMAND` is the map every route needs to exist at all (a command, its approval kind
+    and its plan), while `DOCUMENT_WRITES` is what reaches the gates. Reading the expectation off
+    the REGISTRATION would have been an identity -- the first version of this test did exactly
+    that and stayed green with the second route deleted out of `DOCUMENT_WRITES`, because the
+    expectation went with it. So the question is: does every route this module HAS reach the
+    sentence a refused role reads.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import documents
+
+    repo, _created = _project_the_installers_produce(tmp_path / "routes")
+    document = os.path.join(str(repo), "project_memory", "project_config.yaml")
+    refused = _project_hook_process(repo, "gate_write_scope.py", {
+        "hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": str(repo),
+        "tool_input": {"file_path": document, "content": "project:\n  name: \"x\"\n"}})
+    assert refused.returncode == 2, refused.stderr
+    routes = sorted(documents.KIND_BY_COMMAND)
+    missing = [command for command in routes if command not in refused.stderr]
+    assert not missing, (
+        "this module has the routes %s and the refusal leaves out %s -- a role reading it reports "
+        "an infrastructure gap the kernel does not have:\n%s"
+        % (routes, missing, refused.stderr))
+
+
 def test_a_staged_proposal_reaches_a_kit_document_in_a_project_the_installers_built(tmp_path):
     """BUG-0071 end to end in a REAL scaffolded project, through the gates that project registered.
 
@@ -15663,10 +15805,17 @@ def test_every_span_that_presents_the_command_surface_names_all_of_it():
 
     WHAT COUNTS AS SUCH A SPAN is measured, not guessed. Over the whole shipped corpus the
     distribution of "distinct subcommands named in code spans per block" is bimodal WITH A WIDE
-    EMPTY BAND: the overwhelming majority name 0, 1 or 2, a handful name every member of the
-    surface, and nothing lands in between. A threshold inside that band separates prose that
-    MENTIONS a command from a text that LISTS them; 3 is its low edge, so a shrinking list cannot
-    slip under it.
+    A BAND WITH ONE KIND IN IT, and that kind is named rather than counted away. The overwhelming
+    majority of blocks name 0, 1 or 2 commands, a handful name every member of the surface, and the
+    threshold of 3 sits between them so a shrinking list cannot slip under it. Since
+    `revise-document` shipped (TSK-0106) one kind lands at 3 and 4: the bullet that tells a role how
+    its kit document is written names `apply-proposal`, `revise-document` and every partial writer
+    of the documents that role owns. That is a ROUTE and not an inventory, and the difference is
+    asked of the kernel instead of listed here -- every command such a block names writes INTO a kit
+    document (`layout._document_writes`), which no §0 list is true of, because a list names the
+    whole surface. The completeness of a route is a different question and it has its own measure:
+    `tools/test_role_contracts.py::test_every_role_that_owns_a_kit_document_carries_the_route_that_writes_it`
+    reads it against the constitution's ownership table, both ways.
 
     THE ABSOLUTE COUNTS ARE DELIBERATELY NOT WRITTEN HERE, and that is a correction: an earlier
     version of this docstring quoted a span total and a histogram, and they were stale INSIDE the
@@ -15680,8 +15829,15 @@ def test_every_span_that_presents_the_command_surface_names_all_of_it():
     different hat.
     """
     sys.path.insert(0, os.path.join(ROOT, "team-kits"))
-    from kernel import cli
+    from kernel import cli, layout
     surface = set(cli.build_parser()._subparsers._group_actions[0].choices)
+    # The private aggregate and not `partial_writers`: the question here is which commands write
+    # into a kit document AT ALL, without a document to ask about, and that set exists in exactly
+    # one place.
+    document_writers = {entry["command"] for entry in layout._document_writes()}
+    assert document_writers < surface, (
+        "the document writers are no longer a part of the surface, so the exclusion below would "
+        "silence blocks this test is for: %s" % sorted(document_writers - surface))
 
     spans = []
     for where, text in _shipped_texts():
@@ -15693,7 +15849,7 @@ def test_every_span_that_presents_the_command_surface_names_all_of_it():
     seen, offenders = 0, []
     for where, span in spans:
         named = {word for word in _SUBCOMMAND_SPAN_RX.findall(span) if word in surface}
-        if len(named) < _SURFACE_SPAN_MIN:
+        if len(named) < _SURFACE_SPAN_MIN or named <= document_writers:
             continue
         seen += 1
         missing = sorted(surface - named)

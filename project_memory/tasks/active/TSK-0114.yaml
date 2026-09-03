@@ -1,0 +1,86 @@
+id: TSK-0114
+product_requirement: FR-0032
+derives_from: FR-0032
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/**
+- tools/**
+- docs/**
+- NOTICES.md
+- README.md
+- CLAUDE.md
+- .claude/hooks/test_gates.py
+forbidden_scope:
+- team-kits/gen_provider_artifacts.py
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- user/**
+- .claude/settings.json
+- .claude/hooks/gate_*.py
+- .claude/hooks/_harness.py
+- .claude/agents/**
+- project_memory/**
+required_inputs:
+- project_memory/staging/generation-2-streams.md
+- project_memory/staging/TSK-0110/wishlist-pass.md
+- project_memory/staging/TSK-0105/stream-protocol.md
+- project_memory/staging/TSK-0106/stream-protocol.md
+- project_memory/staging/TSK-0113/stream-protocol.md
+- project_memory/staging/TSK-0112/stream-protocol.md
+- project_memory/staging/TSK-0108/stream-protocol.md
+- project_memory/staging/TSK-0109/build-protocol.md
+- project_memory/staging/TSK-0110/round-protocol.md
+- project_memory/staging/TSK-0111/round-protocol.md
+- project_memory/decisions/active/DEC-0057.yaml
+- project_memory/decisions/active/DEC-0060.yaml
+- project_memory/decisions/active/DEC-0061.yaml
+expected_outputs:
+- the seven generation-2 patches applied on feat/harness-v2 in seam order F (kernel,
+  _round-scratch/TSK-0106), G (office, TSK-0113 = TSK-0113 + TSK-0112), I (dashboard,
+  TSK-0109), K (humanizer, TSK-0111), E (texts, TSK-0105), H (measurements, TSK-0108),
+  J (hygiene, TSK-0110); the pin tests after EVERY patch; project_memory/.audit/hook_events.jsonl
+  never taken from a worktree
+- 'every seam the protocols name resolved by hand and listed with its resolution:
+  the I x K collision in tools/test_hooks.py (I''s four-point proposal); F''s S1 +
+  S11 and G''s E1-E7 constitution/skill sentences applied AFTER E''s texts, arbiter
+  test_hooks.test_every_span_that_presents_the_command_surface_names_all_of_it; I/K/F
+  role-sentence seams to the constitutions; the hole-list appenders of six streams
+  (H105-H121) merged in number order; residues numbered H122 (K''s free number) and
+  H123+ with table row + entry + provenance + verdict span; the two-line plural fix
+  (I), the _same_place sentence (G), H''s protocol line number, J''s N1 corpus limit'
+- 'the hole-list name checker in .claude/hooks/test_gates.py fixed for BOTH measured
+  limits in one change: bare names resolve against tools/ too (I''s N11) and code
+  fences no longer mis-pair backticks (K''s H121) -- with the H46 prefix written in
+  the same change; red-first for both; H121 and the N11 residue closed in the wishlist
+  with the measurement'
+- 'the wishlist pass of TSK-0110 applied: the five pointer sentences written into
+  docs/POST_V2_WISHLIST.md at the anchors wishlist-pass.md names (the seven thin FRs
+  and two supersessions are the lead''s kernel work, referenced by id once captured)'
+- the FR-0040 DEC pointer test (test_repo_hygiene.test_every_decision_pointer_in_a_shipped_kit_file_resolves)
+  green on the merged tree with DEC-0061 present
+- ONE release stamp across the three kits after the last change (tools/bump_kit_version.py);
+  the full tools/ suite ONCE after the last rework and before the stamp (DEC-0050),
+  plus .claude/hooks/test_gates.py in full, plus ruff and validate.py; every red is
+  a finding, not a skip
+- protocol in project_memory/staging/TSK-0114/ with the seam table, the residue numbering,
+  the full-suite numbers and the (g) table of DEC-0060 per stream (tier, first-pass
+  findings, rework rounds, wall-clock); no commit, no push -- the lead records the
+  EVD and commits after the verifier's PASS
+dependencies:
+- TSK-0105
+- TSK-0106
+- TSK-0108
+- TSK-0109
+- TSK-0110
+- TSK-0111
+- TSK-0112
+- TSK-0113
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-02T19:23:11'

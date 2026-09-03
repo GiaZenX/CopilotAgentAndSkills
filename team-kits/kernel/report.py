@@ -25,6 +25,7 @@ dispatch TODO (II.10a).
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
@@ -49,6 +50,8 @@ from .approvals import (
     required_approval_kinds,
 )
 from .backlog_types import (
+    AREA_FIELD,
+    AREA_SEPARATOR,
     ACTIVE_DIRS,
     AUTOMATA,
     DEC_SUPERSEDES_FIELD,
@@ -57,7 +60,9 @@ from .backlog_types import (
     FR_RESULT_TERMINALS,
     HASHED_FIELDS,
     NON_AUTOMATON_STATUSES,
+    area_segments,
     PARENT_FIELDS,
+    PARTIAL_RUN_SCOPE,
     QA_EVIDENCE_KINDS,
     REFERENCE_LIST_FIELDS,
     ROOT_TYPE_BY_KIT,
@@ -67,7 +72,7 @@ from .backlog_types import (
     single_value_offences,
 )
 from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
-from .lock import LOCK_SCHEMA_VERSION, ext_path
+from .lock import LOCK_SCHEMA_VERSION, PORTABLE_PATH_MAX_CHARS, ext_path
 from .schemas import validate
 from .state import CONFIRMING_EVIDENCE, STAGING_DIRNAME, ProjectState, _now_iso
 
@@ -321,8 +326,10 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings = []
     seen_ids = {}
     active_items = {}
+    opened_paths = []
     for item_type, stem, item, path, exc in _iter_active(state):
         rel = os.path.relpath(path, state.root)
+        opened_paths.append(path)
         if exc or not isinstance(item, dict):
             findings.append(_finding(
                 "error", stem, "corrupt item file (%s)" % (exc or "non-mapping"),
@@ -492,6 +499,8 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_consumed_requests_diff_clean(state))
     findings.extend(_check_approval_expiry_agrees(state, active_items))
     findings.extend(_check_task_origins(state, active_items))
+    findings.extend(_check_bug_system_link(state, active_items))
+    findings.extend(_check_invariant_checks(state, active_items))
     findings.extend(_check_accepted_tasks_carry_a_verdict(state, active_items))
     findings.extend(_check_confirmations_agree_with_the_verdicts(state, active_items))
     findings.extend(_check_experiment_reports(active_items))
@@ -512,6 +521,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
             # every `python scripts/harness.py validate` and every session brief of every fresh project.
             if not os.path.isdir(ext_path(os.path.join(staging_dir, entry))):
                 continue
+            opened_paths.append(os.path.join(staging_dir, entry))
             if entry not in active_items:
                 findings.append(_finding(
                     "warning", "staging/%s" % entry,
@@ -524,6 +534,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
         for name in sorted(os.listdir(ext_path(lease_dir))):
             if not name.endswith(".lease.yaml"):
                 continue
+            opened_paths.append(os.path.join(lease_dir, name))
             task_id = name[: -len(".lease.yaml")]
             if task_id not in active_items:
                 findings.append(_finding(
@@ -538,7 +549,309 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                 "safe to delete after inspection (doctor)",
             ))
     findings.extend(_check_no_v1_records_outside_the_archive(state))
+    findings.extend(_check_portable_path_budget(opened_paths))
     return findings
+
+
+def _check_portable_path_budget(paths) -> list:
+    """Spec II.4's other half (FR-0037): warn while the tree is still openable by everything else.
+
+    The kernel itself is not the endangered reader -- every state file operation goes through
+    `lock.ext_path` -- so the finding is a WARNING and says whose problem it is: git, an editor
+    and a sync client open the same files without that prefix.
+
+    ONE FINDING, NOT ONE PER FILE. Depth is a property of the tree: in a project that has this
+    problem at all, nearly every item has it, and a per-item warning would push every other
+    finding out of the report to repeat a single fact.
+
+    WHAT IT MEASURES IS WHAT THE SCAN ALREADY OPENED -- active items, staging keys, leases -- so
+    it adds no second walk to a validator that holds the kernel lock. A file deeper inside a
+    staging directory is therefore NOT seen; both halves are measured by
+    `tools/test_report.py::test_a_state_tree_past_the_portable_path_limit_is_warned_once`.
+    """
+    lengths = sorted(((len(os.path.abspath(p)), p) for p in paths), reverse=True)
+    over = [(n, p) for n, p in lengths if n > PORTABLE_PATH_MAX_CHARS]
+    if not over:
+        return []
+    longest, where = over[0]
+    return [_finding(
+        "warning", os.path.basename(where),
+        "%d state path(s) are longer than %d characters (longest: %d) -- the kernel opens them "
+        "through extended-length paths, git, editors and sync clients do not"
+        % (len(over), PORTABLE_PATH_MAX_CHARS, longest),
+        "move the project closer to the drive root, or shorten the directory names above it",
+    )]
+
+
+# -- a soft duplicate hint at capture (FR-0018) --------------------------------
+
+# THE SCORE ABOVE WHICH TWO ITEMS OF ONE TYPE ARE WORTH LOOKING AT, and the only number this
+# hint has. It sits in the middle of a MEASURED EMPTY BAND rather than at a value anyone liked:
+# every same-type pair of this repository's own store was scored (2026-09-02, with the tokenizer
+# above and not with a second one), and so was the case the FR is about -- the same requirement
+# written a second time, keeping part of its wording. The honest pairs stop well below this line
+# and the re-requests start well above it, with nothing in between; the distributions, the store
+# and its size are in the TSK-0106 protocol, where a number that describes one round belongs.
+# `test_report.test_the_duplicate_hint_stays_quiet_on_ordinary_neighbours` is where the band stays
+# measured: it carries one pair BELOW this line and one ABOVE it, so a threshold low enough to nag
+# and one high enough to go quiet each turn it red. That claim was untrue for one round -- the
+# fixtures grew and the pairs drifted out of the band while the sentence stayed.
+DUPLICATE_HINT_SIMILARITY = 0.45
+# Three, because the hint is read at the moment an item is created and a list one cannot take in
+# at a glance is one nobody reads. `similar_items` returns them ranked, so a fourth near-match is
+# never the one that mattered most.
+DUPLICATE_HINT_LIMIT = 3
+# HOW MUCH AN ITEM HAS TO SAY BEFORE IT IS COMPARED AT ALL, and this number sits in a band as wide
+# as the other one is narrow. A ratio over a handful of words is decided by a single shared one:
+# two unrelated bugs reading "404 -> 200" and "500 -> 200" share `200` and their severity and score
+# 0.5 -- over the threshold, on nothing. Measured on the same store (2026-09-02): the SMALLEST real
+# item carries 49 content words and the smallest union of any honest pair is 93, while the noise
+# cases live at four to eight. Below this line the hint says nothing rather than something it
+# cannot mean. `test_report.test_the_duplicate_hint_says_nothing_about_items_too_small_to_compare`
+# holds both edges.
+DUPLICATE_HINT_MIN_WORDS = 20
+# A WORD IS A RUN OF LETTERS IN ANY SCRIPT, and that is a rule rather than an alphabet. `[a-z]`
+# is an enumeration of one language's letters: it cut `Prüfung der Größe` into `der` and `fung`
+# and read `ÄÖÜ` as nothing at all -- so two unrelated German items scored 0.625 on their
+# leftovers, over any threshold this hint could carry. Digits are kept only in runs of three
+# (a year, an amount); shorter ones are list indices and item numbers.
+_HINT_WORD = re.compile(r"[^\W\d_]{3,}|\d{3,}", re.UNICODE)
+
+
+def _content_words(item: dict, fields) -> set:
+    """The words an item's OWN CONTENT is made of, flattened out of nested fields.
+
+    WHICH FIELDS ARE THE CONTENT is not decided here: `HASHED_FIELDS` already answers it for the
+    kernel, because those are the fields whose change invalidates an approval -- the substance of
+    the item as this project has already defined it. A type the kernel has no such definition for
+    gets no hint rather than a guess over whatever strings it happens to carry, and both ends of
+    that are measured in
+    `test_report.test_the_duplicate_hint_covers_every_type_whose_content_the_kernel_defines`.
+
+    Words shorter than three characters are dropped: they are articles and ids' separators, and
+    they made every pair of items look alike.
+    """
+    parts = []
+
+    def flatten(value):
+        if isinstance(value, dict):
+            for one in value.values():
+                flatten(one)
+        elif isinstance(value, (list, tuple)):
+            for one in value:
+                flatten(one)
+        elif value is not None:
+            parts.append(str(value))
+
+    flatten(item.get("title"))
+    for field in fields:
+        flatten(item.get(field))
+    return set(_HINT_WORD.findall(" ".join(parts).lower()))
+
+
+def similar_items(state: ProjectState, item_type: str, fields: dict,
+                  exclude: str = None) -> list:
+    """The active items of the SAME type whose content overlaps `fields` -- ranked, never a block.
+
+    A SOFT HINT AND NOTHING MORE (FR-0018). The user's own reasoning is the design: requirements
+    resemble each other, so a hard refusal would fire on honest work far more often than on a
+    real duplicate, and the role chain catches most true duplicates anyway. What was missing was
+    the one moment a machine can help at no cost -- the moment of writing a second copy.
+
+    SAME TYPE ONLY, which is the rule and not a shortcut: a BUG and the SR it was found against
+    share most of their vocabulary and are never each other's duplicate.
+
+    Overlap is the Jaccard ratio of the two content word sets -- symmetric, insensitive to how
+    long the items are, and free of any per-field weighting nobody could justify. It is a hint;
+    the ranking is what it owes, not a similarity anyone should quote.
+
+    "NEVER A BLOCK" IS A CLAIM AND THEREFORE A TEST:
+    `tools/test_staging_cli.py::test_capture_names_the_neighbours_it_found_and_captures_the_item_anyway`
+    runs the real capture and reads the exit code, the id on stdout and the hint on stderr.
+    """
+    contract = HASHED_FIELDS.get(item_type)
+    if not contract:
+        return []
+    mine = _content_words(fields, contract)
+    if len(mine) < DUPLICATE_HINT_MIN_WORDS:
+        return []
+    scored = []
+    for stem, path in state.iter_active_items(item_type):
+        try:
+            other = state._read_yaml(path)
+        except Exception:
+            continue                     # an unreadable item is the validator's finding, not this
+        if not isinstance(other, dict):
+            continue
+        other_id = str(other.get("id") or stem)
+        if exclude and other_id == exclude:
+            continue
+        theirs = _content_words(other, contract)
+        if len(theirs) < DUPLICATE_HINT_MIN_WORDS:
+            continue
+        score = len(mine & theirs) / float(len(mine | theirs))
+        if score >= DUPLICATE_HINT_SIMILARITY:
+            scored.append({"id": other_id, "title": other.get("title"), "score": round(score, 3)})
+    scored.sort(key=lambda row: (-row["score"], row["id"]))
+    return scored[:DUPLICATE_HINT_LIMIT]
+
+
+# -- an invariant's check, resolved (FR-0039) ----------------------------------
+
+# HOW A CHECK NAMES ITS TEST. `INV.check` is a mapping whose `ref` is a test node id -- the path of
+# the file, then the names inside it, separated by this. It is the shape the kits' own invariants
+# are written in and the shape a role pastes out of a test runner; the kernel does not invent a
+# second one.
+INVARIANT_REF_SEPARATOR = "::"
+
+
+def invariant_check_resolution(state: ProjectState, item: dict, parsed_names: dict = None):
+    """(resolved, reason) for one INV's `check` -- does it point at a test that EXISTS?
+
+    THE FIELD `verified` HAD NO PRODUCER (spec II.12, FR-0039). `backlog_types` conceded it in a
+    comment: an invariant becomes verified once its check test exists and is collectable, and
+    nothing in this kernel established that -- so `verified` was a word in a vocabulary and every
+    invariant of every project stood at `unverified` for ever.
+
+    COLLECTABLE IS DECIDED BY PARSING, NOT BY RUNNING. What a test run costs and which runner a
+    project uses is a fact about the project (the same argument `RUN_SCOPES` carries for a run's
+    scope); what the kernel can answer on its own is whether the file exists and whether the name
+    the ref ends in is DEFINED in it. That is the half II.12 makes the merge depend on, and it is
+    the half a role can be wrong about by accident -- a renamed test, a deleted file.
+
+    THREE ANSWERS AND NOT TWO, and the third is what keeps this from being an unclearable block.
+    True is "the test is there"; False is "it is not, and that is decidable" -- a check with no
+    ref, a file that is not there, a Python file that does not define the name. None is "this
+    kernel cannot tell": a test file in a language it does not parse. A kernel three kits share
+    would otherwise block every merge of every project whose tests are not Python, for ever, with
+    no command that could clear it -- and a rule nobody can satisfy is worked around, not met.
+    `H110` in `docs/POST_V2_WISHLIST.md` carries that limit with its measurement.
+
+    THE COST OF THE PARSING CHOICE, named because it is a real gap and not a rounding error: a
+    test that exists but is skipped, parametrised away or excluded by the runner's own
+    configuration counts as resolved here. `H109` there carries it.
+
+    The path is read relative to the PROJECT root -- the directory the state tree sits in, which is
+    where a role runs the test runner from. Every outcome gets its own sentence, because the
+    remedies differ.
+
+    `parsed_names` IS A CACHE FOR ONE SCAN AND NOTHING MORE. Invariants of one project point at the
+    same few test files, and this runs inside `validate_state`, which a MERGE GATE waits for: 30
+    invariants against one 0.5 MB test file cost 6.1-6.9 s per scan measured without it, and the
+    kits register no timeout for that gate -- a hook killed by the provider reads as "carry on",
+    i.e. as a pass. A caller that passes no cache parses per item, which is right for the single
+    reads (`state.record_invariant_verification`), where a stale answer would be worse than a
+    parse. `tools/test_report.py::test_one_scan_parses_each_test_file_once` holds it.
+    """
+    check = item.get("check")
+    if not isinstance(check, dict):
+        return False, "check is not a mapping with a `ref` -- there is nothing to resolve"
+    refs = field_elements(check.get("ref"))
+    if len(refs) != 1 or not str(refs[0]).strip():
+        return False, "check names no single `ref` to resolve"
+    ref = str(refs[0]).strip()
+    head, sep, tail = ref.partition(INVARIANT_REF_SEPARATOR)
+    if not sep or not tail.strip():
+        return False, ("check ref %r names no test inside a file -- the shape is "
+                       "<path>%s<test name>" % (ref, INVARIANT_REF_SEPARATOR))
+    name = tail.split(INVARIANT_REF_SEPARATOR)[-1].strip()
+    # A parametrised node id carries its case in brackets; the DEFINITION is the name before it.
+    name = name.split("[")[0].strip()
+    path = os.path.join(os.path.dirname(os.path.abspath(state.root)), *head.split("/"))
+    if not os.path.isfile(ext_path(path)):
+        return False, "check ref %r names %s, which does not exist" % (ref, head)
+    key = os.path.abspath(path)
+    cached = parsed_names.get(key) if parsed_names is not None else None
+    if cached is None:
+        try:
+            with open(ext_path(path), encoding="utf-8") as handle:
+                tree = ast.parse(handle.read(), filename=path)
+        except (OSError, SyntaxError, ValueError) as exc:
+            cached = type(exc).__name__
+        else:
+            cached = {node.name for node in ast.walk(tree)
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))}
+        if parsed_names is not None:
+            parsed_names[key] = cached
+    if isinstance(cached, str):
+        return None, ("check ref %r names %s, which this kernel cannot read as a test file (%s) -- "
+                      "it resolves a check by PARSING it, and that reaches Python. Whether this "
+                      "test exists is a question for the project's own runner" % (ref, head, cached))
+    defined = cached
+    if name not in defined:
+        return False, "check ref %r names %s, which %s does not define" % (ref, name, head)
+    return True, "%s defines %s" % (head, name)
+
+
+def _check_invariant_checks(state: ProjectState, active_items: dict) -> list:
+    """II.12/FR-0039: an invariant whose check resolves to no test does not govern anything.
+
+    AN ERROR AND THEREFORE A MERGE BLOCKER, which is the point of the FR rather than a side
+    effect: `gate_memory_complete.state_errors` blocks a push on this validator's errors, so the
+    rule "an unverifiable invariant stops the merge" needed no hook of its own. An invariant is
+    what a project's guards read to decide which code they govern -- one that points at nothing
+    is a rule with no evidence that anyone still keeps it.
+
+    THE OTHER TWO DIRECTIONS ARE WARNINGS, and each for its own reason. A check that DOES resolve
+    while the item still reads `unverified` is bookkeeping nobody has run yet, and the remedy is a
+    command rather than a repair. A check this kernel cannot READ -- a test file in another
+    language -- is not a finding about the project at all but about the reader, and as an error it
+    would block every merge of every project whose tests are not Python with nothing to clear it
+    (`H110`).
+    """
+    findings = []
+    verified = NON_AUTOMATON_STATUSES["INV"][1]
+    parsed_names: dict = {}          # one parse per FILE for this scan -- see the resolution
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        if item_type != "INV":
+            continue
+        resolved, reason = invariant_check_resolution(state, item, parsed_names)
+        if resolved is None:
+            findings.append(_finding(
+                "warning", item_id, "%s" % reason,
+                "keep the check pointing at the test a person can run; nothing here can confirm "
+                "it, and no merge is blocked on an answer this kernel cannot give",
+            ))
+        elif not resolved:
+            findings.append(_finding(
+                "error", item_id, "%s -- an invariant nothing can check does not govern" % reason,
+                "write the test the check names, or point the check at one that exists; then run "
+                "`python scripts/harness.py verify-invariants`",
+            ))
+        elif item.get("status") != verified:
+            findings.append(_finding(
+                "warning", item_id, "check resolves (%s) but the item still reads %r"
+                % (reason, item.get("status")),
+                "run `python scripts/harness.py verify-invariants` -- the kernel records the "
+                "status, no one writes it by hand",
+            ))
+    return findings
+
+
+def standing_areas(state: ProjectState) -> dict:
+    """The backlog's outline as it stands: {"Document/Heading": [item id, ...]}.
+
+    FR-0017's protection against over-fragmentation, and the whole of it. The FR's rule is about a
+    MOMENT -- "a new heading only when a requirement really fits none of the existing ones" -- so
+    what a machine can add is the outline itself, at that moment (`kernel.cli`, on capture). There
+    is no count and no threshold: nothing separates a thousand headings from nine hundred honest
+    ones except whether the writer saw what was already there.
+
+    Every active item is asked, whatever its type, because `AREA_FIELD` is on every captured
+    type's contract -- an outline that showed only two types' entries would recommend an area that
+    a third type already fills. That the contract really reaches every one of them is measured by
+    `tools/test_backlog_types.py::test_every_captured_type_declares_the_outline_field_and_none_declares_it_twice`,
+    not by this sentence.
+    """
+    outline: dict = {}
+    for _item_type, stem, item, _path, exc in _iter_active(state):
+        if exc or not isinstance(item, dict):
+            continue
+        segments = area_segments(item.get(AREA_FIELD))
+        if segments:
+            outline.setdefault(AREA_SEPARATOR.join(segments), []).append(
+                str(item.get("id") or stem))
+    return {key: sorted(ids) for key, ids in sorted(outline.items())}
 
 
 def _check_no_v1_records_outside_the_archive(state: ProjectState) -> list:
@@ -931,16 +1244,142 @@ def _parents_of(item_type: str, item: dict) -> list:
     return [ref for _field, ref in _parent_bindings(item_type, item)]
 
 
-def _root_of(item_type: str, item: dict):
-    """The ONE item a type hangs from, or None when it names none or several.
+def _item_of(state: ProjectState, item_id: str):
+    """(type, item) for an id resolvable anywhere in the store, or (None, None)."""
+    try:
+        item_type, _number = parse_id(item_id)
+    except ValueError:
+        return None, None
+    item, _archived = state.read_anywhere(item_id)
+    if not isinstance(item, dict):
+        return None, None
+    return item_type, item
 
-    Its caller compares an origin's root with the task's own, and that comparison only means
-    something when the origin belongs to exactly one item: a TSK names both its root and the
-    item its criteria came from, so "the root of a TSK origin" has no single answer and the
-    comparison is skipped -- as it always was, when this function listed the types instead.
+
+def _reaches_on_every_path(state: ProjectState, item_id: str, target_id: str,
+                           seen: frozenset) -> bool:
+    """Does EVERY ancestry path out of `item_id` end at `target_id`? (transitive, cycle-safe)
+
+    The `all` is the whole point and is the difference to `_hangs_from`, which asks the same
+    question with `any` and answers a different one: `_hangs_from` says the item can be REACHED
+    from the target (enough to bind an Evidence to a root), this says the item belongs to that
+    target and to no other (what an origin comparison needs). An item that hangs from two roots
+    satisfies the first and not the second.
+
+    Every way of not arriving is False, so the caller's refusal is the default: a cycle, an
+    unresolvable id, and an item with no binding field at all (which hangs from nothing and
+    therefore not from the target either).
+
+    WHERE THE `all` ACTUALLY DECIDES is one level further in than it looks, and that is why it
+    needs a test of its own: `origin_root_conflict` already walks the origin's OWN parents one by
+    one, so an origin with two parents is caught there whatever this function does. The `all`
+    starts deciding at the GRANDparent -- an origin with a single parent that itself hangs from two
+    roots -- and with `any` in its place, seven modules stayed green (645 passed, measured
+    2026-09-02). `test_report.test_an_origin_whose_only_parent_hangs_from_two_roots_is_refused` is
+    that case, and
+    `test_report.test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused`
+    measures the level above it. `_check_task_origins` and
+    `dispatch._assert_origins_belong_to_root_locked` are the two callers, through
+    `origin_root_conflict`.
     """
+    if item_id == target_id:
+        return True
+    if item_id in seen:
+        return False
+    item_type, item = _item_of(state, item_id)
+    if item is None:
+        return False
     parents = _parents_of(item_type, item)
-    return parents[0] if len(parents) == 1 else None
+    return bool(parents) and all(
+        _reaches_on_every_path(state, parent, target_id, seen | {item_id})
+        for parent in parents)
+
+
+def _ancestry_tops(state: ProjectState, item_id: str, seen: frozenset) -> frozenset:
+    """The ids at the TOP of every ancestry path out of `item_id` -- what it really hangs from.
+
+    Named for the refusal message rather than for a check: a role that is told its origin does
+    not belong to the task's root needs to be told which root it does belong to, and after the
+    walk became transitive that is no longer the immediate parent. An id that resolves to
+    nothing is a top of its own, so the message names the reference the store cannot follow
+    instead of falling silent about it.
+    """
+    if item_id in seen:
+        return frozenset()
+    item_type, item = _item_of(state, item_id)
+    if item is None:
+        return frozenset((item_id,))
+    parents = _parents_of(item_type, item)
+    if not parents:
+        return frozenset((item_id,))
+    tops = frozenset()
+    for parent in parents:
+        tops |= _ancestry_tops(state, parent, seen | {item_id})
+    return tops or frozenset((item_id,))
+
+
+def origin_root_conflict(state: ProjectState, origin_id: str, root_id: str):
+    """Why a task's `derives_from` does not belong to its root -- or None when it does.
+
+    ONE definition for the two places that ask it: `dispatch._assert_origins_belong_to_root_locked`
+    refuses at creation and `_check_task_origins` reports on a stored item, and when those two
+    disagree the kernel refuses what its own validator accepts.
+
+    TRANSITIVE, because the chain a kit documents may be deeper than one hop. Its predecessor
+    `_root_of` returned the single immediate parent, so an `EXP` under a `HYP` under an `RQ` had
+    root `HYP-0001` here and root `RQ-0001` at the merge gate -- the research kit's own
+    `RQ -> HYP -> EXP -> TSK` was uncreatable (BUG-0083). The dev chain never met it: there every
+    task origin sits one level under the root.
+
+    AMBIGUITY FAILS CLOSED, which is the other half and the older defect: `_root_of` answered
+    "several parents" with None and both callers read None as "skip the comparison", so an origin
+    with two parents was accepted under ANY root -- measured with an `EXP` under `RQ-0001` and a
+    task under `RQ-0002` (BUG-0086). Here an origin belongs to the root when every one of its
+    parents reaches it on every path; a mixed parentage is refused with the parent that leaves the
+    root named, and the two cases carry different sentences because the remedies differ.
+
+    Silent on an id that resolves to nothing: a phantom origin is refused at capture
+    (`state._assert_origins_resolve`) and reported by the reference checks, and answering it here
+    too would put the same defect in front of the role twice under two different names.
+    """
+    origin_id = str(origin_id or "")
+    if not origin_id or origin_id == root_id or not root_id:
+        return None
+    _origin_type, origin = _item_of(state, origin_id)
+    if origin is None:
+        return None
+    parents = _parents_of(_origin_type, origin)
+    if not parents:
+        return ("%s names no parent binding at all, so it is a root of its own and not part of "
+                "the root %s of the item that names it" % (origin_id, root_id))
+    astray = [parent for parent in parents
+              if not _reaches_on_every_path(state, parent, root_id, frozenset((origin_id,)))]
+    if not astray:
+        return None
+    tops = frozenset()
+    for parent in astray:
+        tops |= _ancestry_tops(state, parent, frozenset((origin_id,)))
+    elsewhere = "/".join(sorted(tops))
+    # WHICH OF THE TWO SENTENCES IS TRUE is one question: does the root stand at the end of ANY
+    # path out of this origin? If it does, some paths reach it and some do not -- that is the
+    # ambiguity, at whatever depth it sits. If it does not, the origin belongs somewhere else.
+    #
+    # Counting the straying parents alone answered that wrong one level in and said both things at
+    # once -- "EXP-0001 belongs to RQ-0001/RQ-0002, not to RQ-0001" -- for an origin whose single
+    # parent hangs from this root AND another: every parent strays (so the count read "foreign
+    # root") while the root is among the tops. Reading `tops` ALONE gets the level above it wrong
+    # in the mirror image: with two parents, one of which reaches the root, the strays' tops do
+    # not contain it. Both readings together are the question above, and both levels are measured
+    # (`test_report.test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused`
+    # and `test_report.test_an_origin_whose_only_parent_hangs_from_two_roots_is_refused`).
+    if len(astray) == len(parents) and root_id not in tops:
+        return ("%s belongs to %s, not to %s -- the root of the item that names it"
+                % (origin_id, elsewhere, root_id))
+    # The ambiguity may sit at the origin (two parents, one of them elsewhere) or ABOVE it (one
+    # parent that itself hangs from two roots), so the sentence names the PATH and not a count.
+    return ("%s reaches root %s on only some of its ancestry paths: %s leads to %s -- an ambiguous "
+            "origin is refused rather than resolved to whichever path is read first"
+            % (origin_id, root_id, ", ".join(astray), elsewhere))
 
 
 def _hangs_from(state: ProjectState, item_id: str, target_id: str, seen: set) -> bool:
@@ -996,6 +1435,24 @@ def _delivery_evidence(state: ProjectState):
     `audit` Evidence judges the project (II.10a), so it can neither open nor close the
     merge of one item.
 
+    AND A PASS FROM A PARTIAL RUN DOES NOT COUNT (FR-0040; the decision this embodies is
+    DEC-0061). An Evidence may declare what its run
+    covered (`backlog_types.RUN_SCOPES`); one that declares `PARTIAL_RUN_SCOPE` and passed is
+    dropped here, so the merge falls back to the newest FULL verdict or to none at all. The
+    asymmetry is the argument and not a half-measure: a run over part of the work can show a
+    defect, so a `fail` from a selection stays a fail and still closes the gate; it cannot show
+    the absence of one, so its pass opens nothing. Until this line, `EVIDENCE_RESULTS`' own
+    comment and `gate_git`'s refusal text both told the reader that a partial run is not merge
+    evidence while nothing anywhere read a scope.
+
+    WHAT IT DOES NOT REACH, said because the field is optional: a record that declares NO scope
+    is treated exactly as before. The declaration cannot be made mandatory on this type without
+    turning every Evidence a project already holds into a validator error that no command can
+    repair -- an `EVD` is immutable -- so the duty belongs to the surface that records new ones,
+    which is a contract decision and not this function's. `docs/POST_V2_WISHLIST.md` H108 carries
+    it with its measurement.
+    `tools/test_report.py::test_a_pass_from_a_partial_run_is_not_merge_evidence_and_a_fail_still_is`
+
     ARCHIVED evidence is deliberately not read: spec II.2 says closed things leave the
     active context, so archiving a superseded verdict is how it is retired -- visibly,
     through a kernel operation recorded in git, rather than by editing a file.
@@ -1021,6 +1478,9 @@ def _delivery_evidence(state: ProjectState):
         if not isinstance(evidence, dict):
             continue
         if evidence.get("kind") not in QA_EVIDENCE_KINDS:
+            continue
+        if (evidence.get("run_scope") == PARTIAL_RUN_SCOPE
+                and evidence.get("result") == "pass"):
             continue
         yield evidence, (str(evidence.get("created") or ""), number)
 
@@ -1395,6 +1855,41 @@ def delivery_closure_rollup(state: ProjectState) -> list:
     return rows
 
 
+def _check_bug_system_link(state: ProjectState, active_items: dict) -> list:
+    """FR-0054: the SR a bug names must live under the same root the bug is filed against.
+
+    THE FIELD EXISTS BECAUSE THE OTHER ONE ANSWERS A DIFFERENT QUESTION. `related_pr` is the
+    product root the bug belongs to and says nothing about which contract it broke; a bug in the
+    software hits a SYSTEM requirement, and the system tree could only ever group bugs under the
+    product root.
+
+    JUDGED ON MEMBERSHIP AND NOT ON EXISTENCE, which is the residue the FR names in its own text:
+    `related_pr` and `target_pr` are checked for resolvability by the reference loop above and for
+    nothing else, so a bug can point at a requirement of a foreign tree and be reported by nobody.
+    The new field does not repeat that, and it reuses `origin_root_conflict` rather than walking
+    the graph a second time -- the same definition the task origins are judged with, including its
+    fail-closed answer for an ambiguous parentage.
+
+    HERE AND NOT AT CAPTURE, for the reason `_check_task_origins` gives one screen up: the walk is
+    a graph question, the damage is a mislabel in a committed file, and this layer is where the
+    kernel already pays for that walk.
+    """
+    findings = []
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        if item_type != "BUG":
+            continue
+        root = item.get("related_pr")
+        for ref in field_elements(item.get("related_sr")):
+            conflict = origin_root_conflict(state, str(ref), str(root or ""))
+            if conflict:
+                findings.append(_finding(
+                    "error", item_id, "related_sr %s" % conflict,
+                    "name a system requirement under %s, or file the bug against the root that "
+                    "requirement belongs to" % (root or "this bug's root"),
+                ))
+    return findings
+
+
 def _check_task_origins(state: ProjectState, active_items: dict) -> list:
     """A TSK's `derives_from` must belong to its ROOT's tree, and not be stale.
 
@@ -1433,12 +1928,11 @@ def _check_task_origins(state: ProjectState, active_items: dict) -> list:
                     "origin is stale" % (origin, origin_item.get("status")),
                     "close the task, or re-point it at the item that supersedes %s" % origin,
                 ))
-            origin_root = _root_of(origin_type, origin_item)
-            if root and origin_root and origin_root != root:
+            conflict = origin_root_conflict(state, origin, root) if root else None
+            if conflict:
                 findings.append(_finding(
                     "error", item_id,
-                    "derives_from %s belongs to %s, not to this task's root %s"
-                    % (origin, origin_root, root),
+                    "derives_from %s" % conflict,
                     "the dispatch gate resolves acceptance_refs against the origin, so "
                     "this task would be judged against another root's criteria -- fix "
                     "product_requirement or derives_from",

@@ -829,8 +829,14 @@ def test_every_target_form_names_a_live_apr_kind(project):
     # `tools/test_kernel.py::test_the_question_a_document_proposal_asks_shows_every_field_the_hash
     # _covers` asks the manifest which keys it hashes and requires each of their RENDERED values in
     # the sentence, digests included.
+    # `document_revision` joined in TSK-0106 (FR-0067) as the only form that renders an UNSAYING --
+    # a replaced or deleted spot -- and it brought the same measurement:
+    # `tools/test_kernel.py::test_the_question_a_document_revision_asks_shows_every_field_the_hash
+    # _covers`, plus `tools/test_approvals_dispatch.py::test_a_revision_card_shows_every_spot_and
+    # _is_never_a_count` for the half specific to it: the spots are shown in full or the request is
+    # refused, never folded into a number.
     assert set(approvals.TARGET_FORMS) == {"push", "preset", "filing_correction", "filing_rule",
-                                           "document_proposal"}, (
+                                           "document_proposal", "document_revision"}, (
         "a new readable form arrived without a measurement of what it renders")
 
 

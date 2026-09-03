@@ -1,0 +1,16 @@
+id: FR-0077
+title: 'Wunschliste §1c: die mechanisch pruefbaren Haelften der Standard-Haertung
+  bauen (C1/C2/C3 axe-Lauf + Tastaturpfad + prefers-reduced-motion/:focus-visible;
+  B2/B3 Farbliterale)'
+related_pr: FR-0074
+request_text: 'Thin FR from the measured wishlist pass of TSK-0110 (FR-0036), docs/POST_V2_WISHLIST.md
+  section 1c. The section says of these halves verbatim ''NICHT gebaut'', and nothing
+  in the store carries them: FR-0068/0070/0071 (MERGED) vendored Anthropic''s skills
+  -- capability, not the mechanical checks. Wanted: the checks as tests/gates in the
+  dev-team kit (axe run, keyboard path, reduced-motion and focus-visible presence,
+  colour literals outside the token sheet), each red-first. Acceptance: every listed
+  half has a test that fails on a planted violation; the wishlist section points here.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T19:50:07'

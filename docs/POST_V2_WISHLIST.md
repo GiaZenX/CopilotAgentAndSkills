@@ -62,6 +62,8 @@ Vorschlag zur Umsetzung, im selben Muster wie der Rest:
 Offen bleibt bewusst: ob die Rangfolge in den WFR (Wireframe, vor der Gestaltung) gehört statt in
 die DSN. Sachlich gehört sie dorthin — Rangfolge ist eine Struktur-, keine Stilentscheidung.
 
+**Item:** → FR-0078 — ein Gate auf genau EIN primäres Ziel je View, plus die SKILL-Zeile mit Verfahren statt Adjektiv. Gilt für diesen Abschnitt und für Abschnitt 1 darüber.
+
 ### 1b. Claude Design — nicht einbetten, aber anschlussfähig bleiben (2026-07-27)
 
 `claude.ai/design` (Anthropic Labs, April 2026, Beta seit Juni) ist ein gehostetes Produkt: Repo und
@@ -82,6 +84,8 @@ Dateinamen verifizieren.** Die Zusammensetzung stammt bislang aus Sekundärquell
 Inhaltlich bleibt es beim Apache-2.0-Skill `anthropics/skills` → `frontend-design` (~12 Zeilen:
 Klischee-Kalibrierung mit Hex-Werten, Selbsttest-Verfahren, UI-Text-Abschnitt). Das Produkt liefert
 keinen lizenzfrei verwendbaren Text.
+
+**Erledigt:** → FR-0045 — in der ersten Strom-Generation geliefert (DEC-0060, TSK-0100).
 
 ### 1c. Was als ANLEITUNG eingebaut wurde — und welche Gates dabei bewusst nicht entstanden (2026-08-03)
 
@@ -188,6 +192,8 @@ stehen; hier steht nur, was die neue SKILL-Zeile offen lässt:
   bewusst hier statt gebaut: den Pin auf die Spezialisten-SKILLs ausdehnen — das ist eine
   Entscheidung über Kürzungsfreiheit, keine Textarbeit.
 
+**Item:** → FR-0077 — die mechanisch prüfbaren Hälften C1/C2/C3 und B2/B3; der Abschnitt sagt selbst „NICHT gebaut".
+
 ## 2. Board- und Backlog-Ansichten
 
 Der V2-Zustand ist erstmals die richtige Datengrundlage dafür: ein Vorgang = eine Datei, typisiert,
@@ -218,6 +224,8 @@ Zwei Dinge fehlen dafür im Zustandsmodell, beide sind Entscheidungen:
 Technisch: die Ansichten gehören nach `generated/` (regenerierbar, nicht committet), gespeist aus
 `generated/index.yaml`. Der Dashboard-Generator existiert bereits als Anknüpfungspunkt.
 
+**Item:** → FR-0024 — deckt diesen Abschnitt und sagt es selbst; geliefert dagegen: FR-0030 und FR-0053, offen daneben FR-0017. Die Termine als eigener Vorgangstyp (MST) sind seither → FR-0079.
+
 ## 3. Der Plan als Bild, nicht nur als Text
 
 Gewünscht: die Umsetzungsschritte zusätzlich als **draw.io-Diagramm** auf einer Flughöhe ohne
@@ -243,6 +251,8 @@ nicht als Datei** — `git ls-files | grep drawio` liefert null Treffer, es gibt
 und kein `.vscode/extensions.json`-Template. Die einzige maschinelle Prüfung ist ein `ET.parse()` in
 `kernel/staging.py`, während das Feld daneben `render_check: True` heisst. Das behauptet mehr, als es
 prüft — dieselbe Klasse, die dieser Umbau an sechs anderen Stellen gefunden hat.
+
+**Item:** → FR-0080 — Plan und Mindmap als generiertes `.drawio.svg`; das Format ist für WFR/ARC bereits in Gebrauch, das FR erweitert es.
 
 ### 3a. Nachtrag des Users (2026-08-03): der Zweck, und wo er der Ablage widerspricht
 
@@ -305,6 +315,8 @@ Daraus:
 beim Spawn wählt** — das ist neue Mechanik im Kernel, nicht eine Konfigurationszeile. Das ist der
 eigentliche Arbeitsposten dieses Punktes.
 
+**Item:** → FR-0047; **Soll-Zustand entschieden in** → DEC-0034 (bewusst nicht gebaut), Besetzungsschicht → DEC-0059. Der gebaute Stand (`model_tiers.yaml`) und DEC-0034 weichen absichtlich voneinander ab.
+
 ## 5. Finanz-Vorlagen für das Office-Kit (2026-07-31, User)
 
 Vorschlag: Vorlagen für **Bilanz, EÜR, Ledger**, weil Finanzen über Unternehmen hinweg nahezu
@@ -340,6 +352,8 @@ Ergänzungsvorschlag zur generischen Seite: **Belegablage und Aufbewahrung** (Go
 wenig unternehmensspezifisch wie die Finanzstruktur und hat mit `filing_plan.yaml` bereits einen
 Ort im Kit.
 
+**Item:** → FR-0032 für die ANSICHT (Finanz-Dashboard, geliefert in TSK-0109). Der Kontenrahmen SKR03/SKR04 mit der Konto→EÜR-Abbildung, jahresversioniert und mit benanntem Rechtsraum, ist → FR-0081; FR-0002 deckt Ablage und Aufbewahrung, nicht den Kontenrahmen.
+
 ## 6. Mehrere Spezialisten derselben Rolle parallel (2026-07-31, User)
 
 **Heutiger Stand, gemessen:** verschiedene Rollen parallel ja, **dieselbe Rolle parallel nein.**
@@ -357,6 +371,8 @@ Rollennamen, fällt die Grenze — vorausgesetzt, das Kind kann seine Nonce vor 
 gescopeten Write nachweisen. Das ist die Messung, die vor der Umsetzung fällig ist (Spike S3 hat
 `SubagentStart.agent_id == Kind-PreToolUse.agent_id` bereits belegt; offen ist der Weg von der
 Nonce zur `agent_id`).
+
+**Item:** → FR-0021 — nennt diesen Abschnitt selbst.
 
 ## 7. Ein dritter Evidence-Ausgang: `blocked` (2026-08-01, aus der Paritätsmatrix Zeile 99)
 
@@ -383,6 +399,8 @@ macht aus einer Ehrlichkeitspflicht einen Zustand, keine Messung — es verbesse
 Leser erfährt, und es fügt der Frage „ist das wahr?" nichts hinzu. Wer es einbaut, muss diesen Satz
 mit einbauen, sonst liest der nächste `blocked` als geprüfte Tatsache.
 
+**Item:** → FR-0082 — `EVIDENCE_RESULTS` um `blocked` erweitert, `gate_git` schließt darauf wie auf `fail`, und der Ehrlichkeitssatz wird mitgebaut. Nachbar, nicht dasselbe: FR-0040.
+
 ## 8. Ein Projekt vollautonom von Anfang bis Ende (2026-08-03, User)
 
 > „Wie bekommen wir es hin, dass ein neues Projekt vollautonom von Anfang bis Ende durchläuft — mit
@@ -392,6 +410,8 @@ mit einbauen, sonst liest der nächste `blocked` als geprüfte Tatsache.
 
 Das ist kein Einzelwunsch, sondern der Zweck, auf den die anderen sieben Punkte zulaufen. Deshalb
 steht hier nicht „was man bauen müsste", sondern **woran heute gemessen fehlt**.
+
+**Item:** → FR-0074; **entschieden in** → DEC-0058.
 
 ### Der Massstab existiert bereits, er hiess nur anders
 
@@ -489,6 +509,8 @@ in der Umsetzung.
 Ausdrücklich festgehalten, damit es nicht neu verhandelt wird: **ein Commit braucht keine Freigabe,
 ein Push immer** (Userentscheid 2026-08-03).
 
+**Teilweise erledigt:** die scope-Freigabe bei offenen Planfragen → DEC-0058 / FR-0074. **Offen bleibt die andere Hälfte:** der Masterplan hat nach der Installation keinen Schreiber — das ist L1 dieser Liste und wird dort geführt.
+
 ## 10. Die Freigabe programmatisch erteilen — und was das verschiebt (2026-08-03)
 
 **Gemessen:** `AskUserQuestion` existiert im `-p`-Modus nicht. 30 Werkzeuge in der Init-Zeile, keines
@@ -533,6 +555,8 @@ sich von einem unterscheiden lassen, den ein Mensch geprägt hat — sonst ist d
 `AskUserQuestion` dasselbe kann, ohne die CLI zu verlassen. Das wäre der billigere Weg. Die Doku
 zeigt das Feld generisch („any field from the tool's input schema"), nennt aber `AskUserQuestion`
 nicht als Beispiel.
+
+**Item:** → FR-0083 — Freigabe über das Agent SDK (`canUseTool`), und ein programmatisch geprägter Token muss von einem menschlich geprägten unterscheidbar bleiben. Die „headless unerreichbar"-Prämisse ist seit TSK-0097 widerlegt (`H80`).
 
 ## 11. Löcherliste — gemessen, benannt, nicht geschlossen (Stand 2026-08-03)
 
@@ -2345,11 +2369,32 @@ Stolperdrähte deckten die **erzeugten** Achsen, nicht die geschriebenen Werte.
 | H89 | **Rest, benannt** (TSK-0102) | ohne `git` kann die Vier-Augen-Buchung Alt- von Neuzeilen nicht unterscheiden und TRITT ZURÜCK statt zu verweigern; die Gegenrichtung säße auf genau dem Commit, der die Zeilen zu Altzeilen macht. Begrenzt durch: der Rückzug wird je Datei ins Audit-Log geschrieben, und die Verfassung macht `git` zur Pflicht |
 | H90 | **Rest, benannt** (TSK-0102) | zwei identische Buchungen EINES Belegs teilen sich ein Lesepaar, solange keine `invoice_no` gesetzt ist; mit ihr greift `ledger_add.validate_cross`. Gehört in die Duplikatsregel des Validators, nicht in dieses Gate |
 | H91 | **Rest, benannt** (TSK-0102) | der gerenderte Aktenplan-Baum zeigt den PLAN und nicht die Platte — er beschreibt die Form mit `<year>`-Platzhaltern. Der Abgleich Plan↔Platte ist die Prüfung des `project-auditor` |
-| H92 | **OFFEN, blockierend**, Abnahme des Nutzers offen (TSK-0103) | `report._root_of` löst EINEN Sprung auf, `_hangs_from` ist transitiv, und die Ursprungsprüfung des Dispatchs benutzt den ersten — die von der research-Verfassung §4 vorgeschriebene Kette `RQ → HYP → EXP → TSK` ist damit nicht anlegbar. **Nichts begrenzt es**: der PM bleibt stehen und muss ausweichen, und beide Auswege sind selbst Löcher (`H93`, `H95`). Kernel-Fix, `BUG-0083` |
-| H93 | **OFFEN, blockierend, sicherheitsrelevant**, Abnahme des Nutzers offen (TSK-0103) | die Freigabe, auf die der von der Verweigerung genannte Ausweg zwingt, unterschreibt bei `HYP` KEIN Inhaltsfeld, stirbt nie (`HASHED_FIELDS` kennt `HYP` nicht) und nimmt die Arbeit darunter aus der Urteilspflicht. Begrenzt nur dadurch, dass der Weg unüblich ist — in keinem Dokument steht er, aber die Verweigerung schlägt ihn vor. Kernel-Fix, `BUG-0084` |
-| H94 | **offen**, zur Hälfte eine Dokumentationsfrage (TSK-0103) | der gerenderte Forschungsbericht hat keinen Schreibweg (`gate_write_scope` rc 2 auf beiden §6-Dateien), während §17 ihn zur Vollständigkeitsbedingung macht; der Merge blockt dabei auf leerem `evidence_refs`, nicht auf der Datei. Verschärfend: `solo` installiert gar keinen `report-writer`. Kernel-Schreiber ODER Verfassungsänderung, `BUG-0085` |
-| H95 | **OFFEN, blockierend**, Abnahme des Nutzers offen (TSK-0103) | die Ursprungsprüfung des Dispatchs fällt bei MEHRDEUTIGER Elternschaft offen aus (`_root_of` → `None`, der Aufrufer überspringt) — kit-unabhängig, und sie verschwindet NICHT mit `H92` (im Klon nachgemessen). Begrenzt nur dadurch, dass eine mehrelterige Bindung beim `capture` so geschrieben werden muss. Kernel-Fix, `BUG-0086` |
+| H92 | **GESCHLOSSEN** (TSK-0106) | `report.origin_root_conflict` beurteilt einen Ursprung TRANSITIV: er gehört zur Wurzel, wenn jeder seiner Elternpfade dort endet. `RQ → HYP → EXP → TSK` legt an und dispatcht end-to-end; der Pin-Test ist invertiert. Rot ohne den Fix: `test_kernel.test_a_task_may_derive_from_an_experiment_two_levels_under_its_root`, `test_report.test_a_task_on_an_origin_two_levels_under_its_root_is_fine` |
+| H93 | **GESCHLOSSEN** (TSK-0106) | `approvals._assert_the_pair_commits_an_edge` verweigert jede item-abgeleitete Freigabe, deren `(Typ, Art)` in `APPROVAL_TRANSITIONS` fehlt — die `HYP`-Freigabe ist damit nicht mehr anforderbar, und der Ausweg, der zu ihr zwang, existiert seit H92 nicht mehr. Rot ohne den Fix: `test_approvals_dispatch.test_a_hypothesis_cannot_be_given_a_scope_approval`, `test_approvals_dispatch.test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge` |
+| H94 | **offen, nur noch die Verfassungszeile** (TSK-0106) | der Schreibweg existiert und ist gemessen (`freeze-report`, `staging.freeze_report`); begrenzt wird der Rest dadurch, dass §6/§17 den Befehl nicht NENNEN — ein Report-Writer muss ihn heute von der Kernel-Hilfe erfahren. Seam-Item für Stream E, sonst nichts offen |
+| H95 | **GESCHLOSSEN** (TSK-0106) | Mehrdeutigkeit fällt ZU: ein Ursprung gehört zur Wurzel nur, wenn JEDER Elternpfad dort endet; die Verweigerung nennt den Elternteil, der wegführt. Miterledigt: ein Ursprung ganz OHNE Bindung (ein fremdes Wurzel-Item) wurde ebenso durchgelassen. Rot ohne den Fix: `test_kernel.test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation`, `test_kernel.test_a_task_may_not_derive_from_a_ROOT_item_of_another_tree` |
 | H99 | **Ausnahme, Abnahme offen** (TSK-0102) | `H11`s Interpreterklasse hebt die Vier-Augen-Buchung mit auf: ein Skript trägt eine ungelesene Zeile nach `HEAD` (dauerhaft ausgenommen) und prägt die zweite Lesung. Begrenzt durch: die Fehlklasse, für die `FR-0065` gebaut ist (Versehen), läuft vollständig durch die Schicht; das Vehikel ist eine Datei im Arbeitsbaum und damit im Commit sichtbar; und der Buchungs-Store ist erste-Zeile-gewinnt, eine Prägung verlangt also drei bewusste Schritte |
+| H105 | **GESCHLOSSEN** (TSK-0105) für NEUE Installationen, mit benanntem Rest | das Rollengedächtnis war ein Kanal zwischen erster und zweiter Buchungslesung, den `gate_second_booking` nicht sieht — der Schlüssel `memory:` ist aus jeder Rolle entfernt, deren Lesung frisch sein muss (Verdict-Rollen und jede `writer_role` eines Kernel-Schemas, abgeleitet, rot gemessen). Rest: die SCHREIBSEITE bleibt offen (sechs Hook-Stufen rc 0 auch ohne Schlüssel); ein Gedächtnisbaum, den eine frühere Kit-Version schrieb, bleibt beim Update liegen (kein Installer, Scaffold oder Kernel-Pfad nennt `agent-memory`, gemessen), und ob der Provider ihn ohne Schlüssel lädt, ist nicht gemessen — Naht: `kitupdate` |
+| H106 | **Rest, benannt** (TSK-0105) | der Umfang eines QS-Laufs ist Prosa: kein Feld im Evidence-Datensatz und kein Hook zählt, ob die Suite einmal oder zehnmal lief. Begrenzt durch den Rollentext — Beschreibung und Skill, beide Hälften per Test gehalten —, die Verfassungsklausel am GATE-Schritt und die Leiter des PM |
+| H107 | **Rest, benannt** (TSK-0105) | der Design-Brief trennt ZIEL von SCHREIBWEISE nur als Prosa: eine Prozessregel, die in den Brief gerät, fängt nichts, weil das Decision-Item Freitext ist. Begrenzt durch die beiden Enden — der PM schreibt die Hälften getrennt und schickt eine Prozessregel ins `INV`, der Designer gibt eine, die ihn erreicht, als Befund zurück |
+| H108 | **offen**, nicht blockierend (TSK-0106) | eine Evidenz, die GAR KEINEN Laufumfang erklärt, zählt weiter wie bisher — die Erklärungspflicht lässt sich auf einem unveränderlichen Typ nicht nachträglich erzwingen. Begrenzt: neue Evidenz kann die Erklärung tragen (`--run-scope`), und ein erklärter Teillauf öffnet keinen Merge mehr; der Rest ist eine Vertragsentscheidung (erfasst als `DEC-0061`, VALID) |
+| H109 | **offen**, nicht blockierend (TSK-0106) | „auflösbar" heißt für den Kernel: die Datei ist da und definiert den Namen — GEPARST, nicht gefahren. Ein Test, der existiert und übersprungen wird (`skip`, ein Marker, eine Runner-Konfiguration), gilt darum als vorhanden, und `INV.verified` sagt dann mehr als es weiß. Begrenzt: die Erklärung ist an genau einer Stelle (`report.invariant_check_resolution`), sie fällt bei jeder anderen Abweichung zu (fehlende Datei, fehlender Name), und der Umfang eines Laufs ist bereits die Frage von FR-0040/H108 |
+| H110 | **offen**, bewusste Über-Öffnung (TSK-0106) | einen Check, dessen Datei der Kernel nicht parsen kann (ein Testfile in einer anderen Sprache), beantwortet er mit UNENTSCHIEDEN: eine Warnung, kein Merge-Blocker. Fail-closed wäre hier ein Merge-Verbot ohne Ausweg für jedes Projekt, dessen Tests nicht Python sind. Begrenzt: der Produzent verifiziert nichts, was er nicht lesen kann, die Warnung nennt die Grenze, und für lesbare Checks bleibt der Blocker scharf |
+| H111 | **offen**, Dokumentationslücke des Apparats (TSK-0107) | die Freigabe-Art, auf der die Auditor-Routine laut aller drei Verfassungen reitet (`routine`, ersatzweise `analysis`), hat in keinem Kit einen Erzeuger: `request-approval` bietet neun Arten an, keine davon ist eine der beiden. Rolle, Trigger und Takt des Auditors sind damit in eine Freigabe gehasht, die niemand anlegen kann. Folge für diese Runde: das Fristenregister NENNT Rolle und Takt im Code, statt sie abzuleiten. Kernel + Verfassungstexte, `FR-0038` |
+| H112 | **Rest, benannt** (TSK-0107) | der Laufdatensatz der Routine ist ein Nebenprodukt des Ereignis-Logs und sagt „ein Subagent dieser Rolle hat aufgehört", nicht „ein Audit ist gelaufen". Zwei Grenzen: eine rotierte Log-Generation liest sich als „nie gelaufen" (sichere Richtung, rot gemessen), und ein AUFGEBENDER Lauf zählt als Lauf und unterdrückt die Wochenmeldung (unsichere Richtung). Begrenzt durch: `gate_subagent_output` schreibt `gave_up` ins selbe Log |
+| H113 | **Rest, benannt** (TSK-0107; Grenze 2026-09-02 nachgemessen) | das Fristenregister kennt kein „erledigt": nichts im Kit hält fest, dass eine Voranmeldung abgegeben oder ein Aufbewahrungsjahr geprüft wurde, also steht ein Eintrag, bis seine QUELLE sich ändert. Über-Meldung, nicht Schweigen. Ein „erledigt" wäre kanonischer Zustand, also Kernel |
+| H114 | **offen**, kein Modellpfad (TSK-0108) | nach einem Verzeichniswechsel läuft die Registrierung des Ziels, aber die Hook-DATEIEN des Startorts (`${CLAUDE_PROJECT_DIR}` bleibt stehen, und genau so buchstabieren die Kits ihre Kommandozeilen) — gemessen über BEIDE Wege, `/cd` und die Steuer-Anfrage `set_cwd` der VS-Code-Erweiterung. Begrenzt durch: kein Werkzeug des Modells löst den Wechsel aus, er kommt vom Client. Auf dem `/cd`-Weg geht ein Trust-Dialog voran, aber nur vor dem ERSTEN Wechsel in ein Verzeichnis (gemessen: Erst-Dialog `m2a.log`, späterer Wechsel dialogfrei `m4.log`). Auf dem `set_cwd`-Weg ist gemessen nur der dialogfreie Wechsel an ein bereits vertrautes Ziel; ob an einem unbekannten Ziel ein Dialog erscheint, ist NICHT gemessen |
+| H115 | **offen**, kein Angriffspfad (TSK-0108) | ein Verzeichniswechsel bringt Subagenten und `agent:`-Bindung des Ziels NICHT mit, obwohl der Changelog „agents" nennt — gemessen am Task-Fehler, an der Gegenprobe mit Neustart und am Wechsel über `set_cwd`. Begrenzt durch: die Zeremonie behält ihren Neustart, der Schaden ist eine falsche Erwartung; Client-Verhalten, hier nicht schließbar |
+| H116 | **Ausnahme, Abnahme offen** (TSK-0108) | die Hook-Registrierung wird mitten in der Sitzung neu gelesen, sogar zwischen zwei Werkzeugaufrufen EINER Runde (gemessen) — `H12`s Fläche erweitert sich von „welcher Code urteilt" auf „ob überhaupt etwas urteilt". Begrenzt durch: dasselbe wie `H12` (Rollentrennung, Item) plus die Sichtbarkeit der geänderten `settings.json` im Diff |
+| H117 | **Rest, benannt** (TSK-0109) | nichts startet den Generator nach einer Buchung; der Datenstand im Kopf trägt das **nicht**, weil er nur das jüngste Ledgerdatum ist (ein Nachtrag lässt ihn byte-identisch, gemessen). Begrenzt allein durch den Ordnerführer `dashboards/ABOUT.txt`, der den Befehl nennt und die Lücke ausspricht; der Auslöser ist ein Seam-Item an Stream G (`gate_ledger_valid.handle_post_tool_use`) |
+| H118 | **Rest, benannt** (TSK-0109) | die Seite sagt beides selbst: „gerechnet beim Öffnen der Seite aus der Uhr dieses Rechners" und woher die 30 Tage kommen (§ 286 Abs. 3 BGB); ohne Skript bleibt der Strich stehen statt eine Zahl zu behaupten |
+| H119 | **Rest, benannt** (TSK-0109) | zwei Folgen einer Wurzel: (1) `_BLOCKED_SCRIPT_RX` kennt den Generator nicht, er läuft gegen einen ungültigen Ledger — begrenzt dadurch, dass er selbst validiert und den Befund wörtlich ins Banner schreibt, die Summen sichtbar lässt und als nicht belastbar bezeichnet; (2) es gibt kein Gegenstück zu `render.json`/`gate_design_sighted`, eine von Hand geschriebene `dashboards/finanzen.html` ist von einer erzeugten nicht zu unterscheiden — begrenzt dadurch, dass der nächste Lauf sie atomar überschreibt und der Ordnerführer das sagt. Nach DEC-0056 kein Härtungsziel |
+| H120 | **kein Loch mit Kette — von Nachbarn gedeckt, benannt** (TSK-0111) | die Haken-Spiegelregel `test_hooks._assert_mirrored` fragt für einen Namen nur, ob die Kopien der liefernden Kits gleich sind — ob ein Kit ihn gar nicht liefert, fragt keine ihrer beiden Schleifen. `format_on_write.py` (dev und research, nicht office) ist dort kein Befund, mit Absicht. Präsenz entscheidet die Registrierung, und zwei Nachbartests halten beide Richtungen (gemessen, Eintrag unten). Für die Skills ist die Präsenz-Hälfte gebaut (`tools/test_shared_skill_contract.py`) |
+| H121 | **GESCHLOSSEN** (TSK-0111 gemessen, TSK-0114 behoben) | der Leser der Löcherliste (`test_gates._hole_entries` plus die Backtick-Suche in `test_gates.test_every_test_the_hole_list_names_is_one_that_exists`) kannte keinen Code-Zaun: drei Backticks waren ihm drei Begrenzer, also paarte alles hinter dem ersten Zaun eines Eintrags gegen den falschen — jedes Zitat dort war UNGEPRÜFT, ein falsches Grün. `_prose_of` schneidet die Zäune jetzt vor der Paarung heraus, `_tests_by_module` löst einen Namen auch gegen `tools/test_*.py` auf (der Nachbarbefund aus TSK-0109), und H46 trägt sein Präfix. Rot ohne den Fix: `test_gates.test_every_test_the_hole_list_names_is_one_that_exists` mit einem Geist-Namen hinter einem Zaun (vorher 1 passed, nachher 1 failed) |
+| H122 | **Rest, benannt** (TSK-0110, in TSK-0114 nummeriert) | der Melder über ungelesene Prosa unter `docs/` fragt, was **git trägt** (`test_repo_hygiene._carried_files`, `git ls-files -c -o --exclude-standard`): eine Nennung in einer IGNORIERTEN Datei — ein Laufprotokoll, `project_memory/.audit/`, ein erzeugtes Dashboard — sieht er nicht und meldet die Datei als ungelesen. Begrenzt durch: der Docstring des Melders sagt genau diesen Satz statt des größeren, der Melder warnt und blockt nie, und auf diesem Baum gibt es außerhalb der Werkzeug-Caches keine einzige nicht getragene Datei — das blinde Feld ist heute leer |
+| H123 | **OFFEN, gemessen** (TSK-0113, in TSK-0114 nummeriert) | eine Löschung, die eine FLAGGE statt eines Verbs benutzt, kommt an `guard_fs_tripwire` vorbei: beide Lesungen schlagen auf `DELETE_VERBS` an, und `find archive -name '*.pdf' -delete`, `tar … --remove-files` und `python -c` mit `os.remove` tragen keines dieser Verben. Am laufenden Wächter über einem echten Dokument unter `archive/` gemessen: **rc 0** für alle drei, **rc 2** für `rm` und für die Bewegung aus dem Archiv. Begrenzt durch: die Klasse steht namentlich im Kopf des Wächters, Verfassung und Rollentext behaupten die Wand seit TSK-0114 nicht mehr absolut, sondern zeigen dorthin |
+| H124 | **Rest, benannt** (TSK-0113, in TSK-0114 nummeriert) | die Fristenmeldung liest die Uhr der lokalen Maschine einmal je Sitzungsstart (`_duties.briefing`, `datetime.date.today()`): eine Sitzung über Mitternacht behält die Antwort von gestern, und zwei Maschinen in verschiedenen Zonen antworten im selben Moment verschieden. Begrenzt durch: kein Angriff und kein Datenverlust — eine Meldung wechselt einen Tag zu früh oder zu spät —, die Tagesgrenze selbst ist beidseitig gemessen, und der Nutzer entscheidet ohnehin über jede Frist |
+| H125 | **OFFEN, gemessen** (Merge-Prüfer TSK-0114) | die Lösch-Regel des Archiv-Wächters steht auf einer AUFZÄHLUNG von Verben (`guard_fs_tripwire.DELETE_VERBS`: `rm`, `rmdir`, `del`, `erase`, `rd`, `remove-item`, `ri`) ohne Stolperdraht an beiden Enden; jedes andere zerstörende Verb geht durch. Am Piloten gegen ALLE ACHT auf Bash und PowerShell registrierten Office-Haken als Prozesse gemessen: `unlink`, `git clean -fdx` (mit und ohne Pfad) und `Clear-Content` sind **ALLOW**, `rm` und die Bewegung aus dem Archiv **rc 2**. `git clean` trifft dabei genau das Versehen: die Belege unter `archive/` sind ungetrackt und von der ausgelieferten `.gitignore` ignoriert, also das, was `-fdx` entfernt. Begrenzt durch: **nichts** — der Kopf des Wächters nennt diese Klasse nicht, und kein Text dieses Kits behauptet sie noch |
 | H1, H4, H5, H6, H8, H17, H20, H24, H26, H27, H28, H29, H30, H31, H33, H35 | **GESCHLOSSEN** | — |
 
 ### H1 — Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet — GESCHLOSSEN
@@ -4685,8 +4730,8 @@ ihre Dateien bei jedem Aufruf frisch.
 (`gate_write_scope.py:611`), ein `_is_descriptor`-Leser (`:614`) und **ein** Ziel-Leser
 `_output_redirect_targets` (`:627`), durch den alle drei Aufrufstellen gehen; das Folgewort wird
 nur verworfen, wenn es ein Deskriptor ist (`^[0-9]+$` oder `-`). Der korrigierte Test
-`test_a_descriptor_duplication_is_a_redirect_but_a_file_after_gt_amp_is_a_write` misst den
-Datei-Fall.
+`test_hooks_v2.test_a_descriptor_duplication_is_a_redirect_but_a_file_after_gt_amp_is_a_write`
+misst den Datei-Fall.
 
 **Urteil: GESCHLOSSEN (TSK-0070), am eigenen Gate NACHGEMESSEN.** Der B1-Fix in `team-kits/` hat
 das Repo-Gate über die Leih-Mechanik **mitgeheilt**, und das ist nicht mehr Erwartung, sondern
@@ -6524,7 +6569,7 @@ das Archiv „as `project_memory/filing_plan.yaml` describes it" zeigt.
 
 **Urteil: Rest, benannt.**
 
-### H92 — Der Wurzel-Leser des Kernels löst EINEN Sprung auf, die Forschungskette ist zwei tief (neu, TSK-0103)
+### H92 — Der Wurzel-Leser des Kernels löste EINEN Sprung auf, die Forschungskette ist zwei tief — GESCHLOSSEN (TSK-0106)
 
 **Mechanismus:** `report._root_of` beantwortet „woran hängt dieses Item" mit dem **einen
 unmittelbaren Elternteil** (`parents[0] if len(parents) == 1 else None`), während
@@ -6556,17 +6601,34 @@ Warum es nie ein Test gesehen hat: im dev-Kit liegt jeder Aufgaben-Ursprung gena
 der Wurzel (`PR → SR → TSK`, `PR → BUG`, `PR → CR`), da fallen die beiden Leser nie auseinander.
 Das research-Kit ist das einzige ausgelieferte mit einer tieferen Kette.
 
-Als laufende Messung gepinnt in `tools/test_research_chain.py::test_a_task_on_an_experiment_cannot_name_the_question_the_experiment_hangs_from`;
-der Test wird laut, sobald die Lücke geschlossen ist (im Klon nachgemessen: mit transitivem Term
-fällt er mit `assert 0 == 1`).
+Als laufende Messung war die Lücke in `tools/test_research_chain.py` gepinnt, mit der Auflage im
+eigenen Docstring, den Test zu INVERTIEREN, sobald sie geschlossen ist. Das ist in derselben
+Änderung geschehen — siehe unten.
 
-**Urteil: blockierend und offen.** Die Kette läuft innerhalb einer Sitzung durch. Geschlossen ist
-sie nicht, und der Grund ist Zuständigkeit, nicht Schwierigkeit: der Fix liegt in
-`team-kits/kernel/`, das dem research-Stream nicht gehört (DEC-0057 a). **Was heute stattdessen
-begrenzt:** nichts an der Sache — der PM bleibt stehen und muss ausweichen, und beide Auswege sind
-selbst Löcher (H93, H95). Zur Abnahme durch den Nutzer.
+**Was gebaut wurde (TSK-0106), als EIGENSCHAFT statt als zweiter Sprung:** `_root_of` ist ersetzt
+durch `report.origin_root_conflict`, und die Frage lautet nicht mehr „welches Item ist die Wurzel
+dieses Ursprungs", sondern „gehört dieser Ursprung zu DIESER Wurzel". Beantwortet wird sie mit
+`_reaches_on_every_path` — dieselbe Wanderung wie `_hangs_from`, aber mit `all` statt `any`, weil
+der Vergleich eine Zugehörigkeit braucht und keine Erreichbarkeit. Beide Aufrufer benutzen
+dieselbe Funktion (`dispatch._assert_origins_belong_to_root_locked` importiert sie), also kann der
+Anlege-Weg nicht verweigern, was `validate` durchlässt.
 
-### H93 — Die Freigabe, auf die der genannte Ausweg zwingt, gibt es laut Kernel und Verfassung nicht, sie unterschreibt keinen Inhalt und sie stirbt nie (neu, TSK-0103)
+**Gegenmessung (2026-09-02, im Klon außerhalb des Repos, alte Ein-Sprung-Fassung
+wiederhergestellt):** `test_kernel.test_a_task_may_derive_from_an_experiment_two_levels_under_its
+_root` fällt mit der ursprünglichen Verweigerung „belongs to HYP-0001", und
+`test_report.test_a_task_on_an_origin_two_levels_under_its_root_is_fine` mit einem Validator-Error
+auf demselben Item. Auf dem gescaffoldeten research-Projekt läuft die Kette jetzt end-to-end durch
+(`tools/test_research_chain.py`, 10 Tests grün) — und der Pin-Test dieser Lücke ist invertiert, wie
+sein eigener Docstring es verlangt hatte: er heißt jetzt
+`test_a_task_may_name_an_experiment_two_levels_under_the_question_it_serves` und misst beide
+Richtungen, den Erfolg und die weiterhin richtige Verweigerung unter einer fremden Frage.
+
+**Urteil: geschlossen, mit Rot-Beweis.** Die Kette läuft nicht mehr; die zwei Auswege, die sie
+erzwang, sind mit H93 und H95 zugleich geschlossen. Was NICHT mitgeschlossen ist und auch nicht
+behauptet wird: dass `evidence_covers` seine eigene `any`-Wanderung behält — das ist Absicht und
+steht an `_reaches_on_every_path` als der Unterschied, den die beiden Fragen haben.
+
+### H93 — Die Freigabe, auf die der genannte Ausweg zwang, gibt es laut Kernel und Verfassung nicht, sie unterschrieb keinen Inhalt und sie starb nie — GESCHLOSSEN (TSK-0106)
 
 **Mechanismus:** Der Ausweg, den die H92-Verweigerung nennt („create the task under HYP-0001"),
 führt auf eine Aufgabe, deren Wurzel eine `HYP` ist. `dispatch` verlangt dafür eine Scope-Freigabe
@@ -6604,13 +6666,42 @@ $ harness update RQ-0001  {"motivation": "GEAENDERT"}      -> rev 2, approval_re
    `delivery_roots`). Eine Aufgabe unter einer `HYP` fällt heraus und wird nie als „akzeptiert ohne
    Urteil" gemeldet.
 
-**Urteil: blockierend und offen, sicherheitsrelevant** — das ist keine Buchhaltungsfrage: der
-einzige vom Kernel selbst genannte Weg an H92 vorbei erzeugt eine Dauerfreigabe über einen leeren
-Gegenstand und nimmt die betroffene Arbeit zugleich aus der Urteilspflicht. Der Fix liegt in
-`team-kits/kernel/` (nicht dieser Stream). **Was heute begrenzt:** nur, dass der Weg unüblich ist —
-in keinem Dokument steht er, aber die Verweigerung schlägt ihn vor. Zur Abnahme durch den Nutzer.
+**Was gebaut wurde (TSK-0106), an der TüR statt an den drei Symptomen:**
+`approvals._assert_the_pair_commits_an_edge` läuft, sobald `create_pending_request` den Gegenstand
+AUS DEM ITEM bildet, und verweigert jedes `(Typ, Art)`, das `APPROVAL_TRANSITIONS` nicht führt.
+Damit ist die Frage gar nicht mehr stellbar — der Nutzer sieht keine Freigabe-Frage, deren Antwort
+nichts kauft (dieselbe Form, die BUG-0039 festhält). Der Gegenstand wird VOR der Prüfung gebildet,
+damit eine Art, die überhaupt nicht item-abgeleitet ist, ihre eigene Verweigerung behält.
 
-### H94 — Der gerenderte Forschungsbericht hat keinen Schreibweg, während der Merge auf ihm besteht (neu, TSK-0103)
+**Warum nicht der andere Weg (HYP in `HASHED_FIELDS`, echter Gegenstand):** die drei Stellen, die
+BUG-0084 nennt, sagen einstimmig, dass es diese Freigabe nicht gibt — Verfassung §4,
+`INVALIDATION_TARGET` („HYP deliberately absent") und `APPROVAL_TRANSITIONS`. Eine Freigabe zu
+BAUEN, die drei Verträge verneinen, wäre eine Spec-Änderung, keine Fehlerbehebung.
+
+**Was von Punkt 3 bleibt, und es bleibt absichtlich:** `report.accepted_without_a_verdict` leitet
+seine Wurzeltypen weiterhin aus `ROOT_TYPE_BY_KIT` ab — die Zeile war bereits abgeleitet, nicht
+aufgezählt (der Befund las den abgeleiteten WERT `{PR, RQ}`). Eine Aufgabe unter einer `HYP` fällt
+also weiter heraus, und das ist richtig so: das Kit, dessen Projekte an keiner solchen Wurzel
+hängen, kann die Schuld nicht bezahlen (das büro-Kit ist der gemessene Fall). Der Ausweg dorthin
+ist zu, nicht der Filter aufgeweicht. Neu gemessen wird die INKLUSIONS-Richtung, die vorher nichts
+prüfte: `test_report.test_a_task_under_every_kit_root_is_asked_for_its_delivery_verdict` fällt,
+sobald man `delivery_roots` durch die Aufzählung `{"PR"}` ersetzt (im Klon nachgemessen).
+
+**Gegenmessung (2026-09-02, Klon außerhalb des Repos):** ohne den Aufruf im Anforderungspfad ist
+`test_approvals_dispatch.test_a_hypothesis_cannot_be_given_a_scope_approval` rot („DID NOT RAISE");
+mit dem Aufruf, aber einer um `HYP`/`SR` erweiterten Ausnahme im Urteil ist zusätzlich
+`test_approvals_dispatch.test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge` rot. Die
+beiden Enden sind getrennt mutiert, weil ein Stolperdraht, dessen eines Ende aus dem anderen folgt,
+Prosa ist (DEC-0060 Regel 4).
+
+**Urteil: geschlossen, mit Rot-Beweis.** Was NICHT geschlossen ist und hier steht, statt im
+Kommentar zu fehlen: ein Paar, das die Tabelle FÜHRT, verspricht nur die KANTE, nicht dass sein
+Gegenstand den Inhalt des Items beschreibt — `PROC/scope` und beide `delivery`-Gegenstände decken
+ein Feld ihres Typs oder keines (gemessen über alle zehn Paare, an `APPROVAL_TRANSITIONS`
+niedergeschrieben). Das ist die alte, benannte Enge von `_SCOPE_FIELDS` und wird von dieser Runde
+nicht berührt.
+
+### H94 — Der gerenderte Forschungsbericht hatte keinen Schreibweg, während der Merge auf ihm bestand — Weg gebaut (TSK-0106), Verfassungszeile offen
 
 **Mechanismus:** Die research-Verfassung §6 gibt `reports/EXP-*.{tex,pdf,html}` und
 `reports/fzulg_application_RQ-*.md` dem **Report-Writer**; §17 macht den gerenderten Bericht zur
@@ -6642,14 +6733,36 @@ vertritt, genügt ihm — und diese Evidenz kann ein Artefakt unter `staging/<TS
 `reports/` außerhalb des Zustandsverzeichnisses referenzieren. Was fehlt, ist nicht der Merge,
 sondern der Weg an den Ort, den §6 und §17 nennen.
 
-**Urteil: offen, und zur Hälfte eine Dokumentationsfrage.** §0 ist an dieser Stelle ehrlich; §6 und
-§17 verteilen eine Pflicht, ohne den Ort zu nennen, an dem sie heute erfüllbar ist. Der Fix ist
-entweder ein Kernel-Schreiber für dieses Fach (nicht dieser Stream) oder eine Verfassungsänderung,
-die den Ort nennt — die zweite kostet Zeichen im Lead-Paket, das auf seinem Deckel liegt. Zur
-Abnahme durch den Nutzer. **Verschärfend:** das Preset `solo` installiert gar keinen
-`report-writer` (`presets.yaml`), also fehlt derselbe Weg dort ein zweites Mal.
+**Was gebaut wurde (TSK-0106):** `staging.freeze_report`, als vierte Freeze-Operation und damit
+auf der Kommandozeile am Tag ihrer Entstehung — `cli.FREEZE_OPERATIONS` leitet Name, `--help` und
+Body-Vertrag aus der Signatur ab. Der Report-Writer rendert wie bisher nach
+`staging/<TSK-ID>/<name>` (rc 0, unverändert) und `python scripts/harness.py freeze-report` legt
+die Bytes in `reports/` ab. Drei Eigenschaften, die aus dem Kopieren eine Zustandsänderung machen:
+der Pfad wird an `evidence_refs` des Gegenstands angehängt, WENN dessen Feldvertrag dieses Feld
+führt (abgeleitet aus `DECLARED_REQUIRED_FIELDS`, heute die `EXP` — genau das Feld, auf dem
+`gate_memory_complete` den Merge blockt); ein Projekt ohne dieses Fach wird verweigert statt
+beschenkt; und ein bereits abgelegter Bericht wird NIE überschrieben, weil ausgeliefertes Material
+die Klasse ist, die DEC-0056 (c) auf voller Sorgfalt hält.
 
-### H95 — Die Ursprungsprüfung des Dispatchs fällt bei MEHRDEUTIGER Elternschaft offen aus, in allen Kits (neu, TSK-0103)
+**Gegenmessung (2026-09-02, Klon außerhalb des Repos, `freeze-report` wieder ausgetragen, Kit im
+Klon neu gestempelt, damit der Scaffold nicht schon an der Signatur scheitert):**
+`tools/test_research_chain.py -k reaches_the_tray` ist rot mit rc 2 und einer Befehlsliste ohne
+`freeze-report` — der Zustand vor dieser Runde. Grün misst derselbe Test die ganze Kette an
+echten Prozessen: Werkzeug-Schreibzugriff auf das Fach rc 2 (bleibt richtig), auf `staging/` rc 0,
+`freeze-report` rc 0, Datei im Fach, `evidence_refs` gesetzt, `scripts/report_lint.py` findet den
+Bericht unter seinem Namen — der zweite Leser desselben Fachs, womit die Kernel-Konstante und die
+Form, die der Lint sucht, aneinander gebunden sind — und der Merge blockt danach nicht mehr auf
+`ANALYZED without evidence_refs`.
+
+**Urteil: offen, und was offen ist, ist genau eine Zeile Verfassungstext.** Der Weg existiert und
+ist gemessen; §6 und §17 NENNEN ihn nicht, also findet ein Report-Writer ihn heute nur über
+`harness.py --help`. Diese Zeile gehört Stream E (Verfassungen sind `forbidden_scope` dieser
+Runde) und steht als Seam-Item im TSK-0106-Protokoll. **Was heute begrenzt:** nichts an der Sache
+mehr — der Weg ist da; begrenzt ist nur, wie schnell die Rolle ihn findet. **Unberührt
+weiterbestehend:** das Preset `solo` installiert keinen `report-writer` (`presets.yaml`), also
+fehlt in dieser Aufstellung die Rolle, nicht der Weg.
+
+### H95 — Die Ursprungsprüfung des Dispatchs fiel bei MEHRDEUTIGER Elternschaft offen aus, in allen Kits — GESCHLOSSEN (TSK-0106)
 
 **Mechanismus:** `report._root_of` gibt `None` zurück, sobald ein Item **mehr als ein**
 Bindungsfeld gefüllt hat (`report.py:934-941`, `parents[0] if len(parents) == 1 else None`).
@@ -6675,10 +6788,34 @@ $ harness validate                                                    -> 0 error
   `_assert_task_origin_matches_root`); der Weg oben blieb rc 0. Die erste Fassung dieses Befundes
   im Pilotdokument behauptete das Gegenteil und war falsch.
 
-**Urteil: blockierend und offen.** Kernel, nicht dieser Stream. **Was heute begrenzt:** eine
-mehrelterige Bindung entsteht nicht von selbst — sie muss beim `capture` so geschrieben werden;
-gegen einen irrenden oder gedrängten Orchestrator begrenzt das nichts. Zur Abnahme durch den
-Nutzer.
+**Was gebaut wurde (TSK-0106):** `report.origin_root_conflict` kennt `None` als Antwort nicht
+mehr. Ein Ursprung gehört zur Wurzel, wenn JEDER seiner Elternpfade dort endet
+(`_reaches_on_every_path`, `all` statt `any`, zyklensicher, und eine Sackgasse ist ein Nicht-
+Ankommen wie jedes andere). Drei Fälle, drei Sätze: alle Pfade führen hin → angenommen; keiner
+→ „belongs to X"; ein Teil → die MEHRDEUTIGKEIT wird benannt, samt dem Elternteil, der wegführt,
+weil die Abhilfe eine andere ist als beim Fremdwurzel-Fall.
+
+**Miterledigt, und von dieser Runde selbst gefunden statt gemeldet:** derselbe `None` stand auch
+für „GAR KEIN Elternteil". Ein Ursprung, der selbst eine Wurzel ist — ein zweites `PR` — wurde
+unter jeder anderen Wurzel angenommen, mit exakt demselben Schaden (der Dispatch-Gate löst
+`acceptance_refs` gegen den Ursprung auf). Sichtbar wurde es daran, dass sieben Fixture-Zustände in
+`tools/test_approvals_dispatch.py` rot wurden, die `PR-0001` als Ursprung unter einer anderen
+Wurzel nannten, weil das nie jemand verweigert hatte. Die Fixtures nennen jetzt ihre eigene Wurzel;
+der Fall hat einen eigenen Test.
+
+**Gegenmessung (2026-09-02, Klon außerhalb des Repos, alte Ein-Sprung-Fassung wiederhergestellt):**
+`test_kernel.test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation` — „DID NOT RAISE
+DispatchError"; `test_kernel.test_a_task_may_not_derive_from_a_ROOT_item_of_another_tree` ebenso;
+`test_report.test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused` —
+kein Finding. Die Gegenrichtung ist eigens gemessen, damit die Verweigerung nicht in „jeder
+mehrelterige Ursprung ist verboten" verfällt: die Kette, die das research-E2E läuft, hängt an
+Hypothese UND Frage und bleibt anlegbar
+(`test_kernel.test_an_origin_whose_parents_all_hang_from_the_root_is_still_creatable`).
+
+**Urteil: geschlossen, mit Rot-Beweis, in beide Richtungen gemessen.** Was NICHT mitgeschlossen
+ist: `_hangs_from` behält sein `any` — es beantwortet die andere Frage („erreichbar", für die
+Bindung einer Evidenz an ihre Wurzel), und die beiden zusammenzulegen wäre dieselbe Verwechslung
+in die andere Richtung.
 
 ### H99 — H11 hebt die Vier-Augen-Buchung mit auf: ein Skript trägt eine ungelesene Zeile nach `HEAD` und prägt die zweite Lesung (neu, TSK-0102, FR-0065)
 
@@ -6749,3 +6886,1010 @@ dessen Klasse sie ist. Der Zusatz gegenüber `H11` ist die FOLGE: dort war es �
 eine geschützte Datei" und „ein Skript stellt eine Freigabe aus", hier ist es „ein Skript hebt die
 Vier-Augen-Prüfung der Zahlen auf, die ans Finanzamt gehen" — und die ausgenommene Zeile bleibt
 ausgenommen, auch wenn nie wieder ein Skript läuft.
+
+### H105 — Das Rollengedächtnis des Bookkeepers war ein Kanal zwischen erster und zweiter Lesung, den `gate_second_booking` nicht sieht — GESCHLOSSEN (TSK-0105, FR-0064), mit benanntem Rest
+
+**Mechanismus.** `gate_second_booking` zählt Lesungen je LAUF — zwei `booking_reading`-Datensätze aus
+zwei verschiedenen Läufen (office-Verfassung §2.3) —, und die zweite Lesung ist ein zweiter Spawn
+DERSELBEN Rolle. Ein Rollengedächtnis (`memory: project` im Frontmatter) lädt der Provider zu Beginn
+jedes Laufs dieser Rolle; was der erste Lauf hineinschreibt, hat der zweite gelesen, bevor er das
+Dokument öffnet. Das Gate vergleicht Läufe, nicht Aufmerksamkeiten — seine ENFORCEMENT-Zeile sagt
+das über sich selbst —, und dieser Kanal lag außerhalb seines Blicks. Bis zu dieser Runde trug
+`agents/bookkeeper.md` den Schlüssel, ebenso `quality-engineer.md` (dev) und `reviewer.md`
+(research), deren Urteil die Frische aus demselben Grund braucht: ein Urteil, das die Freigaben der
+letzten Runde erinnert, ist keine frische Lesung (FR-0064; im echten Projekt Canyon_3.4.0 hielt das
+Gedächtnis der QS-Rolle elf Themen, drei davon Gate-Entscheidungen).
+
+**Kette (gemessen 2026-09-02, die ausgelieferten office-Hooks 2026.09.02-10 als echte Prozesse
+gegen ein Wegwerfprojekt unter `_round-scratch/TSK-0105/memory-channel-proj`; Payload
+`agent_type: bookkeeper`, `Write` nach `.claude/agent-memory/bookkeeper/amazon-invoice-footer.md`):**
+
+```
+Notiz mit den Zahlen EINES Belegs (Rechnung 302-4471: brutto 214,20 / netto 180,00 / 19 %),
+gegen JEDE der sechs auf Write registrierten Stufen der office-settings.json, je als eigener Prozess:
+  gate_write_scope.py               rc 0   DURCHGELASSEN  (Regel 6: eigenes Rollengedächtnis)
+  guard_memory_budget.py            rc 0   DURCHGELASSEN  (die Inhaltsregel kennt Item-Ids, keine Zahlen)
+  guard_no_adhoc.py                 rc 0   DURCHGELASSEN
+  guard_pm_scope.py                 rc 0   DURCHGELASSEN
+  guard_harness_selfmod.py          rc 0   DURCHGELASSEN  (das Gedächtnis ist die gewollte Ausnahme)
+  gate_filing + gate_second_reading rc 0   DURCHGELASSEN  (kein Ablage-Ziel)
+dieselbe Notiz + "booked under TSK-0007"
+  guard_memory_budget.py            rc 2   VERWEIGERT — wegen der Id, nicht wegen der Zahlen
+```
+
+**Was geschlossen ist, und womit.** Der Schlüssel ist aus jeder Rolle entfernt, deren Lesung frisch
+sein muss, und WELCHE das sind, ist abgeleitet und nicht aufgezählt: die Verdict-Rollen aus
+`gate_subagent_output.VERDICT_ROLES` (die Konstante, auf der der Hook entscheidet) und jede
+`writer_role` eines Kernel-Schemas (die Datensätze, die ein Gate je Lauf zählt oder eine zweite
+Rolle beurteilt). Gehalten von
+`tools/test_role_contracts.py::test_no_role_whose_reading_must_be_fresh_carries_a_craft_memory`;
+rot gemessen im Klon mit dem Schlüssel zurück auf `quality-engineer.md` (1 failed), zurück auf
+`bookkeeper.md` (1 failed) und mit dem Pflichtsatz „Consult your agent memory" zurück im
+Reviewer-Text ohne Schlüssel (1 failed); Grundlinie 5 passed.
+
+**Rest, benannt.** (a) **Die Schreibseite bleibt offen**: dieselbe Notiz gegen dieselben sechs
+Stufen NACH der Schlüssel-Entfernung — alle rc 0. Regel 6 des Schreib-Gates öffnet das Fenster an
+der Existenz der Rollendatei, nicht am Schlüssel (gemessen: `agents/bookkeeper.md` entfernt,
+`gate_write_scope` rc 2). Abgestellt ist damit das LADEN im nächsten Lauf, und das tut der
+Provider anhand des Frontmatters — gemessen ist hier das Frontmatter, nicht der Provider. Enger
+würde es in `gate_write_scope` (Regel 6 liest den Schlüssel mit): eine Hook-Datei, außerhalb dieses
+Streams, als Nahtstelle gemeldet. (b) **Ein Gedächtnisbaum, den eine frühere Kit-Version dieser Rolle
+geschrieben hat, bleibt liegen**: kein Installer (`install.sh`/`.ps1`), kein Scaffold
+(`scaffold_team.sh`/`.ps1`) und kein Kernel-Pfad (`kernel/*.py`) nennt `agent-memory` — gemessen per
+grep durch den Prüfer —, also nimmt ein Update auf -11 den Schlüssel und lässt den Baum stehen;
+Canyon_3.4.0 trägt heute zwölf solche Dateien für `quality-engineer`. Ob der Provider ein
+vorhandenes Verzeichnis OHNE Schlüssel lädt, ist ausdrücklich nicht gemessen. Für bestehende
+Installationen ist das Laden damit am Frontmatter abgestellt und am Provider offen; das Entfernen
+beim Update ist Kernelarbeit (`kitupdate`), außerhalb dieses Streams, als Nahtstelle gemeldet. Ein
+Verzeichnis, das ein Nutzer von Hand anlegt, ist derselbe Fall. (c) Was das Gedächtnis dieser Rollen an Handwerk hielt (im echten
+Projekt: Playwright-Fallen, ein ablaufendes Dev-Server-Token) geht dem Projekt verloren; es gehört
+ins Skill der Rolle. Ob ein Urteil durch das Erinnern je gedriftet ist, wurde NICHT gemessen — die
+Entscheidung stützt sich auf den gemessenen Kanal, nicht auf eine gemessene Drift.
+
+**Urteil: GESCHLOSSEN (TSK-0105) für NEUE Installationen; für bestehende ist das Laden am
+Frontmatter abgestellt und am Provider nicht gemessen, mit benanntem Rest auf der Schreibseite**
+— der Kanal, für den die Vier-Augen-Regel gebaut ist (ein Versehen des ersten Lesers färbt den
+zweiten), ist am Schlüssel abgestellt und per Ableitung gehalten; der Baum, den ein älteres Kit
+schrieb, ist die Grenze dieser Messung.
+
+### H106 — Der Umfang eines QS-Laufs ist Prosa: kein Feld und kein Hook zählt, ob die Suite einmal oder zehnmal lief (neu, TSK-0105, FR-0057)
+
+**Mechanismus.** Das Maß aus DEC-0050 — betroffene Tests, solange die Runde offen ist; der volle
+Lauf EINMAL vor dem Urteil — steht seit dieser Runde dort, wo die Verdict-Rolle es liest: in der
+`description` ihres Frontmatters (was ein Spawn zuerst sieht) und im `## Do` ihres Skills, dazu als
+Klausel am GATE-Schritt der Verfassung (§5a.7) und als Leiter im PM-Skill. Nichts davon liest ein
+Hook. Der Evidence-Datensatz trägt `--summary` (Freitext) und `--artifact-ref` (einen Pfad); ein
+Feld für den Umfang oder die Nummer eines Laufs gibt es nicht, und kein Hook zählt Befehlszeilen
+über eine Sitzung.
+
+**Kette (gemessen).** Im echten Projekt Canyon_3.4.0 (dev-Kit 2026.08.24-7, 46 Tasks) ist die
+EINZIGE Spur dessen, was die QS lief, ihr eigenes Staging: `staging/TSK-0044/gate_run_log.md`
+zählt 15 Instrumente für einen Gate-Lauf, `quality_full_run.txt` EINEN vollen Pipeline-Lauf
+(141,63 s, im Hintergrund) — also das Maß, das Schritt 3 des QS-Skills vorschreibt; die Nachweise
+der Entwickler (dort `EVD-0028`, `EVD-0033`) blieben auf dem betroffenen Stack
+(`quality.py --only liquid`). Das Gegenbeispiel ist dieses Repo selbst: an TSK-0083 lief die volle
+Suite in sechs Runden mit, rund vier Stunden, und kein Befund kam aus ihr (DEC-0050). Beides sieht
+kein Gate; beides steht nur in Protokollen.
+
+**Was stattdessen begrenzt.** Der Rollentext, beide Hälften, per Test gehalten:
+`tools/test_role_contracts.py::test_every_verdict_role_states_the_scope_of_its_runs` — rot
+gemessen im Klon: „affected" aus der QS-Beschreibung gestrichen (1 failed), der
+Staged-Testing-Satz aus dem `## Do` des QS-Skills geschnitten (1 failed), der Umfangssatz aus dem
+Reviewer-Skill geschnitten (1 failed). Ein Zähl-Gate wäre Kernelarbeit — ein Feld im
+Evidence-Schema, das Teillauf von Volllauf unterscheidet, wonach FR-0040 fragt — und Gerüst über dem
+Haus, solange der gemessene Fehler im Kit-Projekt nicht auftritt (DEC-0056 b).
+
+**Urteil: Rest, benannt** — keine Kette öffnet innerhalb einer Sitzung etwas; der Fehler ist
+Kosten, nicht Zustand, und der Ort, an dem er zählbar würde, ist der Kernel.
+
+### H107 — Der Design-Brief trennt das ZIEL von der SCHREIBWEISE nur als Prosa: eine Prozessregel im Brief fängt nichts (neu, TSK-0105, FR-0069)
+
+**Mechanismus.** Der Brief ist seit dieser Runde ein Decision-Item mit zwei Hälften — die aus dem
+Repo abgeleitete (Stack, Palette, Typografie, Produktvokabular, bestehende Site) und die gefragte
+(Ambition — bei Exploration mit den Referenzen in ihrem Freitext —, was es erreichen soll und für
+wen, Ton, was es nicht werden darf) —,
+geschrieben vom PM nach EINEM Frageaufruf und gelesen vom Designer. Ein Decision-Item ist
+Freitext: nichts parst die Hälften, nichts erkennt eine Prozessregel („keine Shop-Daten hart
+codieren", ein Dateibudget) darin, und nichts hindert den PM, sie in den Designauftrag zu tragen.
+
+**Kette (gemessen, im echten Projekt Canyon_3.4.0, dessen Items hier gemeint sind).** Die dortige
+`DEC-0002` hielt die Wahl der Richtung fest, mit der Notiz des Inhabers, dass Preisangaben in der
+Vorschau Platzhalter seien und nie Shop-Daten hart codiert werden dürfen; der PM machte daraus im
+Arbeitsauftrag eine sichtbare Platzhalter-Markierung; die dortige `DEC-0011` hält die Ablehnung
+fest („sieht komplett trash und null hochwertig aus") und benennt als Ursache den eigenen
+Auftrag. Der einzige Brief davor war die Ambitionsfrage (die dortige `DEC-0001`). Beides trägt
+FR-0069.
+
+**Was stattdessen begrenzt.** Beide Enden sind benannt, nicht eins: der PM-Skill (a0) schreibt die
+Hälften getrennt und sagt, dass eine Prozessregel ein `INV` ist und nie ein Designauftrag; das
+Designer-Skill („Read first") gibt eine Prozessregel, die den Brief erreicht hat, als Befund in
+`followups` zurück, statt sie zu zeichnen. Der PM-Absatz hängt am Sektions-Pin
+(`tools/constitution_section_pins.json`, PM-Skill „Work loop"), der Designer-Absatz an keinem;
+ein Gate liest keinen von beiden. Kosten des legitimen Wegs: ein Repo-Lesen vor der ersten
+Designfrage, ein Frageaufruf mit vier Punkten statt einem.
+
+**Urteil: Rest, benannt** — die Fehlklasse ist gemessen (zweimal im selben Projekt), der Fang ist
+Prosa an beiden Enden, und ein Parser über ein Decision-Item wäre die Heuristik über Prosa, die
+FR-0010 und FR-0012 ausgeschlossen haben.
+
+### H108 — Eine Evidenz, die ihren Laufumfang GAR NICHT erklärt, zählt weiter als Volllauf (neu, TSK-0106, FR-0040)
+
+**Mechanismus.** `EVD` trägt seit dieser Runde ein Laufprotokoll (`run_command` + `run_scope`,
+`backlog_types.RUN_SCOPES`), und `report._delivery_evidence` lässt einen PASS, der sich als
+`selection` erklärt, nicht mehr als Merge-Beleg durch. Das Feld ist OPTIONAL, und daran hängt der
+Rest: eine Evidenz, die nichts erklärt, wird behandelt wie vor der Änderung. Ein Teillauf, der
+schweigt, öffnet also weiterhin einen Merge.
+
+**Warum es nicht einfach zur Pflicht wird, gemessen statt vermutet.** `EVD` ist ein
+`IMMUTABLE_TYPE`: kein Kommando ändert ein Feld daran, und ein Pflichtfeld gilt für GESPEICHERTE
+Items, nicht nur für neue (`DECLARED_REQUIRED_FIELDS` speist die Feld-Pflichtschleife des
+Validators). Allein dieses Repository hält **76 aktive** Evidenz-Datensätze (`ls
+project_memory/evidence | wc -l`, 2026-09-02); jeder von ihnen würde am Tag der Pflicht zu einem
+Validator-Error, den kein Kommando reparieren kann — und `gate_memory_complete` blockt auf
+Validator-Errors jeden Merge und jeden Push. Die Alternative, die Pflicht an die BEFEHLSZEILE zu
+hängen (`--run-command` als `required=True`), ist gemessen ebenfalls teuer: die ausgelieferten
+Rollen- und Verfassungstexte aller drei Kits nennen `harness.py evidence` ohne diese Flags, und
+diese Texte sind `forbidden_scope` dieser Runde — ein Kit, dessen eigene Anleitung ein Kommando
+lehrt, das jetzt fehlschlägt, ist schlechter als die Luecke.
+
+**Was heute stattdessen begrenzt:**
+* ein erklärter Teillauf öffnet keinen Merge mehr (`test_report.test_a_pass_from_a_partial_run_is
+  _not_merge_evidence_and_a_fail_still_is`), und die Erklärung ist auf der Kommandozeile da, wo die
+  Rolle sie tippt;
+* ein Teillauf, der FEHLSCHLÄGT, zählt weiterhin — die Asymmetrie ist gebaut, nicht behauptet;
+* die Hälfte des Paares kann nicht fehlen: `run_scope` ohne `run_command` wird beim `capture`
+  verweigert, also gibt es keine Umfangs-Behauptung ohne die Zeile, an der man sie prüft.
+
+**Urteil: offen, nicht blockierend, und die Entscheidung gehört dem Nutzer.** Es ist keine
+Umgehung: wer nichts erklärt, bekommt den Stand von gestern, nicht mehr. Was die Pflicht kostet und
+wer sie trägt, ist eine Vertragsänderung an einem unveränderlichen Typ — die Entscheidung dazu ist
+als `DEC-0061` erfasst (VALID), wie FR-0040 es verlangt („DEC first"). Zur Abnahme durch den Nutzer.
+
+### H109 — „Sammelbar" ist geparst und nicht gefahren: ein übersprungener Test gilt als vorhanden (neu, TSK-0106, FR-0039)
+
+**Mechanismus.** `INV.verified` hat seit dieser Runde einen Produzenten
+(`state.record_invariant_verification`) und einen Merge-Blocker
+(`report._check_invariant_checks`, ein Validator-Error, auf dem `gate_memory_complete` jeden Push
+anhält). Beide fragen dieselbe Stelle: `report.invariant_check_resolution` liest `check.ref` als
+`<pfad>::<name>`, öffnet die Datei relativ zur Projektwurzel und PARST sie — der Check ist
+aufgelöst, wenn die Datei den Namen definiert. Ob dieser Test bei einem Lauf auch **ausgeführt**
+wird, sieht der Kernel nicht: ein `@pytest.mark.skip`, ein Marker, den die Projektkonfiguration
+abwählt, oder eine Parametrisierung, die keinen Fall erzeugt, ändern nichts an der Definition.
+
+**Gemessene Kette** (2026-09-02, Stellvertreterprojekt außerhalb des Repos, drei Zustände
+derselben Datei):
+
+| Zustand von `tests/test_rules.py` | Kernel | Läufer |
+|---|---|---|
+| `def test_pure(): pass` | `verified`, keine Befunde | 1 passed |
+| dieselbe Funktion mit `@pytest.mark.skip` | `verified`, keine Befunde | **1 skipped** |
+| Funktion umbenannt | `unverified` + Error „names … does not define" | 1 passed (anderer Test) |
+
+Die mittlere Zeile ist das Loch: der Läufer hat den Test nicht ausgeführt, der Kernel nennt die
+Invariante trotzdem verifiziert. Die dritte Zeile zeigt, dass die Rückrichtung greift, und steht
+als Test in
+`test_state.test_an_invariant_is_verified_by_its_check_and_unverified_when_it_stops_resolving`.
+
+**Warum nicht gefahren wird.** Was ein Testlauf kostet und welcher Läufer im Projekt gilt, ist eine
+Tatsache über das Projekt und nicht über den Kernel — dasselbe Argument, das `RUN_SCOPES` für den
+Umfang eines Laufs trägt (FR-0040). Ein Kernel, den drei Kits teilen, dürfte dafür weder `pytest`
+voraussetzen noch beim Validieren einen fremden Prozess starten; `validate_state` läuft in einem
+blockierenden Merge-Gate.
+
+**Was heute stattdessen begrenzt:**
+* die Auflösung steht an EINER Stelle, und beide Leser (Produzent und Validator) fragen sie —
+  ein Auseinanderlaufen von „verifiziert" und „blockiert" ist ausgeschlossen;
+* jede andere Abweichung fällt zu: keine Datei, kein Name, kein `ref`, kein `check` → Error;
+* die Rückrichtung ist gebaut: verschwindet der Name, nimmt der Produzent die Verifikation zurück.
+
+**Urteil: offen, nicht blockierend.** Der Rest ist die Differenz zwischen „der Test steht da" und
+„der Test läuft", und die zu schließen heißt, im Kernel einen Testlauf zu starten. Das ist eine
+Entscheidung über die Bauart, keine Nacharbeit an dieser Runde — und sie hängt an derselben Frage
+wie H108.
+
+### H110 — Einen Check, den der Kernel nicht lesen kann, beantwortet er mit UNENTSCHIEDEN (neu, TSK-0106, FR-0039)
+
+**Mechanismus.** Die Auflösung oben parst die Datei, die `check.ref` nennt. Für eine Datei, die
+kein Python ist — `src/rules.test.ts`, eine Go- oder Rust-Datei —, kann sie die Frage nicht
+beantworten. Sie gibt darum `None` zurück, und der Validator macht daraus eine **Warnung**: kein
+Merge wird angehalten, und der Produzent lässt das Item `unverified`.
+
+**Gemessene Kette und warum die Gegenrichtung schlimmer ist.** Beim Bauen zuerst fail-closed
+gemessen (der unlesbare Fall als „nicht aufgelöst"): ein Projekt mit
+`check.ref: src/rules.test.ts::is pure` bekommt einen Validator-Error, `gate_memory_complete`
+blockt darauf jeden Merge und jeden Push, und **kein Kommando im Projekt kann das je klären** —
+die Datei ist da, der Test ist da, der Kernel kann ihn nur nicht lesen. Das ist die Fehlerklasse,
+die dieses Repo an mehreren Stellen ausdrücklich verbietet („als Error blockiert es jeden Merge und
+kann nie erfüllt werden"), und eine Regel, die niemand erfüllen kann, wird umgangen statt befolgt.
+Die Messung steht als Test:
+`test_report.test_an_invariant_whose_check_this_kernel_cannot_read_blocks_nothing`.
+
+**Was heute stattdessen begrenzt:**
+* der Produzent verifiziert NICHT auf ein Achselzucken: `resolved is True` und nichts anderes
+  schreibt `verified`, ein unlesbarer Check bleibt `unverified`;
+* die Warnung sagt, wessen Frage das ist, statt zu schweigen — sie nennt die Datei und den Grund;
+* für alles, was der Kernel lesen kann, bleibt der Blocker scharf: fehlende Datei und fehlender
+  Name sind weiterhin Errors;
+* **und der Exitcode trägt den Zustand nicht weiter** (Nacharbeit 1): `verify-invariants` zählt
+  nur, was nachweislich NICHT aufgelöst ist. Vorher zählte es „alles außer verified" und gab
+  darum rc 1, während `validate` im selben Moment rc 0 mit einer Warnung gab — für ein Projekt,
+  dessen Tests nicht Python sind, ein dauerhaftes Fehlsignal aus genau dem Kommando, auf das die
+  Rollentexte es schicken. Unentscheidbare bekommen eine eigene Zeile, die diese Nummer nennt
+  (`test_staging_cli.test_verify_invariants_records_what_the_check_resolves_to_and_exits_on_the_gap`).
+
+**Urteil: offen als bewusste Über-Öffnung, nicht blockierend.** Geschlossen wird sie erst mit einer
+Antwort auf die Frage aus H109 — wer den Test wirklich fährt. Bis dahin ist der ehrliche Zustand
+„der Kernel weiß es nicht" und nicht „der Kernel verbietet es".
+
+### H111 — Die Freigabe, auf der die Auditor-Routine reitet, hat in keinem Kit einen Erzeuger (neu, TSK-0107, FR-0038)
+
+**Mechanismus.** Alle drei Verfassungen und alle drei `project-auditor`-Rollen sagen denselben Satz:
+der Auditor wird auf einer `APR.kind: routine` für die Wurzel seiner Audit-Aufgabe gespawnt, oder
+auf einer `APR.kind: analysis`, die diese Aufgabe listet; beide tragen ein Ablaufdatum, beide sind
+widerrufbar, und die `routine` hasht **Rolle, Read-only-Scope, Trigger und Takt**
+(`approvals.ROUTINE_MANIFEST_FIELDS`). Genau diese vier Felder wären die Ableitungsquelle für ein
+Fristenregister, das fragt „wann muss der Auditor wieder laufen".
+
+**Gemessen (2026-09-02, gegen die ausgelieferten Module dieses Baums, Wegwerf-Projekt außerhalb des
+Repos):**
+
+```
+approvals.APR_KINDS             : analysis, scope, delivery, acceptance, routine, push,
+                                  preset, kit_update, filing_correction, filing_rule,
+                                  document_proposal
+approvals.item_derived_kinds()  : scope, delivery, acceptance
+request-approval  Art-Auswahl   : acceptance, delivery, document_proposal, filing_correction,
+                                  filing_rule, kit_update, preset, push, scope
+```
+
+`routine` und `analysis` stehen in **keiner** der beiden letzten Zeilen. Sie sind keine
+item-abgeleiteten Arten (ihr Manifest ist aus einer Item-Id nicht baubar — eine Analysefrage, ein
+Read-only-Scope und ein Takt stehen in keinem Item), und `request-approval` bietet genau die Arten
+an, für die es ein Manifest bauen kann. Es gibt keinen zweiten Weg: weder `kernel/cli.py` noch das
+Kit-Skript `scripts/harness.py` nennt das Wort `routine` überhaupt. `kernel/dispatch.py` räumt an
+seiner eigenen Stelle bereits ein, dass Trigger und Takt zwar gehasht, aber von keinem Gate gelesen
+werden — was hier dazukommt, ist, dass sie auch nie geschrieben werden können.
+
+**Folge, und sie steht im Code dieser Runde** (seit `TSK-0112` in der gespiegelten
+`hooks/_routine.py` aller drei Kits, nicht mehr nur im Office-Kit)**:** `_routine.AUDIT_ROLE` NENNT die Rolle und
+`_routine.audit_period_id` NENNT den Takt (eine ISO-Woche), statt beide aus der Freigabe zu lesen.
+Ein Register, das die Freigabe befragt hätte, hätte in jedem existierenden Projekt nichts gefunden
+und nie gemeldet. Der Kommentar an der Konstante trägt diese Messung, und
+`tools/test_routine_feed.py::test_no_routine_approval_can_be_minted_in_any_kit_today`
+wird rot, sobald ein Weg dazukommt.
+
+**Warum hier nicht geschlossen.** Die Arten liegen in `kernel/approvals.py` und `kernel/cli.py`, die
+Sätze in den drei Verfassungen und den drei Rollentexten — beides fremde Dateilisten dieser
+Generation (Ströme F und E). Ein Erzeuger, den dieser Strom nebenher baut, wäre eine zweite
+Definition dessen, was eine Routine-Freigabe ist.
+
+**Was stattdessen begrenzt.**
+* **Die Erinnerung fällt nicht aus.** Das Register meldet den fälligen Audit-Lauf bei jedem
+  Sitzungsstart, unabhängig von jeder Freigabe. Was fehlt, ist die vom Nutzer unterschriebene
+  Bindung von Rolle und Takt, nicht die Sichtbarkeit.
+* **Read-only bleibt read-only.** Was den Auditor lesend hält, sind seine Werkzeuge und sein
+  Arbeitsauftrag, nicht diese Freigabe — die Rollentexte sagen das selbst.
+
+**Urteil: offen, keine Angriffskette — eine Lücke im dokumentierten Weg.** Zwei Nahtstellen sind
+benannt: Strom F entscheidet, ob `routine`/`analysis` eine Kommandofläche bekommen oder ob der Satz
+in den Verfassungen fällt; Strom E lässt den Verfassungssatz auf die Code-Konstante zeigen, statt
+„wöchentlich" ein zweites Mal zu schreiben.
+
+### H112 — Der Laufdatensatz der Routine ist ein Nebenprodukt und sagt nicht, was er zu sagen scheint (neu, TSK-0107, FR-0038)
+
+**Mechanismus.** FR-0038 verlangt „einen aufgezeichneten Zeitpunkt des letzten Audit-Laufs und eine
+Wochen-Id gegen Doppelläufe". Dieser Strom durfte keinen Hook registrieren
+(`settings/settings.json` liegt außerhalb seines Bereichs) und keinen der gespiegelten Hooks
+ändern, die den `SubagentStop` sehen. Der Datensatz wird deshalb **abgeleitet**: aus dem
+`subagent_stop`-Ereignis, das `notify_agent_events` ohnehin nach
+`project_memory/.audit/hook_events.jsonl` schreibt. Die Kette ist gemessen und nicht angenommen —
+`tools/test_routine_feed.py::test_the_routine_reads_the_run_record_the_shipped_hook_really_writes`
+fährt genau diesen Hook als
+Prozess und liest sein Ergebnis durch `_routine.last_run` zurück, damit eine Umbenennung dort rot
+wird statt blind zu machen.
+
+Was der Datensatz WIRKLICH sagt, ist „ein Subagent dieser Rolle hat aufgehört". Daraus folgen zwei
+Grenzen, und sie zeigen in verschiedene Richtungen:
+
+**(a) Rotation — sichere Richtung, rot gemessen.** `_audit` schiebt das Log bei `ROTATE_BYTES` zur
+Seite und behält fünf Generationen; `_routine.last_run` liest nur die lebende. Ein Lauf, der älter
+ist, liest sich als „nie gelaufen", und die Routine wird als fällig gemeldet. Nörgeln ist für eine
+Erinnerung, die nur vorschlägt, die richtige Ausfallrichtung, und
+`tools/test_routine_feed.py::test_a_rotated_event_log_makes_the_routine_read_as_due_rather_than_as_run`
+hält sie fest. Die
+Generationen mitzulesen hieße bei jedem Sitzungsstart bis zu 6 MB zu öffnen — für den Normalfall
+eines frischen Projekts der teure Zweig.
+
+**(b) Ein aufgebender Lauf zählt als Lauf — unsichere Richtung, NICHT geschlossen.**
+`gate_subagent_output` lässt den ZWEITEN Stop einer Rolle absichtlich durch (`stop_hook_active`; ein
+zweites Blockieren wäre eine Endlosschleife, das steht in seinem eigenen Docstring). Dieser Stop
+wird von `notify_agent_events` aufgezeichnet, und das Register liest ihn als Lauf — die Meldung
+dieser Woche bleibt aus, obwohl der Auditor nichts geliefert hat. **Gemessene Kette** (2026-09-02,
+beide ausgelieferten Hooks als Prozesse auf DERSELBEN `SubagentStop`-Nutzlast, Wegwerf-Projekt
+außerhalb des Repos, danach das ausgelieferte Routine-Modul befragt):
+
+```
+vor jedem Stop:                       routine due = True
+gate_subagent_output rc=0   notify_agent_events rc=0
+   log: event=gave_up         reason=project-auditor: giving up with summary still missing
+   log: event=subagent_stop   reason=project-auditor
+_routine.last_run liest:               2026-09-02 13:59:29   (unreadable: None)
+nach dem Aufgeben:                    routine due = False
+```
+
+Beide Zeilen stehen im selben Log; die zweite löscht die Meldung, die erste sagt, dass nichts
+geliefert wurde, und niemand verbindet sie.
+
+**Warum (b) nicht geschlossen ist.** Die beiden Zeilen müssten verknüpft werden: `gate_subagent_output`
+schreibt bei genau diesem Fall `event: gave_up` mit der Rolle im `reason` in DASSELBE Log. Ein
+gemeinsamer Schlüssel fehlt aber — beide Zeilen tragen nur einen Zeitstempel auf Sekunden, und die
+beiden Hooks hängen an demselben Ereignis in unbestimmter Reihenfolge. Einen Schlüssel einzuführen
+heißt, zwei gespiegelte Hooks zu ändern, also dieselbe Datei in drei Kits — außerhalb dieses Stroms,
+und eine Zeitstempel-Heuristik wäre genau die Art Vermutung, die dieses Repo als Defekt führt.
+
+**Was stattdessen begrenzt.** Die Aufgabe steht im selben Log als `gave_up` und ist für einen
+Menschen sichtbar; und der Manager sieht das Ergebnis eines Audits ohnehin an seinem
+Evidence-Datensatz — eine ausgebliebene Meldung ist kein ausgebliebenes Audit.
+
+**Urteil: Rest, benannt.** Keine Angriffskette; ein falsch-negatives Nicht-Nörgeln in einer Fläche,
+die nur vorschlägt. Nahtstelle für den Strom, der die gespiegelten Hooks besitzt.
+
+### H113 — Das Fristenregister kennt kein „erledigt" (neu, TSK-0107, FR-0034)
+
+**Mechanismus.** Das Register leitet ab, was GESCHULDET ist. Ob es GETAN wurde, hält im Kit nichts
+fest: es gibt keinen Datensatz „diese Voranmeldung ist abgegeben", keinen „dieses Aufbewahrungsjahr
+ist geprüft" und keinen „diese Rechnung wurde angemahnt". Zwei der fünf Zuflüsse haben deshalb keine
+eigene Abschaltbedingung und stehen, bis ihre QUELLE sich ändert:
+
+* eine Steuer-Frist steht, bis die nächste Periode schließt — bei vierteljährlicher Abgabe also bis
+  zu drei Monate, auch wenn am Tag danach abgegeben wurde;
+* ein Aufbewahrungsjahr steht, bis der Jahresordner verschwunden ist.
+
+Die anderen drei tragen ihre Erledigung in der Quelle selbst: eine bezahlte Rechnung bekommt ihr
+`payment_date`, eine Wiedervorlage ihr neues `review_by`, und der Audit-Lauf ist der Datensatz aus
+`H112`.
+
+**Warum nicht geschlossen.** Ein „erledigt" ist kanonischer Zustand — ein Feld oder ein Item-Typ —
+und damit Kernel; und seine FORM ist eine offene Entscheidung (ein Eintrag je Abgabe? ein Datum im
+Profil? ein Item?), keine Implementierungsfrage, die dieser Strom nebenher beantworten dürfte.
+
+**Was stattdessen begrenzt — die Fassung vom 2026-09-02, nachdem die erste hier nachweislich zu
+weit ging.** Der ursprüngliche Satz lautete „das Register meldet nur die AKTUELLE Pflicht und
+sammelt keine Vergangenheit". Gemessen war das falsch: ein Archiv mit einem Jahresordner je
+Geschäftsjahr seit 2005 unter EINER Aufbewahrungsregel ergab 13 Pflichten, alle aus der
+Vergangenheit, und der Sitzungsstart-Absatz nannte daraufhin die fällige Steuerfrist gar nicht mehr
+(`TSK-0113`; als Prozess über den ausgelieferten Hook gemessen: 15 Pflichten, 13 davon
+Vergangenheitsordner, die Voranmeldung nicht im Absatz).
+
+Was heute begrenzt, ist gebaut statt behauptet, und beide Hälften sind gemessen:
+
+* **Kein Zufluss greift über seine eigene Vergangenheit zurück.** Der Steuer-Zufluss nennt die
+  zuletzt geschlossene Periode; der Aufbewahrungs-Zufluss nennt EINE Prüfpflicht je REGEL — mit dem
+  ältesten Jahr und der Anzahl darin — statt einer je Jahresordner
+  (`tools/test_office_duties.py::test_a_rule_with_many_years_past_retention_is_one_duty_that_names_the_oldest_and_the_count`).
+* **Kein Zufluss kann einen anderen aus dem Absatz drängen.** Die Plätze der Sitzungsstart-Meldung
+  werden reihum je QUELLE vergeben statt streng nach Datum
+  (`tools/test_office_duties.py::test_no_feed_can_take_every_slot_of_the_briefing_from_another`).
+
+Was ein Zufluss weiterhin VIELFACH melden kann, sind viele verschiedene offene Posten — je eine
+unbezahlte Rechnung, je eine Wiedervorlage. Das ist keine angehäufte Vergangenheit, sondern die
+Gegenwart eines Geschäfts; die Reihum-Vergabe sorgt dafür, dass sie den Absatz nicht allein füllt.
+
+**Urteil: Rest, benannt.** Über-Meldung, nie Schweigen — und seit `TSK-0113` gilt das auch für den
+Absatz, den der Manager wirklich liest, und nicht nur für die Liste dahinter.
+
+### H114 — Nach `/cd` läuft die Registrierung des ZIELVERZEICHNISSES, aber die Hook-DATEIEN des Startverzeichnisses (neu, TSK-0108, FR-0059)
+
+**Mechanismus.** Seit Claude Code 2.1.246 tauscht `/cd` Einstellungen, Hooks, Skills und MCP-Server
+gegen die des Zielverzeichnisses aus. `${CLAUDE_PROJECT_DIR}` bleibt dabei — laut Doku absichtlich —
+auf dem **Startverzeichnis** stehen. Jede Hook-Kommandozeile, die unsere Kits und dieses Repo
+schreiben, buchstabiert ihren Pfad genau damit
+(`python -B "${CLAUDE_PROJECT_DIR}/.claude/hooks/<gate>.py"`). Beides zusammen ergibt ein Paar, das
+niemand gewollt hat: **welche** Hooks registriert sind, entscheidet das Ziel; **welcher Code** dann
+läuft, entscheidet der Start.
+
+**Kette, gemessen (2026-09-02, eigenes Rig außerhalb des Repos, Client 2.1.258; Protokoll in
+`docs/reviews/2026-09-02-cd-measurement.md`, Befund 5).** Zwei Projekte, beide mit derselben
+`${CLAUDE_PROJECT_DIR}`-Schreibweise registriert, jede Skriptkopie meldet ihre Herkunft:
+
+```
+Sitzung startet in dirA, Bash-Aufruf      → tag REG-A, script_path …\dirA\.claude\hooks\log_hook.py
+/cd  …\dirB   (Trust-Dialog bestätigt)
+derselbe Bash-Aufruf                      → tag REG-B, script_path …\dirA\.claude\hooks\log_hook.py
+```
+
+Die zweite Zeile ist das Loch: Argument und Registrierung aus `dirB`, ausgeführte Datei aus `dirA`.
+Für zwei Kit-Projekte heißt das, dass die Gates des Startprojekts über die Arbeit im Zielprojekt
+urteilen — und wenn das Startprojekt ein präpariertes Verzeichnis ist, urteilt gar nichts.
+
+**Zweiter gemessener Weg in dieselbe Zeile, ohne `/cd` und ohne Dialog (Befund 16 desselben
+Protokolls).** Die VS-Code-Erweiterung hat kein `/cd` — sie startet das Binary im
+`stream-json`-Transport, in dem es das Kommando gar nicht gibt — und bewegt die Sitzung stattdessen
+mit der Steuer-Anfrage `{"subtype":"set_cwd","path":…}`. An einem Ziel, das früher einmal bestätigt
+wurde, antwortet die schon **ohne** jedes Vertrauensfeld mit `status: ok, changed: true`, und die
+nächste Hook-Zeile ist dieselbe wie oben: Registrierung `REG-B`, Skript aus `dirA`.
+
+**Urteil: offen, NICHT durch einen Modellpfad erreichbar.** Weder `/cd` noch `set_cwd` ist ein
+Werkzeug des Modells — das erste ist ein lokales Kommando der Oberfläche (in dieser Runde für den
+`-p`-Transport nachgemessen: „/cd isn't available in this environment"), das zweite eine
+Steuer-Anfrage auf stdin des Client-Prozesses, den das Modell nicht beschreibt. Der Wechsel kommt
+also vom Client. **Was stattdessen begrenzt, und die zwei Wege stehen unterschiedlich da:**
+
+Auf dem **`/cd`-Weg** geht der Dialog aus Befund 2 voran, der die `.claude/settings.json` des Ziels
+ausdrücklich nennt und dessen Vorauswahl auf „No, stay put" steht — aber **nur vor dem ERSTEN
+Wechsel in ein Verzeichnis**. Ein späterer `/cd` in dasselbe, inzwischen bestätigte Verzeichnis
+läuft dialogfrei durch: gemessen im Lauf `m4.log`, dessen Steuerskript (`pty-m4.txt`) zwischen dem
+`/cd` und der nächsten Eingabe **keinen** Tastendruck sendet.
+
+Auf dem **`set_cwd`-Weg** ist überhaupt nur der dialogfreie Wechsel an ein **bereits vertrautes**
+Ziel gemessen (`ext3.log`: `status: ok, changed: true`, ohne jedes Vertrauensfeld). Ob an einem
+**unbekannten Ziel** ein Dialog erscheint, ist **NICHT gemessen** — belegt ist dort nur die
+Fehlermeldung, die einen zweistufigen Handschlag beschreibt (`ext2.log`). Und wann die Erweiterung
+den Wechsel überhaupt schickt, ist ebenfalls nicht gemessen.
+
+Drei Fassungen dieses Absatzes haben den Dialog stärker gemacht, als er ist: die erste nannte
+ihn ohne Einschränkung, die zweite schrieb ihn dem `/cd`-Weg pauschal zu, die dritte behandelte die
+zwei Wege als einen. Diese Fassung trennt sie; wer sie ändert, ändert auch die Tabellenzeile und
+§2 des Messdokuments mit.
+
+**Was ein Fix bräuchte** (Kit-Bereich, deshalb hier nur benannt): eine Schreibweise der
+Hook-Kommandozeile, die dem Wechsel folgt. Der Prozess des Hooks läuft nach dem Wechsel mit dem
+Arbeitsverzeichnis des ZIELS (gemessen: `process_cwd` = `dirB`), ein relativer Pfad
+(`.claude/hooks/…`) würde also mitwandern — mit dem bekannten Preis, dass die Sitzung auch in einem
+Unterverzeichnis stehen kann, weshalb die Kits den absoluten Pfad überhaupt gewählt haben.
+
+### H115 — `/cd` bringt die Subagenten und die `agent:`-Bindung des Ziels NICHT mit, obwohl der Changelog „agents" nennt (neu, TSK-0108, FR-0059)
+
+**Mechanismus.** Der Changelog-Eintrag zu 2.1.246 führt „skills, and agents" unter dem, was nach
+einem `/cd` sofort greift. Gemessen greifen Hooks, Einstellungen, Skills und MCP-Server sofort — die
+**Rollenliste** und die **`agent:`-Bindung der Sitzung** nicht.
+
+**Messung (2026-09-02, Rig wie oben; `docs/reviews/2026-09-02-cd-measurement.md`, Befunde 6, 7, 13,
+14).** In einer Sitzung, die nachweislich im Ziel steht (deren Hooks feuern), antwortet das
+Task-Werkzeug auf den nur dort vorhandenen Subagenten:
+
+```
+Error: Agent type 'prober-b' not found. Available agents: agent-a, claude, claude-code-guide, …
+```
+
+und der gebundene Sitzungsagent bleibt der des Startverzeichnisses. Dasselbe noch einmal über den
+Weg, den die VS-Code-Erweiterung nimmt: nach einem `set_cwd` nach `dirB` lautet der Befehl des
+gebundenen Agenten weiter `echo REPORT-BINDING token=AGENT-A` (Befund 16). Eine im laufenden
+Verzeichnis **neu abgelegte** Rollendatei greift dagegen ohne Neustart — die Rollenliste wird also
+nachgelesen, sie folgt nur keinem Wechsel.
+
+Die Gegenprobe ist in dieser Runde zweimal gefahren worden, und die erste war falsch: sie tauschte
+`agent:` in einem Verzeichnis, das die genannte Rolle gar nicht enthielt, und konnte deshalb „nicht
+nachgelesen" nicht von „löst nicht auf" trennen. Mit der Rollendatei am Platz bleibt die laufende
+Sitzung trotzdem bei `AGENT-A` (Befund 14), und eine **Fortsetzung** derselben Sitzung
+(`--continue`) bindet auf `AGENT-B` (Befund 17).
+
+**Urteil: offen, kein Angriffspfad, und für uns eher eine gute Nachricht.** Es ist der Grund, warum
+die Install-/Update-Zeremonie der Kits ihre Bitte um einen Neustart behält — was eine laufende
+Sitzung nicht tut, ist nachbinden. Gemessen erfüllt **auch ein Fortsetzen** diese Bitte, nicht nur
+ein kalter Start; der Wortlaut der Zeremonie sagt heute nur das eine und ist als Nahtstelle
+gemeldet. Der Schaden ist eine **Erwartung**, die aus dem Changelog entsteht — wer ihm glaubt, hält
+eine bewegte Sitzung für die des Zielprojekts. **Was stattdessen begrenzt:** die Messung oben und
+der Satz in der Zeremonie; schließen lässt sich das hier nicht, es ist Client-Verhalten.
+
+### H116 — Die Hook-REGISTRIERUNG wird mitten in der Sitzung neu gelesen — auch zwischen zwei Werkzeugaufrufen einer Runde (neu, TSK-0108, FR-0059)
+
+**Mechanismus.** `CLAUDE.md` dieses Repos trägt den Satz „Was beim Sitzungsstart bindet, ist die
+Registrierung" — und leitet daraus ab, dass eine geänderte `.claude/settings.json` erst in der
+nächsten Sitzung wirkt. Auf 2.1.258 stimmt das nicht mehr: die Registrierung wird nachgelesen, ohne
+`/cd`, ohne Neustart und ohne Dialog.
+
+**Kette, gemessen (2026-09-02, Rig außerhalb des Repos;
+`docs/reviews/2026-09-02-cd-measurement.md`, Befund 12).** Viermal in zwei Verzeichnissen und in
+beiden Berechtigungsmodi (`bypassPermissions` und Standardmodus mit `--allowedTools Bash`) wirkte
+ein Tausch der Datei ab dem nächsten Werkzeugaufruf. Entscheidend ist der fünfte Lauf, in dem die
+Sitzung die Datei **selbst** schreibt und beide Aufrufe zu **einer** Runde gehören:
+
+```
+Werkzeugaufruf 1   cp …/settings-A2.json …/dirA/.claude/settings.json   → alte Registrierung (REG-A)
+Werkzeugaufruf 2   echo mid-turn-probe                                   → NEUE Registrierung (A2)
+```
+
+Ein sechster Lauf zeigt dasselbe im **headless**-Transport, also ohne Oberfläche: der Treiber
+tauscht die Datei zwischen zwei Runden, und der nächste Werkzeugaufruf trägt den neuen Tag
+(`A2` → `A3`, `reb1.jsonl`). Die Fläche ist damit nicht an die interaktive Sitzung gebunden.
+
+**Was das an bestehenden Löchern ändert.** `H12` hält seit langem fest, dass Gate 1 `.claude/` nur
+gegen den **Sitzungsagenten** schützt und ein Subagent dort schreiben darf, und dass die Hook-Datei
+bei jedem Aufruf frisch gelesen wird — wer dort schreibt, ändert also längst, **welcher Code**
+urteilt. Neu ist die andere Hälfte derselben Fläche: über `settings.json` lässt sich ein Gate
+**abmelden**, und das wirkt ebenfalls sofort. Ein abgemeldetes Gate verweigert nicht und hinterlässt
+keine Spur; ein geändertes tut wenigstens noch etwas. Diese Runde hat die Provider-Hälfte gemessen
+(sofortiges Nachlesen); die Gate-Hälfte („ein Subagent darf dort schreiben") ist aus Gate 1s eigenem
+Kopfkommentar und aus `H12` übernommen und **nicht neu gemessen** — ein Gate lässt sich aus einer
+Sitzung heraus nicht starten (`H80`).
+
+**Urteil: benannte Ausnahme derselben Klasse wie `H12`, Abnahme des Nutzers offen.** Nicht in
+diesem Stream schließbar: der Schnitt liegt in `.claude/` und in der Frage, gegen was sich ein
+Subagent-Scope prüfen ließe — dieselbe Antwort wie bei `H12` („keine Leases und kein Dispatch").
+**Was stattdessen begrenzt:** Rollentrennung und Item, wie bei `H12`, plus die Sichtbarkeit im Diff
+— eine geänderte `settings.json` steht im Arbeitsbaum und damit in jedem Paket, das der Prüfer
+liest. **Was diese Runde nicht durfte:** den Satz in `CLAUDE.md` korrigieren; er ist als Nahtstelle
+gemeldet.
+
+### H117 — Nichts startet den Generator: eine Buchung bewegt die Seite nicht (neu, TSK-0109, FR-0032)
+
+**Mechanismus.** Der Ledger hat keinen Kernel-Schreiber. Seine beiden Schreibwege —
+`scripts/ledger_add.py` und die erlaubte Handbearbeitung — kommen an genau einer Stelle vorbei,
+`gate_ledger_valid.handle_post_tool_use`, und die validiert die geänderte Datei und tut sonst
+nichts. `dashboards/finanzen.html` ist damit so aktuell wie sein letzter Lauf von Hand — dieselbe
+Grundlinie, die FR-0030 für das Dev-Dashboard gemessen hat („nichts lief es, also war es
+standardmäßig veraltet").
+
+**Kette, gemessen** (2026-09-02, echtes Office-Projekt außerhalb des Repos, ausgelieferte Hooks als
+Prozesse; Protokoll `docs/reviews/2026-09-02-tsk0109-measurements.md`, Abschnitt 4):
+
+```
+python tools/finance_dashboard.py                    rc 0   Seite d7a311abcbd6e397
+python scripts/ledger_add.py --year 2026 … --open …  rc 0   L2026-0134 angehängt
+gate_ledger_valid.py (PostToolUse, Bash)             rc 0   validiert, sonst nichts
+Seite danach                                                d7a311abcbd6e397  UNVERÄNDERT
+python tools/finance_dashboard.py (erneut)                  c29fde2ca6ce16a2  ANDERS
+```
+
+**Warum diese Runde es nicht schließt.** Der Auslöser gehört in eine Datei, die dieser Stream nicht
+besitzt (`team-kits/office-team/hooks/gate_ledger_valid.py` gehört Stream G), und der Hook darf nach
+dem Präzedenzfall des Ledger-Validators nur kit-eigenen Code starten, wofür eine Zeile in
+`team-kits/repo_kit_owned.txt` nötig ist — eine Datei ohne Scope, Stream K. Beide Zeilen stehen
+wörtlich im Build-Protokoll unter `project_memory/staging/TSK-0109/`; die Merge-Runde legt sie an.
+Ein Auslöser, den dieser Stream selbst gebaut hätte, wäre eine Änderung an einem fremden Hook
+mitten in einer Parallelgeneration — genau der Fall, den DEC-0057 (a) ausschließt.
+
+**Was stattdessen begrenzt — und was davon NICHT trägt.**
+* **Der Datenstand im Kopf ist KEIN Alterssignal.** Er ist das jüngste Datum, das der Ledger trägt,
+  nicht der Zeitpunkt des Renderns — er bewegt sich also nur, wenn die neue Buchung jünger ist als
+  alles Bisherige. Gemessen 2026-09-02 (Rig `stale.py`): ein im September nachgetragener Junibeleg
+  ließ den Kopf **byte-identisch** (`Datenstand 30.08.2026 · … · 318 Buchungen`, sha
+  `7e5d3ec3…`); erst der erneute Lauf schrieb `319 Buchungen` und einen anderen Hash. Ein
+  Nachtrag ist der Seite also nicht anzusehen. Bis 2026-09-02 stand hier und im Ordnerführer, eine
+  veraltete Seite sage es selbst; beides ist auf diese Messung zurückgeführt.
+* **Der Befehl steht im Ordner.** `dashboards/ABOUT.txt` nennt `python tools/finance_dashboard.py`
+  und sagt ausdrücklich, dass die Seite sich nicht selbst neu baut und dass der Datenstand die
+  Frage nicht beantwortet. Dass diese Zeile durch alle Shell-Gates des Office-Kits kommt, ist
+  gemessen — durch die **registrierten Kommandozeilen**, also durch den Starter `_gate.py` mit
+  seiner ganzen Gate-Liste, nicht nur durch das letzte Wort jedes Eintrags
+  (`test_finance_dashboard.py::test_the_documented_command_passes_the_write_scope_gate`; bis
+  2026-09-02 maß dieselbe Behauptung sechs von acht Gates).
+* **Kein Datenverlust.** Eine veraltete Anzeige ist keine falsche Buchung: der Ledger und die
+  Berichte sind unberührt, die Seite ist reine Anzeige.
+
+**Urteil: Rest, benannt — keine Angriffskette, die innerhalb einer Sitzung durchläuft, sondern eine
+Aktualitätslücke mit zwei Seam-Items (Stream G, Stream K), die die Merge-Runde schließen kann.**
+Bis dahin darf kein ausgelieferter Text „automatisch neu erzeugt" behaupten; die Texte dieser Runde
+tun es nicht.
+
+### H118 — Das Alter offener Posten und jeder Mahnstempel entstehen erst im Browser (neu, TSK-0109, FR-0032)
+
+**Mechanismus.** Der Ledger kennt kein Fälligkeitsdatum und `business_profile.yaml` keine
+Zahlungsfrist (gemessen an den ausgelieferten Vorlagen). Die Seite ist außerdem eine reine Funktion
+der Daten — sie trägt bewusst keinen Erzeugungszeitpunkt —, also kann sie „älter als 30 Tage" nicht
+zum Renderzeitpunkt entscheiden. Beides zusammen heißt: das Alter, die Zahl der Mahnkandidaten und
+jeder Stempel „mahnen" werden beim Öffnen aus der Uhr des Betrachters gerechnet, und die Frist ist
+eine Konstante im Generator (§ 286 Abs. 3 BGB).
+
+**Kette, gemessen** (dieselbe Datei, drei Leser; Protokoll
+`docs/reviews/2026-09-02-tsk0109-measurements.md`, Abschnitt 5):
+
+```
+Uhr 2026-09-02   Mahnstempel 2   [data-overdue-count] "2"   erstes Alter "91 Tage"
+Uhr 2026-07-01   Mahnstempel 0   [data-overdue-count] "0"   erstes Alter "28 Tage"
+ohne Skript      Mahnstempel 0   [data-overdue-count] "…"   erstes Alter "—"
+```
+
+Eine falsch gestellte Rechneruhr ändert damit still die Antwort auf „muss ich mahnen"; ohne Skript
+gibt die Seite gar keine.
+
+**Warum nicht geschlossen.** Die naheliegende Gegenrichtung — das Alter beim Rendern ausrechnen —
+kostet den Determinismus, auf dem `test_finance_dashboard.py::test_the_same_tree_renders_the_same_bytes`
+steht: dieselben Daten ergäben je nach Renderzeitpunkt andere Bytes, und zwei Kopien der Seite
+wären nicht mehr vergleichbar. Die Frist selbst gehört ins Profil und nicht in den Generator; das
+ist ein Seam-Item an Stream G (ein Feld unter `tax`), wörtlich im Build-Protokoll unter
+`project_memory/staging/TSK-0109/`.
+
+**Was stattdessen begrenzt.**
+* **Die Seite sagt beide Hälften.** Unter der Liste steht, dass das Alter beim Öffnen aus der Uhr
+  dieses Rechners gerechnet wird, woher die 30 Tage kommen, und dass ohne Skript der Strich stehen
+  bleibt und kein Posten den Stempel trägt.
+* **Ohne Skript wird nichts behauptet.** Die Spalte bleibt bei „—" und der Zähler bei „…", statt
+  eine Null zu zeigen, die als „nichts zu mahnen" gelesen würde. Gemessen, siehe oben.
+* **Die Zahl steht an genau einer Stelle** (`PAYMENT_TERM_DAYS`), und die Seite druckt sie an jeder
+  Stelle, an der sie wirkt — sie ist nicht in Prosa zweitkopiert.
+
+**Urteil: Rest, benannt — keine Angriffskette; eine Anzeige, deren zeitabhängige Hälfte beim Leser
+entsteht, mit beiden Hälften auf der Seite benannt und einem Seam-Item für die Frist.**
+
+### H119 — Keine Herkunft, und dem Ledger-Gate ist der Generator kein Bericht (neu, TSK-0109, FR-0032)
+
+**Mechanismus.** Zwei Dinge, die aus derselben Wurzel kommen — es gibt nichts, was eine erzeugte
+Seite von einer geschriebenen unterscheidet:
+
+1. `gate_ledger_valid._BLOCKED_SCRIPT_RX` kennt `euer_report`, nicht `finance_dashboard`. Der
+   Generator läuft also gegen einen ungültigen Ledger, wo der Bericht verweigert wird.
+2. Es gibt kein Gegenstück zu `render.json` / `gate_design_sighted`: eine von Hand geschriebene
+   `dashboards/finanzen.html` ist von einer generierten nicht zu unterscheiden.
+
+**Kette, gemessen** (Projekt mit der BUG-0072-Form `net 214.20 … != gross 14.28`, Hooks als
+Prozesse; Protokoll `docs/reviews/2026-09-02-tsk0109-measurements.md`, Abschnitt 6):
+
+```
+python scripts/euer_report.py --year 2026 --quarter 3   rc 2   VERWEIGERT
+python tools/finance_dashboard.py                       rc 0   DURCHGELASSEN
+derselbe Lauf                                           rc 0   „Ledger UNGÜLTIG" auf stdout und im Banner
+Seite von Hand ergänzt   sha e2f4e8d9971e8442 -> 1528b8cbb8bd0dbd
+Etwas im Baum, das das bemerken würde                          nichts
+```
+
+**Warum nicht geschlossen.** Für (1) wäre die Aufnahme in den Ausdruck eine Änderung an einem Hook,
+den dieser Stream nicht besitzt (Stream G), und sie ist auch nicht offensichtlich richtig: der
+Bericht geht ans Finanzamt, die Seite ist die Anzeige, in der man den Fehler **findet** — eine
+Verweigerung würde dem Nutzer genau das Werkzeug nehmen, mit dem er die kaputte Zeile sucht. Der
+Generator validiert deshalb selbst. Für (2) gilt DEC-0056: ein Herkunftsnachweis gegen jemanden,
+der die Datei absichtlich von Hand schreibt, ist Gerüst über dem Haus; die Fehlklasse, gegen die
+gebaut wird, ist der Irrtum, und ein Irrtum schreibt keine 336-KB-HTML-Datei.
+
+**Was stattdessen begrenzt.**
+* **Die Seite ist ihr eigener Bericht über den Ledgerzustand.** Bei einem Befund steht ein rotes
+  Banner mit den ersten sechs Befunden im Wortlaut des Validators, dazu der Stempel „ungültig" im
+  Überblick und der Satz, dass die Summen nicht belastbar sind. Gemessen gegen den laufenden
+  Validator (`test_finance_dashboard.py::test_an_invalid_ledger_is_named_on_the_page`).
+* **Die Summen bleiben stehen**, weil die kaputte Zeile gefunden werden muss — sie werden bezeichnet,
+  nicht versteckt.
+* **Eine Handänderung überlebt den nächsten Lauf nicht**, und der Ordnerführer sagt das: der
+  Generator schreibt die Datei atomar neu, jedes Mal.
+
+**Urteil: Rest, benannt — nach DEC-0056 kein Härtungsziel; die Anzeige verweigert nicht, sondern
+benennt, und die eine Hälfte, die ein Gate sein könnte, ist ein Seam an Stream G mit einer offenen
+Abwägung.**
+
+### H120 — Die Haken-Spiegelregel hat keine Präsenz-Hälfte; für die Haken entscheidet die Registrierung, und das halten zwei Nachbartests (neu, TSK-0111)
+
+**Mechanismus.** `tools/test_hooks._assert_mirrored` beantwortet für einen Namen genau eine Frage:
+sind die Kopien in den Kits, die ihn liefern, byte-gleich — oder nennt `KIT_SPECIFIC_HOOKS` einen
+Grund? Ob ein Kit den Namen überhaupt liefert, fragt keine seiner beiden Schleifen: der Zweig
+`if len(copies) < 2 or name in exceptions: continue` überspringt einen Namen, den nur ein Kit
+liefert, und die Ausnahmeschleife prüft nur, ob eine gelistete Ausnahme noch nötig ist. Präsenz
+ist damit in beide Richtungen unbeurteilt — ein fehlendes Kit ist kein Befund, ein zusätzliches
+auch nicht. Genau dieser Schnitt saß bis TSK-0111 auch in der Skill-Spiegelregel und war dort ein
+Befund (B1 des Prüfers: eine `references/extra.md` in EINER Kopie eines geteilten Skills, sechs
+Suiten grün); dort ist die Präsenz-Hälfte seither gebaut
+(`test_shared_skill_contract._assert_one_directory`, gegen die Menge der liefernden Kits). Für die
+Haken ist sie **nicht** gebaut, und dieser Eintrag sagt, warum das kein Loch mit Kette ist.
+
+**Der lebende Fall — die zweite Richtung, nicht die erste.** `format_on_write.py` liegt in
+`dev-team/hooks/` und `research-team/hooks/`, nicht in `office-team/hooks/`. Sie liegt also in ZWEI
+Kits und fällt nicht in den `len(copies) < 2`-Zweig; was die Regel bei ihr nicht fragt, ist das
+fehlende dritte Kit. Byte-verglichen wird sie ebenfalls nicht, weil `KIT_SPECIFIC_HOOKS` sie als
+absichtlich kit-spezifisch führt („formats the languages a kit actually produces") — und die beiden
+Kopien unterscheiden sich wirklich, sonst würde die Ausnahmeschleife die Ausnahme als überflüssig
+melden. Kein Test sagt das Fehlen in office — und keiner soll: office registriert die Datei nicht.
+
+**Kette, gemessen (2026-09-02, Kopie des Worktrees außerhalb des Repos, vier Tests als Auswahl —
+`test_hooks_v2.test_every_registered_hook_script_is_shipped_by_its_kit`,
+`test_hooks.test_shared_kit_files_identical`,
+`test_hooks.test_every_hook_documented_in_its_constitution`,
+`test_hooks.test_every_hook_an_entry_gate_names_is_shipped_by_every_kit_in_that_blocks_scope`):**
+
+```
+Baseline                                              4 passed
+(a) dev-team/hooks/format_on_write.py gelöscht        1 failed: test_hooks_v2::test_every_registered_hook_script_is_shipped_by_its_kit
+                                                      (der Spiegel-Test bleibt grün — er sieht das Fehlen nicht)
+(b) office-team/hooks/extra_hook.py gepflanzt         1 failed: test_hooks::test_every_hook_documented_in_its_constitution
+                                                      (der Spiegel-Test bleibt grün — ein Name in einem Kit ist ihm nichts)
+zurückgesetzt                                         4 passed
+```
+
+Beide Richtungen der Präsenz-Frage haben also einen Halter, nur nicht den Spiegel: ein registrierter
+Name muss ausgeliefert sein (a), ein ausgelieferter Name muss in der Verfassung des Kits eine
+Regel-Heimat haben (b). Was KEIN Test hält, ebenfalls gemessen: eine Datei, die ein Kit ausliefert,
+dokumentiert und nicht registriert — (c) `extra_hook.py` gepflanzt UND eine Zeile mit ihrem Namen an
+die Office-Verfassung gehängt: die vier Tests oben **4 passed**, `tools/test_hooks_v2.py -k shipped`
+**16 passed** und ein Roter, der nicht den Haken sieht, sondern die gepflanzte Verfassungszeile
+(`test_hooks_v2.test_the_shipped_lead_packages_are_within_their_own_record`, Größen-Ratsche des
+Lead-Pakets). Das ist totes Gewicht, kein Durchsetzungsverlust, und steht hier als Grenze.
+
+**Warum die Präsenz-Hälfte im Spiegel nicht gebaut ist.** Die Haken-Mengen sind je Kit **per
+Konstruktion** verschieden — office liefert elf eigene (`_bookings.py`, `_filing.py`,
+`_readings.py`, `gate_filing.py`, `gate_ledger_valid.py`, `gate_proc_approved.py`,
+`gate_second_booking.py`, `gate_second_reading.py`, `guard_fs_tripwire.py`,
+`record_booking_reading.py`, `record_filing_reading.py` — elf Dateien, gemessen am 2026-09-02 mit
+`comm` über die drei Verzeichnisse), dev und research je ihre Gates ohne Office-Gegenstück. Eine
+Präsenz-Regel bräuchte für jede davon einen Ausnahmeeintrag mit Grund — die Aufzählung, die
+`test_hooks.test_shared_kit_files_identical` in seiner ersten Fassung war und aus der es
+umgeschrieben wurde. Bei den Skills liegt der Fall anders: ein geteilter Skill ist EIN Verzeichnis,
+und welche Kits es liefern, sagt seine eigene Deklaration (`reference_for.roles`); dort ist die
+Menge ableitbar, hier nicht.
+
+**Was stattdessen begrenzt.** Die Registrierung (a) und die Verfassungs-Dokumentation (b), beide als
+Tests; der Docstring von `test_hooks.test_shared_kit_files_identical` nennt beide seit dieser Runde.
+
+**Urteil: kein Loch mit Kette innerhalb einer Sitzung — von Nachbarn gedeckt, mit einer benannten
+Grenze (ausgeliefert + dokumentiert + nicht registriert = totes Gewicht, das niemand meldet).** Keine
+Abnahme des Nutzers nötig; der Eintrag steht, damit der nächste, der die Skill-Regel liest und die
+Haken-Regel daneben hält, die Asymmetrie nicht als Versehen liest.
+
+### H121 — Der Leser der Löcherliste kennt keinen Code-Zaun; jedes Zitat hinter einem Zaun ist ungeprüft (neu, TSK-0111)
+
+**Mechanismus.** `test_gates.test_every_test_the_hole_list_names_is_one_that_exists` sammelt die
+Zitate eines Eintrags, indem es den ganzen Rumpf mit `re.findall` nach Paaren von Backticks
+absucht, über Zeilengrenzen hinweg (`re.DOTALL`). Ein Code-Zaun ist für Markdown ein Block, für
+diese Suche aber **drei Begrenzer**: der erste öffnet, der zweite schließt eine leere Spanne, der
+dritte öffnet erneut — und schließt erst am nächsten Backtick, also am ersten Zitat NACH dem Zaun.
+Der Rumpf des Blocks wird damit selbst zu einer Spanne, und ab dort ist die Paarung um eins
+verschoben: was der Autor als Zitat geschrieben hat, liest der Test als Zwischentext, und was
+Zwischentext ist, liest er als Zitat. Beide Zaun-Hälften tun das — die öffnende wie die
+schließende —, weshalb die Verschiebung nach dem ersten Zaun bestehen bleibt und nicht am zweiten
+zurückspringt. Ein nackter, nicht auflösender Testname hinter einem Zaun wird deshalb **nicht**
+gemeldet: falsches Grün.
+
+**Kette, gemessen (2026-09-02, Kopie des Worktrees außerhalb des Repos, derselbe Geist-Name zweimal
+in den H120-Eintrag gepflanzt, gefahren wurde nur der eine Test):**
+
+| Fall | Ergebnis |
+|---|---|
+| Baseline | 1 passed |
+| (a) Geist-Name VOR dem Zaun | **1 failed** |
+| (b) derselbe Geist-Name HINTER dem Zaun | **1 passed** — der Draht schweigt |
+| zurückgesetzt | 1 passed |
+
+**Umfang.** Zweimal gemessen, über den Leser selbst und nicht über eine Textsuche, und die
+zweite Zahl ist die der ausgelieferten Liste:
+
+| Stand | Einträge | davon mit Zaun |
+|---|---|---|
+| 2026-09-02, Worktree von TSK-0111 (vor der Merge-Runde) | 97 | 10 — H46, H47, H48, H65, H92, H93, H94, H95, H99, H120 |
+| 2026-09-03, gemergter Baum, nach Nacharbeit 1 | 117 | 19 — dazu H105, H111, H112, H114, H115, H116, H117, H118, H119 |
+
+Die erste Zeile zählte, BEVOR dieser Eintrag in der Liste stand; er selbst trägt keinen Zaun.
+In allen bis auf einen steht hinter dem Zaun kein nackter Testname; in einem schon.
+
+**Die lebende Instanz — erledigt.** H46 nannte hinter seinem Zaun den Test, der den Datei-Fall
+misst, nackt geschrieben und ohne Modulpräfix. Der Name lebt (in `tools/test_hooks_v2.py`), aber die
+Auflösungsregel suchte einen nackten Namen ausschließlich in `test_gates.py` selbst; er wäre also
+ein falsches ROT gewesen — zwei Defekte, die sich gegenseitig aufhoben, weshalb die Reihenfolge
+eines Fixes nicht beliebig war: wer den Leser repariert, schreibt im selben Zug das Präfix in H46.
+TSK-0114 hat beides in EINER Änderung getan.
+
+**Dieser Eintrag war auch ein Befund über den vorigen.** Von den sieben Modulpräfixen, die TSK-0111
+in H120 geschrieben hat, hielt der Draht nur die **vier vor** dem Zaun; die **drei dahinter** standen
+unbewacht. Gemessen an derselben Kopie: eines der drei wieder auf die nackte Schreibweise
+zurückgesetzt → **1 passed**, der Test schwieg. Seit dem Fix in TSK-0114 werden alle sieben gelesen.
+
+**Herkunft.** Gefunden vom Prüfer in den Nachprüfungen 3 und 4 dieser Runde (die Kette oben ist
+seine, in der Kopie des Umsetzers nachgefahren); die Spannen-Sicht stammt aus
+`_round-scratch/TSK-0111/rework3/p_spans.py`, das dieselben Helfer wie der Test benutzt und druckt,
+was er wirklich paart. Abgrenzung zum Nachbarbefund aus Strom I: dort geht es um das
+AUFLÖSUNGSZIEL eines Namens (ein `tools/`-Name, nackt geschrieben, wird zum falschen Rot); hier geht
+es um den LESER, der das Zitat gar nicht erst sieht — falsches Grün, die teurere Richtung, weil
+niemand davon erfährt.
+
+**Was stattdessen begrenzte.** Drei Dinge, alle klein: der Fehler saß in der Prüfung und nicht im
+ausgelieferten Produkt; nur ein Sechstel der Einträge trägt überhaupt einen Zaun (Tabelle oben);
+und ein Eintrag, der ohne Zaun auskommt, war vollständig geprüft — dieser hier hat deshalb
+keinen, seine Messung steht als Tabelle.
+
+**Der Fix (TSK-0114), zusammen mit dem Nachbarbefund aus Strom I.** `_prose_of` schneidet die
+Zäune aus dem Rumpf, bevor irgendetwas gepaart wird; `_tests_by_module` löst einen zitierten
+Namen gegen `test_gates.py` UND jede `tools/test_*.py` auf; `_cited_test` liest die vier
+Schreibweisen als eine Frage — der Name nackt, mit einem Modulnamen davor, mit einem Dateipfad
+und doppeltem Doppelpunkt, oder mit Auslassungspunkten an der Stelle des Moduls —, und H46
+trägt sein Präfix.
+
+**Nachgeschärft in derselben Runde, nach der Prüfung** (2026-09-03), weil die erste Fassung an
+drei Stellen zu grob war und der Prüfer sie gepflanzt hat:
+
+* Der Korpus ist der Eintrag **und die Zeile der Zusammenfassungstabelle**, die ihn beurteilt
+  (`test_gates._hole_citation_sources`) — die Tabelle zitiert selbst, und keines dieser Zitate
+  wurde gelesen.
+* Eine Zaun-Zeile ist eine Zeile, die NUR aus ihrem Marker besteht (plus Infostring); eine Zeile
+  mit einer kurzen Code-Spanne aus drei Backticks mitten im Satz ist keine. Vorher war sie eine,
+  und dann entschied die ANZAHL solcher Zeilen: ungerade laut, gerade still.
+* Gepaart wird nach LAUFLÄNGE — eine Spanne öffnet mit n Backticks und schließt mit genau n,
+  wie es Markdown selbst tut. Ein Dreier-Lauf mitten im Satz verschob sonst jede Paarung
+  dahinter. Dieselbe Schärfe macht zwei Prosa-Idiome sichtbar, die keine Nennung sind und darum
+  ausgenommen bleiben: eine Spanne, deren INHALT einen Backtick trägt (eine Spanne, die eine
+  Spanne zeigt), und das nackte Präfix `test_`.
+* `~~~` gilt als Zaun wie drei Backticks; vorher war diese Schreibweise unbekannt.
+
+Der Leser prüft damit **127 Zitate statt 43**, gezählt wie der Test zählt: je Eintrag die MENGE
+seiner Spannen, also entdoppelt (undedoppelt sind es 140). Die Zusammenfassungszeilen bringen
+heute kein Zitat bei, das nicht ohnehin im Eintrag stünde — der Wert des erweiterten Korpus
+liegt nicht in dieser Zahl, sondern darin, dass eine Zeile, die morgen als einzige einen Namen
+nennt, gelesen wird (Pflanzung A6).
+
+**Rot zuerst, sechs Pflanzungen in einer Kopie außerhalb des Repos** (2026-09-02; gefahren wurde je
+der eine Test, links die Fassung aus `HEAD`, rechts die reparierte):
+
+| Pflanzung in den Eintrag dieses Nachbarn | vor dem Fix | nach dem Fix |
+|---|---|---|
+| nichts (Grundlinie) | 1 passed | 1 passed |
+| Geist-Name VOR dem Zaun | **1 failed** | **1 failed** |
+| Geist-Name HINTER dem Zaun | 1 passed — falsches Grün | **1 failed** |
+| lebender `tools/`-Test, nackt | **1 failed** — falsches Rot | 1 passed |
+| lebender `tools/`-Test, modulqualifiziert | 1 passed — übersprungen, nie geprüft | 1 passed |
+| Geist-Name, modulqualifiziert | 1 passed — falsches Grün | **1 failed** |
+
+Die vierte Zeile stand auch ohne Pflanzung im Baum: H83 nennt
+`test_reference_skills.test_the_codex_mirror_is_generated_per_skill_directory`, und dieser Name
+löst in `test_gates.py` nicht auf.
+
+**Rot zuerst, zweite Runde** (2026-09-03, Pflanzungen des Merge-Prüfers, dieselbe Kopie):
+
+| Pflanzung | nach dem ersten Schritt | nach der Nachschärfung |
+|---|---|---|
+| nichts (Grundlinie) | 1 passed | 1 passed |
+| Geist-Name in der ZEILE der Zusammenfassungstabelle | 1 passed — falsches Grün | **1 failed** |
+| Geist-Name zwischen zwei Zeilen mit Inline-Dreier-Lauf | 1 passed — falsches Grün | **1 failed** |
+| Geist-Name hinter einem `~~~`-Zaun | 1 failed | **1 failed** |
+| Geist-Name INNERHALB eines Zauns (beide Marker) | 1 passed | 1 passed — der benannte Preis |
+
+**Urteil: GESCHLOSSEN (TSK-0114), beide Grenzen in einer Änderung, beide Richtungen gemessen,
+nach der Prüfung um drei Schreibweisen nachgeschärft.** Was der Leser weiterhin NICHT liest,
+steht in seinem eigenen Docstring, und es sind DREI Dinge, alle der Preis eines Schnitts:
+
+1. ein Zitat INNERHALB eines Zauns ist keine Spanne, gleich mit welchem der beiden Marker der
+   Zaun geschrieben ist;
+2. ein Modul, das zu Auslassungspunkten abgekürzt ist, wird in jeder Testdatei dieses Repos
+   gesucht, kann also gegen eine Datei auflösen, die der Autor nicht meinte;
+3. eine Zeile der Zusammenfassungstabelle wird nur gelesen, wenn sie in genau drei Zellen
+   zerfällt. Trägt eine ihrer Zellen einen senkrechten Strich INNERHALB einer Code-Spanne, zählt
+   der Leser vier Zellen und lässt die Zeile still fallen — ein Geist-Name dort bliebe unbemerkt.
+   Am 2026-09-03 an der ausgelieferten Liste gemessen: **keine einzige** Zeile hat diese Form, das
+   blinde Feld ist heute also leer. Der Merge-Prüfer hat die Klasse gefunden; sie steht hier statt
+   im Leser, weil eine Änderung an ihm einen weiteren Volllauf der Gate-Suite kostet und nichts
+   von dem, was heute in der Liste steht, davon berührt wird.
+
+Gegen alle drei steht kein Code, sondern dieselbe Schreibregel wie zuvor — der Zaun ist für das,
+was lief, das Zitat gehört in die Prosa, und eine Tabellenzelle trägt keinen senkrechten Strich.
+
+### H122 — Der Melder über ungelesene Prosa fragt, was git TRÄGT, und nicht, was auf der Platte liegt (neu, TSK-0110, FR-0036)
+
+**Mechanismus.** `test_repo_hygiene.test_docs_prose_nothing_reads_any_more_is_reported_not_failed`
+nennt eine Datei unter `docs/`, die seit `_DOCS_GRACE_DAYS` niemand mehr anfasst und die NICHTS
+nennt. Sein Korpus ist `test_repo_hygiene._carried_files`, also
+`git ls-files -c -o --exclude-standard`. Eine ignorierte Datei steht darin nicht. Nennt sie ein
+Dokument, sieht der Melder die Nennung nicht und meldet das Dokument als ungelesen.
+
+**Kette.** Eine ignorierte Datei — ein Laufprotokoll, etwas unter `project_memory/.audit/`, ein
+erzeugtes Dashboard — nennt `docs/x.md`; kein getragener Verweis zeigt sonst dorthin; nach der
+Karenzzeit nennt der Hinweis `docs/x.md` als ungelesen; eine Runde verschiebt sie nach
+`docs/archive/<jahr>/`; die Nennung in der ignorierten Datei zeigt ins Leere.
+
+**Was stattdessen begrenzt.** Drei Dinge, und das erste ist eine Messung und keine Hoffnung: auf
+diesem Baum gibt es außerhalb der Werkzeug-Caches **keine einzige** nicht getragene Datei, das
+blinde Feld ist also leer und nicht bloß klein (Strom J, `rework1/n1_ignored_corpus.py`). Zweitens
+sagt der Docstring des Melders genau den kleineren Satz — „nichts, was git trägt, nennt die Datei"
+—, nicht den größeren. Drittens ist der Melder eine Warnung: er blockt keine Runde, und die
+Verschiebung ist ohnehin eine Einzelentscheidung, die auf Zweifel unterbleibt.
+
+**Herkunft.** Strom J (TSK-0110), Befund N1 der Nachprüfung, in der Nacharbeit als Grenze in den
+Docstring geschrieben. Der Strom durfte die Löcherliste nicht schreiben; die Merge-Runde TSK-0114
+vergibt die Nummer.
+
+**Urteil: Rest, benannt — nicht blockierend.** Den Korpus auf die Platte auszuweiten, hieße jedes
+Werkzeug-Cache-Verzeichnis mitzulesen; das war die Fassung VOR dieser Runde, und sie hat einen
+Melder ergeben, dessen Korpus fünf von Hand genannte Verzeichnisse waren. Geschlossen wird das an
+dem Tag, an dem etwas Ignoriertes wirklich Dokumente nennt — bis dahin ist der kleinere Satz der
+wahre.
+
+### H123 — Eine Löschung mit einer FLAGGE statt eines Verbs kommt am Archiv-Wächter vorbei (neu, TSK-0113, FR-0050)
+
+**Mechanismus.** `guard_fs_tripwire` hat zwei Regeln: eine Löschung unter `inbox/` oder `archive/`
+und eine Bewegung AUS `archive/` heraus. Beide fragen nach einem Lösch-VERB (`DELETE_VERBS`) am
+Kopf der Stufe. Ein Befehl, der seine Treffer über eine FLAGGE entfernt, trägt keines: die Zeile
+beginnt mit `find`, mit `tar` oder mit `python`, und die Löschung steht in einem Argument.
+
+**Kette, am laufenden Wächter gemessen** (2026-09-02, Merge-Baum, echtes Dokument unter
+`archive/finance/2026/`, der Haken als Prozess auf einem Vorlagenprojekt außerhalb des Repos,
+NICHTS ausgeführt — gemessen wurde die Entscheidung):
+
+| Befehlszeile | Wächter |
+|---|---|
+| eine Suche, die ihre Treffer mit einer Lösch-Flagge entfernt | **rc 0** |
+| ein Archivierer mit quelllöschender Flagge | **rc 0** |
+| eine Löschung innerhalb eines anderen Programms | **rc 0** |
+| dieselbe Löschung mit einem Lösch-Verb | rc 2 |
+| eine Bewegung aus dem Archiv heraus | rc 2 |
+
+**Was stattdessen begrenzt.** Die Klasse steht seit TSK-0113 namentlich im Kopf des Wächters, mit
+ihrer Messung und mit dem Grund, warum sie dort steht statt geschlossen zu sein: `find` in die
+Verbliste zu setzen, würde jede reine Suche verweigern, und seine Flaggen zu lesen wäre ein
+zweiter Parser für die Grammatik EINES Befehls. Dazu kommt seit TSK-0114, dass kein Text die Wand
+mehr absolut behauptet: die Office-Verfassung und der Rollentext des `records-clerk` zeigen auf
+den Kopf des Wächters, statt eine Zusage zu geben, die er nicht hält. Die dritte Grenze gilt für die
+VERB-Klasse, die dieser Eintrag beschreibt: eine Löschung, die `rm`, `rmdir` oder eine
+Archiv-Bewegung schreibt, fängt der Wächter, und das ist der Weg, den ein Rollentext dieses
+Kits nennt. Was er NICHT fängt, ist nicht auf die Flaggen-Form beschränkt — die weitere Klasse
+steht als `H125` daneben, und dieser Eintrag behauptet über sie nichts.
+
+**Herkunft.** Prüferbefund P3 der Runde TSK-0107, in TSK-0113 als P12 im Wächterkopf benannt und
+ausdrücklich der Merge-Runde zur Nummerierung übergeben; die Kette oben ist in TSK-0114 gegen den
+gemergten Baum neu gefahren.
+
+**Urteil: OFFEN und gemessen, mit dem Kopf des Wächters als Begrenzung.** Kein billiger Fix: was
+hier fehlt, ist ein Leser für Befehlsflaggen, und der ist pro Befehl einer. Was diesen Eintrag
+schließen würde, ist eine Antwort auf der Ebene des Dateisystems und nicht auf der der
+Befehlszeile. Die allgemeinere Klasse — ein zerstörendes VERB, das die Liste des Wächters gar
+nicht kennt — steht als `H125`; die beiden zusammen sind der ganze Befund, und keiner von
+beiden darf für den anderen einstehen.
+
+### H124 — Die Fristenmeldung liest eine Uhr, die keinem Feld dieses Kits gehört (neu, TSK-0113, FR-0034)
+
+**Mechanismus.** `_duties.briefing` nimmt `datetime.date.today()` der lokalen Maschine, einmal je
+Sitzungsstart, und vergleicht jede Frist gegen diesen einen Wert. Die Zeitzone des Geschäfts steht
+in keinem Feld des Kits, und die Sitzung liest ihre Uhr nicht noch einmal.
+
+**Kette.** Zwei Richtungen, beide folgenlos für Zustand und Durchsetzung: eine Sitzung, die über
+Mitternacht läuft, behält die Antwort von gestern — eine Frist, die heute DUE wird, bleibt in
+dieser Sitzung stumm; und zwei Maschinen in verschiedenen Zonen beantworten denselben Moment
+verschieden, sodass die Meldung des Nutzers und die eines Vertreters an einem Tag im Jahr
+auseinanderfallen können.
+
+**Was stattdessen begrenzt.** Die Tagesgrenze selbst ist gemessen und beidseitig gehalten
+(`test_routine_feed.test_the_routine_is_due_again_on_the_monday_after_a_run` für den Takt der
+Routine; die fünf Grenzfälle des Registers sind je einzeln rot gemessen). Das Register
+SCHLÄGT VOR und entscheidet nichts: jede Frist geht durch den Nutzer. Und eine Meldung, die einen
+Tag zu früh kommt, ist die sichere Richtung.
+
+**Herkunft.** Strom G (TSK-0113), Rest 3 aus Abschnitt 9 seines Protokolls, ausdrücklich der
+Merge-Runde zur Nummerierung übergeben.
+
+**Urteil: Rest, benannt — nicht blockierend, und ohne Feld nicht schließbar.** Eine Zeitzone ist
+eine Eigenschaft des Geschäfts; sie zu raten wäre falscher als sie nicht zu haben. Der Weg dahin
+ist eine Onboarding-Frage und ein Feld in `business_profile.yaml`, also dieselbe Kette wie bei
+`tax.filings` — und die gehört einer Runde, die das Interview anfasst, nicht dieser.
+
+### H125 — Die Lösch-Regel des Archiv-Wächters ist eine Verbliste, und jedes Verb daneben geht durch (neu, Merge-Prüfung TSK-0114, FR-0050)
+
+**Mechanismus.** `guard_fs_tripwire` entscheidet „ist das eine Löschung?" an einer AUFZÄHLUNG:
+`DELETE_VERBS = ("rm", "rmdir", "del", "erase", "rd", "remove-item", "ri")`. Das ist eine Liste von
+Schreibweisen, kein Begriff, und sie trägt keinen Stolperdraht an ihren Enden — nichts misst, ob
+ein Verb fehlt, und nichts misst, ob ein gelistetes Verb noch etwas fängt. Der Kopf des Wächters
+nennt unter „WHAT THIS DOES NOT SEE" die Löschung in einem anderen Programm und die Löschung über
+eine FLAGGE (`H123`); die Klasse **„ein zerstörendes Verb, das in diesem Tupel nicht steht"** nennt
+er nicht. Sie ist die größere der drei.
+
+**Gemessene Kette** (2026-09-03, Pilot außerhalb des Repos mit der ausgelieferten `.gitignore` des
+Office-Kits und einem echten Beleg unter `archive/finance/2026/`; alle **acht** auf
+`Bash|PowerShell` registrierten Office-Haken als Prozesse gefahren — eine Zeile erreicht das
+Werkzeug nur, wenn alle acht sie durchlassen. NICHTS ausgeführt, gemessen wurde die Entscheidung):
+
+| Befehlszeile | Urteil der acht Haken |
+|---|---|
+| `unlink` auf den Beleg | **ALLOW** |
+| `git clean -fdx` über den ganzen Baum | **ALLOW** |
+| `git clean -fdx archive` | **ALLOW** |
+| `Clear-Content` auf den Beleg (leert die Datei) | **ALLOW** |
+| `rm` auf denselben Beleg (Kontrolle) | rc 2, `guard_fs_tripwire` |
+| Bewegung aus dem Archiv (Kontrolle) | rc 2, `guard_fs_tripwire` |
+
+**Warum `git clean` die schlimmste der vier ist.** Die Belege unter `archive/` sind in einem
+Office-Projekt ungetrackt UND von der mitgelieferten `.gitignore` ignoriert — genau die Menge, die
+`-fdx` entfernt. Die Zeile sieht nach Aufräumen aus, ist ein geläufiger Reflex, und sie löscht in
+einem Zug den ganzen Beleg-Bestand eines Geschäfts. Das ist das Versehen in Reinform, also die
+Fehlklasse, für die dieser Wächter überhaupt gebaut ist.
+
+**Was stattdessen begrenzt: nichts.** Das ist der Unterschied zu `H123`, wo der Kopf des Wächters
+die Klasse wenigstens benennt und Verfassung und Rollentext seit TSK-0114 dorthin zeigen. Hier
+benennt sie niemand: weder der Wächterkopf noch ein Rollentext noch die Verfassung. Was NICHT
+begrenzt, aber auch nicht verschlimmert: die Belege liegen ohnehin außerhalb von git, ein Commit
+kann sie also weder retten noch verraten — die Wiederherstellung hängt allein an der Sicherung des
+Nutzers.
+
+**Herkunft.** Merge-Prüfung von TSK-0114 (2026-09-03), Befund B1: der dritte Begrenzungssatz von
+`H123` behauptete, die Fehlklasse des Versehens laufe vollständig durch den Wächter. Vier
+Pflanzungen am Piloten widerlegen das; `H123` sagt seither nur noch, was für die Flaggen-Form gilt.
+Vom Umsetzer in derselben Runde gegen den ausgelieferten Baum nachgefahren
+(`_round-scratch/TSK-0114/probe_h125.py`, dieselben sechs Zeilen, dieselben Urteile).
+
+**Urteil: OFFEN, gemessen, nicht in dieser Runde schließbar.** Der Fix ist eine EIGENSCHAFT statt
+eines Verb-Tupels — „diese Zeile entfernt oder leert eine Datei unter einem Fach von Rang" —, und
+das ist ein Bau am Office-Kit mit eigenem Rot-zuerst, eigener Frist-Messung und eigener
+Über-Verweigerungs-Abwägung (`git clean` in einem Projekt ohne Archiv darf nicht scheitern). Er
+gehört in die Generation 3. Die Abwägung aus `DEC-0056` — kein Gerüst über dem Haus — spricht hier
+NICHT gegen den Bau: sie nimmt Unumkehrbares aus, und ein gelöschter Beleg ist unumkehrbar. Bis
+dahin gilt: nichts begrenzt es, und dieser Eintrag ist die einzige Stelle, an der das steht.

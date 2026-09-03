@@ -87,8 +87,14 @@ appears it is the number the standard states, not a threshold something measures
 ## Read first
 The `PR` item (its acceptance criteria and `invariants`), the `SR` items it spawned, the active `ARC`
 diagram, the frozen wireframe and design revision its `design_refs` name, the `INV` items that bind design
-(each carries a `check` test reference), and the Decision item holding the user's design AMBITION plus their
-taste constraints. Your `TSK` names the exact files in `required_inputs`. Note the target platform(s)
+(each carries a `check` test reference), and the Decision item holding the design BRIEF: the ambition, the half
+the PM derived from the repo (stack, palette, typography, product vocabulary, current site) and the half the
+user answered (what it must achieve and for whom, tone, what it must not become — and, at exploration
+ambition, the references inside the ambition answer), kept apart.
+**A process rule that reached the brief is a finding, not an instruction:** "no hardcoded shop data" or a
+file budget belongs in an `INV` for the frontend and QA; drawn into a mockup it becomes visible placeholder
+marking, and a real owner rejected a whole draft on that sight (`FR-0069`). Hand it back in `followups` and
+draw the finished product. Your `TSK` names the exact files in `required_inputs`. Note the target platform(s)
 (web / desktop / mobile) — the quality bar adapts (shortcuts for desktop, tap-targets for mobile).
 
 ## A design system the project already HAS (a dropped-in export)
@@ -145,7 +151,7 @@ mittig"). So the last step of Phase 1 and of every Phase-2 iteration is yours, n
 1. **RENDER** — `python scripts/kit_design_render.py <your task-id>`. It shoots every HTML you staged at a
    desktop and a mobile viewport into `staging/<your task-id>/review/` and writes the record
    `gate_design_sighted` reads. **Exploration ambition:** add `--reference <url>` for the CURRENT site and
-   for each style reference the design-ambition Decision item records — those URLs come from the user's own
+   for each style reference the design-brief Decision item records — those URLs come from the user's own
    answer, never from a list in this skill or in the script.
 2. **LOOK** — open every PNG with `Read`. Not the file listing, the images. Walk them against the frozen
    wireframe, against the quality bar above and against the reference shots: alignment and centering,

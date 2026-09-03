@@ -1,0 +1,33 @@
+categories:
+  income:
+  - key: sales_shop
+    label_de: Umsätze Onlineshop
+    euer_line: Betriebseinnahmen
+  - key: sales_marketplace
+    label_de: Umsätze Marktplätze
+    euer_line: Betriebseinnahmen
+  - key: sales_local
+    label_de: Umsätze Direktverkauf
+    euer_line: Betriebseinnahmen
+  expense:
+  - key: goods
+    label_de: Wareneinkauf
+    euer_line: Waren, Roh- und Hilfsstoffe
+  - key: shipping
+    label_de: Versandkosten
+    euer_line: Übrige Betriebsausgaben
+  - key: fees_marketplace
+    label_de: Marktplatzgebühren
+    euer_line: Übrige Betriebsausgaben
+  - key: software
+    label_de: Software und Hosting
+    euer_line: Übrige Betriebsausgaben
+  - key: packaging
+    label_de: Verpackung
+    euer_line: Übrige Betriebsausgaben
+  - key: advisory
+    label_de: Steuerberatung
+    euer_line: Rechts- und Steuerberatung
+  - key: postage
+    label_de: Porto
+    euer_line: Übrige Betriebsausgaben

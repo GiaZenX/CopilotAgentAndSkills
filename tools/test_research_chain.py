@@ -203,16 +203,15 @@ def test_the_research_chain_runs_from_the_question_to_a_merge_through_the_shippe
     cannot show: those exercise the links, this walks the chain. German item text throughout,
     because every link here crosses a process boundary as raw UTF-8.
 
-    The experiment hangs from BOTH the hypothesis it tests and the question that pays for it. That
-    is not decoration: with the hypothesis alone, the task below cannot be created at all — see
-    `test_a_task_on_an_experiment_cannot_name_the_question_the_experiment_hangs_from` (H92). The
-    second parent is what makes it work, and it works by making the origin check give up rather
-    than pass (H95) — so this chain runs on a hole, and the hole list says so.
+    The experiment hangs from the hypothesis ALONE, which is the chain §4 of the kit's
+    constitution documents. Until BUG-0083 it had to name the question as a second parent to be
+    creatable at all, and that detour worked by making the origin check give up rather than pass;
+    both halves are measured by
+    `test_a_task_may_name_an_experiment_two_levels_under_the_question_it_serves`.
     """
     _approved_question(project)
     captured = project.harness("capture", "EXP",
-                              stdin=json.dumps(_experiment(["HYP-0001", "RQ-0001"]),
-                                               ensure_ascii=False))
+                              stdin=json.dumps(_experiment("HYP-0001"), ensure_ascii=False))
     assert captured.returncode == 0, captured.stdout + captured.stderr
     code, err = project.mint("delivery", "EXP-0001")
     assert code == 0, err
@@ -283,39 +282,79 @@ def test_the_research_chain_runs_from_the_question_to_a_merge_through_the_shippe
     assert opened == 0, err
 
 
-# ---------------------------------------------------------------- scenario 2: the broken link
-def test_a_task_on_an_experiment_cannot_name_the_question_the_experiment_hangs_from(project):
-    """The kit's OWN hierarchy (constitution §4: RQ → HYP → EXP → TSK) cannot be created — H92.
+# ---------------------------------------------------------------- scenario 2: the deep origin
+def test_a_task_may_name_an_experiment_two_levels_under_the_question_it_serves(project):
+    """The kit's OWN hierarchy (constitution §4: RQ → HYP → EXP → TSK) is creatable — BUG-0083.
 
-    ASSERTED AS CURRENT BEHAVIOUR, not as a wish: `report._root_of` answers "which item does this
-    one hang from" with the SINGLE immediate parent, while `report._hangs_from` answers the same
-    question transitively. An `EXP` under a `HYP` therefore has root `HYP-0001` for `create-task`
-    and root `RQ-0001` for the merge gate — and the research kit is the only shipped kit whose
-    chain is deep enough for the two answers to differ.
+    This test used to assert the opposite as CURRENT BEHAVIOUR and to say in its own docstring
+    that it must be inverted the day the origin check resolves transitively; this is that day.
+    What it measured was a kernel that answered "which item does this one hang from" twice: with
+    the SINGLE immediate parent at `create-task`, and transitively at the merge gate — so an EXP
+    under a HYP had root HYP-0001 for the one and RQ-0001 for the other, and the research kit is
+    the only shipped kit whose chain is deep enough for the two answers to differ.
 
-    Both halves are measured here, because the difference IS the finding: the transitive reader
-    says the experiment belongs to the question, and the task refusal says it does not. INVERT
-    this test the day `_root_of` resolves transitively — then the detour in
-    `test_the_research_chain_runs_from_the_question_to_a_merge_through_the_shipped_hooks` (an
-    experiment naming two parents) stops being necessary and should go with it.
+    Driven through the INSTALLED entry point rather than against the kernel in this repo, because
+    that difference was invisible in every unit fixture the dev chain provides.
+
+    The refusal is measured in the same breath, so the pass above cannot be a check that stopped
+    checking: an experiment under ANOTHER question is still refused, and the refusal names it.
     """
     _approved_question(project)
     captured = project.harness("capture", "EXP",
-                              stdin=json.dumps(_experiment("HYP-0001"), ensure_ascii=False))
+                               stdin=json.dumps(_experiment("HYP-0001"), ensure_ascii=False))
     assert captured.returncode == 0, captured.stdout + captured.stderr
 
-    from kernel.report import _hangs_from, _root_of
+    from kernel.report import _hangs_from, origin_root_conflict
     state = project.state()
-    experiment = state.read_item("EXP-0001")
-    assert _hangs_from(state, "EXP-0001", "RQ-0001", set())     # transitively, it does belong
-    assert _root_of("EXP", experiment) == "HYP-0001"            # one hop, and that is the gap
+    assert _hangs_from(state, "EXP-0001", "RQ-0001", set())
+    assert origin_root_conflict(state, "EXP-0001", "RQ-0001") is None
+
+    created = project.harness(
+        "create-task", "--product-requirement", "RQ-0001", "--derives-from", "EXP-0001",
+        "--type", "research", "--assigned-role", "researcher", "--acceptance-ref", "AC-1",
+        "--allowed-scope", "src/", "--expected-output", "src/messlauf.py")
+    assert created.returncode == 0, created.stdout + created.stderr
+    assert project.status("TSK-0001") == "DRAFT"
+
+    second = project.harness("capture", "RQ", stdin=json.dumps(
+        dict(_RQ, title="Zweite Frage", question="Senkt ein Cache die Laufzeit?"),
+        ensure_ascii=False))
+    assert second.returncode == 0, second.stdout + second.stderr
+    refused = project.harness(
+        "create-task", "--product-requirement", "RQ-0002", "--derives-from", "EXP-0001",
+        "--type", "research", "--assigned-role", "researcher", "--acceptance-ref", "AC-1",
+        "--allowed-scope", "src/", "--expected-output", "src/messlauf.py")
+    assert refused.returncode == 1, refused.stdout + refused.stderr
+    assert "belongs to RQ-0001" in refused.stderr, refused.stderr
+
+
+def test_an_experiment_hanging_from_two_questions_is_refused_as_an_origin(project):
+    """Ambiguous parentage fails CLOSED, on the surface where it was measured — BUG-0086.
+
+    An EXP naming two parents resolved to NO root, and both readers took that for "nothing to
+    compare": on a scaffolded project this exact `create-task` returned rc 0 and `validate`
+    reported zero errors, while the single-parent control was correctly refused. The unit-level
+    twins are `test_kernel.test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation`
+    and `test_report.test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused`.
+    """
+    _approved_question(project)
+    second = project.harness("capture", "RQ", stdin=json.dumps(
+        dict(_RQ, title="Zweite Frage", question="Senkt ein Cache die Laufzeit?"),
+        ensure_ascii=False))
+    assert second.returncode == 0, second.stdout + second.stderr
+    stray = project.harness("capture", "HYP", stdin=json.dumps(
+        dict(_HYP, derives_from="RQ-0002"), ensure_ascii=False))
+    assert stray.returncode == 0, stray.stdout + stray.stderr
+    captured = project.harness("capture", "EXP", stdin=json.dumps(
+        _experiment(["HYP-0001", "HYP-0002"]), ensure_ascii=False))
+    assert captured.returncode == 0, captured.stdout + captured.stderr
 
     refused = project.harness(
         "create-task", "--product-requirement", "RQ-0001", "--derives-from", "EXP-0001",
         "--type", "research", "--assigned-role", "researcher", "--acceptance-ref", "AC-1",
         "--allowed-scope", "src/", "--expected-output", "src/messlauf.py")
     assert refused.returncode == 1, refused.stdout + refused.stderr
-    assert "belongs to HYP-0001" in refused.stderr, refused.stderr
+    assert "HYP-0002" in refused.stderr and "RQ-0002" in refused.stderr, refused.stderr
 
 
 # ---------------------------------------------------------------- scenario 3: the two claims §4 makes
@@ -379,6 +418,69 @@ def test_an_experiment_reaches_analyzed_unrefused_and_the_merge_is_where_the_rep
 
 
 # ---------------------------------------------------------------- scenario 4: the report itself
+def test_a_rendered_report_reaches_the_tray_through_the_kernel(project):
+    """BUG-0085: §6 assigns the report, §17 demands it, and nothing could write it.
+
+    The whole chain on the scaffolded project, in the order a report-writer meets it: the tray is
+    closed to the write tools (rc 2 -- that refusal is correct and stays), the task's staging
+    directory is open (rc 0), and `freeze-report` is the move between the two. What makes it the
+    END of the chain rather than a file copy: the filed path lands in the experiment's
+    `evidence_refs`, which is the field `gate_memory_complete` blocks the merge on -- so before
+    this route the report was required and unwritable at the same time.
+
+    The lint is run on the filed report because it is the second reader of that tray and finds a
+    report by POSITION: the kernel constant and `scripts/report_lint.py`'s shape have to agree,
+    and nothing but a run through both would say so.
+    """
+    _approved_question(project)
+    assert project.harness("capture", "EXP", stdin=json.dumps(_experiment("HYP-0001"),
+                                                              ensure_ascii=False)).returncode == 0
+    assert project.mint("delivery", "EXP-0001")[0] == 0
+    created = project.harness(
+        "create-task", "--product-requirement", "RQ-0001", "--derives-from", "EXP-0001",
+        "--type", "research", "--assigned-role", "report-writer", "--acceptance-ref", "AC-1",
+        "--allowed-scope", "project_memory/staging/", "--expected-output", "reports/EXP-0001.tex")
+    assert created.returncode == 0, created.stdout + created.stderr
+
+    report_name = "EXP-0001-Größe.tex"
+    tray_write = {"hook_event_name": "PreToolUse", "tool_name": "Write", "cwd": project.path,
+                  "tool_input": {"file_path": os.path.join(
+                      project.path, "project_memory", "reports", report_name),
+                      "content": "x"}}
+    shut, err = project.hook("gate_write_scope.py", tray_write)
+    assert shut == 2, "the tray is open to the write tools: %s" % err
+
+    staged = os.path.join(project.path, "project_memory", "staging", "TSK-0001")
+    open_here = dict(tray_write, tool_input={"file_path": os.path.join(staged, report_name),
+                                             "content": "x"})
+    assert project.hook("gate_write_scope.py", open_here)[0] == 0, "staging is closed too"
+    os.makedirs(staged, exist_ok=True)
+    with open(os.path.join(staged, report_name), "w", encoding="utf-8") as handle:
+        handle.write("Der dynamische Arm proves die Hypothese bei 400 Belegen.")
+
+    filed = project.harness("freeze-report", stdin=json.dumps(
+        {"staging_key": "TSK-0001", "subject_id": "EXP-0001", "source_name": report_name}))
+    assert filed.returncode == 0, filed.stdout + filed.stderr
+    assert "reports/" + report_name in filed.stdout, filed.stdout
+    assert os.path.isfile(os.path.join(project.path, "project_memory", "reports", report_name))
+    assert not os.path.exists(os.path.join(staged, report_name)), "the staged copy stayed behind"
+    assert project.state().read_item("EXP-0001")["evidence_refs"] == ["reports/" + report_name]
+
+    # the second reader of the same tray: the lint finds the filed report by its position
+    lint = _run([sys.executable, "-B", os.path.join("scripts", "report_lint.py")],
+                project.path, project.env)
+    assert lint.returncode == 0, lint.stdout + lint.stderr
+    assert report_name in lint.stdout, lint.stdout
+
+    # ...and the merge is no longer blocked on the field the route just filled
+    for target in ("RUNNING", "COMPLETED", "ANALYZED"):
+        assert project.harness("transition", "EXP-0001", target).returncode == 0
+    merge = {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": project.path,
+             "tool_input": {"command": "git merge rq/RQ-0001-chunk"}}
+    code, err = project.hook("gate_memory_complete.py", merge)
+    assert "ANALYZED without evidence_refs" not in err, err
+
+
 def test_a_rendered_report_is_found_where_the_kit_actually_renders_it(project):
     """§17's report, linted where §6 puts it: `project_memory/reports/EXP-*.{tex,pdf,html}`.
 

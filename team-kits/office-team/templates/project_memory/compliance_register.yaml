@@ -1,7 +1,9 @@
 # compliance_register.yaml — owned by: Compliance-Researcher
 # RESEARCH REGISTER, NOT LEGAL ADVICE (standing disclaimer — never remove): entries are sourced
 # research aids; decisions stay with the user and, where needed, counsel. No entry without a
-# source URL + retrieved date + review_by date. session_status nags on entries past review_by.
+# source URL + retrieved date + review_by date. An entry past its `review_by` becomes a
+# Wiedervorlage in the session-start duty register (`_duties.review_duties`), beside the tax
+# deadlines and the filing plan's retention -- one surface for everything that is due.
 
 disclaimer: >
   Research aid only — no legal advice (keine Rechtsberatung). Applicability and conformity are

@@ -1,0 +1,2 @@
+id,doc_date,payment_date,direction,doc_type,counterparty,invoice_no,net,vat_rate,gross,vat_treatment,category,source,reverses,note
+L2026-0001,2026-03-01,2026-03-01,income,invoice,Erste Kundin,RE-2026-001,26000.00,0.00,26000.00,kleinunternehmer,sales_local,archive/finanzen/2026/ausgang/RE-2026-001.pdf,,einziges Ledgerjahr: kein Vorjahr zum Vergleich

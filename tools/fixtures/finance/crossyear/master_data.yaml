@@ -1,0 +1,18 @@
+categories:
+  income:
+  - key: sales_local
+    label_de: Verkauf Inland
+    euer_line: Betriebseinnahmen
+  - key: sales_eu
+    label_de: Verkauf EU (OSS)
+    euer_line: Betriebseinnahmen
+  expense:
+  - key: office_supplies
+    label_de: Büromaterial
+    euer_line: Sonstige Betriebsausgaben
+  - key: purchases
+    label_de: Wareneinkauf
+    euer_line: Wareneingang
+  - key: insurance
+    label_de: Versicherung
+    euer_line: Sonstige Betriebsausgaben

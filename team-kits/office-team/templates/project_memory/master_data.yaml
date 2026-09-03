@@ -33,6 +33,6 @@ categories:
 
 # Counterparty normalisation: statement/marketplace spellings -> ONE canonical name.
 counterparties: []
-#  - canonical: "Amazon EU S.à r.l."
-#    aliases: ["AMZN Mktp DE", "AMAZON EU SARL"]
-#    default_vat_treatment: reverse_charge   # LU invoices for fees — § 13b UStG
+#  - canonical: "Muster Handels GmbH"
+#    aliases: ["MUSTER HANDELS FFM", "Muster Handels G.m.b.H."]
+#    default_vat_treatment: reverse_charge   # a foreign supplier's fee invoices — § 13b UStG

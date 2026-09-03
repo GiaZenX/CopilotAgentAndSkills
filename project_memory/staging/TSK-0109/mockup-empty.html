@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<!--
+  finance-dashboard.template.html -- design draft for TSK-0109 (FR-0032).
+  The build phase turns this into the shell `tools/finance_dashboard.py` fills. Every {{slot}} is
+  replaced by the renderer; nothing here is fetched, loaded or stored: no fonts, no scripts, no
+  network. The one script at the end switches tabs, filters rows, and computes the age of open
+  items from the viewer's clock -- it reads DOM attributes and writes nothing but `hidden`.
+-->
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finanzen · Dieses Unternehmen</title>
+<style>
+  /* ---- token sheet (03-tokens.md is the prose twin; this block is the one that runs) ---- */
+  :root {
+    color-scheme: light dark;
+    --paper: #FBFBF9;
+    --ink: #191C1F;
+    --ink-2: #5E646C;
+    --rule: #C9CCD1;
+    --rule-soft: #E6E8EB;
+    --stamp: #1E4FCB;
+    --alarm: #C8102E;
+    --font-display: Bahnschrift, "DIN Alternate", "Roboto Condensed", "Arial Narrow", sans-serif;
+    --font-body: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: Consolas, "SF Mono", ui-monospace, Menlo, monospace;
+    --s1: 8px; --s2: 16px; --s3: 24px; --s4: 40px; --s5: 64px;
+    --page-max: 72rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #141618;
+      --ink: #ECEDEA;
+      --ink-2: #9AA0A8;
+      --rule: #33373C;
+      --rule-soft: #24272B;
+      --stamp: #7A9BFF;
+      --alarm: #FF6B7A;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--paper); }
+  body {
+    margin: 0 auto; max-width: var(--page-max);
+    padding: var(--s3) clamp(16px, 4vw, 48px) var(--s5);
+    font: 15px/1.5 var(--font-body); color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  a { color: var(--stamp); text-decoration: none; }
+  a:hover, a:focus-visible { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--stamp); outline-offset: 2px; }
+  code { font-family: var(--font-mono); font-size: .88em; }
+  h1, h2, h3 { font-weight: 600; margin: 0; }
+  h1 { font: 600 1.6rem/1.15 var(--font-display); letter-spacing: .01em; }
+  h2 { font-size: .8rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2);
+       margin: var(--s4) 0 var(--s2); padding-bottom: var(--s1); border-bottom: 1px solid var(--rule); }
+  h2 .muted { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  h3 { font-size: .95rem; margin: var(--s3) 0 var(--s1); }
+  .muted { color: var(--ink-2); }
+  .small { font-size: .85em; }
+  .hint { color: var(--ink-2); font-size: .85rem; margin-top: var(--s3); max-width: 60rem; }
+  .lead { max-width: 60rem; margin: 0 0 var(--s3); }
+
+  /* masthead */
+  .masthead { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); align-items: flex-end;
+              justify-content: space-between; padding-bottom: var(--s2); border-bottom: 2px solid var(--ink); }
+  .eyebrow { display: block; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-2); }
+  .legal { font-weight: 400; color: var(--ink-2); font-size: 1rem; margin-left: .4em; }
+  .stand { font-size: .82rem; color: var(--ink-2); text-align: right; }
+
+  /* banner */
+  .banner { margin: var(--s2) 0 0; padding: var(--s2); border-left: 4px solid var(--alarm);
+            background: color-mix(in srgb, var(--alarm) 8%, var(--paper)); }
+  .banner ul { margin: var(--s1) 0 0; padding-left: 1.2em; font-size: .88rem; }
+  .banner code { font-size: .82em; }
+
+  /* tabs -- text on a rule, the selected one underlined in ink */
+  .tabs { display: flex; gap: var(--s3); margin: var(--s2) 0 0; border-bottom: 1px solid var(--rule);
+          overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  /* the strip scrolls sideways on a phone; the cut-off last label IS the affordance -- a fade
+     over it read as a defect ("Kle nu") when it was sighted */
+  .tabs-wrap { position: relative; }
+  .tabs [role="tab"] { flex: 0 0 auto; font: inherit; font-size: .95rem; color: var(--ink-2); background: none; border: 0;
+                       padding: var(--s2) 0 calc(var(--s2) - 2px); margin-bottom: -1px; cursor: pointer;
+                       border-bottom: 2px solid transparent; white-space: nowrap; }
+  .tabs [role="tab"]:hover { color: var(--ink); }
+  .tabs [aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); font-weight: 600; }
+  .tabs .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--alarm); margin-left: .35em; vertical-align: 1px; }
+
+  .view { padding-top: var(--s2); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: center; margin: var(--s2) 0 0; }
+  label { font-size: .88rem; color: var(--ink-2); }
+  select, input[type="search"] {
+    font: inherit; font-size: .92rem; color: var(--ink); background: var(--paper);
+    border: 0; border-bottom: 1px solid var(--rule); border-radius: 0; padding: 6px 2px; margin-left: .3em;
+  }
+  select:focus, input:focus { border-bottom-color: var(--ink); outline: none; }
+  input[type="search"] { min-width: 18rem; margin: 0; }
+  .check { display: inline-flex; gap: .5em; align-items: center; }
+  button.link { font: inherit; font-size: .88rem; color: var(--stamp); background: none; border: 0; padding: 0; cursor: pointer; }
+
+  /* the KPI ledger row: three figures on one rule, the total on a double rule */
+  .ledger-row.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s3); margin-top: var(--s3); }
+  .kpi { padding: var(--s2) 0 var(--s1); border-bottom: 1px solid var(--ink); }
+  .kpi.total { border-bottom: 3px double var(--ink); }
+  .kpi .label { display: block; font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+  .figure { display: block; font: 500 2.6rem/1.1 var(--font-display); letter-spacing: -.01em; margin: var(--s1) 0; white-space: nowrap; }
+  .figure-s { font: 500 1.15rem/1.2 var(--font-display); white-space: nowrap; }
+  .src { display: block; font-size: .78rem; color: var(--ink-2); }
+  .rule-note { font-size: .88rem; color: var(--ink-2); margin: var(--s2) 0 0; }
+
+  ul.due { list-style: none; margin: 0; padding: 0; }
+  ul.due li { padding: var(--s1) 0; border-bottom: 1px solid var(--rule-soft); }
+  ul.due li.alarm a { color: var(--alarm); }
+  ul.due li.alarm a::before { content: "!"; display: inline-block; width: 1.2em; height: 1.2em; line-height: 1.2em; text-align: center;
+                              margin-right: .5em; border: 1.5px solid var(--alarm); border-radius: 50%; font-size: .8em; font-weight: 700; }
+
+  /* the monthly flow: twelve ruled months, two bars each, no chart library */
+  .flow { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; height: 160px; align-items: end;
+          border-bottom: 1px solid var(--ink); padding-bottom: 0; margin-top: var(--s1); }
+  .month { display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+  .bars { display: flex; gap: 2px; align-items: flex-end; height: 100%; width: 100%; justify-content: center; }
+  .bar { display: block; width: 38%; max-width: 22px; min-height: 1px; }
+  .bar.in { background: var(--ink); }
+  .bar.out { background: transparent; border: 1px solid var(--ink); border-bottom: 0; }
+  .mlabel { font-size: .72rem; color: var(--ink-2); margin-top: 4px; transform: translateY(100%); position: absolute; }
+  .month { position: relative; }
+  .flow + .legend { margin: var(--s3) 0 0; font-size: .82rem; color: var(--ink-2); }
+  .sw { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; margin: 0 .3em 0 .8em; }
+  .sw.in { background: var(--ink); } .sw.out { border: 1px solid var(--ink); }
+
+  /* tables are journals: rules between lines, figures right, no zebra, no boxes */
+  table.ledger { width: 100%; border-collapse: collapse; margin-top: var(--s1); }
+  table.ledger th { text-align: left; font-size: .76rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2);
+                    font-weight: 600; padding: var(--s1) var(--s1) var(--s1) 0; border-bottom: 1px solid var(--ink); }
+  table.ledger td { padding: 10px var(--s1) 10px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  table.ledger .amt { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.ledger td.amt.income { font-weight: 600; }
+  table.ledger .date { white-space: nowrap; color: var(--ink-2); }
+  table.ledger .no code { color: var(--ink-2); }
+  table.ledger .st { text-align: right; white-space: nowrap; }
+  table.ledger.full .pay, table.ledger.full th:nth-child(8) { padding-left: var(--s3); white-space: nowrap; }
+  .paged { display: none; }
+  .show-all { margin: var(--s2) 0 0; }
+  table.ledger tr.struck td { color: var(--ink-2); }
+  table.ledger tr.struck td.amt { text-decoration: line-through; }
+  table.ledger.full tbody tr:not(.detail) { cursor: pointer; }
+  table.ledger.full tbody tr:not(.detail):hover td { background: var(--rule-soft); }
+  table.ledger tr.detail td { background: var(--rule-soft); padding: var(--s2); }
+  table.ledger tr.detail dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px var(--s2); margin: 0; font-size: .88rem; }
+  table.ledger tr.detail dt { color: var(--ink-2); } table.ledger tr.detail dd { margin: 0; overflow-wrap: anywhere; }
+  table.ledger tr.sum td { border-bottom: 0; border-top: 1px solid var(--ink); padding-top: var(--s2); font-weight: 600; }
+  table.ledger td.total { border-bottom: 3px double var(--ink); }
+  table.ledger.sums td:first-child { width: 60%; }
+  table.ledger.sums { max-width: 32rem; }
+  .count { margin: var(--s3) 0 0; }
+  .count .src { display: inline; margin-left: .6em; }
+  .figure-s.total { border-bottom: 3px double var(--ink); padding-bottom: 1px; }
+  .more { margin: var(--s2) 0 0; }
+  .empty-inline { color: var(--ink-2); font-style: italic; }
+
+  /* stamps: what the paper would carry -- outlined, upright, small caps */
+  .stamp { display: inline-block; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; font-weight: 600;
+           padding: 1px 7px; border: 1.5px solid currentColor; border-radius: 3px; color: var(--ink-2); line-height: 1.5; }
+  .stamp.ok { color: var(--stamp); }
+  .stamp.open { color: var(--ink); }
+  .stamp.alarm { color: var(--alarm); }
+
+  /* filters */
+  form.filters { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s3); align-items: center; margin-top: var(--s2); }
+
+  /* gauge for the § 19 threshold */
+  .gauge { margin: var(--s3) 0; }
+  .gauge-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s2); flex-wrap: wrap; }
+  .gauge .label { font-size: .82rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-2); }
+  .track { position: relative; height: 14px; border: 1px solid var(--ink); margin-top: var(--s1); }
+  .fill { position: absolute; inset: 0 auto 0 0; background: var(--ink); }
+  .gauge.alarm .fill { background: var(--alarm); }
+  .gauge-foot { display: flex; justify-content: space-between; font-size: .82rem; color: var(--ink-2); margin-top: 4px; }
+  .verdict { margin-top: var(--s3); }
+
+  /* emptiness is direction */
+  .empty { padding: var(--s4) 0; max-width: 40rem; }
+  .empty-lead { font: 500 1.6rem/1.2 var(--font-display); margin: 0 0 var(--s2); }
+
+  @media (max-width: 720px) {
+    .masthead { align-items: flex-start; }
+    .stand { text-align: left; }
+    .ledger-row.kpis { grid-template-columns: 1fr; gap: 0; }
+    .figure { font-size: 2.1rem; }
+    .tabs { gap: var(--s2); margin-left: calc(-1 * clamp(16px, 4vw, 48px)); margin-right: calc(-1 * clamp(16px, 4vw, 48px)); padding: 0 clamp(16px, 4vw, 48px); }
+    input[type="search"] { min-width: 100%; }
+    /* the phone list keeps date, counterparty, gross and status; number, category, net, VAT and
+       payment date stay one tap away in the detail row */
+    table.ledger.full .cat, table.ledger.full .pay, table.ledger.full .no, table.ledger.full th:nth-child(2),
+    table.ledger.full th:nth-child(4), table.ledger.full th:nth-child(5), table.ledger.full th:nth-child(6),
+    table.ledger.full td:nth-child(5), table.ledger.full td:nth-child(6), table.ledger.full th:nth-child(8) { display: none; }
+    table.ledger th, table.ledger td { padding-right: 6px; }
+    table.ledger .date { font-size: .85rem; }
+    .stamp { font-size: .64rem; padding: 1px 5px; }
+    table.ledger.open .no, table.ledger.open th:nth-child(3) { display: none; }
+    table.ledger .cp .small { display: block; }
+    .check .muted { display: block; width: 100%; padding-left: 1.6em; }
+    .check { flex-wrap: wrap; }
+    .flow { height: 120px; }
+    .mlabel { font-size: .62rem; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .fill { transition: width .4s ease-out; }
+  }
+  @media print { .tabs, form.filters, .toolbar { display: none; } .view[hidden] { display: block !important; } }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div><span class="eyebrow">Finanzen</span><h1>Dieses Unternehmen<span class="legal"></span></h1></div>
+  <div class="stand">Kein Ledger unter ledger/</div>
+</header>
+
+<div class="tabs-wrap"><nav class="tabs" role="tablist" aria-label="Ansichten"><button role="tab" data-view="ueberblick" aria-selected="true">Überblick</button><button role="tab" data-view="rechnungen" aria-selected="false">Rechnungen</button><button role="tab" data-view="offene-posten" aria-selected="false">Offene Posten</button><button role="tab" data-view="euer" aria-selected="false">EÜR</button><button role="tab" data-view="kleinunternehmer" aria-selected="false">Kleinunternehmer</button></nav></div>
+<main>
+<section id="view-ueberblick" class="view" role="tabpanel"><div class="empty"><p class="empty-lead">Noch keine Buchung.</p><p>Diese Seite rechnet aus <code>ledger/&lt;Jahr&gt;.csv</code>. Die erste Buchung schreibt die Buchhaltung mit <code>python scripts/ledger_add.py</code> — sobald eine Zeile dort steht, stehen hier Einnahmen, Ausgaben und Überschuss.</p></div></section><section id="view-rechnungen" class="view" role="tabpanel" hidden><div class="empty"><p class="empty-lead">Keine Rechnungen.</p><p>Die Liste füllt sich mit der ersten Buchung.</p></div></section><section id="view-offene-posten" class="view" role="tabpanel" hidden><div class="empty"><p class="empty-lead">Keine offenen Posten.</p><p>Eine Buchung ohne Zahlungsdatum erscheint hier.</p></div></section><section id="view-euer" class="view" role="tabpanel" hidden><div class="empty"><p class="empty-lead">Noch keine Einnahmen-Ausgaben-Rechnung.</p><p>Sie entsteht aus dem Ledger, Quartal für Quartal.</p></div></section><section id="view-kleinunternehmer" class="view" role="tabpanel" hidden><div class="empty"><p class="empty-lead">Steuerstatus nicht hinterlegt.</p><p>Die Schwellenwache rechnet erst, wenn <code>business_profile.yaml</code> unter <code>tax.kleinunternehmer</code> <code>true</code> trägt und ein Ledger Buchungen hat.</p></div></section>
+</main>
+<noscript><style>.view[hidden], tr.detail[hidden] { display: table-row; } section.view[hidden] { display: block; }</style>
+<p class="hint">Ohne Skript zeigt diese Seite alle Ansichten untereinander; Filter und das Alter offener Posten brauchen es.</p></noscript>
+<script>
+(function () {
+  "use strict";
+  var TERM_DAYS = 30;
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('[role="tab"]'));
+  var views = Array.prototype.slice.call(document.querySelectorAll('section.view'));
+
+  function show(id) {
+    if (!document.getElementById('view-' + id)) { id = tabs[0].getAttribute('data-view'); }
+    tabs.forEach(function (t) { t.setAttribute('aria-selected', t.getAttribute('data-view') === id ? 'true' : 'false'); });
+    views.forEach(function (v) { v.hidden = v.id !== 'view-' + id; });
+  }
+  tabs.forEach(function (t) {
+    t.addEventListener('click', function () {
+      var id = t.getAttribute('data-view');
+      if (history.replaceState) { history.replaceState(null, '', '#' + id); }
+      show(id);
+    });
+  });
+  window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });
+
+  function fmtEur(cents) {
+    var neg = cents < 0; cents = Math.abs(cents);
+    var euros = Math.floor(cents / 100), rest = cents % 100;
+    var body = String(euros).replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ',' + (rest < 10 ? '0' : '') + rest + ' €';
+    return (neg ? '−' : '') + body;
+  }
+
+  /* Rechnungen: every control in the form narrows the rows; sum and count follow the visible set */
+  var form = document.querySelector('form.filters[data-scope="rechnungen"]');
+  if (form) {
+    var table = document.querySelector('table.ledger.full');
+    var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr:not(.detail)'));
+    var countEl = document.querySelector('#view-rechnungen [data-count]');
+    var sumEl = document.querySelector('#view-rechnungen [data-sum]');
+    var showAll = document.querySelector('#view-rechnungen .show-all');
+    var PAGE = 100, expanded = false;
+    /* the sum and the count are over EVERY matching row; the page cut only hides rows from view */
+    function apply() {
+      var f = {};
+      Array.prototype.forEach.call(form.querySelectorAll('[data-filter]'), function (c) { f[c.getAttribute('data-filter')] = c.value.trim(); });
+      var text = (f.text || '').toLowerCase();
+      var n = 0, sum = 0;
+      rows.forEach(function (r) {
+        var ok = (!f.dir || r.getAttribute('data-dir') === f.dir) &&
+                 (!f.status || r.getAttribute('data-status') === f.status) &&
+                 (!f.year || r.getAttribute('data-year') === f.year) &&
+                 (!f.q || r.getAttribute('data-q') === f.q) &&
+                 (!f.cat || r.getAttribute('data-cat') === f.cat) &&
+                 (!f.cp || r.getAttribute('data-cp') === f.cp) &&
+                 (!text || r.getAttribute('data-text').indexOf(text) !== -1);
+        if (ok) { n += 1; sum += parseInt(r.getAttribute('data-cents'), 10); }
+        var paged = ok && !expanded && n > PAGE;
+        r.hidden = !ok || paged;
+        var detail = r.nextElementSibling;
+        if (r.hidden && detail && detail.classList.contains('detail')) { detail.hidden = true; }
+      });
+      countEl.textContent = String(n);
+      sumEl.textContent = fmtEur(sum);
+      showAll.hidden = expanded || n <= PAGE;
+      showAll.textContent = 'Die ersten ' + PAGE + ' Zeilen stehen hier — alle ' + n + ' anzeigen';
+    }
+    showAll.addEventListener('click', function () { expanded = true; apply(); });
+    form.addEventListener('input', apply);
+    form.addEventListener('change', apply);
+    form.addEventListener('reset', function () { setTimeout(apply, 0); });
+    apply();
+    rows.forEach(function (r) {
+      r.addEventListener('click', function () {
+        var d = r.nextElementSibling;
+        if (d && d.classList.contains('detail')) { d.hidden = !d.hidden; }
+      });
+    });
+  }
+
+  /* year / period switches on the overview and the EÜR view */
+  Array.prototype.forEach.call(document.querySelectorAll('select[data-scope="ueberblick"]'), function (sel) {
+    sel.addEventListener('change', function () {
+      Array.prototype.forEach.call(document.querySelectorAll('#view-ueberblick .year-block'), function (b) {
+        b.hidden = b.getAttribute('data-year') !== sel.value;
+      });
+    });
+  });
+  var euerYear = document.querySelector('select[data-scope="euer"][data-filter="year"]');
+  var euerPeriod = document.querySelector('select[data-scope="euer"][data-filter="period"]');
+  function applyEuer() {
+    Array.prototype.forEach.call(document.querySelectorAll('.euer-block'), function (b) {
+      b.hidden = !(b.getAttribute('data-year') === euerYear.value && b.getAttribute('data-period') === euerPeriod.value);
+    });
+  }
+  if (euerYear && euerPeriod) { euerYear.addEventListener('change', applyEuer); euerPeriod.addEventListener('change', applyEuer); }
+
+  /* open items: age from the viewer's clock, dunning candidates marked, sums follow the visible rows */
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+  var overdue = 0;
+  Array.prototype.forEach.call(document.querySelectorAll('table.ledger.open tbody tr'), function (r) {
+    var d = r.getAttribute('data-doc-date').split('-');
+    var doc = new Date(Number(d[0]), Number(d[1]) - 1, Number(d[2]));
+    var age = Math.max(0, Math.round((today - doc) / 86400000));
+    r.querySelector('[data-age]').textContent = age + (age === 1 ? ' Tag' : ' Tage');
+    if (r.getAttribute('data-dir') === 'income' && age > TERM_DAYS) {
+      r.setAttribute('data-overdue', '1'); overdue += 1;
+      r.querySelector('[data-dun]').innerHTML = '<span class="stamp alarm">mahnen</span>';
+    }
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('[data-overdue-count]'), function (el) { el.textContent = String(overdue); });
+  var onlyOverdue = document.querySelector('input[data-filter="overdue"]');
+  function applyOpen() {
+    Array.prototype.forEach.call(document.querySelectorAll('table.ledger.open'), function (t) {
+      var n = 0, sum = 0;
+      Array.prototype.forEach.call(t.querySelectorAll('tbody tr'), function (r) {
+        var ok = !onlyOverdue.checked || r.getAttribute('data-overdue') === '1';
+        r.hidden = !ok;
+        if (ok) { n += 1; sum += parseInt(r.getAttribute('data-cents'), 10); }
+      });
+      t.querySelector('[data-count]').textContent = String(n);
+      t.querySelector('[data-sum]').textContent = fmtEur(sum);
+    });
+  }
+  if (onlyOverdue) { onlyOverdue.addEventListener('change', applyOpen); }
+
+  show(location.hash.slice(1));
+})();
+</script>
+</body>
+</html>

@@ -1762,6 +1762,240 @@ def test_the_office_gitignore_keeps_name_bearing_state_out_of_git(tmp_path):
         assert not ignored(rel), "the office .gitignore hides %s, which must be tracked" % rel
 
 
+def test_the_office_gitignore_still_lets_the_tray_seeds_into_a_fresh_clone(tmp_path):
+    """The second half of F6 (`docs/office-kit-from-field.md`), and the half nothing measured.
+
+    A `.gitignore` that excludes a DIRECTORY (`archive/`) cannot re-include a file inside it: git
+    never descends into an excluded directory, so the `!archive/README.txt` line below it is dead.
+    The office kit therefore writes `archive/*` plus the negation. The field case is what makes this
+    worth a test rather than a comment: written the short way, the kit's own folder guides were
+    silently untracked and a fresh clone arrived without the trays at all — a business whose inbox
+    does not exist until somebody creates it by hand.
+
+    BOTH DIRECTIONS, and derived rather than typed: the trays come from `kernel.trays`, which is
+    where the kit's own `hooks/document_trays.txt` comes from, and the seeds are the files really
+    shipped in them. So a tray added tomorrow is judged the day it ships. The other direction is what
+    keeps the rule from being satisfied by deleting it: a business document in the same tray must
+    still be ignored, because that is the GDPR half of the same line.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("needs git on PATH to measure the ignore rules")
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import trays
+    kit = os.path.join(TEAM_KITS, "office-team")
+    shipped = trays.document_trays(kit)
+    assert shipped, "the office kit ships no document trays — this measurement has no subject"
+    shutil.copy(os.path.join(kit, "templates", "repo", ".gitignore"), str(tmp_path / ".gitignore"))
+    init = subprocess.run(["git", "init", "-q", str(tmp_path)], capture_output=True)
+    assert init.returncode == 0, init.stderr
+
+    def ignored(rel):
+        return subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", rel],
+                              capture_output=True).returncode == 0
+
+    seeds = 0
+    for tray in shipped:
+        source = os.path.join(kit, "templates", "repo", tray)
+        for name in sorted(os.listdir(source)):
+            if not os.path.isfile(os.path.join(source, name)):
+                continue
+            seeds += 1
+            rel = "%s/%s" % (tray, name)
+            write(str(tmp_path / tray / name), "x\n")
+            assert not ignored(rel), (
+                "%s is a file the kit SHIPS and the .gitignore hides it — a fresh clone gets no "
+                "%s tray at all (write `%s/*` plus a negation, never `%s/`)" % (rel, tray, tray,
+                                                                                tray)
+            )
+        document = "%s/2026-01-02_ACME_invoice.pdf" % tray
+        write(str(tmp_path / document), "x\n")
+        assert ignored(document), (
+            "a business document under %s/ would go into git history, and Art.-17 erasure with it"
+            % tray)
+    assert seeds >= len(shipped), (
+        "only %d seed files found across %d trays — the walk stopped finding them and the first "
+        "assertion is vacuous" % (seeds, len(shipped)))
+
+
+def test_the_office_gitignore_keeps_the_generated_dashboard_out_of_git(tmp_path):
+    """The finance page is rendered from the ledger, so a committed copy is a stale second answer.
+
+    Same shape as the `generated/` rule above and the same reason; what makes it its own
+    measurement is that this directory has BOTH kinds in it — a shipped guide that a fresh clone
+    needs, and an output that a run overwrites — so `dashboards/` on its own would have taken the
+    guide with it (the tray case, one test up, is where that was measured in the field).
+
+    DERIVED at both ends. What must stay tracked is what the kit really SHIPS in that folder, read
+    off the tree; what must be ignored is the generator's OWN output path, read off
+    `OUTPUT_REL` in the shipped `tools/finance_dashboard.py` — so a rename of either side is
+    covered on the day it happens instead of pinning a filename here twice.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("needs git on PATH to measure the ignore rules")
+    kit = os.path.join(TEAM_KITS, "office-team")
+    generator = load_kit_module("office_finance_dashboard_for_gitignore",
+                                os.path.join(kit, "templates", "repo", "tools",
+                                             "finance_dashboard.py"))
+    output = generator.OUTPUT_REL.replace(os.sep, "/")
+    folder = output.split("/")[0]
+    shipped = sorted(name for name in os.listdir(os.path.join(kit, "templates", "repo", folder))
+                     if os.path.isfile(os.path.join(kit, "templates", "repo", folder, name)))
+    assert shipped, "the kit ships nothing in %s/ — this measurement has no subject" % folder
+    shutil.copy(os.path.join(kit, "templates", "repo", ".gitignore"), str(tmp_path / ".gitignore"))
+    init = subprocess.run(["git", "init", "-q", str(tmp_path)], capture_output=True)
+    assert init.returncode == 0, init.stderr
+
+    def ignored(rel):
+        write(str(tmp_path / rel), "x\n")
+        return subprocess.run(["git", "-C", str(tmp_path), "check-ignore", "-q", rel],
+                              capture_output=True).returncode == 0
+
+    assert ignored(output), (
+        "the office .gitignore lets %s into git, and every booking then rewrites a tracked file "
+        "nobody edits" % output)
+    for name in shipped:
+        rel = "%s/%s" % (folder, name)
+        assert not ignored(rel), (
+            "%s is a file the kit SHIPS and the .gitignore hides it — a fresh clone gets the "
+            "folder without its guide (write `%s/*` plus a negation, never `%s/`)"
+            % (rel, folder, folder))
+
+
+# WHAT REACHES OFF THIS MACHINE. An enumeration, because "does this module talk to the network" is
+# not derivable from a name -- so it carries the tripwire at both ends: the reader must FIRE on a
+# planted import (`test_the_reader_of_reaching_modules_sees_a_planted_one`), and the sweep must find
+# a corpus to judge, or "no module reaches out" would be true of an empty walk.
+_REACHING_MODULES = frozenset((
+    "socket", "ssl", "smtplib", "imaplib", "poplib", "ftplib", "telnetlib", "nntplib",
+    "http", "urllib", "urllib2", "xmlrpc", "webbrowser", "requests", "httpx", "aiohttp", "paramiko",
+))
+
+
+def _reaching_imports(source):
+    """The modules in `source` that reach off this machine, off its parse tree.
+
+    Parsed and not searched: the string "smtplib" in a docstring is a sentence about sending, and
+    this reader is about a module that CAN send.
+    """
+    found = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            found |= {alias.name.split(".")[0] for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            found.add((node.module or "").split(".")[0])
+    return found & _REACHING_MODULES
+
+
+def test_the_reader_of_reaching_modules_sees_a_planted_one():
+    """The floor under the sweep below, so "find nothing" fails here rather than looking clean."""
+    assert _reaching_imports("import os\nimport smtplib\n") == {"smtplib"}
+    assert _reaching_imports("from urllib import request\n") == {"urllib"}
+    assert _reaching_imports('"""we never use smtplib here."""\nimport os\n') == set()
+
+
+def test_the_office_kit_ships_nothing_that_could_send():
+    """"It writes no dunning letter and sends nothing" is a promise the office templates make to the
+    user, and this is what makes it a property of the shipped tree rather than a sentence.
+
+    The office kit handles a business's documents, its ledger and its counterparties' names. A module
+    in it that could open a socket is not a bug by itself -- it is a capability nobody asked for on a
+    corpus like that, and the templates tell the user it does not exist.
+
+    BOTH ENDS: the promise is read out of the shipped template first, so deleting the sentence turns
+    this into a rule about nothing and says so, instead of passing quietly.
+
+    WHAT THIS CORPUS IS, AND WHAT IT LEAVES OUT, measured rather than assumed. The walk is the KIT
+    directory. A project the scaffold has installed carries more than the kit: the kernel goes into
+    `.claude/kernel/`, and one module there (`kernel/lock.py`) imports `socket` for a `gethostname()`
+    in a lock record. That is not this stream's tree to judge and the sweep is deliberately NOT
+    widened to it -- `socket` imported for a host NAME reaches nowhere, and a corpus that counted it
+    would either report a false offender or need a "does it connect" definition this test does not
+    build. The count on both sides and the shape of that residue are in the round's protocol; what
+    is claimed here is the kit, and the kernel is named as unjudged rather than implied to be clean.
+    """
+    kit = os.path.join(TEAM_KITS, "office-team")
+    profile = os.path.join(kit, "templates", "project_memory", "business_profile.yaml")
+    with open(profile, encoding="utf-8") as handle:
+        assert "sends nothing" in handle.read(), (
+            "no shipped template makes this promise any more -- either restore it or drop this "
+            "test, but do not keep a measurement of a claim nobody makes (%s)" % profile)
+    judged, offenders = 0, {}
+    for base, subdirs, names in os.walk(kit):
+        subdirs[:] = [name for name in subdirs if name != "__pycache__"]
+        for name in sorted(names):
+            if not name.endswith(".py"):
+                continue
+            judged += 1
+            path = os.path.join(base, name)
+            with open(path, encoding="utf-8") as handle:
+                reaching = _reaching_imports(handle.read())
+            if reaching:
+                offenders[os.path.relpath(path, ROOT).replace(os.sep, "/")] = sorted(reaching)
+    assert not offenders, (
+        "the office templates promise the user that this kit sends nothing, and these shipped "
+        "modules can reach off the machine: %s" % offenders)
+    assert judged >= 30, (
+        "only %d shipped modules judged -- the walk stopped finding them and the assertion above "
+        "is vacuously true" % judged)
+
+
+def test_no_shipped_office_module_decides_anything_on_the_legal_form():
+    """`business_profile.yaml` tells the user that nothing in this kit checks `legal_form`, and this
+    is what keeps that sentence true rather than reassuring.
+
+    The kit accounts by Einnahmenueberschussrechnung and builds nothing for a business that has to
+    keep books (FR-0076, the user's own decision). Naming the field's own limit is the honest form of
+    that -- but the moment a shipped module JUDGES the field, the sentence in the template becomes
+    false, and this goes red on that day instead of quietly.
+
+    JUDGING AND NOT MERELY READING, and the difference is why this test was narrowed (TSK-0114): the
+    finance page PRINTS the legal form in its masthead, which reads the field and decides nothing --
+    while `if form == "GmbH"` would be the thing the template promises does not happen. So what is
+    looked for is the value inside a COMPARISON or the condition of a branch. A `or ""` default is
+    neither: it answers "the profile has no value here", not "this value means something". The
+    template says the same two things in the same order, so a reader of either finds the other.
+
+    Read off the parse tree, so a module that asks for the key by any of the usual routes is seen and
+    a docstring mentioning it is not. THE OTHER END is the template sentence itself: delete it and
+    this test says so rather than passing over a claim nobody makes any more.
+    """
+    kit = os.path.join(TEAM_KITS, "office-team")
+    profile = os.path.join(kit, "templates", "project_memory", "business_profile.yaml")
+    with open(profile, encoding="utf-8") as handle:
+        text = handle.read()
+    assert "NOTHING HERE CHECKS THE VALUE" in text, (
+        "the template no longer tells the user that the legal form is unchecked -- either restore "
+        "the sentence or drop this test, but do not keep a measurement of a claim nobody makes (%s)"
+        % profile)
+    assert "legal_form" in text, "the field itself is gone; this test has no subject"
+    judged, readers = 0, []
+    for base, subdirs, names in os.walk(kit):
+        subdirs[:] = [name for name in subdirs if name != "__pycache__"]
+        for name in sorted(names):
+            if not name.endswith(".py"):
+                continue
+            judged += 1
+            path = os.path.join(base, name)
+            with open(path, encoding="utf-8") as handle:
+                tree = ast.parse(handle.read())
+            deciding = []
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Compare):
+                    deciding.append(node)
+                elif isinstance(node, (ast.If, ast.IfExp, ast.While, ast.Assert)):
+                    deciding.append(node.test)
+            if any(isinstance(inner, ast.Constant) and inner.value == "legal_form"
+                   for node in deciding for inner in ast.walk(node)):
+                readers.append(os.path.relpath(path, ROOT).replace(os.sep, "/"))
+    assert judged >= 30, (
+        "only %d shipped modules judged -- the walk stopped finding them and the assertion below is "
+        "vacuously true" % judged)
+    assert not readers, (
+        "these shipped modules JUDGE `legal_form` -- they put it in a comparison or a branch, so "
+        "the template's sentence that nothing here checks the value is no longer true. Rewrite "
+        "that sentence to what the code now does: %s" % readers)
+
+
 def test_the_codex_profile_keeps_the_enforcement_layer_read_only():
     """The Claude side (`guard_harness_selfmod.BLOCKED`) gained `.claude/kernel` when the scaffold
     started installing it. The Codex permission profile grants `"." = "write"` and downgrades the
@@ -2217,13 +2451,22 @@ def test_a_gate_that_drains_stdin_itself_breaks_the_chain_fail_closed(tmp_path):
 
 
 def dispatched_repo(tmp_path, **task_overrides):
-    """A repo with an approved PR and one leased task — the state a real spawn happens in."""
+    """A repo with an approved PR and one leased task — the state a real spawn happens in.
+
+    THE ORIGIN IS THE PR THIS CALL JUST CAPTURED, not the `PR-0001` of `TSK_FIELDS`: a second call
+    against the same repo captures `PR-0002`, and since the kernel resolves an origin against its
+    root transitively and refuses one that hangs from another root (TSK-0106), a task claiming
+    `PR-0002` as its requirement and `PR-0001` as its origin is refused at creation. That refusal
+    is right — the dispatch gate would judge the task against the other root's criteria — so the
+    fixture is what had to move.
+    """
     state = ProjectState(str(tmp_path / "project_memory"))
     os.makedirs(state.root, exist_ok=True)
     pr = state.capture("PR", dict(PR_FIELDS))
     mint_via_hook(state, approvals.create_pending_request(state, "scope", pr["id"]))
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
-                                            **task_overrides))
+    fields = dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"])
+    fields.update(task_overrides)               # a caller that wants another origin still gets it
+    task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
     lease = dispatch.create_lease(state, task["id"])
     return state, task, dispatch.dispatch_header(lease)
@@ -11697,8 +11940,18 @@ def test_the_design_ambition_is_still_the_users_call():
               encoding="utf-8").read()
     ask = re.search(r"AMBITION[^\n]*user'?s call", pm)
     assert ask, "the PM SKILL no longer makes the design ambition the user's call"
-    window = pm[ask.start():ask.end() + 400]
-    assert re.search(r"NEVER decide this silently", window), (
+    # THE STEP THE AMBITION STANDS IN, and not a count of characters after it. The three halves
+    # below have to belong to ONE instruction; a character window says that only as long as nobody
+    # writes a sentence, and the step grew past 400 the day the question call went from one item to
+    # four (TSK-0105). The unit the file itself uses is the numbered step, so that is the unit.
+    steps = [m.start() for m in re.finditer(r"(?m)^\s*\d+\. ", pm)]
+    start = max((one for one in steps if one <= ask.start()), default=0)
+    window = pm[start:min((one for one in steps if one > ask.start()), default=len(pm))]
+    # THE PROHIBITION, NOT ITS OBJECT: the text used to forbid deciding "this" silently and now
+    # forbids deciding "any of it", because the same question call grew from the ambition to four
+    # items (TSK-0105). A regex on the old object would have demanded the narrower rule back. What
+    # has to stand is a prohibition on deciding silently, whatever it is said about.
+    assert re.search(r"NEVER decide\b[^\n]{0,40}silently", window), (
         "the PM SKILL asks for the ambition but no longer forbids deciding it silently — that "
         "prohibition IS the rule the deleted design.yaml gate enforced")
     assert re.search(r"Decision item", window), (

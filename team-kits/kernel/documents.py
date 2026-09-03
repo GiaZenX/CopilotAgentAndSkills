@@ -84,6 +84,23 @@ COMMAND = "apply-proposal"
 WRITES = "what a staged proposal ADDS (never a change, never a removal)"
 
 
+# THE SECOND ROUTE (FR-0067). `apply-proposal` above only ever ADDS, and that is a decision rather
+# than a gap: correcting a value the project already recorded was left to the user's own editor.
+# What it left standing was one class of hand edit -- the live case of 2026-08-30 was a REWRITTEN
+# rule in `content_guidelines.yaml` -- and a hand edit into a kit document is the one write no gate
+# and no hash ever sees.
+#
+# WHY IT IS ITS OWN KIND AND NOT A WIDER `document_proposal`. The additive card promises, in so
+# many words, that the approval "FÜGT nur HINZU -- sie ändert nichts Bestehendes und löscht
+# nichts". A single kind serving both would have to make that promise conditional, and a card whose
+# reassurance depends on a branch is the defect verifier finding F2 measured: an untrue sentence
+# standing beside the very value it denies. Two kinds, two cards, two promises that are each always
+# true.
+REVISION_KIND = "document_revision"
+REVISION_COMMAND = "revise-document"
+REVISION_WRITES = "what a staged revision REPLACES or DELETES, spot by spot"
+
+
 class DocumentError(StateError):
     """A proposal this kernel will not apply -- the message carries the remedy."""
 
@@ -160,8 +177,18 @@ def accepts(state_root: str, relative: str) -> bool:
 # keeps that from becoming a promise the command does not keep: it is `accepts` -- the same
 # predicate `document_path` refuses on -- so the route a gate names and the route this command
 # walks are one answer. It stands here, below that predicate, because it names it.
+#
+# BOTH ROUTES STAND HERE, and the second one is the correction this tuple needed: `REVISION_WRITES`
+# was declared and registered nowhere, so `layout.partial_writers` -- the derivation BOTH kit gates
+# build their route sentences from -- knew only the additive command. Measured on the installed
+# `gate_write_scope.py` of a scaffolded research project: a `Write project_memory/methodology.yaml`
+# came back rc 2 naming `apply-proposal` and "never a change, never a removal", which is the state
+# BEFORE this round -- a role wanting to correct a recorded rule was told its only route refuses
+# exactly that, and would report an infrastructure gap that no longer exists.
 DOCUMENT_WRITES = ({"document": layout.ANY_DOCUMENT, "applies": accepts,
-                    "field": WRITES, "command": COMMAND},)
+                    "field": WRITES, "command": COMMAND},
+                   {"document": layout.ANY_DOCUMENT, "applies": accepts,
+                    "field": REVISION_WRITES, "command": REVISION_COMMAND})
 
 
 def document_path(state: ProjectState, relative: str) -> str:
@@ -281,7 +308,17 @@ def _subsequence_extras(current: list, proposed: list):
 # ONE CHANGE, in the three readings it needs: WHERE it is (`path`, which `_skeleton` blanks a
 # filled value by), WHAT it is (`kind`, and `fill` is the only one that reshapes a line), and what
 # the USER reads (`text`, German, because it lands inside an approval card -- BUG-0073).
-Change = collections.namedtuple("Change", "path kind text")
+#
+# `before` IS THE FOURTH AND IT BELONGS TO THE REVISION ROUTE (FR-0067), which is the only one with
+# TWO values to show at one spot. It is a field rather than more text in `text` because the
+# descriptors are FOLDED to one bounded line each (`approvals._one_line`): measured while writing
+# `test_a_revision_may_rewrite_a_value_that_takes_several_lines`, a rewritten block scalar produced
+# one descriptor carrying both values, the fold cut it after the old one, and the card asked the
+# user to approve a new text they were never shown. Two readings, two lines, each bounded on its
+# own -- and a replacement therefore costs two of the places a question may carry, which is what
+# it costs to read.
+Change = collections.namedtuple("Change", "path kind text before")
+Change.__new__.__defaults__ = ("",)
 
 
 def compare(current, proposed, path: str = "") -> list:
@@ -362,6 +399,89 @@ def compare(current, proposed, path: str = "") -> list:
         % (path or "the document"))
 
 
+def _spots(current, proposed, path: str = "") -> list:
+    """Every place `proposed` differs from `current`, NAMED and with both values -- or a refusal.
+
+    THE DIFFERENCE TO `compare`, which is the whole of FR-0067: that one refuses a change and a
+    removal, this one describes them. What it may never do is describe them in the aggregate -- no
+    "n entries changed" -- because the card built from this IS the approval, and a count is the one
+    thing an approval may not be. So every spot carries the old value and the new one verbatim, and
+    a revision with more spots than a person reads is REFUSED with the number rather than folded
+    (`approvals.MAX_PROPOSAL_CHANGES`, the bound the additive route already carries).
+
+    WHAT A SPOT IS, and it is a definition rather than a case list: a place both documents name.
+    A mapping key is one. A list entry is not -- a list names its entries by position and nothing
+    else -- so a list is judged as a whole, in the three readings that are unambiguous: it only
+    grew (an addition, the other route's business), it only lost entries (each removal shown with
+    its value), or it kept its length and entries changed in place. A list that BOTH gained and
+    lost is refused: which entry became which is a guess, and a card built on a guess would show
+    the user a change that did not happen.
+
+    THE ADDITIVE KINDS ARE THE SAME ONES `compare` PRODUCES (`new`, `fill`, `grow`), because a
+    revision may add in passing and the user reads one card. `path` stays what `_skeleton` can
+    address -- a change inside a list is recorded at the LIST's path -- while the text says which
+    entry it was.
+    """
+    if isinstance(current, dict) and isinstance(proposed, dict):
+        spots = []
+        for key in current:
+            where = _where(path, key)
+            if key not in proposed:
+                spots.append(Change(where, "delete",
+                                    "%s: GELÖSCHT -- bisher %s" % (where, _shown(current[key]))))
+            else:
+                spots += _spots(current[key], proposed[key], where)
+        spots += [Change(_where(path, key), "new",
+                         "%s: neu, Wert %s" % (_where(path, key), _shown(proposed[key])))
+                  for key in proposed if key not in current]
+        return spots
+    if isinstance(current, list) and isinstance(proposed, list):
+        duplicated = _duplicates(proposed)
+        if duplicated:
+            raise DocumentError(
+                "the revision puts the same entry into `%s` twice (position %s) -- refused, "
+                "nothing was changed. Remedy: one entry per thing; a list carrying one thing twice "
+                "is one nobody can amend by naming it."
+                % (path or "the document", ", ".join(str(one + 1) for one in duplicated)))
+        extras = _subsequence_extras(current, proposed)
+        if extras is not None:
+            # ONE DESCRIPTOR PER ENTRY, and that is the difference to `compare`. The additive
+            # card may summarise a list's growth as a count -- it says so, and nothing there is
+            # being unsaid. THIS card promises the user, in the sentence they sign, that every
+            # affected spot stands in it "im Wortlaut, alt und neu, niemals als Anzahl"; a
+            # revision that replaced a value and grew a list printed "instruments: 3 Einträge
+            # hinzu" right beside that sentence (measured 2026-09-02), which is the untrue
+            # reassurance beside the very value it denies. Over the bound the request is REFUSED
+            # with the number (`approvals.MAX_PROPOSAL_CHANGES`), never shortened.
+            kind = "fill" if not current else "grow"
+            return [Change(path, kind, "%s: Eintrag hinzu %s" % (path or "die Liste", _shown(one)))
+                    for one in extras]
+        removed = _subsequence_extras(proposed, current)
+        if removed is not None:
+            return [Change(path, "delete",
+                           "%s: Eintrag GELÖSCHT -- bisher %s" % (path or "die Liste",
+                                                                  _shown(one)))
+                    for one in removed]
+        if len(current) == len(proposed):
+            spots = []
+            for before, after in zip(current, proposed):
+                spots += _spots(before, after, path)
+            return spots
+        raise DocumentError(
+            "`%s` both gained and lost entries at once, and which entry became which is a guess -- "
+            "refused, nothing was changed. A card built on that guess would show the user a change "
+            "that did not happen. Remedy: do it in two steps -- remove what goes, ask for that, "
+            "then add what comes." % (path or "the document"))
+    if current == proposed:
+        return []
+    if _empty(current):
+        return [Change(path, "fill",
+                       "%s: gefüllt mit %s" % (path or "das Dokument", _shown(proposed)))]
+    where = path or "das Dokument"
+    return [Change(path, "replace", "%s: neu %s" % (where, _shown(proposed)),
+                   "%s: ERSETZT, bisher %s" % (where, _shown(current)))]
+
+
 # WHAT A BLANKED VALUE READS AS in the skeleton below. One character no YAML document contains, so
 # a document cannot spell its own way past the comparison.
 _BLANK = "\x00"
@@ -393,7 +513,7 @@ def _marked(text: str) -> str:
     return text[1:] if text.startswith("﻿") else text
 
 
-def _blanked_spans(node, fills, path="", key_position=False):
+def _blanked_spans(node, fills, cuts=(), path="", key_position=False):
     """The character spans of every VALUE this comparison deliberately does not look at.
 
     THE LINE THIS DRAWS IS THE WHOLE POINT OF THE MODULE (verifier finding B1). `compare` above is
@@ -422,7 +542,12 @@ def _blanked_spans(node, fills, path="", key_position=False):
     the shipped documents, the natural fill of 9 of 9 empty lists was refused.
 
     KEYS ARE NEVER BLANKED, in any position: a renamed key is a removal plus an addition to
-    `compare`, and it has to read as a changed line here too.
+    `compare`, and it has to read as a changed line here too. `cuts` is the ONE exception and it
+    belongs to the revision route (FR-0067): at a path the user approved a DELETION at, the whole
+    entry goes -- its key line with it -- because the entry is gone from the other document and a
+    key that is supposed to disappear may not be reported as a lost line. The cost is stated where
+    it is paid, in `revision_plan`: inside a cut spot nothing is compared line for line any more,
+    and the card shows that spot's value instead.
     """
     spans = []
     if node is None:
@@ -433,13 +558,16 @@ def _blanked_spans(node, fills, path="", key_position=False):
         return [(node.start_mark.index, node.end_mark.index)]
     if isinstance(node, yaml.MappingNode):
         for key_node, value_node in node.value:
-            spans += _blanked_spans(key_node, fills, path, key_position=True)
-            spans += _blanked_spans(
-                value_node, fills,
-                _where(path, key_node.value) if isinstance(key_node, yaml.ScalarNode) else path)
+            where = (_where(path, key_node.value) if isinstance(key_node, yaml.ScalarNode)
+                     else path)
+            if where in cuts:
+                spans.append((key_node.start_mark.index, value_node.end_mark.index))
+                continue
+            spans += _blanked_spans(key_node, fills, cuts, path, key_position=True)
+            spans += _blanked_spans(value_node, fills, cuts, where)
     elif isinstance(node, yaml.SequenceNode):
         for item in node.value:
-            spans += _blanked_spans(item, fills, path)
+            spans += _blanked_spans(item, fills, cuts, path)
     return spans
 
 
@@ -487,7 +615,7 @@ def _reading(line: str) -> str:
     return " ".join(line.replace(_BLANK, " ").split())
 
 
-def _skeleton(text: str, fills, what: str):
+def _skeleton(text: str, fills, what: str, cuts=()):
     """The document's lines with every value blanked -- everything a YAML parser does NOT see.
 
     Two documents whose skeletons agree line for line differ ONLY in values, and values are
@@ -500,7 +628,7 @@ def _skeleton(text: str, fills, what: str):
     would make re-spacing a paragraph a refusal.
     """
     marked = _marked(text)
-    spans = sorted(_blanked_spans(_composed(text, what), set(fills)))
+    spans = sorted(_blanked_spans(_composed(text, what), set(fills), set(cuts)))
     out, position = [], 0
     for start, end in spans:
         if start < position:
@@ -593,9 +721,16 @@ def _owned_elsewhere(state: ProjectState, kit_document: str, changes):
     proposal that reached into it would be the same substitution one level down.
     """
     document = approvals.filed_position(kit_document)
+    mine = {entry["command"] for entry in DOCUMENT_WRITES}
     for entry in layout.partial_writers(document, state.root):
         field = str(entry.get("field") or "")
-        if entry.get("command") == COMMAND or not field:
+        # THIS MODULE'S OWN ROUTES ARE SKIPPED, and they are read off `DOCUMENT_WRITES` rather
+        # than named: the question here is whether a field belongs to ANOTHER command, and since
+        # FR-0067 this module declares two of its own -- so a literal naming one of them answers
+        # a question about two. (What that literal did NOT do is let anything through: measured,
+        # the older spelling passes 453 tests, because these two entries carry a PROSE `field` no
+        # change path ever equals. The derivation is the honest shape, not a closed hole.)
+        if entry.get("command") in mine or not field:
             continue
         for one in changes:
             if one.path == field or one.path.startswith(field + "."):
@@ -684,6 +819,152 @@ def change_plan(state: ProjectState, kit_document: str, proposal: str) -> dict:
             "changes": [one.text for one in changes]}
 
 
+def revision_plan(state: ProjectState, kit_document: str, proposal: str) -> dict:
+    """`change_plan`'s sibling for the route that may REPLACE and DELETE (FR-0067).
+
+    THE SAME THREE READINGS as the additive plan, because a promise is only as good as what nobody
+    looked at: `_spots` reads what a YAML parser sees, `_skeleton` reads everything it does not,
+    and `_duplicate_key` reads what YAML would silently resolve. What changes is the SHAPE of the
+    second one -- a replaced value and a deleted entry are supposed to move -- so the replaced
+    paths are blanked like a fill and the deleted ones are CUT out of both skeletons.
+
+    A CUT SPOT IS NOT AN UNWATCHED ONE, and that correction is this function's own measurement: a
+    cut takes the whole entry out of the line comparison, so a deletion inside a list first took
+    every comment INSIDE that list with it and the card said nothing (measured 2026-09-02 against
+    a document with a comment between two entries: accepted, one deletion shown, the comment not
+    mentioned anywhere). So the comments are compared a second time on the UNCUT skeletons, and one
+    that disappears becomes a descriptor of its own -- it is shown, it counts against the card's
+    bound, and the user signs it like any other spot
+    (`tools/test_kernel.py::test_a_comment_that_a_deletion_would_take_with_it_stands_in_the_card`).
+    Everything OUTSIDE the approved spots is still held to the LINE:
+    `tools/test_kernel.py::test_a_revision_may_not_lose_a_line_outside_the_spots_it_shows`.
+
+    A REVISION THAT ONLY ADDS IS REFUSED and sent to `apply-proposal`. The two routes carry two
+    cards with two different promises, and the additive one is the stronger: a role that reached
+    for this command for an addition would have the user sign the weaker sentence for a write the
+    stronger one covers.
+    """
+    document = document_path(state, kit_document)
+    staged = proposal_path(state, proposal)
+    try:
+        before, after = read_text(document), read_text(staged)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise DocumentError(
+            "one of the two files could not be read as UTF-8 text (%s) -- refused, nothing was "
+            "changed. Remedy: report the gap and name the file." % exc) from None
+    spots = _spots(parsed(before, kit_document), parsed(after, proposal))
+    owned = _owned_elsewhere(state, kit_document, spots)
+    if owned:
+        raise DocumentError(
+            "`%s` in %s is written by `python scripts/harness.py %s` and not by this command -- "
+            "refused, nothing was changed. THE DIFFERENCE IS WHAT THE USER IS ASKED: that command "
+            "puts every field of the entry into the approval question. Remedy: ask for it there; "
+            "its `--help` names the fields."
+            % (owned[0], approvals.filed_position(kit_document), owned[1]))
+    duplicated = _duplicate_key(_composed(after, proposal))
+    if duplicated:
+        raise DocumentError(
+            "the revision spells the key `%s` twice. YAML keeps the LAST one and drops the first "
+            "without a word, so the document would MEAN something other than what it shows -- "
+            "refused, nothing was changed. Remedy: one key, once." % duplicated)
+    replaced = [one for one in spots if one.kind == "replace"]
+    deleted = [one for one in spots if one.kind == "delete"]
+    if not replaced and not deleted:
+        raise DocumentError(
+            "this revision replaces nothing and deletes nothing -- it only adds, and additions go "
+            "through `python scripts/harness.py %s`, whose approval question promises the user "
+            "that nothing existing changes. Refused, nothing was changed. Remedy: ask for it "
+            "there." % COMMAND)
+    fills = {one.path for one in spots if one.kind in ("fill", "replace")}
+    cuts = {one.path for one in deleted}
+    before_lines = _skeleton(before, fills, kit_document, cuts)
+    after_lines = _skeleton(after, fills, proposal, cuts)
+    added_prose = [Change("", "prose", "Kommentar neu: %s" % text)
+                   for text in sorted((_comment_texts(after_lines)
+                                       - _comment_texts(before_lines)).elements())]
+    # ...and the same comparison over the UNCUT skeletons, which is the only place a comment
+    # standing inside a deleted entry can still be seen. `_first_line_lost` cannot serve here: a
+    # cut spot legitimately loses its own lines, and this asks the narrower question of which
+    # COMMENTS the document ends up without.
+    dropped_prose = [Change("", "prose", "Kommentar entfällt: %s" % text)
+                     for text in sorted((_comment_texts(_skeleton(before, fills, kit_document))
+                                         - _comment_texts(_skeleton(after, fills, proposal)))
+                                        .elements())]
+    lost = _first_line_lost(before_lines, after_lines)
+    if lost is not None:
+        raise DocumentError(
+            "the revision does not carry this line of %s any more, or no longer carries it in this "
+            "place: %r. A revision changes exactly the spots the user is shown; everything else -- "
+            "comments, the order of the keys, the shape of a line -- has to stay as it is. "
+            "Refused, nothing was changed. Remedy: start from the document as it stands and change "
+            "only what the revision is about."
+            % (approvals.filed_position(kit_document), lost.replace(_BLANK, "\u2026")[:160]))
+    return {"document": document, "staged": staged,
+            "base": document_content_hash(document),
+            "proposed": document_content_hash(staged),
+            # THREE LISTS AND NOT ONE, so the card can be louder about the deletions without
+            # reading its own descriptors back as text: which spots those are is structure here,
+            # and structure is what `approvals` renders and hashes.
+            # BOTH readings of every replaced spot, in the order they are read: what stood there,
+            # then what comes. Flattened into the one list the card renders, so nothing has to
+            # re-pair them downstream and neither half can be dropped without the other.
+            "replacements": [line for one in replaced for line in (one.before, one.text)],
+            "deletions": [one.text for one in deleted] + [one.text for one in dropped_prose],
+            "additions": [one.text for one in spots if one.kind in ("new", "fill", "grow")]
+                         + [one.text for one in added_prose]}
+
+
+def apply_revision(state: ProjectState, manifest: dict) -> dict:
+    """Write an approved revision into the kit document -- the order `apply` walks, and its reasons.
+
+    Re-derive the plan, check the approval against the REBUILT manifest, write, read back and
+    compare against the hash the USER signed, restore the original bytes on any deviation. The one
+    difference to `apply` is which plan is re-derived; every step's argument is written there and
+    is not repeated here.
+    """
+    with state.lock:
+        plan = revision_plan(state, manifest["kit_document"], manifest["proposal"])
+        derived = approvals.document_revision_subject_manifest(
+            manifest["kit_document"], manifest["proposal"], plan["base"], plan["proposed"],
+            plan["replacements"], plan["deletions"], plan["additions"], manifest.get("reason"))
+        moved = [key for key in ("base", "proposed", "replacements", "deletions", "additions")
+                 if derived[key] != manifest.get(key)]
+        if moved or approvals.live_line_approval(state, REVISION_KIND, manifest) is None:
+            raise DocumentError(
+                "no live user approval covers revising %s from %s%s -- nothing was changed. What "
+                "it would do: %s. Remedy: ask for it first -- `python scripts/harness.py "
+                "request-approval %s --kit-document %s --proposal %s` prints the question the "
+                "kernel composed, the USER approves by answering it, and then this command writes "
+                "exactly what they approved."
+                % (manifest["kit_document"], manifest["proposal"],
+                   " (the document or the revision has changed since the question was asked: %s)"
+                   % ", ".join(moved) if moved else "",
+                   ", ".join(derived["deletions"] + derived["replacements"]) or "nothing",
+                   REVISION_KIND, manifest["kit_document"], manifest["proposal"]))
+        before = read_text(plan["document"])
+        after = read_text(plan["staged"])
+        state._write_text_atomic(plan["document"], after)
+        if document_content_hash(plan["document"]) != manifest["proposed"]:
+            state._write_text_atomic(plan["document"], before)
+            raise DocumentError(
+                "writing the revision into %s did not produce the document the user approved; the "
+                "file was restored unchanged and nothing was applied. Remedy: report the gap and "
+                "name the file." % manifest["kit_document"])
+        return {"document": manifest["kit_document"],
+                "changes": plan["deletions"] + plan["replacements"] + plan["additions"],
+                "bytes": len(after.encode("utf-8"))}
+
+
+# WHICH PLAN A KIND IS ABOUT. The command that ASKS and the command that ACTS both resolve their
+# derived manifest keys through this, so a revision can never be described by the additive plan --
+# which refuses it outright -- and an addition never by the revision plan, whose card carries the
+# weaker promise. Filled at the end of the module, where both planners exist. The claim is measured
+# on the shipped entry point, both directions, by
+# `tools/test_kernel.py::test_the_two_document_routes_each_resolve_their_own_plan_on_the_command_line`.
+PLAN_BY_KIND = {}
+KIND_BY_COMMAND = {}
+
+
 def apply(state: ProjectState, manifest: dict) -> dict:
     """Write the approved proposal into the kit document -- the operation BUG-0071 asked for.
 
@@ -749,3 +1030,7 @@ def apply(state: ProjectState, manifest: dict) -> dict:
                 "name the file." % manifest["kit_document"])
         return {"document": manifest["kit_document"], "changes": plan["changes"],
                 "bytes": len(after.encode("utf-8"))}
+
+
+PLAN_BY_KIND.update({KIND: change_plan, REVISION_KIND: revision_plan})
+KIND_BY_COMMAND.update({COMMAND: KIND, REVISION_COMMAND: REVISION_KIND})

@@ -109,7 +109,8 @@ def kernel_written_subtrees(root: str) -> tuple:
     # keys by type AND year, so a probe of it would declare `archive/pr/1970` canonical and leave
     # every real year outside.
     directories = {state.archive_root(), state.legacy_root(),
-                   staging.architecture_revisions_dir(state)}
+                   staging.architecture_revisions_dir(state),
+                   staging.reports_dir(state)}
     paths = set()
     for item_type in ACTIVE_DIRS:
         probe = format_id(item_type, 1)

@@ -31,7 +31,7 @@ Your `TSK` (`required_inputs`, `allowed_scope`, `acceptance_refs`), the repo's e
    date, version/DOI), the **license + permitted-use scope**, and a **checksum** of the fetched file so re-runs
    verify integrity. If nothing is directly accessible, **FLAG it to the PM with concrete alternatives** and the
    impact on the affected hypothesis — never fabricate, sample down, or silently substitute data to unblock a run.
-4. Automate experiment execution where it improves reproducibility; ensure runs are logged + re-runnable.
+4. Automate experiment execution where it improves reproducibility; ensure runs are logged + re-runnable. Comments follow the constitution's rule (`FR-0007`): a name says what the code does; a comment only names a WHY the code cannot say or a measured limit.
 5. Support the PM's git workflow (branch hygiene, hooks) — **never push or change shared environments on
    your own**; never force-push. The PM is the executor, only on user OK.
 

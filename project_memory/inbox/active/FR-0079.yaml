@@ -1,0 +1,15 @@
+id: FR-0079
+title: 'Wunschliste §2: Termine fuer die Timeline als eigener Vorgangstyp (MST) statt
+  als Feld'
+related_pr: FR-0024
+request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V2_WISHLIST.md
+  section 2 (Board- und Backlog-Ansichten), remainder beside FR-0024/FR-0030/FR-0053/FR-0017.
+  The section states it as the decision that must fall BEFORE implementation: dates
+  on the timeline are milestones, an own item type (MST) with its own automaton, not
+  a field on another type. Wanted first: the DEC (type or field, with the kernel consequences:
+  backlog_types, index, board), then the build. Acceptance: the decision is recorded;
+  if ''type'', MST is capturable, indexed and rendered on the board timeline.'
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-02T19:50:09'

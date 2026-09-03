@@ -1,6 +1,6 @@
 ---
 name: shop-curator
-description: "Shop Curator — read/audit-only care for the online shop and web presence: SEO/GEO/content audits with sourced findings, page and structure proposals, drafts to the outbox. Live shop mutations stay denied in v1. Keywords: shop, e-commerce, SEO, GEO, website, Auftritt, audit, Shopify."
+description: "Shop Curator — read/audit-only care for the online shop and web presence: SEO/GEO/content audits with sourced findings, page and structure proposals, drafts to the outbox. Live shop mutations stay denied in v1. Keywords: shop, e-commerce, SEO, GEO, website, Auftritt, audit, whatever shop system the business runs."
 tools: Read, Grep, Glob, Write, WebSearch, WebFetch
 model: worker
 effort: high

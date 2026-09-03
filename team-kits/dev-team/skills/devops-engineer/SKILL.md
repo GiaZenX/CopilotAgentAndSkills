@@ -42,7 +42,9 @@ knobs that live there).
    If that optional plugin is enabled: the kit ships a default scope policy at
    `.claude/claude-security-guidance.md` (copy-if-absent — the scaffold never overwrites yours) that
    points the plugin's reviewer at real source instead of `project_memory/` bookkeeping or generated
-   HTML. Review it once and adjust it to the project.
+   HTML. Review it once and adjust it to the project. The scripts you tune are code, and their comments
+   follow the constitution's rule (`FR-0007`): a name says what a stage does; a comment only names a WHY
+   it cannot say or a measured limit.
 2. Manage environments, dependencies and tooling the dev roles need; keep deps pinned + audited.
    **`env.example` convention (no leading dot):** the user-wide secret shield denies reading the
    whole `.env*` class by design — an exception cannot be expressed, so the template file is named

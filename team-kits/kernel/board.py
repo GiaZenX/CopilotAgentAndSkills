@@ -491,13 +491,20 @@ def _branches(nodes, view) -> str:
                       html.escape(node.parent.item_id if node.parent else "", quote=True),
                       node.depth, _node_face(node)))
         follow = []
-        for item_type, children in node.grouped_children(view):
+        for item_type, area, children in node.grouped_children(view):
+            # THE AREA IS PART OF THE HEADING and part of the group's identity in the markup, so a
+            # person and a test see the same grouping (FR-0017). An item that names no area keeps
+            # the heading it always had: the outline is optional, and a project that keeps none
+            # gets the page it had before.
             follow.append(('html',
-                           '<div class="group" data-group="%s" data-group-parent="%s" '
-                           'data-count="%d"><h4>%s <span class="count">%d</span></h4><ol>'
+                           '<div class="group" data-group="%s" data-group-area="%s" '
+                           'data-group-parent="%s" data-count="%d">'
+                           '<h4>%s%s <span class="count">%d</span></h4><ol>'
                            % (html.escape(item_type, quote=True),
+                              html.escape(area, quote=True),
                               html.escape(node.item_id, quote=True), len(children),
                               html.escape(backlog_tree.label(item_type, len(children))),
+                              html.escape(" — " + area) if area else "",
                               len(children))))
             follow.extend(("node", child) for child in children)
             follow.append(("html", "</ol></div>"))

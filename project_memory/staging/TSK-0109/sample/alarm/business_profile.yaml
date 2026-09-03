@@ -1,0 +1,6 @@
+business:
+  name: Nordlicht Handel
+  legal_form: Einzelunternehmen
+tax:
+  kleinunternehmer: true
+  fiscal_year: calendar

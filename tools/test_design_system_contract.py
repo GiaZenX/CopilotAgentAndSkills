@@ -278,8 +278,9 @@ def test_a_role_procedure_skill_is_never_mistaken_for_a_design_system(tmp_path):
     """The false-positive direction: the kit's own skills sit in the same directory.
 
     Driven over the REAL shipped dev-team skills rather than a fixture, because that is the tree a
-    project actually has after an install — eleven directories, each with a SKILL.md, and not one
-    of them may be swept up as a broken export.
+    project actually has after an install — every skill directory the kit ships, role or
+    reference, each with a SKILL.md, and not one of them may be swept up as a broken export. (A
+    count stood here for a round and was wrong the day the next reference skill shipped.)
     """
     project = tmp_path / "proj"
     (project / "project_memory").mkdir(parents=True)

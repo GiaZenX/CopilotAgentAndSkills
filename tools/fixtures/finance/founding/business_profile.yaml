@@ -1,0 +1,6 @@
+business:
+  name: Werkstatt Halber Mond
+  legal_form: Einzelunternehmen
+tax:
+  kleinunternehmer: true
+  fiscal_year: calendar

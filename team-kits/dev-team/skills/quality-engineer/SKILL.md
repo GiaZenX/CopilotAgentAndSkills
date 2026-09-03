@@ -59,6 +59,9 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    CR = automatic FAIL). Each of those is an `INV` item pointing at the assertion that proves it — that is
    what keeps it from decaying into prose. **Baseline uniformity is a
    STANDING rule from the first screen — it is NOT "final design polish"** and is never deferred to a last pass.
+   **Comments are reviewed like code (`FR-0007`):** a changed comment that restates what the code does,
+   or promises a protection the code does not build, is a finding — the constitution's rule is the bar,
+   and this review is the only place a CHANGED comment is judged.
    Your findings become an Evidence item (`kind: review`) whose `related` names the task and whose
    `artifact_refs` point at the screenshots/logs.
 2. **Plan the tests (you are the sole owner of test completeness).** Read the Architect's inputs — each
