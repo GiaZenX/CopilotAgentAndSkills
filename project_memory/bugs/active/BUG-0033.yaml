@@ -1,7 +1,7 @@
 id: BUG-0033
 title: test_gate1_answers_before_its_registration_gives_up fails under host load and
   passes idle -- 'host too noisy' and 'gate too slow' are indistinguishable
-related_pr: PR-0002
+related_pr: PR-0007
 observed: 'Three measurements on 2026-08-13, same tree: (1) full-suite run under the
   verifier''s parallel load: FAILED at :4102 (''the gate answered after 2.09s while
   its registration gives it 2s''); (2) isolated run during the same verification session:

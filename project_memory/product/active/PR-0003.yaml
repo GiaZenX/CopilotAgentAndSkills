@@ -22,7 +22,7 @@ out_of_scope:
 - Rueckwirkendes Nachtragen des gesamten V2-Umbaus als Backlog -- nur Befunde bekommen
   Items.
 priority: high
-status: DRAFT
+status: APPROVED
 revision: 1
-approval_ref: null
+approval_ref: APR-0005
 created: '2026-08-04T16:58:12'

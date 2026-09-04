@@ -1,0 +1,53 @@
+id: PR-0007
+title: 'G4-4 Repo hygiene: the hosted CI is green or honest (BUG-0069), line endings
+  pinned and the 33 CRLF files normalised (BUG-0025), kit update leaves no memory
+  residue (BUG-0088), the load-class gate test stops flapping (BUG-0033)'
+class: normal
+user_story: As the user who gets an 'All jobs have failed' mail on every push, I want
+  the external signal to mean something again, the checkout to obey .gitattributes,
+  a kit update to leave no stale tree, and the gate suite to be green on a busy host,
+  so that red means red.
+problem: 'GitHub CI is red on every push while the local delivery suite is green (BUG-0069,
+  TSK-0088 cancelled in generation 3 because its scope team-kits/** overlapped every
+  stream); core.autocrlf=true local and system writes CRLF against .gitattributes
+  -- 33 files in this checkout, one stray write in generation 3 (BUG-0025); a kit
+  update removes the memory: key from a role but leaves the agent-memory tree (BUG-0088);
+  test_gate3_answers_before_its_registration_however_costly_the_line_is_to_judge is
+  red under load and green solo, five times in generation 3 (BUG-0033).'
+goal: 'CI runs the delivery suite the way the local run does or says which classes
+  it cannot (shallow clone, D: workspace, fixture size) as skips with reason; .gitattributes
+  is the authority and a shipped test refuses a CRLF text file in the tree; update-kit
+  removes what the previous kit owned; the timing test measures against a budget derived
+  from the registered timeout with a load-aware margin or is marked as the load class
+  it is.'
+acceptance_criteria:
+- id: AC-1
+  text: 'BUG-0069: Given a push to GitHub, When the workflow runs on ubuntu and windows,
+    Then it is green, or every red is a named skip with the reason class (shallow
+    clone history, D: mount, fixture size) -- never a failure the local suite does
+    not reproduce; measured on one real run'
+- id: AC-2
+  text: 'BUG-0025: Given the checkout, When tools/validate.py or a shipped test runs,
+    Then a tracked text file with CRLF is refused with the file named; the 33 files
+    are normalised once (binaries decided by bytes, not by extension); .gitattributes
+    pins every text class'
+- id: AC-3
+  text: 'BUG-0088: Given a kit update that drops a role''s memory: key, When update-kit
+    runs, Then the agent-memory tree the previous kit owned is removed or listed for
+    the user with the sentence; measured on a pilot'
+- id: AC-4
+  text: 'BUG-0033: Given the gate suite under parallel load, When the gate-3 timing
+    test runs, Then it is green or names the load class with a measured margin against
+    the registered timeout -- not a bare assert against a constant seconds value;
+    measured under 16 CPU burners'
+invariants:
+- 'A number lives in one place: the timing budget derives from the registration, never
+  a second constant'
+- Nothing in this goal changes a kit hook's behaviour -- G4-1 owns hooks and registrations
+out_of_scope:
+- Repo layout changes beyond .gitattributes and .github
+priority: normal
+status: APPROVED
+revision: 1
+approval_ref: APR-0005
+created: '2026-09-04T02:54:26'

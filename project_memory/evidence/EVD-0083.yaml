@@ -1,0 +1,22 @@
+id: EVD-0083
+kind: review
+related:
+- PR-0003
+result: pass
+summary: 'verifier PASS for diff:9072037fa1cdb835aa63b5dfd34b219224f02ba9d632cf1e6ee103b9cbb52e93
+  -- state-only commit after 46eaaf2: the tree outside project_memory is byte-identical
+  to 6704221 (git diff HEAD empty, git status empty outside project_memory, measured
+  by the lead); the digest moved only because it includes HEAD; this commit carries
+  the generation-4 cut written through the kernel (PR-0004 to PR-0007 captured, seven
+  wishes merged into their goals with resulting_item, six bugs filed under theirs,
+  plan approval APR-0005 minted by the user, PR-0001 to PR-0007 APPROVED, BUG-0089
+  APPROVED to VERIFIED on EVD-0081, the generation-4 round log, the expired duplicate
+  request swept) -- no kit, tools or docs file changed since EVD-0080'
+artifact_refs:
+- staging/generation-4-streams.md
+run_command: git diff HEAD --stat -- . :(exclude)project_memory (empty) + git status
+  --short (empty outside project_memory)
+run_scope: full
+revision: 1
+approval_ref: null
+created: '2026-09-04T05:55:39'

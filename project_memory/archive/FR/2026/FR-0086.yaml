@@ -46,7 +46,11 @@ request_text: 'User 2026-09-03 (chat): ''Wie waere es mit einem Hook, der misst,
   gate suite measures gate 5 the same way. Generation 4.'
 source: User 2026-09-03 (chat); DEC-0050; DEC-0061; DEC-0063 (4); FR-0057; project_memory/staging/generation-3-streams.md
   (g) notes for B, D, E; CLAUDE.md section on DEC-0050 enforcement
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-03T11:26:18'
+resulting_item: PR-0004
+triage_result: 'MERGED into PR-0004 at the generation-4 cut (DEC-0067: wishes sharing
+  files join ONE product goal; the goal carries this wish''s acceptance line)'
+closed_at: '2026-09-04T02:55:59'

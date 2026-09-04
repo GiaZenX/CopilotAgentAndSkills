@@ -1,7 +1,7 @@
 id: BUG-0069
 title: GitHub CI is red on every push -- the delivery suite passes locally but fails
   on the hosted runners, so the one external check the user sees mails him failure
-related_pr: PR-0003
+related_pr: PR-0007
 observed: 'Measured 2026-08-28 via gh: the last THREE pushes (f6dada2, 9262b3d, 8ddce26)
   all conclude failure on both hosted runners. Latest run: windows-latest 6 failed
   / 3754 passed / 15 skipped / 96 ERRORS; ubuntu-latest 34 failed / 3658 passed /

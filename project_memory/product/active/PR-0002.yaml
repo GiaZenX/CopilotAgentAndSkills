@@ -27,7 +27,7 @@ out_of_scope:
 - Rueckwirkendes Nachtragen des V2-Umbaus als Backlog.
 - Prosa und Analysen -- die bleiben in docs/, das Item traegt nur Identitaet und Stand.
 priority: medium
-status: DRAFT
+status: APPROVED
 revision: 1
-approval_ref: null
+approval_ref: APR-0005
 created: '2026-08-04T16:52:17'

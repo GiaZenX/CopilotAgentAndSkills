@@ -32,7 +32,11 @@ request_text: 'User 2026-09-03 (chat, after DEC-0062): ''am Ende nach der Umsetz
   the lead). Acceptance: the review questions are asked by the auditor run at the
   named events and appear in the session brief; a TSK plan without the rejected-alternative
   line is refused by the plan check; measured on a pilot copy.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T22:59:10'
+resulting_item: PR-0006
+triage_result: 'MERGED into PR-0006 at the generation-4 cut (DEC-0067: wishes sharing
+  files join ONE product goal; the goal carries this wish''s acceptance line)'
+closed_at: '2026-09-04T02:56:11'

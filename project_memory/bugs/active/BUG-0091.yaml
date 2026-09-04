@@ -2,7 +2,7 @@ id: BUG-0091
 title: create-task accepts an inbox item (FR) as product_requirement and derives_from
   -- a work order can hang from a wish that was never triaged into a root, although
   the constitution (section 4) and the create-task help name only root, BUG, CR, EXP
-related_pr: PR-0003
+related_pr: PR-0005
 observed: '2026-09-03, this repo at e45c0ca: 21 of 119 TSK items (archive + active)
   carry product_requirement = FR-nnnn (e.g. TSK-0109 from FR-0032, TSK-0115 to TSK-0119
   from FR-0075/0076/0074/0021/0077); the kernel created every one of them without

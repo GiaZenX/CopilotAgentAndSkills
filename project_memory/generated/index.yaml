@@ -1,4 +1,4 @@
-generated_at: '2026-09-04T02:52:16'
+generated_at: '2026-09-04T05:55:39'
 items:
 - id: APR-0001
   type: APR
@@ -19,6 +19,18 @@ items:
   revision: 1
   approval_ref: null
 - id: APR-0004
+  type: APR
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: APR-0005
+  type: APR
+  title: null
+  status: null
+  revision: null
+  approval_ref: null
+- id: APR-0006
   type: APR
   title: null
   status: null
@@ -638,9 +650,9 @@ items:
   title: 'kernel `update` refuses a frozen work-order field with the remedy ''transition
     the task back to DRAFT'' -- but the TSK automaton forbids READY -> DRAFT (allowed:
     CANCELLED, LEASED); the printed remedy cannot be walked'
-  status: TRIAGED
+  status: VERIFIED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0006
 - id: BUG-0090
   type: BUG
   title: 'A BUG cannot reach VERIFIED on an honestly declared regression run: the
@@ -1629,6 +1641,12 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0083
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1641,22 +1659,9 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0005
-  type: FR
-  title: Ein Zuschnitt-Kritiker vor dem Arbeitsauftrag, der einen KLEINEREN Plan vorlegen
-    muss
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0007
   type: FR
   title: 'Die Kommentardisziplin in die Kits: Verfassung und Rollendefinitionen'
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
-- id: FR-0010
-  type: FR
-  title: Die fuenf Fehlformen einer Auftragszeile gehoeren in die Rolle des Projektmanagers
   status: TRIAGED
   revision: 1
   approval_ref: null
@@ -1742,13 +1747,6 @@ items:
   status: TRIAGED
   revision: 1
   approval_ref: null
-- id: FR-0057
-  type: FR
-  title: Die QS-Rolle der Kits kennt kein Mass fuer den Testumfang -- in einem grossen
-    Nutzerprojekt wird daraus dieselbe Explosion wie in TSK-0083
-  status: TRIAGED
-  revision: 1
-  approval_ref: null
 - id: FR-0058
   type: FR
   title: 'Der Bestand luegt nach oben: gelieferte Wuensche und reparierte Fehler stehen
@@ -1792,56 +1790,57 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
-- id: FR-0084
-  type: FR
-  title: 'Rueckschau als EREIGNIS, nicht als Routine: der Projekt-Auditor (kits) und
-    der Harness-Lead (this repo) ask ''ginge das billiger/besser?'' at phase changes,
-    releases and repeated findings -- and every TSK plan names the way it rejected'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0085
-  type: FR
-  title: SR (technical requirement) mandatory per PR class before a work order is
-    dispatched -- today the architect step is procedure only, no gate reads it
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0086
-  type: FR
-  title: 'A gate on the SCOPE of a test run: a command line that runs the whole suite
-    is refused during a round unless the line says it is the delivery run -- in this
-    repo and in the kits (the enforcement half of FR-0057, the cost class of DEC-0050)'
-  status: OPEN
-  revision: 1
-  approval_ref: null
-- id: FR-0087
-  type: FR
-  title: 'Hole-list entries become typed items: a measured, open gap in a guard is
-    state the kernel holds (a BUG-shaped item with a ''what limits instead'' field
-    and the user-accepted exception as an approval), and the H-number list in docs/POST_V2_WISHLIST.md
-    is retired into it'
-  status: OPEN
-  revision: 1
-  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
-  status: DRAFT
+  status: APPROVED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0005
 - id: PR-0002
   type: PR
   title: Dieses Repo fuehrt seinen eigenen Zustand
-  status: DRAFT
+  status: APPROVED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0005
 - id: PR-0003
   type: PR
   title: Das V2-Harness ist auslieferbar
-  status: DRAFT
+  status: APPROVED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0005
+- id: PR-0004
+  type: PR
+  title: 'G4-1 Test discipline and hook hygiene: a gate on the SCOPE of a test run
+    (this repo + kits), timeouts on every kit hook registration, and the design checks''
+    BUILD half'
+  status: APPROVED
+  revision: 1
+  approval_ref: APR-0005
+- id: PR-0005
+  type: PR
+  title: 'G4-2 Kernel contracts: honest evidence for a BUG (BUG-0090), no work order
+    under an inbox item (BUG-0091), SR duty by PR class (FR-0085), holes as typed
+    items (FR-0087), leases for parallel specialists (C-2/C-3)'
+  status: APPROVED
+  revision: 1
+  approval_ref: APR-0005
+- id: PR-0006
+  type: PR
+  title: 'G4-3 Procedure and retrospective: review as an EVENT in the kits and here
+    (FR-0084), a cut critic before the order (FR-0005), the five malformed order lines
+    in the PM role (FR-0010), and the orchestrator rules of DEC-0070 in the lead role
+    text'
+  status: APPROVED
+  revision: 1
+  approval_ref: APR-0005
+- id: PR-0007
+  type: PR
+  title: 'G4-4 Repo hygiene: the hosted CI is green or honest (BUG-0069), line endings
+    pinned and the 33 CRLF files normalised (BUG-0025), kit update leaves no memory
+    residue (BUG-0088), the load-class gate test stops flapping (BUG-0033)'
+  status: APPROVED
+  revision: 1
+  approval_ref: APR-0005
 - id: SR-0001
   type: SR
   title: 'Abschlusskriterium: keine V1-Form ausserhalb von archive/ und legacy/'

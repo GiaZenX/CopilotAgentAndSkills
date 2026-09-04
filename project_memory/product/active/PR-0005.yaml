@@ -1,0 +1,67 @@
+id: PR-0005
+title: 'G4-2 Kernel contracts: honest evidence for a BUG (BUG-0090), no work order
+  under an inbox item (BUG-0091), SR duty by PR class (FR-0085), holes as typed items
+  (FR-0087), leases for parallel specialists (C-2/C-3)'
+class: large
+user_story: As the PM of a kit project and as the lead here, I want every rule that
+  today is discipline (a regression run verifies a bug, a task hangs from a goal,
+  an architect derives SRs for a normal goal, a measured gap is an item, one lease
+  per specialist instance) to be a wire in the kernel, so that a relapse is refused
+  and shown, not remembered.
+problem: 'Five measured gaps of the same class -- the kernel accepts what the constitution
+  forbids or lets a lie stand: a passing selection-scoped test Evidence does not verify
+  a BUG while the refusal asks for exactly that run (BUG-0090); create-task accepts
+  an FR as product_requirement (BUG-0091, 21 tasks in this repo); the SR step is procedure
+  only (FR-0085); hole-list entries live in a document with hand-reserved numbers
+  (FR-0087, three cut findings in generation 3); a lease cannot carry a worktree and
+  the dispatch does not refuse overlapping scopes (stream D''s C-2/C-3).'
+goal: Each of the five is a DEC-first contract in backlog_types/state/approvals/dispatch/report
+  with its red test, the kits read the same contract, and the migration of the existing
+  hole list runs once through the kernel with a generated pointer index left in the
+  document.
+acceptance_criteria:
+- id: AC-1
+  text: 'BUG-0090: Given a FIXED BUG and a passing test Evidence that names it and
+    declares run_scope selection, When the BUG is transitioned to VERIFIED, Then the
+    outcome the DEC line chose happens (walks, or the refusal text and evidence --help
+    stop describing a targeted run); the merge gate''s reading is unchanged (a passing
+    selection opens no merge); red-first on e45c0ca+'
+- id: AC-2
+  text: 'BUG-0091: Given an FR, When create-task names it as product_requirement or
+    derives_from, Then it is refused with the triage route (CONVERTED + resulting_item),
+    or the DEC documents why a task under an untriaged wish is allowed and the board
+    labels it as inbox work; existing tasks stay valid; a check over the index counts
+    TSKs whose root is an FR'
+- id: AC-3
+  text: 'FR-0085: Given a PR of class normal or large with no ACCEPTED SR, When its
+    first TSK is dispatched, Then dispatch (kernel or gate_dispatch) refuses with
+    the architect remedy; a small PR is not asked; measured on a scaffolded pilot,
+    red-first'
+- id: AC-4
+  text: 'FR-0087: Given the hole list, When the migration runs, Then every H entry
+    is a typed item with its H number kept as a field, ids come from the kernel, the
+    test_gates judges-test and name-resolution test read the items, the merge seam
+    table reads holes from the index, the document carries a generated index that
+    a hand edit invalidates; a user-accepted exception is walkable only through a
+    minted approval; the kits ship the same shape'
+- id: AC-5
+  text: 'C-2/C-3: Given two READY tasks whose allowed_scope overlaps at file level,
+    When the second is dispatched, Then create_lease refuses with the overlapping
+    path (check-scopes as the predicate); a lease carries the worktree it was granted
+    for; D''s tests test_nothing_shipped_refuses_two_tasks_whose_scopes_overlap and
+    test_the_lease_carries_no_tree_of_its_own are rewritten to the new contract and
+    the parallel-streams texts updated in the same stream'
+invariants:
+- A status the supervised party can set itself is a status no gate reads as approval
+- 'One definition per rule: two readers of the same store are one derivation, never
+  two spellings'
+- An EVD is immutable; a duty on new records lives at the surface that records them
+out_of_scope:
+- The board rendering of holes (kernel/board.py lane) beyond what FR-0087 needs to
+  show open holes
+- F5 evidence-path normalisation unless it falls out of AC-1
+priority: high
+status: APPROVED
+revision: 1
+approval_ref: APR-0005
+created: '2026-09-04T02:54:24'

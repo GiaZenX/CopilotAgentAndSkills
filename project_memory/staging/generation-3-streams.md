@@ -991,3 +991,17 @@ verifier first-pass findings (B/M/N), rework rounds, tier, tokens.
   its own verification; DEC-0050 becomes a gate FR-0086; "queued" is not delivery; generation 4 =
   four goals as PRs with one plan approval). Next: close-out commit, generation-4 PR cut, plan
   approval, handover prompt.
+- 2026-09-04 04:3x **Close-out commit 46eaaf2** (EVD-0082: state-only, tree byte-identical to
+  6704221 -- the digest includes HEAD, so every commit needs its own EVD; gen-2's "digest unchanged"
+  note was wrong in that reading). **Generation 4 cut as PRs (DEC-0067):** PR-0004 G4-1 test
+  discipline & hook hygiene (FR-0086, FR-0057, H139), PR-0005 G4-2 kernel contracts (BUG-0090,
+  BUG-0091, FR-0085, FR-0087, C-2/C-3), PR-0006 G4-3 procedure & retrospective (FR-0084, FR-0005,
+  FR-0010, DEC-0070 rules in harness-lead.md), PR-0007 G4-4 repo hygiene (BUG-0069, BUG-0025,
+  BUG-0088, BUG-0033); wishes MERGED into their goal with resulting_item, bugs filed under theirs.
+  Plan approval (DEC-0068, first use) requested over every open goal -- the kernel includes the
+  three old roots PR-0001/0002/0003 too (source status of the scope edge); the user sees all seven
+  by name. Generation-4 logbook opens with the plan answer.
+- 2026-09-04 04:4x USER: **plan approval GRANTED** ("Freigeben [41cd20]") over the seven open goals
+  (PR-0001..0007) -- the first plan-level approval (DEC-0068). Next: the goals walk DRAFT -> APPROVED
+  through `transition` under that approval (a plan answer walks zero items by design), BUG-0089
+  scope question, generation-4 logbook, handover prompt.

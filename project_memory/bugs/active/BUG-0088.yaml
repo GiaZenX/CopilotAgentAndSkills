@@ -2,7 +2,7 @@ id: BUG-0088
 title: 'A kit update removes the memory: key from a role but leaves the agent-memory
   tree an older kit version wrote -- no installer, scaffold or kernel path names agent-memory
   (stream E verifier F3)'
-related_pr: FR-0064
+related_pr: PR-0007
 observed: 'Measured 2026-09-02 by the TSK-0105 verifier: grep agent-memory over install.sh,
   install.ps1, scaffold_team.sh, scaffold_team.ps1 and team-kits/kernel/*.py -> no
   hit. The user real project Canyon_3.4.0 carries .claude/agent-memory/quality-engineer/

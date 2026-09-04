@@ -55,11 +55,11 @@ request_text: 'LUECKE: Der Pruefer misst, ob das GEBAUTE stimmt. Niemand prueft,
 
   OFFEN: ob der Kritiker eine eigene Rolle ist oder eine Pflicht des bestehenden Pruefers
   VOR dem Bauen. Zweiteres waere billiger und haette denselben frischen Kontext.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-04T23:10:54'
-triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
-  Spaeter -- ''verstehe nicht ganz was der Sinn ist''; the user restated his real
-  wish instead, captured as FR-0074 (plan-level approval + autonomous work-through).
-  Stays a smaller, separate concern.'
+triage_result: 'MERGED into PR-0006 at the generation-4 cut (DEC-0067: wishes sharing
+  files join ONE product goal; the goal carries this wish''s acceptance line)'
+resulting_item: PR-0006
+closed_at: '2026-09-04T02:56:14'

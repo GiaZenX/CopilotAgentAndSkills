@@ -22,7 +22,11 @@ request_text: 'User 2026-09-03 (chat): ''Und wieso wird nicht zwangsweise ein SR
 source: User 2026-09-03 (chat); DEC-0067; team-kits/dev-team/constitution/AGENTS.md
   section 4; team-kits/dev-team/skills/project-manager/SKILL.md step 5; kernel/cli.py
   create-task help
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-03T10:00:12'
+resulting_item: PR-0005
+triage_result: 'MERGED into PR-0005 at the generation-4 cut (DEC-0067: wishes sharing
+  files join ONE product goal; the goal carries this wish''s acceptance line)'
+closed_at: '2026-09-04T02:56:05'

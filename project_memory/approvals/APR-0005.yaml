@@ -1,0 +1,11 @@
+id: APR-0005
+kind: plan
+item: null
+revision: null
+subject_manifest_hash: 8ae8147af1d33ea972ffa09d72d669e086744e5e50e76c1fa1e1ab74bd4cab82
+request_id: 8f21005b72424be497ec05a740e04bc5
+mint_code: 41cd20
+minted_via: user_answer_via_approval_hook
+approved_at: '2026-09-04T05:53:18'
+expires: null
+revoked: false

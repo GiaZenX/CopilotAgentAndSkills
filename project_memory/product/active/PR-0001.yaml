@@ -32,7 +32,7 @@ out_of_scope:
   einen; legacy/ plus das Abschlusskriterium ersetzen ihn hier).
 - Rueckwirkendes Nachtragen des V2-Umbaus selbst als Backlog.
 priority: high
-status: DRAFT
+status: APPROVED
 revision: 1
-approval_ref: null
+approval_ref: APR-0005
 created: '2026-08-04T16:26:28'

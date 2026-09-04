@@ -1,0 +1,62 @@
+id: PR-0004
+title: 'G4-1 Test discipline and hook hygiene: a gate on the SCOPE of a test run (this
+  repo + kits), timeouts on every kit hook registration, and the design checks'' BUILD
+  half'
+class: normal
+user_story: As the lead of this repo and as the PM of a kit project, I want a full-suite
+  run during a round to be REFUSED unless the line says it is the delivery run, every
+  kit hook registration to carry a timeout, and the design checks to reach the built
+  app, so that a round no longer pays hours for runs nobody asked for and no hook
+  is silently killed into an ALLOW.
+problem: Generation 3 measured five unrequested full-suite runs (~5 h) although every
+  order carried the DEC-0050 sentence; the office kit registers eight shell hooks
+  and none carries a timeout (a killed hook is an ALLOW); the design checks of FR-0077
+  stop at the rendered draft because kit_browser_checks.py is mirrored into research-team
+  (H139). Absorbs FR-0086 (the gate), FR-0057 (the QE measure + timeouts), H139 (the
+  BUILD half of FR-0077).
+goal: During a round a command line that runs the whole declared test surface is refused
+  with the affected-suites sentence unless it carries the delivery prefix; that prefix
+  run is the one recorded as run_scope full (DEC-0061); every hook entry of every
+  kit settings.json names a timeout and _harness.Deadline-style reading refuses an
+  entry without one; the C1-C3 checks run in browser_smoke() of the built app with
+  the mirror kept byte-identical or KIT_SPECIFIC_SCRIPTS naming the reason.
+acceptance_criteria:
+- id: AC-1
+  text: 'FR-0086: Given a scaffolded pilot in a round, When a bare full-suite line
+    is run, Then it is refused with the affected-suites sentence; When the same line
+    carries the delivery prefix, Then it passes and the kernel records run_scope full;
+    When a selection (-k, node id, sub-path) is run, Then it passes; When a second
+    bare full run follows a recorded full run in the same round, Then it is refused
+    unless the previous full run yielded findings (DEC-0063 (4)); measured as processes,
+    red-first; this repo''s gate 5 measured in test_gates.py'
+- id: AC-2
+  text: 'FR-0057: Given the three kits'' settings.json, When any hook entry lacks
+    a timeout, Then a shipped test is red and the session-start reader refuses that
+    entry with a sentence; the quality-engineer and implementer skills state the run-scope
+    rule (affected suites in a round, the full run once before delivery) as a procedure,
+    measured against the kit text'
+- id: AC-3
+  text: 'H139: Given a built app on a scaffolded dev pilot, When kit_browser_checks.py''s
+    browser_smoke() runs, Then C1/C2/C3 (axe or its equivalent without npm, keyboard
+    path, reduced motion / focus-visible) are checked and each is red on a planted
+    violation; the research-team mirror stays byte-identical or KIT_SPECIFIC_SCRIPTS
+    names the reason; H139 closed with the test named'
+- id: AC-4
+  text: 'Cost side per DEC-0056 named per gate: what a project whose suite runs in
+    seconds pays (the threshold is a config value, not a constant), what a project
+    without UI pays for AC-3 (nothing measurable)'
+invariants:
+- A runner nobody declared is not judged (the declared test command of the project
+  is the property, not a list of runner names)
+- 'A killed hook is an ALLOW: every new registration carries a timeout and its deadline
+  is measured'
+- Mirrored files stay byte-identical across kits unless KIT_SPECIFIC_* names the reason
+out_of_scope:
+- Any narrowing of the archive guard (H125 pipe/link/glob) -- a command-line guard
+  is a DEC-first design round, not a stream (DEC-0070 (2))
+- BUG-0025 line endings (G4-4)
+priority: high
+status: APPROVED
+revision: 1
+approval_ref: APR-0005
+created: '2026-09-04T02:54:22'

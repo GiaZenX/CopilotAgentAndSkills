@@ -25,11 +25,12 @@ request_text: 'Gemessen im Repo, 2026-08-24: gate_test_coverage der Kits erzwing
   es beim harness auch ausarten?''), bevor irgendjemand danach gesucht hat. Ungemessen
   ist bisher, wie sich die QS-Rolle in einem Projekt mit langer Suite tatsaechlich
   verhaelt -- kein Pilot hat ein Projekt gross genug werden lassen.'
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-08-24T13:45:04'
-triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
-  JA, BAUEN -- measure first what QA starts today on a small change in a long-suite
-  project, then the DEC-0050 measure into the role where it acts.'
+triage_result: 'MERGED into PR-0004 at the generation-4 cut (DEC-0067: wishes sharing
+  files join ONE product goal; the goal carries this wish''s acceptance line)'
 related_pr: PR-0003
+resulting_item: PR-0004
+closed_at: '2026-09-04T02:56:02'

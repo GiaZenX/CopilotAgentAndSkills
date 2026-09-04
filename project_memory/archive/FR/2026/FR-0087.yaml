@@ -44,7 +44,11 @@ request_text: 'User 2026-09-03 (chat, after asking what H and S are: ''Ich dacht
 source: User 2026-09-03 (chat); project_memory/staging/generation-3-streams.md log
   16:5x and the E verifier finding N-4; DEC-0069 (hand-captured acceptance); FR-0012;
   FR-0058; CLAUDE.md 'Wo Dinge hingehoeren'; docs/POST_V2_WISHLIST.md
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-03T13:46:06'
+resulting_item: PR-0005
+triage_result: 'MERGED into PR-0005 at the generation-4 cut (DEC-0067: wishes sharing
+  files join ONE product goal; the goal carries this wish''s acceptance line)'
+closed_at: '2026-09-04T02:56:08'

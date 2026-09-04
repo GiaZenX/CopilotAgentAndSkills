@@ -3,7 +3,7 @@ title: 'A BUG cannot reach VERIFIED on an honestly declared regression run: the 
   edge reads the merge''s evidence filter, which drops every passing run_scope=selection
   (DEC-0061) -- while the kernel''s own refusal text asks for exactly such a targeted
   run'
-related_pr: FR-0082
+related_pr: PR-0005
 observed: '2026-09-03, this repo (kernel at e45c0ca): after APR-0001 to APR-0004 the
   lead ran the 12 tools/test_ functions whose docstrings name BUG-0083 to BUG-0086
   (12 passed, 36.85 s) and recorded EVD-0079 with --kind test --result pass --related

@@ -1,0 +1,54 @@
+id: PR-0006
+title: 'G4-3 Procedure and retrospective: review as an EVENT in the kits and here
+  (FR-0084), a cut critic before the order (FR-0005), the five malformed order lines
+  in the PM role (FR-0010), and the orchestrator rules of DEC-0070 in the lead role
+  text'
+class: normal
+user_story: As the user of a kit project, I want the project to ask 'could this be
+  cheaper or better' at phase ends, merges and repeated findings -- three lines to
+  me, decisions mine -- and every work-order plan to name the way it rejected, so
+  that reflection stops being something only I bring.
+problem: Reflection appeared in generation 2 and 3 only where the procedure demanded
+  a measurement (FR-0084); the cut has no critic and produced eight findings against
+  it in generation 3 (FR-0005, DEC-0070 (1)); order lines in generation 3 were refuted
+  by measurement three times (FR-0010, DEC-0070 rule 5); the lead's own rules (a 'queued'
+  message is no delivery; a command-line guard is a DEC-first round) exist only in
+  a DEC and a logbook.
+goal: The project-auditor role and the harness-lead role ask the four measured questions
+  at the named events and write three lines to the user; a TSK plan without the rejected-alternative
+  line is refused by the plan check; a cut critic presents a SMALLER plan before the
+  order; the PM role text carries the five malformed order-line forms; harness-lead.md
+  carries DEC-0070 rules 1, 2 and 5 (an implementer edits it, gate 1 refuses the lead).
+acceptance_criteria:
+- id: AC-1
+  text: 'FR-0084: Given a phase end, a merge, a repeated finding class or a changed
+    decision premise on a scaffolded pilot, When the auditor run fires, Then the session
+    brief carries the four questions with measured answers and three lines to the
+    user; When a TSK plan lacks the rejected-alternative line, Then the plan check
+    refuses it; measured on a pilot copy, red-first'
+- id: AC-2
+  text: 'FR-0005: Given an order draft, When the cut critic runs, Then it presents
+    a smaller plan with what it removed and why, and the PM records the choice; measured
+    against the kit text and on a pilot'
+- id: AC-3
+  text: 'FR-0010: the five malformed order-line forms are in the project-manager role
+    text as a procedure (not adjectives), each with the case that produced it, measured
+    against the kit text'
+- id: AC-4
+  text: DEC-0070 rules 1, 2 and 5 in .claude/agents/harness-lead.md (measured cut
+    before spawn via check-scopes; a command-line guard is a DEC-first design round;
+    a queued SendMessage to a completing agent is not a delivery, silence longer than
+    a verification's wall-clock is a ListAgents check), each pointing at its DEC;
+    test_gates or a tools test reads the role text for the pointers
+invariants:
+- 'Taste stays the user''s (FR-0074): no per-item questioning, no ''creativity'' instruction
+  in a role text'
+- A role text names the test that holds a property claim, or the claim is not made
+out_of_scope:
+- Building the review as a kernel type or automaton -- it rides on the auditor run
+  record (FR-0038/TSK-0112)
+priority: normal
+status: APPROVED
+revision: 1
+approval_ref: APR-0005
+created: '2026-09-04T02:54:25'

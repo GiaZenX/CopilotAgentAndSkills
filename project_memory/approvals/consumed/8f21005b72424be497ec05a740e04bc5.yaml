@@ -1,0 +1,47 @@
+request_id: 8f21005b72424be497ec05a740e04bc5
+kind: plan
+item: null
+revision: null
+subject_manifest:
+  goals:
+  - item: PR-0001
+    title: Migrationsweg V1 -> V2
+    revision: 1
+    scope_hash: ff1ad5e8cb71bdb88001d278295206215a7203c15426c1c8f24dd6b8a40e1f85
+  - item: PR-0002
+    title: Dieses Repo fuehrt seinen eigenen Zustand
+    revision: 1
+    scope_hash: 571b0d74757934562642f0594c96a86e506dad8aaef4242749b94e4ec0e45f38
+  - item: PR-0003
+    title: Das V2-Harness ist auslieferbar
+    revision: 1
+    scope_hash: 73bf24fcde780da6ce8bf479079796400205f46985d29ea6b16e87666cc2793f
+  - item: PR-0004
+    title: 'G4-1 Test discipline and hook hygiene: a gate on the SCOPE of a test run
+      (this repo + kits), timeouts on every kit hook registration, and the design
+      checks'' BUILD half'
+    revision: 1
+    scope_hash: 2a8a4583951918c9fa35e13b4f49a594a63e838f66bd231e23f84e73e0aabc51
+  - item: PR-0005
+    title: 'G4-2 Kernel contracts: honest evidence for a BUG (BUG-0090), no work order
+      under an inbox item (BUG-0091), SR duty by PR class (FR-0085), holes as typed
+      items (FR-0087), leases for parallel specialists (C-2/C-3)'
+    revision: 1
+    scope_hash: c04e95b72ee0784eeb12e2704fb664d2c204ce862e04645267f60e92d99a0b0e
+  - item: PR-0006
+    title: 'G4-3 Procedure and retrospective: review as an EVENT in the kits and here
+      (FR-0084), a cut critic before the order (FR-0005), the five malformed order
+      lines in the PM role (FR-0010), and the orchestrator rules of DEC-0070 in the
+      lead role text'
+    revision: 1
+    scope_hash: a36b4ae03a0af063592464c6abf4430b44a17c0bbada183b304d1a675f1d73e9
+  - item: PR-0007
+    title: 'G4-4 Repo hygiene: the hosted CI is green or honest (BUG-0069), line endings
+      pinned and the 33 CRLF files normalised (BUG-0025), kit update leaves no memory
+      residue (BUG-0088), the load-class gate test stops flapping (BUG-0033)'
+    revision: 1
+    scope_hash: 4527a30291449c380493c71b70d08b4758753f9ce06fcb0b9c7897059a30711b
+subject_manifest_hash: 8ae8147af1d33ea972ffa09d72d669e086744e5e50e76c1fa1e1ab74bd4cab82
+created: '2026-09-04T02:56:23'
+expires_at_epoch: 1788569783.117468
+mint_code: 41cd20
