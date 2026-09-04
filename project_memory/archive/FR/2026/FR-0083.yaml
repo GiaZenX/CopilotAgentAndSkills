@@ -10,7 +10,8 @@ request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V
   an approval minted through canUseTool carries a provenance the kernel can read and
   prints as such on the card; a gate that requires a human-minted token refuses the
   programmatic one with a sentence; measured red-first.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T19:50:12'
+closed_at: '2026-09-04T02:50:36'

@@ -1,0 +1,24 @@
+id: EVD-0081
+kind: test
+related:
+- BUG-0083
+- BUG-0084
+- BUG-0085
+- BUG-0086
+- BUG-0089
+result: pass
+summary: 'Full tools/ suite run of the generation-3 merge round (TSK-0120, commit
+  6704221): 4554 passed / 14 skipped / 4 failed = 4572 collected in 57:45; the four
+  reds were the merge findings M-10 to M-13 (test-file fixes, re-run in full afterwards),
+  none of them a test of these bugs; the twelve tests whose docstrings name BUG-0083
+  to BUG-0086 and the BUG-0089 remedy tests (tools/test_state.py, tools/test_kernel.py:
+  replanning_route from AUTOMATA, red-first R10 in stream C) passed inside that run;
+  recorded by the lead from merge-protocol.md section 8 so the FIXED to VERIFIED edge
+  reads a FULL run (BUG-0090 names why the selection run EVD-0079 could not)'
+artifact_refs:
+- staging/TSK-0120/merge-protocol.md
+run_command: python -B -m pytest tools/ -q
+run_scope: full
+revision: 1
+approval_ref: null
+created: '2026-09-04T02:50:38'

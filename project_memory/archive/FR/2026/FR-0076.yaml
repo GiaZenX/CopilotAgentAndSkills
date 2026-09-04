@@ -30,7 +30,8 @@ request_text: 'User wish 2026-09-02 (asked after seeing the finance dashboard of
   (follow-up, not this stream). Legal caveat stays on every page: replaces no tax
   advice.'
 related_pr: FR-0032
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T13:39:16'
+closed_at: '2026-09-04T02:50:26'

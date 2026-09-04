@@ -1,0 +1,21 @@
+id: EVD-0082
+kind: review
+related:
+- PR-0003
+result: pass
+summary: 'verifier PASS for diff:39521cff6defd34bbf51d9dadc64b562744336a7ad58e7a64e2be2d6cb98862f
+  -- close-out commit after the generation-3 merge 6704221: the tree outside project_memory
+  is byte-identical to that commit (measured by the lead: git diff HEAD empty, git
+  status empty, no untracked file outside project_memory); the digest moved only because
+  it includes HEAD; what this commit carries is state written through the kernel (TSK-0115
+  to TSK-0120 cancelled and archived, ten FRs merged and archived, EVD-0081, BUG-0083
+  to BUG-0086 VERIFIED, BUG-0089 triaged, DEC-0070 retrospective, round log) -- no
+  kit, tools or docs file changed since EVD-0080'
+artifact_refs:
+- staging/generation-3-streams.md
+run_command: git diff HEAD --stat -- . :(exclude)project_memory (empty) + git status
+  --short (empty outside project_memory)
+run_scope: full
+revision: 1
+approval_ref: null
+created: '2026-09-04T02:52:15'

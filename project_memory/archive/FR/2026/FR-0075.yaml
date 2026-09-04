@@ -24,7 +24,8 @@ request_text: 'User wish 2026-09-02, while stream I (TSK-0109, FR-0032) was unde
   disagree. Not a bug: the current board works; this is a design and usability request,
   filed as FR per the user''s standing rule.'
 related_pr: FR-0032
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T13:02:54'
+closed_at: '2026-09-04T02:50:24'

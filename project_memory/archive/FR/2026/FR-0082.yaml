@@ -9,7 +9,8 @@ request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V
   paragraph, verbatim as criterion): a ''blocked'' evidence closes the merge like
   ''fail''; the recorded sentence says WHAT blocked and that nothing was checked --
   a blocked without that sentence reads as a checked fact and is refused by the kernel.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T19:50:11'
+closed_at: '2026-09-04T02:50:34'

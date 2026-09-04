@@ -980,3 +980,14 @@ verifier first-pass findings (B/M/N), rework rounds, tier, tokens.
   class). Final: 90 files +12887/-1602, stamps dev 2026.09.04-1 / office 2026.09.04-3 / research
   2026.09.04-1, collect 4575, wishlist H123-H148 + H150 (H128/H149 reserved-unused), 33 CRLF files
   untouched (BUG-0025 gen 4). Next: EVD + commit by the lead.
+- 2026-09-04 04:0x **COMMITTED 6704221** on feat/harness-v2 (EVD-0080, digest 5f89aa02…, 570 files
+  incl. all staging protocols and sighting images; NOT pushed -- push only on the user's word).
+  Close-out through the kernel: TSK-0115..0120 CANCELLED (= delivered via 6704221; the TSK
+  automaton has no dispatch-free DONE here) + archived; FR-0021/0074/0075/0076/0077/0078/0079/0080/
+  0082/0083 MERGED + archived; EVD-0081 (test, run-scope full = the merge full run) recorded for
+  BUG-0083..0086 + BUG-0089; BUG-0089 TRIAGED with its scope-approval question pending (asked with
+  the generation-4 plan approval). **DEC-0070 VALID = generation-3 retrospective** (six rules: cut
+  measured not written; a command-line guard is a DEC-first design round, not a stream; merge stays
+  its own verification; DEC-0050 becomes a gate FR-0086; "queued" is not delivery; generation 4 =
+  four goals as PRs with one plan approval). Next: close-out commit, generation-4 PR cut, plan
+  approval, handover prompt.

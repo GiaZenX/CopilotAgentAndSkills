@@ -26,7 +26,7 @@ acceptance_criteria:
 - id: AC-2
   text: a two-parent origin whose parents ALL hang from the root is accepted (no over-refusal),
     measured
-status: FIXED
+status: VERIFIED
 revision: 1
 approval_ref: APR-0004
 created: '2026-09-01T23:18:03'

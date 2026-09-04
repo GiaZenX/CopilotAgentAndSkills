@@ -26,7 +26,7 @@ acceptance_criteria:
     rc 2
 - id: AC-2
   text: section 6 and 17 of the research constitution say the route that exists
-status: FIXED
+status: VERIFIED
 revision: 1
 approval_ref: APR-0003
 created: '2026-09-01T23:18:03'

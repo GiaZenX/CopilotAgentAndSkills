@@ -34,7 +34,7 @@ request_text: 'User, 2026-09-02, verbatim (answer to the FR-0005 question, resta
   the questions himself) and its cost is the width of one approval -- the round measures
   both.'
 related_pr: FR-0058
-status: TRIAGED
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T08:19:51'
@@ -44,3 +44,4 @@ triage_result: 'DECIDED 2026-09-02 via AskUserQuestion: after the plan-level app
   update); the round is cut after streams E and F of the next generation land, because
   it touches the kernel (new approval kind + manifest + invalidation) AND the PM texts
   of all three kits.'
+closed_at: '2026-09-04T02:50:23'

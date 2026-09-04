@@ -10,7 +10,8 @@ request_text: 'Thin FR from the measured wishlist pass of TSK-0110 (FR-0036), do
   dev-team kit (axe run, keyboard path, reduced-motion and focus-visible presence,
   colour literals outside the token sheet), each red-first. Acceptance: every listed
   half has a test that fails on a planted violation; the wishlist section points here.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T19:50:07'
+closed_at: '2026-09-04T02:50:28'

@@ -9,7 +9,8 @@ request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V
   SKILL line that states the PROCEDURE (how the goal is chosen and shown) instead
   of an adjective. Acceptance: a planted view with two primary goals is refused with
   a sentence; the SKILL sentence is measured against the kit text.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T19:50:08'
+closed_at: '2026-09-04T02:50:29'

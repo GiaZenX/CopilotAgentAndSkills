@@ -111,7 +111,8 @@ expected_outputs:
   table. No commit, no push, no install to the global store.'
 dependencies: []
 root_revision: 1
-status: READY
+status: CANCELLED
 revision: 1
 approval_ref: null
 created: '2026-09-03T07:21:08'
+closed_at: '2026-09-04T02:50:08'

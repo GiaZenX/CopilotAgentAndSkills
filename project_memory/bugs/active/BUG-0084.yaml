@@ -31,7 +31,7 @@ acceptance_criteria:
     across all three kits automata
 - id: AC-3
   text: the QA-debt filter covers every kit root type by derivation
-status: FIXED
+status: VERIFIED
 revision: 1
 approval_ref: APR-0002
 created: '2026-09-01T23:18:02'

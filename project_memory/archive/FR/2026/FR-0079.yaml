@@ -9,7 +9,8 @@ request_text: 'Thin FR from the wishlist pass of TSK-0110 (FR-0036), docs/POST_V
   a field on another type. Wanted first: the DEC (type or field, with the kernel consequences:
   backlog_types, index, board), then the build. Acceptance: the decision is recorded;
   if ''type'', MST is capturable, indexed and rendered on the board timeline.'
-status: OPEN
+status: MERGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T19:50:09'
+closed_at: '2026-09-04T02:50:31'
