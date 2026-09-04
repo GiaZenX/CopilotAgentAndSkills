@@ -22,3 +22,4 @@ triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUser
   New shape: one folder for everything kit-owned outside the provider-fixed dirs (.claude/.codex/.agents
   stay where the providers read them; scripts/tools/dashboards fold; project_memory
   stays); measure which dirs are provider-fixed before moving anything.'
+related_pr: PR-0003

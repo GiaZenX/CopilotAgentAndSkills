@@ -23,3 +23,4 @@ created: '2026-08-15T09:41:11'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   Spaeter -- keep, behind the kit fixes. FR-0022 (human names) pairs with THIS item,
   not FR-0021.'
+related_pr: PR-0003

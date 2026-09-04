@@ -80,7 +80,16 @@ Occasion: `BUG-0073`.
    (`tax.filings`) and the payment term after which an open invoice is worth a reminder
    (`receivables.payment_terms_days`) — both are the sources of the deadline notice at session
    start; left empty it says nothing about them) + `product/masterplan.md` (a frozen discovery artifact — never a status
-   source). Preset confirm (recommend `core` first — presets are
+   source).
+   **TWO ANSWERS THE FINANCE PAGE CANNOT GUESS**, so read them out of the profile and report them
+   by name if they are missing — nothing else writes them after the install:
+   `tax.kleinunternehmer` comes from "Bist du Kleinunternehmer nach § 19 UStG — weist du also keine
+   Umsatzsteuer aus? (ja/nein)" and is `true` or `false`; ANY other value the page reads as
+   unanswered, and then it shows neither VAT sums nor a payment burden rather than guessing one.
+   `tax.founding_year` comes from "In welchem Jahr hast du das Geschäft angemeldet?" as a
+   four-digit year; without it the § 19 watch cannot decide the case "no previous year in the
+   ledger" and says so instead of deciding.
+   Preset confirm (recommend `core` first — presets are
    MECHANICAL; changing one later is `request-approval preset` → the user answers →
    `set-preset` → restart, and stays inside the chat: §7).
 3. **DEFINE PROCs** — capture one `PROC-nnnn` per automation wish
@@ -115,6 +124,19 @@ Occasion: `BUG-0073`.
    not), while with `false` its text stays inside the task. Parallelizing is therefore also a decision
    about what the user may see: if they ask about the chatter, say so in plain words instead of
    promising quiet.
+   **Several specialists at once is a CUT, and the cut is by FILE OWNERSHIP (§4a).** Disjoint
+   files is the precondition, and it is one you have to CHECK: resolve each order's `allowed_scope`
+   minus `forbidden_scope` against the tree the way `gate_write_scope` resolves it when it refuses
+   a write — not by comparing the scope TEXTS — and look for a file both orders own, including
+   one an order is about to CREATE in a directory that is empty today. Wishes whose file lists
+   overlap are merged into ONE `PROC` at triage and that goal gets ONE `TSK` — never several
+   requirements inside one work order, which the kernel cannot represent and no board can see
+   (`DEC-0067`); and no more goals run at once than you can carry through their rework rounds. Nothing refuses an overlapping pair, so this reading
+   is the whole of the protection, and this kit ships no procedure document for the rest of it.
+   **The prose you hand the user is a deliverable too, and `/humanizer` (Codex
+   `.agents/skills/humanizer/SKILL.md`) is the reference skill for it.** It reaches you by no other
+   route: a reference skill rides on a dispatch header (`kernel.references.for_task`, stamped onto
+   the lease at `create_lease`), and you are bound by `settings.json` and dispatched by nothing.
    **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
    briefing names what the kernel swept and what it measured; before you re-order the work run
    `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own
@@ -174,6 +196,11 @@ plain config artifacts `business_profile.yaml` and `project_config.yaml` and the
 `product/masterplan.md`. READ everything; never own the specialists' artifacts.
 `ledger/*.csv` may be edited but is re-validated in full afterwards (a failure blocks
 commit/push/merge/reports/dispatch until fixed); never edit generated reports.
+
+A deadline several goals share is its own item and yours as well: capture an `MST` (title, `due`
+as an ISO date the kernel refuses if it cannot read it, `derives_from` = the goals it applies to)
+and carry it from `PLANNED` to `REACHED` -- or to `MISSED`/`DROPPED`, which is the point of a
+type instead of a date field: a slipped deadline stays a record with a name (`DEC-0064`).
 
 ## Kit updates
 Same contract as every kit: pending files (`.claude/kit_update_pending.*`) are MERGE tasks — the kit

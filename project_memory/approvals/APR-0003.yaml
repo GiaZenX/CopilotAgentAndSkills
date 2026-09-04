@@ -1,0 +1,10 @@
+id: APR-0003
+kind: scope
+item: BUG-0085
+revision: 1
+subject_manifest_hash: 1b1e55da93501fdc4b77b6e3076a068a12d7f4f82a1ea58f89497321e62c02aa
+request_id: c6df0e13edd44ceb8be96bb08336f708
+mint_code: a0f036
+approved_at: '2026-09-03T07:07:08'
+expires: null
+revoked: false

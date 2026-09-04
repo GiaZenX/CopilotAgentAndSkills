@@ -84,18 +84,59 @@ trays to protect, so there is no false positive to remove.
 
 WHAT THIS DOES NOT SEE, so each stays a decision rather than a discovery:
 
-  * a removal performed inside another program (`python -c "os.remove(...)"`);
-  * a removal a shell command asks for with a FLAG instead of a verb. `find archive -name '*.pdf'
-    -delete` is one command line, its invocation is `find`, and both readings below key on a delete
-    VERB (`DELETE_VERBS`), so neither sees it — measured rc 0 on 2026-09-02 against a project whose
-    archive held the file it names. Named here rather than closed: adding `find` to the verbs would
-    refuse every `find` that only lists, and reading its flags is a second parser for one command's
-    grammar. It is a residual of the same shape as `tar --remove-files` below;
+  * a removal performed inside another program (`python -c "os.remove(...)"`). Its command word is
+    the interpreter and the removal is inside a string this guard does not parse;
+  * a removal whose word carries none of the stems in `NAMING_DESTRUCTION` / `SWEEPING_DESTRUCTION`.
+    That is the honest residue of H125 and it is `H129` in docs/POST_V2_WISHLIST.md with its
+    measurement. What is NO LONGER in this list, because the stems are now read over every word of
+    an invocation: a removal asked for with a FLAG (`find archive -name '*.pdf' -delete`,
+    `tar --remove-files … archive/…`) and one asked for with a SUBCOMMAND (`git clean -fdx`);
+  * a copier flag that deletes in the DESTINATION rather than the source — `robocopy inbox archive/…
+    /MIR`, `rsync --delete inbox/ archive/2026/`. This is the part of `H123` that survives H125, and
+    the reason is the ORDER of the readings below: `_filing` reads those invocations as copies, so
+    the copy/move branch answers them before any destroying word is looked for, and a copy INTO the
+    archive is the kit's ordinary filing operation;
   * a token, or a `cd` argument, the shell rewrites before use — a variable, a glob, `~`. `_filing`
     resolves none of them and this guard blocks on none; uncertainty -> exit 0 is this guard's
     contract, and a guess about an unresolvable name would break it;
+  * an operand a PIPE hands to the destruction (`ls archive | xargs rm -rf`, `find . -print0 |
+    xargs -0 rm -rf`, `Get-ChildItem -Recurse | Remove-Item -Force`). The destroying word stands on
+    the line, but the paths it will act on are the previous stage's OUTPUT and no word of the line
+    names them, so the reach reads as "names nothing" and a NAMING word that names nothing destroys
+    nothing. Measured rc 0 through all eight registered hooks, unchanged from HEAD, and named in
+    `H125`;
+  * a directory LINK that stands in for a tray (a junction `belege/ -> archive/`). `_filing`
+    normalises a path, it does not RESOLVE it, so `rm belege/finance/2026/invoice.pdf` is rc 0 while
+    the same document through its real path is rc 2 (measured). The paragraph "WHAT OUT OF ARCHIVE
+    MEANS" above speaks of every spelling whose TEXT IS THE PATH; a link's text is not the path.
+    IT REACHES THROUGH THE WORKING DIRECTORY TOO, which is the worse half and is measured: `cd
+    belege ; rm -rf .`, `cd belege/finance ; rm -rf .` and `cd belege ; git clean -fdx` are rc 0
+    while `cd archive ; rm -rf .` is rc 2 -- the shell stands in the archive and the ancestor form
+    costs the whole tray;
+  * the GLOB spelling of the ancestor form (`rm -rf *`, `rm -rf ./*`, `git clean -fdx *`). It is the
+    bullet above this one -- a token the shell rewrites -- and it is called out again here because
+    it is the most ordinary spelling of the destruction `H125` closes;
+  * (CLOSED in TSK-0120, kept here for the direction it names) a directory change whose EFFECT the
+    line does not settle -- a short-circuiting `&&`, a `cd` in a pipe stage or behind `&` (both
+    subshells), a `popd` this reader cannot compute. The sweep is judged against every position the
+    shell could be standing in, and EVERY one of them is carried forward: a change is computed FROM
+    EACH candidate (a relative target means something different from each), a certain in-shell
+    change then replaces the set with the results, any other change adds them beside it, and a
+    destruction is refused when any candidate holds a tray of record. Two earlier cuts fell short
+    and both are measured: skipping the uncertain change only -- `cd outbox && cd .. && rm -rf .`
+    was ALLOW while `rm -rf .` alone was rc 2 (merge-verifier B1) -- and computing the next change
+    from the NEWEST candidate only -- `cd docs | true ; cd ../outbox ; rm -rf .` was ALLOW while a
+    real bash stands on the root (B2). What this BUYS is not certainty about the shell, only doubt
+    answered fail-closed, and the price is four named over-refusals --
+    `true && cd outbox ; rm -rf .`, `cd outbox ; cd .. | true ; rm -rf .`,
+    `cd outbox ; cd $X ; rm -rf .` and `pushd outbox ; pushd sub ; popd ; rm -rf .` -- each refused
+    although that shell may really be standing outside every tray. A FIFTH belongs to PowerShell
+    and comes out of a rule that is right for the other shell: a one-character `|` is read as a
+    subshell because a bash pipeline is one, while a PowerShell pipeline runs in the same process --
+    so `Set-Location docs | Out-Null ; Set-Location ../outbox ; rm -rf .` is rc 2 with the shell
+    really in `outbox`. `H144` and `H150` carry the chains and all five prices;
   * an output REDIRECT into a tray of record ON ITS OWN (`echo x > inbox/y.pdf`), which truncates a
-    document of record as surely as a delete. This guard's two rules key on a delete VERB and on a
+    document of record as surely as a delete. This guard's two rules read a DESTROYING WORD and a
     move OUT of the archive, and a redirect is neither, so nothing here refuses it — `gate_filing`
     catches the `archive/` half (it reads redirect targets among the paths a command CREATES) and
     the `inbox/` half is refused by nothing. Named here rather than closed, because closing it is a
@@ -105,14 +146,8 @@ WHAT THIS DOES NOT SEE, so each stays a decision rather than a discovery:
     --remove-source-files` and its alias `--remove-sent-files`) makes `_filing.relocating` true, so
     emptying the archive with it is refused (BUG-0002, `SOURCE_DELETING_FLAGS`). What stays open is
     the neighbouring case that deletes in the DESTINATION rather than the source — `robocopy inbox
-    archive/… /MIR` (which /PURGEs the archive) is not a move OUT of it and this rule does not see it;
-    that is a delete INSIDE the archive, and the delete rule keys on verbs (`DELETE_VERBS`), not on a
-    robocopy flag;
-  * `tar --remove-files` archives the source and then DELETES it, emptying the archive as surely as a
-    move — but `tar` is not a copy verb (`_filing` reads copy/move by calling convention and tar has
-    none), so `moved_out_of_the_archive` never sees it. Named as a residual in
-    docs/POST_V2_WISHLIST.md rather than bolted on here, because catching it means a second,
-    non-copier deletion path this guard does not have.
+    archive/… /MIR` (which /PURGEs the archive) is not a move OUT of it — that is the copier-flag
+    residue named three bullets up, and it is one entry rather than two.
 """
 import os
 import re
@@ -131,13 +166,90 @@ import _root
 # project produces and may discard, so a delete there is ordinary work.
 INBOX = "inbox"
 PROTECTED_TRAYS = (_filing.ARCHIVE, INBOX)
-# The verbs that DESTROY. Read twice on purpose (see the module docstring): once against the raw
-# command text, once against what each operand resolves to. The regex is BUILT from the same two
-# tuples rather than re-typed — a verb or a tray added to one reading and not the other is exactly
-# the half-blind guard this round is correcting.
-DELETE_VERBS = ("rm", "rmdir", "del", "erase", "rd", "remove-item", "ri")
-DELETE_RX = re.compile(r"\b(%s)\b[^\n;|&]*\b(%s)(\b|[/\\])"
-                       % ("|".join(DELETE_VERBS), "|".join(PROTECTED_TRAYS)), re.I)
+# ---------------------------------------------------------------- WHAT COUNTS AS A DESTRUCTION
+# THE RULE IS A PROPERTY OF THE LINE AND NOT A LIST OF VERBS (H125). Until 2026-09-03 this was
+# `DELETE_VERBS = ("rm", "rmdir", "del", "erase", "rd", "remove-item", "ri")` and the question was
+# "is the command word in that tuple". Measured against a scaffolded pilot with a real document
+# under `archive/`, through all eight registered office hooks as processes: `unlink`, `git clean
+# -fdx` (with and without a path), `Clear-Content` and `find archive -delete` were ALLOW while `rm`
+# on the same document was rc 2. `git clean` is the worst of them and is the accident in its purest
+# form -- the documents under `archive/` are untracked AND ignored by the kit's own `.gitignore`,
+# which is exactly the set `-fdx` removes.
+#
+# The property has TWO HALVES and only one of them is a definition. That is said here rather than
+# implied, because the honest half is what a reader has to know before relying on this wall:
+#
+#   WHERE (a definition, and the half that closes `git clean`): a destruction REACHES a set of
+#   positions. A destruction that NAMES paths reaches those; a SWEEPING one that names none reaches
+#   the working directory it runs in. That reach meets a tray of record in TWO directions, and both
+#   are read: the position lies INSIDE a tray (`_protected_readings`, an approvable document), or a
+#   tray lies INSIDE the position (`swallows_a_tray`, which is no document at all and therefore a
+#   sweep). The second direction is verifier finding B1 of rework 1: with only the first,
+#   `git clean -fdx .`, `rm -rf .`, `find . -name '*.pdf' -delete` and `Remove-Item -Recurse -Force
+#   .` were rc 0 while the same lines without the dot were rc 2 -- so the wall taught its own
+#   bypass, which is the opposite of what a guard against an ACCIDENT is for (`DEC-0056`).
+#   The tray has to EXIST for the second direction, and that is the over-refusal weighing: it is
+#   why `git clean -fdx` in a project without an archive is not refused.
+#
+#   WHAT (a vocabulary, and it stays one): whether a program removes or empties a file is a fact
+#   about that program and cannot be derived from the command line -- a `PreToolUse` hook runs
+#   BEFORE the line and has no filesystem answer to compare against. What changed is the SHAPE of
+#   the vocabulary: it is read over every word of the invocation instead of over the command word
+#   only (so a flag like `-delete` and a subcommand like `clean` are seen), and by word STEM
+#   instead of by exact spelling (so `Remove-Item`, `Clear-Content` and any other verb-noun
+#   compound are seen without being listed). The residue -- a destroying program whose name carries
+#   none of these stems -- is `H129` in docs/POST_V2_WISHLIST.md, with its measurement. Both ends of
+#   every stem are measured rather than trusted:
+#   `tools/test_hooks.py::test_every_destroying_stem_is_load_bearing_at_both_ends` plants a line for
+#   each one and asks (a) that the guard refuses it and (b) that removing the stem lets it through.
+#
+# THE TWO ROLES A DESTROYING WORD CAN HAVE, and they are not interchangeable. A NAMING word
+# destroys what the invocation names, so with no operand it destroys nothing -- which is why plain
+# `clear` (the terminal) is not a refusal while `Clear-Content archive/x.pdf` is. A SWEEPING word
+# destroys whatever it finds, so its reach is the working directory unless a path narrows it; that
+# is the whole of `git clean`.
+NAMING_DESTRUCTION = ("rm", "rmdir", "rd", "ri", "del", "erase", "unlink", "remove", "delete",
+                      "clear", "clc", "shred", "truncate")
+SWEEPING_DESTRUCTION = ("clean", "purge", "wipe")
+# THE WORKING DIRECTORY, WRITTEN AS THE PATH THAT NAMES IT. A sweeping destruction with no operand
+# and one whose operand is `.` are the same destruction -- measured with the command's own dry run,
+# `git clean -ndx` and `git clean -ndx .` printing character-identical output -- so they are asked
+# the same question here instead of through two branches that can drift apart.
+WORKING_DIRECTORY = "."
+# A FLAG WHOSE VALUE IS A PATTERN THE COMMAND MUST **NOT** TOUCH. Its word is therefore not a path
+# the line acts on and cannot narrow a sweep: `git clean -fdx -e docs` still sweeps everything
+# except `docs`, and reading `docs` as "the sweep is confined to docs" made that line rc 0 over a
+# real archive (verifier finding B1). Which flag means "exclude" is a fact about each command and
+# cannot be derived from the line, so this is an unavoidable enumeration -- kept honest the same way
+# the destruction stems are, by a tripwire that measures BOTH of its ends
+# (`tools/test_hooks.py::test_an_exclusion_flag_does_not_narrow_a_sweep`).
+#
+# WHAT THIS COSTS THE CAREFUL SPELLING, measured and kept: `git clean -fdx -e archive` -- somebody
+# excluding the archive ON PURPOSE -- is refused too, because the exclusion is not read as a
+# narrowing and the sweep is then judged against the working directory. That is an over-refusal by
+# construction, and it costs a correction and never a document: reading the exclusion instead would
+# mean reading each command's pattern grammar, which is a second parser per command and the thing
+# `H123` records the price of.
+EXCLUDING_FLAGS = ("e", "exclude")
+# WHY THERE IS NO EXCEPTION HERE FOR THE COPIER FAMILY'S SOURCE-DELETING FLAGS, and it was measured
+# rather than reasoned: `rsync --remove-source-files inbox/x archive/2026/x` carries the word
+# `remove` and is the kit's ORDINARY filing move, so an exception for those flags looked necessary.
+# It is not, and one that catches nothing is the enumeration this round exists to remove. What
+# answers that line is the ORDER of the readings in `read_the_line`: `_filing` recognises rsync as a
+# copier by calling convention, so the copy/move branch judges the invocation and returns before any
+# destroying word is looked for. Measured on both ends by
+# `tools/test_hooks.py::test_a_filing_move_with_a_source_deleting_copier_flag_is_judged_as_a_move`:
+# the shipped guard allows that line, and a guard whose `_filing` no longer knows rsync as a copier
+# refuses it.
+# A word that could be a bare SUBCOMMAND (`git clean`) rather than a path. Anything carrying a path
+# separator, an extension or an assignment is a path or an environment prefix and is read as one --
+# `ls archive/clean-room/` must not become a destruction because a folder is called that.
+_BARE_WORD_RX = re.compile(r"\A[A-Za-z][A-Za-z0-9_-]*\Z")
+# The trays of record as they appear in the RAW text of an invocation. The second reading of the
+# delete rule keeps working the way it always has -- see `read_the_line` -- and it is built from
+# `PROTECTED_TRAYS` rather than re-typed, so a tray added to one reading cannot be missing from the
+# other.
+TRAY_IN_TEXT_RX = re.compile(r"\b(%s)(\b|[/\\])" % "|".join(PROTECTED_TRAYS), re.I)
 # shell redirects into the ledger bypass the Edit/Write guard (audit finding: `echo >> ledger/x.csv`).
 # The TARGET is read through `_filing.redirect_targets`, which resolves quoting and lifts wrapper
 # payloads the same way the write-scope gate reads a state path — a raw scan of the command text saw
@@ -203,6 +315,219 @@ CORRECTION_REMEDY = (
     "another program, an operand the shell rewrites, a second document -- refuses the whole call. "
     "The approval stops covering the document as soon as those bytes are no longer at that "
     "position, so ask again if the command did not run.\n")
+
+
+def says_destruction(word, compound):
+    """`"naming"`, `"sweeping"` or None for ONE word — see the two tuples above.
+
+    `compound` is true where a word may be a verb-noun or a multi-part flag (`Remove-Item`,
+    `--delete-after`): there the FIRST segment carries the verb. It is false for a bare word in
+    operand position, where only the whole word may be the verb -- otherwise a folder called
+    `clean-room` would read as `git clean`.
+    """
+    normalised = str(word).strip().lower()
+    if not normalised:
+        return None
+    spellings = [normalised]
+    if compound:
+        head = re.split(r"[-_]", normalised)[0]
+        if head and head != normalised:
+            spellings.append(head)
+    for spelling in spellings:
+        if spelling in NAMING_DESTRUCTION:
+            return "naming"
+        if spelling in SWEEPING_DESTRUCTION:
+            return "sweeping"
+    return None
+
+
+def destruction_of(tokens):
+    """`"naming"`, `"sweeping"` or None for one invocation — which word says it decides the role.
+
+    THREE POSITIONS A DESTROYING WORD CAN STAND IN, and each was measured to be necessary:
+    the command word (`unlink …`), a FLAG (`find archive -delete`, which is `H123`'s shape and is
+    now covered), and a bare word anywhere after the command word -- a subcommand (`git clean`) or
+    the real verb behind a prefix (`env FOO=1 rm x`, `sudo rm x`), which is why this scans instead
+    of looking at index 1. A sweeping word wins over a naming one on the same line, because a sweep
+    is the wider reach and the refusal has to describe the wider thing.
+    """
+    found = None
+    for index, token in enumerate(tokens):
+        text = str(token)
+        if not index:
+            said = says_destruction(_filing.command_name(text), True)
+        elif text.startswith("-"):
+            said = says_destruction(text.lstrip("-"), True)
+        elif _BARE_WORD_RX.match(text):
+            said = says_destruction(text, False)
+        else:
+            said = None
+        if said == "sweeping":
+            return said
+        found = found or said
+    return found
+
+
+def excludes_its_value(token):
+    """Is this token a flag that takes the NEXT word OUT of the operation? — see `EXCLUDING_FLAGS`.
+
+    A glued value (`--exclude=docs`) carries its own word and consumes nothing after it, which is
+    why the separator is looked at rather than only the name.
+    """
+    text = str(token)
+    if not text.startswith("-") or "=" in text:
+        return False
+    return text.lstrip("-").split(":", 1)[0].lower() in EXCLUDING_FLAGS
+
+
+def destruction_operands(tokens):
+    """The path-shaped tokens a destroying invocation acts on.
+
+    Everything that is not the command word, not a flag, not the VALUE of an excluding flag and not
+    one of the words that SAYS the destruction — so `git clean -fdx` names none (its reach is the
+    working directory), `git clean -fdx archive` names one, and `git clean -fdx -e docs` names none
+    again, because an exclusion is not a path the line acts on. The old reading took the tokens
+    after the delete verb (`_filing.operands_of`), which cannot see a line whose destroying word
+    stands last.
+    """
+    found, skip = [], False
+    for index, token in enumerate(tokens):
+        text = str(token)
+        if not index:
+            continue
+        if text.startswith("-"):
+            skip = excludes_its_value(token)
+            continue
+        if skip:
+            skip = False
+            continue
+        if _BARE_WORD_RX.match(text) and says_destruction(text, False):
+            continue
+        found.append(token)
+    return found
+
+
+# A WORD THE SHELL SETS BEFORE THE COMMAND WORD (`FOO=1 cmd`). It is not the command and it is not
+# a path, so the reader below steps over it while looking for the word that names the invocation.
+_ASSIGNMENT_RX = re.compile(r"\A[A-Za-z_][A-Za-z0-9_]*=")
+
+
+def moves_the_working_directory(root, tokens, base):
+    """Where this invocation really leaves the working directory, or None.
+
+    THE COMMAND WORD HAS TO BE THE DIRECTORY CHANGE, and that is the whole of verifier finding B4.
+    `_filing` looks for a `cd` ANYWHERE in an invocation, on purpose: for the readers that ask "does
+    any base land in the archive", a misreading can only ADD a reading and the worst it costs is an
+    over-refusal. The sweep reader NARROWS, so there the same misreading costs a document --
+    measured: `echo cd outbox ; rm -rf .`, `grep -r cd outbox ; rm -rf .` and
+    `ls cd outbox && rm -rf .` were rc 0 while `rm -rf .` alone was rc 2. So this reader asks the
+    narrower question, and only for the base it hands to `swallows_a_tray`; every other reading in
+    this guard keeps `_filing`'s wider one.
+
+    UNCOMPUTABLE YIELDS NO TARGET, and what the CALLER does with that is where the cost sits. A
+    `cd $DIR`, a bare `cd`, a `popd`: `_filing.directory_change` reports those as "not computed",
+    so this function returns None rather than guessing -- which keeps the sweep judged against a
+    directory that can actually be named. Until TSK-0120 the caller then simply kept the position
+    it had, and that is the half this sentence used to leave out: `pushd outbox >/dev/null ; popd ;
+    rm -rf .` swept the project root at rc 0, because `outbox` was still standing (`H150`, measured
+    at `e45c0ca` too). The caller now adds the project root back to the candidates instead, and the
+    price is named there.
+
+    AND NEITHER DOES A CHANGE THAT DOES NOT LAND, which is verifier finding B5. Asking "is the
+    command word a `cd`" and "can the target be computed" is not the same as asking whether the
+    shell really ends up there: `cd nichtda ; rm -rf .` and `cd docs2 ; rm -rf .` (a typo -- the
+    accident `DEC-0056` names) were rc 0 while `rm -rf .` alone was rc 2, because the base moved to
+    a directory that does not exist and nothing there contains a tray. So the target has to BE a
+    directory, and it has to lie INSIDE the project: `cd .. ; rm -rf .` lands above the project,
+    where "no tray under this base" is the wrong answer -- everything of the project is under it --
+    so the base stays put and the sweep is judged against the root.
+
+    WHETHER THE CHANGE TAKES EFFECT AT ALL IS NOT THIS FUNCTION'S QUESTION and never was: it
+    answers "where would this invocation leave the working directory", and the caller asks
+    `_filing.changes_the_calling_shell` first, because that answer lives in the SEPARATORS around
+    the invocation and this function is handed tokens. Until TSK-0120 nobody asked, and a `cd`
+    behind a short-circuiting `&&`, inside a pipe stage or behind `&` moved the sweep base out of
+    reach -- `H144` in docs/POST_V2_WISHLIST.md carries the four measured forms.
+
+    NEITHER IS "FROM WHICH POSITION": `base` is ONE of the candidates the caller holds, and the
+    caller asks this question once per candidate, because a relative target means something
+    different from each of them. Asking it once, from the newest, was merge-verifier finding B2.
+    """
+    names_chdir, computed = _filing.directory_change(tokens)
+    if not names_chdir or not computed:
+        return None
+    words = [token for token in tokens
+             if not str(token).startswith("-") and not _ASSIGNMENT_RX.match(str(token))]
+    if not words or _filing.command_name(words[0]) not in _filing.CHDIR:
+        return None
+    argument = next((token for token in words[1:]
+                     if not _filing.rewritten_by_the_shell(token)), None)
+    if argument is None:
+        return None
+    moved = os.path.normpath(os.path.join(base, str(argument).replace("\\", "/")))
+    if not os.path.isdir(moved):
+        return None
+    return moved if _filing.position(root, moved, WORKING_DIRECTORY) is not None else None
+
+
+def where_it_runs(root, bases):
+    """The directory an invocation really runs in, out of the readings `_filing` offers.
+
+    THE DEEPEST READING, and it is a definition rather than a position in the list -- which is what
+    this had to be measured to learn. The two producers put the real directory in different places:
+    `_filing.reading_bases` yields `[root, cwd]` (the real one LAST) while `_filing._bases_after`
+    yields `[the cd target, ..., root]` (the real one FIRST), so `current[-1]` answered `docs/` for
+    a payload whose cwd was `docs` and `root` for a line that had just done `cd docs` -- the same
+    destruction measured rc 0 and rc 2.
+
+    THIS ANSWERS THE START OF A LINE, never a `cd` inside it: `read_the_line` tracks that itself
+    through `moves_the_working_directory`, because `_filing`'s own progression follows a `cd` that
+    is only an ARGUMENT and a narrowing reader may not (verifier finding B4).
+    """
+    deepest, depth = root, -1
+    for base in bases or [root]:
+        try:
+            here = os.path.relpath(base, root).replace("\\", "/")
+        except (OSError, ValueError):
+            continue
+        if here.startswith(".."):
+            continue
+        found = 0 if here == "." else len(here.split("/"))
+        if found > depth:
+            deepest, depth = base, found
+    return deepest
+
+
+def swallows_a_tray(root, base, token):
+    """Does what this ONE operand names CONTAIN a tray of record? — the second reach direction.
+
+    ONE READER FOR TWO SHAPES that are one destruction: an operand that names the project root or
+    the directory the line runs in (`.`, `./`, an absolute spelling of either), and the SWEEP that
+    names nothing at all — the caller asks that one with `WORKING_DIRECTORY`. Splitting them into
+    two branches is what verifier finding B1 measured: the branch for "no operand" existed, the one
+    for "an operand that is the working directory" did not, and `git clean -fdx .` was rc 0 beside
+    `git clean -fdx` at rc 2.
+
+    THE TRAY HAS TO EXIST, and that is the over-refusal weighing rather than an optimisation:
+    `rm -rf .` in a project that has no `archive/` and no `inbox/` destroys nothing this guard
+    exists for, and refusing it there would be a wall with nothing behind it.
+
+    THE BASE IS THE ONE THE LINE REALLY RUNS IN, and `where_it_runs` picks it (verifier finding M1). The
+    readers beside this one try EVERY base a relative token could be meant against, because there
+    over-refusal costs a correction and under-refusal costs a document; here it is the other way
+    round — every base includes the project root, so asking all of them made `git clean -fdx`
+    inside `docs/` a refusal, which is exactly the over-refusal that teaches a user to reach for the
+    spelling B1 is about.
+    """
+    if not root:
+        return False
+    relative = _filing.position(root, base, token)
+    if relative is None:
+        return False
+    here = "" if relative == "." else relative
+    return any(os.path.isdir(os.path.join(root, tray))
+               and (not here or _filing.under(tray, here))
+               for tray in PROTECTED_TRAYS)
 
 
 def writes_the_ledger(command):
@@ -288,10 +613,17 @@ class Line(object):
     riding through it.
     """
 
-    def __init__(self, deletes, moves, unplaced):
+    def __init__(self, deletes, moves, unplaced, sweeps=(), delete_in_text=False):
         self.deletes = deletes
         self.moves = moves
         self.unplaced = unplaced
+        # A SWEEP IS A DESTRUCTION WITHOUT A DOCUMENT, so it can never be an approvable operation:
+        # `sweeps` carries the reasons for the refusal and closes the door rather than joining
+        # `deletes`. `delete_in_text` is the second, raw-text reading of the delete rule -- the
+        # invocation carries a naming destruction and its text mentions a tray of record, while the
+        # resolving reader placed nothing protected in it.
+        self.sweeps = list(sweeps)
+        self.delete_in_text = delete_in_text
 
 
 def read_the_line(root, command, bases):
@@ -315,11 +647,20 @@ def read_the_line(root, command, bases):
         `/etc/passwd` are ordinary text that names no place this guard can speak about; each was
         simply dropped, so an approved operand beside them made the line "fully approved".
 
-    THE RAW-TEXT DELETE READING IS THE LAST WORD, per invocation: if `DELETE_RX` fires and the
-    resolving reader placed no PROTECTED position in that invocation, the two readings disagree
-    about what is being destroyed and the guard believes the one that says something is. That is an
-    over-refusal by construction -- `rm outbox/archive-copy.txt` is a perfectly ordinary delete the
-    text makes look protected -- and it costs a correction on that line, never a document.
+    THE RAW-TEXT DELETE READING IS THE LAST WORD, per invocation: if the invocation carries a
+    NAMING destruction and its raw text mentions a tray of record (`TRAY_IN_TEXT_RX`) while the
+    resolving reader placed no PROTECTED position in it, the two readings disagree about what is
+    being destroyed and the guard believes the one that says something is. That is an over-refusal
+    by construction -- `rm outbox/archive-copy.txt` is a perfectly ordinary delete the text makes
+    look protected -- and it costs a correction on that line, never a document.
+
+    A SWEEP IS THE THIRD READING AND IT IS NOT AN OPERATION (H125). It is the reach read in the
+    OTHER direction: a position that CONTAINS a tray of record rather than lying inside one, which
+    is the project root, the directory the line runs in, or any ancestor of a tray. A sweeping word
+    that names no path at all is that same question asked about `WORKING_DIRECTORY`.
+    `swallows_a_tray` answers it, and only where the tray really exists -- which is what makes
+    `git clean -fdx` a refusal in a project with an archive, no refusal in one without, and no
+    refusal at all when it runs inside `docs/`.
 
     AN UNPLACEABLE OPERAND CLOSES THE DOOR AND NEVER HIDES AN OPERATION, and this paragraph is here
     because the first cut of it did exactly that: it `continue`d past an invocation carrying one, so
@@ -330,7 +671,16 @@ def read_the_line(root, command, bases):
     So `unplaced` is recorded and the reading CONTINUES: the refusal keeps everything it ever saw,
     and only `open_the_door` consults `unplaced`.
     """
-    deletes, moves, unplaced = [], [], None
+    deletes, moves, unplaced, sweeps, delete_in_text = [], [], None, [], False
+    # WHERE THE LINE COULD BE STANDING -- a SET and not a single value, and that is the whole of
+    # merge-verifier finding B1. Only an invocation whose COMMAND WORD is a directory change may
+    # move it (B4), and a change the shell may never perform may not move it either (`H144`) -- but
+    # "may not move it" was written as "leave the old value alone", and a stale value is only
+    # fail-closed while the ignored change leads AWAY from a tray. Leading BACK, it left a harmless
+    # base standing: `cd outbox && cd .. && rm -rf .` was ALLOW while `rm -rf .` alone was rc 2.
+    # So an uncertain change ADDS a candidate instead of replacing one, and the sweep below is
+    # refused when ANY candidate contains a tray of record.
+    standing = [where_it_runs(root, bases)]
 
     def unreadable(reason):
         return reason if unplaced is None else unplaced
@@ -344,7 +694,9 @@ def read_the_line(root, command, bases):
                 return "%s -- it names no place inside this project" % operand
         return None
 
-    for text, tokens, current in _filing.invocations(command, bases):
+    walked = _filing.invocations(command, bases)
+    for index, (text, tokens, current, separator_before) in enumerate(walked):
+        separator_after = walked[index + 1][3] if index + 1 < len(walked) else ""
         # A REDIRECT IS PART OF WHAT THE LINE DOES, and it is not an operand of anything: `>` is
         # shell syntax, so the argument readers below cannot see it. `> inbox/b.pdf` TRUNCATES a
         # document of record to nothing, which is the class these trays exist for -- and behind an
@@ -383,6 +735,34 @@ def read_the_line(root, command, bases):
             if not computed:
                 unplaced = unreadable("a directory change this guard cannot follow (%s)"
                                       % " ".join(str(token) for token in tokens)[:80])
+            # A CHANGE THE SHELL MAY NEVER PERFORM DECIDES NOTHING (`H144`): the separators
+            # around this invocation say whether it is certain to run and whether it runs in THIS
+            # shell. The reader is `_filing.changes_the_calling_shell`, and it lives there because
+            # the separator is a property of the decomposition, not of this guard.
+            #
+            # THE CHANGE IS APPLIED TO EVERY CANDIDATE, and that is merge-verifier finding B2. A
+            # RELATIVE target means something different from each of them -- `cd ../outbox` lands
+            # in the project's own `outbox` from `docs` and OUTSIDE the project from the root --
+            # so computing it from one candidate answers for one shell only. Reading it from the
+            # newest one is the worst of the choices: after an uncertain change the newest is the
+            # position the shell may never have reached, and a CERTAIN change then replaced the
+            # whole set with a target derived from it. Measured against a real bash as arbiter
+            # (`_round-scratch/TSK-0120/verify_tools/shell_truth.py`), which stands on the ROOT for
+            # all three of `cd docs | true ; cd ../outbox ; rm -rf .`,
+            # `false && cd docs ; cd ../outbox ; rm -rf .` and
+            # `cd docs | true ; cd ../docs/inner ; rm -rf .`, while every hook answered rc 0.
+            #
+            # A candidate the change cannot be computed FROM keeps its own position: that is the
+            # `H150` half -- an uncomputable change (`popd`, a bare `cd`) yields no target at all,
+            # so every candidate stays and the project root joins them, because from an unknown
+            # position the shell may be anywhere and the root contains every tray of record.
+            mapped = [(moves_the_working_directory(root, tokens, one) or one) for one in standing]
+            if not computed and standing[-1] != where_it_runs(root, bases):
+                mapped = mapped + [where_it_runs(root, bases)]
+            if _filing.changes_the_calling_shell(separator_before, separator_after):
+                standing = list(dict.fromkeys(mapped))
+            else:
+                standing = list(dict.fromkeys(standing + mapped))
             continue
         move = _filing.move_of(tokens, current)
         if move is not None:
@@ -394,23 +774,37 @@ def read_the_line(root, command, bases):
             if _filing.relocating(move) and move.destination:
                 moves += _move_readings(root, move)
             continue
-        operands = _filing.operands_of(tokens, DELETE_VERBS)
-        if operands is not None:
+        destruction = destruction_of(tokens)
+        if destruction is not None:
+            operands = destruction_operands(tokens)
             beyond = unplaceable(operands, current)
             if beyond:
                 unplaced = unreadable("a delete operand this guard cannot place (%s)" % beyond[:100])
             placed = [readings for readings in
                       (_protected_readings(root, current, operand) for operand in operands)
                       if readings]
-            if DELETE_RX.search(text) and not placed:
+            if not placed and TRAY_IN_TEXT_RX.search(text) and destruction == "naming":
+                delete_in_text = True
                 unplaced = unreadable(
                     "a delete that names a tray of record in its text while this guard could place "
                     "no protected operand in it (%s)" % text.strip()[:80])
+            # THE SECOND REACH DIRECTION, and it is ONE question asked of one list. What the line
+            # names is the reach; a SWEEPING word that names nothing reaches the directory it runs
+            # in, which is written as the path that names it rather than as a second branch. A
+            # position that CONTAINS a tray of record is no document -- no approval can be minted
+            # for it -- so it is recorded as a sweep and not as a delete.
+            reach = operands or ([WORKING_DIRECTORY] if destruction == "sweeping" else [])
+            if any(swallows_a_tray(root, one, word)
+                   for one in standing for word in reach):
+                sweeps.append(text.strip()[:80])
+                unplaced = unreadable(
+                    "a destruction whose reach contains a tray of record, so it destroys documents "
+                    "of record without naming one (%s)" % text.strip()[:80])
             deletes += placed
             continue
         unplaced = unreadable("an invocation this guard does not read as a filing operation (%s)"
                               % str(tokens[0])[:80])
-    return Line(deletes, moves, unplaced)
+    return Line(deletes, moves, unplaced, sweeps, delete_in_text)
 
 
 def correction_authority(root):
@@ -487,6 +881,19 @@ def open_the_door(root, line):
     """
     operations = [(readings, False) for readings in line.deletes] \
         + [(readings, True) for readings in line.moves]
+    if line.sweeps:
+        # ASKED BEFORE ANYTHING ELSE because a sweep is the one refusal no approval can ever cover:
+        # a `filing_correction` binds ONE document by its bytes, and a destruction that names no
+        # path names no document to bind. Answering it through the "no operation" branch below
+        # would have told the user their two readings disagree, which is not what happened here.
+        return None, ("this command line destroys without naming a single document, and its reach "
+                      "contains a tray of record: %s. No user approval can cover it -- a correction "
+                      "is minted for ONE document and this line names none. THIS IS NOT A SPELLING "
+                      "PROBLEM: naming the project root or the working directory (`.`, `./`) is the "
+                      "same destruction and is refused the same way, so re-spelling the line is not "
+                      "the way out. Ask the USER what is really to be removed; anything under "
+                      "inbox/ or archive/ then goes one document at a time through the route below"
+                      % "; ".join(line.sweeps)), None
     if not operations:
         return None, ("this guard could place no operation on this command line at all, so there is "
                       "nothing a user approval could cover — its own two readings of the line "
@@ -587,7 +994,12 @@ def main():
     # rule is what let an approved delete carry an unapproved move through, and the journal note
     # then claimed a passage the second rule refused.
     line = read_the_line(root, cmd, bases)
-    breaks_the_delete_rule = bool(DELETE_RX.search(cmd) or line.deletes)
+    # THE THREE WAYS THE DELETE RULE FIRES, all read per invocation by `read_the_line`: a protected
+    # position an operand resolved to, a sweep whose reach meets a tray, and the raw-text reading
+    # that fires where those two disagree. Until H125 the third one was a regex over the WHOLE
+    # command asked here, built from a tuple of verbs; the reading now lives with the invocation it
+    # belongs to, so one vocabulary answers both readings.
+    breaks_the_delete_rule = bool(line.deletes or line.sweeps or line.delete_in_text)
     if not breaks_the_delete_rule and not line.moves:
         sys.exit(0)
     honoured, refused, offender = open_the_door(root, line)

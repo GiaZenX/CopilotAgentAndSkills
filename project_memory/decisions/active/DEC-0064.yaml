@@ -1,0 +1,49 @@
+id: DEC-0064
+title: Milestones are an item TYPE (MST) with their own automaton, not a date field
+  on other items -- FR-0079 decided
+context: 'User decision 2026-09-03 (AskUserQuestion, generation 3 stream A phase 1,
+  TSK-0115), on the proposal project_memory/staging/TSK-0115/mst-decision-proposal.md
+  by the Fable design pass. The wishlist section 2 (docs/POST_V2_WISHLIST.md) had
+  already stated the choice as the one to make BEFORE building. MEASURED in the proposal:
+  the cost of a type is a known list of kernel lines, each with a tripwire that goes
+  red when it is missing -- backlog_types.AUTOMATA, ACTIVE_DIRS, REQUIRED_FIELDS,
+  backlog_tree.VIEWS and _LABELS, guard_no_adhoc.ITEM_TYPES in three kits (test_hooks.test_no_adhoc_covers_every_item_type),
+  a milestones/active template directory in three kits (test_board.test_each_kit_renders_the_types_its_own_template_ships),
+  one constitution line per kit; index, board section, columns, card and lane are
+  DERIVED and need no line (the prototype renders the Milestones section with no per-type
+  board code). The cost of a field is silent: one date copied into every item it applies
+  to, no name, no own outcome, no test that notices when one copy is not moved --
+  and items are practically immutable (wishlist L2), so a shifted deadline is n kernel
+  edits. FR-0017 measured the same list for a pure grouping without state and decided
+  against a type; a milestone HAS a state and an identity several items share.'
+decision: '(1) A milestone is an item of type MST: milestones/active/MST-nnnn.yaml
+  with title, due (ISO date) and derives_from = the roots the date applies to (same
+  binding direction as WFR/HYP/EXP, so it hangs under its root in the tree by _parent_fields).
+  (2) Automaton PLANNED -> REACHED; terminals REACHED, MISSED, DROPPED, the last two
+  only from PLANNED; no approval kind (no APPROVAL_TRANSITIONS entry), no INVALIDATION_TARGET.
+  (3) due is validated as a date at capture (state.capture_preflight refuses what
+  date.fromisoformat cannot read); a missing or unreadable date renders as no date
+  and says so. (4) MST is placed in the product view of backlog_tree.VIEWS (customer
+  language) with labels milestone/milestones. (5) Ownership in generation 3: stream
+  A (TSK-0115) builds the timeline and the board section in kernel/board.py from a
+  fixture; the kernel type lines are a SEAM to stream C (TSK-0117), handed over by
+  the lead with this DEC and the table in the proposal; the hook ITEM_TYPES tuple
+  x3, the template directory x3 and the constitution line x3 are merge-round seams
+  (hooks: nobody owns them this generation; constitution: stream D writes at merge).
+  (6) A reference FROM an item TO a milestone (a milestone field on TSK) is deliberately
+  not built: membership runs through the roots the milestone names; a second binding
+  direction would turn the tree over -- built only when someone needs it, as its own
+  FR.'
+consequences: 'Deadlines live in one record with a name and an outcome; moving one
+  is one kernel edit. What it costs: the known list above, paid once in generation
+  3 across A, C and the merge round; every line has a test that goes red without it,
+  so a half-applied seam is visible, not silent. Enforcement: the tripwires named
+  in the proposal table -- test_board.test_every_type_that_moves_through_a_lifecycle_is_placed_by_a_backlog_view,
+  test_hooks.test_no_adhoc_covers_every_item_type, test_board.test_each_kit_renders_the_types_its_own_template_ships
+  -- plus the merge round seam table of generation 3.'
+source: User 2026-09-03 (chat); project_memory/staging/TSK-0115/mst-decision-proposal.md;
+  FR-0079; docs/POST_V2_WISHLIST.md section 2; DEC-0062 (seams named at cut time)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T08:21:11'

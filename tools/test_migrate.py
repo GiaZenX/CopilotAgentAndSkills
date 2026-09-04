@@ -21,7 +21,6 @@ import contextlib
 import copy
 import getpass
 import hashlib
-import importlib.util
 import io
 import itertools
 import json
@@ -1690,22 +1689,32 @@ def test_a_v1_decision_record_becomes_a_dec_item_carrying_its_own_provenance(v1_
 
 
 def test_an_imported_items_legacy_id_is_not_read_as_a_relation(v1_state):
-    """R6: the dashboard skipped a field called `legacy_ids`, and no such field has ever existed.
+    """R6: a reader skipped a field called `legacy_ids`, and no such field has ever existed.
 
     What `kernel/migrate.py` writes is `legacy_fields`, and it holds the item's FORMER NAME -- a
-    value that parses as an item id and is not a pointer to anything. Measured against the shipped
-    generator's own relation rule, on a real imported item, so the skip is answerable to the field
-    that exists rather than to the one somebody remembered.
+    value that parses as an item id and is not a pointer to anything. Measured on a real imported
+    item, so the skip is answerable to the field that exists rather than to the one somebody
+    remembered.
+
+    THE SUBJECT MOVED WITH THE CODE (TSK-0115, DEC-0065 (1)). The shipped dashboard used to derive
+    "relations" from any top-level field whose value parses as an id, and this test held that
+    derivation against `legacy_fields`. That generator renders no items any more, so the question
+    "does an imported item's former name bind it to something?" is now `backlog_tree.parents_of`'s
+    -- the one reader the board's trees, the merge gate and the plan diagram all place items with.
+    Its answer is stronger than the old one and comes from the type's own field contract rather
+    than from a value's shape: `legacy_fields` is not a binding field of any type, so it can never
+    be a parent. The test is kept rather than deleted because the PROPERTY is the same one.
     """
     assert _migrated(v1_state) == 0
-    dashboard = os.path.join(ROOT, "team-kits", "dev-team", "templates", "repo", "scripts",
-                             "generate_dashboard.py")
-    spec = importlib.util.spec_from_file_location("dashboard_under_test", dashboard)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import backlog_tree
+    from kernel.backlog_types import PARENT_FIELDS
     item = v1_state.read_item("PROC-0001")
     assert item[migrate.LEGACY_FIELD]["legacy_id"] == "PROC-0001"
-    assert module.relations(item, parse_id) == [], (
+    node = backlog_tree.Node({"id": "PROC-0001", "type": "PROC"}, item)
+    assert migrate.LEGACY_FIELD not in PARENT_FIELDS.get("PROC", ()), (
+        "the legacy metadata became a binding field, so a former name now binds an item")
+    assert "PROC-0001" not in backlog_tree.parents_of(node), (
         "an imported item's legacy metadata was read as a pointer to another item")
 
 

@@ -368,9 +368,16 @@ def handle_post_tool_use(data):
         # PostToolUse cannot block, and the protection is that no APR was written.
         _report("no approval was created for request %s.\n%s" % (request_id, exc),
                 _user_text_of(approvals, exc))
-    _kernel.record_note(HOOK, "minted %s for request %s" % (apr["id"], request_id))
-    sys.stderr.write("[team-kit %s] approval %s recorded for %s.\n"
-                     % (HOOK, apr["id"], apr.get("item") or apr["kind"]))
+    # THE CARD IS THE KERNEL'S, not this hook's (`approvals.approval_card`): it reads the stored
+    # provenance back out of the record, so what is announced here is what an auditor reading the
+    # same file later would read. The SDK route prints the same card from the same composer, which
+    # is the point -- the difference between a human's yes and a program's is exactly what must not
+    # depend on which surface reports it (FR-0083).
+    _kernel.record_note(HOOK, "minted %s for request %s (%s)"
+                        % (apr["id"], request_id, approvals.minted_via(apr)))
+    sys.stderr.write("[team-kit %s] approval %s recorded for %s.\n%s\n"
+                     % (HOOK, apr["id"], apr.get("item") or apr["kind"],
+                        approvals.approval_card(apr)))
     sys.exit(0)
 
 

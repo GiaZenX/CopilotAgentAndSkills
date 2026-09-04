@@ -1407,3 +1407,347 @@ def test_a_kleinunternehmer_false_profile_hides_the_watch_and_null_names_the_gap
     assert "tax.kleinunternehmer" in gap.text(), gap.text()[:300]
     watching = seen["true"].by_id("view-kleinunternehmer")
     assert watching.find_all(cls="gauge"), "the watching case shows no gauge"
+
+
+# ---------------------------------------------------------------- FR-0076: the form's own lines
+
+OFFICE_MEMORY = os.path.join(ROOT, "team-kits", "office-team", "templates", "project_memory")
+
+
+def shipped_vocabulary():
+    """The category vocabulary the kit SHIPS, parsed -- never a string search over the template."""
+    yaml = pytest.importorskip("yaml")
+    with open(os.path.join(OFFICE_MEMORY, "master_data.yaml"), encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def shipped_profile():
+    yaml = pytest.importorskip("yaml")
+    with open(os.path.join(OFFICE_MEMORY, "business_profile.yaml"), encoding="utf-8") as handle:
+        return yaml.safe_load(handle)
+
+
+def kit_module(root, name):
+    """One of the project's own scripts, imported from the tree the test built."""
+    sys.path.insert(0, os.path.join(root, "scripts"))
+    try:
+        sys.modules.pop(name, None)
+        return __import__(name)
+    finally:
+        sys.path.pop(0)
+        sys.modules.pop(name, None)
+
+
+def report_of(root, year, quarter):
+    result = subprocess.run(
+        [sys.executable, "-B", os.path.join(root, "scripts", "euer_report.py"),
+         "--year", str(year), "--quarter", str(quarter)],
+        capture_output=True, text=True, cwd=root, timeout=300)
+    assert result.returncode == 0, result.stderr
+    with open(os.path.join(root, "reports", "euer_%s_Q%s.md" % (year, quarter)),
+              encoding="utf-8") as handle:
+        return handle.read()
+
+
+def report_line_sums(markdown):
+    """{heading: (income, expense)} out of the report's per-form-line table, in CENTS."""
+    section = markdown.split("## Nach Zeile der Anlage E\u00dcR")[1].split("\n## ")[0]
+    found = {}
+    for line in section.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or cells[0] in ("Zeile", "---") or cells[0].startswith("---"):
+            continue
+        try:
+            found[cells[0]] = (int(round(float(cells[1]) * 100)),
+                               int(round(float(cells[2]) * 100)))
+        except ValueError:
+            continue
+    return found
+
+
+def test_a_fresh_project_ships_a_category_vocabulary_the_p4_12_stall_cannot_recur_on(tmp_path):
+    """P4-12 / BUG-0071: the office pilot met an EMPTY category vocabulary and stopped.
+
+    The template used to ship `categories: {income: [], expense: []}` with the vocabulary as a
+    COMMENT, so a fresh project had none and no role could write one. Measured as the shipped file
+    parsed -- not searched -- plus the consequence on a real page: a booking under a shipped key
+    shows its German label and the form line it belongs to, where an unknown key shows the raw key.
+
+    THE PROPERTY IS CHECKED, NOT THE NAMES: every shipped category carries a key, a label and an
+    `euer_line` the report reads as a whole number, and the form YEAR and its source stand in the
+    file rather than in a script. A list of the twelve names here would be a second vocabulary.
+    """
+    shipped = shipped_vocabulary()
+    categories = shipped["categories"]
+    assert categories["income"] and categories["expense"], (
+        "the kit ships an empty vocabulary again -- this is the P4-12 stall")
+    form = shipped["euer_form"]
+    assert isinstance(form["year"], int) and str(form["source"]).strip(), form
+
+    root = build_project(tmp_path / "fresh", "regular", master=shipped)
+    report = kit_module(root, "euer_report")
+    for direction in ("income", "expense"):
+        for entry in categories[direction]:
+            assert entry["key"] and entry["label_de"], entry
+            assert report.line_number(entry["euer_line"]) is not None, entry
+
+    one = categories["expense"][0]
+    write_ledger(os.path.join(root, "ledger", "2026.csv"), [
+        {"id": "L1", "doc_date": "2026-02-01", "payment_date": "2026-02-01", "direction": "expense",
+         "doc_type": "invoice", "counterparty": "ACME", "net": "100.00", "vat_rate": "19",
+         "gross": "119.00", "vat_treatment": "standard", "category": one["key"],
+         "source": "archive/x.pdf"},
+        {"id": "L2", "doc_date": "2026-02-02", "payment_date": "2026-02-02", "direction": "expense",
+         "doc_type": "invoice", "counterparty": "ACME", "net": "10.00", "vat_rate": "19",
+         "gross": "11.90", "vat_treatment": "standard", "category": "was_nie_definiert_wurde",
+         "source": "archive/y.pdf"}])
+    assert run_generator(root).returncode == 0
+    text = dom(generated_page(root)).by_id("view-euer").text()
+    assert one["label_de"] in text and str(one["euer_line"]) in text, text[:400]
+    assert "was_nie_definiert_wurde" in text, "an unknown category must stay visible as its key"
+
+
+@pytest.mark.parametrize("fixture", ["regular", "crossyear"])
+def test_the_dashboard_and_the_report_agree_on_every_form_line(tmp_path, fixture):
+    """The per-line parity FR-0076 (2) asks for: the Steuerberater maps the page 1:1 to the report.
+
+    Two producers, one grouping: the report writes a table per quarter and the page renders the
+    same rows from the same function (`euer_report.by_form_line`). `crossyear` is here because its
+    vocabulary deliberately keeps a CAPTION where a line number belongs -- the "names no line"
+    branch is then measured on a real page and not only on an inline override.
+    """
+    pytest.importorskip("yaml")
+    root = build_project(tmp_path / ("lines-" + fixture), fixture)
+    assert run_generator(root).returncode == 0
+    blocks = {(block.attrs["data-year"], block.attrs["data-period"]): block
+              for block in dom(generated_page(root)).find_all(cls="euer-block")}
+    checked = 0
+    for (year, period), block in sorted(blocks.items()):
+        if period == "year":
+            continue
+        said = report_line_sums(report_of(root, year, period))
+        shown = {}
+        for row in block.find_all(attr="data-line"):
+            cells = row.find_all("td")
+            shown[cells[0].text()] = (cells[1].text(), cells[2].text())
+        assert set(shown) == set(said), (year, period, sorted(shown), sorted(said))
+        for heading, (income_c, expense_c) in said.items():
+            assert shown[heading] == (eur(income_c) if income_c else "",
+                                      eur(expense_c) if expense_c else ""), (year, period, heading)
+        checked += 1
+    assert checked == 8, checked
+
+
+def test_the_per_line_sums_and_the_per_category_sums_are_the_same_money(tmp_path):
+    """One quarter's money, grouped two ways, has to come out the same.
+
+    The per-category table is what the owner steers by and the per-line table is what the form
+    asks for; several categories land on one line, so the second is coarser and never smaller.
+    Goes red if a booking is dropped when its category names no line, or counted twice when two
+    categories share one.
+    """
+    pytest.importorskip("yaml")
+    root = build_project(tmp_path / "same-money", "regular")
+    for quarter in (1, 2, 3, 4):
+        markdown = report_of(root, 2026, quarter)
+        lines = report_line_sums(markdown)
+        totals = re.search(r"\| Einnahmen \| (-?[\d.]+) EUR \|\n\| Ausgaben \| (-?[\d.]+) EUR",
+                           markdown)
+        assert totals, markdown[:400]
+        assert (sum(one[0] for one in lines.values()),
+                sum(one[1] for one in lines.values())) == (
+                    int(round(float(totals.group(1)) * 100)),
+                    int(round(float(totals.group(2)) * 100))), quarter
+
+
+def test_a_category_whose_line_is_not_a_number_is_named_rather_than_attached_to_a_line(tmp_path):
+    """`euer_line` is a NUMBER or it is nothing — and "nothing" is reported, never guessed away.
+
+    A project that filled the field with a caption (which is what the kit shipped before this
+    round) must not have its money silently attached to some line: it lands under its own heading
+    and the report says which categories are unmapped. Measured on both ends -- the same ledger
+    with a numbered vocabulary puts the same money on the line.
+    """
+    pytest.importorskip("yaml")
+    rows = [{"id": "L1", "doc_date": "2026-02-01", "payment_date": "2026-02-01",
+             "direction": "expense", "doc_type": "invoice", "counterparty": "ACME",
+             "net": "100.00", "vat_rate": "19", "gross": "119.00", "vat_treatment": "standard",
+             "category": "porto", "source": "archive/x.pdf"}]
+    captioned = {"euer_form": {"year": 2025, "source": "test"},
+                 "categories": {"income": [],
+                                "expense": [{"key": "porto", "label_de": "Porto",
+                                             "euer_line": "\u00dcbrige Betriebsausgaben"}]}}
+    root = build_project(tmp_path / "captioned", "regular", ledgers={"2026": rows},
+                         master=captioned)
+    markdown = report_of(root, 2026, 1)
+    report = kit_module(root, "euer_report")
+    assert report.UNMAPPED in report_line_sums(markdown)
+    assert "porto" in markdown.split("## Nach Zeile")[1].split("\n## ")[0]
+
+    numbered = {"euer_form": {"year": 2025, "source": "test"},
+                "categories": {"income": [],
+                               "expense": [{"key": "porto", "label_de": "Porto", "euer_line": 60,
+                                            "euer_line_label": "Sonstige"}]}}
+    root = build_project(tmp_path / "numbered", "regular", ledgers={"2026": rows}, master=numbered)
+    headings = report_line_sums(report_of(root, 2026, 1))
+    assert report.UNMAPPED not in headings and "Zeile 60 \u2014 Sonstige" in headings, headings
+
+
+def _afa_ledger():
+    def row(number, net, gross, category="tools"):
+        return {"id": "L%d" % number, "doc_date": "2026-02-0%d" % number,
+                "payment_date": "2026-02-0%d" % number, "direction": "expense",
+                "doc_type": "invoice", "counterparty": "Werkzeug AG", "invoice_no": "R-%d" % number,
+                "net": net, "gross": gross, "vat_rate": "19", "vat_treatment": "standard",
+                "category": category, "source": "archive/x.pdf"}
+    return [row(1, "1200.00", "1428.00"), row(2, "700.00", "833.00")]
+
+
+def _afa_master(limit=800, silenced=False):
+    category = {"key": "tools", "label_de": "Werkzeug", "euer_line": 60,
+                "euer_line_label": "Sonstige"}
+    if silenced:
+        category["afa_hint"] = False
+    return {"euer_form": {"year": 2025, "source": "test", "gwg_limit_net": limit},
+            "categories": {"income": [], "expense": [category]}}
+
+
+def _flagged_in(page, year, period):
+    """The booking ids the AfA hint flags in ONE block of the EÜR tab.
+
+    Per BLOCK and not per page: the tab renders a block for the whole year and one per quarter, so
+    a booking legitimately appears in two of them and a page-wide list would count it twice.
+    """
+    for block in dom(page).find_all(cls="euer-block"):
+        if (block.attrs["data-year"], block.attrs["data-period"]) == (year, period):
+            return [node.attrs["data-afa"] for node in block.find_all(attr="data-afa")]
+    raise AssertionError("the page carries no EÜR block for %s/%s" % (year, period))
+
+
+def test_the_afa_hint_is_a_flag_whose_limit_comes_from_the_vocabulary(tmp_path):
+    """FR-0076 (3): a HINT, and its threshold is a project value rather than a constant.
+
+    Three measurements in one, because they are three halves of the same claim: the booking over
+    the limit is flagged and the one under it is not; the flag is a SENTENCE and no depreciation
+    figure appears anywhere; and raising the limit in `master_data.yaml` alone makes the flag go
+    away -- which is what "a profile/vocabulary value, not a constant" means.
+    """
+    pytest.importorskip("yaml")
+    root = build_project(tmp_path / "afa", "regular", ledgers={"2026": _afa_ledger()},
+                         master=_afa_master())
+    report = kit_module(root, "euer_report")
+    markdown = report_of(root, 2026, 1)
+    section = markdown.split("## M\u00f6gliche Anlageg\u00fcter")[1].split("\n## ")[0]
+    assert "R-1" in section and "R-2" not in section, section
+    assert report.ASSET_HINT in section
+    assert "Abschreibung" in section and "AfA-Betrag" not in markdown
+
+    assert run_generator(root).returncode == 0
+    assert _flagged_in(generated_page(root), "2026", "1") == ["L1"]
+
+    raised = build_project(tmp_path / "afa-raised", "regular", ledgers={"2026": _afa_ledger()},
+                           master=_afa_master(limit=2000))
+    assert "R-1" not in report_of(raised, 2026, 1).split("## M\u00f6gliche Anlageg\u00fcter")[1]
+    assert run_generator(raised).returncode == 0
+    assert _flagged_in(generated_page(raised), "2026", "1") == []
+
+
+def test_a_category_can_switch_the_afa_hint_off_and_only_the_boolean_false_does_it(tmp_path):
+    """The user's lever on the hint, spelled the way `second_reading` is spelled — both ends.
+
+    In a trading business every wholesale invoice is over the GWG threshold and none of them is an
+    asset, so a hint that fires on all of them is one nobody reads. The lever is the vocabulary's,
+    not the kit's, and like `second_reading` only the boolean `false` operates it: a quoted "false"
+    is a typo and must NOT quietly silence a category.
+    """
+    pytest.importorskip("yaml")
+    for silenced, expected in ((False, ["L1"]), (True, [])):
+        root = build_project(tmp_path / ("afa-lever-%s" % silenced), "regular",
+                             ledgers={"2026": _afa_ledger()},
+                             master=_afa_master(silenced=silenced))
+        assert run_generator(root).returncode == 0
+        assert _flagged_in(generated_page(root), "2026", "1") == expected
+    typo = _afa_master()
+    typo["categories"]["expense"][0]["afa_hint"] = "false"
+    root = build_project(tmp_path / "afa-typo", "regular", ledgers={"2026": _afa_ledger()},
+                         master=typo)
+    assert run_generator(root).returncode == 0
+    assert _flagged_in(generated_page(root), "2026", "1") == ["L1"]
+
+
+def test_the_founding_year_decides_the_case_the_missing_previous_year_leaves_open(tmp_path):
+    """The seam I3 left open, closed WITH the reader that needs it (TSK-0113 -> TSK-0116).
+
+    The `founding` fixture has one ledger year and 26.000 € of income. Without a founding year the
+    page could not decide whether that is a first year (25.000 € limit, exceeded) or a missing file
+    (nothing decidable), and it refused -- correctly. With `tax.founding_year` equal to the ledger
+    year the same page reaches a verdict, and it is the ALARMING one: § 19 Abs. 1 UStG in the
+    wording in force since 2025 puts a founding year under 25.000 €.
+
+    A founding year that is NOT the current one is the other case and must not buy a verdict: then
+    a previous year exists and only its ledger file is missing.
+    """
+    yaml = pytest.importorskip("yaml")
+    with open(os.path.join(FIXTURES, "founding", "business_profile.yaml"),
+              encoding="utf-8") as handle:
+        base = yaml.safe_load(handle)
+    verdicts = {}
+    for label, year in (("none", None), ("first", 2026), ("earlier", 2024)):
+        profile = json.loads(json.dumps(base))
+        profile.setdefault("tax", {})["founding_year"] = year
+        root = build_project(tmp_path / ("founding-" + label), "founding", profile=profile)
+        assert run_generator(root).returncode == 0
+        page = dom(generated_page(root))
+        verdicts[label] = page.find_all(attr="data-verdict")[0].attrs["data-verdict"]
+    assert verdicts == {"none": "previous_unknown", "first": "current_exceeded",
+                        "earlier": "previous_unknown"}, verdicts
+
+
+def test_the_shipped_profile_leaves_the_tax_status_and_the_founding_year_unanswered(tmp_path):
+    """A fresh project starts UNKNOWN on both questions, and the page says so instead of guessing.
+
+    Shipping a default for either would be a wrong statement about somebody's tax on every page
+    that prints a figure. Measured as the shipped file PARSED plus the consequence on a page built
+    from it: no VAT figure, and the sentence that names the field.
+    """
+    pytest.importorskip("yaml")
+    tax = shipped_profile()["tax"]
+    assert tax["kleinunternehmer"] is None and tax["founding_year"] is None, tax
+
+    root = build_project(tmp_path / "unanswered", "regular", profile=shipped_profile())
+    assert run_generator(root).returncode == 0
+    page = dom(generated_page(root))
+    assert not page.find_all(attr="data-verdict"), "no watch without an answer"
+    assert "tax.kleinunternehmer" in page.by_id("view-euer").text()
+
+
+def test_a_vocabulary_entry_that_is_not_a_mapping_costs_a_category_and_not_the_page(tmp_path):
+    """N3 of rework 1: the page died where the report shrugged, over the same typo.
+
+    `master_data.yaml` invites its reader to rename and add categories, and the first thing a
+    hand-edited list produces is a bare string where a mapping belongs. The report skipped it; the
+    generator called `.get` on it and exited 1 with an AttributeError, so the project had no page at
+    all. Two readers of one file may not answer one typo differently -- both skip the entry, keep
+    every other one, and the booking under the broken entry stays visible as its raw key.
+    """
+    pytest.importorskip("yaml")
+    master = {"euer_form": {"year": 2025, "source": "test", "gwg_limit_net": 800},
+              "categories": {"income": [],
+                             "expense": ["porto",
+                                         {"key": "software", "label_de": "Software",
+                                          "euer_line": 60, "euer_line_label": "Sonstige"}]}}
+    rows = [{"id": "L1", "doc_date": "2026-02-01", "payment_date": "2026-02-01",
+             "direction": "expense", "doc_type": "invoice", "counterparty": "ACME",
+             "net": "10.00", "vat_rate": "19", "gross": "11.90", "vat_treatment": "standard",
+             "category": "porto", "source": "archive/x.pdf"},
+            {"id": "L2", "doc_date": "2026-02-02", "payment_date": "2026-02-02",
+             "direction": "expense", "doc_type": "invoice", "counterparty": "ACME",
+             "net": "20.00", "vat_rate": "19", "gross": "23.80", "vat_treatment": "standard",
+             "category": "software", "source": "archive/y.pdf"}]
+    root = build_project(tmp_path / "broken-entry", "regular", ledgers={"2026": rows},
+                         master=master)
+    assert report_of(root, 2026, 1)
+    result = run_generator(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    text = dom(generated_page(root)).by_id("view-euer").text()
+    assert "Software" in text and "porto" in text, text[:400]

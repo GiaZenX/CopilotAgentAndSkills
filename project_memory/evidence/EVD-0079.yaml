@@ -1,0 +1,33 @@
+id: EVD-0079
+kind: test
+related:
+- BUG-0083
+- BUG-0084
+- BUG-0085
+- BUG-0086
+result: pass
+summary: 'Regression run for the four kernel/research-kit fixes shipped in dc930cc
+  (stream F, TSK-0106): the 12 tools/test_ functions whose docstrings name BUG-0083
+  to BUG-0086 (selected by ast, listed in the artifact together with the interpreter
+  path) -- 12 passed, 0 failed, 36.85 s; run by the lead on the committed tree e45c0ca
+  after the user minted APR-0001 to APR-0004. Stream F verifier PASS and the merge
+  verifier PASS (EVD-0077) are the review side; this is the test side FIXED to VERIFIED
+  asks for.'
+artifact_refs:
+- staging/TSK-0114/regression-run-bug-0083-0086.txt
+run_command: python -B -m pytest -q -p no:cacheprovider tools/test_kernel.py::test_a_task_may_derive_from_an_experiment_two_levels_under_its_root
+  tools/test_kernel.py::test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation
+  tools/test_report.py::test_a_task_on_an_origin_two_levels_under_its_root_is_fine
+  tools/test_report.py::test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused
+  tools/test_report.py::test_a_task_under_every_kit_root_is_asked_for_its_delivery_verdict
+  tools/test_research_chain.py::test_the_research_chain_runs_from_the_question_to_a_merge_through_the_shipped_hooks
+  tools/test_research_chain.py::test_a_task_may_name_an_experiment_two_levels_under_the_question_it_serves
+  tools/test_research_chain.py::test_an_experiment_hanging_from_two_questions_is_refused_as_an_origin
+  tools/test_research_chain.py::test_a_rendered_report_reaches_the_tray_through_the_kernel
+  tools/test_approvals_dispatch.py::test_a_hypothesis_cannot_be_given_a_scope_approval
+  tools/test_approvals_dispatch.py::test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge
+  tools/test_staging_cli.py::test_a_report_is_filed_by_the_kernel_and_never_overwrites_one
+run_scope: selection
+revision: 1
+approval_ref: null
+created: '2026-09-03T07:21:44'

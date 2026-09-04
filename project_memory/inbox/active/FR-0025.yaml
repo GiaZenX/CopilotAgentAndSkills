@@ -19,3 +19,4 @@ created: '2026-08-15T13:32:08'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   Spaeter -- behind FR-0024; pros/cons given (config separation vs a second platform
   every gate would need re-measuring on).'
+related_pr: PR-0003

@@ -1,0 +1,50 @@
+id: DEC-0067
+title: 'Amendment to DEC-0062: the bundle lives at the PRODUCT GOAL, not at the work
+  order -- a stream is one PR cut by file ownership (wishes merged into it at triage),
+  with one TSK per PR; built into the kits with FR-0021'
+context: 'User 2026-09-03 (chat), after the lead explained the requirement hierarchy:
+  ''Ja halte fest und definitiv einbauen, weil das parallele Abarbeiten und Sammelabarbeiten
+  spart enorm an Zeit ... wir brauchen eine saubere Loesung unseren neuen Parallel-Sammel-Ansatz
+  zu nutzen.'' MEASURED: DEC-0062 (2) bundled several FRs into ONE TSK with the primary
+  FR as product_requirement and the others in required_inputs/expected_outputs --
+  generation 3 runs that way (TSK-0115 = FR-0075 + 0079 + 0080; TSK-0117 = FR-0074
+  + 0082 + 0083 + BUG-0089). The kernel contract gives a TSK exactly one product_requirement
+  and one derives_from (create-task takes one each), so the secondary wishes are invisible
+  to the index, the board and every rollup -- they live in prose fields, which is
+  the failure class this repo documents against itself. The kits'' own hierarchy (constitution
+  section 4, DEC-0066) already has the place for a bundle: triage MERGES a wish into
+  an existing PR or CONVERTS it into a new one; a PR carries all acceptance criteria;
+  SRs and TSKs hang under it.'
+decision: '(1) From generation 4 on a stream IS one product goal: the lead (here)
+  or the PM (kits) cuts PRs by FILE OWNERSHIP (DEC-0062 (1) unchanged), merges every
+  wish that touches the same files into that PR at triage (FR -> MERGED/CONVERTED
+  with resulting_item = the PR; each wish''s acceptance line becomes one criterion
+  of the PR), and derives one TSK per PR (or SRs first where the class asks for it);
+  allowed_scope of that TSK = the PR''s ownership, disjoint at file level across streams,
+  seams named up front. (2) DEC-0062 (2) -- several FRs inside one TSK -- is retired
+  for new work; generation 3 items keep it (frozen work orders, BUG-0089) and are
+  closed as DEC-0062 (2) says (all grouped FRs MERGED at delivery, resulting_item
+  = the delivering TSK''s root). (3) The kits get the same rule as the PM procedure
+  of FR-0021 (stream D, TSK-0118): the parallel-streams skill and constitution paragraph
+  describe bundling at the PR level, never several requirements in one work order;
+  the pre-dispatch overlap check (D''s tools/check_scope_overlap.py -> C-1 kernel
+  verb check-scopes, C-4 seam_scope) runs over the TSKs of those PRs. D''s first report
+  bundled after this repo''s stop-gap; the correction is a rework line, not a new
+  stream. (4) What the kernel still needs so the board sees the bundle: nothing new
+  -- a PR with several criteria and one TSK is the shape every rollup already reads;
+  the FR keeps its pointer (resulting_item) to the PR it went into.'
+consequences: 'Parallel + bundled work keeps its measured time gain (DEC-0060: wall-clock,
+  not tokens) and becomes visible to the state: one goal per stream on the board,
+  every wish traceable to the goal it joined. Cost: one PR capture per stream up front
+  (the wish-to-goal step DEC-0066 already demands) and, from generation 4, the triage
+  of the wishes that join it. Enforcement: the merge round''s seam table (unchanged)
+  plus, once C-1 ships, the kernel''s check-scopes over the stream TSKs. Open beside
+  it, as its own wish: whether an SR becomes mandatory per PR class before a TSK is
+  dispatched.'
+source: User 2026-09-03 (chat); DEC-0062; DEC-0066; team-kits/dev-team/constitution/AGENTS.md
+  section 4; team-kits/dev-team/skills/project-manager/SKILL.md steps 3 and 5; project_memory/staging/generation-3-streams.md
+  log 10:1x
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T10:00:03'

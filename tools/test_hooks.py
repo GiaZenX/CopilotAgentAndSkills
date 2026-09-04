@@ -1890,30 +1890,42 @@ def _dashboard_data(pm):
         html, re.DOTALL).group(1))
 
 
-def test_dashboard_renders_typed_items(tmp_path):
+def test_the_dashboard_carries_no_item_of_its_own_and_points_at_the_board(tmp_path):
+    """DEC-0065 (1): ONE renderer of the items, and it is not this one.
+
+    Until 2026-09-03 this generator drew the whole backlog a second time from the same index the
+    kernel's board is written from -- two programs, one set of facts, and they diverged the moment
+    the store held something unusual (measured in `project_memory/staging/TSK-0115/parity.md`: a
+    planted foreign yaml under `archive/` made 166 into 167 and 168, because one side counted FILES
+    and the other item IDS). The property this test holds is the one that makes the divergence
+    impossible rather than unlikely: no item id of the store appears in this page at all, and the
+    page names the file that does carry them.
+
+    WHAT STAYS FROM FR-0030 is measured in the same run: the documented command produced the page
+    (the trigger), the page is one self-contained file, and the vital signs -- the one thing the
+    board does not know -- are on it.
+    """
     pytest.importorskip("yaml")
     pm = _dashboard_repo(tmp_path)
     write(str(pm / "product" / "active" / "PR-0001.yaml"),
           "id: PR-0001\ntitle: login\nstatus: APPROVED\nrevision: 2\n")
     write(str(pm / "tasks" / "active" / "TSK-0001.yaml"),
           "id: TSK-0001\ntitle: build it\nstatus: READY\nproduct_requirement: PR-0001\n")
-    write(str(pm / "bugs" / "active" / "BUG-0001.yaml"),
-          "id: BUG-0001\ntitle: crash\nstatus: OPEN\nblocked_by: TSK-0001\n")
     write(str(pm / "archive" / "PR" / "2025" / "PR-0009.yaml"), "id: PR-0009\nstatus: ACCEPTED\n")
     r = _run_dashboard(tmp_path, pm)
     assert r.returncode == 0, r.stdout + r.stderr
     html, data = _dashboard_data(pm)
-    rendered = {it["id"]: it for view in data["views"] for it in view["items"]}
-    assert set(rendered) == {"PR-0001", "TSK-0001", "BUG-0001"}
-    # the next step is DERIVED from the automaton chain, not from a table of advice
-    assert rendered["PR-0001"]["next"] == "IN_DELIVERY"
-    assert rendered["TSK-0001"]["next"] == "LEASED"
-    # the blocker flag survives, and a relation is "a field whose value parses as an item id"
-    assert rendered["BUG-0001"]["blocked_by"] == "TSK-0001"
-    assert rendered["TSK-0001"]["relations"] == ["PR-0001"]
-    # archive is COUNTED, never embedded (spec II.7)
-    assert "PR-0009" not in html
-    assert data["archive"] == {"total": 1, "by_type": {"PR": {"2025": 1}}}
+    for item_id in ("PR-0001", "TSK-0001", "PR-0009"):
+        assert item_id not in html, "%s is rendered on the dashboard as well as on the board" % item_id
+    assert data["active_items"] == 2, data
+    assert data["board"] == "board.html"
+    assert 'href="board.html"' in html, "the page does not point at the board at all"
+    assert data["board_present"] is True, "the kernel's board was not written beside the index"
+    assert (pm / "generated" / "board.html").is_file()
+    # ...and the numbers only this page can answer are still on it
+    assert data["repo_vitals"]["source_files"] >= 0 and "largest" in data["repo_vitals"]
+    # one file, nothing loaded: the generated page has no reference out of itself
+    assert "http://" not in html and "https://" not in html
 
 
 def _dashboard_without_index(tmp_path):
@@ -1949,7 +1961,7 @@ def test_dashboard_on_a_greenfield_project_renders_and_says_nothing_is_captured(
     html, data = _dashboard_data(pm)
     assert "No items captured yet" in data["notice"]
     assert "No items captured yet" in html          # the page itself says it, not just stdout
-    assert all(view["total"] == 0 for view in data["views"])
+    assert data["active_items"] == 0 and data["board_present"] is False
 
 
 _DASHBOARD_CMD_RX = re.compile(r"python[^`\n<]*generate_dashboard\.py")
@@ -1988,55 +2000,25 @@ def test_the_documented_dashboard_command_survives_the_write_scope_gate(tmp_path
         assert r.returncode == 0, "the documented command %r is refused: %s" % (command, r.stderr)
 
 
-def test_dashboard_delivery_board_hides_finished_work(tmp_path):
-    """Spec II.7: "Delivery (Task-Board, Erledigtes verborgen)". Nothing auto-archives a terminal
-    item, so without the filter a VALIDATED task sits on the board for good. Which statuses count
-    as finished is the automaton's `terminals`, never a list in the generator."""
-    pytest.importorskip("yaml")
-    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
-    from kernel.backlog_types import AUTOMATA
-    done = sorted(AUTOMATA["TSK"].terminals)[0]
-    pm = _dashboard_repo(tmp_path)
-    write(str(pm / "tasks" / "active" / "TSK-0001.yaml"), "id: TSK-0001\nstatus: READY\n")
-    write(str(pm / "tasks" / "active" / "TSK-0002.yaml"), "id: TSK-0002\nstatus: %s\n" % done)
-    r = _run_dashboard(tmp_path, pm)
-    assert r.returncode == 0, r.stdout + r.stderr
-    html, data = _dashboard_data(pm)
-    delivery = [v for v in data["views"] if v["id"] == "delivery"][0]
-    assert [it["id"] for it in delivery["items"]] == ["TSK-0001"]
-    assert delivery["total"] == 1, "the hidden item must not be counted as work in progress"
-    assert "TSK-0002" not in html
-    # the stdout tally is the only place the filter's WORK is visible; an unchecked counter is
-    # where a number quietly stops being true
-    assert "1 finished hidden" in r.stdout, r.stdout
-    # a view WITHOUT the filter still shows its terminal items -- the rule is Delivery's alone
-    write(str(pm / "product" / "active" / "PR-0001.yaml"),
-          "id: PR-0001\nstatus: %s\n" % sorted(AUTOMATA["PR"].terminals)[0])
-    r = _run_dashboard(tmp_path, pm)
-    assert r.returncode == 0, r.stdout + r.stderr
-    _html, data = _dashboard_data(pm)
-    product = [v for v in data["views"] if v["id"] == "product"][0]
-    assert [it["id"] for it in product["items"]] == ["PR-0001"]
-
-
 def test_dashboard_survives_a_hand_written_item(tmp_path):
-    """Two shapes no shipped schema produces but a hand-edited item does, and `capture` is not the
-    only thing that ever writes these files: a title containing `</script>` ends the embedded JSON
-    block as far as any HTML parser is concerned, and mixed top-level key types (`1:` next to `a:`)
-    made the relation scan's `sorted()` raise TypeError and kill the run with a traceback.
+    """Two shapes no shipped schema produces but a hand-edited item does: a file that is not a
+    mapping at all (the index records it as `corrupt`) and a title containing `</script>`.
 
-    The title assertion carries the escaping proof: the extraction here is non-greedy up to the
-    first `</script>`, exactly like the parser, so an unescaped title would truncate the block."""
+    The generator no longer reads item bodies, so neither can reach its output -- which is the
+    point: it still has to COUNT them honestly and it still has to finish. Before DEC-0065 (1) the
+    second shape ended the embedded JSON block as far as any HTML parser is concerned, and the
+    first one killed the run with a TypeError out of the relation scan.
+    """
     pytest.importorskip("yaml")
     pm = _dashboard_repo(tmp_path)
     write(str(pm / "bugs" / "active" / "BUG-0001.yaml"),
           'id: BUG-0001\ntitle: "fix </script> leak"\nstatus: OPEN\n1: numeric key\n')
+    write(str(pm / "bugs" / "active" / "BUG-0002.yaml"), "- a list, not an item\n")
     r = _run_dashboard(tmp_path, pm)
     assert r.returncode == 0, r.stdout + r.stderr
     html, data = _dashboard_data(pm)
-    rendered = {it["id"]: it for view in data["views"] for it in view["items"]}
-    assert rendered["BUG-0001"]["title"] == "fix </script> leak"
-    assert "<\\/script>" in html, "the JSON block is embedded unescaped"
+    assert data["active_items"] == 2, data
+    assert "</script> leak" not in html and "BUG-0001" not in html
 
 
 def test_dashboard_vitals_and_the_file_budget_see_the_same_files(tmp_path):
@@ -2060,48 +2042,8 @@ def test_dashboard_vitals_and_the_file_budget_see_the_same_files(tmp_path):
     assert data["repo_vitals"]["over_2000"] == 1
 
 
-def test_dashboard_page_size_is_the_hard_ceiling(tmp_path):
-    """Spec II.7 promises at most 50 items per page and no full text in the initial DOM — the
-    reason the template and the generator were rewritten at all. Every other dashboard test works
-    with a handful of items and can never touch the boundary."""
-    pytest.importorskip("yaml")
-    pm = _dashboard_repo(tmp_path)
-    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
-    mod = _load_dashboard_module()
-    over = mod.PAGE_SIZE + 5
-    for n in range(1, over + 1):
-        write(str(pm / "bugs" / "active" / ("BUG-%04d.yaml" % n)),
-              "id: BUG-%04d\ntitle: crash %d\nstatus: OPEN\n" % (n, n))
-    r = _run_dashboard(tmp_path, pm)
-    assert r.returncode == 0, r.stdout + r.stderr
-    html, data = _dashboard_data(pm)
-    product = [v for v in data["views"] if v["id"] == "product"][0]
-    assert product["total"] == over
-    assert len(product["items"]) == mod.PAGE_SIZE
-    assert "BUG-%04d" % over not in html, "an item past the page size reached the initial DOM"
-
-
 def _load_dashboard_module():
     return load_kit_module("generate_dashboard_under_test", DASHBOARD)
-
-
-def test_dashboard_views_cover_every_item_type():
-    """Every type the kernel knows reaches a view. A type nobody assigned lands in "Other" and is
-    named on stdout — the failure worth designing against is a whole item type quietly missing
-    from the only overview a user looks at."""
-    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
-    from kernel.backlog_types import ACTIVE_DIRS
-    mod = _load_dashboard_module()
-    views, unassigned = mod.assign_views(ACTIVE_DIRS)
-    assert not unassigned, "unassigned item type(s): %s" % unassigned
-    covered = [t for view in views for t in view.types]
-    assert sorted(covered) == sorted(ACTIVE_DIRS)
-    assert len(covered) == len(set(covered)), "a type is rendered in two views"
-    # ...and the catch-all really catches: in a green tree `unassigned` is always empty, so the
-    # branch that saves a NEW item type from disappearing is otherwise never executed.
-    views, unassigned = mod.assign_views({**ACTIVE_DIRS, "ZZZ": "zzz/active"})
-    assert unassigned == ["ZZZ"]
-    assert "ZZZ" in [t for view in views for t in view.types]
 
 
 # ---------------- guard_yaml_valid: typed items live in SUBdirectories now ----------------
@@ -11053,7 +10995,12 @@ def test_a_fresh_office_project_files_its_first_document_without_the_user_editin
     assert len(flags) == 1, draft.stdout
 
     state = ProjectState(str(repo / "project_memory"))
-    manifest = approvals.filing_rule_subject_manifest(reason="onboarding draft", **flags[0])
+    # THE ONE VALUE THE DRAFT DOES NOT FILL, supplied here the way the user supplies it. The draft
+    # prints a placeholder for the retention on purpose, and since TSK-0116 the kernel REFUSES a
+    # retention it cannot count in years (`kernel.filing.retention_refusal`), so leaving the
+    # placeholder standing stops the write instead of putting an unwatchable rule in the plan.
+    answered = dict(flags[0], retention="8y (§ 147 AO; mit der Steuerberatung bestätigt)")
+    manifest = approvals.filing_rule_subject_manifest(reason="onboarding draft", **answered)
     mint_via_hook(state, approvals.create_pending_request(
         state, "filing_rule", manifest=manifest,
         approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY))
@@ -11402,6 +11349,427 @@ def test_fs_tripwire_blocks_a_delete_spelled_from_inside_the_archive(tmp_path):
     """
     assert _tripwire(tmp_path, "cd archive/1-Finanzen && rm x.pdf") == 2
     assert _tripwire(tmp_path, "mv archive/1-Finanzen/x.pdf outbox/x.pdf") == 2
+
+
+# ---------------- H125: the delete rule is a PROPERTY, not a tuple of verbs ----------------
+def _tray_project(tmp_path, trays=True):
+    """An office project on disk — with or without the two trays of record.
+
+    THE DIRECTORIES HAVE TO BE REAL for the sweep half of the rule: a destruction that names no
+    path reaches the working directory, so whether it is refused depends on whether a tray of
+    record lies there. That is the over-refusal weighing, and it cannot be measured against a
+    project that exists only as strings.
+    """
+    root = str(tmp_path)
+    for part in ("outbox", "docs"):
+        os.makedirs(os.path.join(root, part), exist_ok=True)
+    write(os.path.join(root, "docs", "note.md"), "prose\n")
+    if trays:
+        os.makedirs(os.path.join(root, "archive", "finance", "2026"), exist_ok=True)
+        os.makedirs(os.path.join(root, "inbox"), exist_ok=True)
+        write(os.path.join(root, "archive", "finance", "2026", "invoice.pdf"), "%PDF-1.4\n")
+    return tmp_path
+
+
+def _guard_hooks_without(tmp_path, replacements, filename="guard_fs_tripwire.py"):
+    """A copy of the shipped office hooks with one of them mutated — `{regex: replacement}`.
+
+    The MUTATION RIG for the enumeration the destruction rule still carries. Both ends of every
+    entry are measured with it: the shipped tuple refuses a line, and the same tuple minus one entry
+    lets the same line through. A dead entry and a missing entry are then both visible, which is
+    what a tuple in this repo owes (`DELETE_VERBS` had neither and cost H125). `filename` is here
+    because one of the claims is about a NEIGHBOUR's reading (`_filing` recognises a copier), and a
+    claim about who answers first can only be measured by taking that answer away.
+    """
+    hooks = str(tmp_path / "mutated-hooks")
+    shutil.rmtree(hooks, ignore_errors=True)
+    shutil.copytree(OFFICE_HOOKS, hooks, ignore=shutil.ignore_patterns("__pycache__"))
+    target = os.path.join(hooks, filename)
+    with open(target, encoding="utf-8") as handle:
+        text = handle.read()
+    for pattern, replacement in replacements.items():
+        text, count = re.subn(pattern, replacement, text, flags=re.S)
+        assert count == 1, "the mutation %r no longer matches the shipped %s" % (pattern, filename)
+    with open(target, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+    return hooks
+
+
+def _guard(project, command, hooks_dir=None, cwd=None, tool="Bash"):
+    """The shipped guard as a PROCESS. `cwd` is the directory the line runs in, `tool` the payload's
+    tool name -- both are load-bearing: a sweep is judged against the directory it runs in, and the
+    PowerShell spelling of a destruction arrives under a different tool name."""
+    payload = {"hook_event_name": "PreToolUse", "tool_name": tool,
+               "tool_input": {"command": command}, "cwd": str(cwd or project)}
+    return run_hook("guard_fs_tripwire.py", payload, project,
+                    hooks_dir=hooks_dir or OFFICE_HOOKS)
+
+
+@pytest.mark.parametrize("command", [
+    "unlink archive/finance/2026/invoice.pdf",
+    "Clear-Content archive/finance/2026/invoice.pdf",
+    "find archive -name x.pdf -delete",
+    "tar --remove-files -cf out.tar archive/finance/2026/invoice.pdf",
+    "git clean -fdx",
+    "git clean -fdx archive",
+])
+def test_the_archive_guard_refuses_a_destruction_that_is_not_spelled_rm(tmp_path, command):
+    """H125: the delete rule keyed on a TUPLE of seven verbs, and everything beside it went through.
+
+    Measured on 2026-09-03 against a scaffolded pilot outside this repo, with a real document under
+    `archive/` and the kit's own `.gitignore`, through all EIGHT hooks the office kit registers on
+    `Bash|PowerShell` as processes: every line here was ALLOW while `rm` on the same document was
+    rc 2. `git clean -fdx` is the accident in its purest form -- the documents under `archive/` are
+    untracked AND ignored, which is exactly the set `-fdx` removes.
+
+    The three shapes are the three positions a destroying word can stand in: the command word
+    (`unlink`, `Clear-Content`), a FLAG (`-delete`, `--remove-files` -- the `H123` shape), and a
+    SUBCOMMAND (`git clean`).
+    """
+    assert _guard(_tray_project(tmp_path), command) == 2
+
+
+def test_a_sweep_is_refused_only_where_a_tray_of_record_lies_under_it(tmp_path):
+    """The over-refusal weighing of H125, and both ends of it.
+
+    A destruction that names no path reaches the working directory, so `git clean -fdx` is a
+    refusal in a project that keeps documents and must NOT be one in a project that does not -- a
+    wall with nothing behind it is a wall that gets worked around. A path that narrows the sweep
+    away from every tray is the same answer for the same reason.
+    """
+    assert _guard(_tray_project(tmp_path / "with"), "git clean -fdx") == 2
+    assert _guard(_tray_project(tmp_path / "without", trays=False), "git clean -fdx") == 0
+    assert _guard(_tray_project(tmp_path / "narrowed"), "git clean -fdx docs") == 0
+
+    # THE DIRECTORY THE LINE RUNS IN, and this half is verifier finding M1: the sweep was judged
+    # against every base reading, and every reading contains the project root -- so a `git clean`
+    # inside `docs/` was refused for an archive it cannot reach. Both spellings of "somewhere else"
+    # are here, because the two producers of that reading put the real directory at opposite ends
+    # of their list (`reading_bases` last, `_bases_after` first) and one index answered only one.
+    inside = _tray_project(tmp_path / "inside")
+    assert _guard(inside, "git clean -fdx", cwd=os.path.join(str(inside), "docs")) == 0
+    assert _guard(inside, "cd docs && git clean -fdx") == 0
+    # ...and the same two spellings under a tray of record stay refused, so the narrowing is not a
+    # way out: `cd archive` puts the sweep exactly where the documents are.
+    assert _guard(inside, "cd archive && git clean -fdx") == 2
+
+
+@pytest.mark.parametrize("command", [
+    "rm outbox/draft.txt",
+    "ls archive/finance/2026",
+    "cat archive/finance/2026/invoice.pdf",
+    "clear",
+])
+def test_an_ordinary_command_at_a_tray_of_record_is_not_a_destruction(tmp_path, command):
+    """The cost side of the new rule, measured rather than asserted (DEC-0056 (b)).
+
+    Reading a tray is not emptying it, a delete outside every tray is ordinary work, and `clear`
+    on its own clears a terminal. The last one is why the vocabulary is split in two: `clear` is a
+    NAMING word, so with no operand it destroys nothing, while a SWEEPING word with no operand is
+    exactly the case the rule above exists for.
+    """
+    assert _guard(_tray_project(tmp_path), command) == 0
+
+
+@pytest.mark.parametrize("command,tool", [
+    ("git clean -fdx .", "Bash"),
+    ("git clean -fdx ./", "Bash"),
+    ("rm -rf .", "Bash"),
+    ("find . -name x.pdf -delete", "Bash"),
+    ("Remove-Item -Recurse -Force .", "Bash"),
+    ("Remove-Item -Recurse -Force .", "PowerShell"),
+    ("shred .", "Bash"),
+])
+def test_a_destruction_that_names_an_ANCESTOR_of_a_tray_is_the_same_destruction(
+        tmp_path, command, tool):
+    """Verifier finding B1 of rework 1: the reach was read in ONE direction only.
+
+    `_protected_readings` asks "does this operand lie INSIDE a tray"; nothing asked the opposite,
+    "does a tray lie inside what this operand names". So a line that named the project root or the
+    working directory reached every document of record and was ALLOW, while the same line without
+    the dot was rc 2 -- measured over a real archive through all eight registered office hooks as
+    processes. That the two are one destruction is the command's own answer: `git clean -ndx` and
+    `git clean -ndx .` print character-identical "Would remove archive/..." lines.
+
+    A wall that refuses one spelling and passes the other does not protect the documents, it
+    TEACHES the spelling that gets through -- which is the opposite of what a guard against an
+    accident is for (`DEC-0056`). The PowerShell case is here because the same line arrives under a
+    different tool name and the same rule has to answer it.
+    """
+    assert _guard(_tray_project(tmp_path), command, tool=tool) == 2
+    # ...and the weighing holds in the other direction: with no tray of record there is nothing
+    # behind the wall, so the very same line is left alone.
+    assert _guard(_tray_project(tmp_path / "bare", trays=False), command, tool=tool) == 0
+
+
+def test_an_exclusion_flag_does_not_narrow_a_sweep(tmp_path):
+    """`git clean -fdx -e docs` still sweeps the archive -- both ends of `EXCLUDING_FLAGS`.
+
+    An operand narrows a sweep; the VALUE of a flag that says "leave this out" is not an operand of
+    the destruction at all. Reading it as one made the line rc 0 over a real archive (verifier
+    finding B1). Which flag means "exclude" is a fact about each command and cannot be derived from
+    the line, so the tuple is an unavoidable enumeration -- and it gets what every enumeration in
+    this repo gets: the shipped guard refuses the line, and a copy of the guard whose tuple is
+    empty lets the same line through.
+    """
+    project = _tray_project(tmp_path)
+    assert _guard(project, "git clean -fdx -e docs") == 2
+    hooks = _guard_hooks_without(tmp_path, {r"EXCLUDING_FLAGS = \([^)]*\)": "EXCLUDING_FLAGS = ()"})
+    assert _guard(project, "git clean -fdx -e docs", hooks_dir=hooks) == 0, (
+        "nothing here depends on the exclusion flag -- the tuple catches nothing")
+    # ...and an exclusion that is glued to its flag consumes no following word, so a real path
+    # beside it still narrows the sweep.
+    assert _guard(project, "git clean -fdx --exclude=archive docs") == 0
+
+
+def test_a_word_that_only_LOOKS_like_a_cd_does_not_move_the_sweep(tmp_path):
+    """Verifier finding B4: the narrowing that made M1 cheap was itself a way through.
+
+    `_filing` looks for a directory change ANYWHERE in an invocation, on purpose -- for a reader
+    that asks "does ANY base land in the archive" a misreading can only add a reading. The sweep
+    reader NARROWS, so there the same misreading costs a document: measured rc 0 for
+    `echo cd outbox ; rm -rf .` and three spellings of the same shape, while `rm -rf .` alone was
+    rc 2. The base now moves only for an invocation whose COMMAND WORD is the directory change.
+
+    THE FOUR CONTROLS ARE THE OTHER END and they were rc 2 before the fix as well: a quoted or
+    `printf`-ed `cd`, a `cd` whose target the shell rewrites, and a `cd` into a tray of record --
+    none of them may become allowed by making the reader stricter.
+    """
+    project = _tray_project(tmp_path)
+    for command in ("echo cd outbox ; rm -rf .",
+                    "grep -r cd outbox ; rm -rf .",
+                    "ls cd outbox && rm -rf .",
+                    "echo cd docs ; git clean -fdx"):
+        assert _guard(project, command) == 2, command
+    for command in ('echo "cd outbox" ; rm -rf .',
+                    "printf 'cd outbox' ; rm -rf .",
+                    "echo cd $X ; rm -rf .",
+                    "echo cd archive ; rm -rf ."):
+        assert _guard(project, command) == 2, command
+    # ...and a real `cd` still moves it, including into a tray of record, and one the shell writes
+    # leaves the base standing rather than being guessed at.
+    assert _guard(project, "cd outbox && rm -rf .") == 0
+    assert _guard(project, "cd archive && git clean -fdx") == 2
+    assert _guard(project, "cd $DIR && rm -rf .") == 2
+
+
+def test_a_directory_change_that_never_lands_does_not_move_the_sweep(tmp_path):
+    """Verifier finding B5: "the command word is a `cd`" is not "the shell ends up there".
+
+    The narrowing that makes M1 cheap followed any computable `cd` whose command word said so --
+    including one that fails. Measured through all eight registered hooks, with `rm -rf .` alone at
+    rc 2: `cd nichtda ; rm -rf .` and `cd docs2 ; rm -rf .` were rc 0. The second is the shape
+    `DEC-0056` calls the target of this whole wall: a typo, not a trick. `cd .. ; rm -rf .` was rc 0
+    for the opposite reason -- the base landed ABOVE the project, where "no tray under this base" is
+    the wrong answer, because everything of the project is under it.
+
+    So a change is followed only when its target IS a directory and lies inside the project. The
+    four controls are the other end: a real `cd` still moves the base out of reach, still moves it
+    INTO a tray, and a sweep with no `cd` at all is untouched.
+
+    A change that lands somewhere real and never TAKES EFFECT is the neighbouring question and it
+    has its own test since TSK-0120:
+    `test_a_directory_change_the_shell_never_performs_does_not_move_the_sweep`.
+    """
+    project = _tray_project(tmp_path)
+    for command in ("cd nichtda ; rm -rf .",
+                    "cd docs2 ; rm -rf .",
+                    "cd .. ; rm -rf ."):
+        assert _guard(project, command) == 2, command
+    assert _guard(project, "cd outbox && rm -rf .") == 0
+    assert _guard(project, "cd docs && git clean -fdx") == 0
+    assert _guard(project, "cd archive && rm -rf .") == 2
+    assert _guard(project, "rm -rf .") == 2
+
+
+def test_a_directory_change_the_shell_never_performs_does_not_move_the_sweep(tmp_path):
+    """Seam S9 / `H144`: a `cd` that LANDS is still not a `cd` the calling shell performs.
+
+    Rework 3 of stream B made the sweep base follow only a change whose target is a real directory
+    inside the project. Its verifier then measured the class that leaves: the target exists, the
+    command word is a `cd`, and the shell still never gets there -- it short-circuits, or the `cd`
+    runs in a subshell. Measured through all eight registered office hooks as processes, with
+    `rm -rf .` alone at rc 2, BEFORE the fix: `false && cd outbox ; rm -rf .`,
+    `ls | cd outbox ; rm -rf .`, `cd outbox | rm -rf .` and `cd outbox & rm -rf .` were all rc 0 --
+    the sweep was judged against `outbox`, which holds no tray, while the shell was deleting the
+    project root.
+
+    The answer is not in the invocation, it is BETWEEN two of them, so `_filing._walk` now carries
+    the separator and `_filing.changes_the_calling_shell` reads it. THE COUNTER-DIRECTION IS HALF OF
+    THIS TEST, because the fix is a narrowing and a narrowing over-refuses: an ordinary `cd` still
+    moves the base out of reach and still moves it INTO a tray.
+
+    THE PRICE, refused on purpose and named: `true && cd outbox ; rm -rf .` is rc 2 although that
+    shell really is in `outbox`. Whether the left side of an `&&` succeeded is not a property of
+    the command line, so doubt is answered fail-closed.
+
+    SINCE THE MERGE ROUND'S REWORK THIS ALSO HOLDS THE HALF NOTHING ELSE DOES: the sweep is judged
+    against EVERY position the shell could be standing in, not only the newest. In each form here
+    the shell starts on the project root and the uncertain change points away from it, so the newest
+    candidate is harmless and a reading that asks only that one answers rc 0 -- measured in a copy
+    outside the repo, where replacing the candidate walk with `standing[-1]` reddens exactly this
+    test and leaves `test_a_change_the_shell_may_not_have_made_leaves_both_positions_open` green.
+    """
+    project = _tray_project(tmp_path)
+    for command in ("false && cd outbox ; rm -rf .",
+                    "ls | cd outbox ; rm -rf .",
+                    "cd outbox | rm -rf .",
+                    "cd outbox & rm -rf .",
+                    "true && cd outbox ; rm -rf ."):          # the named over-refusal
+        assert _guard(project, command) == 2, command
+    for command in ("cd outbox && rm -rf .",
+                    "cd outbox ; rm -rf .",
+                    "cd docs && git clean -fdx"):
+        assert _guard(project, command) == 0, command
+    assert _guard(project, "cd archive && rm -rf .") == 2
+    assert _guard(project, "rm -rf .") == 2
+
+
+def test_a_change_the_shell_may_not_have_made_leaves_both_positions_open(tmp_path):
+    """Merge-verifier finding B1: skipping an uncertain `cd` is only fail-closed in ONE direction.
+
+    Rework 3 of stream B follows a directory change only when its target is a real directory inside
+    the project; the merge round added `H144` on top -- follow it only when the separators make it
+    certain and in-shell. Both narrowings were written as "leave the base where it was", and a base
+    left standing is harmless only while the change it ignored led AWAY from a tray. Leading BACK it
+    is a hole: measured through every hook the office kit registers on `Bash`, with `rm -rf .` alone
+    at rc 2, `cd outbox && cd .. && rm -rf .`, `cd outbox && cd .. ; rm -rf .` and
+    `cd outbox ; true && cd .. ; rm -rf .` were all **rc 0** -- the sweep was judged against
+    `outbox`, which holds no tray, while the shell was standing on the project root.
+
+    So the position is a SET of candidates: a certain in-shell change moves it, any other change
+    adds a candidate beside it, and a destruction is refused when ANY candidate holds a tray of
+    record. `H150` is the same mechanism reached through a change that yields no target at all
+    (`popd`), which is why its form is measured here too and not in an entry of its own.
+
+    THE COUNTER-DIRECTION IS HALF OF THIS TEST, because a widening over-refuses by construction: an
+    ordinary `cd` still narrows the sweep, and a `cd` INTO a tray still refuses.
+
+    WHICH HALF THIS TEST HOLDS, measured rather than assumed. The fix has three parts and they are
+    not all held here: the two ADDING halves are -- an uncertain change adds a candidate, an
+    uncomputable one adds the project root -- and reverting either makes this test fail. The third,
+    that the sweep asks EVERY candidate and not only the newest, is held by
+    `test_a_directory_change_the_shell_never_performs_does_not_move_the_sweep`: in the forms above
+    the shell starts on the root and moves uncertainly AWAY from it, so the newest candidate is the
+    dangerous one and asking only it still refuses. In that other test the uncertain move goes the
+    other way and the newest candidate is harmless. Measured in a copy outside the repo by replacing
+    the candidate walk with `standing[-1]`: this test 1 passed, that one 1 failed.
+
+    THE PRICE, refused on purpose and named in `H144`, `H150` and the guard's own head: the two
+    lines in the middle are rc 2 although that shell may really be standing outside every tray.
+    """
+    project = _tray_project(tmp_path)
+    for command in ("cd outbox && cd .. && rm -rf .",
+                    "cd outbox && cd .. ; rm -rf .",
+                    "cd outbox ; true && cd .. ; rm -rf .",
+                    "pushd outbox > /dev/null ; popd ; rm -rf ."):
+        assert _guard(project, command) == 2, command
+    for command in ("cd outbox ; cd .. | true ; rm -rf .",          # the named price
+                    "cd outbox ; cd $X ; rm -rf ."):                 # ...and the second shape
+        assert _guard(project, command) == 2, command
+    for command in ("cd outbox ; rm -rf .",
+                    "cd outbox && rm -rf .",
+                    "cd docs && git clean -fdx"):
+        assert _guard(project, command) == 0, command
+    assert _guard(project, "cd archive && rm -rf .") == 2
+    assert _guard(project, "rm -rf .") == 2
+
+def test_a_relative_change_is_computed_from_every_position_it_could_start_in(tmp_path):
+    """Merge-verifier finding B2: a RELATIVE target means something different from each candidate.
+
+    The position a sweep is judged against is a set of candidates. Computing the next change from
+    ONE of them -- the newest -- answers for one shell only, and the newest is the worst pick: after
+    an uncertain change it is the position the shell may never have reached, and a certain change
+    then replaced the whole set with a target derived from it. `cd ../outbox` lands in the project's
+    own `outbox` when it starts in `docs`, and OUTSIDE the project when it starts on the root.
+
+    THE ARBITER IS A REAL BASH, not this test's reasoning
+    (`_round-scratch/TSK-0120/verify_tools/shell_truth.py`): for all three lines below the shell
+    stands on the PROJECT ROOT afterwards -- the first `cd` runs in a subshell or not at all, and
+    the second one then fails -- so `rm -rf .` sweeps everything. Measured before the fix, through
+    every hook the office kit registers on `Bash`, as processes: all three were **rc 0**.
+
+    The counter-direction is the same line without the uncertainty: `cd docs ; cd ../outbox` really
+    does end in `outbox`, and there the sweep stays allowed.
+
+    NO SINGLE-CANDIDATE READING SURVIVES, and that is measured across this file rather than claimed
+    in one test: with the sweep asking only the NEWEST candidate this test and
+    `test_a_directory_change_the_shell_never_performs_does_not_move_the_sweep` go red; with it
+    asking only the FIRST, `test_a_change_the_shell_may_not_have_made_leaves_both_positions_open`
+    does (its `cd outbox && cd .. && rm -rf .` has `outbox` first and the root second). A case built
+    here to redden the FIRST-only reading on its own looked like it worked and did not: with two
+    candidates that are both inside the project, `_filing`'s own bases follow every `cd` it can see,
+    so the DELETE rule refuses the line before the sweep rule is reached -- measured, and the reason
+    no such case stands above.
+    """
+    project = _tray_project(tmp_path)
+    os.makedirs(os.path.join(str(project), "docs", "inner"), exist_ok=True)
+    for command in ("cd docs | true ; cd ../outbox ; rm -rf .",
+                    "false && cd docs ; cd ../outbox ; rm -rf .",
+                    "cd docs | true ; cd ../docs/inner ; rm -rf ."):
+        assert _guard(project, command) == 2, command
+    assert _guard(project, "cd docs ; cd ../outbox ; rm -rf .") == 0
+    assert _guard(project, "cd outbox ; rm -rf .") == 0
+    assert _guard(project, "rm -rf .") == 2
+    # ...and the counter-direction for the candidate set itself: two candidates, neither of them
+    # the project root, neither holding a tray -- the sweep stays allowed.
+    assert _guard(project, "cd docs ; cd ../outbox | true ; rm -rf .") == 0
+
+def _destroying_stems():
+    guard = load_kit_module("guard_fs_tripwire", os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    return ([(name, "naming") for name in guard.NAMING_DESTRUCTION]
+            + [(name, "sweeping") for name in guard.SWEEPING_DESTRUCTION])
+
+
+@pytest.mark.parametrize("stem,role", _destroying_stems())
+def test_every_destroying_stem_is_load_bearing_at_both_ends(tmp_path, stem, role):
+    """The tripwire the old `DELETE_VERBS` never had, on BOTH of its ends.
+
+    Which words a program uses to say "this is gone" cannot be derived from a command line, so this
+    half of the rule stays a vocabulary (`H129`). What it gets instead is this: for every entry, a
+    line that uses it is refused by the SHIPPED guard, and the same line is allowed by a copy of the
+    guard that no longer knows that one entry. A dead entry fails the second half; an entry the code
+    stopped consulting fails the first.
+
+    THE PROGRAM NAME IS IRRELEVANT HERE and that is the point of the round: what is measured is the
+    WORD, in the position its role gives it -- a naming word destroys what the invocation names, a
+    sweeping word destroys whatever it finds.
+    """
+    command = ("%s archive/finance/2026/invoice.pdf" % stem if role == "naming"
+               else "git %s -fdx" % stem)
+    project = _tray_project(tmp_path)
+    assert _guard(project, command) == 2, "the shipped guard does not act on %r" % stem
+    tuple_name = "NAMING_DESTRUCTION" if role == "naming" else "SWEEPING_DESTRUCTION"
+    guard = load_kit_module("guard_fs_tripwire", os.path.join(OFFICE_HOOKS, "guard_fs_tripwire.py"))
+    kept = [one for one in getattr(guard, tuple_name) if one != stem]
+    hooks = _guard_hooks_without(
+        tmp_path, {r"%s = \([^)]*\)" % tuple_name: "%s = %r" % (tuple_name, tuple(kept))})
+    assert _guard(project, command, hooks_dir=hooks) == 0, (
+        "%r is not what refuses %r -- the entry is dead" % (stem, command))
+
+
+def test_a_filing_move_with_a_source_deleting_copier_flag_is_judged_as_a_move(tmp_path):
+    """WHO ANSWERS FIRST is what keeps the kit's own filing move out of the destruction rule.
+
+    `rsync --remove-source-files inbox/scan.pdf archive/…` carries the word `remove` and IS the
+    ordinary filing operation: the document ceases to be in the inbox because it moved into the
+    archive. The first cut of this round put an exception for those flags into the destruction
+    vocabulary; measured, it never fired -- `_filing` recognises rsync as a copier by calling
+    convention, so the copy/move branch judges the invocation and returns before any destroying word
+    is looked for. The exception was a tuple that caught nothing and it was removed.
+
+    BOTH ENDS, and the second one is why this test exists at all: take rsync out of `_filing`'s
+    copier family in a COPY of the hooks and the same line becomes a delete under `inbox/`, rc 2.
+    So the allow above is the ordering doing the work, not an accident of the vocabulary.
+    """
+    project = _tray_project(tmp_path)
+    filing_move = "rsync --remove-source-files inbox/scan.pdf archive/finance/2026/scan.pdf"
+    assert _guard(project, filing_move) == 0
+    hooks = _guard_hooks_without(
+        tmp_path, {r'DUPLICATING = \("cp"[^)]*\)': 'DUPLICATING = ("cp",)'},
+        filename="_filing.py")
+    assert _guard(project, filing_move, hooks_dir=hooks) == 2, (
+        "nothing here depends on rsync being read as a copier -- the claim above is not measured")
 
 
 # ---------------- FR-0050: the ONE approval-shaped door in that wall ----------------
@@ -17049,3 +17417,165 @@ def test_the_only_hook_that_reads_a_staged_pipeline_file_reads_it_for_well_forme
     assert refusing == ["guard_yaml_valid.py"], (
         "exactly one hook reads a staged pipeline file, and only for well-formedness; these did: %s"
         % refusing)
+
+
+# ---------------- gate_git: a blocked verdict (FR-0082) and a programmatic token (FR-0083) -----
+def capture_blocked_evidence(repo, related=("PR-0001",), reason="no Chromium on this runner"):
+    """Record a `blocked` test Evidence through the shipped CLI, like `capture_evidence` does.
+
+    Through `kernel.cli` and not `ProjectState.capture`, for that helper's reason: the producer is
+    half of what these tests have to prove -- a verdict value a role has no command for is a
+    vocabulary entry, not a feature.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.backlog_types import BLOCKED_REASON_FIELD, BLOCKED_RESULT
+    from kernel.cli import main as harness
+
+    argv = ["--root", os.path.join(str(repo), "project_memory"), "evidence",
+            "--kind", "test", "--result", BLOCKED_RESULT, "--summary", "the e2e suite",
+            "--artifact-ref", "staging/TSK-0001/run.log",
+            "--" + BLOCKED_REASON_FIELD.replace("_", "-"), reason]
+    for ref in related:
+        argv += ["--related", ref]
+    assert harness(argv) == 0, argv
+    return sorted(os.listdir(evidence_dir(repo)))[-1][:-5]
+
+
+def test_gate_git_closes_on_a_blocked_verdict_and_says_nothing_was_checked(prd_repo):
+    """FR-0082: `blocked` closes the merge as `fail` does, and the refusal names what stopped it.
+
+    THREE ASSERTIONS AND EACH IS A DIFFERENT CLAIM: the merge is refused (rc 2); the refusal
+    carries the recorded sentence, so the role learns WHAT blocked rather than being sent to fix a
+    defect nobody measured; and it says that nothing was checked, which is the sentence the
+    wishlist section makes a condition of building this at all.
+
+    RED WITHOUT THE FIX: `capture_blocked_evidence` cannot even record the verdict while
+    `EVIDENCE_RESULTS` is two-valued, and with the vocabulary widened but `_blocked` removed from
+    the gate the refusal reads "the current QA verdict is not a pass", i.e. the fail sentence --
+    the state the wishlist describes as a red result nobody can tell from a real one.
+    """
+    for kind in qa_kinds():
+        if kind != "test":
+            capture_evidence(prd_repo, kind=kind)
+    capture_blocked_evidence(prd_repo)
+
+    result = run_hook_process("gate_git.py", _merge(prd_repo), prd_repo)
+    assert result.returncode == 2
+    assert "no Chromium on this runner" in result.stderr
+    assert "did NOT happen" in result.stderr and "Nothing was checked" in result.stderr
+    # ...and the merge opens once the run has actually happened
+    capture_evidence(prd_repo, kind="test")
+    assert run_hook("gate_git.py", _merge(prd_repo), prd_repo) == 0
+
+
+def _mint_programmatically(repo, item_id, kind="scope"):
+    """Mint an approval through the kernel's SDK bridge -- the programmatic route (FR-0083)."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel import approvals, sdk_approval
+    from kernel.state import ProjectState
+
+    state = ProjectState(os.path.join(str(repo), "project_memory"))
+    request = approvals.create_pending_request(state, kind, item_id)
+    return sdk_approval.mint_from_can_use_tool(
+        state, request["request_id"], approvals.approve_label(request["mint_code"]))
+
+
+def test_gate_git_refuses_a_merge_whose_authorisation_a_program_gave_itself(tmp_path):
+    """FR-0083: a merge rests on an approval a HUMAN gave; a program's own token does not carry it.
+
+    THE ITEM IS FULLY GREEN otherwise -- complete QA, a status a delivery can follow -- so the rc 2
+    can only come from the provenance tooth. Then the same repo is measured with the SAME item
+    presenting a HUMAN-minted approval and merges, which is what separates "the gate works" from
+    "the gate is stuck shut".
+
+    RED WITHOUT THE FIX: without the `minted_via` stamp the two approvals are indistinguishable and
+    the first merge is allowed -- the state the wishlist calls the provenance being only a claim.
+    """
+    item = capture_root_item(tmp_path, status="DELIVERED")
+    capture_full_qa(tmp_path)
+    assert run_hook("gate_git.py", _merge(tmp_path), tmp_path) == 0, "fixture is not green"
+
+    apr = _mint_programmatically(tmp_path, item["id"], "acceptance")
+    result = run_hook_process("gate_git.py", _merge(tmp_path), tmp_path)
+    assert result.returncode == 2
+    assert apr["id"] in result.stderr and "PROGRAM minted it" in result.stderr
+
+    # the same item, presenting a human's approval again: the gate opens
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import approve
+    from kernel.state import ProjectState
+    approve(ProjectState(os.path.join(str(tmp_path), "project_memory")), item["id"], "acceptance")
+    assert run_hook("gate_git.py", _merge(tmp_path), tmp_path) == 0
+
+
+def test_the_approval_hook_stamps_the_interactive_route_and_prints_it_on_the_card(tmp_path):
+    """FR-0083 measured against the SHIPPED hook as a process: the human route names itself.
+
+    The hook is the only caller `approvals.mint` accepts for this route, so this is the one place
+    the stamp can be measured where it is really written -- `conftest.mint_via_hook` drives the
+    real subprocess with a real payload.
+
+    RED WITHOUT THE FIX: no `minted_via` on the record and no card on the hook's own surface, so
+    an auditor reading the store afterwards cannot tell the two routes apart at all.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import mint_via_hook
+    from kernel import approvals
+    from kernel.state import ProjectState
+
+    item = capture_root_item(tmp_path, status=None)
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    result = mint_via_hook(state, approvals.create_pending_request(state, "scope", item["id"]))
+
+    apr = approvals.read_apr(state, state.read_item(item["id"])["approval_ref"])
+    # THE STORED FIELD, not what `minted_via` reports about it: that function answers
+    # `INTERACTIVE_MINT` for a record that carries nothing (a record from before the stamp), so
+    # asking it here would be a test that cannot fail for its own claim. Measured: with the stamp
+    # removed from `mint` this line raises KeyError and the reader below has nothing to read.
+    assert apr[approvals.MINTED_VIA_FIELD] == approvals.INTERACTIVE_MINT
+    # COMPARED ON THE ASCII SKELETON, and that is a property of the measurement rather than a
+    # weakening of it: the hook writes UTF-8 and `subprocess` decodes with the console codec, so a
+    # byte-for-byte comparison here would be measuring this machine's codepage. Dropping the
+    # non-ASCII characters from BOTH sides leaves the whole sentence structure -- ids, kind, and
+    # the route clause -- and no codec in it.
+    assert _ascii_skeleton(approvals.approval_card(apr)) in _ascii_skeleton(result.stderr)
+    assert "Erteilt von einem Menschen" in result.stderr
+
+
+def _ascii_skeleton(text):
+    """`text` without the characters a console codec can mangle -- see the caller for why."""
+    return "".join(character for character in text if character.isascii())
+
+
+def test_a_plan_approval_does_not_close_the_merge_gate(tmp_path):
+    """B1 of rework 1, as a PROCESS: one plan approval must not shut merge AND push.
+
+    `gate_memory_complete` runs `report.validate_state` on a merge or push line, so a validator
+    finding IS a closed gate. Measured before the fix: rc 0 before the plan approval and rc 2 after
+    it, on both lines, with a remedy naming an out-of-band edit nobody had made -- and no ordinary
+    route out, because re-running the plan approval writes the same `revision: None` again.
+
+    BOTH LINES, because the two are different registrations of the same gate and the earlier
+    measurement found both closed.
+    """
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from conftest import mint_via_hook
+    from kernel import approvals
+    from kernel.state import ProjectState
+
+    first = capture_root_item(tmp_path, status=None)
+    second = capture_root_item(tmp_path, dict(PR_FIELDS, title="Search"), status=None)
+    state = ProjectState(os.path.join(str(tmp_path), "project_memory"))
+    lines = ["git merge feat/%s-x" % first["id"], "git push origin main"]
+    assert [run_hook("gate_memory_complete.py", _bash(tmp_path, line), tmp_path)
+            for line in lines] == [0, 0], "the fixture is not open before the approval"
+
+    mint_via_hook(state, approvals.create_pending_request(
+        state, approvals.PLAN_KIND,
+        manifest=approvals.plan_subject_manifest(approvals.plan_goals(state))))
+    state.transition(first["id"], "APPROVED")
+    state.transition(second["id"], "APPROVED")
+
+    for line in lines:
+        result = run_hook_process("gate_memory_complete.py", _bash(tmp_path, line), tmp_path)
+        assert result.returncode == 0, result.stderr

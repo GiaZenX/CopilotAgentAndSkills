@@ -1,0 +1,47 @@
+id: DEC-0066
+title: 'This repo follows the kits'' own requirement hierarchy: a wish that gets built
+  becomes a product goal (PR) or hangs from one -- FR stays the inbox; the 14 root-less
+  FRs are filed under PR-0003, the four large ones are converted to PRs from generation
+  4 on'
+context: 'User question 2026-09-03 while sighting the stream-A board mockups: why
+  are some feature requests unassigned, is that normal, is it the same in the kits
+  -- ''wir muessen die Ursache bekaempfen''. MEASURED: the kits treat FR as the INBOX
+  (dev constitution section 4: FR -triage-> PR; a self-standing wish becomes a Draft
+  PR directly; PM skill step 3: triage ends an FR MERGED/CONVERTED/REJECTED; backlog_tree:
+  an FR without related_pr breaks no rule) -- so an unassigned FR is normal there
+  but transient. This repo deviated: 21 of 119 TSKs hang directly from an FR as product_requirement,
+  35 FRs live as long-term requirements, 14 of them without any root, and of 49 archived
+  FRs only 10 were ever CONVERTED. Root cause: the lead skipped the wish-to-goal step
+  because the repo has three coarse PRs and no PM procedure runs here; the kernel
+  let it pass (BUG-0091: create-task accepts an FR as root although the help names
+  root/BUG/CR/EXP).'
+decision: (1) From now on a wish this repo will BUILD is a PR (captured as a Draft
+  PR, or an FR triaged CONVERTED with resulting_item = the PR) or carries related_pr
+  to the goal it changes; a TSK derives from a PR, BUG, CR or EXP -- never from an
+  inbox item. (2) The 14 root-less active FRs (FR-0019, 0020, 0021, 0022, 0023, 0024,
+  0025, 0033, 0043, 0047, 0048, 0057, 0058, 0064) get related_pr PR-0003 today through
+  the kernel -- the state the kits prescribe for a wish about an existing goal, not
+  a cosmetic fix. (3) The four large ones -- FR-0021 parallel specialists, FR-0023
+  provider-agnostic harness, FR-0024 backlog UI with raw inbox, FR-0025 containerised
+  harness -- are CONVERTED into PRs of their own when their work starts, from generation
+  4 on; generation 3 items already hang from their FRs and stay (READY work orders
+  are frozen; BUG-0089). (4) BUG-0091 (kernel accepts a task under an FR) is triaged
+  into the generation-3 merge round or generation 4 with the refuse-or-document DEC
+  line it asks for; existing tasks stay valid. (5) The board wording for an FR without
+  a root says what it is in kit language -- inbox, not yet triaged -- instead of unassigned;
+  that is a stream A phase-2 line (kernel/board.py is A's file).
+consequences: 'The board''s unassigned bucket empties to what it is meant to hold:
+  wishes not yet triaged. Every generation from 4 on starts with the wish-to-goal
+  step, which costs one capture per built wish and buys the hierarchy the kits already
+  document. What this does not fix: the 21 historical tasks under FRs stay as history;
+  a check over the index that counts TSKs whose root is an FR (BUG-0091 AC-3) makes
+  a relapse visible. Recorded here because the rule lived nowhere a lead reads at
+  session start; CLAUDE.md gains no second copy -- it points here when the merge round
+  touches it.'
+source: User 2026-09-03 (chat); measurements in project_memory/staging/generation-3-streams.md
+  log 09:1x-10:0x; team-kits/dev-team/constitution/AGENTS.md section 4; team-kits/dev-team/skills/project-manager/SKILL.md
+  step 3; kernel/backlog_tree.py NO_LINK; BUG-0091
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T09:52:50'

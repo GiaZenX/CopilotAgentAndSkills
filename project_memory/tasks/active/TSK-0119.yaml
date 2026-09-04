@@ -1,0 +1,103 @@
+id: TSK-0119
+product_requirement: FR-0077
+derives_from: FR-0077
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/dev-team/hooks/gate_design_*.py
+- team-kits/dev-team/hooks/ENFORCEMENT.md
+- team-kits/dev-team/settings/settings.json
+- team-kits/dev-team/templates/repo/scripts/kit_design_render.py
+- team-kits/dev-team/templates/repo/scripts/kit_design_system_check.py
+- team-kits/dev-team/templates/repo/scripts/kit_browser_checks.py
+- team-kits/dev-team/skills/frontend-design/**
+- team-kits/dev-team/skills/product-designer/**
+- team-kits/dev-team/skills/webapp-testing/**
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/kernel/**
+- team-kits/dev-team/hooks/_*.py
+- team-kits/dev-team/hooks/gate_approval.py
+- team-kits/dev-team/hooks/gate_git.py
+- team-kits/dev-team/hooks/gate_dispatch.py
+- team-kits/dev-team/hooks/gate_write_scope.py
+- team-kits/dev-team/hooks/guard_*.py
+- team-kits/dev-team/hooks/session_status.py
+- team-kits/dev-team/templates/repo/scripts/generate_dashboard.py
+- team-kits/dev-team/templates/repo/scripts/progress.dashboard.template.html
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/dev-team/skills/project-manager/**
+- team-kits/*/skills/humanizer/**
+- team-kits/office-team/**
+- team-kits/research-team/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- team-kits/gen_provider_artifacts.py
+- user/**
+- CLAUDE.md
+- .claude/**
+- project_memory/**
+required_inputs:
+- 'project_memory/inbox/active/FR-0077.yaml (primary: the mechanically checkable halves
+  of the standard hardening)'
+- project_memory/inbox/active/FR-0078.yaml (a gate on exactly ONE primary goal per
+  view + the SKILL line with a procedure instead of an adjective)
+- docs/POST_V2_WISHLIST.md sections 1, 1a and 1c
+- team-kits/dev-team/skills/frontend-design/SKILL.md, product-designer/SKILL.md, webapp-testing/SKILL.md;
+  hooks/gate_design_sighted.py and its tests in tools/; templates/repo/scripts/kit_design_render.py,
+  kit_design_system_check.py, kit_browser_checks.py; team-kits/dev-team/settings/settings.json
+  (every entry carries a timeout; FR-0057 is generation 4 -- this stream only keeps
+  its own new entries honest)
+- project_memory/bugs/active/BUG-0076.yaml (the sighting doctrine) and project_memory/staging/TSK-0109/review/
+  (the sighting loop as it ran)
+- 'project_memory/decisions/active/DEC-0056.yaml (the cost side of every gate: what
+  a project without a UI pays must be measurable and near zero), DEC-0062.yaml, DEC-0063.yaml'
+- 'The office and research kits are NOT touched: design gates are dev-team specific
+  (KIT_SPECIFIC_HOOKS reason if a mirror test asks).'
+expected_outputs:
+- 'FR-0077: the mechanically checkable halves as tests/gates in the dev-team kit --
+  C1/C2/C3 axe run, keyboard path, prefers-reduced-motion + :focus-visible presence;
+  B2/B3 colour literals outside the token sheet -- each RED on a planted violation
+  (red-first) and run as the shipped script or hook on a scaffolded project outside
+  the repo; every new hook registration carries a timeout and its deadline is measured;
+  the wishlist section 1c points here.'
+- 'FR-0078: a gate or design-review check that refuses a view whose brief names no
+  or more than one primary goal, with a sentence; the product-designer / frontend-design
+  SKILL line states the PROCEDURE (how the goal is chosen and shown) instead of an
+  adjective, measured against the kit text; a planted view with two primary goals
+  is refused; red-first.'
+- 'Cost side per DEC-0056 named per gate: what the over-refusal is, what a project
+  without a UI pays (measured, not asserted), and the deadline of every new hook against
+  its registered timeout.'
+- Per FR its own red-first test measured in a copy outside the repo (restore the defect,
+  see red, put it back) and its own acceptance line in the protocol; the verifier
+  reports PER FR (DEC-0062 (4)). Every new property claim -- code comment, docstring,
+  docs, hole list -- is MEASURED before handover (the most frequent finding of generation
+  2); every hole-list citation carries its module prefix; hole numbers H138 to H140
+  ONLY; forbidden_scope project_memory/** excepts project_memory/staging/(this task
+  id)/.
+- 'Seams reported, never written here: constitution / PM-skill sentences that must
+  name the new gates -> stream D (verbatim in the protocol); ENFORCEMENT.md is E-owned
+  and updated for the new gates; nothing in kernel or in the other kits.'
+- 'Handover: worktree C:/Offline Repos/v2-testbed/_worktrees/g3-design (branch g3/design
+  off feat/harness-v2 at e45c0ca); ALL scratch only under C:/Offline Repos/v2-testbed/_round-scratch/(this
+  task id)/; verifier copies made WITHOUT the .git file of the worktree; patch = the
+  worktree diff at C:/Offline Repos/v2-testbed/_round-scratch/(this task id)/stream-design.patch;
+  protocol at project_memory/staging/(this task id)/stream-protocol.md with: seam
+  table, per-FR acceptance line + red-first tests, measured lines, what was deliberately
+  not closed but named, the one-line rejected alternative of the plan (FR-0084 shape),
+  suite runs (affected suites only -- the full suite belongs to the merge round),
+  provisional VERSION stamp, wall-clock and tokens for the (g) table. No commit, no
+  push, no install to the global store.'
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-03T07:21:09'

@@ -57,7 +57,11 @@ FILENAME_TEMPLATE = "YYYY-MM-DD_<counterparty>_<doctype>"
 # What the draft puts where a retention belongs. NOT a number: `approvals.filing_rule_subject_manifest`
 # requires the field, and a value the kit chose would be one the user signs without deciding -- the
 # shipped template says the DE defaults come with "the user's Steuerberater confirms".
-RETENTION_QUESTION = "TBD - ask the Steuerberater"
+# IT IS SHAPED LIKE A PLACEHOLDER AND IS REFUSED IF IT IS LEFT STANDING, which is the correction of
+# F6: `kernel.filing.retention_refusal` rejects a retention that names no span in years, because a
+# rule the session-start deadline register cannot count is one it reports as unwatched for the rest
+# of the project's life. Before that refusal existed this value went straight into a plan.
+RETENTION_QUESTION = "<Aufbewahrung in Jahren -- mit dem Steuerberater klaeren>"
 # The id shape the kernel accepts (`approvals.RULE_ID_RX`) and the plan's own examples use. Spelled
 # as a FORMAT and not as a pattern: this file only ever produces ids, it never judges one.
 RULE_ID = "FP-%03d"
@@ -312,7 +316,10 @@ def main(argv=None):
     print("Two structural choices are the manager's proposal and the user's to amend: a `%s` folder "
           "under each class, and the filename shape `%s`. The retention is NOT proposed -- it says "
           "`%s`, because a keeping period the kit chose would be one the user signs without "
-          "deciding." % (YEAR_SEGMENT, FILENAME_TEMPLATE, RETENTION_QUESTION))
+          "deciding. REPLACE IT before you run either line: the kernel refuses a retention it "
+          "cannot count in years, so a placeholder left standing stops the write instead of "
+          "reaching the plan."
+          % (YEAR_SEGMENT, FILENAME_TEMPLATE, RETENTION_QUESTION))
     print("\nThe tree this would produce:")
     for line in tree_lines([rule for rule, _what in proposed] + list(rules)):
         print("  " + line)

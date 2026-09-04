@@ -1892,6 +1892,10 @@ KIT_SPECIFIC_PARAGRAPHS = {
         "office has no two-level acceptance -- its unit of approval is the PROC",
     "**User = customer**":
         "office describes its roles in section 5 in its own shape",
+    "**ONE question for the whole plan, not one per goal (`DEC-0068`).**":
+        "the office kit has no plan approval to describe: `approvals.plan_goals` reads the "
+        "product roots out of `ROOT_TYPE_BY_KIT`, which names PR and RQ and no office type, "
+        "so a PROC can never be covered by one -- measured in the TSK-0120 merge round",
 }
 
 _LEAD_IN_RX = re.compile(r"\A\s*(?:[-*]\s+|\d+\.\s+)?(\*\*[^*\n]+?\*\*)")

@@ -1,0 +1,117 @@
+id: TSK-0117
+product_requirement: FR-0074
+derives_from: FR-0074
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/kernel/**
+- team-kits/*/hooks/gate_approval.py
+- team-kits/*/hooks/gate_git.py
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/kernel/board.py
+- team-kits/kernel/backlog_tree.py
+- team-kits/kernel/plan_diagram.py
+- team-kits/kernel/filing.py
+- team-kits/*/hooks/_*.py
+- team-kits/*/hooks/gate_dispatch.py
+- team-kits/*/hooks/gate_write_scope.py
+- team-kits/*/hooks/gate_design_*.py
+- team-kits/*/hooks/guard_*.py
+- team-kits/*/hooks/session_status.py
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/*/templates/**
+- team-kits/*/settings/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- team-kits/gen_provider_artifacts.py
+- user/**
+- CLAUDE.md
+- .claude/**
+- project_memory/**
+required_inputs:
+- 'project_memory/inbox/active/FR-0074.yaml (primary: plan-level approval + autonomous
+  work-through)'
+- project_memory/inbox/active/FR-0082.yaml (EVIDENCE_RESULTS += blocked)
+- project_memory/inbox/active/FR-0083.yaml (approval via the Claude Agent SDK canUseTool
+  with readable provenance)
+- project_memory/bugs/active/BUG-0089.yaml (frozen-field remedy names an edge AUTOMATA
+  does not have)
+- project_memory/decisions/active/DEC-0034.yaml (escalation ladder, untouched), DEC-0056.yaml
+  (cost side of every gate decision), DEC-0061.yaml (EVD run scope, the neighbour
+  of FR-0082), DEC-0062.yaml, DEC-0063.yaml
+- docs/POST_V2_WISHLIST.md sections 7 and 10 and the H80 chain (the refuted 'headless
+  unreachable' premise FR-0083 must not inherit)
+- team-kits/kernel/approvals.py, backlog_types.py (AUTOMATA, APPROVAL_TRANSITIONS,
+  EVIDENCE_RESULTS), state.py, cli.py, report.py; team-kits/dev-team/hooks/gate_approval.py
+  and gate_git.py (mirrored x3 -- byte-identical or a KIT_SPECIFIC_HOOKS reason)
+- project_memory/staging/TSK-0106/dec-run-scope.json -- the shape of a DEC proposal
+  a stream hands the lead (the user decides, the kernel captures)
+- The hook files this stream may write are gate_approval.py and gate_git.py in all
+  three kits; every other hook line (incl. _kernel.py, gate_dispatch.py) is a seam.
+  The kernel files owned by A (board.py, backlog_tree.py, plan_diagram.py) and B (filing.py)
+  are forbidden.
+expected_outputs:
+- 'FR-0074, DEC FIRST: a DEC proposal at project_memory/staging/(this task id)/dec-plan-approval.json
+  in the shape of TSK-0106/dec-run-scope.json -- the lead captures it, the USER decides;
+  the build follows the decided shape: an approval KIND at plan level covering the
+  confirmed product-goal list (hash over the list and each goal''s criteria), after
+  which per-goal scope questions are not asked; what REMAINS a question is a PROPERTY
+  (irreversible or taste-bound: merge/push, design choices, money, anything the plan
+  did not settle), not a list; the delivery side stays per goal (verdicts, evidence,
+  merge gates); a goal the team cannot do as planned comes back as a question, not
+  an improvisation; the widened control hole is measured and named (hole list or DEC
+  consequence). Constitution and PM-skill sentences (planning phase thorough by design,
+  own proposals, the remaining-questions property) are a SEAM to stream D, verbatim
+  in the protocol.'
+- 'FR-0082: EVIDENCE_RESULTS gains ''blocked''; gate_git closes on it like on ''fail'';
+  the recorded sentence says WHAT blocked and that nothing was checked; a blocked
+  evidence without that sentence is refused by the kernel; the merge reads it (report.py);
+  red-first on kernel and on gate_git as a process.'
+- 'FR-0083: an approval minted through the Agent SDK canUseTool carries a PROVENANCE
+  the kernel reads and prints on the approval card; a gate that requires a human-minted
+  token refuses the programmatic one with a sentence; measured against gate_approval.py
+  as a process on a pilot outside the repo; the H80 correction (headless is reachable)
+  is what this builds on, not the refuted premise; red-first.'
+- 'BUG-0089: the frozen-field refusal derives its remedy from AUTOMATA (the edges
+  that exist from the current state) -- or a READY -> DRAFT edge is added with its
+  index/brief consequences (returned item = re-planned, not new); the test plants
+  a state whose automaton has no DRAFT edge and asserts the remedy does not name DRAFT;
+  red-first.'
+- 'MST seam from stream A (FR-0079): if the user''s DEC says TYPE, the type-definition
+  lines arrive from A through the lead during the round and this stream applies them
+  in backlog_types.py (automaton, ACTIVE_DIRS, REQUIRED_FIELDS, index) with a test;
+  if FIELD, or no DEC before this stream''s handover, nothing is done and the protocol
+  says so. Leases/dispatch requirements from stream D (FR-0021) are RECEIVED the same
+  way: built only if D delivers a concrete requirement with its test through the lead;
+  else listed as not built.'
+- Per FR its own red-first test measured in a copy outside the repo (restore the defect,
+  see red, put it back) and its own acceptance line in the protocol; the verifier
+  reports PER FR (DEC-0062 (4)). Every new property claim -- code comment, docstring,
+  docs, hole list -- is MEASURED before handover (the most frequent finding of generation
+  2); every hole-list citation carries its module prefix; hole numbers H132 to H134
+  ONLY; forbidden_scope project_memory/** excepts project_memory/staging/(this task
+  id)/.
+- 'Handover: worktree C:/Offline Repos/v2-testbed/_worktrees/g3-approvals (branch
+  g3/approvals off feat/harness-v2 at e45c0ca); ALL scratch only under C:/Offline
+  Repos/v2-testbed/_round-scratch/(this task id)/; verifier copies made WITHOUT the
+  .git file of the worktree; patch = the worktree diff at C:/Offline Repos/v2-testbed/_round-scratch/(this
+  task id)/stream-approvals.patch; protocol at project_memory/staging/(this task id)/stream-protocol.md
+  with: seam table, per-FR acceptance line + red-first tests, measured lines, what
+  was deliberately not closed but named, the one-line rejected alternative of the
+  plan (FR-0084 shape), suite runs (affected suites only -- the full suite belongs
+  to the merge round), provisional VERSION stamp, wall-clock and tokens for the (g)
+  table. No commit, no push, no install to the global store.'
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-03T07:21:08'

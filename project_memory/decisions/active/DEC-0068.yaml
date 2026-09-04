@@ -1,0 +1,90 @@
+id: DEC-0068
+title: 'FR-0074 decided: ONE plan-level approval kind `plan` covers the confirmed
+  goal list for the scope edge; delivery and acceptance stay per goal; what still
+  asks is the irreversibility property in the kernel, not a list'
+context: 'USER DECISION 2026-09-03 (AskUserQuestion, option B of four, recommended
+  and already built by stream C, TSK-0117). FR-0074 (Nutzer, 2026-09-02, woertlich:
+  ''sobald alle PR bestaetigt sind alles abgearbeitet wird ohne weitere Fragen ausser
+  noetig''). GEMESSEN am Stand e45c0ca, im Worktree g3/approvals, `required_approval_kinds`
+  ueber die Kette der Wurzeltypen: ein Produktziel (PR bzw. RQ) traegt DREI nutzergebundene
+  Freigaben -- DRAFT->APPROVED `scope`, APPROVED->IN_DELIVERY `delivery`, DELIVERED->ACCEPTED
+  `acceptance`. Ein Plan mit zehn Zielen kostet also allein aus dem Automaten 30 Freigabefragen;
+  die Design-Fragen der UI-Ziele kommen obendrauf (Canyon-Audit 2026-08-30, im FR
+  zitiert). GEMESSEN ebenfalls: der Masterplan ist eingefrorene Prosa (`product/masterplan.md`),
+  der Kernel liest ihn nicht und kann ihn nicht als Freigabe lesen; und die Grundregel
+  des Kits -- ein Status, den die beaufsichtigte Seite selbst setzen kann, ist kein
+  Status, den ein Gate als Freigabe lesen darf (`approvals.assert_transition_approved`)
+  -- bleibt unberuehrt. VIER WEGE, mit ihren Kosten: (A) NICHTS BAUEN. Kosten: die
+  gemessenen 30 Fragen bleiben; der Nutzer hat genau diesen Eindruck (''weniger autonom'')
+  selbst gemeldet. (B) EINE NEUE FREIGABEART `plan` AUF PLANEBENE, deren Manifest
+  die bestaetigte Zielliste hasht -- je Ziel Id, Revision und der Hash desselben Scope-Manifests,
+  das eine Einzelfreigabe hasht --, und die bei `assert_transition_approved` genau
+  fuer die `scope`-Kante an die Stelle der Einzelfreigabe tritt. Kosten: EINE Antwort
+  autorisiert N Ziele statt eines, darum muss die Frage jedes Ziel namentlich zeigen.
+  Die Invalidierung bleibt FEINKOERNIG, je Ziel: aendert sich ein Ziel ausserhalb
+  des Kernels, verliert genau dieses Ziel die Deckung der Planfreigabe (approvals._assert_the_plan_covers
+  prueft je Ziel Id, Revision und scope_hash), die uebrigen bleiben gedeckt -- gemessen
+  vom Pruefer von TSK-0117 (vrig/v2_plan.py: PR-0002 veraendert -> verweigert, PR-0001
+  weiter APPROVED). Groeber ist allein die FRAGE, nicht die Ruecknahme. (Die erste
+  Fassung dieses Satzes behauptete das Gegenteil als gemessen; korrigiert 2026-09-03
+  nach dem Pruefbefund B2 -- der Preis, den der Nutzer abgewogen hat, war kleiner
+  als beschrieben.) (C) DIE SCOPE-KANTE ENTKOPPELN (DRAFT->APPROVED braucht gar keine
+  Freigabe mehr). Kosten: das ist keine Verbreiterung, sondern die Abschaffung der
+  einzigen Nutzerbindung an der Wurzel -- danach setzt die beaufsichtigte Seite den
+  Status selbst, und `gate_git`s Zahn ''nichts hat diese Arbeit freigegeben'' liest
+  wieder einen Wert, den sein eigener Gegenstand schreibt. (D) DIE VORHANDENE BUENDELUNG
+  AUSDEHNEN (ein `scope`-APR deckt mehrere Items, wie es `analysis` heute schon darf).
+  Kosten: `item_subject_manifest(''scope'')` ist item-abgeleitet und `assert_apr_in_force`
+  prueft `apr[''item''] == item[''id'']`; eine Buendelung wuerde diese Bindung aufweichen,
+  also genau die Pruefung, die einen Freigabetext von einer anderen Fassung unterscheidet.
+  DEC-0056 (Kostenseite jeder Gate-Entscheidung): der Fehler, den (B) faengt, ist
+  gemessen (der Nutzer hat die Fragen selbst gezaehlt); der Preis ist die BREITE genau
+  einer Freigabe, und diese Runde misst beides.'
+decision: 'ENTSCHIEDEN: (B), vom Nutzer gewaehlt. (1) Eine Freigabeart `plan`, deren
+  Subjekt-Manifest die bestaetigte Zielliste ist: je Ziel `item`, `revision` und `scope_hash`
+  -- letzterer ist derselbe `subject_manifest_hash(item_subject_manifest(item, ''scope''))`,
+  den eine Einzelfreigabe traegt, also stehen die Akzeptanzkriterien jedes Ziels im
+  Hash. (2) Die Plan-Freigabe steht fuer GENAU EINE Art ein: `scope`. Das ist eine
+  Eigenschaft und keine Wahl -- eine Planfreigabe kann nur die Frage beantworten,
+  die der Plan selbst beantwortet (''ist dieses Ziel mit diesen Kriterien gewollt''),
+  und das ist der Inhalt, den ihr Manifest hasht; `delivery` und `acceptance` fragen
+  nach Arbeit, die STATTGEFUNDEN hat (ihre Manifeste nennen `planned_tasks`, `risks`,
+  `delivered_commit`, `evidence_refs` -- Felder, die es zur Planzeit nicht gibt),
+  also kann kein Plan sie vorwegnehmen. Die Lieferseite bleibt damit je Ziel, wie
+  FR-0074 (4) verlangt. (3) WAS FRAGE BLEIBT, ist ebenfalls eine Eigenschaft: eine
+  Handlung, die das Projekt nicht aus eigener Kraft zuruecknehmen kann (`approvals.IRREVERSIBLE_KINDS`;
+  am 2026-09-03 sieben Arten: push, preset, kit_update, filing_rule, filing_correction,
+  document_revision, document_proposal -- die Menge im Kernel ist die Autoritaet,
+  nicht diese Klammer), plus die Lieferurteile aus (2); und die Freigabearten, die
+  selbst eine Frage SIND und in keiner der beiden Mengen stehen (analysis, routine
+  und plan selbst), bleiben Fragen -- gemessen vom Pruefer von TSK-0117 (N4). Keine
+  Aufzaehlung im Auftrag, sondern eine Menge im Kernel, deren Stolperdraht BEIDE Enden
+  misst: jede Art aus `APR_KINDS` ist eingeordnet, und keine eingeordnete Art fehlt
+  in `APR_KINDS`. (4) Ein Ziel, das das Team nicht wie geplant bauen kann, kommt als
+  FRAGE zurueck und nicht als Improvisation: die Scope-Freigabe ist an den Inhalt
+  des Ziels gebunden, also toetet jede Aenderung an seinen Kriterien die Deckung dieses
+  Ziels durch die Planfreigabe, und die Kante muss neu erfragt werden. Das ist kein
+  neuer Mechanismus, sondern die Invalidierung, die es schon gibt. (5) DIE VERBREITERUNG
+  WIRD BENANNT, nicht weggeredet: die Planfreigabe ist die erste, mit der EINE Antwort
+  mehrere Items autorisiert; sie steht als H132 in `docs/POST_V2_WISHLIST.md` mit
+  Mechanismus, gemessener Kette und Begrenzung.'
+consequences: 'Was diese Entscheidung NICHT anfasst: DEC-0034 (Eskalationsleiter)
+  und die drei Wurzelfreigaben als Vertrag -- `scope` verschwindet nicht, sie bekommt
+  einen zweiten, breiteren Traeger. Was sie kostet: die Frage auf Planebene ist die
+  laengste, die dieses Kit stellt (sie nennt jedes Ziel), und ihre Invalidierung ist
+  so feinkoernig wie die einer Einzelfreigabe (je Ziel), nur die Frage ist breiter.
+  Naht zu Strom D (FR-0021): die Verfassungs- und PM-Skill-Saetze -- ''die Planungsphase
+  ist absichtlich gruendlich'', ''der PM bringt eigene Vorschlaege ein'', ''was danach
+  noch gefragt wird, ist eine Eigenschaft und keine Liste'' -- gehoeren in die Kit-Texte
+  und werden von diesem Strom NICHT geschrieben; sie stehen woertlich im Protokoll
+  unter `project_memory/staging/TSK-0117/stream-protocol.md`. Nachbarn: FR-0083 (ein
+  programmatisch gepraegter Token) teilt die Eigenschaft aus (3) -- dieselbe Menge
+  entscheidet, was ein Programm nicht fuer den Nutzer entscheiden darf; DEC-0056 (Kostenseite);
+  DEC-0061 (Lauf-Umfang, der Nachbar auf der Evidenz-Seite); H132.'
+source: User 2026-09-03 (chat, option B); FR-0074 (Nutzerwunsch 2026-09-02, DEC first);
+  Messungen der Runde TSK-0117 (Strom C) im Worktree C:/Offline Repos/v2-testbed/_worktrees/g3-approvals;
+  Protokoll unter project_memory/staging/TSK-0117/
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T10:58:06'

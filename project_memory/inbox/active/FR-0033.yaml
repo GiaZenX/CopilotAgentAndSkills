@@ -19,3 +19,4 @@ created: '2026-08-15T23:03:40'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   Spaeter -- outbox/ is the shared outgoing tray for every role (clarified); the invoice
   WRITER became FR-0073.'
+related_pr: PR-0003

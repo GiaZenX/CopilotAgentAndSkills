@@ -1,0 +1,123 @@
+id: TSK-0116
+product_requirement: FR-0076
+derives_from: FR-0076
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/office-team/templates/project_memory/**
+- team-kits/office-team/templates/repo/**
+- team-kits/office-team/hooks/guard_fs_tripwire.py
+- team-kits/kernel/filing.py
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/kernel/approvals.py
+- team-kits/kernel/backlog_types.py
+- team-kits/kernel/cli.py
+- team-kits/kernel/state.py
+- team-kits/kernel/documents.py
+- team-kits/kernel/report.py
+- team-kits/kernel/board.py
+- team-kits/kernel/backlog_tree.py
+- team-kits/kernel/dispatch.py
+- team-kits/office-team/hooks/_*.py
+- team-kits/office-team/hooks/gate_*.py
+- team-kits/office-team/hooks/session_status.py
+- team-kits/dev-team/**
+- team-kits/research-team/**
+- team-kits/*/constitution/**
+- team-kits/*/agents/**
+- team-kits/*/skills/**
+- team-kits/*/settings/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- team-kits/gen_provider_artifacts.py
+- user/**
+- CLAUDE.md
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0076.yaml (primary; FR-0081 SKR03/04 is deliberately
+  NOT in this stream)
+- docs/POST_V2_WISHLIST.md entries H125 (the archive-guard delete rule is a verb tuple;
+  chain measured against all eight registered office shell hooks) and H123 (the flag
+  form); plus C:/Offline Repos/v2-testbed/_round-scratch/TSK-0114/probe_h125.py if
+  still present (the six probe lines)
+- 'project_memory/staging/generation-2-streams.md (entries of streams G and I) and
+  project_memory/staging/TSK-0107/, TSK-0113/, TSK-0109/user-feedback.md: the office
+  seams left open -- kleinunternehmer: null shipped + the tax-status interview question
+  as template comment (wording verbatim in the G protocol), founding_year judged not
+  added for lack of a reader, tax_state three cases, F6 = the kernel does not validate
+  retention of the filing plan'
+- project_memory/decisions/active/DEC-0056.yaml (gates guard against ERROR not INTENT;
+  the irreversibility exception H125 invokes), DEC-0053.yaml (P4-12 empty vocabulary,
+  BUG-0071), DEC-0062.yaml, DEC-0063.yaml
+- 'team-kits/office-team/templates/project_memory/master_data.yaml + business_profile.yaml
+  + filing_plan.yaml; templates/repo/scripts/euer_report.py; templates/repo/tools/finance_dashboard.py
+  + template; hooks/guard_fs_tripwire.py; kernel/filing.py; the office settings registration
+  (READ-ONLY: which eight shell hooks run and with which timeout)'
+- The ONLY kernel file this stream may write is kernel/filing.py -- every other kernel
+  line is a seam to stream C.
+expected_outputs:
+- 'FR-0076 (1): a SHIPPED default category vocabulary in the master_data.yaml template
+  (Wareneinkauf, Buerobedarf, Bewirtung, Porto, Software/Hosting, Werbung, Reisekosten,
+  Telefon/Internet, Versicherungen, Beitraege/Gebuehren, Fremdleistungen, Miete, and
+  the income lines) where each category carries the LINE NUMBER of the current official
+  Anlage EUeR; the form year is a property of the vocabulary, not of the code; the
+  user can rename or add; the P4-12 empty-vocabulary stall cannot recur on a fresh
+  project (test). (2): euer_report.py sums per form line IN ADDITION to per category,
+  and the finance-dashboard EUeR tab shows the per-line sums (parity test report vs
+  page). (3): AfA as a HINT only -- a booking whose net exceeds the GWG limit (a profile/vocabulary
+  value, not a constant) is flagged ''Anlagegut -- mit der Steuerberatung klaeren'';
+  no asset register, no depreciation arithmetic; nothing for a GmbH; the legal caveat
+  stays on every page.'
+- 'Office seams of generation 2 CLOSED here: kleinunternehmer: null shipped with the
+  tax-status interview question as the template comment (verbatim from the G protocol)
+  so a fresh project starts ''unknown'' until asked; founding_year added ONLY together
+  with a reader that needs it (else the protocol repeats the measured reason it stays
+  out); the three tax_state cases stay as stream I built them; F6: the kernel VALIDATES
+  the retention values of the filing plan in kernel/filing.py so the deadline register
+  can no longer meet a rule it cannot parse in silence -- if the validate entry point
+  that must call it lives in kernel/report.py, that ONE call line is a seam to stream
+  C, verbatim in the protocol.'
+- 'H125 CLOSED: guard_fs_tripwire.DELETE_VERBS replaced by a PROPERTY (''this line
+  removes or empties a file under a ranked tray'') instead of a verb tuple; measured
+  as PROCESSES against all eight registered office shell hooks on a scaffolded pilot
+  outside the repo: unlink, git clean -fdx with and without a path, Clear-Content,
+  find -delete -> rc 2; the two controls (rm, move out of archive) still rc 2; the
+  over-refusal weighed and measured (git clean in a project WITHOUT an archive must
+  not fail; a delete outside every ranked tray stays rc 0); the hook deadline measured
+  against its registered timeout; DEC-0056 named (irreversible -> the exception applies);
+  the H125 entry moves to closed with its test named with module prefix; H123 re-read
+  and corrected if the property now covers the flag form too (say which).'
+- Per FR its own red-first test measured in a copy outside the repo (restore the defect,
+  see red, put it back) and its own acceptance line in the protocol; the verifier
+  reports PER FR (DEC-0062 (4)). Every new property claim -- code comment, docstring,
+  docs, hole list -- is MEASURED before handover (the most frequent finding of generation
+  2); every hole-list citation carries its module prefix; hole numbers H129 to H131
+  ONLY; forbidden_scope project_memory/** excepts project_memory/staging/(this task
+  id)/.
+- 'Seams reported, never written here: sentences for the office constitution, office-manager,
+  bookkeeper or filing-reviewer skills -> stream D (verbatim in the protocol); tools/test_hooks.py
+  mirror-dir tests shared with stream A; the entry-interview sentence (user/CLAUDE.md,
+  forbidden) reported to the lead; any kernel line outside filing.py -> stream C.'
+- 'Handover: worktree C:/Offline Repos/v2-testbed/_worktrees/g3-office (branch g3/office
+  off feat/harness-v2 at e45c0ca); ALL scratch only under C:/Offline Repos/v2-testbed/_round-scratch/(this
+  task id)/; verifier copies made WITHOUT the .git file of the worktree; patch = the
+  worktree diff at C:/Offline Repos/v2-testbed/_round-scratch/(this task id)/stream-office.patch;
+  protocol at project_memory/staging/(this task id)/stream-protocol.md with: seam
+  table, per-FR acceptance line + red-first tests, measured lines, what was deliberately
+  not closed but named, the one-line rejected alternative of the plan (FR-0084 shape),
+  suite runs (affected suites only -- the full suite belongs to the merge round),
+  provisional VERSION stamp, wall-clock and tokens for the (g) table. No commit, no
+  push, no install to the global store.'
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-03T07:21:07'

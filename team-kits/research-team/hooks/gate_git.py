@@ -2,7 +2,9 @@
 """
 PreToolUse(Bash|PowerShell) gate — protects merge and push.
 
-Two teeth, answering different questions.
+Teeth that answer different questions, in the order a role is best told them: may this history be
+rewritten at all, who authorised the work, is the item in a state a delivery can follow, and what
+does QA currently say about it.
 
 FORCE-PUSH is refused unconditionally. The constitution forbids rewriting published history and
 no project state can make it right, so this half decides before anything is read.
@@ -18,9 +20,15 @@ what that store SAYS. What this gate adds is only the DECISION taken on it (belo
 store for itself would give the harness two answers to the question the harness and CI must answer
 the same way.
 
+WHO AUTHORISED THE WORK is asked before any of that, and it is one question rather than the whole
+approval protocol: an approval a PROGRAM minted through the Agent SDK does not carry a merge
+(`_refuse_an_authorisation_a_program_gave_itself`, FR-0083). Whether an approval exists at all, and
+whether it still binds, stays with the kernel and with the gates that own it.
+
 THE RULE, in one sentence: the merge opens when every item it is about could still be delivered,
 has a current verdict from EVERY delivery-judging Evidence kind, and has no current verdict that is
-a fail. "Current verdict of a kind" is the newest Evidence of that kind covering the item — see
+a fail or a `blocked`. "Current verdict of a kind" is the newest Evidence of that kind covering the
+item — see
 `report.qa_verdicts` for why newest-wins rather than any-pass-wins, and for what "covering" means.
 "Every kind" is `backlog_types.QA_EVIDENCE_KINDS`, read at run time and never listed here, so the
 gate owes exactly what the kernel calls a delivery verdict.
@@ -146,6 +154,49 @@ def _describe(subject, verdicts):
         for kind in sorted(verdicts)))
 
 
+def _blocked(types, verdicts):
+    """The current verdicts whose run did not happen at all — {kind: entry}, empty when none.
+
+    `types.BLOCKED_RESULT`, asked of the kernel at run time like every other vocabulary this gate
+    decides on. The entry already carries the sentence that says WHAT stopped the run
+    (`report._newest_per_kind`), so this gate never re-reads the Evidence store to say it.
+    """
+    return {kind: entry for kind, entry in verdicts.items()
+            if entry.get("result") == types.BLOCKED_RESULT}
+
+
+def _refuse_a_run_that_never_happened(types, subject, blocked):
+    """Refuse on a `blocked` verdict, and say that nothing was checked (FR-0082).
+
+    THE SAME DECISION AS A FAIL and a different sentence. Both close the merge -- everything that
+    is not `types.PASSING_RESULT` does, which is why this function decides nothing the fail branch
+    would not have decided. What it changes is what the role is told: a `fail` says the work is
+    red and sends the role to fix it, while a `blocked` says the run never ran, so "fix what the
+    Evidence names" would send it looking for a defect nobody measured.
+
+    WHAT THE SENTENCE IS WORTH, and the gate says it out loud rather than implying it: the kernel
+    does not verify that the browser was really missing (`backlog_types.EVIDENCE_RESULTS`). A
+    `blocked` is an honest role's record of an unrun check, not a measurement of one -- so the
+    surface that reports it names the claim as a claim.
+    """
+    _kernel.block(
+        HOOK,
+        "the current QA verdict records a run that did NOT happen — %s. Nothing was checked: "
+        "%s. A blocked verdict closes this merge exactly as a failing one does, and the "
+        "harness does not verify the reason — it is what the recording role stated."
+        % (_describe(subject, blocked),
+           "; ".join("%s (%s): %s" % (kind, blocked[kind]["id"],
+                                      blocked[kind].get(types.BLOCKED_REASON_FIELD)
+                                      or "<no sentence recorded>")
+                     for kind in sorted(blocked))),
+        remedy="remove what blocked the run and record the run that then HAPPENED (`python "
+               "scripts/harness.py evidence --kind <test|review|acceptance> --result pass "
+               "--related %s --summary ... --artifact-ref <path to the raw proof>`); the newer "
+               "verdict supersedes this one. If the run cannot be made to happen here, that is "
+               "the merge arriving early — say so to the user rather than re-recording the same "
+               "block." % subject + _FROM_THE_ROOT)
+
+
 # Every remedy below hands a blocked role a command line, and since the entry point shipped that
 # command line RUNS: the scaffold installs `scripts/harness.py` kit-owned in every project
 # (`kernel.cli.ENTRY_POINT`), and `python scripts/harness.py evidence ...` was measured recording
@@ -228,6 +279,45 @@ def _refuse_a_status_no_delivery_can_follow(state, types, target):
                    "branch.")
 
 
+def _refuse_an_authorisation_a_program_gave_itself(state, approvals, target):
+    """Refuse a merge/push about an item whose PRESENTED approval a program minted (FR-0083).
+
+    THE HALF OF THE PROPERTY THAT BELONGS TO A GATE. The kernel keeps a program from minting a
+    permission the project cannot take back at all (`approvals.IRREVERSIBLE_KINDS`); what it may
+    mint are the decisions a project can revisit inside itself -- the scope of a goal, its
+    delivery. A merge is where such a decision stops being internal: it is the line after which
+    the work is in the branch other clones pull. So the question this gate asks is not "is there
+    an approval" -- that is the evidence teeth's and the dispatch gate's question -- but "was the
+    one this item PRESENTS given by a human".
+
+    ASKED OF THE KERNEL (`approvals.presented_approval_a_program_minted`), like every other
+    approval question a hook decides on: a second reading of `approval_ref` and the provenance
+    field here would be a second answer to a question `gate_push_token` and the dispatch route
+    already take from that module.
+
+    WHAT IT DOES NOT REACH, stated because the honest limit is narrow: an item that presents NO
+    approval, and an approval written before the provenance field existed, both read as
+    not-programmatic -- the first is the neighbouring refusal's subject, the second is what
+    `approvals.minted_via` says about a record from before the stamp.
+    """
+    item, _archived = state.read_anywhere(target)
+    if not isinstance(item, dict):
+        return
+    apr = approvals.presented_approval_a_program_minted(state, item)
+    if apr is None:
+        return
+    _kernel.block(
+        HOOK,
+        "%s stands on approval %s, and a PROGRAM minted it (Agent SDK, canUseTool) — not a "
+        "human. A merge or push is where a decision this project could still revisit becomes one "
+        "it cannot: it puts the work into the branch other clones pull. So this line needs an "
+        "authorisation a person gave." % (target, apr.get("id")),
+        remedy="ask the user for the approval through the approval question (`python "
+               "scripts/harness.py request-approval %s %s`, relayed verbatim), then merge. If "
+               "this run has no human to ask, that is the answer: the merge is not this run's to "
+               "make." % (apr.get("kind"), target))
+
+
 def _refuse_unless_the_item_is_green(types, target, verdicts):
     """The main rule for ONE item: a current verdict of EVERY delivery-judging kind, none a fail.
 
@@ -244,14 +334,17 @@ def _refuse_unless_the_item_is_green(types, target, verdicts):
     it. The QA/reviewer role skill of the kit this hook ships in is where the role is told which
     kinds it owes; this is the same demand at the moment it is collected.
 
-    A `fail` is reported BEFORE an unanswered kind, so a role that has one of each is sent to fix
-    the red verdict first and meets this refusal on the next attempt. Deliberate: the two are
-    different work, and one message that mixed them would bury the failing verdict.
+    A `fail` is reported BEFORE a blocked run and both before an unanswered kind, so a role that
+    has one of each is sent to fix the red verdict first and meets the next refusal on the next
+    attempt. Deliberate: the three are different work -- a measured defect, a check that never ran,
+    a verdict nobody recorded -- and one message that mixed them would bury the failing verdict.
 
     WHAT IT DOES NOT REACH is decided one caller up in `main`: only a merge that NAMES a root item
     reaches this function at all (module docstring, NO ITEM NAMED).
     """
-    failing = {kind: entry for kind, entry in verdicts.items() if entry["result"] != "pass"}
+    blocked = _blocked(types, verdicts)
+    failing = {kind: entry for kind, entry in verdicts.items()
+               if entry["result"] != types.PASSING_RESULT and kind not in blocked}
     if failing:
         _kernel.block(
             HOOK,
@@ -259,6 +352,8 @@ def _refuse_unless_the_item_is_green(types, target, verdicts):
             "supersedes an older one, so this is what QA says about the work RIGHT NOW."
             % _describe(target, failing),
             remedy=_remedy(target))
+    if blocked:
+        _refuse_a_run_that_never_happened(types, target, blocked)
     if not verdicts:
         _kernel.block(
             HOOK,
@@ -295,10 +390,12 @@ def _refuse_unless_nothing_is_failing(types, by_subject):
     Since this branch cannot tell which item the push carries, the only honest reading is that
     every open failure counts against it.
     """
-    failing = {}
+    failing, blocked = {}, {}
     for subject, verdicts in by_subject.items():
         for kind, entry in verdicts.items():
-            if entry["result"] != "pass":
+            if entry["result"] == types.BLOCKED_RESULT:
+                blocked.setdefault(subject, {})[kind] = entry
+            elif entry["result"] != types.PASSING_RESULT:
                 failing.setdefault(subject, {})[kind] = entry
     if failing:
         _kernel.block(
@@ -311,6 +408,10 @@ def _refuse_unless_nothing_is_failing(types, by_subject):
                    "(`python scripts/harness.py evidence --kind <test|review|acceptance> --result pass --related "
                    "<ITEM-ID> --summary ... --artifact-ref <path to the raw proof>`)."
                    + _FROM_THE_ROOT)
+    # The same order as the named case, and the same reason: a measured defect outranks a check
+    # that never ran. `subject` here is whatever the Evidence named, since this branch has no item.
+    for subject in sorted(blocked):
+        _refuse_a_run_that_never_happened(types, subject, blocked[subject])
     if not by_subject:
         _kernel.block(
             HOOK,
@@ -363,8 +464,15 @@ def main():
     state = _kernel.open_state(repo_root)
     report = _kernel.kernel_module("report", repo_root)
     types = _kernel.kernel_module("backlog_types", repo_root)
+    approvals = _kernel.kernel_module("approvals", repo_root)
     targets = target_items(command, repo_root)
 
+    # WHO AUTHORISED THIS WORK IS ASKED BEFORE WHAT QA SAYS ABOUT IT, and the order is the
+    # argument: an item nobody with standing approved is not a merge with a missing verdict, it is
+    # a merge that should not be assembled at all -- so the role is told that first rather than
+    # sent to collect evidence for work it may not merge either way.
+    for target in targets:
+        _refuse_an_authorisation_a_program_gave_itself(state, approvals, target)
     for target in targets:
         _refuse_a_status_no_delivery_can_follow(state, types, target)
     if targets:

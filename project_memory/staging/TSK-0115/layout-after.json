@@ -1,0 +1,431 @@
+{
+ "final-blocked.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 1242,
+   "empty_right": -0.0,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-blocked.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-blocked.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-blocked.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 1880,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-blocked.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-blocked.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-blocked.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 378,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-blocked.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-blocked.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-timeline.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 1242,
+   "empty_right": -0.0,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-timeline.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-timeline.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-timeline.html|timeline|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-timeline.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 1880,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-timeline.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-timeline.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-timeline.html|timeline|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-timeline.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 378,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-timeline.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-timeline.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-timeline.html|timeline|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-healthy.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 1242,
+   "empty_right": -0.0,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-healthy.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-healthy.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-healthy.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 1880,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-healthy.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-healthy.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-healthy.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 378,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-healthy.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-healthy.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-empty.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-empty.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-empty.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "final-empty.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-empty.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-empty.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "final-empty.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-empty.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "final-empty.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ }
+}

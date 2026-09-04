@@ -24,7 +24,7 @@
   tool, never a shell, never another role's, and only for a craft topic `guard_memory_budget` can
   judge (`gate_write_scope` rule 6).
 - **The state directory is WRITE-LOCKED against every tool write of a session that LOADS this project's settings, and has exactly ONE writer:** `gate_write_scope` refuses every tool write under `project_memory/` bar `staging/<task-id>/`, and makes no exception for the master-data/config files §5/§6 assign to a role. That lock reaches exactly as far as its registration: a client start mode that does not load this project's settings starts no hook of this kit at all, so there the ordinary file tools reach `project_memory/` unrefused, and `scripts/harness.py` with them. What still limits such a session depends on the mode and is not assured here (`hooks/ENFORCEMENT.md` §0). The kernel that IS allowed to write is reached through the installed entry point, and it has ONE spelling: **`python scripts/harness.py <command>`**, run from the project root. The scaffold installs it kit-owned in every project, the same three tokens work in bash and in PowerShell, and it resolves the state directory itself — so never add `--root`, which that same gate refuses as naming the state directory and which the entry point also refuses off its own parser.
-  **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `verify-invariants`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`, `archive`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`, `revise-document`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `freeze-report`, `migrate`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of spec II.4's twelve only `approve` has no command, and it is SPLIT rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. `migrate --dry-run` reports what a V1 import would do and prints a digest; `migrate --plan <digest>` runs only that same plan. An import mints no approval (`approval_ref: null` on every imported item), so nothing it writes opens a gate that requires one. At which STATUS a record arrives is answered per record, by the dry run, before anything is written: a record V1 had already finished lands in `archive/<TYPE>/<year>/` at its MAPPED status. A `PROC` is a typed item, so `capture` creates one and `migrate` imports the V1 ones; `business_profile.yaml` and `filing_plan.yaml` are NOT items, so no command CREATES either — but both GROW after the install: `add-filing-rule` APPENDS one rule to the plan's `rules`, and `apply-proposal` adds to any kit document the kernel can compare, `revise-document` replaces or deletes a spot in one — every spot in the approval question, old and new, each on a user-minted approval (§2.5, §6). None of them replaces the onboarding: phase 1 stays unexecutable until the profile carries the interview's answers, and phase 2 needs the plan written once. Naming the missing command in your report is the step; writing state by hand is not (§8).
+  **The surface is PARTIAL, and that is what to report rather than work around.** `python scripts/harness.py --help` is the authority on what exists; today that is `doctor`, `validate`, `generate-index`, `verify-invariants`, `generate-session-brief`, `capture`, `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`, `archive`, `check-scopes`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`, `revise-document`, `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `freeze-report`, `migrate`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of spec II.4's twelve only `approve` has no command, and it is SPLIT rather than missing: `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1) and the USER mints it by ANSWERING — no command mints, which is what makes the approval provable. `migrate --dry-run` reports what a V1 import would do and prints a digest; `migrate --plan <digest>` runs only that same plan. An import mints no approval (`approval_ref: null` on every imported item), so nothing it writes opens a gate that requires one. At which STATUS a record arrives is answered per record, by the dry run, before anything is written: a record V1 had already finished lands in `archive/<TYPE>/<year>/` at its MAPPED status. A `PROC` is a typed item, so `capture` creates one and `migrate` imports the V1 ones; `business_profile.yaml` and `filing_plan.yaml` are NOT items, so no command CREATES either — but both GROW after the install: `add-filing-rule` APPENDS one rule to the plan's `rules`, and `apply-proposal` adds to any kit document the kernel can compare, `revise-document` replaces or deletes a spot in one — every spot in the approval question, old and new, each on a user-minted approval (§2.5, §6). None of them replaces the onboarding: phase 1 stays unexecutable until the profile carries the interview's answers, and phase 2 needs the plan written once. Naming the missing command in your report is the step; writing state by hand is not (§8).
   The same gate also refuses every write-capable shell pipeline that merely NAMES `.claude` or `team-kits` — the `init_project_memory` run §7 asks for is one, and so is starting a scaffold by hand. TWO operations have a route instead: a preset change (`set-preset`, §7) and a kit update (`update-kit`, §8) run the installer through the KERNEL on a user-minted approval, and neither line names the enforcement layer. The rest is the USER's to run outside this session; ask, and never reach for a spelling the gate does not recognise. The gate decides by READING a command line, which is enforcement and not arithmetic, so a spelling that gets past it is a defect to report, never a route to take.
 - **Hard gate:** no specialist spawn before `project_config.yaml` exists with a user-confirmed
   preset AND `business_profile.yaml` carries the onboarding interview's results.
@@ -58,7 +58,9 @@ terminal `RETIRED`.
 
 ## 1a. FR / CR / BUG — one question decides which
 
-Three item types live beside the PROC (`capture` per §0). Which fields each demands is defined once
+Four item types live beside the PROC (`capture` per §0) — the three below plus `MST`, a date several
+procedures share, which is not a decision about a PROC and so answers none of the question here
+(`DEC-0064`). Which fields each demands is defined once
 in `.claude/kernel/backlog_types.py` (`REQUIRED_FIELDS`, `AUTOMATA`) and a capture missing one is
 refused there, naming them — what YOU decide is which of the three it is, and one question settles
 that: **is the approved PROC still what the business wants?**
@@ -138,7 +140,9 @@ question inside the run (§1) and becomes no item. Auditor findings split the sa
    tree IS the record of what ended up where (spec II.9 turns `filing_log.yaml` into a REGENERATED scan index
    over that tree, but nothing builds it yet and no gate reads it, so a V2 project simply has no such file).
    Migration MOVES via the approved plan, never deletes; originals are never re-saved/altered.
-   `guard_fs_tripwire` refuses shell deletes under `inbox/`/`archive/` and shell moves OUT of `archive/`; what it does NOT
+   `guard_fs_tripwire` asks about the REACH of a destruction rather than about a delete verb: a shell line that removes or
+   empties something and thereby reaches `inbox/`/`archive/` is refused, one that names no path included (`git clean -fdx`),
+   and so is a shell move OUT of `archive/`; what it does NOT
    see is listed at its own head (`hooks/guard_fs_tripwire.py`, "WHAT THIS DOES NOT SEE") — read that there rather than
    trusting a summary here. That wall
    has ONE door: a `filing_correction` approval the USER mints (`request-approval filing_correction --document … [--destination …] --reason …`)
@@ -235,6 +239,24 @@ is one clause; the craft inside it lives there and only there.
 7. **BOOK**: capture/transition through the kernel, commit, and leave nothing uncommitted across a
    session end. Report what was done, then ask what next with a recommended option and a reason.
 
+**Two orders running at the same time own DISJOINT FILES, and nothing checks that for you.** Cut
+parallel work by file OWNERSHIP, not by topic: read what each wish would touch, list the files,
+and draw the GOALS around those lists — wishes whose file lists overlap are merged into ONE
+approved goal at triage, where each becomes part of what that goal is measured against, and that
+goal gets ONE work order whose `allowed_scope` is its ownership. Bundling one level lower is the
+move that hides work: the kernel gives a work order exactly one goal (`product_requirement`,
+held by `tools/test_parallel_streams.py::test_a_work_order_carries_exactly_one_product_requirement`),
+so every further requirement stuffed into it lives in prose fields and is invisible to the index,
+the board and every rollup (`DEC-0067`). Run no more goals AT ONCE than you can carry through their
+rework rounds, and no goal larger than one build pass and one verification pass. Each
+order works in its own tree, so a check run for one never judges the other's half-finished edit,
+and the files no order can own alone are named BEFORE the work starts and applied when the orders
+come back together, which is a verification of its own and not bookkeeping. The kernel mints a
+lease per task and nothing compares two of them
+(`tools/test_parallel_streams.py::test_nothing_shipped_refuses_two_tasks_whose_scopes_overlap`),
+so the disjointness is your reading before the dispatch and the only thing enforcing it
+(`DEC-0057`, `DEC-0060`, `DEC-0062`, `DEC-0067`).
+
 ## 5. Roles (presets: `core` = records-clerk + filing-reviewer + bookkeeper; `commerce` adds
 product-editor + shop-curator; `full` adds compliance-researcher + marketing-planner +
 office-developer. `presets.yaml` is the authority; the clerk and the reviewer travel together
@@ -272,7 +294,7 @@ because they are two halves of one loop)
 - **office-developer:** the ONLY coding role — builds the business's own data tools/dashboards
   under `tools/` + `dashboards/` as strict READ-consumers of the tracked data (never mutates
   ledger/YAMLs/kit scripts); deterministic, self-contained output; self-verifies (no QA/CI here).
-- **project-auditor:** weekly / event-triggered READ-ONLY reviewer — samples filing/ledger/report
+- **project-auditor:** READ-ONLY reviewer — samples filing/ledger/report
   claims for real, scores the judge rubric, and records ONE Evidence item (`kind: audit`) per run;
   every finding becomes a follow-up item or a Decision item recording the conscious skip, never shelf-ware. Its DISPATCH rides on an `APR.kind: routine` minted for the audit task's root, or on an `APR.kind: analysis` listing that task; both carry an expiry and both are revocable, and either state blocks the spawn. Neither kind has a producer today — `request-approval` mints neither of them — so this route is written and not yet walkable (`H111` in `docs/POST_V2_WISHLIST.md`). On the routine route the kernel binds the ROLE and refuses a task whose WORK ORDER claims any `allowed_scope`; the trigger and the cadence it hashes are read by no gate. Read-only is the plan plus what the write TOOLS enforce — `gate_write_scope` resolves no task on its SHELL path, so a `Bash` write outside the state directory is scope-checked by nothing. Both stay policy — an infrastructure defect (§8).
 
@@ -280,7 +302,7 @@ because they are two halves of one loop)
 
 | Item / artifact | Owner of the content |
 |---|---|
-| `PROC` (procedures/active), `FR` (inbox/active), `CR` (changes/active), `BUG` (bugs/active), Decision items, `business_profile.yaml`, `product/masterplan.md`, `project_config.yaml` | Manager |
+| `PROC` (procedures/active), `FR` (inbox/active), `CR` (changes/active), `BUG` (bugs/active), `MST` (milestones/active), Decision items, `business_profile.yaml`, `product/masterplan.md`, `project_config.yaml` | Manager |
 | `filing_plan.yaml` (its rules are APPENDED by `add-filing-rule` on a user approval — see §2.5), migration manifest, the filing proposals and its own `filing_reading` records in `staging/<TSK-ID>/` | Records-Clerk |
 | The filing verdicts in `staging/<TSK-ID>/` | Filing-Reviewer |
 | `master_data.yaml`, ledger content (via script), `reports/*_notes.md` | Bookkeeper |
@@ -305,6 +327,16 @@ Project status is not a file you write — it is the typed items plus the kernel
 `project_memory/generated/`. By user acceptance no item stays half-written: the state validator
 (`python scripts/harness.py validate`) decides completeness against the per-type field contracts, and something that turns
 out not to apply is closed through its status automaton, not left empty.
+
+**A DEADLINE IS AN ITEM AND NOT A FIELD (`DEC-0064`).** The type is `MST`: a milestone is
+`MST-nnnn` under
+`milestones/active`, with a title, a `due` date the kernel refuses unless it reads as a date, and
+`derives_from` naming the goals the date applies to. It carries its own outcome -- `PLANNED` becomes
+`REACHED`, or `MISSED`, or `DROPPED` -- so a date that slipped is a record with a name, not a number
+quietly rewritten in every item it was copied into. It hangs under those goals in the product
+backlog and stands on the board's timeline. There is deliberately no milestone FIELD on any other
+type: membership runs through the goals the milestone names, and a second binding direction would
+turn the tree over.
 
 ## 7. Models & presets
 

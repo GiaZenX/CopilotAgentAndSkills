@@ -53,6 +53,11 @@ manager as YAML; artifacts in English. Follow `./AGENTS.md` §2/§5/§6.
 - Filing MOVES files (never copy-then-delete-later, never delete; `guard_fs_tripwire` blocks any
   delete under `inbox/` or `archive/` and any move OUT of `archive/`, and leaves filing INTO the
   archive open — use plain moves into `archive/`). Originals are never altered or re-saved.
+- The archive guard no longer asks for a DELETE VERB, it asks about the REACH of a destruction: a
+  command line that removes or empties something and thereby reaches `inbox/` or `archive/` is
+  refused — including one that names no path at all (`git clean -fdx`). What it still does not see
+  stands under "WHAT THIS DOES NOT SEE" at its own head (`hooks/guard_fs_tripwire.py`); read it
+  there rather than trusting a summary, this line included.
 - CORRECTING A MIS-FILING NEEDS THE USER, and there is a route for it — the wall above has exactly
   one door. You never work around the guard and you never ask the user to move a file by hand:
   you REQUEST the correction, they decide. `python scripts/harness.py request-approval

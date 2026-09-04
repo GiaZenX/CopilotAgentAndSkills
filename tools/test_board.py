@@ -86,6 +86,30 @@ SR_FIELDS = {
     "affected_components": ["api"],
 }
 
+# WHAT ONE HOSTILE FILE MAY COST A STATE WRITE, in one place for the three tests that ask it.
+#
+# WHERE IT IS THE LOAD-BEARING MEASURE: the two ITEM-field bomb tests. There the defect's whole
+# effect is an intermediate string that is built and thrown away, so the page barely moves and the
+# allocation is the only witness. Wall-clock is not the measure anywhere here, because it does not
+# separate the versions until that intermediate costs hundreds of megabytes. The number sits
+# between the two figures this round measured: about forty times what a bounded render of these
+# fixtures allocates, and well under the cheapest unbounded one. Both figures are in the TSK-0115
+# protocol and are not repeated here -- a measurement in two places is one that rots in one of them.
+#
+# AT THE THIRD SITE IT IS NOT LOAD-BEARING TODAY, and that is said rather than implied: since
+# `board.open_requests` stopped carrying `request_id`, every field it reads reaches the page, so
+# the page-size assertion catches those defects on its own -- deleting this bound there leaves the
+# test red anyway (measured this round). It stands there for the day a field the page does NOT show
+# is read again, which is the shape that got past this suite once already.
+_MEMORY_BUDGET = 8 * 1024 * 1024
+
+# ...and the wall-clock bound beside it, which is the SUITE's house form rather than a measurement:
+# no defect of this round was found by it, and none of these three would pass on a machine slow
+# enough for it to matter. It stands so that a state write that hangs fails as a test rather than
+# as a timeout nobody can read.
+_STATE_WRITE_SECONDS = 30
+
+
 class _Unprintable:
     """A field value that raises when it is rendered -- the CLASS the per-item guard exists
     for, rather than one shape somebody thought of. No YAML file produces this one, which is
@@ -145,6 +169,26 @@ class _Board(HTMLParser):
         self.archived = None
         self.archived_text = ""
         self.overlay_hidden = None
+        self.silent = set()        # {type} -- named on the page although it has no entries
+        self.figures = {}          # {focus key: the number on the button}
+        self.focus_lists = {}      # {focus key: the count the list CLAIMS}
+        self.focus_rows = {}       # {focus key: [item id or "", ...]} in page order
+        self.folds = {}            # {(view, node id): aria-expanded}
+        self.fold_spaces = set()   # {(view, node id)} -- nodes drawn without a fold control
+        self.group_hidden = []     # [(view, parent id, type, is it hidden), ...]
+        self.reasons = {}          # {(view, node id): the refusal kind on its row}
+        self.reason_words = {}     # {(view, node id): the word the row shows}
+        self.milestones = {}       # {milestone id: is it late}
+        self.milestone_goals = {}  # {milestone id: [goal id, ...] it links to}
+        self.milestone_dates = {}  # {milestone id: the date on its card}
+        self.milestone_lanes = {}  # {milestone id: the counted lanes, in words}
+        self.ticks = []            # [(milestone id, class attribute), ...] on the ruler
+        self.today_mark = None     # the today marker's own class, or None
+        self.records_total = None
+        self.empties = {}          # {type: the line naming its empty slots}
+        self.rule_text = ""        # the sentence under the three figures
+        self.style = ""
+        self.noscript_style = ""
         self._stack = []
         self._field = None
         self.feed(text)
@@ -210,6 +254,36 @@ class _Board(HTMLParser):
                                      int(attrs["data-count"])))
         if tag == "li" and "data-warning" in attrs:
             self.warnings.append([attrs["data-warning"], attrs["data-type"], "", view])
+        if "data-silent" in attrs:
+            self.silent.add(attrs["data-silent"])
+        if "data-focus-list" in attrs:
+            self.focus_lists[attrs["data-focus-list"]] = int(attrs["data-count"])
+            self.focus_rows.setdefault(attrs["data-focus-list"], [])
+        if "data-open" in attrs and self._enclosing("data-focus-list") is not None:
+            self.focus_rows[self._enclosing("data-focus-list")].append(attrs["data-open"])
+        if "data-request" in attrs and self._enclosing("data-focus-list") is not None:
+            # a request whose subject is not on the board: a row with no control, naming its subject
+            self.focus_rows[self._enclosing("data-focus-list")].append(attrs["data-request"])
+        if "data-fold" in attrs:
+            self.folds[(view, attrs["data-fold"])] = attrs.get("aria-expanded")
+        if attrs.get("class") == "fold-space":
+            self.fold_spaces.add((view, self._enclosing("data-node")))
+        if "data-group" in attrs:
+            self.group_hidden.append((view, attrs["data-group-parent"], attrs["data-group"],
+                                      "hidden" in attrs))
+        if "data-reason" in attrs:
+            self.reasons[(view, self._enclosing("data-node"))] = attrs["data-reason"]
+        if tag == "li" and "data-milestone" in attrs:
+            self.milestones[attrs["data-milestone"]] = attrs["data-late"] == "true"
+        if tag == "div" and "data-milestone" in attrs:
+            self.ticks.append((attrs["data-milestone"], attrs.get("class", "")))
+        if attrs.get("class") == "ref" and self._enclosing("data-milestone"):
+            self.milestone_goals.setdefault(
+                self._enclosing("data-milestone"), []).append(attrs["data-open"])
+        if attrs.get("class") == "today":
+            self.today_mark = attrs.get("class")
+        if "data-records" in attrs:
+            self.records_total = int(attrs["data-records"])
 
     def handle_endtag(self, tag):
         for position in range(len(self._stack) - 1, -1, -1):
@@ -218,7 +292,35 @@ class _Board(HTMLParser):
                 return
 
     def handle_data(self, data):
+        if self._stack and self._stack[-1][0] == "style":
+            if any(tag == "noscript" for tag, _attrs in self._stack):
+                self.noscript_style += data
+            else:
+                self.style += data
+            return
         for tag, attrs in reversed(self._stack):
+            if attrs.get("class") == "num" and self._enclosing("data-focus"):
+                self.figures[self._enclosing("data-focus")] = int(data)
+                return
+            if attrs.get("class") == "rule":
+                self.rule_text += data
+                return
+            if attrs.get("class") == "empties":
+                key = self._enclosing("data-type")
+                self.empties[key] = self.empties.get(key, "") + data
+                return
+            if attrs.get("class") == "date" and self._enclosing("data-milestone"):
+                key = self._enclosing("data-milestone")
+                self.milestone_dates[key] = self.milestone_dates.get(key, "") + data
+                return
+            if attrs.get("class") == "goals":
+                key = self._enclosing("data-milestone")
+                self.milestone_lanes[key] = self.milestone_lanes.get(key, "") + data
+                return
+            if attrs.get("class") == "why":
+                key = (self._enclosing("data-view"), self._enclosing("data-node"))
+                self.reason_words[key] = self.reason_words.get(key, "") + data
+                return
             if attrs.get("class") == "count" and self._enclosing("data-tab"):
                 self.tab_counts[self._enclosing("data-tab")] = int(data)
                 return
@@ -324,9 +426,19 @@ def test_every_state_write_leaves_a_board_as_fresh_as_the_index(tmp_path):
     assert page.generated_at == index["generated_at"]
 
 
-def test_the_documented_command_writes_and_names_both_artefacts(tmp_path):
+def test_the_documented_command_names_every_artefact_it_writes(tmp_path):
     """`generate-index` is what a role is told to run, so it is what must produce the board -- and
-    it must SAY it did, or the one artefact a person opens is the one the command never mentions."""
+    it must SAY it did, or the one artefact a person opens is the one the command never mentions.
+
+    THE COUNT IS DERIVED FROM THE RUN, not written here. This test asked for exactly two printed
+    lines until TSK-0120, and the seam that gave `state._write_board` its two diagrams would have
+    left them unannounced while the test stayed green on a number that was no longer the truth --
+    a test whose expectation is a literal cannot see an artefact arrive. So the question is now the
+    one that matters: does everything this call left under `generated/` get named, and does
+    everything it named exist. (Historically this test was called
+    test_the_documented_command_writes_and_names_both_artefacts; the name is quoted without
+    backticks here because it no longer resolves.)
+    """
     state = _state(tmp_path)
     state.capture("PR", PR_FIELDS)
     result = subprocess.run(
@@ -334,17 +446,27 @@ def test_the_documented_command_writes_and_names_both_artefacts(tmp_path):
         cwd=TEAM_KITS, capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stdout + result.stderr
     printed = [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    assert len(printed) == 2, printed
     assert all(os.path.isfile(path) for path in printed), printed
-    assert os.path.basename(printed[1]) == board.FILENAME
+    generated = os.path.join(state.root, "generated")
+    assert sorted(os.path.basename(path) for path in printed) == sorted(os.listdir(generated)), (
+        printed, os.listdir(generated))
+    assert board.FILENAME in [os.path.basename(path) for path in printed], printed
 
 
 # ---------------- the columns are the type's own chain ----------------
 
 def test_the_columns_of_a_type_are_its_own_automaton_in_chain_order(tmp_path):
-    """Kanban columns are DERIVED: the chain in chain order, then the side states, then the
+    """Kanban slots are DERIVED: the chain in chain order, then the side states, then the
     terminals. Read off the automaton here, not off `board.status_columns`, so the two ends are
-    independent -- a chain change has to move the page, not just the helper."""
+    independent -- a chain change has to move the page, not just the helper.
+
+    FR-0075 ADDED THE ONE SUBTRACTION and this test carries it rather than ignoring it: an END
+    state holding no card is not drawn (nine of them across the page was what made the shipped
+    board unreadable). So the drawn slots are a SUBSEQUENCE of the derived order, what is left out
+    is a terminal, and every left-out slot is still named in the line under the row -- nothing
+    silently vanishes. The other end (an empty CHAIN slot stays) is
+    `test_an_empty_end_state_is_named_not_drawn`.
+    """
     state = _state(tmp_path)
     state.capture("PR", PR_FIELDS)
     state.capture("TSK", TSK_FIELDS)
@@ -352,10 +474,14 @@ def test_the_columns_of_a_type_are_its_own_automaton_in_chain_order(tmp_path):
     for item_type in ("PR", "TSK"):
         automaton = AUTOMATA[item_type]
         shown = page.columns[item_type]
-        assert set(shown) == set(automaton.states), (item_type, shown)
-        assert shown[:len(automaton.chain)] == list(automaton.chain), (item_type, shown)
-        assert set(shown[len(automaton.chain):]) == (
-            automaton.states - set(automaton.chain)), (item_type, shown)
+        expected = list(automaton.chain)
+        expected += sorted(automaton.states - set(expected) - automaton.terminals)
+        expected += sorted(automaton.terminals - set(expected))
+        assert shown == [status for status in expected if status in shown], (item_type, shown)
+        missing = [status for status in expected if status not in shown]
+        assert set(missing) <= automaton.terminals, (item_type, missing)
+        for status in missing:
+            assert status in page.empties[item_type], (item_type, status, page.empties)
 
 
 def test_every_field_of_an_item_is_in_its_detail_exactly_once(tmp_path):
@@ -438,11 +564,50 @@ def test_each_kit_renders_the_types_its_own_template_ships(tmp_path, kit, captur
     page = _read_board(state)
     shipped = {item_type for item_type, directory in ACTIVE_DIRS.items()
                if os.path.isdir(os.path.join(state.root, *directory.split("/")))}
-    assert set(page.columns) == shipped, (kit, sorted(page.columns), sorted(shipped))
+    # A TYPE WITH NO ITEMS KEEPS ITS NAME AND LOSES ITS ROW (FR-0075): an empty row of empty slots
+    # is what filled the shipped page (32 empty against 13 filled slots, measured in the design
+    # pass), and dropping the type without a word is the disappearance FR-0030 exists against. So
+    # the two together are the kit's set, and neither alone is.
+    assert set(page.columns) | page.silent == shipped, (
+        kit, sorted(page.columns), sorted(page.silent), sorted(shipped))
+    assert not (set(page.columns) & page.silent), "a type is both drawn and called silent"
     for absent in expected_absent:
-        assert absent not in page.columns, "%s renders %s, which it does not ship" % (kit, absent)
+        assert absent not in page.columns and absent not in page.silent, (
+            "%s renders %s, which it does not ship" % (kit, absent))
     for item_type, _fields in captures:
         assert page.cards[(item_type, AUTOMATA[item_type].initial)]
+
+
+@pytest.mark.parametrize("kit", ["dev-team", "office-team", "research-team"])
+def test_every_kit_ships_a_directory_for_every_type_the_product_view_places(tmp_path, kit):
+    """A kit whose template tree lacks a type its PRODUCT view places hides that type from its user.
+
+    THE VIEW IS THE CONTRACT AND THE TREE IS THE DELIVERY, and only their disagreement is a defect.
+    The product view is the conversation with the user (`backlog_tree.VIEWS`), so every kit has one
+    -- unlike the system view, whose children a kit may legitimately not use: dev-team ships no
+    hypotheses and no experiments and that is right. What a kit may NOT do is place a type in the
+    customer's own view and ship no drawer for it: on a fresh project that type is neither drawn nor
+    named silent, so nobody using that kit ever learns it exists, and the first item of that type
+    appears in a directory the scaffold never made.
+
+    WHY THIS TEST EXISTS AT ALL: `DEC-0064` (5) made the `milestones/active` directory in three kits
+    a merge-round seam and its `consequences` promised "every line has a test that goes red without
+    it, so a half-applied seam is visible, not silent". Measured in the TSK-0120 merge round, in a
+    copy outside the repo: with all three directories deleted, the tripwire the DEC named --
+    `test_each_kit_renders_the_types_its_own_template_ships` -- stayed GREEN (3 passed), because it
+    derives its expectation from the same shipped tree and so cannot see the tree lose a drawer.
+    """
+    state = _kit_state(tmp_path, kit)
+    product = next(view for view in backlog_tree.VIEWS if view.key == "product")
+    missing = [item_type for item_type in product.children
+               if not os.path.isdir(os.path.join(state.root, *ACTIVE_DIRS[item_type].split("/")))]
+    assert not missing, (
+        "%s places %s in the product view but ships no directory for it" % (kit, missing))
+    state.generate_index()                        # a fresh project, no item captured yet
+    page = _read_board(state)
+    unseen = [item_type for item_type in product.children
+              if item_type not in page.columns and item_type not in page.silent]
+    assert not unseen, ("%s never names %s on a fresh board" % (kit, unseen))
 
 
 @pytest.mark.parametrize("kit", ["dev-team", "office-team", "research-team"])
@@ -729,13 +894,14 @@ def test_an_alias_bomb_cannot_stretch_a_state_write(tmp_path):
     tracemalloc.stop()
     grew = os.path.getsize(board_path) - empty
     item_bytes = os.path.getsize(path)
-    assert peak < 8 * 1024 * 1024, (
+    assert peak < _MEMORY_BUDGET, (
         "rendering a %d-byte item allocated %.1f MB" % (item_bytes, peak / 1024.0 / 1024))
     # the page bound is the BUDGET, read off `board`: one line per top-level element, each within
     # VALUE_MAX_CHARS, plus room for the markup around a card, a tree node and a warning
     assert grew < lines * (board.VALUE_MAX_CHARS + 128) + 4096, (
         "the item added %d bytes to the board (item file: %d bytes)" % (grew, item_bytes))
-    assert took < 30, "one item stretched a state write to %.1f s" % took
+    assert took < _STATE_WRITE_SECONDS, (
+        "one item stretched a state write to %.1f s" % took)
     page = _read_board(state)
     assert page.where("BUG-0001") == ("BUG", "OPEN")
     assert board.NESTED_MARKER in page.details["BUG-0001"]["repro"], (
@@ -1155,9 +1321,22 @@ _REFUSALS = {
 
 def test_every_reason_a_tree_can_refuse_an_item_is_one_a_store_can_produce():
     """The tripwire on the reasons, from the dead end: a kind with no message would raise on the
-    page, and a kind no store can reach is a case nobody can trigger and nobody can fix."""
+    page, and a kind no store can reach is a case nobody can trigger and nobody can fix.
+
+    THREE MAPS, ONE SET OF REASONS, and the third one was added in TSK-0115 without being read
+    here: `_REASON_LABELS` is what the board puts on the refused item's OWN row (DEC-0066 (5)),
+    and its comment claimed this test held it against `MESSAGES` in both directions while this
+    test never looked at it. Measured with the claim standing: a dead entry left all 69 tests of
+    this module green, and a MISSING one turned two others red -- but not this one, the one the
+    comment named. Both ends are here now, so the sentence over there is one the code builds.
+    """
     assert set(_REFUSALS) == set(backlog_tree.MESSAGES), (
         set(_REFUSALS) ^ set(backlog_tree.MESSAGES))
+    assert set(backlog_tree._REASON_LABELS) == set(backlog_tree.MESSAGES), (
+        "a reason the page must put a word on, or a word for a reason nothing produces: %s"
+        % (set(backlog_tree._REASON_LABELS) ^ set(backlog_tree.MESSAGES),))
+    for kind in backlog_tree.MESSAGES:
+        assert backlog_tree.reason_label(kind, "FR"), kind
 
 
 @pytest.mark.parametrize("kind", sorted(_REFUSALS))
@@ -1325,10 +1504,11 @@ def test_an_alias_bomb_in_a_binding_field_cannot_stretch_a_state_write(tmp_path)
     took = time.time() - started
     peak = tracemalloc.get_traced_memory()[1]
     tracemalloc.stop()
-    assert peak < 8 * 1024 * 1024, (
+    assert peak < _MEMORY_BUDGET, (
         "placing a %d-byte item allocated %.1f MB" % (os.path.getsize(path), peak / 1024.0 / 1024))
     assert os.path.getsize(board_path) - before < 64 * 1024, "the item stretched the page"
-    assert took < 30, "one binding field stretched a state write to %.1f s" % took
+    assert took < _STATE_WRITE_SECONDS, (
+        "one binding field stretched a state write to %.1f s" % took)
 
     page = _read_board(state)
     assert page.where("SR-0001") == ("SR", "PROPOSED")
@@ -1417,3 +1597,680 @@ def test_every_type_that_moves_through_a_lifecycle_is_placed_by_a_backlog_view()
     for item_type in named:
         assert backlog_tree.label(item_type) != item_type, (
             "%s is placed by a view and has no plain-language name" % item_type)
+
+
+# ---------------- (f) FR-0075: the three numbers a reader looks for first ----------------
+
+def _pending(state, item_id, kind="scope", ttl=3600.0):
+    """A real, UNANSWERED approval request -- the shape that makes an item wait on the user.
+
+    Through `approvals.create_pending_request`, never a hand-written file: a request nothing
+    produces is a shape the board could agree with while production disagrees. The request does not
+    regenerate the index (it is one of the exempted writers), so the caller regenerates.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import approvals
+    return approvals.create_pending_request(state, kind, item_id, ttl_seconds=ttl)
+
+
+def _busy_store(tmp_path, name="project_memory"):
+    """One item of each kind the first strip counts: blocked, waiting on the user, in flight."""
+    state = _state(tmp_path, name)
+    pr = state.capture("PR", PR_FIELDS)
+    approve(state, pr["id"], "scope")
+    stuck = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                      derives_from=pr["id"], blocked_by=pr["id"]))
+    moving = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                       derives_from=pr["id"]))
+    walk_to_status(state, moving, "READY")
+    asked = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"]))
+    _pending(state, asked["id"])
+    state.generate_index()
+    return state, pr, stuck, moving, asked
+
+
+def test_the_first_strip_counts_blocked_waiting_and_in_flight_from_the_state(tmp_path):
+    """FR-0075's brief, as three numbers over a real store -- and the number IS the list.
+
+    The failure this is written against is the one every dashboard grows into: a figure computed
+    from one walk and a list built from another, drifting apart without anybody noticing because
+    both look plausible. So the figure, the list's own `data-count` and the ids actually in the list
+    are read off the rendered page and compared.
+
+    READY IS IN FLIGHT, and that is DEC-0065 (4) measured rather than asserted in prose: the task
+    walked here sits in READY and lands in the third number, because `board.lane` reads the
+    automaton (not the first status, not a last one) instead of a list of statuses. The sentence
+    that says so is on the page too -- a rule a reader cannot see is a rule that surprises them.
+    """
+    state, pr, stuck, moving, asked = _busy_store(tmp_path)
+    page = _read_board(state)
+    assert page.figures == {"blocked": 1, "you": 1, "flight": 2}, page.figures
+    assert page.focus_lists == page.figures, (page.focus_lists, page.figures)
+    assert page.focus_rows["blocked"] == [stuck["id"]]
+    assert page.focus_rows["you"] == [asked["id"]]
+    # the root is APPROVED and the task READY: neither is a first status, neither is a last one,
+    # so both are in flight -- the rule, not a list of statuses (DEC-0065 (4))
+    assert page.focus_rows["flight"] == [pr["id"], moving["id"]], page.focus_rows["flight"]
+    assert state.read_item(moving["id"])["status"] == "READY"
+    assert state.read_item(pr["id"])["status"] == "APPROVED"
+    assert "READY" in page.rule_text, page.rule_text
+
+
+def test_an_expired_approval_request_is_not_waiting_on_anyone(tmp_path):
+    """A request past its own `expires_at_epoch` can never mint, so nobody owes it an answer.
+
+    The rule is the session brief's and the board now applies it too; the clock both use is the
+    stamp of the state write, not a reading of their own (`board._clock`). An expired request that
+    still counted would send a user looking for a question they cannot answer.
+    """
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    _pending(state, pr["id"], ttl=-1.0)                     # already expired when it was written
+    state.generate_index()
+    page = _read_board(state)
+    assert page.figures["you"] == 0, page.focus_rows["you"]
+    assert page.focus_rows["you"] == []
+
+
+def _flattened_length(value, priced=None):
+    """How long `str(value)` WOULD be, priced over the graph instead of built.
+
+    The alias graph is a DAG of shared lists, so a walk that remembers what it has already priced
+    is linear in the levels while `str()` is exponential in them -- which is the whole defect these
+    fixtures are about, and the reason this may not simply call `str()` to find out: measuring the
+    strength of the bomb would then cost exactly what the bomb costs.
+    """
+    priced = {} if priced is None else priced
+    if id(value) in priced:
+        return priced[id(value)]
+    if not isinstance(value, (list, tuple)):
+        return len(str(value))
+    priced[id(value)] = 0                       # a self-referential graph terminates here
+    total = 2 + 2 * max(len(value) - 1, 0) + sum(_flattened_length(one, priced) for one in value)
+    priced[id(value)] = total
+    return total
+
+
+_BOMB_LEVELS = 21
+
+
+def _alias_bomb_request(field):
+    """A pending request whose `field` is a YAML alias graph -- ~500 bytes, 2**21 values.
+
+    ONE FIXTURE PER FIELD, and that is the point rather than thoroughness. Every field this reader
+    renders is its OWN `str()` call, so a defence applied to two of three is a defence nobody
+    measures on the third -- which is exactly what happened for a round: the bomb sat in `item`
+    only, and dropping the bound on `kind` left the whole module green.
+
+    THE DEPTH IS WHAT GIVES THE ASSERTION ITS MARGIN, and it is written ONCE: the terminal alias is
+    derived from `_BOMB_LEVELS` rather than spelled beside it. That coupling is not hypothetical --
+    a probe of this round lowered the loop and left the reference at `a20`, so the file no longer
+    parsed, the reader skipped it, and the "defect" measured 0.19 MB and looked harmless. A fixture
+    that cannot deliver its attack is a test that cannot fail, which is why
+    `test_a_request_file_nothing_could_write_costs_neither_the_page_nor_the_write` asserts that the
+    file ARRIVES as a container before it asserts anything about the cost.
+    """
+    plain = {"request_id": "r1", "kind": "scope", "item": "PR-0001"}
+    plain.pop(field, None)
+    lines = ["%s: %s" % (key, value) for key, value in sorted(plain.items())]
+    lines += ["expires_at_epoch: 4102444800", "a0: &a0 [x, x]"]
+    for level in range(1, _BOMB_LEVELS):
+        lines.append("a%d: &a%d [*a%d, *a%d]" % (level, level, level - 1, level - 1))
+    lines.append("%s: *a%d" % (field, _BOMB_LEVELS - 1))
+    return "\n".join(lines) + "\n"
+
+
+# Pending request files `approvals.create_pending_request` CANNOT write -- the ttl is its own
+# argument and no command exposes it -- so each of these only ever arrives as a hand-written or
+# corrupted file. That is the class this renderer is built against twice over (`board._emit`,
+# `backlog_tree.parents_of`), and the board became the first reader of this directory in TSK-0115.
+_UNWRITABLE_REQUESTS = {
+    "an epoch no platform clock can express":
+        "request_id: r1\nkind: scope\nitem: PR-0001\nexpires_at_epoch: 99999999999\n",
+    "a float epoch out of range":
+        "request_id: r1\nkind: scope\nitem: PR-0001\nexpires_at_epoch: 1e30\n",
+    "an alias graph where the item id belongs": _alias_bomb_request("item"),
+    # ...and the counter-direction: a field this reader does NOT read may hold anything, and must
+    # cost nothing. `request_id` is no longer carried into the strip (`board.open_requests`), so
+    # this shape is the evidence that dropping it really dropped the cost with it.
+    "an alias graph in a field the board does not read": _alias_bomb_request("request_id"),
+    "an alias graph where the approval kind belongs": _alias_bomb_request("kind"),
+}
+
+
+@pytest.mark.parametrize("shape", sorted(_UNWRITABLE_REQUESTS))
+def test_a_request_file_nothing_could_write_costs_neither_the_page_nor_the_write(tmp_path, shape):
+    """The strip reads a new directory, so the two defences of this module have to reach it.
+
+    WHAT IS MEASURED IS THAT THE PAGE IS REBUILT, not merely that the state write survives -- and
+    that distinction is the finding. `state._write_board` is fail-soft by design: an exception in
+    the renderer is caught, the write goes through, and the PAGE SILENTLY KEEPS ITS OLD CONTENT.
+    So a single unreadable request file does not cost one card, it costs every later board of that
+    project, at every state write, until somebody deletes the file. Measured on the code before the
+    fix: `time.localtime` raised OSError on one epoch and OverflowError on the other, and the board
+    stopped being rebuilt from then on.
+
+    THE OTHER THREE SHAPES ARE THE OTHER DEFENCE: `str()` on an alias graph unfolds the whole graph
+    in one call, which no budget can interrupt. Measured before the fix: a 504-byte request file
+    rendered a 107 MB page. So the size is asserted against the SAME store without the file rather
+    than against a number -- what the file may cost is "about as much as a request", not "less
+    than N".
+
+    ONE SHAPE PER FIELD, because the page cannot see all three. `kind` and `item` reach the markup,
+    so a bomb in either shows up in the page SIZE; `request_id` reaches nothing a reader sees, and
+    a bomb there costs only the time and the memory of building a string that is thrown away. That
+    is why the measure here is `tracemalloc` -- the same one
+    `test_an_alias_bomb_cannot_stretch_a_state_write` settled on for the same reason -- and not a
+    stopwatch: wall-clock separates the two versions only once the intermediate costs hundreds of
+    megabytes, while the allocation shows it at once.
+    """
+    state = _state(tmp_path, shape.replace(" ", "_"))
+    pr = state.capture("PR", PR_FIELDS)
+    plain = os.path.getsize(os.path.join(state.root, "generated", board.FILENAME))
+    pending = os.path.join(state.root, "approvals", "pending")
+    os.makedirs(pending, exist_ok=True)
+    body = _UNWRITABLE_REQUESTS[shape]
+    open(os.path.join(pending, "r1.yaml"), "w", encoding="utf-8").write(body)
+    # THE FIXTURE HAS TO BE STRONG ENOUGH TO SHOW THE DEFECT, and being a container is not strong.
+    # Everything below is about what one file COSTS, so a bomb whose flattening is shorter than the
+    # page proves nothing at all: with a shallow graph the unbounded reader stays under every bound
+    # here and the test passes with both defences removed. The subject is therefore the EFFECT --
+    # what `str()` on that field would produce, priced over the graph instead of built -- and it
+    # has to exceed the page the request is added to. That is what binds `_BOMB_LEVELS` to its own
+    # purpose rather than to a number somebody trusts.
+    parsed = yaml.safe_load(body)
+    assert isinstance(parsed, dict) and parsed.get("expires_at_epoch"), shape
+    if "alias graph" in shape:
+        bombed = [value for key, value in parsed.items()
+                  if key in ("item", "kind", "request_id") and isinstance(value, list)]
+        assert len(bombed) == 1, (
+            "the alias graph did not resolve into a container: %s" % sorted(parsed))
+        flattened = _flattened_length(bombed[0])
+        assert flattened > plain, (
+            "this bomb flattens to %d characters and the page around it is %d bytes -- it could "
+            "not even double the page, so nothing below is evidence" % (flattened, plain))
+
+    tracemalloc.start()
+    started = time.time()
+    second = state.capture("PR", dict(PR_FIELDS, title="written after the bad file"))
+    took = time.time() - started
+    peak = tracemalloc.get_traced_memory()[1]
+    tracemalloc.stop()
+
+    page = _read_board(state)
+    index = yaml.safe_load(open(os.path.join(state.root, "generated", "index.yaml"),
+                                encoding="utf-8"))
+    assert page.generated_at == index["generated_at"], (
+        "the board was not rebuilt with this state write -- one unreadable request file froze it")
+    assert page.where(pr["id"]) == ("PR", "DRAFT") and page.where(second["id"]) == ("PR", "DRAFT")
+    assert page.figures["you"] == 1, "the request itself no longer arrives"
+    grown = os.path.getsize(os.path.join(state.root, "generated", board.FILENAME))
+    assert grown < plain * 2, (
+        "one request file grew the page from %d to %d bytes" % (plain, grown))
+    assert peak < _MEMORY_BUDGET, (
+        "reading a %d-byte request file allocated %.1f MB"
+        % (len(_UNWRITABLE_REQUESTS[shape]), peak / 1024.0 / 1024))
+    assert took < _STATE_WRITE_SECONDS, (
+        "one request file stretched a state write to %.1f s" % took)
+
+
+
+def test_the_board_and_the_session_brief_agree_on_the_open_requests(tmp_path):
+    """Two readers of `approvals/pending/` with one rule between them -- held against each other.
+
+    `board.open_requests` is a COPY of the rule in `report.generate_session_brief`, because this
+    module cannot import `report` (the package's import graph would close into a cycle). A copy
+    nobody measures is the defect; this is the measurement, and the seam that removes the copy --
+    one `approvals.open_requests` both call -- is stream C's. Until it lands the copy stands as
+    H126 in `docs/POST_V2_WISHLIST.md`.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import report
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    bug = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"]))
+    gone = state.capture("PR", dict(PR_FIELDS, title="archived under its own question"))
+    _pending(state, pr["id"])
+    _pending(state, bug["id"])
+    _pending(state, gone["id"])
+    _pending(state, bug["id"], ttl=-1.0)                    # expired: open for neither reader
+    # ...and one whose ITEM is no longer on the board. A request outlives the item it was asked
+    # about, and it is still a question somebody has to answer -- if the board counted only the
+    # requests it can put a card behind, it would quietly answer "nothing waits on you" while the
+    # brief said otherwise. That is the divergence this test exists for.
+    state.transition(gone["id"], "REJECTED")
+    state.archive(gone["id"])
+    brief = yaml.safe_load(open(report.generate_session_brief(state, "dev-team", "v", "audited"),
+                                encoding="utf-8"))
+    page = _read_board(state)
+    assert gone["id"] not in page.details, "the archived item is still on the board"
+    assert sorted(page.focus_rows["you"]) == sorted(row["item"] for row in brief["open_approvals"])
+    assert page.figures["you"] == len(brief["open_approvals"]) == 3
+
+
+def test_a_blocked_card_carries_its_blocker_on_its_face(tmp_path):
+    """What is blocked has to be answerable without opening anything -- so the id an item waits for
+    is ON the card, not in the record behind it. Both spellings the field takes are the item file's
+    own decision (BUG-0015: a binding field is a scalar or a list), so both reach the face."""
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    approve(state, pr["id"], "scope")
+    one = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                    derives_from=pr["id"], blocked_by=pr["id"]))
+    two = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                    derives_from=pr["id"], blocked_by=[pr["id"], "TSK-9999"]))
+    asked = state.capture("BUG", dict(BUG_FIELDS, related_pr=pr["id"]))
+    _pending(state, asked["id"])
+    state.generate_index()
+    text = open(os.path.join(state.root, "generated", board.FILENAME), encoding="utf-8").read()
+    page = _Board(text)
+    faces = {attrs.get("data-open"): attrs.get("class", "") for tag, attrs in page.elements
+             if tag == "button" and "card" in (attrs.get("class") or "")}
+    assert "blocked" in faces[one["id"]] and "blocked" in faces[two["id"]]
+    marks = re.findall(r'<span class="flag">blocked by ([^<]+)</span>', text)
+    assert sorted(marks) == sorted([pr["id"], "%s, TSK-9999" % pr["id"]]), marks
+    # ...and the second signal of the pair, on the same surface: an item somebody owes an answer
+    # for names the KIND of approval, so a reader knows what they are being asked before opening
+    # anything
+    assert "you" in faces[asked["id"]] and "blocked" not in faces[asked["id"]], faces[asked["id"]]
+    assert re.findall(r'<span class="flag">waiting on you: ([^<]+)</span>', text) == [
+        "scope approval"]
+
+
+def test_living_types_precede_records_and_no_type_is_lost(tmp_path):
+    """DEC-0065 (3): work first, paperwork filed at the end -- and the filing loses nothing.
+
+    Which half a type belongs to is DERIVED (`board.type_order`: a type with an automaton moves, a
+    type without one is written once and looked up), so a type added to the kernel lands in the
+    right half the day it ships. The counter-direction is the one that matters: every entry on the
+    page is either in a slot or in the records block, and the two together are all of them.
+    """
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    state.capture("EVD", {"kind": "test", "related": [pr["id"]], "result": "pass",
+                          "summary": "suite green", "artifact_refs": ["staging/x/log.txt"]})
+    page = _read_board(state)
+    drawn = list(page.columns)
+    assert drawn.index("PR") < drawn.index("EVD"), drawn
+    assert page.records_total == 1, page.records_total
+    on_page = sorted(item_id for ids in page.cards.values() for item_id in ids)
+    assert on_page == sorted(page.details), (on_page, sorted(page.details))
+    assert page.tab_counts["board"] == len(on_page) == 2
+
+
+def test_an_empty_end_state_is_named_not_drawn(tmp_path):
+    """BOTH ENDS of the empty rule, on one row.
+
+    An empty slot in the CHAIN stays: the flow reads left to right and a gap in it is information
+    ("nothing has reached APPROVED yet"). An empty TERMINAL goes: "0 REJECTED" is the normal state
+    of every healthy project, and a page mostly made of such slots was what the design pass measured
+    as the reason the shipped board could not be read
+    (`project_memory/staging/TSK-0115/01-information-architecture.md`). Neither disappears in
+    silence -- the line under the row names both, so the rule cannot quietly become "drop what is
+    empty".
+    """
+    state = _state(tmp_path)
+    state.capture("PR", PR_FIELDS)                          # one DRAFT, nothing else
+    page = _read_board(state)
+    automaton = AUTOMATA["PR"]
+    drawn = set(page.columns["PR"])
+    assert not (drawn & automaton.terminals), (
+        "an end state with no card is drawn: %s" % sorted(drawn & automaton.terminals))
+    empty_chain = [status for status in automaton.chain
+                   if status != "DRAFT" and status not in automaton.terminals]
+    assert set(empty_chain) <= drawn, (empty_chain, sorted(drawn))
+    for status in empty_chain:
+        assert page.counts[("PR", status)] == 0
+    for status in sorted(automaton.terminals):
+        assert status in page.empties["PR"], (status, page.empties["PR"])
+    assert "no cards in" in page.empties["PR"]
+
+
+def test_a_task_without_a_title_shows_its_work_on_the_face(tmp_path):
+    """A `TSK` owes no `title` -- its contract asks for the kind of work, the item it serves and the
+    role that holds it. The shipped board rendered those cards as bare ids, which is what the design
+    pass measured. The face is built from the fields the item's own body carries, so nothing is
+    invented and no per-type table decides it."""
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    approve(state, pr["id"], "scope")
+    task = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
+                                     derives_from=pr["id"]))
+    assert "title" not in task
+    page = _read_board(state)
+    face = page.titles[task["id"]]
+    assert TSK_FIELDS["type"] in face and pr["id"] in face and TSK_FIELDS["assigned_role"] in face
+
+
+def test_an_item_not_under_a_goal_says_what_it_is_in_kit_language(tmp_path):
+    """DEC-0066 (5): an `FR` without a `related_pr` breaks no rule -- the kits treat the inbox as
+    where a wish waits for triage -- so the page says what the item IS instead of calling it
+    unassigned. The word is derived from the type's OWN home directory (`backlog_tree.home_word`),
+    so it is the vocabulary the project's tree already uses and there is no second naming to drift.
+    """
+    state = _state(tmp_path)
+    state.capture("PR", PR_FIELDS)
+    wish = state.capture("FR", {"title": "no home", "request_text": "please"})
+    page = _read_board(state)
+    key = ("product", wish["id"])
+    assert page.reasons[key] == backlog_tree.NO_LINK
+    assert page.reason_words[key] == "inbox — not yet triaged", page.reason_words[key]
+    assert "unassigned" not in page.reason_words[key].lower()
+
+
+def test_every_deep_group_starts_hidden_and_every_root_open(tmp_path):
+    """The default the design pass argued for and sighted: roots open, everything below folded.
+
+    A page whose first view is a list of closed roots answers nothing; a fully open system view of
+    this repo is far longer than a screen (the design pass counted it,
+    `project_memory/staging/TSK-0115/08-final.md`). So the reader meets every root with what hangs
+    directly under it, and one click opens the level below. The default is DOM state the renderer writes, which is why
+    it can be read here without a browser. Every node with children also has exactly one control,
+    and every node without children a spacer -- otherwise the rows do not line up and a node's
+    children become unreachable without a mouse.
+    """
+    state, pr, sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    for view, parent, item_type, hidden in page.group_hidden:
+        depth = page.nodes[(view, parent)]["depth"]
+        assert hidden == (depth >= board.FOLD_DEPTH), (view, parent, item_type, depth, hidden)
+    assert any(not hidden for *_rest, hidden in page.group_hidden), "nothing is open at all"
+    assert any(hidden for *_rest, hidden in page.group_hidden), "nothing is folded at all"
+    parents = {(view, parent) for view, parent, _type, _hidden in page.group_hidden}
+    for key in page.nodes:
+        if key in parents:
+            assert key in page.folds and key not in page.fold_spaces, key
+        else:
+            assert key in page.fold_spaces and key not in page.folds, key
+    assert ("system", pr["id"]) in page.folds and ("system", sr["id"]) in page.folds
+
+
+def test_a_fold_control_states_what_it_hides(tmp_path):
+    """A control that says "expanded" over a hidden branch is worse than no control: a screen
+    reader is told the opposite of what the page shows. So `aria-expanded` is false exactly when
+    that node's groups carry `hidden`, and the control names the node it belongs to."""
+    state, _pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    hidden_of = {}
+    for view, parent, _type, hidden in page.group_hidden:
+        hidden_of.setdefault((view, parent), []).append(hidden)
+    for key, states in hidden_of.items():
+        assert len(set(states)) == 1, ("one node, two fold states", key, states)
+        assert page.folds[key] == ("false" if states[0] else "true"), (key, states)
+    labels = {attrs["data-fold"]: attrs.get("aria-label") for _tag, attrs in page.elements
+              if "data-fold" in attrs}
+    assert labels, "no fold control on the page at all"
+    for node_id, label in labels.items():
+        assert label and node_id in label, (node_id, label)
+
+
+def test_the_noscript_page_shows_every_group_and_no_fold_control(tmp_path):
+    """Without a script the page may not claim a behaviour it no longer has, and it may not hide
+    anything behind a control that no longer works.
+
+    The rules are PARSED out of the page's own `<noscript><style>` block -- the thing a browser
+    applies -- and not searched for as text in the source file. Every selector whose whole effect is
+    script (the tabs, the fold controls, the "Expand all" pair, the three focus figures) is in the
+    `display: none` rule, and `[hidden]` is un-hidden, so every folded branch and every record
+    stands open instead of being unreachable.
+    """
+    state, _pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    rules = {}
+    for block in page.noscript_style.split("}"):
+        if "{" not in block:
+            continue
+        selectors, body = block.split("{", 1)
+        for selector in selectors.split(","):
+            rules.setdefault(selector.strip(), []).append(body.strip())
+    unhidden = " ".join(rules.get("[hidden]", []))
+    assert "display: block" in unhidden and "!important" in unhidden, page.noscript_style
+    for selector in (".tabs", ".fold", ".tree-tools", ".figures", ".focus-list", ".interactive"):
+        assert "display: none" in " ".join(rules.get(selector, [])), (
+            "%s still stands on a page whose script never runs" % selector)
+    # the controls those rules name are really on the page -- a rule for a selector nothing carries
+    # would pass the loop above and protect nothing
+    classes = {name for _tag, attrs in page.elements
+               for name in (attrs.get("class") or "").split()}
+    assert {"fold", "tree-tools", "figures", "focus-list", "tabs"} <= classes, sorted(classes)
+
+
+def test_the_board_is_a_pure_function_of_the_state_and_the_stamp_it_is_handed(tmp_path):
+    """The page reads no clock of its own, so the same state and the same stamp are the same bytes.
+
+    Two things on the page depend on "now" -- whether an approval request has expired and where
+    today stands on the ruler -- and both are answered from `generated_at`, the ONE reading the
+    index beside it was written from. A `time.time()` in here would make the page disagree with its
+    own index by a second often enough to matter, and would make this test flap instead of fail.
+    """
+    state, _pr, _stuck, _moving, _asked = _busy_store(tmp_path)
+    rows = yaml.safe_load(open(os.path.join(state.root, "generated", "index.yaml"),
+                               encoding="utf-8"))["items"]
+    entries = [(row, state.read_item(row["id"])) for row in rows]
+    first = board.render(state, entries, "2026-08-16T12:00:00")
+    second = board.render(state, entries, "2026-08-16T12:00:00")
+    assert first == second, "the same state and stamp produced two different pages"
+    later = board.render(state, entries, "2026-08-16T12:00:01")
+    assert later != first, "the stamp does not reach the page at all"
+    # ...and the stamp is really the page's clock: the store holds a request that is open by any
+    # wall clock (it was created seconds ago with an hour to run), and a page stamped a year out
+    # has to call it expired. A `time.time()` in the renderer answers this one differently, which
+    # is what makes the claim above falsifiable rather than merely fast enough to be equal twice.
+    ahead = _Board(board.render(state, entries, "2027-01-01T00:00:00"))
+    assert ahead.figures["you"] == 0, ahead.focus_rows["you"]
+    assert _Board(first).figures["you"] == 1
+
+
+def test_a_stamp_the_board_cannot_read_costs_the_today_marker_and_not_the_page(tmp_path):
+    """`generated_at` is a string the caller hands in, so a caller that hands in something else may
+    not cost the report. What is lost is exactly the two answers that needed a clock: no today
+    marker on the ruler, and no request called expired -- over-reporting an open question is a
+    nuisance, dropping one is the failure the strip exists against."""
+    state = _state(tmp_path)
+    pr = state.capture("PR", PR_FIELDS)
+    _pending(state, pr["id"], ttl=-1.0)                     # expired against any real clock
+    entries = [({"id": pr["id"], "type": "PR", "title": pr["title"], "status": pr["status"]}, pr)]
+    page = _Board(board.render(state, entries, "not a timestamp"))
+    assert page.where(pr["id"]) == ("PR", "DRAFT")
+    assert page.figures["you"] == 1, "a request was called expired with no clock to judge it by"
+    assert board._clock("not a timestamp") == (None, None)
+
+
+def test_every_type_the_kernel_has_carries_a_plain_language_name():
+    """BOTH ENDS of the one list `backlog_tree` cannot derive: what a type is CALLED.
+
+    Since FR-0075 the board heads every row of slots and every block of paperwork with this name, so
+    a type missing from the map appears on the page as its own code (`EVD` where "evidence records"
+    belongs) and a name for a type the kernel does not have is a promise nobody keeps. Neither end
+    is visible from inside the map, which is why they are measured against `ACTIVE_DIRS`.
+    """
+    assert set(backlog_tree._LABELS) <= set(ACTIVE_DIRS), (
+        "named, but no such type: %s" % sorted(set(backlog_tree._LABELS) - set(ACTIVE_DIRS)))
+    assert set(ACTIVE_DIRS) <= set(backlog_tree._LABELS), (
+        "the kernel has these types and the board would show their code: %s"
+        % sorted(set(ACTIVE_DIRS) - set(backlog_tree._LABELS)))
+    for item_type in ACTIVE_DIRS:
+        assert backlog_tree.label(item_type, 1) != item_type, item_type
+        assert backlog_tree.label(item_type, 2) != item_type, item_type
+
+
+# ---------------- (g) FR-0079: milestones on a timeline (DEC-0064: MST is a TYPE) ----------------
+
+# The type lines DEC-0064 hands to stream C, in one place, so this suite is the arbiter of the
+# seam rather than a second opinion about it. Stream A owns the RENDERING; `backlog_types` is
+# C-owned, so until C applies these lines a store cannot hold a milestone at all and the fixture
+# below installs them for the duration of one test. The day they land, `_milestone_type` compares
+# the kernel's with these and goes red on any difference -- which is what makes a hand-off
+# measurable instead of hopeful.
+_MST_SEAM = {
+    "chain": ("PLANNED", "REACHED"),
+    "terminals": ("REACHED", "MISSED", "DROPPED"),
+    "terminal_from": {"MISSED": ("PLANNED",), "DROPPED": ("PLANNED",)},
+    "directory": "milestones/active",
+    "required": ("title", "due", "derives_from"),
+    "label": ("milestone", "milestones"),
+}
+MST = board.MILESTONE_TYPE
+
+
+@pytest.fixture
+def milestone_type(monkeypatch):
+    """The kernel with DEC-0064's milestone type -- applied by stream C, or installed here.
+
+    Two directions, one fixture. When `backlog_types` already carries the type, every line is
+    compared with the decision and a divergence fails HERE, at the arbiter test the seam table
+    names. When it does not, the lines are installed for this test only, so the renderer is
+    measured against the state it will run in rather than against a type nobody has.
+
+    `PARENT_FIELDS` is not installed as a value of its own: it is DERIVED from the field contract
+    (`backlog_types._parent_fields`), so the fixture re-runs that derivation over the patched
+    contract and installs its result. A hand-written tuple here would be a second answer to
+    "what binds a milestone to its goals".
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import backlog_types
+    if MST in backlog_types.ACTIVE_DIRS:                    # the seam has landed
+        automaton = backlog_types.AUTOMATA[MST]
+        assert automaton.chain == _MST_SEAM["chain"], automaton.chain
+        assert automaton.terminals == frozenset(_MST_SEAM["terminals"]), automaton.terminals
+        assert backlog_types.ACTIVE_DIRS[MST] == _MST_SEAM["directory"]
+        assert backlog_types.REQUIRED_FIELDS[MST] == _MST_SEAM["required"]
+        assert backlog_tree._LABELS[MST] == _MST_SEAM["label"]
+        return
+    monkeypatch.setitem(backlog_types.AUTOMATA, MST, backlog_types._Automaton(
+        chain=_MST_SEAM["chain"], terminals=_MST_SEAM["terminals"],
+        terminal_from=_MST_SEAM["terminal_from"]))
+    monkeypatch.setitem(backlog_types.ACTIVE_DIRS, MST, _MST_SEAM["directory"])
+    monkeypatch.setitem(backlog_types.REQUIRED_FIELDS, MST, _MST_SEAM["required"])
+    monkeypatch.setitem(backlog_tree._LABELS, MST, _MST_SEAM["label"])
+    monkeypatch.setitem(backlog_tree.PARENT_FIELDS, MST,
+                        backlog_types._parent_fields()[MST])
+    product = backlog_tree.VIEWS[0]
+    monkeypatch.setattr(backlog_tree, "VIEWS",
+                        (product._replace(children=product.children + (MST,)),)
+                        + backlog_tree.VIEWS[1:])
+
+
+def _milestone(number, due, goals, status="PLANNED", title="a date we owe somebody"):
+    """One MST entry the way `state._regenerate_index_locked` would hand it to the renderer."""
+    item_id = "%s-%04d" % (MST, number)
+    body = {"id": item_id, "title": title, "status": status, "due": due,
+            "derives_from": list(goals), "revision": 1, "approval_ref": None}
+    row = {"id": item_id, "type": MST, "title": title, "status": status, "revision": 1,
+           "approval_ref": None}
+    return row, body
+
+
+def _entries_of(state):
+    """(row, body) pairs for everything in the store -- what the kernel hands `board.render`."""
+    rows = yaml.safe_load(open(os.path.join(state.root, "generated", "index.yaml"),
+                               encoding="utf-8"))["items"]
+    return [(row, state.read_item(row["id"])) for row in rows]
+
+
+def test_a_milestone_stands_on_the_timeline_with_the_goals_it_names(tmp_path, milestone_type):
+    """FR-0079's acceptance, rendered: a milestone is an item with a date, a title and the goals it
+    is a date for, and what hangs under those goals is counted BY LANE.
+
+    NO PERCENTAGE, and that is not a taste: archived items are not on this board (the kernel's own
+    rule), so a share would count the visible half only and read as progress. The counts are the
+    ones the system tree already places under the goal, so the timeline and the tree cannot
+    disagree about what belongs to a milestone.
+    """
+    state, pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    entries = _entries_of(state) + [_milestone(1, "2026-09-30", [pr["id"]])]
+    page = _Board(board.render(state, entries, "2026-08-16T12:00:00"))
+    assert "timeline" in page.views and page.views["timeline"] is True     # hidden, not selected
+    assert page.tab_counts["timeline"] == 1
+    assert set(page.milestones) == {"%s-0001" % MST}
+    assert page.milestone_goals["%s-0001" % MST] == [pr["id"]]
+    assert page.milestone_dates["%s-0001" % MST] == "2026-09-30"
+    # four items hang under the root in the system tree, all in their first status
+    assert "4 planned" in page.milestone_lanes["%s-0001" % MST], page.milestone_lanes
+    assert "%" not in page.milestone_lanes["%s-0001" % MST], "a share of an invisible whole"
+    assert [item_id for item_id, _cls in page.ticks] == ["%s-0001" % MST]
+    assert page.details["%s-0001" % MST]["due"] == "2026-09-30"
+
+
+def test_a_milestone_past_its_date_and_not_reached_is_late(tmp_path, milestone_type):
+    """Late is a question about the DATE and the item's own state, and the state is read the way
+    every other item's is: `board.lane` over the type's automaton. A milestone already reached is
+    not late however long ago its date was, and one still planned is late the day after."""
+    state, pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    entries = _entries_of(state) + [
+        _milestone(1, "2026-08-15", [pr["id"]]),                        # yesterday, still planned
+        _milestone(2, "2026-08-15", [pr["id"]], status="REACHED"),      # yesterday, reached
+        _milestone(3, "2026-09-30", [pr["id"]]),                        # still ahead
+    ]
+    page = _Board(board.render(state, entries, "2026-08-16T12:00:00"))
+    assert page.milestones == {"%s-0001" % MST: True, "%s-0002" % MST: False,
+                               "%s-0003" % MST: False}, page.milestones
+    marks = dict(page.ticks)
+    assert "late" in marks["%s-0001" % MST] and "late" not in marks["%s-0002" % MST]
+    assert "done" in marks["%s-0002" % MST], marks
+
+
+def test_two_milestones_a_day_apart_keep_both_labels(tmp_path, milestone_type):
+    """The ruler has three bands so that no two labels can share one: the today marker owns the top
+    band, and a tick label that would stand within `board.LABEL_BAND_GAP` per cent of its neighbour
+    takes the middle band instead of the bottom one. Measured in a browser by
+    `test_board_browser.test_ruler_labels_share_no_band`; here it is the attribute that decides it.
+    """
+    state, pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    entries = _entries_of(state) + [_milestone(1, "2026-09-01", [pr["id"]]),
+                                    _milestone(2, "2026-09-02", [pr["id"]])]
+    page = _Board(board.render(state, entries, "2026-08-16T12:00:00"))
+    marks = dict(page.ticks)
+    assert "up" not in marks["%s-0001" % MST], marks
+    assert "up" in marks["%s-0002" % MST], "two labels a day apart stand in one band"
+    # ...and two far apart do not pay for it
+    entries = _entries_of(state) + [_milestone(1, "2026-09-01", [pr["id"]]),
+                                    _milestone(2, "2027-06-01", [pr["id"]])]
+    marks = dict(_Board(board.render(state, entries, "2026-08-16T12:00:00")).ticks)
+    assert "up" not in marks["%s-0002" % MST], marks
+
+
+def test_a_milestone_with_an_unreadable_date_is_shown_with_no_date(tmp_path, milestone_type):
+    """`capture` refuses a date `date.fromisoformat` cannot read (DEC-0064 (3)), so this shape only
+    ever arrives as a hand-written file -- which is exactly when the board may not fail the state
+    write it is written by. The card stands, says "no date", and takes no place on the ruler."""
+    state, pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    entries = _entries_of(state) + [_milestone(1, "gestern", [pr["id"]]),
+                                    _milestone(2, "2026-09-30", [pr["id"]])]
+    page = _Board(board.render(state, entries, "2026-08-16T12:00:00"))
+    assert page.milestone_dates["%s-0001" % MST] == "no date"
+    assert page.milestones["%s-0001" % MST] is False, "a date nobody can read is not late"
+    assert [item_id for item_id, _cls in page.ticks] == ["%s-0002" % MST]
+    assert page.details["%s-0001" % MST]["due"] == "gestern"      # the file's own value, shown
+
+
+def test_a_state_without_milestones_offers_no_timeline_tab(tmp_path):
+    """A tab for zero milestones is an empty promise -- the design pass sighted exactly that and
+    the counter-direction is the test above, where one milestone brings the tab."""
+    state, _pr, _sr, _bug, _under_sr, _under_root = _dev_store(tmp_path)
+    page = _read_board(state)
+    assert "timeline" not in page.views
+    assert "timeline" not in {key for key, _selected, _tag in page.tabs}
+
+
+def test_the_milestone_type_is_wired_completely_or_not_at_all():
+    """The tripwire on a half-applied seam, in both directions.
+
+    `board.MILESTONE_TYPE` is the one place stream A names the type; every other property of a
+    milestone -- its slots, its lane, its plain-language name, its place in a tree -- is derived
+    like any other type's. What can go wrong is a PARTIAL hand-over: a directory without an
+    automaton renders a milestone with no lane, an automaton without a label heads its row with a
+    code, and a label without a directory is a name for a type no project can hold. So the five
+    places are all in, or all out.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import backlog_types
+    places = {
+        "ACTIVE_DIRS": MST in backlog_types.ACTIVE_DIRS,
+        "AUTOMATA": MST in backlog_types.AUTOMATA,
+        "REQUIRED_FIELDS": MST in backlog_types.REQUIRED_FIELDS,
+        "label": MST in backlog_tree._LABELS,
+        "a backlog view": any(MST in view.children for view in backlog_tree.VIEWS),
+    }
+    assert len(set(places.values())) == 1, (
+        "the milestone type is applied in some places and not others: %s" % places)

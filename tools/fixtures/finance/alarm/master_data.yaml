@@ -1,33 +1,47 @@
+euer_form:
+  year: 2025
+  source: "öffentliche Ausfüllhilfen zur Anlage EÜR, gelesen 2026-09-03 — kein amtlicher Vordruck"
+  gwg_limit_net: 800
 categories:
   income:
   - key: sales_shop
-    label_de: Umsätze Onlineshop
-    euer_line: Betriebseinnahmen
+    label_de: "Umsätze Onlineshop"
+    euer_line: 12
+    euer_line_label: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer"
   - key: sales_marketplace
-    label_de: Umsätze Marktplätze
-    euer_line: Betriebseinnahmen
+    label_de: "Umsätze Marktplätze"
+    euer_line: 12
+    euer_line_label: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer"
   - key: sales_local
-    label_de: Umsätze Direktverkauf
-    euer_line: Betriebseinnahmen
+    label_de: "Umsätze Direktverkauf"
+    euer_line: 12
+    euer_line_label: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer"
   expense:
   - key: goods
-    label_de: Wareneinkauf
-    euer_line: Waren, Roh- und Hilfsstoffe
+    label_de: "Wareneinkauf"
+    euer_line: 27
+    euer_line_label: "Waren, Rohstoffe und Hilfsstoffe einschließlich der Nebenkosten"
   - key: shipping
-    label_de: Versandkosten
-    euer_line: Übrige Betriebsausgaben
+    label_de: "Versandkosten"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
   - key: fees_marketplace
-    label_de: Marktplatzgebühren
-    euer_line: Übrige Betriebsausgaben
+    label_de: "Marktplatzgebühren"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
   - key: software
-    label_de: Software und Hosting
-    euer_line: Übrige Betriebsausgaben
+    label_de: "Software und Hosting"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
   - key: packaging
-    label_de: Verpackung
-    euer_line: Übrige Betriebsausgaben
+    label_de: "Verpackung"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
   - key: advisory
-    label_de: Steuerberatung
-    euer_line: Rechts- und Steuerberatung
+    label_de: "Steuerberatung"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
   - key: postage
-    label_de: Porto
-    euer_line: Übrige Betriebsausgaben
+    label_de: "Porto"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"

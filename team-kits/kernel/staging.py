@@ -442,7 +442,8 @@ def freeze_report(
                 "The tray is shipped by the kit that renders reports; a project of another kit "
                 "delivers its results as Evidence artefacts instead. Remedy: record the artefact "
                 "as Evidence: `python scripts/harness.py evidence --kind "
-                "<test|review|acceptance> --related <item-id> --result <pass|fail> --summary "
+                "<test|review|acceptance> --related <item-id> --result <pass|fail|blocked> "
+                "--summary "
                 "\"what it shows\" --artifact-ref <staged path>`."
                 % REPORTS_DIRNAME)
         if not os.path.exists(ext_path(source)) or os.path.getsize(ext_path(source)) == 0:

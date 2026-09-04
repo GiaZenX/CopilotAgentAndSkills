@@ -6,6 +6,8 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
+_TEAM_KITS = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits")
 
 from kernel.state import CONFIRMING_EVIDENCE, _KERNEL_SET  # noqa: E402
 from kernel import approvals, backlog_types  # noqa: E402
@@ -611,3 +613,134 @@ def test_an_amendment_is_the_type_that_names_the_revision_it_amends():
         assert "acceptance_criteria" in signed, (
             "%s: a scope approval does not sign its criteria, so nothing backs the widening"
             % item_type)
+
+
+# -- the third Evidence outcome (FR-0082) and a remedy read off the table (BUG-0089) ------------
+
+def test_only_the_passing_result_opens_anything_the_kernel_decides():
+    """FR-0082: adding a verdict value must not open a door, and this measures that it does not.
+
+    THE PROPERTY, over the RUNNING readers rather than over a docstring: every place in the kernel
+    and in the two kits that ship `gate_git` which decides on an Evidence `result` compares against
+    `PASSING_RESULT` -- so a value added to `EVIDENCE_RESULTS` arrives CLOSING. Read out of the
+    source with `ast`, because a grep over the text would be satisfied by the comment that claims
+    it.
+
+    RED WITHOUT THE FIX: with any of those comparisons written as the literal `"pass"` again the
+    claim would still hold by accident, so what this really catches is the other direction -- a
+    reader that compares against `"fail"` (or against any member of the vocabulary that is not the
+    passing one), which is how a third value becomes a silently-opening one.
+    """
+    import ast as _ast
+
+    readers = [os.path.join(_TEAM_KITS, "kernel", name)
+               for name in ("report.py", "state.py")]
+    readers += [os.path.join(_TEAM_KITS, kit, "hooks", "gate_git.py")
+                for kit in ("dev-team", "research-team")]
+    closing = set(backlog_types.EVIDENCE_RESULTS) - {backlog_types.PASSING_RESULT}
+    offences = []
+    for path in readers:
+        tree = _ast.parse(open(path, encoding="utf-8").read())
+        for node in _ast.walk(tree):
+            # `<something>["result"] <op> <constant>` and `.get("result") <op> <constant>`
+            if not isinstance(node, _ast.Compare) or len(node.comparators) != 1:
+                continue
+            if not _reads_the_result_field(node.left):
+                continue
+            for other in node.comparators:
+                if isinstance(other, _ast.Constant) and other.value in closing:
+                    offences.append("%s:%d compares a verdict against %r"
+                                    % (os.path.basename(path), node.lineno, other.value))
+    assert not offences, (
+        "a reader that decides on a NON-passing verdict value by name stops deciding the day the "
+        "vocabulary grows: %s" % "; ".join(offences))
+
+
+def _reads_the_result_field(node):
+    """True when this expression reads an Evidence `result` -- subscript or `.get`."""
+    import ast as _ast
+
+    if isinstance(node, _ast.Subscript) and isinstance(node.slice, _ast.Constant):
+        return node.slice.value == "result"
+    if (isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute)
+            and node.func.attr == "get" and node.args
+            and isinstance(node.args[0], _ast.Constant)):
+        return node.args[0].value == "result"
+    return False
+
+
+def test_a_blocked_verdict_is_in_the_vocabulary_and_carries_its_own_field_name():
+    """FR-0082: the two names the rest of the kernel spells the third outcome with."""
+    assert backlog_types.BLOCKED_RESULT in backlog_types.EVIDENCE_RESULTS
+    assert backlog_types.PASSING_RESULT in backlog_types.EVIDENCE_RESULTS
+    assert backlog_types.BLOCKED_REASON_FIELD in backlog_types.OPTIONAL_FIELDS["EVD"]
+    # ...and it is NOT required of the type: an EVD is immutable, so a required field here would
+    # turn every Evidence a project already holds into a validator error no command can repair.
+    assert backlog_types.BLOCKED_REASON_FIELD not in backlog_types.REQUIRED_FIELDS["EVD"]
+
+
+@pytest.mark.parametrize("item_type", sorted(AUTOMATA))
+def test_the_replanning_route_names_only_edges_the_automaton_has(item_type):
+    """BUG-0089, both ends, over every shipped automaton.
+
+    END ONE -- nothing NAMED is unwalkable: every target the route offers is an edge the automaton
+    really has from that status. That is the half the bug was: `TSK` READY offered a transition to
+    DRAFT and the automaton has no edge into DRAFT at all.
+
+    END TWO -- nothing WALKABLE that belongs in the route is left out: from each status, the route
+    is exactly the reachable initial status plus the reachable terminals, so a new back-edge into
+    the planning status starts being offered without an edit here.
+    """
+    from kernel.backlog_types import replanning_route
+
+    automaton = AUTOMATA[item_type]
+    for status in sorted(automaton.states):
+        route = replanning_route(item_type, status)
+        reachable = {dst for src, dst in automaton.allowed if src == status}
+        for target in route["replan"] + route["close"]:
+            assert target in reachable, (item_type, status, target)
+        assert set(route["replan"]) == reachable & {automaton.initial}
+        assert set(route["close"]) == reachable & automaton.terminals
+
+
+# -- the milestone type (DEC-0064, FR-0079 -- the kernel half of stream A's seam) ---------------
+
+def test_the_milestone_automaton_can_only_end_a_milestone_once():
+    """DEC-0064 (2): `REACHED` through the chain, `MISSED`/`DROPPED` only from `PLANNED`.
+
+    THE PROPERTY, and it is why the terminals are not all reachable from everywhere: a milestone
+    that has been reached cannot afterwards have been missed or called off. The construction
+    self-check inside `_Automaton` already refuses an edge out of a terminal at import time; what
+    this adds is the direction that check cannot see -- that the two ways of NOT reaching it are
+    open exactly while the milestone is still ahead.
+    """
+    automaton = AUTOMATA["MST"]
+    assert automaton.initial == "PLANNED"
+    assert automaton.terminals == frozenset(("REACHED", "MISSED", "DROPPED"))
+    assert automaton.allowed == {("PLANNED", "REACHED"), ("PLANNED", "MISSED"),
+                                 ("PLANNED", "DROPPED")}
+    assert backlog_types.INVALIDATION_TARGET.get("MST") is None
+    assert not [pair for pair in approvals.APPROVAL_TRANSITIONS if pair[0] == "MST"], (
+        "a milestone is a date, not something a user signs (DEC-0064 (2))")
+
+
+def test_every_declared_date_field_is_a_field_its_type_really_has():
+    """`DATE_FIELDS` is a map of names beside a contract, so both its ends are measured.
+
+    END ONE -- every declared date field is in that type's own field contract (required or
+    optional): a rule about a field the type does not have is a rule that never fires.
+
+    END TWO -- and this is the one that catches a half-applied seam: `date.fromisoformat` has to be
+    able to read the values the shipped items carry, so the declaration is not merely well-formed
+    but usable. Asserted by parsing a value the field is documented to hold.
+    """
+    from datetime import date
+
+    from kernel.backlog_types import DATE_FIELDS, OPTIONAL_FIELDS, REQUIRED_FIELDS
+
+    for item_type, fields in DATE_FIELDS.items():
+        contract = (set(REQUIRED_FIELDS.get(item_type, ()))
+                    | set(OPTIONAL_FIELDS.get(item_type, ())))
+        for field in fields:
+            assert field in contract, (item_type, field)
+    assert date.fromisoformat("2026-10-01")

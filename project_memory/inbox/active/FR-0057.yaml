@@ -32,3 +32,4 @@ created: '2026-08-24T13:45:04'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   JA, BAUEN -- measure first what QA starts today on a small change in a long-suite
   project, then the DEC-0050 measure into the role where it acts.'
+related_pr: PR-0003

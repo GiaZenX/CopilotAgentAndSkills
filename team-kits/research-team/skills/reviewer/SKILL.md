@@ -18,13 +18,14 @@ analysis `src/**`.
 
 ## How you record an Evidence item
 Every verdict below becomes an **Evidence** item, and there is exactly one way to make one:
-`python scripts/harness.py evidence --kind <review|acceptance|test> --result <pass|fail> --related <TSK-nnnn> --summary "…"
+`python scripts/harness.py evidence --kind <review|acceptance|test> --result <pass|fail|blocked> --related <TSK-nnnn> --summary "…"
 --artifact-ref <path>`, run from the project root and never with `--root` (the write gate refuses a
 command line that names the state directory, and the entry point refuses the flag itself). You never write the file;
 the kernel captures the item and allocates its id, which is what you put in your envelope's `evidence`.
 Two things the gates depend on:
 - **`--result` is the verdict the merge gate reads.** It is `pass` or `fail` and nothing else; a run that
   could not decide is a `fail` whose summary says why — "could not check" is not a pass.
+- **`--result blocked` is for a run that did not HAPPEN** — no browser, no device, no network. It needs `--blocked-reason "<what prevented the run>"`; without that sentence the kernel does not take the record. A blocked verdict closes the merge exactly like a failure; it only says something different — nothing was checked. Use it instead of a `fail` whose summary explains an absent tool, so the two are told apart afterwards.
 - **`--artifact-ref` is REQUIRED and its paths are relative to the state directory**
   (`staging/<your task-id>/rerun.log`), never spelled with a `project_memory/` prefix —
   `gate_write_scope` refuses any write-capable command line that names the state directory, your own

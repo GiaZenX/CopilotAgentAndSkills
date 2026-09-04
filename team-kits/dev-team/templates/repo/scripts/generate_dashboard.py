@@ -2,41 +2,45 @@
 """
 generate_dashboard.py - owned by: PM (generated artifact source)
 
-Renders `project_memory/generated/dashboard.html` from the kernel's regenerated index
-(`generated/index.yaml`) plus the active item files (spec II.7). It writes only into
-`generated/`, which is regenerable and never committed (spec II.2), so the dashboard can never
-become a second source of truth: it reports status, it never sets one.
+Renders `project_memory/generated/dashboard.html`: the repository's VITAL SIGNS and a pointer to the
+backlog board. It writes only into `generated/`, which is regenerable and never committed (spec
+II.2), so it can never become a second source of truth: it reports status, it never sets one.
+
+WHY IT NO LONGER RENDERS ITEMS (DEC-0065 (1), FR-0075). Until 2026-09-03 this script read the
+kernel's index and the item files and drew the whole backlog a second time, beside the board
+`kernel/board.py` writes from the same index. The design pass measured the two against one copy of
+the harness repo (`project_memory/staging/TSK-0115/parity.md`, which carries the figures): every
+sum agreed that day, and the two disagreed the moment the store held something unusual -- this file
+counted yaml FILES under `archive/`, the board counted item IDS of a type, so one planted foreign
+yaml gave three different archive totals. Two programs that agree by inspection are two numbers a
+reader has to reconcile. So the board is the one renderer of items, and what is left here is the
+one thing it does NOT know: the shape of the repository's own source tree.
+
+WHAT STAYS FROM FR-0030, because the wish that rebuilt this page kept all three: the documented
+refresh trigger (`python scripts/generate_dashboard.py`, the end-of-phase checklist calls it
+non-skippable), kit ownership (this file ships with the dev kit and is installed by its scaffold),
+and the one-file property (the generated page opens by double-click and loads nothing).
 
 WHY IT LIVES IN scripts/ AND NOT IN project_memory/. Measured, not assumed: `gate_write_scope`
 refuses every write-capable command line that NAMES the state directory, and `python` is not a
 read-only verb. A script inside the state directory cannot be started without naming it, so while
-it lived there the documented command exited 2 for every agent — the one the constitution calls
-non-skippable. The script therefore moved out; the OUTPUT still goes to
-`project_memory/generated/dashboard.html`, exactly the way `scripts/retro.py` writes its own
-diagnostic layer.
+it lived there the documented command exited 2 for every agent. The script therefore moved out; the
+OUTPUT still goes to `project_memory/generated/dashboard.html`, exactly the way `scripts/retro.py`
+writes its own diagnostic layer.
 
-WHAT CHANGED FROM V1 AND WHY. V1 read the status monoliths, archived the previous HTML into a
-committed `dashboard_history/`, and diffed against a snapshot file. All three are gone: the
-monoliths are dissolved into typed items, the history is git's job (spec II.7 "keine committete
-Dashboard-History"), and a "changes since last run" panel made the output depend on when it last
-ran — a generated artifact that is not a pure function of the state is one nobody can reproduce.
-
-DERIVED, NOT LISTED. The item types, their directories, their status chains and which statuses
-count as finished all come from `kernel.backlog_types`; the views below assign types to the four
-TYPE sections of spec II.7 (its fifth section, Archive, is a counts-only tab rather than a view
-over types) and anything unassigned lands in "Other" WITH a warning on stdout, so a new item type
-shows up on the dashboard the day it ships instead of silently disappearing from it.
+WHAT IT STILL READS THE INDEX FOR: how many items the project has and when the index was written.
+Not to draw them -- to say, honestly, whether there is anything on the board at all and how fresh it
+is. A missing index is FATAL unless the project has captured nothing; the two are different truths
+and V1's dashboard confused them for days.
 
 Dependency: the installed state kernel (`.claude/kernel`, placed by the scaffold), the kit's
 `scripts/kit_checks.py` (which DEFINES what counts as a source file, so the vitals panel and the
-file-budget gate can never disagree) and PyYAML. The GENERATED html stays dependency-free and
-opens by double-click.
+file-budget gate can never disagree) and PyYAML. The GENERATED html stays dependency-free.
 
 Usage:
   python scripts/generate_dashboard.py
 """
 
-import collections
 import datetime
 import json
 import os
@@ -55,27 +59,12 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(BASE_DIR)
 TEMPLATE = os.path.join(BASE_DIR, "progress.dashboard.template.html")
 
-# A view is one spec II.7 section: which item types it shows, and whether it hides finished work.
-View = collections.namedtuple("View", "id label types hide_done")
-
-# Spec II.7 names the sections; this maps item TYPES onto them. It is a presentation decision,
-# not a second copy of the type registry — `assign_views()` below routes every type
-# `backlog_types.ACTIVE_DIRS` knows and reports the ones no section claims. `hide_done` carries
-# the one filter the spec asks for, on the one view it asks for it: "Delivery (Task-Board,
-# Erledigtes verborgen)". WHICH statuses count as finished is deliberately not written here —
-# that is `AUTOMATA[type].terminals`, so a chain change moves the board with it.
-VIEWS = (
-    View("product", "Product", ("PR", "RQ", "FR", "CR", "BUG"), False),
-    View("delivery", "Delivery", ("TSK", "PROC", "HYP", "EXP"), True),
-    View("system", "System", ("SR", "INV", "ARC", "WFR", "DSN"), False),
-    View("decisions", "Decisions", ("DEC", "APR", "EVD"), False),
-)
-# A type nobody assigned is shown unfiltered: hiding items of a type this file does not
-# understand is precisely the disappearance the fallback exists to prevent.
-OTHER_VIEW = View("other", "Other", (), False)
-
-# Spec II.7: at most 50 items per page, details lazy, no archive or full text in the initial DOM.
-PAGE_SIZE = 50
+# The file the kernel writes beside the index, and the one this page points at. A RELATIVE name,
+# because both files live in `generated/` and an absolute path would break the moment the project
+# is opened from anywhere else. The name is the kernel's (`kernel.board.FILENAME`) and is not
+# imported from there: this script runs against the INSTALLED bundle, and a pointer that could not
+# be resolved would cost the page rather than the link.
+BOARD_FILENAME = "board.html"
 
 
 def load_bridge():
@@ -100,34 +89,8 @@ def load_bridge():
     return _kernel
 
 
-def load_backlog_types(bridge):
-    try:
-        return bridge.kernel_module("backlog_types", REPO_ROOT)
-    except Exception as exc:  # noqa: BLE001 — the remedy matters more than the type here
-        sys.stderr.write("[dashboard] the state kernel is unavailable (%s).\n" % exc)
-        sys.exit(1)
-
-
-def assign_views(active_dirs):
-    """([View, ...], unassigned) covering EVERY type.
-
-    A type no section claims is not dropped — it goes to "Other" and is named on stdout, because
-    the failure mode worth designing against is a whole item type quietly missing from the only
-    overview a user looks at.
-    """
-    claimed, views = set(), []
-    for view in VIEWS:
-        present = tuple(t for t in view.types if t in active_dirs)
-        claimed.update(present)
-        views.append(view._replace(types=present))
-    unassigned = tuple(sorted(set(active_dirs) - claimed))
-    if unassigned:
-        views.append(OTHER_VIEW._replace(types=unassigned))
-    return views, list(unassigned)
-
-
 def load_index(index_path, bridge):
-    """(rows, yaml, notice). A missing index is FATAL — unless there is no state at all.
+    """(rows, generated_at, notice). A missing index is FATAL — unless there is no state at all.
 
     An empty page must never stand in for "the index has not been generated": those are two
     different truths and V1's dashboard confused them for days. There is ONE case where they are
@@ -145,10 +108,10 @@ def load_index(index_path, bridge):
         sys.exit(1)
     if not os.path.isfile(index_path):
         if bridge.state_is_empty(REPO_ROOT):
-            return [], yaml, ("No items captured yet — nothing has been written to "
-                              "project_memory/, so there is no state to report on.")
+            return [], "", ("No items captured yet — nothing has been written to "
+                            "project_memory/, so there is no state to report on.")
         sys.stderr.write(
-            "[dashboard] no %s, but %s holds items — the dashboard renders the kernel's index, it "
+            "[dashboard] no %s, but %s holds items — the dashboard reports the kernel's index, it "
             "does not rebuild it. Remedy: `python scripts/harness.py generate-index`, from the "
             "project root — and ANY kernel state write rebuilds the index as part of the same "
             "commit anyway, so a missing index means nothing has written state here yet.\n"
@@ -166,114 +129,11 @@ def load_index(index_path, bridge):
     rows = (data or {}).get("items") if isinstance(data, dict) else None
     if not isinstance(rows, list):
         sys.stderr.write("[dashboard] generated/index.yaml carries no `items:` list — it is "
-                         "truncated or hand-edited. Delete it; `python scripts/harness.py generate-index` or the next "
-                         "kernel state write rebuilds it.\n")
+                         "truncated or hand-edited. Delete it; `python scripts/harness.py "
+                         "generate-index` or the next kernel state write rebuilds it.\n")
         sys.exit(1)
-    return [row for row in rows if isinstance(row, dict)], yaml, ""
-
-
-def read_item(yaml, state_dir, active_dirs, item_type, item_id):
-    """The item file behind an index row, or {} when it cannot be read."""
-    directory = active_dirs.get(item_type)
-    if not directory or not item_id:
-        return {}
-    path = os.path.join(state_dir, directory, "%s.yaml" % item_id)
-    try:
-        with open(path, encoding="utf-8") as fh:
-            body = yaml.safe_load(fh)
-    except (OSError, yaml.YAMLError):
-        return {}
-    return body if isinstance(body, dict) else {}
-
-
-def next_status(automata, item_type, status):
-    """The next status on this type's chain — spec II.7's "nächster Schritt", derived.
-
-    Taken from the automaton rather than from a table of advice: the chain IS the sequence of
-    steps, so a chain change moves the dashboard with it, and a terminal or off-chain status
-    honestly has no next step.
-    """
-    auto = automata.get(item_type)
-    chain = list(getattr(auto, "chain", ()) or ())
-    if status in chain and chain.index(status) + 1 < len(chain):
-        return chain[chain.index(status) + 1]
-    return ""
-
-
-def is_finished(automata, item_type, status):
-    """True when this status is TERMINAL for this type, i.e. the item is done with.
-
-    Terminal items stay in `<type>/active/` until somebody archives them explicitly (the kernel
-    has no auto-archive), so without this filter a Delivery board fills up with VALIDATED and
-    CANCELLED tasks that push the open work off the first page.
-    """
-    return status in getattr(automata.get(item_type), "terminals", frozenset())
-
-
-def relations(body, parse_id):
-    """Every item id this item points at through a TOP-LEVEL field.
-
-    A relation is DEFINED as "a field value that parses as an item id" instead of as a list of
-    field names (`derives_from`, `dependencies`, `related_pr`, ...). The list version goes stale
-    the first time a type gains a reference field; this version cannot. It reads top-level
-    scalars and top-level lists of scalars; an id buried in a nested mapping is not found, and no
-    shipped schema puts one there.
-
-    `id` and `legacy_fields` are skipped for opposite reasons: the item's own id would make every
-    item its own relation, and a legacy id is a former NAME of this item rather than a pointer to
-    another one — and a V1 name can share a V2 prefix, so `parse_id` would accept it happily. The
-    second name was `legacy_ids` for a round and no such field ever existed; what `kernel/migrate`
-    writes is `legacy_fields`. The skip is BELT-AND-BRACES rather than the only thing standing
-    between a legacy id and a false relation: `legacy_fields` is a MAPPING, and the rule above
-    reads top-level scalars and lists of scalars only, so its contents are already out of reach.
-    It is named so that flattening that field one day cannot silently create relations.
-    """
-    found = []
-    # `key=str`: a hand-written item with mixed top-level key types (`1: x` next to `a: y`) makes a
-    # bare sort raise TypeError, and this generator would die with a traceback instead of showing
-    # the item — `corrupt` exists for exactly that item.
-    for key, value in sorted(body.items(), key=lambda kv: str(kv[0])):
-        if key in ("id", "legacy_fields"):
-            continue
-        for candidate in (value if isinstance(value, (list, tuple)) else [value]):
-            if not isinstance(candidate, str):
-                continue
-            try:
-                parse_id(candidate)
-            except ValueError:
-                continue
-            if candidate not in found:
-                found.append(candidate)
-    return found
-
-
-def archive_summary(state_dir):
-    """Counts per type and year — never the archived items themselves.
-
-    Spec II.7 asks for an Archive view and forbids archive content in the initial DOM. Counts
-    answer "is there history here, and where" without embedding any of it; the items stay one
-    `archive/<type>/<year>/` directory listing away.
-    """
-    base = os.path.join(state_dir, "archive")
-    out, total = {}, 0
-    if not os.path.isdir(base):
-        return {"total": 0, "by_type": {}}
-    for item_type in sorted(os.listdir(base)):
-        type_dir = os.path.join(base, item_type)
-        if not os.path.isdir(type_dir):
-            continue
-        years = {}
-        for year in sorted(os.listdir(type_dir)):
-            year_dir = os.path.join(type_dir, year)
-            if not os.path.isdir(year_dir):
-                continue
-            count = sum(1 for name in os.listdir(year_dir) if name.endswith(".yaml"))
-            if count:
-                years[year] = count
-                total += count
-        if years:
-            out[item_type] = years
-    return {"total": total, "by_type": out}
+    return ([row for row in rows if isinstance(row, dict)],
+            str((data or {}).get("generated_at") or ""), "")
 
 
 def compute_repo_vitals():
@@ -309,9 +169,10 @@ def render(data):
     with open(TEMPLATE, "r", encoding="utf-8") as fh:
         template = fh.read()
     # `</` -> `<\/`: the JSON goes inside a <script> element, where the HTML parser ends the block
-    # at the first `</script>` regardless of JSON quoting — an item titled "fix </script> leak"
-    # would break out of the data block and into the document. `\/` is a legal JSON escape for
-    # `/`, so the parsed value is unchanged. (V1 shipped without this.)
+    # at the first `</script>` regardless of JSON quoting. Nothing item-derived reaches this block
+    # any more (the items are on the board), but a source-file PATH is still project content, so
+    # the escape stays where the parser is. `\/` is a legal JSON escape for `/`, so the parsed
+    # value is unchanged. (V1 shipped without this.)
     block = json.dumps(data, indent=2, ensure_ascii=False).replace("</", "<\\/")
     replacement = (
         '<script type="application/json" id="dashboard-data">\n'
@@ -334,62 +195,21 @@ def main():
         sys.exit(1)
 
     bridge = load_bridge()
-    backlog_types = load_backlog_types(bridge)
     state_dir = bridge.state_dir(REPO_ROOT)
     generated_dir = os.path.join(state_dir, "generated")
     output = os.path.join(generated_dir, "dashboard.html")
 
-    rows, yaml, notice = load_index(os.path.join(generated_dir, "index.yaml"), bridge)
-    views, unassigned = assign_views(backlog_types.ACTIVE_DIRS)
-
-    by_type = {}
-    for row in rows:
-        by_type.setdefault(str(row.get("type") or "?"), []).append(row)
-
-    view_data, rendered, hidden = [], 0, 0
-    for view in views:
-        # SORT and SLICE on the index rows, THEN read the item files: the sort key (type, id) is
-        # fully present in the index, so a 10,000-item project must not cost 10,000 YAML parses to
-        # show 50 rows.
-        kept = []
-        for item_type in view.types:
-            for row in by_type.get(item_type, []):
-                status = str(row.get("status") or "")
-                if view.hide_done and is_finished(backlog_types.AUTOMATA, item_type, status):
-                    hidden += 1
-                    continue
-                kept.append((item_type, str(row.get("id") or ""), status, row))
-        kept.sort(key=lambda t: (t[0], t[1]))
-        items = []
-        for item_type, item_id, status, row in kept[:PAGE_SIZE]:   # spec II.7: max 50 per page
-            body = read_item(yaml, state_dir, backlog_types.ACTIVE_DIRS, item_type, item_id)
-            items.append({
-                "id": item_id,
-                "type": item_type,
-                "title": str(row.get("title") or body.get("title") or ""),
-                "status": status,
-                "next": next_status(backlog_types.AUTOMATA, item_type, status),
-                "blocked_by": row.get("blocked_by") or "",
-                "revision": row.get("revision"),
-                "approved": bool(row.get("approval_ref")),
-                "corrupt": bool(row.get("corrupt")),
-                "relations": relations(body, backlog_types.parse_id),
-            })
-        rendered += len(items)
-        view_data.append({
-            "id": view.id,
-            "label": view.label,
-            "total": len(kept),
-            "items": items,
-        })
-
+    rows, index_generated_at, notice = load_index(
+        os.path.join(generated_dir, "index.yaml"), bridge)
     vitals = compute_repo_vitals()
+    board_path = os.path.join(generated_dir, BOARD_FILENAME)
     data = {
         "generated_at": datetime.datetime.now().replace(microsecond=0).isoformat(),
-        "page_size": PAGE_SIZE,
         "notice": notice,
-        "views": view_data,
-        "archive": archive_summary(state_dir),
+        "active_items": len(rows),
+        "index_generated_at": index_generated_at,
+        "board": BOARD_FILENAME,
+        "board_present": os.path.isfile(board_path),
         "repo_vitals": vitals,
     }
 
@@ -400,15 +220,16 @@ def main():
         fh.write(html)
 
     sys.stdout.write(
-        "Dashboard generated: %s (%d active item(s) in %d view(s), %d rendered, %d finished "
-        "hidden, %d archived)\n"
-        % (output, len(rows), len(view_data), rendered, hidden, data["archive"]["total"]))
+        "Dashboard generated: %s (vital signs only; %d active item(s) are on %s)\n"
+        % (output, len(rows), board_path))
     if notice:
         sys.stdout.write("[dashboard] %s\n" % notice)
-    if unassigned:
+    if not data["board_present"] and rows:
+        # SAID, not guessed at: the link would open nothing, and the remedy is a kernel command
         sys.stdout.write(
-            "[dashboard] item type(s) %s belong to no view and were rendered under 'Other' — "
-            "assign them in generate_dashboard.VIEWS\n" % ", ".join(unassigned))
+            "[dashboard] %s does not exist yet, so the link on this page opens nothing. The board "
+            "is written by every kernel state write; run `python scripts/harness.py "
+            "generate-index` to produce it.\n" % board_path)
     if vitals["largest"]:
         top = vitals["largest"][0]
         sys.stdout.write(

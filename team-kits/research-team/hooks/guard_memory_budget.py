@@ -109,7 +109,7 @@ BUDGETS = (
 # Item ids are project state (spec II.2 `<TYP>-nnnn`, plus the V1 `PRD-` an imported item
 # keeps under `legacy_fields`, which is the field `kernel/migrate.py` actually writes --
 # `legacy_ids` was named here for a round and never existed anywhere).
-_ID = r"(?:PR|PRD|RQ|FR|CR|BUG|SR|TSK|PROC|INV|APR|HYP|EXP|DEC|EVD|ARC|WFR|DSN)-\d{4,}"
+_ID = r"(?:PR|PRD|RQ|FR|CR|BUG|SR|TSK|PROC|INV|APR|HYP|EXP|DEC|EVD|ARC|WFR|DSN|MST)-\d{4,}"
 # IGNORECASE: `tsk-0042` is the same reference typed in a hurry, and the prefixes are specific
 # enough that lowercase costs no false positives.
 _ITEM_ID_RX = re.compile(r"\b(" + _ID + r")\b", re.ASCII | re.IGNORECASE)

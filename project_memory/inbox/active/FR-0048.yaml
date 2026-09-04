@@ -22,3 +22,4 @@ created: '2026-08-17T18:10:08'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   JA, AUSROLLEN -- EXTERNAL APPROVAL GIVEN (DEC-0045): roll user/claude/CLAUDE.md
   + user/codex/AGENTS.md to the home directory with the next install run, backup first.'
+related_pr: PR-0003

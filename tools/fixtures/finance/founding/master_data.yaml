@@ -1,18 +1,27 @@
+euer_form:
+  year: 2025
+  source: "öffentliche Ausfüllhilfen zur Anlage EÜR, gelesen 2026-09-03 — kein amtlicher Vordruck"
+  gwg_limit_net: 800
 categories:
   income:
   - key: sales_local
-    label_de: Verkauf Inland
-    euer_line: Betriebseinnahmen
+    label_de: "Verkauf Inland"
+    euer_line: 12
+    euer_line_label: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer"
   - key: sales_eu
-    label_de: Verkauf EU (OSS)
-    euer_line: Betriebseinnahmen
+    label_de: "Verkauf EU (OSS)"
+    euer_line: 12
+    euer_line_label: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer"
   expense:
   - key: office_supplies
-    label_de: Büromaterial
-    euer_line: Sonstige Betriebsausgaben
+    label_de: "Büromaterial"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
   - key: purchases
-    label_de: Wareneinkauf
-    euer_line: Wareneingang
+    label_de: "Wareneinkauf"
+    euer_line: 27
+    euer_line_label: "Waren, Rohstoffe und Hilfsstoffe einschließlich der Nebenkosten"
   - key: insurance
-    label_de: Versicherung
-    euer_line: Sonstige Betriebsausgaben
+    label_de: "Versicherung"
+    euer_line: 53
+    euer_line_label: "Beiträge, Gebühren, Abgaben und Versicherungen"

@@ -27,15 +27,24 @@ produce `answers` at all (the platform writes them, and the PreToolUse hook
 pins the question the user saw).
 The guarantee is CONDITIONAL on two things NEITHER library code NOR any
 in-process check can establish (measured 2026-07-25, see
-_assert_minting_caller): (i) only the PostToolUse hook reaches `mint` -- but the
-hook is meant to be run with a payload on stdin, so anyone able to execute
-`python <hooks>/gate_approval.py < forged.json` mints, and the forged payload is
-assembled from the readable pending request; and (ii) `approvals/pending/` is
-kernel-only territory (the codes sit there in cleartext, and the question text
-even names the path). BOTH need a Bash/PowerShell-level guard, because
-`guard_harness_selfmod` gates only Edit|Write|MultiEdit. Until that guard
-exists, `approval_provenance` is `unverified` and the enforcement mode is
-`audited` -- and `python scripts/harness.py doctor` must compute that rather than assert it.
+_assert_minting_caller): (i) only a RECOGNISED minting route reaches `mint` --
+but the hook is meant to be run with a payload on stdin, so anyone able to
+execute `python <hooks>/gate_approval.py < forged.json` mints, and the forged
+payload is assembled from the readable pending request; and (ii)
+`approvals/pending/` is kernel-only territory (the codes sit there in cleartext,
+and the question text even names the path). BOTH need a Bash/PowerShell-level
+guard, because `guard_harness_selfmod` gates only Edit|Write|MultiEdit. Until
+that guard exists, `approval_provenance` is `unverified` and the enforcement mode
+is `audited` -- and `python scripts/harness.py doctor` must compute that rather than assert it.
+
+THERE ARE TWO ROUTES SINCE FR-0083, and (i) says "a recognised route" rather than
+"the hook" for that reason: the approval hook, which means a human answered the
+provider's question, and `kernel.sdk_approval`, which an embedding program calls
+from the Agent SDK's `canUseTool` callback. Which one minted is STAMPED on the
+approval (`MINTED_VIA_FIELD`) and read back by `approval_card`, because the
+sentence "a token exists, so a human answered" stops holding the day a project
+embeds the SDK. What the second route widens, and what still bounds it, is
+measured and named as `H133` in `docs/POST_V2_WISHLIST.md`.
 
 Bundling (user decision 2026-07-24): one analysis/scope APR may cover several
 analysis tasks LISTED in its subject manifest.
@@ -51,13 +60,29 @@ import time
 import unicodedata
 import uuid
 
-from .backlog_types import AUTOMATA, HASHED_FIELDS, parse_id
+from .backlog_types import AUTOMATA, HASHED_FIELDS, ROOT_TYPE_BY_KIT, parse_id
 from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso, names_a_drive
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
              "kit_update", "filing_correction", "filing_rule", "document_proposal",
-             "document_revision")
+             "document_revision", "plan")
+# THE PLAN-LEVEL APPROVAL (FR-0074). One answer for the confirmed list of product goals, after
+# which the per-goal scope question is not asked again. Measured before it existed, over the
+# shipped automata: a root goal carries THREE user approvals -- `scope`, `delivery`, `acceptance`
+# -- so a plan of ten goals is thirty approval questions from the automaton alone, and the user
+# counted them himself (FR-0074, Canyon audit 2026-08-30).
+PLAN_KIND = "plan"
+# THE ONE KIND A PLAN APPROVAL STANDS IN FOR, and it is a property rather than a preference: a
+# plan approval can only answer the question the PLAN ITSELF answers -- "is this goal, with these
+# acceptance criteria, wanted" -- because that is the content its manifest hashes. `delivery` and
+# `acceptance` ask about work that has HAPPENED (their manifests name `planned_tasks`, `risks`,
+# `delivered_commit`, `evidence_refs`), and no plan can settle that in advance. So the delivery
+# side stays per goal, which is what FR-0074 (4) demands as the counterweight to the wider
+# approval. Both ends are measured against the running manifests --
+# `tools/test_approvals_dispatch.py::test_a_plan_can_only_stand_in_for_the_question_a_plan_answers`
+# turns red both if this kind stops existing and if another kind ever becomes plan-derivable.
+PLAN_COVERED_KIND = "scope"
 # kinds that are time-boxed rather than content-invalidated (spec II.2 APR field
 # list: "expires (routine/analysis)")
 # `push` expires like the others, and for the sharpest reason of the three: a
@@ -98,7 +123,11 @@ EXPIRING_KINDS = frozenset(("routine", "analysis", "push", "preset", "kit_update
 # Granting them the blanket route instead would authorise unlimited IMPLEMENTATION
 # work under a still-DRAFT root, and because their manifests are not item-derived
 # no content hash could catch an out-of-band edit of that root either.
-ROOT_DISPATCH_KINDS = frozenset(("scope", "delivery"))
+# `plan` rides here for the same reason `scope` does and by the same route: it is the approval the
+# root PRESENTS for the very question `scope` answers, so a root covered by a live plan approval
+# authorises the same specialist dispatch a per-goal scope approval would. Leaving it out would
+# build the plan approval and then refuse every task under the goals it covers.
+ROOT_DISPATCH_KINDS = frozenset(("scope", "delivery", PLAN_KIND))
 
 # WHAT A `routine` APPROVAL IS BOUND TO. Spec II.2: "`routine` (z. B. Auditor-Takt) ist gebunden
 # an Rolle, Read-only-Scope, Trigger, Ablaufdatum und jederzeit widerrufbar"; II.10a: the approval
@@ -744,17 +773,109 @@ def document_revision_subject_manifest(kit_document, proposal, base, proposed, r
             "reason": _one_line(reason)}
 
 
+GOAL_ITEM_FIELD = "item"
+GOAL_SCOPE_HASH_FIELD = "scope_hash"
+
+
+def plan_goals(state: ProjectState) -> list:
+    """The product goals a plan approval would cover, as hashable records (FR-0074).
+
+    WHICH ITEMS ARE GOALS is derived twice over and listed nowhere: a type is a product root when
+    `backlog_types.ROOT_TYPE_BY_KIT` names it (the same map the delivery-verdict rule and the
+    scaffold read), and a root is still ASKING its scope question when it stands in the source
+    status of its own `(type, PLAN_COVERED_KIND)` edge. A goal whose scope is already settled is
+    therefore not in the list -- putting it in would let a later edit of a finished goal kill the
+    approval covering the unfinished ones.
+
+    WHAT EACH RECORD CARRIES, and why each of the three: the id, so the user reads WHICH goals;
+    the revision, so an item the kernel has moved on stops being covered; and
+    `subject_manifest_hash(item_subject_manifest(item, PLAN_COVERED_KIND))` -- the SAME hash a
+    single scope approval binds to, which is what makes the plan approval cover exactly as much of
+    a goal's content as the per-goal one did, no more. The title rides along because the user has
+    to be able to read the list; it is inside the hash like everything else here, so a retitled
+    goal re-opens the question.
+
+    SORTED BY ID, because the manifest is hashed and a directory listing is not an order.
+    `tools/test_approvals_dispatch.py::test_the_plan_covers_every_open_goal_and_only_those`.
+    """
+    goals = []
+    for item_type in sorted(set(ROOT_TYPE_BY_KIT.values())):
+        edge = APPROVAL_TRANSITIONS.get((item_type, PLAN_COVERED_KIND))
+        if edge is None:
+            continue
+        for stem, path in state.iter_active_items(item_type):
+            try:
+                item = state._read_yaml(path)
+            except Exception:  # noqa: BLE001 -- an unreadable file is no goal; validate reports it
+                continue
+            if not isinstance(item, dict) or item.get("status") != edge[0]:
+                continue
+            goals.append({
+                GOAL_ITEM_FIELD: str(item.get("id") or stem),
+                "title": str(item.get("title") or ""),
+                "revision": item.get("revision"),
+                GOAL_SCOPE_HASH_FIELD: subject_manifest_hash(
+                    item_subject_manifest(item, PLAN_COVERED_KIND)),
+            })
+    return sorted(goals, key=lambda goal: goal[GOAL_ITEM_FIELD])
+
+
+def plan_subject_manifest(goals) -> dict:
+    """The subject of a plan approval: the confirmed goal list, whole.
+
+    ONE KEY, and it holds the list rather than a count or a digest of it: what the user signs has
+    to be what the question shows (`_plan_target_form` renders every entry), and a plan
+    approval that hashed only a summary would let the list change under a matching hash.
+
+    A PLAN WITH NO OPEN GOAL IS REFUSED, at the builder, before anybody is asked to sign it: an
+    empty list is a permission bound to nothing -- exactly what `create_pending_request` refuses a
+    routine approval for -- and it would go on covering every goal captured afterwards, which is
+    the opposite of what the hash is for.
+    """
+    # FAIL-CLOSED ON A SUBJECT THIS CANNOT READ: anything that is not a goal record is dropped
+    # here, so a caller handing over a string or a half-built list lands on the refusal below
+    # rather than on a manifest describing something nobody can check.
+    goals = [dict(goal) for goal in (goals or []) if isinstance(goal, dict)]
+    if not goals:
+        raise ApprovalError(
+            "a plan approval covers the confirmed product goals and this project has none whose "
+            "scope is still open, so there is nothing to approve. Remedy: capture the goals first "
+            "-- a plan approval bound to an empty list would cover every goal captured after it.",
+            user_text="Es wurde keine Freigabe erteilt: es gibt noch keine Produktziele, die "
+                      "freigegeben werden könnten. " + NEXT_START_OVER)
+    return {"goals": goals}
+
+
+def _plan_target_form(manifest: dict) -> str:
+    """The plan as the user reads it: EVERY goal by id and title, never a count.
+
+    The same rule a revision card follows (`_document_revision_target_form`): this is the one
+    approval whose whole point is that one answer covers several items, so a question saying
+    "10 Ziele" would be asking for a signature on a number.
+    """
+    goals = manifest.get("goals") or []
+    return "den Plan aus %s" % "; ".join(
+        "%s „%s“ (Revision %s)" % (goal.get(GOAL_ITEM_FIELD), goal.get("title") or "ohne Titel",
+                                   goal.get("revision"))
+        for goal in goals)
+
+
 LINE_MANIFEST_BUILDERS = {"push": push_subject_manifest, "preset": preset_subject_manifest,
                           "kit_update": kit_update_subject_manifest,
                           "filing_correction": filing_correction_subject_manifest,
                           "filing_rule": filing_rule_subject_manifest,
                           "document_proposal": document_proposal_subject_manifest,
-                          "document_revision": document_revision_subject_manifest}
+                          "document_revision": document_revision_subject_manifest,
+                          PLAN_KIND: plan_subject_manifest}
 
-# How long an approval minted from a command-line manifest stays valid. Every kind in this map is
-# in `EXPIRING_KINDS`, so `create_pending_request` demands a date -- and the caller must not be the
-# one to choose how long, or the supervised party decides how long its own permission lasts.
-# One hour, on the reason every kind here shares: each is ALREADY bound to content that moves -- a
+# How long an approval minted from a command-line manifest stays valid, FOR THE KINDS THAT CARRY A
+# CLOCK AT ALL. Which those are is `EXPIRING_KINDS` and the caller asks it (`cli`, the
+# `request-approval` branch) rather than assuming every line kind expires: `plan` does not, because
+# what invalidates it is its own content -- each goal's revision and scope hash -- and
+# `create_pending_request` refuses an expiry on a kind that takes none. For the kinds that do, the
+# caller must not be the one to choose how long, or the supervised party decides how long its own
+# permission lasts.
+# One hour, on the reason those kinds share: each is ALREADY bound to content that moves -- a
 # push token to HEAD (see `push_subject_manifest`), a preset approval to the role set it names, a
 # kit update to the two release identities -- so this clock only bounds how long an UNUSED one
 # lingers, and an unused authorisation that outlives the working session is a standing permission
@@ -916,6 +1037,68 @@ def approved_content_hash(item_type: str, item: dict):
     return subject_manifest_hash({name: item.get(name) for name in fields})
 
 
+def _assert_the_plan_covers(request: dict, item: dict) -> None:
+    """Raise unless the plan behind `request` still covers `item` at its current content.
+
+    THE HASH-COVERED COPY IS THE ONE READ. `request` is the CONSUMED request, which is what
+    `consumed_request` proves the approval's provenance from and which spec II.2 keeps forever --
+    the APR file itself carries only the digest. So the goal list this walks is the list the user
+    signed, not a copy anybody could edit afterwards.
+
+    THREE WAYS A COVERED GOAL STOPS BEING ONE, and each is the same invalidation a per-goal
+    approval has: the goal is not in the list at all (captured after the plan was approved), the
+    kernel has moved it to another revision, or its scope content changed -- the last one measured
+    with `subject_manifest_hash(item_subject_manifest(item, PLAN_COVERED_KIND))`, i.e. the very
+    hash a single scope approval binds to. What that leaves open is what it leaves open there too
+    (see `_SCOPE_FIELDS`): an out-of-band edit of a field the scope manifest does not carry.
+    `tools/test_approvals_dispatch.py::test_a_plan_stops_covering_a_goal_the_moment_its_scope_moves`.
+    """
+    goals = {str(goal.get(GOAL_ITEM_FIELD)): goal
+             for goal in ((request.get("subject_manifest") or {}).get("goals") or [])
+             if isinstance(goal, dict)}
+    goal = goals.get(item["id"])
+    if goal is None:
+        raise ApprovalError(
+            "the approved plan does not list %s (it lists %s), so it approves nothing about this "
+            "item. Remedy: a goal captured after the plan was approved needs its own scope "
+            "approval, or a fresh plan approval over the current list."
+            % (item["id"], ", ".join(sorted(goals)) or "no goal at all"))
+    if goal.get("revision") != item.get("revision"):
+        raise ApprovalError(
+            "the approved plan covers %s at revision %s and the item is at %s -- the plan no "
+            "longer describes it. Remedy: re-run the plan approval over the current list."
+            % (item["id"], goal.get("revision"), item.get("revision")))
+    current = subject_manifest_hash(item_subject_manifest(item, PLAN_COVERED_KIND))
+    if current != goal.get(GOAL_SCOPE_HASH_FIELD):
+        raise ApprovalError(
+            "the content of %s changed since the plan was approved -- an out-of-band edit "
+            "invalidated the plan's cover for this goal (spec II.4 gate 4). Remedy: re-run the "
+            "plan approval, or restore the approved content." % item["id"])
+
+
+def live_plan_approval(state: ProjectState, item: dict):
+    """The plan approval in force for this item, or None -- the FR-0074 stand-in for `scope`.
+
+    ONE VALIDITY TEST, not a second one: this walks the stored approvals and asks
+    `assert_apr_in_force`, exactly as `assert_transition_approved` does for the item-bound kinds.
+    A plan that is revoked, unprovable, expired or no longer describing this goal simply does not
+    answer, and the caller reports "no approval in force" the way it always did.
+
+    NOT ASKED FIRST. `assert_transition_approved` looks for the item's OWN approval before it comes
+    here, so a per-goal approval still wins where one exists -- the plan is the fallback that makes
+    the goal walkable without one, never a replacement for the specific record.
+    """
+    for apr in _stored_approvals(state):
+        if apr.get("kind") != PLAN_KIND:
+            continue
+        try:
+            assert_apr_in_force(state, apr, item)
+        except ApprovalError:
+            continue
+        return apr
+    return None
+
+
 def assert_apr_in_force(state: ProjectState, apr: dict, item: dict) -> dict:
     """Raise unless this approval authorises anything about this item RIGHT NOW; return its request.
 
@@ -940,7 +1123,13 @@ def assert_apr_in_force(state: ProjectState, apr: dict, item: dict) -> dict:
     # provenance first: an approval that cannot show its minted request is not a user approval at
     # all, whatever else it says (spec II.12)
     request = consumed_request(state, apr)
-    if str(apr.get("item") or "") != item["id"]:
+    if apr.get("kind") == PLAN_KIND:
+        # A PLAN APPROVAL IS BOUND TO A LIST, NOT TO ONE ITEM (FR-0074), so the item test is the
+        # one below and the content test is inside it -- the goal's own scope hash. Everything
+        # else about "in force" is the same for both shapes, which is why this is a branch here
+        # rather than a second function beside it.
+        _assert_the_plan_covers(request, item)
+    elif str(apr.get("item") or "") != item["id"]:
         raise ApprovalError(
             "approval %s belongs to %r, not to %s. Remedy: obtain an approval for this item."
             % (apr_ref, apr.get("item"), item["id"]))
@@ -1040,6 +1229,15 @@ def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
             rejected.append("%s (%s): %s" % (apr.get("id") or name[:-5], apr.get("kind"), exc))
             continue
         return apr
+    if PLAN_COVERED_KIND in kinds:
+        # THE PLAN-LEVEL STAND-IN (FR-0074), and it is reached only after the item's OWN approvals
+        # were looked for and found wanting: a per-goal approval is the more specific record and
+        # keeps winning. What a plan approval may stand in for is `PLAN_COVERED_KIND` and nothing
+        # else -- the delivery side of every goal keeps asking the user, which is the counterweight
+        # this decision's own consequences name.
+        plan = live_plan_approval(state, item)
+        if plan is not None:
+            return plan
     # THE REMEDY NAMES THE COMMAND AND THE KIND, and the second half is not decoration: the KIND
     # is derived per edge, and a role that guesses it guesses wrong on the edges where the name of
     # the status does not match the name of the kind. `EXP DESIGNED -> APPROVED` is committed by a
@@ -1053,7 +1251,7 @@ def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
         "status no gate may read as approval.%s Remedy: run `python scripts/harness.py "
         "request-approval %s %s`%s and relay the printed question to the user VERBATIM -- their "
         "answer mints the approval AND walks this transition, so there is nothing left to "
-        "transition by hand afterwards.%s"
+        "transition by hand afterwards.%s%s"
         % (item["id"], from_status, to_status, "/".join(wanted), item["id"],
            item.get("revision"),
            (" The approvals that name this item do not count: %s." % "; ".join(rejected))
@@ -1062,6 +1260,13 @@ def assert_transition_approved(state: ProjectState, item: dict, item_type: str,
            "" if len(wanted) == 1
            else " (or %s in place of %s -- either kind commits this edge)"
                 % ("/".join(wanted[1:]), wanted[0]),
+           # THE OTHER ROUTE TO THE SAME EDGE, named last so the per-goal command stays the first
+           # thing a role reads: a plan approval covers this transition for every goal it lists
+           # (FR-0074), which is the one question a whole plan can answer at once.
+           (" One `%s` approval over the confirmed goal list covers this edge for every goal it "
+            "lists (`python scripts/harness.py request-approval %s`), and after it the scope "
+            "question is not asked per goal again." % (PLAN_KIND, PLAN_KIND)
+            if PLAN_COVERED_KIND in kinds else ""),
            _unwired_mint_note(state))
     )
 
@@ -1491,6 +1696,7 @@ def _document_revision_target_form(manifest: dict) -> str:
 
 
 TARGET_FORMS = {"push": _push_target_form, "preset": _preset_target_form,
+                PLAN_KIND: _plan_target_form,
                 "filing_correction": _filing_correction_target_form,
                 "filing_rule": _filing_rule_target_form,
                 "document_proposal": _document_proposal_target_form,
@@ -1584,6 +1790,135 @@ APPROVAL_QUESTION_TOOL = "AskUserQuestion"
 APPROVAL_QUESTION_EVENT = "PreToolUse"
 APPROVAL_MINT_EVENT = "PostToolUse"
 
+# WHO ANSWERED, RECORDED ON THE APPROVAL ITSELF (FR-0083, wishlist section 10). Until this field
+# existed the store held one kind of approval and one sentence about it -- "a token exists, so a
+# human answered" -- and that sentence was true only because `AskUserQuestion` can show a question
+# to nobody but a human. The Claude Agent SDK's `canUseTool` callback answers the SAME tool with
+# `{behavior: "allow", updatedInput: {questions, answers}}`, so the premise stops holding the day
+# a project embeds the SDK: a token then means "the embedding PROGRAM decided". The SDK does not
+# solve the trust question, it MOVES it -- out of the provider and into our code -- and the answer
+# to "who was the judge" has to survive in the record rather than in a sentence about the record.
+#
+# NOT A CLAIM THE CALLER MAKES. The route is derived from WHO IS RUNNING (`_assert_minting_caller`)
+# and stamped by `mint`; there is no parameter with which a caller could name its own provenance,
+# because that would be the supervised party writing its own credential -- the same defect as a
+# status the supervised party can set itself.
+MINTED_VIA_FIELD = "minted_via"
+# A human answered the provider's own approval question and the approval hook relayed that answer.
+INTERACTIVE_MINT = "user_answer_via_approval_hook"
+# An embedding program answered it through the Agent SDK's `canUseTool` callback
+# (`kernel.sdk_approval`). What it proves is exactly what it says: a program decided.
+PROGRAMMATIC_MINT = "program_answer_via_agent_sdk"
+
+# THE ACTS THIS PROJECT DOES NOT LET A PROGRAM DECIDE FOR THE USER, as a property and not a taste:
+# an act the project cannot take back out of its own resources. Publishing to a remote leaves the
+# machine; reinstalling the roles, replacing the kit release, writing the Aktenplan rule, moving or
+# deleting a document of record and unsaying something a kit document already records all change
+# the layer that does the enforcing, or the archive that is the record. Everything else this
+# kernel approves -- the scope, the delivery and the acceptance of a goal -- is a decision the
+# project can revisit inside itself.
+# TWO ENDS ARE MEASURED, because a set of names beside a vocabulary is exactly the shape that
+# outlives it: no member here is missing from `APR_KINDS`, and every kind of `APR_KINDS` is
+# classified one way or the other --
+# `tools/test_approvals_dispatch.py::test_every_approval_kind_is_classified_as_takeable_back_or_not`.
+IRREVERSIBLE_KINDS = frozenset(("push", "preset", "kit_update", "filing_correction",
+                                "filing_rule", "document_proposal", "document_revision"))
+
+
+def _assert_the_route_may_decide_this(route: str, kind: str) -> None:
+    """Refuse a PROGRAMMATIC mint of a permission the project cannot take back (FR-0083).
+
+    THE PROPERTY IS `IRREVERSIBLE_KINDS` and the rule is one line, because it is the same property
+    FR-0074 leaves as a question after a plan approval: what a program may not decide for the user
+    is what the user could not undo afterwards. Everything else the SDK route may mint -- and does,
+    which is the point of having it.
+
+    A KERNEL REFUSAL AND NOT A GATE ONE, because the token must not come into existence: a stored
+    `push` approval is read by `gate_push_token` in three kits, and a rule that let it be written
+    and then hoped every reader would check the provenance is the shape this kernel keeps removing.
+    The neighbouring half -- acting irreversibly on an item whose approval a program gave -- is a
+    gate question and is where `gate_git` asks it.
+    `tools/test_approvals_dispatch.py::test_a_program_cannot_mint_a_permission_the_project_cannot_take_back`.
+    """
+    if route == PROGRAMMATIC_MINT and kind in IRREVERSIBLE_KINDS:
+        raise ApprovalError(
+            "a %r approval authorises something this project cannot take back out of its own "
+            "resources, so a program may not mint it -- this request came through the Agent SDK "
+            "route and was refused. Remedy: ask the USER through the approval question; the "
+            "programmatic route mints the kinds a project can revisit inside itself (%s)."
+            % (kind, ", ".join(sorted(set(APR_KINDS) - IRREVERSIBLE_KINDS))),
+            user_text="Es wurde keine Freigabe erteilt: diese Freigabe kann nur ein Mensch geben "
+                      "— sie erlaubt einen Schritt, den das Projekt nicht selbst rückgängig "
+                      "machen kann. " + NEXT_START_OVER
+        )
+
+
+def minted_via(apr: dict) -> str:
+    """Which route minted this approval -- `INTERACTIVE_MINT` for a record that does not say.
+
+    THE DEFAULT IS NOT A GUESS AND NOT FAIL-OPEN: the programmatic route and this field arrived in
+    the same change, so an approval without the field was written when no program could mint at
+    all. What that costs is one thing and it is stated where it is measured -- a HAND-WRITTEN APR
+    file also carries no field, and reads as interactive here; it is worthless for a different
+    reason (`assert_apr_in_force` -> `consumed_request` cannot show its minted request), and this
+    function is not the place that check happens.
+    """
+    return str((apr or {}).get(MINTED_VIA_FIELD) or INTERACTIVE_MINT)
+
+
+def presented_approval_a_program_minted(state: ProjectState, item: dict):
+    """The approval an item PRESENTS when a program minted it -- otherwise None (FR-0083).
+
+    THE OTHER HALF OF `_assert_the_route_may_decide_this`. That one keeps a program from minting a
+    permission the project cannot take back; this one answers the question a gate asks about an
+    ITEM: was the authorisation this piece of work stands on given by a human. `gate_git` decides
+    on it before it merges or pushes, because a merge is exactly where an internally revisable
+    decision becomes an external fact.
+
+    `approval_ref` and not a store scan, deliberately, and the difference is the same one
+    `assert_transition_approved` names: `approval_ref` is the approval the item PRESENTS, which is
+    what the dispatch gate already reads and what a human sees on the item. An item that presents
+    nothing is not this function's finding -- "no approval at all" is the neighbouring gate's
+    business and its message is the useful one.
+
+    AN UNREADABLE OR MISSING APR IS NOT REPORTED AS PROGRAMMATIC. It proves nothing either way, and
+    the state validator reports a stale `approval_ref` as its own error; answering "a program did
+    it" on a missing file would be this function inventing a fact.
+    """
+    apr_ref = str((item or {}).get("approval_ref") or "")
+    if not apr_ref:
+        return None
+    try:
+        apr = read_apr(state, apr_ref)
+    except (ApprovalError, StateError, OSError):
+        return None
+    if not isinstance(apr, dict) or minted_via(apr) != PROGRAMMATIC_MINT:
+        return None
+    return apr
+
+
+def approval_card(apr: dict) -> str:
+    """What a minted approval says about itself, for the surfaces that announce one.
+
+    ONE COMPOSER, so the hook and the SDK bridge cannot come to describe the same record
+    differently -- the difference between them is precisely what the card has to make visible.
+    German, like every other line of this kernel a non-technical reader may end up in front of
+    (`build_question`, `ApprovalError.user_text`).
+
+    IT READS THE RECORD, it does not take the route as an argument: the provenance is a stored
+    field, so what the card says is what a later auditor reading the same file would say.
+    `tools/test_approvals_dispatch.py::test_the_card_names_the_route_that_minted_the_approval`.
+    """
+    route = minted_via(apr)
+    if route == PROGRAMMATIC_MINT:
+        origin = ("Erteilt von einem PROGRAMM (Agent SDK, canUseTool) — nicht von einem Menschen. "
+                  "Für Handlungen, die dieses Projekt nicht selbst zurücknehmen kann, zählt sie "
+                  "nicht (%s)." % ", ".join(sorted(IRREVERSIBLE_KINDS)))
+    else:
+        origin = "Erteilt von einem Menschen, über die Freigabe-Frage des Programms."
+    return "Freigabe %s (%s) für %s. %s" % (
+        apr.get("id"), apr.get("kind"), apr.get("item") or "keinen Vorgang", origin)
+
 
 def _is_same_file(left, right) -> bool:
     if not left or not right:
@@ -1595,11 +1930,20 @@ def _is_same_file(left, right) -> bool:
         return False
 
 
-def _assert_minting_caller() -> None:
-    """The mint must come from the approval hook, RUN AS the approval hook.
+SDK_BRIDGE_MODULE = "sdk_approval.py"
 
-    Three conditions, each closing a measured accidental path (phase-2 review
-    2026-07-25):
+
+def _assert_minting_caller() -> str:
+    """The mint must come from a recognised minting route -- and it RETURNS which one.
+
+    TWO ROUTES, and the return value is the whole point of there being two (FR-0083): the approval
+    hook, run as itself, which means a human answered the provider's question; and this package's
+    own `sdk_approval` bridge, which an embedding program calls from the Agent SDK's `canUseTool`
+    callback. The route is not something either caller may state -- it is read off WHO IS RUNNING
+    and stamped by `mint`, so no caller can write its own credential.
+
+    The hook route keeps all three conditions, each closing a measured accidental path (phase-2
+    review 2026-07-25):
     1. a `_kernel` bridge module is loaded, and the hook path we accept is
        derived from ITS `__file__`;
     2. the immediate caller's file IS that hook -- realpath+normcase, so a
@@ -1627,11 +1971,26 @@ def _assert_minting_caller() -> None:
     that exists, `python scripts/harness.py doctor` must report `approval_provenance: unverified`
     and the mode stays `audited`.
 
+    THE SDK ROUTE CANNOT CARRY CONDITION 3 AND DOES NOT PRETEND TO: the entry point of an
+    embedding program is that program, by construction, so only the immediate caller can be
+    checked. It is therefore WEAKER than the hook route by exactly one condition -- and since the
+    hook route was already worth nothing against a deliberate forger (see the paragraph above),
+    what the second route really widens is the ACCIDENTAL surface: any program that imports this
+    package and calls the bridge mints. That is the price of the SDK route rather than a defect in
+    it, it is why the stamp exists, and it is measured and named as `H133` in
+    `docs/POST_V2_WISHLIST.md`.
+
     Deliberately the LAST check in `mint`: every content refusal (wrong label,
     expired request, out-of-band edit, replay) is reported on its own terms
     first, so a caller-provenance failure never masks the real reason. No APR is
     written before it either way.
     """
+    frames = inspect.stack()
+    # [0] this function, [1] mint, [2] whoever called mint
+    caller = frames[2].filename if len(frames) > 2 else ""
+    if _is_same_file(caller, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                          SDK_BRIDGE_MODULE)):
+        return PROGRAMMATIC_MINT
     bridge = getattr(sys.modules.get("_kernel"), "__file__", None)
     if not bridge:
         raise ApprovalError(
@@ -1643,9 +2002,6 @@ def _assert_minting_caller() -> None:
                       "Freigabe-Dialog, und nur von dort zählt ein Ja. " + NEXT_START_OVER
         )
     expected = os.path.join(os.path.dirname(bridge), APPROVAL_HOOK)
-    frames = inspect.stack()
-    # [0] this function, [1] mint, [2] whoever called mint
-    caller = frames[2].filename if len(frames) > 2 else ""
     entry = getattr(sys.modules.get("__main__"), "__file__", None)
     if not _is_same_file(caller, expected) or not _is_same_file(entry, expected):
         raise ApprovalError(
@@ -1657,6 +2013,7 @@ def _assert_minting_caller() -> None:
             user_text="Es wurde keine Freigabe erteilt: die Freigabe wurde von einer anderen "
                       "Stelle als dem Freigabe-Dialog angefordert. " + NEXT_START_OVER
         )
+    return INTERACTIVE_MINT
 
 
 def _stored_approvals(state: ProjectState):
@@ -1844,7 +2201,7 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
                 "and the state validator flags hand edits.)" % request_id,
                 user_text=_gone_request_user_text(state, request_id)
             ) from None
-        if time.time() > float(request["expires_at_epoch"]):
+        if has_expired(request):
             raise ApprovalError(
                 "approval request %s expired. Remedy: create a fresh request "
                 "and ask again -- expired requests never mint." % request_id,
@@ -1919,8 +2276,10 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
             )
         # LAST gate before the approval exists: provenance of the CALLER (see
         # _assert_minting_caller). Everything above refuses on content grounds and
-        # says so; this refuses on "who is asking".
-        _assert_minting_caller()
+        # says so; this refuses on "who is asking" -- and it ANSWERS it, because which route
+        # minted is what the record has to carry from here on (FR-0083).
+        route = _assert_minting_caller()
+        _assert_the_route_may_decide_this(route, request["kind"])
         apr_id = state.allocate_id("APR")
         apr = {
             "id": apr_id,
@@ -1938,6 +2297,11 @@ def mint(state: ProjectState, request_id: str, answer: str) -> dict:
             "subject_manifest_hash": request["subject_manifest_hash"],
             "request_id": request_id,
             "mint_code": request["mint_code"],
+            # WHO ANSWERED (FR-0083). Stamped from `_assert_minting_caller`'s answer and never from
+            # an argument -- see `MINTED_VIA_FIELD`. Written for BOTH routes, including the
+            # interactive one: a field present only on the programmatic half would make "no field"
+            # mean two different things a year from now.
+            MINTED_VIA_FIELD: route,
             "approved_at": _now_iso(),
             # DERIVED DISPLAY VALUE, not the authority: spec II.2 lists `expires`
             # among the APR fields and humans/dashboards read it here, but every
@@ -2034,17 +2398,26 @@ def revoke(state: ProjectState, apr_id: str) -> dict:
         return apr
 
 
-def has_expired(request: dict) -> bool:
+def has_expired(request: dict, now=None) -> bool:
     """Is this request past its clock -- the ONE definition of "can never mint again".
 
-    Two readers, and they may not disagree: `pending_request`, which refuses to hand out an expired
-    request, and `sweep_expired_requests`, which DELETES exactly what that refusal has made
-    permanent. A missing or unreadable stamp answers True by the same arithmetic the mint uses --
-    a request whose clock cannot be read never mints either, so calling it live would leave a file
-    that nothing can ever redeem and nothing may ever remove.
+    The readers may not disagree: `pending_request`, which refuses to hand out an expired request;
+    `sweep_expired_requests`, which DELETES exactly what that refusal has made permanent; the
+    session brief, which counts an expired request instead of listing it; and the board, which
+    leaves it off the "waiting on you" strip. A missing or unreadable stamp answers True by the
+    same arithmetic the mint uses -- a request whose clock cannot be read never mints either, so
+    calling it live would leave a file that nothing can ever redeem and nothing may ever remove.
+    That every one of those readers asks THIS function rather than spelling the comparison again
+    is `tools/test_approvals_dispatch.py::test_every_reader_of_the_expiry_rule_asks_this_one`.
+
+    `now` exists because the readers legitimately stand on TWO clocks and only the RULE is shared:
+    the hooks and the brief read the wall clock at the moment they run, the board reads the stamp
+    of the state write it was rendered from, so that the page stays a pure function of the state
+    (`board._clock`). Left out, the wall clock answers -- which is what every caller before
+    TSK-0120 did. The seam and its measurement are `H126` in `docs/POST_V2_WISHLIST.md`.
     """
     try:
-        return time.time() > float((request or {}).get("expires_at_epoch") or 0)
+        return (time.time() if now is None else now) > float((request or {}).get("expires_at_epoch") or 0)
     except (TypeError, ValueError):
         return True
 
@@ -2093,13 +2466,16 @@ def sweep_expired_requests(state: ProjectState) -> dict:
     return {"removed": removed, "kept": kept, "unreadable": unreadable}
 
 
-def pending_request(state: ProjectState, request_id: str) -> dict:
+def pending_request(state: ProjectState, request_id: str, now=None) -> dict:
     """A PENDING approval request, or ApprovalError — the reader the hooks use.
 
     The PreToolUse(AskUserQuestion) gate resolves `[APR-REQ:<id>]` back to its
     request and rebuilds `build_question(request)` for the string comparison, so
     that lookup needs one public, fail-closed home rather than a hook reaching
     into a private path helper. The TTL check lives here too, for the same reason.
+
+    `now` is handed straight to `has_expired`; left out, the wall clock answers. Its reason is
+    that function's, not this one's.
     """
     try:
         request = state._read_yaml(_request_path(state, request_id))
@@ -2123,7 +2499,7 @@ def pending_request(state: ProjectState, request_id: str) -> dict:
             user_text="Es wurde keine Freigabe erteilt: die gespeicherte Freigabe-Anfrage hat "
                       "nicht die Form, die das Programm erwartet. " + NEXT_START_OVER
         )
-    if has_expired(request):
+    if has_expired(request, now):
         raise ApprovalError(
             "approval request %s expired -- expired requests never mint. "
             "Remedy: create a fresh request and ask again." % request_id,
@@ -2133,7 +2509,7 @@ def pending_request(state: ProjectState, request_id: str) -> dict:
     return request
 
 
-def open_requests(state: ProjectState) -> list:
+def open_requests(state: ProjectState, now=None) -> list:
     """Every approval request this project is still WAITING ON -- answerable right now.
 
     "Still open" is asked of `pending_request` per file rather than re-tested here, so the TTL and
@@ -2149,6 +2525,13 @@ def open_requests(state: ProjectState) -> list:
     trigger has to survive a relay in the model's own words -- "Ja, freigeben" / "Nein" -- which is
     exactly what a test on the LABEL's wording does not
     (`tools/test_hooks_v2.py::test_a_relay_in_the_models_own_words_still_reaches_the_user`).
+
+    `now` is optional, and OPTIONAL IS THE POINT: the three `gate_approval.py` of the kits call
+    this with one argument, so a REQUIRED second one turns their call into a TypeError. Stream A's
+    verifier measured the literal form first proposed for this seam: two red nodes in
+    `tools/test_hooks_v2.py`, while the board's parity test -- the only arbiter the seam named at
+    the time -- stayed green and saw nothing. Hence two arbiters, and the second is
+    `tools/test_hooks_v2.py::test_an_expired_request_is_not_open_and_a_reworded_relay_goes_silent`.
     """
     directory = _pending_dir(state)
     if not os.path.isdir(directory):
@@ -2158,7 +2541,7 @@ def open_requests(state: ProjectState) -> list:
         if not name.endswith(".yaml"):
             continue
         try:
-            requests.append(pending_request(state, name[: -len(".yaml")]))
+            requests.append(pending_request(state, name[: -len(".yaml")], now))
         except ApprovalError:
             continue
     return requests

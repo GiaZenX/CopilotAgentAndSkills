@@ -1,0 +1,44 @@
+id: DEC-0069
+title: 'H138 accepted as a named exception: the design-standard checks REPORT findings
+  on a rendered draft (exit 3) and nothing refuses freezing it -- until the first
+  measured case of a draft with findings being built or frozen anyway'
+context: 'Stream E (TSK-0119, FR-0077/FR-0078) built the mechanically checkable halves
+  of the design standards -- contrast, keyboard path, reduced motion, focus visibility,
+  colour literals outside the token sheet, exactly one primary action per declared
+  view -- as checks inside the shipped kit_design_render.py (exit 0 nothing / 2 nothing
+  rendered / 3 findings), NOT as a PreToolUse gate, with three measured reasons: DEC-0056
+  (b) builds no gate without a measured error class (the only one here, BUG-0076,
+  is already carried by gate_design_sighted); a browser-starting hook has no child
+  deadline and a killed hook is an ALLOW; the draft is the contract the build implements.
+  The verifier measured the chain as a process: renderer rc 3 -> gate_design_sighted
+  rc 0, and no reader in the kit pulls conformance.findings out of render.json --
+  the PM sees only the exit code in the designer''s envelope (the sentence for that
+  is the stream-D seam). DEC-0056 consequences: a chain that runs inside one session
+  needs closure OR a named exception the USER accepts. The lead put the exception
+  to the user with an example (a checkout page draft with contrast 2.1:1 and two primary
+  buttons -> rc 3 -> the PM sends it back; nothing prevents freezing it); the user
+  first asked for the example, then answered.'
+decision: 'USER 2026-09-03 (AskUserQuestion, after the example): ''Ja, melden reicht
+  vorerst'' -- H138 is ACCEPTED as a named exception. (1) The checks stay a report:
+  exit 3 with the findings printed and stored in render.json; the product-designer
+  role and the PM skill say what a 3 means and that a draft is sent back, not forwarded
+  (stream-D seam sentences, protocol TSK-0119 section 9). (2) No gate is built for
+  it in generation 3. (3) The exception FALLS the first time a measured case shows
+  a draft with findings built or frozen anyway -- that case is the DEC-0056 error
+  class a gate needs, and then a freeze gate (browser start, registered timeout, measured
+  deadline) is its own round. (4) The hole-list entry H138 carries the date, the example,
+  the wording and the falling condition; this DEC is the state record the entry points
+  to.'
+consequences: 'The kit ships design checks that cost a project without UI nothing
+  measurable and a draft +0.3 s, and it does not pay for a browser hook it has no
+  measured case for. What is not enforced is said in three places (H138, the role
+  text, this DEC), so a PM who freezes over a 3 does it against a written rule, not
+  in silence. Review trigger: the first BUG or audit finding of a built draft with
+  findings reopens this DEC.'
+source: User 2026-09-03 (chat, AskUserQuestion x2); TSK-0119 stream-protocol.md sections
+  6 and 9; docs/POST_V2_WISHLIST.md H138; DEC-0056; verifier report TSK-0119 (H138
+  chain as process)
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T13:31:36'

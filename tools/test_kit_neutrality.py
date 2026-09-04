@@ -135,7 +135,18 @@ def test_no_role_text_binds_a_kit_to_a_named_platform():
 FILLED_TEMPLATE_LISTS = {
     "project_config.yaml:providers":
         "the apparatus' own provider names, not anything about the business",
+    "master_data.yaml:categories":
+        "the expense and income classes of the Anlage EUeR, keyed to its line numbers "
+        "(FR-0076) -- a tax form is not a business, and the list that WOULD carry one "
+        "(`counterparties`) still ships empty. Held by the row check below, so the "
+        "exception cannot quietly grow into an assortment",
 }
+
+# WHAT MAKES A SHIPPED CATEGORY NOT CONTENT: it belongs to a LINE of the form, so it is a
+# statement about the Anlage EUeR and not about anybody's trade. A row without one would be a
+# category somebody invented, which is exactly what FR-0028 keeps out of a template. The
+# provenance of the numbers themselves is `H131` in docs/POST_V2_WISHLIST.md.
+CATEGORY_LINE_FIELD = "euer_line"
 
 
 def _lists_in(node, path):
@@ -177,6 +188,21 @@ def test_every_office_state_template_ships_its_lists_empty():
     closed = sorted(set(FILLED_TEMPLATE_LISTS) - set(filled))
     assert not closed, (
         "recorded as shipping filled and now empty — drop the exception: %s" % ", ".join(closed))
+    # THE EXCEPTION IS NOT A FREE PASS. `master_data.yaml:categories` is excused because every
+    # row names a line of the form; a row that names none is an assortment and is refused here,
+    # so the excused list cannot grow into the thing the rule forbids. Read off the DOCUMENT and
+    # not off the walk above: that walk keys every list under a document by its outermost key, so
+    # `categories.income` and `categories.expense` collapse into one entry and a check on it
+    # would judge whichever of the two came last.
+    with open(os.path.join(base, "master_data.yaml"), encoding="utf-8") as handle:
+        categories = (yaml.safe_load(handle) or {}).get("categories") or {}
+    rows = [row for side in categories.values() for row in side]
+    assert len(rows) >= 10, "the shipped vocabulary shrank to %d rows -- judged nothing" % len(rows)
+    invented = [row for row in rows
+                if not isinstance(row, dict) or not row.get(CATEGORY_LINE_FIELD)]
+    assert not invented, (
+        "these shipped categories name no line of the form, so they are somebody's assortment "
+        "rather than the form's own vocabulary (FR-0028): %s" % invented)
 
 
 # ============================ the same question asked of the TEMPLATES, read raw =================

@@ -1,0 +1,66 @@
+"""Generation 3 merge round: ONE work order, created through the kernel (DEC-0063 (1): the merge
+round is a verification of its own). Created in DRAFT while streams A and C finish; the lead sets
+READY after the last stream PASS and updates the residue lines before that (READY freezes them,
+BUG-0089). Not idempotent -- run once.
+"""
+import os
+import subprocess
+import sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+KERNEL = [sys.executable, "-B", "-m", "kernel.cli", "--root", "project_memory", "create-task"]
+
+ALLOWED = [
+    "team-kits/**", "tools/**", "docs/**", "NOTICES.md", "README.md", "CLAUDE.md",
+    ".claude/hooks/test_gates.py",
+]
+FORBIDDEN = [
+    "team-kits/gen_provider_artifacts.py", "scaffold_team.*", "install.*", "init_project_memory.*",
+    "user/**", ".claude/settings.json", ".claude/hooks/gate_*.py", ".claude/hooks/_harness.py",
+    ".claude/agents/**", "project_memory/**",
+]
+INPUTS = [
+    "project_memory/staging/generation-3-streams.md -- the round log: seam table named at cut time, hole-number reservations (A H126-128 + H149, B H129-131 + H144, C H132-134 + H147-148, D H135-137 + H141-143, E H138-140 + H145-146), the (g) rows per stream, the findings against the cut, and the CRLF note (35 pre-existing CRLF files in this checkout)",
+    "project_memory/staging/TSK-0117/stream-protocol.md (C, kernel: seam sentences section 6, red seams section 5, MST lines, check-scopes / seam_scope, H132-H134 + H147/H148) and dec-plan-approval.json",
+    "project_memory/staging/TSK-0116/stream-protocol.md (B, office: seams S1-S9 -- S1/S2 onboarding questions, S3 records-clerk sentence, S4-S6 kernel lines outside filing.py, S7 tools/test_hooks.py, S8 user/CLAUDE.md, S9 separator field in _filing._walk; H125 closed, H129-H131, H144)",
+    "project_memory/staging/TSK-0115/stream-protocol.md (A, board: seams section 7 -- 7.1 backlog_types MST lines (built by C), 7.2 backlog_tree MST lines NOT written, 7.3 state._write_board plan_diagram line, 7.4 cli.py diagram paths, 7.5 approvals.open_requests(state, now); H126/H127, H128 + H149 unused) and 04-build-spec.md / 08-final.md",
+    "project_memory/staging/TSK-0118/stream-protocol.md (D, texts: requirements C-1..C-4 (C built C-1/C-4), 'seam sentences expected at merge: from B, C, E', H135-H137 + H141-H143, the two readers of the scope question: kernel/scopes.py vs tools/check_scope_overlap.py -- the merge decides)",
+    "project_memory/staging/TSK-0119/stream-protocol.md (E, design: seam sentences section 9 for product-designer.md and the PM skill step (b); H138 (DEC-0069), H139, H140, H145, H146; R-A/R-B closing lines)",
+    "project_memory/decisions/active/DEC-0062.yaml, DEC-0063.yaml (merge = own verification; full run once; DEC-0050 reading), DEC-0064.yaml (MST type), DEC-0065.yaml (board decisions), DEC-0066.yaml (5) (inbox wording; CLAUDE.md points at it), DEC-0067.yaml (bundle at PR level -- D's texts), DEC-0068.yaml (plan approval), DEC-0069.yaml (H138 acceptance)",
+    "the five patches: C:/Offline Repos/v2-testbed/_round-scratch/TSK-0117/stream-approvals.patch, TSK-0116/stream-office.patch, TSK-0115/stream-board.patch, TSK-0119/stream-design.patch, TSK-0118/stream-parallel.patch -- each verified PASS by its own verifier; every patch drops the VERSION hunks and never carries project_memory/.audit",
+    "BUG-0025 (eol not pinned) and the C implementer's byte sweep (35 tracked files carry CRLF, content identical to HEAD) -- measure before applying, do not widen the scope beyond what git apply needs",
+    "forbidden_scope project_memory/** EXCEPTS project_memory/staging/(this task id)/ -- the protocol goes there",
+]
+OUTPUTS = [
+    "The five generation-3 patches applied on feat/harness-v2 (base e45c0ca) in SEAM ORDER: C (kernel, TSK-0117) first, then B (office, TSK-0116), A (board, TSK-0115), E (design, TSK-0119), D (texts, TSK-0118); the reading pin tests after EVERY patch; all provisional VERSION hunks dropped; project_memory/.audit/hook_events.jsonl never taken from a worktree; before the first apply the eol state measured: the main checkout carries 35 pre-existing CRLF files (content = HEAD) and the C worktree g3-approvals carries CRLF on 20 of its 24 patch files (rig text mode; .gitattributes says eol=lf since BUG-0025) -- every stream is merged from its PATCH (pure LF, index parents = e45c0ca, measured by C's verifier to apply on an LF checkout), NEVER from file copies out of a worktree; a hunk that meets a CRLF file in the main checkout is applied after normalising ONLY that file, named in the protocol; BUG-0025 itself stays generation 4.",
+    "Every seam the logbook and the protocols name resolved BY HAND and listed with its resolution and its arbiter test: MST hook lines (guard_no_adhoc.ITEM_TYPES x3, templates/project_memory/milestones/active x3, guard_memory_budget._ID prefixes, dashboard VIEWS moot after DEC-0065 (1)) -> test_hooks no_adhoc / dashboard_views / test_hooks_v2 id_prefixes green; A section 7.2 backlog_tree MST lines -> test_board wired-completely / placed / plain-language green; A 7.3 state._write_board plan_diagram.render_all line (the diagrams get their trigger), 7.4 cli.py prints the two diagram paths, 7.5 an OPTIONAL `now=None` on the EXISTING approvals.open_requests (approvals.py:2136; gate_approval x3 calls it with one argument -- a new signature broke two test_hooks_v2 nodes, measured by A's verifier; second arbiter test_hooks_v2.test_an_expired_request_is_not_open_and_a_reworded_relay_goes_silent; H126 two clocks -> one); B F6 call line in report.py (S4-S6); B S1-S3 + C section 6 + E section 9 sentences into the constitutions / PM skill / product-designer.md / QA skills AFTER D's texts, arbiter test_hooks command-surface + evidence-kind wording (pass|fail|blocked in five SKILL.md; check-scopes line in three constitutions + README); S9 separator requirement to _filing._walk BUILT or named with reason (H144 stays open either way); C's rest 'docs/ vs docs/** are one file set to the gate but two strings to pair_seam' appended to H148 (fail-closed, no hole); H135/H136 pointers in kernel/scopes.py resolve once D lands; test_repo_hygiene decision-pointer test green with DEC-0064..0069 present; the two readers of the scope question decided: kernel/scopes.py is the shipped one, tools/check_scope_overlap.py imports it or is retired -- one predicate, one place, red-first for the survivor.",
+    "The hole list in one order: H125 (closed, B), H126-H127 (A), H129-H131 + H144 (B), H132-H134 + H147-H148 (C), H135-H137 + H141-H143 (D), H138-H140 + H145-H146 (E); H128 and H149 stated as unused; the summary table judges every entry consistently; E's R-A/R-B BUILT (protocol section 16), A's N-12..N-15 closing lines present (protocol section 14), B's M3/N9 lines present (section 13), D's N4-N7 present (section 11); the gate-suite hole-list tests green in full.",
+    "Merge findings: everything the seams reveal that no stream could see (DEC-0063 (1): six of eight merge findings in generation 2 were invisible to every stream) -- each with the test and reason, fixed in this round or named; the findings AGAINST THE CUT collected in one table (research skill copy forced by the reference-skill contract; TSK-0088 overlapping every stream; H141-H149 assigned outside the frozen items; the project_memory/** exception contradiction in every item; kit_browser_checks.py allowed vs research-team/** forbidden) -- for the generation-3 retrospective DEC, not fixed here.",
+    "ONE release stamp across the three kits after the last change (tools/bump_kit_version.py); the full tools/ suite ONCE after the last rework and before the stamp, plus .claude/hooks/test_gates.py in full, plus ruff and validate.py; every red is a finding, not a skip; if the full run itself yields findings, their fixes are followed by FULL runs of every suite that reads the changed files, recorded with the file list (DEC-0063 (4)); BUG-0033 (gate-3 timing under load) is the one known load-class red -- measured solo before it is called anything.",
+    "Protocol in project_memory/staging/(this task id)/merge-protocol.md: seam table with resolution + arbiter per seam, pointer table (every DEC/H/test pointer the merged tree writes resolves), residue numbering, the full-suite numbers, the completed (g) table per stream (tier, first-report wall-clock, first-pass findings B/M/N, rework rounds, verification rounds, tokens, spawn-to-PASS wall-clock, DEC-0050 process notes), and the one-line rejected alternative of the merge plan. No commit, no push: the lead records the EVD and commits after the merge verifier's PASS.",
+]
+
+
+def main():
+    argv = list(KERNEL) + [
+        "--product-requirement", "PR-0003", "--derives-from", "PR-0003",
+        "--type", "implementation", "--assigned-role", "harness-implementer", "--acceptance-ref", "AC-1",
+    ]
+    for path in ALLOWED:
+        argv += ["--allowed-scope", path]
+    for path in FORBIDDEN:
+        argv += ["--forbidden-scope", path]
+    for line in INPUTS:
+        argv += ["--required-input", line]
+    for line in OUTPUTS:
+        argv += ["--expected-output", line]
+    env = dict(os.environ, PYTHONPATH="team-kits")
+    result = subprocess.run(argv, cwd=ROOT, env=env, capture_output=True, text=True, encoding="utf-8")
+    print(result.stdout.strip()[-600:])
+    if result.returncode != 0:
+        print(result.stderr.strip()[-1500:])
+    return result.returncode
+
+
+if __name__ == "__main__":
+    sys.exit(main())

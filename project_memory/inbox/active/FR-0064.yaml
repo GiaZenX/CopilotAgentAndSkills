@@ -42,3 +42,4 @@ triage_result: 'MEASURED 2026-09-02 in the user real project Canyon_3.4.0 (kit 2
   role still owed: reviewer/quality/second-reader roles -> remove the key with a red-first
   test unless the round measures no verdict drift; implementer-type roles -> keep,
   measured; research reviewer.md -> remove.'
+related_pr: PR-0003

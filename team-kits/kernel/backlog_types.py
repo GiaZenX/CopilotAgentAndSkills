@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+from datetime import date
 
 
 # -- status automata -----------------------------------------------------------
@@ -130,6 +131,20 @@ AUTOMATA = {
         terminals=("ANALYZED", "ABORTED"),
         terminal_from={"ABORTED": ("DESIGNED", "APPROVED", "RUNNING", "COMPLETED")},
     ),
+    # A MILESTONE (DEC-0064, FR-0079). A date several goals share, with a NAME and an OUTCOME --
+    # which is what makes it a type rather than a field: a `due` copied into every item it applies
+    # to has no identity, no way to record "missed", and no test that notices when one copy was not
+    # moved (items are practically immutable, so a shifted deadline would be n kernel edits).
+    # THE THREE ENDINGS ARE THE POINT. `REACHED` only through the chain -- a milestone is reached
+    # by arriving at it; `MISSED` and `DROPPED` only from `PLANNED`, because a milestone that has
+    # already been reached cannot afterwards have been missed or called off. No approval kind pairs
+    # with it in `approvals.APPROVAL_TRANSITIONS` and it has no `INVALIDATION_TARGET`: a date is
+    # not something a user signs, and nothing about it can invalidate an approval.
+    "MST": _Automaton(
+        chain=("PLANNED", "REACHED"),
+        terminals=("REACHED", "MISSED", "DROPPED"),
+        terminal_from={"MISSED": ("PLANNED",), "DROPPED": ("PLANNED",)},
+    ),
 }
 
 # -- approval invalidation (spec II.2 table; atomic op lives in the kernel) ----
@@ -163,6 +178,7 @@ ACTIVE_DIRS = {
     "DEC": "decisions/active",   # Decision items (id prefix: implementation choice)
     "EVD": "evidence",           # Evidence (no own project status; id prefix: impl. choice)
     "ARC": "architecture/active",
+    "MST": "milestones/active",  # milestones (DEC-0064)
     "WFR": "design/wireframes",  # frozen on scope approval (II.6a)
     "DSN": "design/revisions",   # frozen design revisions (II.6; promotion path)
 }
@@ -278,6 +294,40 @@ def confirming_edge(item_type: str):
     return (auto.chain[-2], target) if sources == {auto.chain[-2]} else None
 
 
+def replanning_route(item_type: str, status: str) -> dict:
+    """Where an item standing in `status` can GO, for the two moves a frozen work order leaves.
+
+    THE REMEDY OF A FROZEN-FIELD REFUSAL IS READ OFF THE AUTOMATON AT REFUSAL TIME (BUG-0089), and
+    that is the whole reason this function exists. The refusal used to name "transition the task
+    back to DRAFT" as prose beside the table; measured 2026-09-02 on a READY `TSK`, `transition
+    <id> DRAFT` answers "illegal transition TSK: READY -> DRAFT (allowed from READY: CANCELLED,
+    LEASED)" -- the printed remedy could not be walked. The sentence had outlived the table, which
+    is the defect class every enumeration in this kernel is watched for.
+
+    TWO KEYS, because the two moves are different work:
+      * `replan` -- the statuses ONE EDGE away in which the work-order fields are writable again.
+        That is the type's INITIAL status and nothing else, and it is the same fact
+        `state._update_item_locked` decides the freeze on: the fields are open exactly while the
+        item still stands where planning happens. One fact, read by the refusal and by the remedy.
+      * `close` -- the TERMINAL statuses one edge away, i.e. the "close it and capture a new one"
+        half. Terminal, because a status the item can still leave is not a way of ending it.
+
+    EITHER MAY BE EMPTY and the caller may only name what is not. On the shipped `TSK` automaton
+    `replan` is empty from every status except the initial one, because no edge leads into DRAFT at
+    all -- which is exactly what BUG-0089 measured.
+    `tools/test_backlog_types.py::test_the_replanning_route_names_only_edges_the_automaton_has`
+    holds both ends: no named target without an edge, and no edge left unnamed.
+    """
+    auto = AUTOMATA.get(item_type)
+    if auto is None:
+        return {"replan": (), "close": ()}
+    reachable = {dst for src, dst in auto.allowed if src == status}
+    return {
+        "replan": tuple(sorted(reachable & {auto.initial})),
+        "close": tuple(sorted(reachable & auto.terminals)),
+    }
+
+
 def assert_transition(item_type: str, from_status: str, to_status: str) -> None:
     """Raise TransitionError unless (from -> to) is an allowed edge."""
     auto = AUTOMATA.get(item_type)
@@ -357,6 +407,13 @@ REQUIRED_FIELDS = {
     # existence of a failing report -- the false-accept an earlier audit found in
     # the V1 report files, one level in.
     "EVD": ("kind", "related", "result", "summary", "artifact_refs"),
+    # A MILESTONE (DEC-0064): the name it is known by, the date it falls on, and the roots the
+    # date applies to. `derives_from` is REQUIRED and is what makes membership readable at all --
+    # a milestone that names no goal is a date nobody can act on -- and it is the binding
+    # direction the tree already walks (`_BINDING_FIELD_NAMES`), so the milestone hangs under its
+    # roots instead of turning the tree over. The reverse reference (a `milestone` field on a task)
+    # is deliberately not built; DEC-0064 (6) names it as its own FR if anybody needs it.
+    "MST": ("title", "due", "derives_from"),
 }
 
 # The OTHER half of the same contract: fields spec II.2 declares for a type and
@@ -374,9 +431,10 @@ REQUIRED_FIELDS = {
 # in a form the derivation can read.
 # WHAT THE RUN BEHIND AN EVIDENCE COVERED (FR-0040). Until this pair existed, a pass from
 # `pytest -k one_test` and a pass from the whole suite were the SAME record: `REQUIRED_FIELDS`
-# named the verdict, the summary and the artefacts, and no field named the run -- while
-# `EVIDENCE_RESULTS` below and `gate_git`'s own refusal text both told the reader that a partial
-# run is not merge evidence. That sentence is what these two fields make true.
+# named the verdict, the summary and the artefacts, and no field named the run -- while two
+# places in the shipped tree already told the reader that a partial run is not merge evidence (the
+# refusal texts of `gate_git`, and the vocabulary comment at `EVIDENCE_RESULTS` as it then stood).
+# That claim is what these two fields make true.
 #
 # TWO FIELDS BECAUSE THEY ARE TWO DIFFERENT THINGS, and only the second is machine-readable:
 # `run_command` is the line that was executed, which is what an auditor re-runs, and `run_scope`
@@ -400,6 +458,19 @@ PARTIAL_RUN_SCOPE = "selection"
 # cannot read. Enforced in `state.capture_preflight`; the decision is DEC-0061.
 RUN_RECORD_FIELDS = ("run_command", "run_scope")
 
+# THE THIRD EVIDENCE OUTCOME AND THE SENTENCE IT OWES (FR-0082). Declared up here because
+# `OPTIONAL_FIELDS` below has to name the field; the argument for the VALUE is at
+# `EVIDENCE_RESULTS`, where the vocabulary is, and it is not repeated here.
+# The pair is enforced in `state.capture_preflight` in BOTH directions -- a `blocked` without the
+# sentence, and the sentence without a `blocked` -- and
+# `tools/test_state.py::test_a_blocked_evidence_owes_its_sentence_and_the_sentence_owes_its_verdict`
+# measures both ends.
+BLOCKED_RESULT = "blocked"
+BLOCKED_REASON_FIELD = "blocked_reason"
+# The field the pair is about, named once so the rule and everything that has to SATISFY the rule
+# (the capture path, the CLI, the suite's contract fixture) read one spelling.
+EVIDENCE_RESULT_FIELD = "result"
+
 
 OPTIONAL_FIELDS = {
     "PR": ("user_story",),      # optional for class == technical_enabler
@@ -412,15 +483,23 @@ OPTIONAL_FIELDS = {
     # instead of under the root, and what makes `report._check_bug_system_link` judge it.
     "BUG": ("related_sr",),
     "PROC": ("derives_from",),
-    "TSK": ("design_ref",),     # required only when the UI scope has a frozen design
+    # `design_ref` required only when the UI scope has a frozen design; `seam_scope` is the
+    # DECLARED SHARE (DEC-0062 (5), stream D requirement C-4): the paths this order knowingly
+    # touches together with another, applied in the merge round. Optional because most orders
+    # share nothing, and a required empty list would be a field every planner types to say
+    # "nothing". `kernel.scopes` subtracts it before it judges a pair, and only where BOTH orders
+    # of that pair declare it -- see `scopes.pair_seam` for why a one-sided declaration is not one.
+    "TSK": ("design_ref", "seam_scope"),
     # OPTIONAL and not required, and the reason is the type: an `EVD` is immutable, so a field
     # made required here would turn every Evidence a project already holds into a validator error
     # with no command that could repair it. What that costs is counted where it is judged -- H108
     # in `docs/POST_V2_WISHLIST.md` -- and not a second time here. What the merge demands instead
     # is that a PASS carry the declaration -- `report._delivery_evidence` -- which an undeclared
     # record satisfies by being superseded, the one route an immutable type does have.
-    # See RUN_SCOPES.
-    "EVD": RUN_RECORD_FIELDS,
+    # See RUN_SCOPES. `BLOCKED_REASON_FIELD` rides here for the same reason and one more: it is
+    # required only for the ONE result value that owes it (`state.capture_preflight`), so making it
+    # a required field of the type would demand it of every passing record too.
+    "EVD": RUN_RECORD_FIELDS + (BLOCKED_REASON_FIELD,),
 }
 
 # Required fields for which an EMPTY value is the same lie as absence. A list-valued
@@ -437,6 +516,38 @@ OPTIONAL_FIELDS = {
 #     What the kernel can check is that the verdict names where to look; whether the
 #     artefact holds up is the auditor's job, and it cannot even start without a path.
 NONEMPTY_FIELDS = {"EVD": ("related", "artifact_refs")}
+
+# Fields whose value is a CALENDAR DATE and nothing else, per type. Declared rather than guessed
+# from the name, and enforced in `state.capture_preflight` with `datetime.date.fromisoformat` --
+# so what counts as a date is the standard library's answer, not a regular expression this kernel
+# would have to keep.
+# WHY IT IS CHECKED AT ALL (DEC-0064 (3)): a milestone's whole content is a name and a day, and a
+# `due` nothing can read renders as "no date" -- a timeline entry that silently stops being one.
+# Refusing at capture is the only moment anything can be done about it, because the item is
+# practically immutable afterwards.
+# Both ends are measured against the field contracts --
+# `tools/test_backlog_types.py::test_every_declared_date_field_is_a_field_its_type_really_has`.
+DATE_FIELDS = {"MST": ("due",)}
+
+
+def normalised_date(value) -> str:
+    """The stored form of a date field -- `date.fromisoformat` read back out as `YYYY-MM-DD`.
+
+    ONE FUNCTION FOR BOTH JOBS, and that is why it exists rather than a bare `fromisoformat` at
+    each call site: `state.capture_preflight` uses it to REFUSE what cannot be read, and
+    `state.capture` uses the same call to STORE what was read. Without the second half the store
+    keeps whatever spelling the caller typed, and `date.fromisoformat` accepts more than one --
+    `20260903` on Python 3.11+ -- so two milestones of the same day sort against each other
+    lexically and every reader that orders by `due` gets it wrong.
+
+    WHAT IS STILL THE INTERPRETER'S, named because this function cannot make it ours: WHICH
+    spellings are accepted is `datetime`'s answer and it has widened across versions (`20260903`
+    is refused on 3.10 and read on 3.13), so a project can capture on one machine what another
+    would refuse. That is `H147` in `docs/POST_V2_WISHLIST.md`, with the measurement. What this
+    does fix is that whatever was accepted is stored in ONE form.
+    Raises `ValueError` like `fromisoformat` does; the caller turns it into the refusal.
+    """
+    return date.fromisoformat(str(value)).isoformat()
 
 # -- the backlog's own outline (FR-0017) ---------------------------------------
 #
@@ -859,12 +970,27 @@ PROJECT_EVIDENCE_KINDS = frozenset(("audit",))
 # DEFAULT, which is the reading a reviewer can check against the one sentence above.
 QA_EVIDENCE_KINDS = EVIDENCE_KINDS - PROJECT_EVIDENCE_KINDS
 
-# A verdict is binary on purpose. "inconclusive" is the tempting third value and
-# it is the one a gate cannot act on: it would have to be read as pass or as
-# fail, and whichever was chosen the other reading would be the silent one. A run
-# that could not decide is a `fail` whose `summary` says why -- spec II.10a
-# already rules that a partial run is not merge evidence.
-EVIDENCE_RESULTS = frozenset(("pass", "fail"))
+# ONE VALUE OPENS A MERGE AND EVERY OTHER ONE CLOSES IT. That asymmetry is what lets this
+# vocabulary grow without a second list to keep in step: `report._newest_per_kind` hands the gates
+# the current verdict per kind and `gate_git` refuses everything that is not `PASSING_RESULT`, so a
+# value added here arrives CLOSING. Measured over the readers rather than asserted:
+# `tools/test_backlog_types.py::test_only_the_passing_result_opens_anything_the_kernel_decides`.
+PASSING_RESULT = "pass"
+# "inconclusive" stays refused, for the reason it always was: a gate cannot act on it -- it would
+# have to be read as pass or as fail, and whichever was chosen the other reading would be the
+# silent one.
+# `blocked` is a different case, and it is why this set is no longer two-valued (FR-0082, wishlist
+# section 7). A run that never HAPPENED -- no browser, no device, no network -- had to be booked as
+# `fail`, and afterwards the store held a red verdict that nobody could tell from a real one. The
+# gate does not have to guess: `blocked` closes exactly as `fail` closes; what it changes is what a
+# later reader is told.
+# WHAT IT IS NOT, and this sentence is part of the feature rather than a caveat beside it: nobody
+# measures whether the browser was really missing. The value turns an honesty duty into a state and
+# adds nothing to the question "is this true". That is why the kernel demands the sentence beside
+# the word (`BLOCKED_REASON_FIELD`, enforced in `state.capture_preflight`) and why every surface
+# that reports such a verdict says that nothing was checked -- otherwise the next reader takes a
+# `blocked` for a checked fact, which is the one failure mode the wishlist section names.
+EVIDENCE_RESULTS = frozenset((PASSING_RESULT, "fail", BLOCKED_RESULT))
 
 
 # Types that are a RECORD of something that already happened rather than a piece of
@@ -896,6 +1022,11 @@ TSK_PLAN_FIELDS = frozenset((
     "product_requirement", "root_revision", "derives_from", "type", "assigned_role",
     "acceptance_refs", "required_inputs", "allowed_scope", "forbidden_scope",
     "expected_outputs", "dependencies",
+    # `seam_scope` for the same reason the two scope fields are here and one step further: it is
+    # what the pre-dispatch check SUBTRACTS from a pair's overlap (`kernel.scopes`), so a seam
+    # added to a LEASED order re-decides a cut that has already been handed out. Declaring one
+    # later is legitimate -- it just has to be visible, like every other re-planning.
+    "seam_scope",
 ))
 
 

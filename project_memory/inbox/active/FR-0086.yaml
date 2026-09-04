@@ -1,0 +1,52 @@
+id: FR-0086
+title: 'A gate on the SCOPE of a test run: a command line that runs the whole suite
+  is refused during a round unless the line says it is the delivery run -- in this
+  repo and in the kits (the enforcement half of FR-0057, the cost class of DEC-0050)'
+related_pr: PR-0003
+request_text: 'User 2026-09-03 (chat): ''Wie waere es mit einem Hook, der misst, wieviel
+  Prozent der Tests gestartet wurden, und bei 100 Prozent wird blockiert mit dem Hinweis,
+  nur die betroffenen Tests laufen zu lassen. Ausser eben es ist gewollt (vor Commits
+  machen wir ja den Full Run) -- und das auch auf die Kits anwenden.'' MEASURED cost
+  class: TSK-0083 (gen 2) ran the full suite in six rounds, 35 to 39 min each, about
+  four hours, zero findings from it (DEC-0050); generation 3 today: stream D ran test_hooks_v2
+  + test_hooks in full twice for a text change (~50 min), stream B three full hook/gate
+  runs where one was due (~50 min), stream E fourteen suites in one 50-min run --
+  each implementer named it, none was stopped. Nothing in the kits reads a run''s
+  scope (grep over dev-team hooks: no hook classifies a pytest line; gate_test_coverage
+  only asks THAT tests exist, at push/merge); CLAUDE.md says of this repo that no
+  gate can enforce DEC-0050 because the place is .claude/ -- closed to the session
+  agent, open to an implementer under an item. THREE ADJUSTMENTS to the wish, each
+  with its reason: (1) not a PERCENTAGE -- counting the started share needs a collection
+  of the whole suite, which is the cost the gate exists to avoid, and a hook has a
+  deadline; the property is ''this line names no selection'' (no node id, no -k/-m,
+  no path narrower than the suite root the project declares) = a full run; measured
+  on the command line the way gate_write_scope reads its lines. (2) ''intended'' is
+  said ON THE LINE, the way gate 3 works here: the refusal prints the exact line to
+  run when the full run is the delivery run (a prefix word the hook reads, e.g. an
+  assignment before the runner), and that line is the one the kernel records as Evidence
+  with run_scope full (DEC-0061) -- so the allowed full run is exactly the one the
+  merge needs, once, after the last rework; a second full run in the same round is
+  refused with the DEC-0050 sentence unless the previous full run itself produced
+  findings (DEC-0063 (4)). (3) WHICH runners count is not a list of names (pytest,
+  vitest, cargo test ...) but the test command the project declares (kit_checks /
+  project_config stacks, or the repo''s documented lines here) -- a runner nobody
+  declared is not judged, and the gap is named. Where it lives: this repo .claude/hooks
+  (gate 5, registered with a timeout, measured in test_gates.py) -- built by an implementer
+  under an item, gate 1 keeps the lead out; kits: one hook mirrored x3 beside gate_shell_hygiene,
+  the quality-engineer and implementer skills name the rule, gate_git already asks
+  for the full-run EVD before merge (DEC-0061), so the delivery run has its place.
+  Grouped with FR-0057 (same files: kit hooks, QE skill, settings). Cost side (DEC-0056):
+  a project whose whole suite runs in seconds pays a refusal it must answer with the
+  prefix word -- the threshold (suite duration or declared size) is a config value,
+  not a constant, and the DEC line says it. Acceptance: on a scaffolded pilot a bare
+  full-suite line during a round is refused with the affected-suites sentence; the
+  same line with the delivery prefix passes and the kernel records run_scope full;
+  a selection (-k, node id, sub-path) passes; a second bare full run after a recorded
+  full run in the same round is refused; measured red-first as processes; this repo''s
+  gate suite measures gate 5 the same way. Generation 4.'
+source: User 2026-09-03 (chat); DEC-0050; DEC-0061; DEC-0063 (4); FR-0057; project_memory/staging/generation-3-streams.md
+  (g) notes for B, D, E; CLAUDE.md section on DEC-0050 enforcement
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-03T11:26:18'

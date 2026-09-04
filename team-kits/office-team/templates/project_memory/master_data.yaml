@@ -1,7 +1,7 @@
 # master_data.yaml — owned by: Bookkeeper
 # Stable vocabulary for the ledger. Without it the bookkeeper invents categories ad hoc
 # (Q1 "Porto", Q2 "Versandkosten" -> quarterly comparisons become worthless). Append-only;
-# category names align to Anlage-EÜR lines so the Steuerberater maps them 1:1.
+# every category names the LINE of the Anlage EÜR it belongs to, so the Steuerberater maps it 1:1.
 #
 # `second_reading` IS THE ONE FIELD A HOOK DECIDES ON HERE, and it is the user's lever, not the
 # kit's (FR-0065) — the same field, spelled the same way, that a `filing_plan.yaml` rule carries for
@@ -12,24 +12,129 @@
 # `record_booking_reading` is what makes the readings countable. The ONLY way to release a category
 # is `second_reading: false` — the value YAML itself reads as the boolean false. Absent, `true`, a
 # word or a list all mean "two", so a typo cannot quietly open a category. A RELEASE IS ONE READING,
-# NEVER NONE: what the user gives up is the second opinion, not the record. Start with everything at
-# two (that is what an unfilled field means) and release a category only where the user has decided
-# the class is routine enough. A row already in `HEAD` is never re-read — the rule starts where it
-# was switched on and does not re-open the books.
+# NEVER NONE: what the user gives up is the second opinion, not the record. The shipped categories
+# below carry no `second_reading`, i.e. two — release one only where the user has decided the class
+# is routine enough. A row already in `HEAD` is never re-read — the rule starts where it was
+# switched on and does not re-open the books.
 
+# -- THE FORM THE LINE NUMBERS BELOW BELONG TO ---------------------------------------------------
+# WHY THE YEAR LIVES HERE AND NOT IN A SCRIPT (FR-0076). The Anlage EÜR is renumbered between form
+# years — the same caption sat on a different line in three of the four sources read for this file
+# — so a line number is a fact about A FORM YEAR and not about this kit. Both readers
+# (`scripts/euer_report.py`, `tools/finance_dashboard.py`) print this year beside every per-line
+# sum and carry no year and no line number of their own: correcting the form is one edit in THIS
+# file, never a kit update.
+#
+# WHAT THE KIT READ, STATED AS WHAT IT IS. The numbers below were taken from public filling aids
+# for the form year named here, on 2026-09-03. THE OFFICIAL VORDRUCK AND ITS ANLEITUNG WERE NOT
+# READ, and none is shipped; two of the aids disagreed about the advertising line. So this is a
+# STARTING POINT for the conversation with the Steuerberater, exactly like the retention spans in
+# `filing_plan.yaml` — not a statement about the form. Correct a wrong number here and both reports
+# follow.
+euer_form:
+  year: 2025
+  source: "öffentliche Ausfüllhilfen zur Anlage EÜR, gelesen 2026-09-03 — kein amtlicher Vordruck"
+  # THE ONE FIGURE HERE THAT IS NOT A LINE NUMBER, and it sits with them because it has the same
+  # clock: the GWG threshold of § 6 Abs. 2 EStG, in EUR NET. What reads it is the AfA HINT — a
+  # booking whose net exceeds it is flagged "Anlagegut — mit der Steuerberatung klären" and nothing
+  # more. The kit builds NO asset register and NO depreciation arithmetic (FR-0076, the user's own
+  # decision), so this number never enters a sum. Set it to `null` to switch the hint off.
+  gwg_limit_net: 800
+
+# -- THE VOCABULARY THE KIT SHIPS ---------------------------------------------------------------
+# RENAME AND ADD FREELY. `label_de` is what the reports print, `key` is what a ledger row carries
+# (`scripts/ledger_add.py --category <key>`), and a key already used in the ledger must not be
+# renamed — add a new one instead. A category the ledger uses and this file does not know still
+# books and still sums; it shows under its raw key and lands in the "ohne Zeile" group of the
+# per-line summary, which is where an unmapped category is meant to be visible.
+#
+# `euer_line` IS A NUMBER OR IT IS NOTHING. The reports group by it, so a value that is not a whole
+# number (a caption, a range, a note) is read as "this category names no line" and its sum is
+# reported separately rather than silently attached to a line nobody chose. `euer_line_label` is
+# the form's own caption, printed beside the number so a wrong mapping is visible without the form
+# in hand.
+#
+# WHY IT SHIPS FILLED AT ALL (P4-12, DEC-0053/BUG-0071). This file used to ship with two empty
+# lists and the vocabulary as a comment. In pilot 4 the bookkeeper met an empty category vocabulary
+# with no way to extend it and the project stalled; `tools/test_finance_dashboard.py::
+# test_a_fresh_project_ships_a_category_vocabulary_the_p4_12_stall_cannot_recur_on` measures that a
+# fresh project starts with one.
 categories:
-  expense: []
-  #  - key: goods                 # ledger `category` value (stable, English key)
-  #    label_de: "Wareneinkauf"
-  #    euer_line: "Waren, Roh- und Hilfsstoffe"
-  #  - key: shipping
-  #    label_de: "Versandkosten"
-  #    euer_line: "Übrige Betriebsausgaben"
-  #    second_reading: false      # user's decision: one reading here, never none
-  income: []
-  #  - key: sales_shop
-  #    label_de: "Umsätze Onlineshop"
-  #    euer_line: "Betriebseinnahmen"
+  income:
+  - key: sales_taxable
+    label_de: "Umsatzsteuerpflichtige Betriebseinnahmen"
+    euer_line: 15
+    euer_line_label: "Umsatzsteuerpflichtige Betriebseinnahmen"
+  - key: sales_kleinunternehmer
+    label_de: "Betriebseinnahmen als Kleinunternehmer (§ 19 UStG)"
+    euer_line: 12
+    euer_line_label: "Betriebseinnahmen als umsatzsteuerlicher Kleinunternehmer"
+  - key: sales_tax_free
+    label_de: "Umsatzsteuerfreie oder nicht steuerbare Einnahmen"
+    euer_line: 16
+    euer_line_label: "Umsatzsteuerfreie, nicht umsatzsteuerbare Betriebseinnahmen"
+  expense:
+  - key: goods
+    label_de: "Wareneinkauf"
+    euer_line: 27
+    euer_line_label: "Waren, Rohstoffe und Hilfsstoffe einschließlich der Nebenkosten"
+    # THE AfA HINT IS OFF FOR THIS ONE CATEGORY, and it is the user's lever like `second_reading`:
+    # only the boolean `false` switches it off. Goods bought for resale are consumption, and in a
+    # trading business every wholesale invoice is above the GWG threshold — a hint that fires on
+    # all of them is a hint nobody reads any more. Delete this line if your Wareneinkauf really can
+    # contain an asset; add it to any other category whose invoices are routinely large.
+    afa_hint: false
+  - key: external_services
+    label_de: "Fremdleistungen"
+    euer_line: 29
+    euer_line_label: "Bezogene Fremdleistungen"
+  - key: rent
+    label_de: "Miete"
+    euer_line: 39
+    euer_line_label: "Miete/Pacht für Geschäftsräume und betrieblich genutzte Grundstücke"
+  - key: telecom
+    label_de: "Telefon/Internet"
+    euer_line: 43
+    euer_line_label: "Aufwendungen für Telekommunikation"
+  - key: travel
+    label_de: "Reisekosten"
+    euer_line: 44
+    euer_line_label: "Übernachtungs- und Reisenebenkosten"
+  # TWO CATEGORIES ON ONE LINE IS THE NORMAL CASE, not a mistake to fix: the form is coarser than
+  # a business's own bookkeeping. That is the whole reason the per-line summary exists beside the
+  # per-category one — the first is what the form asks for, the second is what the owner steers by.
+  - key: insurance
+    label_de: "Versicherungen"
+    euer_line: 53
+    euer_line_label: "Beiträge, Gebühren, Abgaben und Versicherungen"
+  - key: dues_fees
+    label_de: "Beiträge/Gebühren"
+    euer_line: 53
+    euer_line_label: "Beiträge, Gebühren, Abgaben und Versicherungen"
+  - key: advertising
+    label_de: "Werbung"
+    euer_line: 54
+    euer_line_label: "Werbekosten"
+  # BESCHRÄNKT ABZIEHBAR, and no report of this kit reduces it: what stands in the summaries is the
+  # sum of the bookings, with no line-specific cap or quota of the form applied to it (the report
+  # says so where it prints the lines). Which part of this line is deductible is the Steuerberatung's
+  # answer, not a calculation the kit performs.
+  - key: hospitality
+    label_de: "Bewirtung"
+    euer_line: 63
+    euer_line_label: "Bewirtungsaufwendungen"
+  - key: office_supplies
+    label_de: "Bürobedarf"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
+  - key: postage
+    label_de: "Porto"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
+  - key: software
+    label_de: "Software/Hosting"
+    euer_line: 60
+    euer_line_label: "Sonstige unbeschränkt abziehbare Betriebsausgaben"
 
 # Counterparty normalisation: statement/marketplace spellings -> ONE canonical name.
 counterparties: []

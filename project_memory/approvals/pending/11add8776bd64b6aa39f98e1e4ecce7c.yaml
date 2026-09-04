@@ -1,0 +1,19 @@
+request_id: 11add8776bd64b6aa39f98e1e4ecce7c
+kind: scope
+item: BUG-0089
+revision: 1
+subject_manifest:
+  acceptance_criteria:
+  - the refusal of a frozen-field update names only transitions that exist from the
+    item's current state, read from AUTOMATA at refusal time
+  - a test plants a state whose automaton has no DRAFT edge and asserts the remedy
+    does not name DRAFT (red without the fix)
+  - 'if a READY -> DRAFT edge is added instead: it is in AUTOMATA, the update refusal
+    still derives from it, and the index/brief rollups treat the returned item as
+    re-planned, not as new'
+  item: BUG-0089
+  revision: 1
+subject_manifest_hash: a2aa30e316b0b940a257a563cda352af48bf34f918fa30011550c0abd7a18b6c
+created: '2026-09-04T02:37:47'
+expires_at_epoch: 1788568667.6928263
+mint_code: c3340f

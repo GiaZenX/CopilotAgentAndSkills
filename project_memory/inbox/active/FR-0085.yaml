@@ -1,0 +1,28 @@
+id: FR-0085
+title: SR (technical requirement) mandatory per PR class before a work order is dispatched
+  -- today the architect step is procedure only, no gate reads it
+related_pr: PR-0003
+request_text: 'User 2026-09-03 (chat): ''Und wieso wird nicht zwangsweise ein SR daraus?
+  Ich dachte das wird so gemacht. Vielleicht ist es auch Overkill, aber dachte das
+  hilft.'' MEASURED: the dev constitution section 4 names the chain FR -> PR -> SR
+  -> TSK and the PM skill step 5 (PLAN) hands the approved PR to the software-architect
+  to derive SRs -- but the kernel lets a TSK derive from the PR directly (create-task:
+  derives_from = root, BUG, CR, EXP; SR is not even in that list, an SR hangs beside
+  the tasks under the PR), and gate_dispatch does not ask for an SR; this repo has
+  8 SRs against 95 tasks under PRs, and the two SRs that exist (SR-0008, SR-0009)
+  are the contracts its gates are built from. Wanted, as a design to decide with reasons:
+  an SR duty keyed on the PR class field that already exists (small: no SR; normal/large:
+  at least one ACCEPTED SR under the PR before its first TSK is dispatched), enforced
+  where dispatch is decided (kernel dispatch or gate_dispatch), with the cost side
+  per DEC-0056 (what a small project pays: nothing; what a normal one pays: one architect
+  round it is supposed to have anyway). Not wanted: an SR for every bugfix TSK. Acceptance:
+  a TSK under a normal/large PR without an ACCEPTED SR is refused at dispatch with
+  a remedy naming the architect step; a small PR is not; measured on a scaffolded
+  pilot; red-first. Generation 4; kernel + hooks territory (stream C''s successor).'
+source: User 2026-09-03 (chat); DEC-0067; team-kits/dev-team/constitution/AGENTS.md
+  section 4; team-kits/dev-team/skills/project-manager/SKILL.md step 5; kernel/cli.py
+  create-task help
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-03T10:00:12'

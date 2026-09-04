@@ -116,7 +116,7 @@ def document_trays(root):
 # is. It is a cache with a proof, not a second list — `test_no_adhoc_covers_every_item
 # _type` asserts it equals ACTIVE_DIRS, so a new item type cannot silently escape the rule.
 ITEM_TYPES = ("apr", "arc", "bug", "cr", "dec", "dsn", "evd", "exp", "fr", "hyp", "inv",
-              "pr", "proc", "rq", "sr", "tsk", "wfr")
+              "mst", "pr", "proc", "rq", "sr", "tsk", "wfr")
 # V1 ids that migrated projects still carry -- `kernel/migrate.py` preserves the V1 record and
 # its id under `legacy_fields` (spec II.10) -- so a `PRD-0002_status.md` written from an old
 # habit is still caught. Also proven, as far as it can

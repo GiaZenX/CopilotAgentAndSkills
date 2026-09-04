@@ -17,3 +17,4 @@ created: '2026-08-15T09:40:37'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   JA, BAUEN -- parallel same-role specialists in the dev kit, derived from the DEC-0057
   stream mechanics (worktrees, per-feature test areas, merge discipline).'
+related_pr: PR-0003

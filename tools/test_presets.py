@@ -835,8 +835,16 @@ def test_every_target_form_names_a_live_apr_kind(project):
     # _covers`, plus `tools/test_approvals_dispatch.py::test_a_revision_card_shows_every_spot_and
     # _is_never_a_count` for the half specific to it: the spots are shown in full or the request is
     # refused, never folded into a number.
+    # `plan` joined in TSK-0117 (FR-0074) and is the ONE form where a single answer authorises
+    # several items, so it is the one that may least be a summary -- which is also the sentence
+    # `H132` leans on. Its measurement arrived in the TSK-0120 merge round, where this
+    # assertion went red because the form had come without one:
+    # `tools/test_kernel.py::test_the_question_a_plan_asks_shows_every_goal_the_hash_covers`
+    # asks the manifest for every goal it hashes and requires each one's id, title and revision
+    # in the rendered sentence, and refuses a count standing in for the list.
     assert set(approvals.TARGET_FORMS) == {"push", "preset", "filing_correction", "filing_rule",
-                                           "document_proposal", "document_revision"}, (
+                                           "document_proposal", "document_revision",
+                                           approvals.PLAN_KIND}, (
         "a new readable form arrived without a measurement of what it renders")
 
 

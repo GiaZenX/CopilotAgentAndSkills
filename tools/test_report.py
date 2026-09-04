@@ -60,7 +60,14 @@ def test_clean_state_has_no_errors(state):
 
 
 def test_out_of_band_hand_edit_detected_via_hash(state):
-    """D/4: an IDE edit past the kernel invalidates the approval VISIBLY."""
+    """D/4: an IDE edit past the kernel invalidates the approval VISIBLY.
+
+    THE REMEDY IS ASSERTED BY ITS TWO MOVES, not by its wording. It used to be spelled here
+    ("re-approve or revert") because the validator wrote its own; since the validator asks
+    `approvals.assert_apr_in_force`, the sentence is the kernel branch's -- one text instead of
+    two -- and a test pinned to the old spelling would be pinning the copy that was removed.
+    Both ways out have to be offered either way, and that is what is read.
+    """
     pr = state.capture("PR", dict(PR_FIELDS))
     request = approvals.create_pending_request(state, "scope", pr["id"])
     mint_via_hook(state, request)
@@ -72,7 +79,9 @@ def test_out_of_band_hand_edit_detected_via_hash(state):
     yaml.safe_dump(item, open(path, "w", encoding="utf-8"), sort_keys=False, allow_unicode=True)
     found = errors(report.validate_state(state))
     assert any("content hash" in f["message"] for f in found)
-    assert any("re-approve or revert" in f["remedy"] for f in found)
+    remedies = [f["remedy"] for f in found]
+    assert any("re-approve" in remedy for remedy in remedies), remedies
+    assert any("restore" in remedy for remedy in remedies), remedies
 
 
 def test_manually_written_apr_ref_detected(state):
@@ -1362,8 +1371,9 @@ def test_a_pass_from_a_partial_run_is_not_merge_evidence_and_a_fail_still_is(sta
 
     Until this pair of fields, `REQUIRED_FIELDS["EVD"]` named the verdict, the summary and the
     artefacts and nothing named the RUN -- so a pass from `pytest -k one_test` and a pass from the
-    whole suite were the same record, while `EVIDENCE_RESULTS`' own comment and `gate_git`'s
-    refusal text both told the reader that a partial run is not merge evidence.
+    whole suite were the same record, while the `EVIDENCE_RESULTS` vocabulary comment as it then
+    stood and `gate_git`'s refusal text both told the reader that a partial run is not merge
+    evidence.
 
     BOTH DIRECTIONS, because the rule is an asymmetry and not a filter: a partial PASS is dropped
     (it cannot show the absence of a defect), a partial FAIL is kept (it can show one), and an
@@ -1418,10 +1428,16 @@ def test_qa_verdicts_by_subject_keeps_every_items_verdict_apart(state):
     fresh = evd(state, kind="test", result="pass", related=("PR-0002",),
                 created="2026-02-01T00:00:00")
     by_subject = report.qa_verdicts_by_subject(state)
+    # The whole entry, not a field of it: which keys a verdict carries is part of what the merge
+    # gate reads, so the comparison stays exact. `blocked_reason` is `None` here because both
+    # records ran (FR-0082) -- see `report._newest_per_kind` for why it travels with every verdict
+    # rather than being re-read by the caller.
     assert by_subject["PR-0001"]["test"] == {"id": stale, "result": "fail",
-                                             "created": "2026-01-01T00:00:00"}
+                                             "created": "2026-01-01T00:00:00",
+                                             "blocked_reason": None}
     assert by_subject["PR-0002"]["test"] == {"id": fresh, "result": "pass",
-                                             "created": "2026-02-01T00:00:00"}
+                                             "created": "2026-02-01T00:00:00",
+                                             "blocked_reason": None}
 
 
 def test_qa_verdicts_by_subject_files_evidence_under_every_item_it_names(state):
@@ -2213,9 +2229,14 @@ def test_every_captured_type_that_hangs_from_a_root_reaches_it(state):
                                    "related_pr": pr["id"]})
     procedure = state.capture("PROC", {"title": "onboarding", "steps": ["s"], "roles": ["r"],
                                        "derives_from": pr["id"]})
+    # A milestone binds through `derives_from` like the rest (DEC-0064), so the graph has to reach
+    # the root from it too -- otherwise a deadline recorded against a goal is a record no rollup
+    # over that goal can see.
+    milestone = state.capture("MST", {"title": "Release 2026.10", "due": "2026-10-01",
+                                      "derives_from": [pr["id"]]})
     corpus = {"BUG": bug["id"], "TSK": task["id"], "SR": sr["id"], "CR": change["id"],
               "HYP": hypothesis["id"], "EXP": experiment["id"], "FR": request["id"],
-              "PROC": procedure["id"],
+              "PROC": procedure["id"], "MST": milestone["id"],
               "EVD": evd(state, kind="review", related=(task["id"],))}
     for item_type, item_id in sorted(corpus.items()):
         assert report._hangs_from(state, item_id, pr["id"], set()), (
@@ -2783,3 +2804,42 @@ def test_a_registration_that_cannot_fire_is_not_a_registration(tmp_path):
     _trusted, why = report._hook_bundle_trust(repo)
     assert "start ONE new session" not in why, why
     assert "re-run the kit's scaffold" in why, why
+
+
+def test_a_plan_approved_goal_is_not_reported_as_an_out_of_band_edit(state):
+    """B1 of rework 1: the validator asks the ONE definition of "in force" instead of its own.
+
+    A `plan` approval binds to the goal LIST, so its record carries `item: None` and `revision:
+    None` by construction. The validator used to compare `apr.revision` against `item.revision`
+    itself, which reads that as a revision that moved -- an ERROR per covered goal, on a store
+    where nobody edited anything.
+
+    RED WITHOUT THE FIX: two errors here ("revision 1 no longer matches approval revision None"),
+    and the merge/push gate that reads this validator closes with them
+    (`tools/test_hooks.py::test_a_plan_approval_does_not_close_the_merge_gate` measures that half
+    as a process).
+
+    THE COUNTER-ASSERTION IS IN THE SAME TEST: an out-of-band edit of a goal the plan covers still
+    IS an error, so the fix cannot be "stop checking".
+    """
+    first = state.capture("PR", dict(PR_FIELDS))
+    second = state.capture("PR", dict(PR_FIELDS, title="Search", goal="find products"))
+    request = approvals.create_pending_request(
+        state, approvals.PLAN_KIND,
+        manifest=approvals.plan_subject_manifest(approvals.plan_goals(state)))
+    mint_via_hook(state, request)
+    state.transition(first["id"], "APPROVED")
+    state.transition(second["id"], "APPROVED")
+
+    errors = [f for f in report.validate_state(state) if f["severity"] == "error"]
+    assert errors == [], errors
+
+    path = state.active_path(first["id"])
+    edited = state._read_yaml(path)
+    edited["acceptance_criteria"] = [{"id": "AC-1", "text": "nobody approved this"}]
+    state._write_yaml_atomic(path, edited)
+    errors = [f for f in report.validate_state(state) if f["severity"] == "error"]
+    assert [f["item"] for f in errors] == [first["id"]], errors
+    assert "Remedy" not in errors[0]["message"], (
+        "the kernel's sentence carries its own remedy; the finding keeps the two apart")
+    assert errors[0]["remedy"]

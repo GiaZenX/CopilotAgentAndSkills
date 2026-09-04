@@ -1,0 +1,50 @@
+id: FR-0087
+title: 'Hole-list entries become typed items: a measured, open gap in a guard is state
+  the kernel holds (a BUG-shaped item with a ''what limits instead'' field and the
+  user-accepted exception as an approval), and the H-number list in docs/POST_V2_WISHLIST.md
+  is retired into it'
+related_pr: PR-0003
+request_text: 'User 2026-09-03 (chat, after asking what H and S are: ''Ich dachte
+  wir machen alles nur als FR, SR, CR, PR, TSK usw''): ''ja'' to the lead''s proposal.
+  WHAT EXISTS: docs/POST_V2_WISHLIST.md carries H1 to H149, each with mechanism, measured
+  chain, verdict (closed / open / named exception) and ''what limits instead'' (CLAUDE.md:
+  ''Gemessene, offene Luecke -> Loecherliste''); .claude/hooks/test_gates.py judges
+  every entry and resolves every cited test name (test_the_hole_list_judges_every_entry_it_carries,
+  test_every_test_the_hole_list_names_is_one_that_exists); seam labels (S1..S9) are
+  round-local worksheet labels in a stream protocol and stay that way. MEASURED in
+  generation 3, three times: (1) hole numbers are reserved by the lead per stream
+  by hand and by message (A H126-128 ... E H138-140, then H141-149 assigned mid-round)
+  -- the E verifier found H145/H146 nowhere in the frozen item (finding against the
+  cut, N-4); (2) a hole is a defect with a named limit -- the same shape a BUG carries
+  (observed, expected, repro, severity, acceptance) plus one field ''what limits instead''
+  and, for a named exception, a USER acceptance the kernel can read (DEC-0069 had
+  to be captured by hand for H138 because the acceptance lived only in prose); (3)
+  FR-0012 (a decision in prose has no catcher) and FR-0058 (the inventory lies upward)
+  name the same disease from two sides, and the board of stream A cannot show what
+  is not an item. WANTED, as a DEC-first design: (a) an item shape for a hole -- either
+  BUG with a status-dependent duty ''limits'' and a terminal ''ACCEPTED_EXCEPTION''
+  that only a user-minted approval walks (approvals.assert_transition_approved: a
+  status the supervised party can set itself is no approval), or a type of its own
+  if BUG''s automaton cannot carry it without lying; decided with reasons against
+  backlog_types (ROOT_TYPE_BY_KIT, REQUIRED_FIELDS, AUTOMATA, APPROVAL_TRANSITIONS)
+  and DEC-0056; (b) ids allocated by the kernel, never reserved by hand; (c) the test_gates.py
+  judges-test and name-resolution test move to read the items (parsed, not a string
+  search over a document), and the merge round''s seam table reads holes from the
+  index; (d) migration: the existing H entries are captured once through the kernel
+  with their H number kept as a field, the document keeps a generated index pointing
+  at the items (generated, never hand-edited, like the board); (e) the kits get the
+  same shape (a customer project''s guards have holes too -- gate_write_scope''s own
+  docstring names them). NOT wanted: a second list beside the first during a transition
+  longer than one round. Acceptance: no new H number is handed out by hand after the
+  migration; a hole with a user-accepted exception is walkable only through a minted
+  approval; the gate-suite tests read items; the board shows open holes as a lane;
+  measured on a scaffolded pilot; red-first. Generation 4, stream G4-2 kernel contracts
+  (same files: backlog_types, state, approvals, report; test_gates.py is .claude --
+  implementer only).'
+source: User 2026-09-03 (chat); project_memory/staging/generation-3-streams.md log
+  16:5x and the E verifier finding N-4; DEC-0069 (hand-captured acceptance); FR-0012;
+  FR-0058; CLAUDE.md 'Wo Dinge hingehoeren'; docs/POST_V2_WISHLIST.md
+status: OPEN
+revision: 1
+approval_ref: null
+created: '2026-09-03T13:46:06'

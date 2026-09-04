@@ -3908,3 +3908,277 @@ def test_the_idle_finding_says_what_the_run_staged(state):
         handle.write("half a thought\n")
     said = dispatch.idle_dispatches(state)[0]["staged"]
     assert "1 entry" in said and "staging/%s" % task["id"] in said
+
+
+# -- the plan-level approval (FR-0074) and the provenance of a mint (FR-0083) ---
+
+def _two_goals(state):
+    """Two product goals in the status where their scope question is still open."""
+    return (state.capture("PR", dict(PR_FIELDS)),
+            state.capture("PR", dict(PR_FIELDS, title="Search", goal="find products")))
+
+
+def _approve_the_plan(state):
+    request = approvals.create_pending_request(
+        state, approvals.PLAN_KIND,
+        manifest=approvals.plan_subject_manifest(approvals.plan_goals(state)))
+    mint_via_hook(state, request)
+    return request
+
+
+def test_one_plan_approval_walks_every_goal_and_the_delivery_side_still_asks(state):
+    """FR-0074: one answer covers the scope question of the whole confirmed list -- and only that.
+
+    RED WITHOUT THE FIX: with the plan fallback removed from `assert_transition_approved`, the
+    first `transition ... APPROVED` refuses ("none is in force"), which is exactly the per-goal
+    question the FR is about.
+
+    THE SECOND HALF IS THE COUNTERWEIGHT and is asserted in the same test on purpose: the wider
+    approval is only defensible while the DELIVERY side stays per goal, so a change that let the
+    plan cover `delivery` too turns this red rather than passing quietly.
+    """
+    first, second = _two_goals(state)
+    _approve_the_plan(state)
+
+    for goal in (first, second):
+        walked = state.transition(goal["id"], "APPROVED")
+        assert walked["status"] == "APPROVED"
+        # the goal PRESENTS the plan approval, which is what the dispatch route reads
+        assert walked["approval_ref"] == approvals.live_plan_approval(state, walked)["id"]
+
+    with pytest.raises(ApprovalError) as refusal:
+        state.transition(first["id"], "IN_DELIVERY")
+    assert "delivery approval commits" in str(refusal.value)
+
+
+def test_a_plan_can_only_stand_in_for_the_question_a_plan_answers():
+    """FR-0074, both ends of `PLAN_COVERED_KIND` -- the constant is neither dead nor too narrow.
+
+    END ONE: the kind it names is a real approval kind that commits an edge, so the stand-in is
+    not a word pointing at nothing.
+
+    END TWO, and this is the half a list would never notice: every OTHER item-derived kind must
+    name at least one manifest field a PLAN cannot carry -- a field that only exists once work has
+    happened. The moment one of them became derivable from planning content alone, the property
+    "a plan settles only the scope question" would have stopped being true, and this goes red
+    instead of the comment quietly rotting.
+    """
+    pairs = {kind for (_typ, kind) in approvals.APPROVAL_TRANSITIONS}
+    assert approvals.PLAN_COVERED_KIND in pairs
+
+    plan_content = set(approvals._SCOPE_FIELDS) | {"item", "revision"}
+    item = dict(PR_FIELDS, id="PR-0001", revision=1)
+    for kind in approvals.item_derived_kinds():
+        manifest = set(approvals.item_subject_manifest(item, kind))
+        if kind == approvals.PLAN_COVERED_KIND:
+            assert manifest <= plan_content, kind
+        else:
+            assert manifest - plan_content, (
+                "%s is now derivable from planning content alone, so PLAN_COVERED_KIND is too "
+                "narrow -- or its comment is wrong" % kind)
+
+
+def test_the_plan_covers_every_open_goal_and_only_those(state):
+    """FR-0074: the goal list is DERIVED from the store, and a settled goal is not in it.
+
+    RED WITHOUT THE FIX in the second direction: a `plan_goals` that collected every active root
+    would put the already-approved goal back into the hash, so an edit of finished work would kill
+    the approval covering the unfinished goals.
+    """
+    first, second = _two_goals(state)
+    assert [goal["item"] for goal in approvals.plan_goals(state)] == [first["id"], second["id"]]
+
+    approve_scope(state, first["id"])          # this goal's scope question is answered
+    remaining = approvals.plan_goals(state)
+    assert [goal["item"] for goal in remaining] == [second["id"]]
+    # a task is not a product goal, whatever else it is
+    assert all(goal["item"].startswith("PR-") for goal in remaining)
+
+
+def test_a_plan_stops_covering_a_goal_the_moment_its_scope_moves(state):
+    """FR-0074: the plan binds to each goal's OWN scope hash, so a changed goal comes back as a
+    question while the untouched ones stay covered.
+
+    RED WITHOUT THE FIX: with the hash comparison dropped from `_assert_the_plan_covers`, the
+    edited goal walks to APPROVED again on an approval whose subject it no longer matches.
+    """
+    first, second = _two_goals(state)
+    _approve_the_plan(state)
+    state.transition(first["id"], "APPROVED")
+    state.transition(second["id"], "APPROVED")
+
+    state.update_item(second["id"], {"acceptance_criteria": [{"id": "AC-1", "text": "other"}]})
+    moved = state.read_item(second["id"])
+    assert moved["status"] == "DRAFT" and moved["approval_ref"] is None
+    assert approvals.live_plan_approval(state, moved) is None
+    with pytest.raises(ApprovalError):
+        state.transition(second["id"], "APPROVED")
+    assert approvals.live_plan_approval(state, state.read_item(first["id"])) is not None
+
+    # AND THE EDIT THE REVISION DOES NOT CATCH, which is the one the hash exists for: an IDE
+    # writing the item file straight past the kernel leaves the revision where it was. Measured:
+    # without the hash comparison in `_assert_the_plan_covers` the paragraph above still passes
+    # (the revision bump alone closes it), so this is the assertion that reaches that line.
+    path = state.active_path(first["id"])
+    edited = state._read_yaml(path)
+    edited["acceptance_criteria"] = [{"id": "AC-1", "text": "something nobody approved"}]
+    state._write_yaml_atomic(path, edited)
+    assert approvals.live_plan_approval(state, state.read_item(first["id"])) is None
+
+
+def test_a_plan_approval_over_no_open_goal_is_refused_before_anyone_is_asked(state):
+    """FR-0074: a permission bound to an empty list would cover every goal captured afterwards."""
+    with pytest.raises(ApprovalError) as refusal:
+        approvals.plan_subject_manifest(approvals.plan_goals(state))
+    assert "nothing to approve" in str(refusal.value)
+
+
+def test_every_approval_kind_is_classified_as_takeable_back_or_not():
+    """FR-0083/FR-0074: `IRREVERSIBLE_KINDS` is measured from both ends, being a set of names.
+
+    END ONE -- no member of it has fallen out of `APR_KINDS` (a rule about a kind nobody can ask
+    for is a rule that decides nothing). END TWO -- no kind of `APR_KINDS` is unclassified, which
+    is the end that matters: a NEW kind is `IRREVERSIBLE_KINDS`-absent by default, i.e. mintable
+    by a program, and that has to be a decision somebody took rather than one nobody noticed.
+    """
+    assert approvals.IRREVERSIBLE_KINDS <= set(approvals.APR_KINDS)
+    revisable = set(approvals.APR_KINDS) - approvals.IRREVERSIBLE_KINDS
+    assert revisable == {"analysis", "scope", "delivery", "acceptance", "routine",
+                         approvals.PLAN_KIND}, (
+        "a new approval kind has to be judged: can this project take the act back out of its own "
+        "resources? If not it belongs in IRREVERSIBLE_KINDS; if so, add it to this list with the "
+        "reason in the round's protocol.")
+
+
+def test_a_program_cannot_mint_a_permission_the_project_cannot_take_back(state):
+    """FR-0083: the SDK route mints what a project can revisit, and nothing else.
+
+    RED WITHOUT THE FIX: with `_assert_the_route_may_decide_this` removed, the push token is minted
+    by a program and `gate_push_token` then reads a live token for a publication nobody authorised.
+    """
+    from kernel import sdk_approval
+
+    goal = state.capture("PR", dict(PR_FIELDS))
+    scope = approvals.create_pending_request(state, "scope", goal["id"])
+    apr = sdk_approval.mint_from_can_use_tool(
+        state, scope["request_id"], approvals.approve_label(scope["mint_code"]))
+    assert approvals.minted_via(apr) == approvals.PROGRAMMATIC_MINT
+
+    push = approvals.create_pending_request(
+        state, "push", manifest=approvals.push_subject_manifest("origin", "main", "abc123"),
+        approval_expires=time.time() + 600)
+    with pytest.raises(ApprovalError) as refusal:
+        sdk_approval.mint_from_can_use_tool(
+            state, push["request_id"], approvals.approve_label(push["mint_code"]))
+    assert "cannot take back" in str(refusal.value)
+    assert approvals.live_line_approval(
+        state, "push", approvals.push_subject_manifest("origin", "main", "abc123")) is None
+
+
+def test_the_card_names_the_route_that_minted_the_approval(state):
+    """FR-0083: the card is read out of the RECORD, so both routes are told apart afterwards.
+
+    RED WITHOUT THE FIX: without the `minted_via` stamp both cards read the same, which is exactly
+    the state the wishlist calls the provenance being only a claim.
+    """
+    from kernel import sdk_approval
+
+    human_goal = state.capture("PR", dict(PR_FIELDS))
+    approve_scope(state, human_goal["id"])
+    human = approvals.read_apr(state, state.read_item(human_goal["id"])["approval_ref"])
+
+    program_goal = state.capture("PR", dict(PR_FIELDS, title="Search", goal="find products"))
+    request = approvals.create_pending_request(state, "scope", program_goal["id"])
+    program = sdk_approval.mint_from_can_use_tool(
+        state, request["request_id"], approvals.approve_label(request["mint_code"]))
+
+    assert "Menschen" in approvals.approval_card(human)
+    assert "PROGRAMM" in approvals.approval_card(program)
+    assert approvals.approval_card(program) == sdk_approval.card(program)
+    assert approvals.presented_approval_a_program_minted(
+        state, state.read_item(program_goal["id"]))["id"] == program["id"]
+    assert approvals.presented_approval_a_program_minted(
+        state, state.read_item(human_goal["id"])) is None
+
+
+def _functions_that_decide_on(field, package_dir):
+    """Every function in the package that DECIDES on `field` -- `{"module.py:name": [line, ...]}`.
+
+    Judged on the parsed tree, never on the file's text, and "decides" is a property rather than a
+    spelling: a function decides when it compares something that carries the field's value. That is
+    the field read straight into an `ast.Compare`, and equally a local the function assigned FROM
+    the field and compares afterwards -- the second form is why this reader carries a taint step at
+    all, measured: without it the one-line revert of `board.open_requests` (assign `expires`, then
+    `now > expires`) left this test green, which is a test that cannot fail for the defect it names.
+
+    A read that only DISPLAYS the value is not a decision and is not reported -- the board formats
+    the stamp for the card -- and neither is the line that writes it.
+    """
+    found = {}
+    for entry in sorted(os.listdir(package_dir)):
+        if not entry.endswith(".py"):
+            continue
+        source = open(os.path.join(package_dir, entry), encoding="utf-8").read()
+        tree = ast.parse(source)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            carriers = {field}
+            for _ in range(len(carriers) + 3):     # assignment chains, until nothing new arrives
+                grown = set(carriers)
+                for assign in ast.walk(node):
+                    if not isinstance(assign, ast.Assign):
+                        continue
+                    value = ast.get_source_segment(source, assign.value) or ""
+                    if not any(c in value for c in carriers):
+                        continue
+                    for target in assign.targets:
+                        if isinstance(target, ast.Name):
+                            grown.add(target.id)
+                if grown == carriers:
+                    break
+                carriers = grown
+            for compare in ast.walk(node):
+                if not isinstance(compare, ast.Compare):
+                    continue
+                segment = ast.get_source_segment(source, compare) or ""
+                names = {n.id for n in ast.walk(compare) if isinstance(n, ast.Name)}
+                if field in segment or (names & carriers):
+                    found.setdefault("%s:%s" % (entry, node.name), []).append(
+                        segment.strip().splitlines()[0])
+    return found
+
+
+def test_every_reader_of_the_expiry_rule_asks_this_one(state):
+    """`approvals.has_expired` calls itself the one definition of "can never mint again" -- held.
+
+    TWO HALVES, because either alone has been green through a real defect. The FIRST is a property
+    of the parsed package: comparing an approval request's `expires_at_epoch` against a clock is
+    something exactly one function does. Until TSK-0120 three others did it in their own words --
+    `mint`, `report.generate_session_brief` and, since FR-0075, `board.open_requests` -- and the
+    docstring's "two readers, and they may not disagree" was prose nothing measured.
+
+    The SECOND is what that costs, run rather than reasoned: on a stamp NOBODY can read, the
+    definition is fail-closed (an unreadable clock never mints), while `mint`'s own spelling
+    reached `float("soon")` and left the package as a bare `ValueError` -- a caller that catches
+    `ApprovalError`, which is every caller the kits ship, does not catch that one. Measured before
+    the fix: `ValueError: could not convert string to float: 'soon'` for a string stamp and
+    `TypeError` for `null`, where `pending_request` refused both as expired.
+    """
+    package = os.path.join(TEAM_KITS, "kernel")
+    deciders = _functions_that_decide_on("expires_at_epoch", package)
+    assert set(deciders) == {"approvals.py:has_expired"}, deciders
+
+    for stamp in ("'soon'", "null", "[]", "''"):
+        pending = os.path.join(state.root, "approvals", "pending")
+        os.makedirs(pending, exist_ok=True)
+        path = os.path.join(pending, "r1.yaml")
+        open(path, "w", encoding="utf-8").write(
+            "request_id: r1\nkind: merge\nitem: PR-0001\nmint_code: abc123\n"
+            "expires_at_epoch: %s\n" % stamp)
+        with pytest.raises(ApprovalError):
+            approvals.pending_request(state, "r1")
+        with pytest.raises(ApprovalError):
+            approvals.mint(state, "r1", "whatever")
+        assert approvals.open_requests(state) == []
+        os.remove(path)

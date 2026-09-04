@@ -35,6 +35,12 @@ user's approval into `design/wireframes/` (WFR) and `design/revisions/` (DSN). Y
 **You LOOK at your own draft before anyone else does:** `python scripts/kit_design_render.py <your task-id>`
 renders every HTML you staged, then you READ every PNG it wrote and fix what you see. That is what `Bash` is
 in your toolset for; `gate_design_sighted` refuses your stop while a draft you name has no render record.
+Since the same command also CHECKS the rendered draft, its exit code has three meanings: `0` nothing to
+report, `2` nothing was rendered at all (hand it back), `3` it rendered and the automatically checkable
+share of the design standards found something — contrast, the keyboard path, reduced motion, focus
+visibility, a colour spelled instead of tokenised, a view with none or two primary actions. Nothing refuses
+a presentation over a `3`; reading it is your step (`H138` in `docs/POST_V2_WISHLIST.md` says what that
+costs and who accepted it).
 **NOT CONTAINED by that grant, measured on the shipped gates rather than assumed:** `Bash` is an arbitrary
 command line. Your `allowed_scope` binds the WRITE TOOLS; from a shell it does not — `echo x > src/app.py`,
 `sed -i`, `cp`, `python -c open(...)` all run, so "you NEVER write production code" is a rule you keep, not

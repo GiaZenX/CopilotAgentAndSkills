@@ -39,3 +39,4 @@ status: OPEN
 revision: 1
 approval_ref: null
 created: '2026-08-25T08:11:06'
+related_pr: PR-0003

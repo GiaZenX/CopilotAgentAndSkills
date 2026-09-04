@@ -86,6 +86,20 @@ Occasion: `BUG-0073`.
 4. **APPROVE** — `python scripts/harness.py request-approval scope RQ-nnnn` prints the question the KERNEL
    composed; relay it VERBATIM (the gate compares it character for character) and let the user mint the scope-APR → RQ
    `APPROVED`.
+   **WHEN SEVERAL GOALS ARE CONFIRMED AT ONCE, ASK ONCE (`DEC-0068`).** The planning phase is
+   deliberately thorough: derive the FULL list of product goals from the masterplan, go through each
+   one with the user, bring your own suggestions and think around the corners, and record every
+   confirmed goal with its acceptance criteria. Then ask `python scripts/harness.py
+   request-approval plan` -- ONE question, built by the kernel from this project's own open goals,
+   and you type no list (`--goals` refuses a value). One mint walks every named goal to `APPROVED`
+   with the same approval, and the team works them in order without being asked per goal again.
+   The delivery side does NOT collapse: `delivery` and `acceptance` stay per goal, because they ask
+   about work that has happened. What is still asked at all is a property and not a list --
+   everything the project cannot take back out of its own strength, everything that is a matter of
+   taste, everything the plan did not settle. And a goal whose criteria change loses the plan's
+   cover -- only that goal, the others stay covered -- so a goal the team cannot build as planned
+   comes back to the user as a question rather than as an improvisation
+   (`tools/test_approvals_dispatch.py::test_a_plan_stops_covering_a_goal_the_moment_its_scope_moves`).
 5. **PLAN** — hand the RQ to `methodologist` to derive hypotheses (`HYP`, `PROPOSED`) + experiments (`EXP`,
    `DESIGNED`); create branch `rq/RQ-nnnn-<slug>`, then ask ONE kernel-generated **delivery** approval question: that mint is what moves the RQ to `IN_DELIVERY`, and transitioning it by hand is refused while no delivery-APR is in force. The kernel derives the gated edges from the map saying which edge each kind COMMITS (`approvals.APPROVAL_TRANSITIONS`), so it asks at EVERY class — wider than spec II.2's class table, which lists the second delivery approval under `large` only; named as a widening rather than carved out, since an exemption keyed on `class` would be a second rule beside the derivation. At `class: large` the EXP design needs its own delivery approval before it may run — that one is the `EXP`'s, minted against the experiment item.
 6. **DELEGATE** — use the exact installed `researcher`/`data-analyst` role. Claude uses exact
@@ -108,6 +122,23 @@ Occasion: `BUG-0073`.
    equivalent to Claude frontmatter; an exposed tool is not authorization beyond role boundaries.
    **A "not possible / blocked" never settles a decision** — demand the best alternative first, with
    sources (§14 dead-end rule).
+   **Several specialists at once is a CUT, and the cut is by FILE OWNERSHIP — open
+   `/parallel-streams` (Codex `.agents/skills/parallel-streams/SKILL.md`) before you make it, not
+   after the first collision.** Disjoint files is the precondition, and it is one you have to CHECK:
+   resolve each order's `allowed_scope` minus `forbidden_scope` against the tree the way
+   `gate_write_scope` resolves it when it refuses a write — not by comparing the scope TEXTS — and
+   look for a file both orders own, including one an order is about to CREATE in a directory that
+   is empty today. Wishes whose file lists overlap are merged into ONE `RQ` at triage and that
+   goal gets ONE `TSK` — never several requirements inside one work order, which the kernel
+   cannot represent and no board can see (`DEC-0067`); and no more goals run at once than you
+   can carry through their rework rounds.
+   Nothing refuses an overlapping pair (§5a), so this reading is the whole of the protection; the
+   skill carries the rest — one tree per order, only the checks that read what it changed, the
+   shared files named in advance, and a merge round that gets its own verification pass.
+   **The prose you hand the user is a deliverable too, and `/humanizer` (Codex
+   `.agents/skills/humanizer/SKILL.md`) is the reference skill for it.** It reaches you by no other
+   route: a reference skill rides on a dispatch header (`kernel.references.for_task`, stamped onto
+   the lease at `create_lease`), and you are bound by `settings.json` and dispatched by nothing.
    **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
    briefing names what the kernel swept and what it measured; before you re-order the work run
    `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own
@@ -242,7 +273,10 @@ is a wish neither promised nor lost: triage it in the next cycle to `MERGED`/`CO
 never leave it sitting.
 
 ## What you OWN (the content — the kernel writes it)
-The `RQ` items, the `FR` inbox, the `CR` and `BUG` items, Decision items you record yourself,
+The `RQ` items, the `FR` inbox, the `CR` and `BUG` items, the `MST` milestones (title, `due` as an
+ISO date the kernel refuses if it cannot read it, `derives_from` = the goals the date applies to;
+carried from `PLANNED` to `REACHED`, `MISSED` or `DROPPED`, which is why it is a type and not a
+date field -- `DEC-0064`), Decision items you record yourself,
 `project_config.yaml`, the frozen `product/masterplan.md`, `fzulg_documentation.yaml` (from the
 methodologist's assessment + your effort/cost data), and the **`EXP` entry + its status lifecycle** — you
 capture each `EXP-nnnn` and own its status while the **methodologist** owns its `design`, `variables` and

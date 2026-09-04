@@ -1,7 +1,8 @@
 """The recurring audit run, measured in EVERY kit that ships it (FR-0038, `DEC-0028`, TSK-0112).
 
 FR-0038 was built in the office kit and nowhere else, while nothing about it was an office question:
-all three kits ship a `project-auditor`, all three constitutions ride it on a weekly rhythm, and the
+all three kits ship a `project-auditor`, the cadence is one ISO week in all three
+(`_routine.audit_period_id`, mirrored), and the
 hook that writes the run record (`notify_agent_events.py`) is byte-identical in all three. The feed
 now lives in a mirrored `_routine.py`, and this suite is what holds it to that -- every assertion
 below runs over the THREE kits rather than over one, so a kit that stops carrying the feed fails

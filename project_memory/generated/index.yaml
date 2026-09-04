@@ -1,5 +1,29 @@
-generated_at: '2026-09-03T04:07:32'
+generated_at: '2026-09-04T02:49:09'
 items:
+- id: APR-0001
+  type: APR
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: APR-0002
+  type: APR
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: APR-0003
+  type: APR
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: APR-0004
+  type: APR
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: BUG-0001
   type: BUG
   title: Die Kommandoflaeche hat kein update -- ein Tippfehler kostet ein neues Item
@@ -567,33 +591,33 @@ items:
   title: 'Kernel: report._root_of resolves ONE hop while _hangs_from is transitive
     -- the research chain RQ -> HYP -> EXP -> TSK the constitution documents cannot
     be created (H92)'
-  status: TRIAGED
+  status: FIXED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0001
 - id: BUG-0084
   type: BUG
   title: 'Kernel: an approval on a HYP covers NO content and never invalidates --
     it mints (APR-0003), unlocks dispatch, survives every edit of the HYP, and takes
     the task out of the QA-debt check (H93, security-relevant)'
-  status: TRIAGED
+  status: FIXED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0002
 - id: BUG-0085
   type: BUG
   title: 'Research kit: the rendered report (project_memory/reports/*) has NO write
     route -- section 6 assigns it to the report-writer, section 17 makes it a completeness
     condition, and gate_write_scope refuses every write there (H94, BUG-0071 class)'
-  status: TRIAGED
+  status: FIXED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0003
 - id: BUG-0086
   type: BUG
   title: 'Kernel: the task-origin check falls OPEN on ambiguous parentage -- an item
     with two parents gets _root_of None and dispatch skips the root comparison, in
     every kit (verifier B2 / H95)'
-  status: TRIAGED
+  status: FIXED
   revision: 1
-  approval_ref: null
+  approval_ref: APR-0004
 - id: BUG-0087
   type: BUG
   title: tools/test_hooks_v2.py:9428 is an assert-or-True -- a test that cannot fail,
@@ -614,6 +638,24 @@ items:
   title: 'kernel `update` refuses a frozen work-order field with the remedy ''transition
     the task back to DRAFT'' -- but the TSK automaton forbids READY -> DRAFT (allowed:
     CANCELLED, LEASED); the printed remedy cannot be walked'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0090
+  type: BUG
+  title: 'A BUG cannot reach VERIFIED on an honestly declared regression run: the
+    confirming edge reads the merge''s evidence filter, which drops every passing
+    run_scope=selection (DEC-0061) -- while the kernel''s own refusal text asks for
+    exactly such a targeted run'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0091
+  type: BUG
+  title: create-task accepts an inbox item (FR) as product_requirement and derives_from
+    -- a work order can hang from a wish that was never triaged into a root, although
+    the constitution (section 4) and the create-task help name only root, BUG, CR,
+    EXP
   status: OPEN
   revision: 1
   approval_ref: null
@@ -1034,6 +1076,55 @@ items:
     is a verification of its own, Opus is the implementer floor and Fable stays a
     design-pass tier, and a full run that itself yields findings is followed by full
     runs of every suite that reads what changed'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0064
+  type: DEC
+  title: Milestones are an item TYPE (MST) with their own automaton, not a date field
+    on other items -- FR-0079 decided
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0065
+  type: DEC
+  title: 'Backlog board, generation 3 (FR-0075/FR-0080): ONE renderer with two outputs,
+    diagrams generated beside the board, records collapsed, the three numbers of FR-0075,
+    READY counts as in flight, English per DEC-0049 -- and the visual language is
+    re-briefed apart from the finance dashboard'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0066
+  type: DEC
+  title: 'This repo follows the kits'' own requirement hierarchy: a wish that gets
+    built becomes a product goal (PR) or hangs from one -- FR stays the inbox; the
+    14 root-less FRs are filed under PR-0003, the four large ones are converted to
+    PRs from generation 4 on'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0067
+  type: DEC
+  title: 'Amendment to DEC-0062: the bundle lives at the PRODUCT GOAL, not at the
+    work order -- a stream is one PR cut by file ownership (wishes merged into it
+    at triage), with one TSK per PR; built into the kits with FR-0021'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0068
+  type: DEC
+  title: 'FR-0074 decided: ONE plan-level approval kind `plan` covers the confirmed
+    goal list for the scope edge; delivery and acceptance stay per goal; what still
+    asks is the irreversibility property in the kernel, not a list'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0069
+  type: DEC
+  title: 'H138 accepted as a named exception: the design-standard checks REPORT findings
+    on a rendered draft (exit 3) and nothing refuses freezing it -- until the first
+    measured case of a draft with findings being built or frozen anyway'
   status: VALID
   revision: 1
   approval_ref: null
@@ -1505,6 +1596,18 @@ items:
   status: null
   revision: 1
   approval_ref: null
+- id: EVD-0079
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
+- id: EVD-0080
+  type: EVD
+  title: null
+  status: null
+  revision: 1
+  approval_ref: null
 - id: FR-0002
   type: FR
   title: Acht Uebernahmen aus einem echten Betrieb ins Office-Kit
@@ -1752,6 +1855,30 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0085
+  type: FR
+  title: SR (technical requirement) mandatory per PR class before a work order is
+    dispatched -- today the architect step is procedure only, no gate reads it
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0086
+  type: FR
+  title: 'A gate on the SCOPE of a test run: a command line that runs the whole suite
+    is refused during a round unless the line says it is the delivery run -- in this
+    repo and in the kits (the enforcement half of FR-0057, the cost class of DEC-0050)'
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: FR-0087
+  type: FR
+  title: 'Hole-list entries become typed items: a measured, open gap in a guard is
+    state the kernel holds (a BUG-shaped item with a ''what limits instead'' field
+    and the user-accepted exception as an approval), and the H-number list in docs/POST_V2_WISHLIST.md
+    is retired into it'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1819,9 +1946,39 @@ items:
   status: ACCEPTED
   revision: 1
   approval_ref: null
-- id: TSK-0088
+- id: TSK-0115
   type: TSK
   title: null
-  status: DRAFT
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0116
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0117
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0118
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0119
+  type: TSK
+  title: null
+  status: READY
+  revision: 1
+  approval_ref: null
+- id: TSK-0120
+  type: TSK
+  title: null
+  status: READY
   revision: 1
   approval_ref: null

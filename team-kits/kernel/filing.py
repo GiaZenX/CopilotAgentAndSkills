@@ -91,11 +91,71 @@ RULE_FIELDS = (("id", "rule_id"), ("path_template", "path_template"),
 _RULES_LINE_RX = re.compile(r"\A(?P<head>rules[ \t]*:)(?P<tail>.*)\Z")
 _EMPTY_FLOW_RX = re.compile(r"\A[ \t]*\[[ \t]*\][ \t]*(?:#.*)?\Z")
 _ONLY_COMMENT_RX = re.compile(r"\A[ \t]*(?:#.*)?\Z")
+# WHAT A RETENTION MAY SAY, so a rule this kernel writes can never be one the deadline register
+# meets and cannot parse (F6 of TSK-0113). The plan's own header names exactly two honest forms: a
+# span somebody can count, or nothing at all for a tray whose clock does not start at a year's end.
+# A sentence with no number in it is the third, and it costs the project a "your deadline register
+# is incomplete" line at EVERY session start, forever -- which is why this is refused at the write
+# and not reported afterwards.
+#
+# THE SPAN READER IS A SECOND COPY OF ONE THE KERNEL CANNOT IMPORT, and that is said here rather
+# than hidden: the register lives in the office kit's hook directory (`_duties._retention_years`)
+# and the kernel may not import a kit. Two copies of one definition is the drift this repo has paid
+# for before, so the two are held together by a measurement instead of by discipline --
+# `tools/test_office_duties.py::test_the_kernel_and_the_duty_register_read_a_retention_the_same_way`
+# compares the two COMPILED PATTERNS, not a list of examples, and generates its corpus from the unit
+# words both of them carry. A list of examples was the first cut and it was measured false: adding
+# `|jahren` to either reader left it green. Moving the register onto this reader is a change in the
+# hook directory and is reported as a seam, not made here.
+#
+# WHICH UNIT WORDS COUNT IS A VOCABULARY, not a definition, and it is the shared one: `10 Jahren`,
+# `10a`, `P10Y`, `zehn Jahre`, `6 Monate` and a bare YAML integer all read as "no span" in BOTH
+# readers, so the kernel refuses them with a remedy rather than writing a rule the register cannot
+# watch. Widening it means widening both, which is the seam above; the residue is named in `H130`.
+_RETENTION_SPAN_RX = re.compile(
+    r"(?<![\w.])(\d{1,3})\s*(y|yr|yrs|year|years|j|jahr|jahre)(?![\w])", re.I)
+
 # How deep an appended rule is indented under `rules:`. Two spaces, matching the commented examples
 # the shipped template carries -- a block sequence may also sit at column 0, and picking the
 # template's own spelling is what keeps a hand-written plan and a kernel-written rule looking like
 # one file.
 _INDENT = "  "
+
+
+def retention_span(value) -> int:
+    """The number of years this retention names, or None -- the register's reading, not a new one.
+
+    `None` for a value that names no span at all, which is BOTH honest answers apart: `retention:
+    null` means "no span to count" and a sentence without a number means "nobody can count this
+    one". Telling those two apart is `retention_refusal`'s job, because only it knows that an empty
+    value was written deliberately.
+    """
+    match = _RETENTION_SPAN_RX.search(str(value if value is not None else ""))
+    return int(match.group(1)) if match else None
+
+
+def retention_refusal(value) -> str:
+    """Why this retention may not be written into a filing plan, or None if it may.
+
+    THE TWO FORMS THE PLAN'S OWN HEADER ALLOWS: a span this reader can count ("8y (§ 147 AO; …)"),
+    or nothing -- `null`, or an empty string, for a tray whose clock does not start at the end of a
+    year. Everything else is refused HERE, at the write, because the alternative is a rule the
+    session-start deadline register meets, cannot parse, and reports as unwatched for the rest of
+    the project's life (`tools/test_kernel.py::
+    test_a_retention_the_deadline_register_cannot_read_is_refused_before_it_reaches_the_plan`).
+    """
+    if value is None or not str(value).strip():
+        return None
+    if retention_span(value) is not None:
+        return None
+    return (
+        "the retention %r names no span in years, and the session-start deadline register can "
+        "only watch a rule whose retention it can count -- a rule written like this is reported as "
+        "unwatched at every session start and nothing ever falls due for it. Refused, nothing was "
+        "changed. Remedy: ask for the rule again with a span and its legal basis (for example "
+        "\"8y (§ 147 AO; mit der Steuerberatung bestätigen)\"), or with no retention at all "
+        "(`null`) when this drawer really has no span that can be counted from a year folder."
+        % (str(value)[:120],))
 
 
 def plan_path(state: ProjectState) -> str:
@@ -341,6 +401,13 @@ def apply(state: ProjectState, manifest: dict) -> dict:
     with state.lock:
         rules = existing_rules(state)
         rule = rule_from(manifest)
+        # BEFORE THE APPROVAL IS EVEN LOOKED UP: a retention nobody can count is a defect in what
+        # was ASKED, so the answer is the same whether or not a user signed it (F6). Asking the
+        # question with the two forms in it belongs to the approval side and is a seam to the
+        # kernel stream; this is the half that can be refused where the write happens.
+        refusal = retention_refusal(manifest.get("retention"))
+        if refusal:
+            raise StateError(refusal)
         clash = [r for r in rules if isinstance(r, dict) and str(r.get("id")) == rule["id"]]
         if clash:
             raise StateError(

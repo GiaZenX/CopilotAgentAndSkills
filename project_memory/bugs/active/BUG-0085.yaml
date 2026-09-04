@@ -26,7 +26,8 @@ acceptance_criteria:
     rc 2
 - id: AC-2
   text: section 6 and 17 of the research constitution say the route that exists
-status: TRIAGED
+status: FIXED
 revision: 1
-approval_ref: null
+approval_ref: APR-0003
 created: '2026-09-01T23:18:03'
+approved_hash: bb9a12816b11ce4a3ae805b7b02df3d73c5e30ce95102bca3111d649c2265984

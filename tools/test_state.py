@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 
 from conftest import drive_task_to, walk_to_status  # noqa: E402 -- the sanctioned chain walkers
 from kernel.backlog_types import (  # noqa: E402
+    BLOCKED_REASON_FIELD,
+    BLOCKED_RESULT,
+    DATE_FIELDS,
+    EVIDENCE_RESULT_FIELD,
     PARENT_FIELDS,
     REQUIRED_FIELDS,
     V1_STATUS_MAPPING,
@@ -629,6 +633,21 @@ def _contract_payload(item_type, bindings):
         payload[field] = sorted(allowed[0])[0] if allowed else bindings.get(field, "x")
     for field, value in bindings.items():
         payload.setdefault(field, value)
+    # ...AND THE CONDITIONAL HALF OF THE SAME CONTRACT: a value out of a closed vocabulary can owe
+    # a companion field, and picking the alphabetically first member is how this fixture met one.
+    # `BLOCKED_RESULT` owes the sentence saying what stopped the run (FR-0082,
+    # `state.capture_preflight`), so the payload carries it -- otherwise this test stops at that
+    # refusal and never reaches the binding check it is about. Both names come from the kernel,
+    # like everything else here.
+    if payload.get(EVIDENCE_RESULT_FIELD) == BLOCKED_RESULT:
+        payload[BLOCKED_REASON_FIELD] = "the run did not happen in this fixture"
+    # ...and a field the contract declares as a DATE has to BE one (DEC-0064), or every capture
+    # here stops at that refusal instead of the one the caller is testing. Read from `DATE_FIELDS`,
+    # like the vocabulary above, so a second date field arrives satisfied rather than as the next
+    # surprise.
+    for field in DATE_FIELDS.get(item_type, ()):
+        if field in payload:
+            payload[field] = "2026-10-01"
     return payload
 
 
@@ -887,3 +906,202 @@ def test_the_migration_write_set_reads_three_of_the_four_edge_guards(state):
             if "approved retry" in str(exc):
                 refused_for_retry.add((_from, _to))
     assert refused_for_retry == {(source, target)}, refused_for_retry
+
+
+# -- the honesty sentence of a blocked verdict (FR-0082) and a walkable remedy (BUG-0089) -------
+
+EVD_FIELDS = {
+    "kind": "test",
+    "related": ["PR-0001"],
+    "summary": "the e2e suite",
+    "artifact_refs": ["staging/TSK-0001/run.log"],
+}
+
+
+def test_a_blocked_evidence_owes_its_sentence_and_the_sentence_owes_its_verdict(state):
+    """FR-0082, both directions of one pair.
+
+    FORWARD: a `blocked` with no sentence is refused, because without it the store holds a red
+    verdict a later reader cannot tell from a checked one -- the exact failure the wishlist section
+    names ("sonst liest der naechste `blocked` als geprueste Tatsache", section 7).
+
+    BACKWARD, and this is the half that keeps the field honest rather than decorative: the sentence
+    under any other result is refused too, because a record that says what stopped the run while
+    also reporting the run as done says two things.
+
+    RED WITHOUT THE FIX: with the pair check removed from `capture_preflight` the first capture
+    succeeds and the store holds a `blocked` explaining nothing.
+    """
+    from kernel.backlog_types import BLOCKED_REASON_FIELD, BLOCKED_RESULT
+
+    state.capture("PR", dict(PR_FIELDS))       # the item the Evidence is about has to exist
+    with pytest.raises(StateError) as refusal:
+        state.capture("EVD", dict(EVD_FIELDS, result=BLOCKED_RESULT))
+    assert BLOCKED_REASON_FIELD in str(refusal.value)
+
+    with pytest.raises(StateError):
+        state.capture("EVD", dict(EVD_FIELDS, result="pass",
+                                  **{BLOCKED_REASON_FIELD: "no browser"}))
+
+    recorded = state.capture("EVD", dict(EVD_FIELDS, result=BLOCKED_RESULT,
+                                         **{BLOCKED_REASON_FIELD: "no Chromium on this runner"}))
+    assert recorded[BLOCKED_REASON_FIELD] == "no Chromium on this runner"
+    # ...and a whitespace-only sentence is no sentence
+    with pytest.raises(StateError):
+        state.capture("EVD", dict(EVD_FIELDS, result=BLOCKED_RESULT,
+                                  **{BLOCKED_REASON_FIELD: "   "}))
+
+
+def test_a_frozen_field_refusal_names_only_walkable_transitions(state):
+    """BUG-0089: the remedy of a frozen work-order field is read off AUTOMATA at refusal time.
+
+    THE PLANTED STATE IS THE MEASURED ONE: a `TSK` in READY, whose automaton has no edge into DRAFT
+    from anywhere -- so the remedy must not name DRAFT as somewhere to transition to. Measured
+    2026-09-02 on TSK-0107: the refusal said "transition the task back to DRAFT", and `transition
+    TSK-0107 DRAFT` then answered "illegal transition TSK: READY -> DRAFT".
+
+    RED WITHOUT THE FIX: the old refusal text contains the string this asserts against.
+
+    THE OTHER END -- that the derivation really READS the table rather than being a rule against
+    one word -- is `_replanning_remedy` fed a status the same automaton CAN leave towards its
+    initial one, which the shipped `TSK` automaton has no example of; the route function's own
+    both-ends test covers it per automaton
+    (`tools/test_backlog_types.py::test_the_replanning_route_names_only_edges_the_automaton_has`).
+    """
+    from kernel.backlog_types import AUTOMATA
+    from kernel.state import _replanning_remedy
+
+    task = _ready_task(state)
+    with pytest.raises(StateError) as refusal:
+        state.update_item(task["id"], {"expected_outputs": ["something else"]})
+    remedy = str(refusal.value).split("Remedy:", 1)[1]
+    assert "DRAFT" not in remedy, remedy
+    for target in ("CANCELLED",):
+        assert target in remedy
+    assert ("READY", "DRAFT") not in AUTOMATA["TSK"].allowed
+
+    # a status with neither route left says so instead of inventing one
+    assert "cannot be re-planned from here" in _replanning_remedy(
+        "TSK-0001", "TSK", "VALIDATED", "DRAFT")
+
+
+def test_the_update_path_reads_a_date_field_exactly_as_capture_does(state):
+    """The edit verb is a writer too, so it owes the same date rule (rework 2).
+
+    MEASURED BEFORE THE FIX, through the shipped CLI as a process: `update MST-0001
+    {"due": "Weihnachten"}` was rc 0 and stored; `{"due": "20261225"}` put a second spelling of a
+    day beside the `2026-12-25` the store already held; `{"due": null}` put back exactly the value
+    the capture path had just been taught to refuse. One rule with two doors is no rule.
+
+    RED WITHOUT THE FIX on every line below. `_dates_in` is ONE function called by both verbs, so
+    this cannot drift back into two readings.
+
+    THE LAST ASSERTION IS THE POINT OF NORMALISING IN THE EDIT PATH RATHER THAN ONLY REFUSING
+    THERE: re-spelling the day the item already carries is not a change, so it must not bump a
+    revision or invalidate anything.
+    """
+    make_pr(state)
+    milestone = state.capture("MST", dict(MST_FIELDS, due="2026-12-25"))
+    for unreadable in ("Weihnachten", None, "2026-13-01", ""):
+        with pytest.raises(StateError, match="not a calendar date"):
+            state.update_item(milestone["id"], {"due": unreadable})
+        assert state.read_item(milestone["id"])["due"] == "2026-12-25", (
+            "a refused update must leave the record alone")
+
+    from datetime import date as _date
+    try:
+        _date.fromisoformat("20261225")
+    except ValueError:
+        return                      # this interpreter does not read the compact form -- see H147
+    before = state.read_item(milestone["id"])
+    updated = state.update_item(milestone["id"], {"due": "20261225"})
+    assert updated["due"] == "2026-12-25"
+    assert state.read_item(milestone["id"])["due"] == "2026-12-25"
+    assert updated["revision"] == before["revision"], (
+        "re-spelling the same day is not a change, so nothing may move")
+
+
+def _ready_task(state):
+    """A TSK in READY, walked the sanctioned way (root approval, then the chain edge)."""
+    from conftest import approve
+    from kernel import dispatch
+
+    root = state.capture("PR", dict(PR_FIELDS))
+    approve(state, root["id"], "scope")
+    task = dispatch.create_task(state, {
+        "product_requirement": root["id"], "derives_from": root["id"],
+        "type": "implementation", "assigned_role": "backend-developer",
+        "acceptance_refs": ["AC-1"], "required_inputs": [], "allowed_scope": ["src/"],
+        "forbidden_scope": ["secrets/"], "expected_outputs": ["src/x.py"], "dependencies": []})
+    state.transition(task["id"], "READY")
+    return task
+
+
+# -- the milestone type at the write path (DEC-0064) --------------------------------------------
+
+MST_FIELDS = {"title": "Release 2026.10", "due": "2026-10-01", "derives_from": ["PR-0001"]}
+
+
+def test_every_type_with_an_automaton_is_captured_with_its_initial_status(state):
+    """`capture` stamps the initial status for EVERY type that has an automaton -- derived, not listed.
+
+    THE DEFECT THIS HOLDS, measured before the fix: `state._AUTOMATON_TYPES` was a hand-written
+    tuple of ten names that happened to equal `AUTOMATA`'s keys. Adding an eleventh type (`MST`)
+    left the item with no `status` key at all -- `capture` wrote it, `archive` then read it as
+    non-terminal, and nothing raised anywhere. RED WITHOUT THE FIX on the `MST` row below.
+
+    Over the whole map rather than over the new type, because "a type nobody added to the tuple" is
+    exactly the defect; the payload of each type is built from its own contract, so a type added to
+    `AUTOMATA` without a capture contract is skipped for a REASON the assertion names.
+    """
+    from kernel.backlog_types import AUTOMATA, initial_status
+
+    make_pr(state)                       # the parent every binding below resolves against
+    for item_type in sorted(AUTOMATA):
+        if item_type not in REQUIRED_FIELDS:
+            continue                     # not a capturable type -- the freeze path owns those
+        payload = _contract_payload(item_type, {})
+        for field in PARENT_FIELDS.get(item_type, ()):
+            payload[field] = "PR-0001"
+        captured = state.capture(item_type, payload)
+        assert captured["status"] == initial_status(item_type), item_type
+
+
+def test_a_date_field_that_is_not_a_date_is_refused_at_capture(state):
+    """DEC-0064 (3): `due` is read by `date.fromisoformat` or the capture is refused.
+
+    RED WITHOUT THE FIX: with the `DATE_FIELDS` loop removed from `capture_preflight`, `due:
+    "Oktober"` is stored, and every view of that milestone then shows "no date" for a record
+    nothing can repair -- an item is practically immutable.
+
+    THE COUNTER-ASSERTION IS THE SECOND HALF: a real ISO date captures, so this cannot pass by the
+    type being unusable.
+    """
+    make_pr(state)
+    # `None` among them, and it is the one the first cut let through: the required-field loop only
+    # refuses an ABSENT key, so `due: None` was stored on a type nothing can edit afterwards, and
+    # every view of that milestone then reads "no date" for good.
+    for unreadable in ("Oktober", "2026-13-01", "2026-10-01T00:00", "", None):
+        with pytest.raises(StateError, match="not a calendar date"):
+            state.capture("MST", dict(MST_FIELDS, due=unreadable))
+    milestone = state.capture("MST", dict(MST_FIELDS))
+    assert milestone["status"] == "PLANNED" and milestone["due"] == "2026-10-01"
+    # ...AND ONE DAY HAS ONE SPELLING IN THE STORE. `date.fromisoformat` accepts more than one
+    # form, so without the normalisation two milestones of the same day sort against each other
+    # lexically for every reader that orders by `due`.
+    # ASKED OF THE INTERPRETER FIRST, because WHICH forms it accepts has widened across versions
+    # (`20261001` is refused on 3.10 and read on 3.11+) -- that half is not ours and is named as
+    # `H147`. Where the form is refused there is nothing to normalise and the capture is refused,
+    # which is the other assertion above.
+    from datetime import date as _date
+    try:
+        _date.fromisoformat("20261001")
+    except ValueError:
+        return
+    compact = state.capture("MST", dict(MST_FIELDS, due="20261001"))
+    assert compact["due"] == "2026-10-01"
+    assert state.read_item(compact["id"])["due"] == "2026-10-01"
+    # ...and the two ways of not reaching it are open while it is ahead, and closed once it is not
+    state.transition(milestone["id"], "REACHED")
+    with pytest.raises(TransitionError):
+        state.transition(milestone["id"], "MISSED")

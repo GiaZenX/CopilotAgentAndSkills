@@ -1,0 +1,18 @@
+request_id: c6df0e13edd44ceb8be96bb08336f708
+kind: scope
+item: BUG-0085
+revision: 1
+subject_manifest:
+  acceptance_criteria:
+  - id: AC-1
+    text: a research project renders and files its report end to end with no user
+      file operation and no write outside the sanctioned route; red-first reproduces
+      today rc 2
+  - id: AC-2
+    text: section 6 and 17 of the research constitution say the route that exists
+  item: BUG-0085
+  revision: 1
+subject_manifest_hash: 1b1e55da93501fdc4b77b6e3076a068a12d7f4f82a1ea58f89497321e62c02aa
+created: '2026-09-03T07:05:20'
+expires_at_epoch: 1788498320.1504653
+mint_code: a0f036

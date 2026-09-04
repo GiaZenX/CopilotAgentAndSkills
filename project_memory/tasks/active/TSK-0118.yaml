@@ -1,0 +1,102 @@
+id: TSK-0118
+product_requirement: FR-0021
+derives_from: FR-0021
+type: implementation
+assigned_role: harness-implementer
+acceptance_refs:
+- AC-1
+allowed_scope:
+- team-kits/*/constitution/**
+- team-kits/*/skills/project-manager/**
+- team-kits/office-team/skills/office-manager/**
+- team-kits/dev-team/skills/parallel-streams/**
+- team-kits/*/agents/project-manager.md
+- team-kits/*/agents/project-auditor.md
+- team-kits/*/VERSION
+- tools/**
+- docs/**
+forbidden_scope:
+- team-kits/kernel/**
+- team-kits/*/hooks/**
+- team-kits/*/templates/**
+- team-kits/*/settings/**
+- team-kits/dev-team/skills/frontend-design/**
+- team-kits/dev-team/skills/product-designer/**
+- team-kits/dev-team/skills/webapp-testing/**
+- team-kits/*/skills/humanizer/**
+- scaffold_team.*
+- install.*
+- init_project_memory.*
+- team-kits/gen_provider_artifacts.py
+- user/**
+- CLAUDE.md
+- .claude/**
+- project_memory/**
+required_inputs:
+- project_memory/inbox/active/FR-0021.yaml (primary; FR-0084 review-as-event is NOT
+  in this stream -- user decision 2026-09-03, generation 4)
+- 'project_memory/decisions/active/DEC-0057.yaml, DEC-0060.yaml, DEC-0062.yaml, DEC-0063.yaml,
+  DEC-0059.yaml -- the MEASURED mechanics this stream ports into the kits: worktree
+  per stream, allowed_scope = ownership and disjoint at file level, grouped requirements,
+  cap by one round''s attention, seams named at cut time, merge round as its own verification,
+  one release, tiers'
+- 'project_memory/staging/generation-2-streams.md and project_memory/staging/TSK-0114/merge-protocol.md
+  (the seam table, the (g) table, the six merge-only findings, and section 8: the
+  project-auditor description-vs-body residue N2)'
+- project_memory/inbox/active/FR-0022.yaml (human names for instances -- referenced,
+  not built)
+- 'team-kits/dev-team/constitution/AGENTS.md, team-kits/*/skills/project-manager/SKILL.md,
+  team-kits/*/agents/project-auditor.md (x3); READ-ONLY: team-kits/kernel/dispatch.py
+  + team-kits/dev-team/hooks/gate_dispatch.py + gate_write_scope.py (what a lease
+  carries today and how allowed_scope is enforced per task -- the property the procedure
+  builds on)'
+- 'tools/test_constitution*.py / the agent-text tests of stream E gen 2 (the lead-in
+  rule: a section in >= 2 constitutions is in all three or listed with reason)'
+expected_outputs:
+- 'FR-0021: the PM procedure for PARALLEL specialists in the dev kit, derived from
+  DEC-0057/0060/0062/0063 and written as (a) a procedure skill team-kits/dev-team/skills/parallel-streams/,
+  (b) a constitution section, (c) the project-manager skill lines -- cut by file ownership,
+  group requirements that share files, cap by one round''s attention, allowed_scope
+  per TSK disjoint at file level and CHECKED before dispatch, one worktree per stream,
+  streams run affected suites only, the merge round is a verification of its own with
+  a seam table, one release. What the kernel or hooks must carry for it (a lease per
+  instance and role, the worktree path on the lease, the seam table as an item field,
+  a dispatch refusal on overlapping scopes) is a SEAM to stream C: listed as concrete
+  requirements, verbatim, each with the test it needs -- nothing built in kernel or
+  hooks here.'
+- 'DEC-0062 (6) as kit text, MEASURED on a pilot copy: the procedure''s own pre-dispatch
+  check (a documented command over the kernel index, or a script under tools/ if the
+  check needs code) refuses two tasks whose allowed_scope overlaps at file level --
+  red-first; where the refusal must be a hook, that is the seam to C and the protocol
+  says which half is text and which half waits.'
+- 'The section appears in all three constitutions or the reason is listed (the lead-in
+  rule of gen-2 stream E, measured by the existing constitution tests); sentences
+  OTHER streams owe (A, B, C, E) are NOT written here -- they arrive in the merge;
+  the protocol carries a table ''seam sentences received at cut time: none; expected
+  at merge: from B, C, E''.'
+- 'N2 closed: the description line of the three project-auditor.md agents made consistent
+  with their body sentence (merge-protocol section 8 residue), measured by the existing
+  agent-text test; if that test cannot see the mismatch, it gains the case red-first.'
+- Per FR its own red-first test measured in a copy outside the repo (restore the defect,
+  see red, put it back) and its own acceptance line in the protocol; the verifier
+  reports PER FR (DEC-0062 (4)). Every new property claim -- code comment, docstring,
+  docs, hole list -- is MEASURED before handover (the most frequent finding of generation
+  2); every hole-list citation carries its module prefix; hole numbers H135 to H137
+  ONLY; forbidden_scope project_memory/** excepts project_memory/staging/(this task
+  id)/.
+- 'Handover: worktree C:/Offline Repos/v2-testbed/_worktrees/g3-parallel (branch g3/parallel
+  off feat/harness-v2 at e45c0ca); ALL scratch only under C:/Offline Repos/v2-testbed/_round-scratch/(this
+  task id)/; verifier copies made WITHOUT the .git file of the worktree; patch = the
+  worktree diff at C:/Offline Repos/v2-testbed/_round-scratch/(this task id)/stream-parallel.patch;
+  protocol at project_memory/staging/(this task id)/stream-protocol.md with: seam
+  table, per-FR acceptance line + red-first tests, measured lines, what was deliberately
+  not closed but named, the one-line rejected alternative of the plan (FR-0084 shape),
+  suite runs (affected suites only -- the full suite belongs to the merge round),
+  provisional VERSION stamp, wall-clock and tokens for the (g) table. No commit, no
+  push, no install to the global store.'
+dependencies: []
+root_revision: 1
+status: READY
+revision: 1
+approval_ref: null
+created: '2026-09-03T07:21:09'

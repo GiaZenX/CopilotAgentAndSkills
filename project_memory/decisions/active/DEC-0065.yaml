@@ -1,0 +1,47 @@
+id: DEC-0065
+title: 'Backlog board, generation 3 (FR-0075/FR-0080): ONE renderer with two outputs,
+  diagrams generated beside the board, records collapsed, the three numbers of FR-0075,
+  READY counts as in flight, English per DEC-0049 -- and the visual language is re-briefed
+  apart from the finance dashboard'
+context: 'Stream A phase 1 (TSK-0115, Fable design pass, 2026-09-03, package project_memory/staging/TSK-0115/)
+  MEASURED the two existing board generators against the same copy of this repo (parity.py,
+  284 items): every sum equal today; they diverge only where one counts yaml FILES
+  and the other item IDS of its type (a planted foreign yaml under archive/ gives
+  166 vs 167 vs 168), in the label for a missing status, and in the timestamp of two
+  triggers. Neither shows blocked on the card face; the current board renders 14 sections
+  alphabetically, 32 empty against 13 filled columns, TSK cards without a title. The
+  user answered the design pass questions 2026-09-03 (AskUserQuestion) and, on the
+  direction question, said the look reminds him strongly of the finance dashboard
+  of TSK-0109 and wants it re-thought and re-tokenised for the board -- a different
+  style through the frontend-design skill, structure unchanged.'
+decision: '(1) ONE renderer: kernel/board.py produces the board; the dev-team templates/repo/scripts/generate_dashboard.py
+  renders no items any more (vital signs and a pointer to board.html only), so no
+  number exists in which the two can diverge; the checklist command and the refresh
+  trigger of FR-0030 stay. (2) FR-0080 plan and mindmap are written to generated/
+  beside the board by the same trigger, never committed, always fresh; a hand edit
+  is detected (data-source-digest); the wishlist section 3a wish for a committed copy
+  with a freshness gate is NOT taken (two rules for two files side by side is the
+  seam class that costs rounds here). (3) Records (evidence, decisions, approvals)
+  are collapsed with a count; the board shows the work. (4) The three numbers are
+  blocked, waiting on you, in flight (FR-0075); READY counts as in flight by the automaton
+  rule (not first, not last state) -- stated on the page. (5) The page stays English
+  (DEC-0049); a change is a new FR. (6) The visual language is NOT the finance dashboard''s:
+  a second, short design pass (Fable, frontend-design skill) re-briefs tokens and
+  visual identity for the board''s reader (developer/PM: what is blocked, what waits
+  on me, what is in flight) with the information architecture, data contract, sighting
+  rig and measurements of phase 1 KEPT; it proposes visibly different directions with
+  sighted mockups and the user picks; phase 2 (Opus build) starts after that pick.'
+consequences: 'The kit ships one number per fact (parity becomes a property, not a
+  test that compares two programs). Phase 2 of TSK-0115 is delayed by one short design
+  pass -- accepted, because a look the user reads as a copy of another page fails
+  the brief regardless of how well it is built (the frontend-design skill''s own question:
+  would another brief have produced the same?). Tokens and structure are separable
+  by construction (03-tokens.md is one sheet), so the restyle changes no measurement
+  of phase 1. Records: this DEC; the stream A protocol; the merge round seam table.'
+source: User 2026-09-03 (chat, four answers + the restyle wish); project_memory/staging/TSK-0115/
+  (parity.md, parity-result.md, user-feedback.md, 03-tokens.md); FR-0075, FR-0080,
+  FR-0030, DEC-0049
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-03T08:21:28'

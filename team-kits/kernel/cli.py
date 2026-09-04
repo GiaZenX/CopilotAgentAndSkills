@@ -50,10 +50,12 @@ import sys
 import time
 
 from . import (approvals, board, checkpoints, dispatch, documents, filing, gaplog, hashing,
-               kitupdate, migrate, presets, report, staging)
+               kitupdate, migrate, plan_diagram, presets, report, scopes, staging)
 from .backlog_types import (
     AREA_FIELD,
     AREA_SEPARATOR,
+    BLOCKED_REASON_FIELD,
+    BLOCKED_RESULT,
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
     REQUIRED_FIELDS,
@@ -65,6 +67,13 @@ from .backlog_types import (
 )
 from .schemas import load_schema
 from .state import ProjectState, StateError
+
+# The name of the pre-dispatch scope check on this surface, spelled ONCE: the parser and the
+# branch that answers it are two readers, and a command name written twice is the drift this
+# module removes everywhere else. It also keeps the literal out of `build_parser`'s own body,
+# which `tools/test_hooks.py::test_every_span_that_presents_the_command_surface_names_all_of_it`
+# reads as a span that would then be presenting a partial command list.
+CHECK_SCOPES_COMMAND = "check-scopes"
 
 
 class UsageError(ValueError):
@@ -340,7 +349,20 @@ def _proposal_key(key):
     return resolve
 
 
+def _plan_goals(state: ProjectState, _args) -> list:
+    """The goal list of a plan approval -- READ FROM THE STORE, never typed (FR-0074).
+
+    The one key of `approvals.plan_subject_manifest`, and the reason it is a resolver rather than a
+    flag is the reason every entry of this table is one: what the hash covers has to be what the
+    user is shown, and a goal list typed on a command line could only differ from the goals the
+    project actually holds. It is also not typeable in practice -- each entry carries the goal's
+    own scope-manifest hash.
+    """
+    return approvals.plan_goals(state)
+
+
 LINE_MANIFEST_RESOLVERS = {
+    "goals": (_plan_goals, "read from this project's own open product goals"),
     "content": (_document_content, "hashed from the document named on this line"),
     "head": (_worktree_head, "read from the worktree this state directory sits in"),
     "roles": (_preset_roles, "read from the kit's own presets.yaml for the preset on this line"),
@@ -486,6 +508,18 @@ def build_parser() -> argparse.ArgumentParser:
                           help="whether that command covered the whole surface or a selection; a "
                                "passing `selection` is recorded and does NOT open a merge "
                                "(needs --run-command)")
+    # WHAT STOPPED A RUN THAT NEVER HAPPENED (FR-0082). Not `required` on the parser and not
+    # optional in effect: the kernel refuses a `%s` result without it and refuses it under any
+    # other result (`state.capture_preflight`), so argparse would have to know the value of
+    # `--result` to state the duty -- which is exactly the condition a flag surface cannot carry.
+    # The refusal names the flag, at the moment the role runs the command.
+    evidence.add_argument("--%s" % BLOCKED_REASON_FIELD.replace("_", "-"), metavar="SENTENCE",
+                          dest=BLOCKED_REASON_FIELD,
+                          help="required for --result %s and refused for any other result: what "
+                               "stopped the run. A %s verdict closes the merge exactly as a fail "
+                               "does; the sentence is what keeps a later reader from taking it for "
+                               "a checked fact -- nothing was checked."
+                               % (BLOCKED_RESULT, BLOCKED_RESULT))
     # THE GENERIC ITEM PRODUCER (spec II.4 `capture`). Its body arrives on STDIN as JSON, and both
     # halves of that are forced rather than chosen:
     #   * STDIN, because an item's fields include lists of mappings (`acceptance_criteria:
@@ -536,6 +570,12 @@ def build_parser() -> argparse.ArgumentParser:
     task.add_argument("--dependency", action="append", dest="dependencies", metavar="ITEM_ID")
     task.add_argument("--design-ref", metavar="DSN_ID",
                       help="required for a UI task once its root has a confirmed design (II.6)")
+    task.add_argument("--%s" % scopes.SEAM_FIELD.replace("_", "-"), action="append",
+                      dest=scopes.SEAM_FIELD, metavar="PATH",
+                      help="a path this order shares with another ON PURPOSE, applied in the merge "
+                           "round (repeatable). The pre-dispatch scope check (`kernel.scopes`) "
+                           "subtracts it before judging a pair, and only where BOTH orders "
+                           "declare it.")
     # The specialist's hand-back. Field names and the status vocabulary come from the SCHEMA the
     # kernel validates against, not from a copy here -- `submit_result` would reject a divergence
     # anyway, but it would reject it after the role had typed the command.
@@ -842,6 +882,21 @@ def build_parser() -> argparse.ArgumentParser:
     gap.add_argument("--item", default="", help="the item this happened under, if there is one")
     archive = sub.add_parser("archive", help="move a terminal item to archive/")
     archive.add_argument("item_id")
+    # THE PRE-DISPATCH CHECK OF THE CUT (DEC-0062 (1)/(2), stream D requirement C-1). On the
+    # kernel's own surface and not as a repo script, for the reason `kernel.scopes` gives: from a
+    # skill directory there is no executable route at all (`gate_write_scope` refuses it, measured
+    # as `H136`), and a script per kit would be a fourth spelling of a predicate that has to be
+    # the SHIPPED gate's or it answers a different question.
+    check_scopes = sub.add_parser(
+        CHECK_SCOPES_COMMAND,
+        help="do two open work orders own a common file? (exit 2 when they do)")
+    check_scopes.add_argument("--only", nargs="*", default=None, metavar="TSK_ID",
+                              help="check exactly these orders, whatever their status")
+    check_scopes.add_argument("--seam", nargs="*", default=(), metavar="PATH",
+                              help="paths shared on purpose for THIS run -- what the orchestrator "
+                                   "is about to write into the orders. A seam an order already "
+                                   "carries needs no flag; see `--%s` on create-task."
+                                   % scopes.SEAM_FIELD.replace("_", "-"))
     sub.add_parser("sweep-leases", help="return expired leases to READY")
     # ...and the same job for the OTHER store that only ever grew. An approval request that ran out
     # of time is already inert everywhere it is read; what it was not, until this command, is
@@ -1223,10 +1278,17 @@ def main(argv=None) -> int:
                                             row["route"] or "no route on this type's chain"))
             return 1 if errors else 0
         if args.command == "generate-index":
-            # Both paths, for the reason the subparser's help gives: the index is what the machines
-            # read, the board is what a person opens, and the same call writes them together.
+            # EVERY path this call wrote, for the reason the subparser's help gives: the index
+            # is what the machines read, the board is what a person opens, the two diagrams are
+            # what a person hands around, and the same call writes them together. The list is
+            # DERIVED from the renderers rather than typed here, so an artefact added to
+            # `state._write_board` cannot arrive unannounced -- which is exactly how the two
+            # diagrams would have arrived without this line
+            # (`tools/test_board.py::test_the_documented_command_names_every_artefact_it_writes`).
             print(state.generate_index())
             print(state.generated_path(board.FILENAME))
+            for name in plan_diagram.FILENAMES:
+                print(state.generated_path(name))
             return 0
         if args.command == "verify-invariants":
             wanted = list(args.item_ids) or [
@@ -1270,7 +1332,8 @@ def main(argv=None) -> int:
                 # dropped when unanswered rather than written as null: the pair is refused
                 # half-declared in `state.capture_preflight`, and a `None` is an answer there
                 **{name: value for name, value in
-                   (("run_command", args.run_command), ("run_scope", args.run_scope))
+                   (("run_command", args.run_command), ("run_scope", args.run_scope),
+                    (BLOCKED_REASON_FIELD, getattr(args, BLOCKED_REASON_FIELD)))
                    if value is not None},
             })
             print("%s %s: %s" % (item["id"], item["kind"], item["result"]))
@@ -1367,9 +1430,19 @@ def main(argv=None) -> int:
                 "expected_outputs": list(args.expected_outputs or []),
                 "dependencies": list(args.dependencies or []),
                 **({"design_ref": args.design_ref} if args.design_ref else {}),
+                **({scopes.SEAM_FIELD: list(getattr(args, scopes.SEAM_FIELD))}
+                   if getattr(args, scopes.SEAM_FIELD) else {}),
             })
             print("%s %s (%s)" % (task["id"], task["status"], task["assigned_role"]))
             return 0
+        if args.command == CHECK_SCOPES_COMMAND:
+            # THE EXIT CODE IS THE ANSWER, which is why the lines are printed and then returned
+            # rather than raised: an overlap is a finding about the CUT, not a usage error, and a
+            # caller that scripts this reads rc 2 the same way it reads `validate`'s rc 1.
+            code, lines = scopes.check(state, only=args.only, declared=list(args.seam))
+            for line in lines:
+                print(line)
+            return code
         if args.command == "submit-result":
             task = dispatch.submit_result(state, _submitted_envelope(state, args))
             print("%s -> %s" % (task["id"], task["status"]))
@@ -1389,10 +1462,16 @@ def main(argv=None) -> int:
                         "a %s approval has no item -- its subject is %s. Remedy: drop %r from the "
                         "command line." % (args.kind,
                                            ", ".join(manifest_parameters(builder)), args.item_id))
+                # THE CLOCK ONLY FOR THE KINDS THAT CARRY ONE, asked of `EXPIRING_KINDS` rather
+                # than assumed of every line kind: a plan approval is invalidated by its own
+                # content (each goal's revision and scope hash), not by an hour passing, and
+                # `create_pending_request` refuses an expiry on a kind that does not take one.
+                expires = (time.time() + approvals.LINE_APPROVAL_VALIDITY
+                           if args.kind in approvals.EXPIRING_KINDS else None)
                 pending = approvals.create_pending_request(
                     state, args.kind,
                     manifest=_line_manifest(state, args.kind, builder, args),
-                    approval_expires=time.time() + approvals.LINE_APPROVAL_VALIDITY)
+                    approval_expires=expires)
             # ONLY the question object on stdout, and as JSON, because it has to be relayed
             # VERBATIM: `gate_approval` compares the asked question against `build_question`
             # field by field, so anything printed beside it is something a role might paste in.

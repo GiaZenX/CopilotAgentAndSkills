@@ -558,7 +558,7 @@ def _compositions_outside_the_kernel_package():
 # date the moment the last one goes. The places themselves are named in `L24`; naming them here as
 # well would be the second statement of one fact, which is the failure mode this whole rule exists
 # against.
-_COMPOSITIONS_OUTSIDE_THE_PACKAGE = 8
+_COMPOSITIONS_OUTSIDE_THE_PACKAGE = 7
 
 
 def test_the_path_rule_stops_at_the_kernel_package_and_the_rest_is_counted():
@@ -1222,6 +1222,72 @@ def test_a_filing_rule_is_written_only_when_the_user_approved_exactly_it(tmp_pat
         filing.apply(state, approved)
     assert "already carries a rule with the id" in str(clash.value)
     assert len(filing.existing_rules(state)) == 1
+
+
+def test_a_retention_the_deadline_register_cannot_read_is_refused_before_it_reaches_the_plan(
+        tmp_path):
+    """F6 of TSK-0113: `add-filing-rule` used to take any retention text and write it.
+
+    THE CHAIN THAT MADE IT A DEFECT AND NOT A TASTE QUESTION. The session-start duty register reads
+    a rule's `retention` and turns it into a span of years; a value it cannot turn into one is
+    reported as UNWATCHED -- at every session start, for as long as the rule stands -- and no
+    deadline ever falls due for that drawer. The shipped draft (`scripts/filing_plan.py`) puts a
+    PLACEHOLDER where the retention belongs, on purpose, because the number is the user's; before
+    this refusal existed that placeholder went straight into the plan through the sanctioned route.
+
+    Measured here on the three shapes that matter: the draft's own placeholder, a sentence with no
+    number, and the two forms the plan's header calls honest (a countable span, and none at all).
+    A refusal must leave the file byte-identical, like every other refusal in this module.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals, filing
+    from kernel.state import ProjectState, StateError
+
+    root = _office_state(tmp_path)
+    state = ProjectState(root)
+    before = filing.read_text(filing.plan_path(state))
+
+    placeholder = _draft_retention_placeholder()
+    for unreadable in (placeholder, "solange das Produkt aktiv ist", "acht Jahre"):
+        approved = _approved_rule(state, retention=unreadable)
+        with pytest.raises(StateError) as exc:
+            filing.apply(state, approved)
+        assert "names no span in years" in str(exc.value), str(exc.value)
+        assert filing.read_text(filing.plan_path(state)) == before, unreadable
+
+    # ...and a countable span goes through, unchanged, into the plan.
+    filing.apply(state, _approved_rule(state, retention="8y (\u00a7 147 AO)"))
+    assert [rule["retention"] for rule in filing.existing_rules(state)] == ["8y (\u00a7 147 AO)"]
+
+    # THE SECOND HONEST FORM IS UNREACHABLE THROUGH THIS ROUTE, and that is measured rather than
+    # assumed: the reader accepts an empty retention (the plan's own header calls it legitimate for
+    # a tray), but `approvals.filing_rule_subject_manifest` refuses to even ASK for a rule without
+    # one, so no approval can exist for it and `filing.apply` is never reached. That is a residual
+    # of this round (`H130` in docs/POST_V2_WISHLIST.md), owned by a file this stream may not write.
+    assert filing.retention_refusal("") is None and filing.retention_refusal(None) is None
+    with pytest.raises(approvals.ApprovalError):
+        approvals.filing_rule_subject_manifest(**_rule_flags(retention=""))
+
+
+def _draft_retention_placeholder():
+    """What `scripts/filing_plan.py --draft` writes where a retention belongs, from that script.
+
+    Read off the shipped file rather than repeated here: the placeholder and the refusal above are
+    two sides of one decision, and a second spelling of it in this test is how they would drift.
+    """
+    import ast as _ast
+
+    path = os.path.join(TEAM_KITS_DIR, "office-team", "templates", "repo", "scripts",
+                        "filing_plan.py")
+    with open(path, encoding="utf-8") as handle:
+        tree = _ast.parse(handle.read())
+    for node in tree.body:
+        if isinstance(node, _ast.Assign) and any(
+                getattr(target, "id", None) == "RETENTION_QUESTION" for target in node.targets):
+            return _ast.literal_eval(node.value)
+    raise AssertionError("scripts/filing_plan.py no longer declares RETENTION_QUESTION")
 
 
 def test_appending_a_rule_keeps_everything_else_in_the_plan(tmp_path):
@@ -2376,11 +2442,14 @@ def test_no_shipped_kit_document_refuses_the_fill_its_own_template_asks_for(tmp_
                     relative, plan["changes"])
             filled += 1
     # a floor under the floor: no shipped document matched means this measured nothing. The list
-    # floor is the higher of the two because the lists are where the defect was -- eight of the
-    # nine shipped ones are writable, the ninth is `filing_plan.rules` and belongs to another
-    # command.
+    # floor is the higher of the two because the lists are where the defect was. It is SEVEN
+    # since the TSK-0120 merge round and it moved for a reason rather than to fit: FR-0076 ships
+    # `master_data.yaml:categories` FILLED (the classes of the Anlage EUeR, excused with its own
+    # tripwire in `tools/test_kit_neutrality.py`), so that list is no longer an empty one to fill.
+    # Of the eight empty lists the kits still ship, `filing_plan.rules` belongs to another
+    # command and is asserted on the refusal branch above.
     assert filled >= 3, filled
-    assert lists_filled >= 8, lists_filled
+    assert lists_filled >= 7, lists_filled
 
 
 # The verifier's own A9d payload: a sentence addressed to whoever reads the document next. It is
@@ -2734,3 +2803,45 @@ def test_a_proposal_the_user_could_not_read_through_is_refused_with_its_count(tm
                 "master_data.yaml", staged, plan["base"], plan["proposed"], plan["changes"], "why")
         assert str(count) in str(exc.value), str(exc.value)
         assert "zu viele Stellen" in (exc.value.user_text or ""), exc.value.user_text
+
+
+def test_the_question_a_plan_asks_shows_every_goal_the_hash_covers(tmp_path):
+    """The plan approval is the ONE where a single answer authorises several items -- so it is the
+    one whose question may least be a summary.
+
+    Same measurement as its four siblings above, and it is the one that carries `H132`: the entry
+    says the widening is bounded because "the question names every goal", and until the TSK-0120
+    merge round nothing measured that sentence. `test_presets.test_every_target_form_names_a_live
+    _apr_kind` refuses a form that arrives without such a measurement, and it went red when `plan`
+    joined `TARGET_FORMS` -- this is the measurement it was asking for.
+
+    Every value the manifest hashes has to appear in the rendered question -- each goal's id, its
+    title, its revision -- and the question has to be deterministic from the request, because the
+    approval gate rebuilds it character for character to compare it with what the user answered.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS_DIR)
+    from kernel import approvals
+    from kernel.state import ProjectState
+
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    first = state.capture("PR", _pr_fields())
+    second = state.capture("PR", dict(_pr_fields(), title="Suche", goal="Produkte finden"))
+    goals = approvals.plan_goals(state)
+    assert {goal[approvals.GOAL_ITEM_FIELD] for goal in goals} == {first["id"], second["id"]}
+
+    request = approvals.create_pending_request(
+        state, approvals.PLAN_KIND, manifest=approvals.plan_subject_manifest(goals))
+    question = approvals.build_question(request)["question"]
+    for goal in (request.get("subject_manifest") or {})["goals"]:
+        for field in (approvals.GOAL_ITEM_FIELD, "title", "revision"):
+            assert str(goal[field]) in question, (
+                "the hash covers %s=%r and the question does not show it:\n%s"
+                % (field, goal[field], question))
+    assert approvals.build_question(request)["question"] == question, "not deterministic"
+    # ...and NEVER a count instead of the list: the number of goals on its own must not stand in
+    # for them, which is the shape a summary would take.
+    assert "2 Ziele" not in question, question

@@ -46,10 +46,24 @@ business:
   product_categories: []      # drives the compliance register scope, e.g. [electronics, textiles]
 
 tax:
-  kleinunternehmer: null      # true/false (§ 19 UStG) — changes the whole VAT column logic
+  # THE ONBOARDING QUESTION THAT FILLS THIS FIELD, so a fresh project is not left guessing which
+  # answer the field wants: „Bist du Kleinunternehmer nach § 19 UStG — weist du also keine
+  # Umsatzsteuer aus? (ja/nein)"
+  # true/false (§ 19 UStG) — NUR diese beiden Werte sind eine Antwort. Alles andere (leer, "true"
+  # in Anführungszeichen, Ja) liest das Finanz-Dashboard als "nicht beantwortet" und zeigt dann
+  # weder USt-Summen noch eine Zahllast, weil beide ohne diese Antwort geraten wären.
+  # SHIPPED AS `null` ON PURPOSE: a project starts UNKNOWN until somebody asks, because a guessed
+  # default here is a wrong statement about somebody's tax on every page that shows a figure.
+  kleinunternehmer: null
   vat_id: ""                  # USt-IdNr. if any (never a secret; still optional)
   oss: null                   # true/false — EU One-Stop-Shop registered?
   fiscal_year: "calendar"
+  # Gründungsjahr des Betriebs (JJJJ). Ohne dieses Feld kann die § 19-Wache im Finanz-Dashboard
+  # den Fall "kein Vorjahr im Ledger" nicht entscheiden: seit 2025 gilt für ein Gründungsjahr die
+  # Grenze von 25.000 EUR für das LAUFENDE Jahr, sofort wirksam — ein fehlendes Vorjahr kann aber
+  # auch nur eine fehlende Datei sein. Leer heißt: die Seite verweigert die Aussage.
+  # THE ONBOARDING QUESTION: „In welchem Jahr hast du das Geschäft angemeldet?"
+  founding_year: null
   # THE RECURRING FILINGS THIS BUSINESS OWES, AND THEIR RHYTHM — the source every tax deadline in
   # the session-start duty register is derived from (FR-0034; the reader is `_duties.filing_duties`
   # in the hook directory). Nothing in the kit knows what a Umsatzsteuer-Voranmeldung IS: a filing

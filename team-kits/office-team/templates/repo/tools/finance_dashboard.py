@@ -35,6 +35,7 @@ in a banner. Exit 1 only when nothing could be written.
 import argparse
 import html
 import os
+import re
 import sys
 from collections import defaultdict
 
@@ -199,11 +200,20 @@ def load_project(root, euer_report, ledger_add):
     categories = {}
     for direction in ("income", "expense"):
         for entry in (master.get("categories") or {}).get(direction) or []:
+            # A LIST ITEM THAT IS NOT A MAPPING IS SKIPPED, exactly as `euer_report.read_vocabulary`
+            # skips it. `master_data.yaml` tells its reader to rename and add freely, and a bare
+            # string where a mapping belongs is what a hand-edited list gives you first -- it used
+            # to be an AttributeError and rc 1, i.e. no page at all, while the report over the same
+            # file stayed rc 0. Two readers of one file may not answer a typo differently.
+            if not isinstance(entry, dict):
+                continue
             key = entry.get("key")
             if not key:
                 continue
             categories[key] = {"label": entry.get("label_de") or key,
-                               "euer_line": entry.get("euer_line") or "", "direction": direction}
+                               "euer_line": euer_report.line_number(entry.get("euer_line")),
+                               "euer_line_label": str(entry.get("euer_line_label") or ""),
+                               "direction": direction}
 
     ledger_dir = os.path.join(root, "ledger")
     # `os.listdir` + the kit's own file rule, NOT `glob`: a `[` in the project path makes `glob`
@@ -244,7 +254,12 @@ def load_project(root, euer_report, ledger_add):
         # An unknown category shows as its raw key rather than disappearing: master_data.yaml is
         # the bookkeeper's to extend, and this command never writes it.
         r["category_label"] = known.get("label") or r.get("category") or "—"
-        r["euer_line"] = known.get("euer_line") or ""
+        # THE FORM LINE IS A NUMBER OR IT IS NOTHING, and that reading belongs to the script that
+        # owns the vocabulary (`euer_report.line_number`), not to a second one here: a category
+        # whose `euer_line` is a caption, a range or absent names no line, and its money is
+        # reported under its own heading rather than attached to a line nobody chose.
+        r["euer_line"] = known.get("euer_line")
+        r["euer_line_label"] = known.get("euer_line_label") or ""
         r["quarter"] = "Q%d" % ((int(r["doc_date"][5:7]) - 1) // 3 + 1)
     rows.sort(key=lambda r: (r["doc_date"], r["id"]), reverse=True)
 
@@ -266,7 +281,8 @@ def load_project(root, euer_report, ledger_add):
     data = {
         "business": {"name": (profile.get("business") or {}).get("name") or "",
                      "legal_form": (profile.get("business") or {}).get("legal_form") or "",
-                     "kleinunternehmer": (profile.get("tax") or {}).get("kleinunternehmer")},
+                     "kleinunternehmer": (profile.get("tax") or {}).get("kleinunternehmer"),
+                     "founding_year": (profile.get("tax") or {}).get("founding_year")},
         "sources": sources,
         "strays": strays,
         "rows": rows,
@@ -276,6 +292,11 @@ def load_project(root, euer_report, ledger_add):
         "datenstand": max(dates) if dates else "",
         "valid": all(s["valid"] for s in sources),
         "euer_report": euer_report,
+        # THE FORM YEAR, ITS SOURCE AND THE GWG THRESHOLD, read by the script that owns the
+        # vocabulary and not a second time here (FR-0076). This page therefore carries no line
+        # number, no form year and no threshold of its own -- a renumbered Anlage EÜR is one edit
+        # in `project_memory/master_data.yaml` and both readers follow.
+        "vocabulary": euer_report.read_vocabulary(root),
     }
     # Last, because it asks the assembled data (the § 19 watch reads the ledger years).
     data["tax"] = tax_state(data)
@@ -554,32 +575,77 @@ def threshold(data):
     decidable, and until 2026-09-02 that fell through to "within" -- a founding year with 26.000 €
     turnover read "innerhalb der Grenzen — 26.000 von 100.000", while § 19 in the wording in force
     since 2025 puts a business without a previous year under the 25.000 € limit for the CURRENT
-    year. Deciding it needs a founding year, and the shipped `business_profile.yaml` carries none
-    (measured against the template); so the page refuses the statement and says what would settle
-    it.
+    year.
+
+    WHAT SETTLES IT IS `tax.founding_year`, and until TSK-0116 the field did not exist -- the page
+    then had to refuse the statement and name both cases. It exists now, and it decides EXACTLY the
+    one question the missing previous year leaves open: is there no previous year, or only no file
+    for it? A founding year EQUAL to the current one is the first case -- there is no previous-year
+    condition to check, and the current year runs against the 25.000 € limit. Anything else is the
+    second, and the page goes on refusing rather than guessing
+    (`tools/test_finance_dashboard.py::test_the_founding_year_decides_the_case_the_missing_previous_year_leaves_open`).
     """
     if data["business"]["kleinunternehmer"] is not True or not data["years"]:
         return None
     current = data["years"][0]
     previous = str(int(current) - 1)
+    founding = _year_number(data["business"]["founding_year"])
+    first_year = founding is not None and founding == int(current)
     current_income = totals(paid_in(data, current))[0]
     previous_income = totals(paid_in(data, previous))[0] if previous in data["years"] else None
     previous_over = (previous_income is not None
                      and previous_income > KLEINUNTERNEHMER_LIMIT_PREVIOUS_YEAR)
-    current_over = current_income > KLEINUNTERNEHMER_LIMIT_CURRENT_YEAR
+    # THE LIMIT OF THE CURRENT YEAR IS NOT ONE NUMBER. § 19 Abs. 1 UStG in the wording in force
+    # since 2025 puts a business in its FOUNDING year under the 25.000 € figure straight away,
+    # while every later year runs against 100.000 €. Deciding that is the whole reason the field
+    # above is read here.
+    limit_current = (KLEINUNTERNEHMER_LIMIT_PREVIOUS_YEAR if first_year
+                     else KLEINUNTERNEHMER_LIMIT_CURRENT_YEAR)
+    current_over = current_income > limit_current
     if current_over:
         verdict = "current_exceeded"
     elif previous_over:
         verdict = "previous_exceeded"
-    elif previous_income is None:
+    elif previous_income is None and not first_year:
         verdict = "previous_unknown"
     else:
         verdict = "within"
     return {"current_year": current, "previous_year": previous, "current": current_income,
             "previous": previous_income, "verdict": verdict,
             "exceeded": previous_over or current_over,
+            "founding_year": founding, "first_year": first_year,
             "limit_previous": KLEINUNTERNEHMER_LIMIT_PREVIOUS_YEAR,
-            "limit_current": KLEINUNTERNEHMER_LIMIT_CURRENT_YEAR}
+            "limit_current": limit_current}
+
+
+def _founding_year_note(watch):
+    """Why the previous year stays undecidable — the FIELD's answer, not one sentence for both.
+
+    Two different situations end in `previous_unknown` and they need two different next steps: the
+    profile names no founding year (then filling it settles the case), or it names one that is not
+    the current year (then the ledger file is what is missing). Until TSK-0116 one sentence claimed
+    the first for both, and it claimed it about a field that did not exist yet.
+    """
+    if watch["founding_year"] is None:
+        return ("Welcher der beiden Fälle es ist, steht in keinem Feld dieses Projekts — tragen "
+                "Sie das Gründungsjahr in business_profile.yaml unter tax.founding_year ein, dann "
+                "entscheidet diese Seite den Fall; sonst mit der Steuerberatung klären.")
+    return ("business_profile.yaml nennt %d als Gründungsjahr, also ist %s nicht das erste Jahr "
+            "und es fehlt die Ledgerdatei des Vorjahres; mit der Steuerberatung klären."
+            % (watch["founding_year"], watch["current_year"]))
+
+
+def _year_number(value):
+    """The calendar year this profile value names, or None -- never a guess.
+
+    A YAML `founding_year: 2026` is an int and `"2026"` is a string, and both are what a hand-edited
+    profile really carries; anything that is not four digits (a date, a sentence, `null`, `true`)
+    names no year and leaves the § 19 watch exactly where it was without this field.
+    """
+    if isinstance(value, bool):
+        return None
+    text = str(value if value is not None else "").strip()
+    return int(text) if re.fullmatch(r"\d{4}", text) else None
 
 
 # --- rendering -----------------------------------------------------------------------------
@@ -700,10 +766,15 @@ def view_ueberblick(data):
                                            "überschreitenden Umsatz Regelbesteuerung"}[
                 watch["verdict"]]
             css = ' class="alarm"' if watch["exceeded"] else ""
-            previous_said = ("Vorjahr %s von %s"
-                             % (fmt_eur(watch["previous"]), fmt_eur(watch["limit_previous"]))
-                             if watch["previous"] is not None
-                             else "Vorjahr: keine Ledgerdatei für %s" % watch["previous_year"])
+            if watch["previous"] is not None:
+                previous_said = ("Vorjahr %s von %s"
+                                 % (fmt_eur(watch["previous"]), fmt_eur(watch["limit_previous"])))
+            elif watch["first_year"]:
+                # NOT "keine Ledgerdatei": in the founding year there is no previous year, so
+                # reporting a missing FILE would name a gap the business does not have.
+                previous_said = "Gründungsjahr %s — es gibt kein Vorjahr" % watch["current_year"]
+            else:
+                previous_said = "Vorjahr: keine Ledgerdatei für %s" % watch["previous_year"]
             # WHICH LIMIT the current year is measured against is only settled once the previous
             # year is: without it, 25.000 € (founding year) and 100.000 € are both live, and
             # naming one of them here made the figure contradict the verdict it links to.
@@ -857,6 +928,85 @@ def view_offene_posten(data):
     return "".join(parts)
 
 
+def line_text(line, caption):
+    """How a form line is written on this page: `27 — Waren, …`, `27`, or an em dash for none."""
+    if line is None:
+        return "—"
+    return "%d — %s" % (line, caption) if caption else "%d" % line
+
+
+def _cents_of(amount):
+    """A euro amount from the report's arithmetic as CENTS, the integer this page compares in."""
+    return int(round(float(amount) * 100))
+
+
+def line_table_html(data, paid):
+    """The per-form-line summary — the SAME grouping `euer_report.by_form_line` writes (FR-0076).
+
+    IMPORTED, NOT REBUILT, for the reason the module header gives about the sign convention: two
+    answers about the same money is what `euer_report.py` records the cost of. What this function
+    owns is the cents and the HTML;
+    `tools/test_finance_dashboard.py::test_the_dashboard_and_the_report_agree_on_every_form_line`
+    runs the real report over the same ledger and compares line for line.
+    """
+    vocabulary = data["vocabulary"]
+    parts = ['<h3>Nach Zeile der Anlage EÜR%s</h3>'
+             % e(data["euer_report"].form_year_suffix(vocabulary))]
+    for problem in vocabulary["problems"]:
+        parts.append('<p class="rule-note">%s</p>' % e(problem))
+    rows = data["euer_report"].by_form_line(paid, vocabulary)
+    if not rows:
+        parts.append('<p class="empty-inline">Keine bezahlte Buchung in diesem Zeitraum.</p>')
+        return "".join(parts)
+    parts.append('<table class="ledger cats" data-scope="euer-lines"><thead><tr><th>Zeile</th>'
+                 '<th class="amt">Einnahmen</th><th class="amt">Ausgaben</th></tr></thead><tbody>')
+    for key, heading, income_sum, expense_sum in rows:
+        income_c, expense_c = _cents_of(income_sum), _cents_of(expense_sum)
+        parts.append('<tr data-line="%s"><td>%s</td><td class="amt">%s</td>'
+                     '<td class="amt">%s</td></tr>'
+                     % (e(str(key)), e(heading),
+                        e(fmt_eur(income_c)) if income_c else "",
+                        e(fmt_eur(expense_c)) if expense_c else ""))
+    parts.append('</tbody></table><p class="rule-note">Die Beträge sind die des Belegjournals, '
+                 'ungekürzt: keine Quote und keine Obergrenze, die das Formular auf eine einzelne '
+                 'Zeile anwendet, ist hier eingerechnet.%s</p>'
+                 % (e(" Herkunft der Zeilennummern: %s." % vocabulary["source"])
+                    if vocabulary["source"] else ""))
+    return "".join(parts)
+
+
+def asset_hint_html(data, paid):
+    """The AfA HINT and nothing else: a booking above the GWG threshold, and one sentence.
+
+    No asset register, no depreciation, no branch on the legal form — FR-0076's third half is a
+    flag that hands the question to the Steuerberatung, and both readers say the same sentence
+    because both take it from `euer_report.ASSET_HINT`.
+    """
+    limit = data["vocabulary"]["gwg_limit_net"]
+    if limit is None:
+        return ""
+    hints = data["euer_report"].asset_hints(paid, limit, data["vocabulary"]["no_hint"])
+    if not hints:
+        return ""
+    parts = ['<h3>Mögliche Anlagegüter <span class="muted">(Hinweis, keine Abschreibung)</span>'
+             '</h3><table class="ledger afa" data-scope="afa"><thead><tr><th>Belegdatum</th>'
+             '<th>Nr.</th><th>Gegenpartei</th><th class="amt">Netto</th><th></th></tr></thead>'
+             '<tbody>']
+    for entry, net in sorted(hints, key=lambda pair: -pair[1]):
+        parts.append('<tr data-afa="%s"><td class="date">%s</td><td class="no"><code>%s</code>'
+                     '</td><td class="cp">%s</td><td class="amt">%s</td><td class="st">%s</td>'
+                     '</tr>'
+                     % (e(str(entry.get("id") or "")), e(fmt_date(entry.get("doc_date") or "")),
+                        e(entry.get("invoice_no") or "—"), e(entry.get("counterparty") or ""),
+                        e(fmt_eur(_cents_of(net))), e(data["euer_report"].ASSET_HINT)))
+    parts.append('</tbody></table><p class="rule-note">Grenze: %s netto (§ 6 Abs. 2 EStG), aus '
+                 '<code>project_memory/master_data.yaml</code>. Gemessen wird der BELEG, nicht die '
+                 'einzelne Position — eine Rechnung über viele kleine Teile steht hier genauso wie '
+                 'eine Maschine. Diese Seite führt kein Anlagenverzeichnis und rechnet keine '
+                 'Abschreibung — keine Steuerberatung.</p>' % e(fmt_eur(_cents_of(limit))))
+    return "".join(parts)
+
+
 def view_euer(data):
     parts = ['<section id="view-euer" class="view" role="tabpanel" hidden>']
     if not data["years"]:
@@ -884,7 +1034,7 @@ def view_euer(data):
             by_category = defaultdict(lambda: [0, 0])
             reverse_charge = 0
             for r in paid:
-                by_category[(r["category_label"], r["euer_line"])][
+                by_category[(r["category_label"], line_text(r["euer_line"], r["euer_line_label"]))][
                     0 if r["direction"] == "income" else 1] += r["cents"]
                 if r["vat_treatment"] == "reverse_charge":
                     reverse_charge += 1
@@ -918,10 +1068,12 @@ def view_euer(data):
             for (label_de, line), (income_c, expense_c) in sorted(by_category.items()):
                 parts.append('<tr><td>%s</td><td class="muted">%s</td><td class="amt">%s</td>'
                              '<td class="amt">%s</td></tr>'
-                             % (e(label_de), e(line or "—"),
+                             % (e(label_de), e(line),
                                 e(fmt_eur(income_c)) if income_c else "",
                                 e(fmt_eur(expense_c)) if expense_c else ""))
             parts.append('</tbody></table>')
+            parts.append(line_table_html(data, paid))
+            parts.append(asset_hint_html(data, paid))
             payload = ('' if not data["tax"]["applies"] else
                        ' · Zahllast: <span data-figure="report-vat-payload">%s</span>'
                        % e(fmt_eur(reported["surplus"]["vat"])))
@@ -1019,11 +1171,30 @@ def view_kleinunternehmer(data):
                 % (state, e(label), year, e(figure), e(fmt_eur(limit)), percent, percent, rest))
 
     parts.append('<h2>Kleinunternehmergrenze § 19 UStG</h2>')
-    parts.append('<p class="lead">Beide Bedingungen müssen gelten: Gesamtumsatz im Vorjahr bis %s '
-                 '<strong>und</strong> im laufenden Jahr bis %s. Gezählt werden die bezahlten '
-                 'Einnahmen (Zufluss), brutto gleich netto, Korrekturen abgezogen.</p>'
-                 % (e(fmt_eur(watch["limit_previous"])), e(fmt_eur(watch["limit_current"]))))
-    parts.append(gauge(watch["previous"], watch["limit_previous"], "Vorjahr", watch["previous_year"]))
+    if watch["first_year"]:
+        parts.append('<p class="lead">Im Gründungsjahr gilt eine einzige Bedingung: Gesamtumsatz '
+                     'bis %s. Gezählt werden die bezahlten Einnahmen (Zufluss), brutto gleich '
+                     'netto, Korrekturen abgezogen.</p>' % e(fmt_eur(watch["limit_current"])))
+    else:
+        parts.append('<p class="lead">Beide Bedingungen müssen gelten: Gesamtumsatz im Vorjahr bis '
+                     '%s <strong>und</strong> im laufenden Jahr bis %s. Gezählt werden die '
+                     'bezahlten Einnahmen (Zufluss), brutto gleich netto, Korrekturen abgezogen.'
+                     '</p>'
+                     % (e(fmt_eur(watch["limit_previous"])), e(fmt_eur(watch["limit_current"]))))
+    if watch["first_year"]:
+        # NO BAR FOR A YEAR THAT DOES NOT EXIST. A founding year has no previous year, so drawing
+        # "kein Ledger für 2025" beside it would report a missing FILE where the answer is that
+        # there is nothing to file -- the same confusion between "unknown" and "none" the four
+        # verdicts exist to keep apart.
+        parts.append('<p class="lead" data-first-year="%s">Gründungsjahr %s: es gibt kein Vorjahr, '
+                     'also auch keine Vorjahresbedingung. Für das Gründungsjahr gilt nach § 19 '
+                     'Abs. 1 UStG die Grenze von %s, und mit dem Umsatz, der sie überschreitet, '
+                     'beginnt die Regelbesteuerung.</p>'
+                     % (watch["current_year"], watch["current_year"],
+                        e(fmt_eur(watch["limit_current"]))))
+    else:
+        parts.append(gauge(watch["previous"], watch["limit_previous"], "Vorjahr",
+                           watch["previous_year"]))
     parts.append(gauge(watch["current"], watch["limit_current"], "Laufendes Jahr",
                        watch["current_year"],
                        limit_unknown=watch["verdict"] == "previous_unknown"))
@@ -1036,13 +1207,10 @@ def view_kleinunternehmer(data):
             "Gründungsjahr, gilt nach § 19 Abs. 1 UStG in der seit 2025 geltenden Fassung für "
             "dieses Jahr die Grenze von %s, und mit dem Umsatz, der sie überschreitet, beginnt "
             "die Regelbesteuerung — darum steht der Balken „laufendes Jahr“ oben ohne Grenze. "
-            "Ist %s kein Gründungsjahr, fehlt nur die Datei "
-            "ledger/%s.csv. Welcher der beiden Fälle es ist, steht in keinem Feld dieses "
-            "Projekts — business_profile.yaml trägt kein Gründungsjahr; mit der "
-            "Steuerberatung klären."
+            "Ist %s kein Gründungsjahr, fehlt nur die Datei ledger/%s.csv. %s"
             % (watch["previous_year"], watch["current_year"],
                fmt_eur(watch["limit_previous"]), watch["current_year"],
-               watch["previous_year"])),
+               watch["previous_year"], _founding_year_note(watch))),
         "previous_exceeded": (
             "alarm", "überschritten",
             "Der Vorjahresumsatz liegt über %s: die Kleinunternehmerregelung gilt seit dem "

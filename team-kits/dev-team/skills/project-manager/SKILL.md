@@ -102,6 +102,20 @@ Occasion: `BUG-0073`.
 4. **APPROVE** — `python scripts/harness.py request-approval scope PR-nnnn` prints the question the KERNEL
    composed; relay it VERBATIM (the gate compares it character for character) and let the user mint the scope-APR → the PR goes
    `APPROVED`. For a UI scope the approved WIREFRAME is part of that scope manifest (step 5).
+   **WHEN SEVERAL GOALS ARE CONFIRMED AT ONCE, ASK ONCE (`DEC-0068`).** The planning phase is
+   deliberately thorough: derive the FULL list of product goals from the masterplan, go through each
+   one with the user, bring your own suggestions and think around the corners, and record every
+   confirmed goal with its acceptance criteria. Then ask `python scripts/harness.py
+   request-approval plan` -- ONE question, built by the kernel from this project's own open goals,
+   and you type no list (`--goals` refuses a value). One mint walks every named goal to `APPROVED`
+   with the same approval, and the team works them in order without being asked per goal again.
+   The delivery side does NOT collapse: `delivery` and `acceptance` stay per goal, because they ask
+   about work that has happened. What is still asked at all is a property and not a list --
+   everything the project cannot take back out of its own strength, everything that is a matter of
+   taste, everything the plan did not settle. And a goal whose criteria change loses the plan's
+   cover -- only that goal, the others stay covered -- so a goal the team cannot build as planned
+   comes back to the user as a question rather than as an improvisation
+   (`tools/test_approvals_dispatch.py::test_a_plan_stops_covering_a_goal_the_moment_its_scope_moves`).
 5. **PLAN** — hand the approved PR to `software-architect` to derive SRs; create branch `pr/PR-nnnn-<slug>`, then ask ONE kernel-generated **delivery** approval question: that mint is what moves the PR to `IN_DELIVERY`, and transitioning it by hand is refused while no delivery-APR is in force. The kernel derives the gated edges from the map saying which edge each kind COMMITS (`approvals.APPROVAL_TRANSITIONS`), so it asks at EVERY class — wider than spec II.2's class table, which lists the second delivery approval under `large` only; named as a widening rather than carved out, since an exemption keyed on `class` would be a second rule beside the derivation. When the team is genuinely uncertain about a library/datasheet/API, task
    `research-engineer` (cited facts) before deciding. **A "not possible / blocked" never settles a decision** —
    demand the best alternative first (§14 dead-end rule).
@@ -152,7 +166,10 @@ Occasion: `BUG-0073`.
    The user chooses the look; you never pick it for them; their answer goes into the (a0) Decision item.
    **(a)–(c) share ONE precondition: the draft has been SEEN inside the team before the user sees it.** The
    designer renders it and looks at the pixels (its own skill, the SIGHT loop); you never forward a staged
-   draft that has no render behind it. `gate_design_sighted` holds the door: an `AskUserQuestion` naming a
+   draft that has no render behind it. The render step now also answers `3` when the draft breaks the
+   mechanically checkable half of the design standards. That is not a gate and it does not stop you — but a
+   designer that hands you a draft after a `3` has handed you contract defects the build will inherit, so ask
+   for the exit code in the envelope and send it back rather than forwarding it. `gate_design_sighted` holds the door: an `AskUserQuestion` naming a
    `.html` under `project_memory/staging/**` is refused while no render record covers that file's current
    bytes, and the refusal names the command. It matches the draft's FILE NAME, so every spelling of the same
    file is one rule. What it does NOT see is yours to keep: a mention that never writes the file name out
@@ -199,6 +216,23 @@ Occasion: `BUG-0073`.
    suite runs ONCE per slice END (normally as QA's single verdict run), and the merge/push gate stays the
    untouchable guarantee. Escalate to full immediately only for cross-cutting changes (shared components,
    config, dependency bumps) — a real session ran the full 792-test suite after every micro-step.
+   **Several specialists at once is a CUT, and the cut is by FILE OWNERSHIP — open
+   `/parallel-streams` (Codex `.agents/skills/parallel-streams/SKILL.md`) before you make it, not
+   after the first collision.** Disjoint files is the precondition, and it is one you have to CHECK:
+   resolve each order's `allowed_scope` minus `forbidden_scope` against the tree the way
+   `gate_write_scope` resolves it when it refuses a write — not by comparing the scope TEXTS — and
+   look for a file both orders own, including one an order is about to CREATE in a directory that
+   is empty today. Wishes whose file lists overlap are merged into ONE `PR` at triage and that
+   goal gets ONE `TSK` — never several requirements inside one work order, which the kernel
+   cannot represent and no board can see (`DEC-0067`); and no more goals run at once than you
+   can carry through their rework rounds.
+   Nothing refuses an overlapping pair (§5a), so this reading is the whole of the protection; the
+   skill carries the rest — one tree per order, only the checks that read what it changed, the
+   shared files named in advance, and a merge round that gets its own verification pass.
+   **The prose you hand the user is a deliverable too, and `/humanizer` (Codex
+   `.agents/skills/humanizer/SKILL.md`) is the reference skill for it.** It reaches you by no other
+   route: a reference skill rides on a dispatch header (`kernel.references.for_task`, stamped onto
+   the lease at `create_lease`), and you are bound by `settings.json` and dispatched by nothing.
    **A dispatch a session break interrupted is RETRIED, never resumed by hand.** The session-start
    briefing names what the kernel swept and what it measured; before you re-order the work run
    `python scripts/harness.py checkpoint-status <TSK-ID>` and relay that verdict — the retry's own
@@ -318,4 +352,9 @@ Who owns which item is constitution §6, the status automata and where they are 
 branch/commit/push rules are §8; the constitution loads together with this skill, so none of it is repeated
 here. What is PM-specific: you own the CONTENT of the `PR`/`FR`/`CR`/`BUG` items, `product/masterplan.md`,
 your own Decision items and `project_config.yaml`, and you carry the PR through its chain (`DELIVERED` on the
-QA proof, `ACCEPTED` on the acceptance-APR). Project status is not something you maintain — it lives in the items and is regenerated into `generated/index.yaml` + `generated/session_brief.yaml`.
+QA proof, `ACCEPTED` on the acceptance-APR).
+A deadline several goals share is its own item and yours as well: capture an `MST` (title, `due`
+as an ISO date the kernel refuses if it cannot read it, `derives_from` = the goals it applies to)
+and carry it from `PLANNED` to `REACHED` -- or to `MISSED`/`DROPPED`, which is the point of a
+type instead of a date field: a slipped deadline stays a record with a name (`DEC-0064`).
+ Project status is not something you maintain — it lives in the items and is regenerated into `generated/index.yaml` + `generated/session_brief.yaml`.

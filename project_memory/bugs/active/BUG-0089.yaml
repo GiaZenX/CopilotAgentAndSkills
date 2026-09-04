@@ -31,7 +31,7 @@ severity: low
 source: 'project_memory/staging/generation-2-streams.md, log 2026-09-02 16:5x; lead
   path taken: TSK-0107 kept as the historical order, TSK-0113 carries the re-cut work
   order'
-status: OPEN
+status: TRIAGED
 revision: 1
 approval_ref: null
 created: '2026-09-02T15:54:17'

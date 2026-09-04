@@ -859,3 +859,69 @@ def test_every_retention_the_filing_plan_template_ships_is_readable_or_deliberat
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__]))
+
+
+def test_the_kernel_and_the_duty_register_read_a_retention_the_same_way():
+    """ONE definition, two copies that cannot be merged -- so the agreement is measured (F6).
+
+    `kernel.filing.retention_span` refuses a retention at the WRITE and `_duties._retention_years`
+    watches it at every SESSION START. They have to be the same reading: a kernel that accepted
+    what the register cannot count would put an unwatched rule in the plan -- reported as unwatched
+    at every session start, forever -- and a kernel stricter than the register would refuse a rule
+    the register would happily watch.
+
+    WHY TWO COPIES AND NOT ONE, in both directions, because only one of them was written here until
+    TSK-0120: the kernel may not import a kit hook, and the register may not require the kernel. The
+    second half is the load-bearing one and it is measured -- with `$HARNESS_KERNEL_PATH` pointing
+    at a directory that holds no kernel, `_duties.retention_duties` still answers while
+    `_kernel.kernel_module("filing")` raises `KernelUnavailable`. Moving the register onto
+    `kernel.filing.retention_span` (stream B's seam S6) would buy one definition at the price of a
+    session-start register that goes silent whenever the kernel cannot be imported, which is the one
+    moment a project most needs to hear its deadlines. So the copies stay and this holds them.
+
+    THE DEFINITIONS ARE COMPARED, NOT SAMPLES, and that is verifier finding M2 of rework 1. A fixed
+    list of examples measured only the words somebody happened to think of: adding `|jahren` to
+    either reader, or `|monate` to the kernel's, left this test green while the two answers had
+    already parted -- which is the exact drift F6 exists to prevent. So the compiled patterns
+    themselves have to be the same object's worth of text, and the CORPUS is generated from the unit
+    words BOTH patterns carry, so a unit added to one is a case the other is asked about.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, TEAM_KITS)
+    from kernel import filing
+
+    register = duties_module()
+    theirs, ours = register._SPAN_RX, filing._RETENTION_SPAN_RX
+    assert (theirs.pattern, theirs.flags) == (ours.pattern, ours.flags), (
+        "the two retention readers are no longer one definition:\n  register %r\n  kernel   %r"
+        % (theirs.pattern, ours.pattern))
+
+    units = sorted(_units_of(theirs.pattern) | _units_of(ours.pattern))
+    assert len(units) > 3, units
+    generated = ["8%s" % unit for unit in units] + ["10 %s" % unit for unit in units]
+    shapes = ["8y (\u00a7 147 AO; mit der Steuerberatung best\u00e4tigen)", "30", "keine Frist",
+              "solange das Produkt aktiv ist", "Version 1.8y", "P8Y", "", "   ", None, 8, True]
+    disagreed = [one for one in generated + shapes
+                 if register._retention_years(one) != filing.retention_span(one)]
+    assert not disagreed, ["%r: register %r, kernel %r"
+                           % (one, register._retention_years(one), filing.retention_span(one))
+                           for one in disagreed]
+    # ...and the corpus really exercises both answers, so an agreement on "None for everything"
+    # cannot pass for one.
+    spans = [filing.retention_span(one) for one in generated + shapes]
+    assert any(one is not None for one in spans) and any(one is None for one in spans), spans
+
+
+def _units_of(pattern):
+    """The unit words a retention pattern accepts -- its own alternation, read off the pattern.
+
+    Read rather than repeated, so the corpus above grows with whichever reader grows. The group
+    this looks for is the one carrying alternatives; the digit group beside it carries none.
+    """
+    import re as _re
+
+    found = set()
+    for group in _re.findall(r"\(([^()]*\|[^()]*)\)", pattern):
+        found.update(part for part in group.split("|") if part.isalpha())
+    return found

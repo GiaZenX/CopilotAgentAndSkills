@@ -1,0 +1,17 @@
+request_id: 9d9210701c404c6891bc6027c343d4cb
+kind: scope
+item: BUG-0083
+revision: 1
+subject_manifest:
+  acceptance_criteria:
+  - id: AC-1
+    text: research chain RQ->HYP->EXP->TSK creates and dispatches end to end on a
+      scaffolded project; red-first via the inverted pin test
+  - id: AC-2
+    text: dev and office chains unchanged (their existing origin tests stay green)
+  item: BUG-0083
+  revision: 1
+subject_manifest_hash: ec567c65a2d86429aff03e4a4f01f6e61867ff4eecbe538e1ecbd20dcf51f420
+created: '2026-09-03T07:05:29'
+expires_at_epoch: 1788498329.4940488
+mint_code: b845de

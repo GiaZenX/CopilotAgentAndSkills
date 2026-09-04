@@ -143,6 +143,25 @@ never report a frozen revision you did not see produced.
 Nothing survives outside staging: on approval the kernel promotes and EMPTIES the directory, on rejection it
 archives it. So state facts in your result envelope, never in a file you invent.
 
+## Ranking: the ONE thing this view is for — the procedure, not the adjective
+"The user is guided and the most important thing is visible first" is the user's own requirement and
+it is judgement, so nothing grades it. What IS checkable is whether your draft ever made the choice.
+The procedure, per view, in this order:
+1. **Write the sentence** before you draw, filling in this exact template:
+   `Here the user <does one thing>, and they see it first by <the one signal>.`
+   One verb, one signal. A view whose sentence needs a second verb is two views, or it is a view
+   whose ranking you have not decided yet.
+2. **Mark the container** of that view with `data-view="<its name>"` in the staged mockup, and mark
+   the single element that carries the verb from your sentence with `data-primary-action`. Exactly
+   one per view — that attribute is the sentence, made checkable.
+3. **Put the sentence into the spec** beside the mockup, so the frontend inherits the WHY and not
+   only the attribute, and so the fidelity review in Phase 3 has something to compare against.
+`python scripts/kit_design_render.py <your task-id>` reads the rendered mockup and answers `3` with
+a sentence naming any declared view that has none or more than one primary action. It BLOCKS
+nothing — no hook refuses a presentation over it — so the exit code is the whole mechanism, and
+reading it is your step. And it has nothing to say about a view you never declared: it judges the
+ranking you claimed, never the one you skipped.
+
 ## The SIGHT loop — render, LOOK, fix — before ANY draft leaves you (Phases 1 and 2)
 A design draft that reaches the user unrendered is the failure this loop is named after: a real project
 presented a revision TWICE with nobody having looked at pixels, and the user — not the apparatus — asked
@@ -153,6 +172,15 @@ mittig"). So the last step of Phase 1 and of every Phase-2 iteration is yours, n
    `gate_design_sighted` reads. **Exploration ambition:** add `--reference <url>` for the CURRENT site and
    for each style reference the design-brief Decision item records — those URLs come from the user's own
    answer, never from a list in this skill or in the script.
+   **Read its exit code**, because the three mean different things: `0` nothing to report; `2` the
+   draft was never rendered at all (no Playwright, no Chromium, nothing staged) — say so in
+   `followups` and hand back, an unrendered draft is not a smaller draft; `3` it rendered and the
+   automatically checkable share of the standards found something — contrast under the ratio, an
+   element the keyboard cannot reach or cannot be seen on, animation that ignores reduced motion, a
+   colour spelled instead of tokenised, a view with none or two primary actions. Those are contract
+   defects: frozen, the mockup hands every one of them down to the build. Fix them and render again.
+   A `0` is not a verdict on the design and not an accessibility claim — it is the share a machine
+   can decide, and everything the bar above asks for is still yours to see in step 2.
 2. **LOOK** — open every PNG with `Read`. Not the file listing, the images. Walk them against the frozen
    wireframe, against the quality bar above and against the reference shots: alignment and centering,
    optical rhythm, hierarchy, whether it reads as premium or as a template. Nothing measures this step —
@@ -205,7 +233,12 @@ the **visual contract**: the frontend takes each mockup's markup+CSS as its base
 against it. A design that exists only as a token list cannot be built faithfully (a real run
 "recolored" four slices because no per-view contract existed). The spec includes:
 - **Color system**: semantic tokens with hex for **light AND dark** (bg, surface, surface-2, border, text,
-  text-muted, primary, primary-hover, accent, success, warning, danger); WCAG AA contrast.
+  text-muted, primary, primary-hover, accent, success, warning, danger); WCAG AA contrast. **Every colour
+  in the mockup enters through a custom property** — declared once, referenced with `var(--…)` everywhere
+  else. A colour spelled directly in a component rule is a colour the build can change without anyone
+  being able to say it did, and the render step above reports each one.
+- **Ranking**: the one-sentence primary goal per view from the section above, with `data-view` on the
+  container and `data-primary-action` on the single element that carries it.
 - **Typography**: real font import, a type scale (e.g. 12/14/16/20/24/32/48), weights, line-heights, heading
   letter-spacing.
 - **Motion**: per-interaction durations (**150–250 ms**) + named easings, what animates (route, hover,

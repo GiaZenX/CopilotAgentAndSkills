@@ -1,0 +1,18 @@
+request_id: 2bb32542c0764e82bd2529d524443d3e
+kind: scope
+item: BUG-0086
+revision: 1
+subject_manifest:
+  acceptance_criteria:
+  - id: AC-1
+    text: a two-parent origin under another root is refused at create-task and flagged
+      by validate -- red-first
+  - id: AC-2
+    text: a two-parent origin whose parents ALL hang from the root is accepted (no
+      over-refusal), measured
+  item: BUG-0086
+  revision: 1
+subject_manifest_hash: afafbef6476a09b7e2d98e500a253cdaf0a4d77d882c4e65cd19209b3a9f6d36
+created: '2026-09-03T07:05:20'
+expires_at_epoch: 1788498320.4285758
+mint_code: 5fee8c

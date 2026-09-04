@@ -10,3 +10,4 @@ approval_ref: null
 created: '2026-08-16T14:06:45'
 triage_result: 'USER VERDICT 2026-09-02 (FR survey, asked one by one via AskUserQuestion):
   Spaeter.'
+related_pr: PR-0003

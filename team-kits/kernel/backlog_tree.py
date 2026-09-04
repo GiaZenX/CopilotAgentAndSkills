@@ -27,6 +27,7 @@ from __future__ import annotations
 from collections import namedtuple
 
 from .backlog_types import (
+    ACTIVE_DIRS,
     AREA_FIELD,
     AREA_SEPARATOR,
     DECLARED_REQUIRED_FIELDS,
@@ -45,9 +46,15 @@ from .backlog_types import (
 # (`test_board.test_every_kit_ships_a_type_its_backlog_trees_can_hang_from`).
 ROOT_TYPES = frozenset(ROOT_TYPE_BY_KIT.values()) | {"PROC"}
 
-# What a type is CALLED on a tree node -- (singular, plural). The product view exists to be read by
-# somebody who did not write the item, so its nodes say "request" rather than "FR"; the id stands on
-# the node beside it for everyone who wants the file.
+# What a type is CALLED, in plain language -- (singular, plural). The product view exists to be read
+# by somebody who did not write the item, so its nodes say "request" rather than "FR"; the id stands
+# beside the name for everyone who wants the file.
+#
+# EVERY type the kernel has is in here, not only the ones a tree places: since FR-0075 the board
+# heads each of its rows and each block of paperwork with this name, so a type missing here would
+# appear as its own code and a name here for a type the kernel does not have would be a promise
+# nobody keeps. Both ends are measured by
+# `test_board.test_every_type_the_kernel_has_carries_a_plain_language_name`.
 _LABELS = {
     "PR": ("product requirement", "product requirements"),
     "RQ": ("research question", "research questions"),
@@ -59,6 +66,14 @@ _LABELS = {
     "EXP": ("experiment", "experiments"),
     "BUG": ("bug", "bugs"),
     "TSK": ("task", "tasks"),
+    "DEC": ("decision", "decisions"),
+    "EVD": ("evidence record", "evidence records"),
+    "APR": ("approval", "approvals"),
+    "INV": ("invariant", "invariants"),
+    "ARC": ("architecture diagram", "architecture diagrams"),
+    "WFR": ("wireframe", "wireframes"),
+    "DSN": ("design revision", "design revisions"),
+    "MST": ("milestone", "milestones"),
 }
 
 View = namedtuple("View", "key label lead children")
@@ -72,7 +87,7 @@ VIEWS = (
         lead="What the project owes the people it is for: every product requirement with the "
              "requests and change requests that hang from it. No tasks — this view is the "
              "conversation with the user, not the work plan.",
-        children=("FR", "CR"),
+        children=("FR", "CR", "MST"),
     ),
     View(
         key="system",
@@ -224,6 +239,40 @@ MESSAGES = {
 }
 
 
+# The SHORT word the board puts on the item's own row, one per reason above. The banner counts a
+# reason for a whole type; a reader looking at one item wants to know what THAT item is, and
+# DEC-0066 (5) settles what it is called: a wish whose contract asks for no link is not "unassigned"
+# -- it is still in the inbox, waiting to be triaged, which is the state the kits' own workflow
+# gives it. Which word "inbox" is, is not written here twice: it is the type's own home, read off
+# `home_word`, so `FR` reads "inbox" and any other type reads its own directory.
+# BOTH ENDS of this map are read by
+# `test_board.test_every_reason_a_tree_can_refuse_an_item_is_one_a_store_can_produce`, together
+# with the two ends of MESSAGES: a reason with no word raises on the page, and a word for a reason
+# nothing can produce is a dead entry. It did NOT read this map for one round, while this comment
+# said it did.
+_REASON_LABELS = {
+    UNREADABLE: "file cannot be read",
+    MISSING_LINK: "required link missing",
+    NO_LINK: "{home} — not yet triaged",
+    OFF_VIEW: "linked outside this view",
+    UNKNOWN_LINK: "link goes nowhere",
+}
+
+
+def home_word(item_type: str) -> str:
+    """The kit's own word for where an item of this type lives -- `inbox` for FR, `bugs` for BUG.
+
+    The first segment of the type's OWN active directory, so the page speaks the vocabulary the
+    project's tree already uses and no second naming of it exists to drift.
+    """
+    return ACTIVE_DIRS.get(item_type, item_type).split("/")[0]
+
+
+def reason_label(kind: str, item_type: str) -> str:
+    """The word the board puts on one refused item's row -- see `_REASON_LABELS`."""
+    return _REASON_LABELS[kind].format(home=home_word(item_type))
+
+
 def _why(node: Node, known: set) -> str:
     """The kind of reason this view has for not placing `node`."""
     if not isinstance(node.body, dict):
@@ -234,7 +283,7 @@ def _why(node: Node, known: set) -> str:
     return OFF_VIEW if any(one in known for one in named) else UNKNOWN_LINK
 
 
-Arrangement = namedtuple("Arrangement", "view roots unassigned warnings placed")
+Arrangement = namedtuple("Arrangement", "view roots unassigned warnings placed reasons")
 
 
 def arrange(view: View, entries) -> Arrangement:
@@ -318,4 +367,9 @@ def arrange(view: View, entries) -> Arrangement:
         unassigned=sorted(pending, key=lambda node: (node.item_type, node.item_id)),
         warnings=warnings,
         placed=len(nodes) - len(pending),
+        # the SAME kind the warning above was grouped by, per item: the banner counts the reasons
+        # and the page says on each row which of them applies to that item (`board._branches`),
+        # so the two can never name different reasons for one item
+        reasons={node.item_id: kind for (_item_type, kind), refused in grouped.items()
+                 for node in refused},
     )

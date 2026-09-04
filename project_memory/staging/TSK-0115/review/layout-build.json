@@ -1,0 +1,431 @@
+{
+ "empty.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "empty.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "empty.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "empty.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "empty.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "empty.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "empty.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "empty.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "empty.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "healthy.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 1242,
+   "empty_right": -0.0,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "healthy.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "healthy.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "healthy.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 1880,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "healthy.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "healthy.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "healthy.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 378,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "healthy.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "healthy.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "blocked.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 1242,
+   "empty_right": -0.0,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "blocked.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "blocked.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "blocked.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 1880,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "blocked.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "blocked.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "blocked.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 378,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "blocked.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "blocked.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "timeline.html|board|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 1242,
+   "empty_right": -0.0,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "timeline.html|product|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "timeline.html|system|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "timeline.html|timeline|1280": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1280,
+   "right_edge": 0,
+   "empty_right": 1242,
+   "scrolling_boards": [],
+   "body_pad": 38.4
+  }
+ },
+ "timeline.html|board|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 1880,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "timeline.html|product|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "timeline.html|system|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "timeline.html|timeline|1920": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 1920,
+   "right_edge": 0,
+   "empty_right": 1880,
+   "scrolling_boards": [],
+   "body_pad": 40
+  }
+ },
+ "timeline.html|board|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 378,
+   "empty_right": 0,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "timeline.html|product|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "timeline.html|system|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ },
+ "timeline.html|timeline|390": {
+  "overlaps": {},
+  "overflow": [],
+  "extent": {
+   "viewport": 390,
+   "right_edge": 0,
+   "empty_right": 378,
+   "scrolling_boards": [],
+   "body_pad": 12
+  }
+ }
+}

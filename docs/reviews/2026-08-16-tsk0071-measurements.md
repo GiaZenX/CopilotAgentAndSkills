@@ -155,7 +155,9 @@ FileNotFoundError: …\project_memory\generated\board.html
 
 Rot u. a.: `test_every_state_write_leaves_a_board_as_fresh_as_the_index` (a),
 `test_each_kit_renders_the_types_its_own_template_ships[dev-team|research-team|office-team]` (b),
-`test_the_documented_command_writes_and_names_both_artefacts`.
+test_the_documented_command_writes_and_names_both_artefacts (historischer Name, ohne
+Backticks, weil er seit TSK-0120 nicht mehr auflöst; heute
+`test_the_documented_command_names_every_artefact_it_writes`).
 Grün blieb nur der Test, der `board.render` direkt aufruft — korrekt, denn `board.py` war intakt.
 
 ### Defekt 2 — nur deklarierte Spalten erreichen die Seite (die Aufzählungs-Variante)

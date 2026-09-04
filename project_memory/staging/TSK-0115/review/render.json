@@ -1,0 +1,102 @@
+{
+  "rendered_at": "2026-09-03T08:09:29",
+  "viewports": [
+    "1280x800",
+    "390x844"
+  ],
+  "drafts": {
+    "mockup-blocked.html": {
+      "sha256": "46c08f6be3dfaf77ae1b59e4bf316c87c4824ece8ff7a7944b1f929f8fdd4d5a",
+      "images": [
+        "review/blocked-board-1280.png",
+        "review/blocked-product-1280.png",
+        "review/blocked-system-1280.png",
+        "review/blocked-board-1280-focus-blocked.png",
+        "review/blocked-board-1280-focus-you.png",
+        "review/blocked-board-1280-focus-flight.png",
+        "review/blocked-record-open-1280.png",
+        "review/blocked-records-open-1280.png",
+        "review/blocked-board-390.png",
+        "review/blocked-product-390.png",
+        "review/blocked-system-390.png",
+        "review/blocked-board-390-focus-blocked.png",
+        "review/blocked-board-390-focus-you.png",
+        "review/blocked-board-390-focus-flight.png",
+        "review/blocked-board-1280-dark.png",
+        "review/blocked-product-1280-dark.png",
+        "review/blocked-system-1280-dark.png"
+      ],
+      "errors": []
+    },
+    "mockup-empty.html": {
+      "sha256": "a70809f0d7193404788754844c6311f68321fc7213038a48ff26352a47b30d8b",
+      "images": [
+        "review/empty-board-1280.png",
+        "review/empty-product-1280.png",
+        "review/empty-system-1280.png",
+        "review/empty-board-1280-focus-blocked.png",
+        "review/empty-board-1280-focus-you.png",
+        "review/empty-board-1280-focus-flight.png",
+        "review/empty-board-390.png",
+        "review/empty-product-390.png",
+        "review/empty-system-390.png",
+        "review/empty-board-390-focus-blocked.png",
+        "review/empty-board-390-focus-you.png",
+        "review/empty-board-390-focus-flight.png",
+        "review/empty-board-1280-dark.png",
+        "review/empty-product-1280-dark.png",
+        "review/empty-system-1280-dark.png"
+      ],
+      "errors": []
+    },
+    "mockup-healthy.html": {
+      "sha256": "68f890c647ea8a19782ec8f4f16eda5daae267d713e51eb4b09aa2f204089cf8",
+      "images": [
+        "review/healthy-board-1280.png",
+        "review/healthy-product-1280.png",
+        "review/healthy-system-1280.png",
+        "review/healthy-board-1280-focus-blocked.png",
+        "review/healthy-board-1280-focus-you.png",
+        "review/healthy-board-1280-focus-flight.png",
+        "review/healthy-record-open-1280.png",
+        "review/healthy-records-open-1280.png",
+        "review/healthy-board-390.png",
+        "review/healthy-product-390.png",
+        "review/healthy-system-390.png",
+        "review/healthy-board-390-focus-blocked.png",
+        "review/healthy-board-390-focus-you.png",
+        "review/healthy-board-390-focus-flight.png",
+        "review/healthy-board-1280-dark.png",
+        "review/healthy-product-1280-dark.png",
+        "review/healthy-system-1280-dark.png"
+      ],
+      "errors": []
+    },
+    "mockup-timeline.html": {
+      "sha256": "5fd27560f996c9661e60f94b324c4d49e441d0002cd6de8571412d60a5f23991",
+      "images": [
+        "review/timeline-board-1280.png",
+        "review/timeline-product-1280.png",
+        "review/timeline-system-1280.png",
+        "review/timeline-timeline-1280.png",
+        "review/timeline-board-1280-focus-blocked.png",
+        "review/timeline-board-1280-focus-you.png",
+        "review/timeline-board-1280-focus-flight.png",
+        "review/timeline-record-open-1280.png",
+        "review/timeline-records-open-1280.png",
+        "review/timeline-board-390.png",
+        "review/timeline-product-390.png",
+        "review/timeline-system-390.png",
+        "review/timeline-timeline-390.png",
+        "review/timeline-board-390-focus-blocked.png",
+        "review/timeline-board-390-focus-you.png",
+        "review/timeline-board-390-focus-flight.png",
+        "review/timeline-board-1280-dark.png",
+        "review/timeline-product-1280-dark.png",
+        "review/timeline-system-1280-dark.png",
+        "review/timeline-timeline-1280-dark.png"
+      ],
+      "errors": []
+    }
+  }
+}

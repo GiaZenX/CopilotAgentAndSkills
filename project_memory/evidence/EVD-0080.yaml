@@ -1,0 +1,32 @@
+id: EVD-0080
+kind: review
+related:
+- TSK-0120
+- TSK-0115
+- TSK-0116
+- TSK-0117
+- TSK-0118
+- TSK-0119
+result: pass
+summary: 'verifier PASS for diff:5f89aa021c63aa933e10995d84659fead31ecea5b5dad707bd7b596ca9e36489
+  -- generation-3 merge (TSK-0120): five streams each PASS by their own verifier (A
+  four rounds, B four, C three, D two, E three); merge verifier PASS in its third
+  round after two blocking findings in the office archive guard (sweep base as a SET
+  of positions mapped from every candidate, real bash as arbiter) and eleven merge
+  findings no stream could see; full tools/ suite once 4554 passed / 14 skipped /
+  4 failed = 4572 collected, the four reds fixed as M-10 to M-13 (tests only) with
+  the reading suites re-run in full after each rework (1105+13, 2465, 943+13, 201,
+  117, 68, 43) and the gate suite 489 in full; four stamp runs decided by the hash,
+  final dev 2026.09.04-1, office 2026.09.04-3, research 2026.09.04-1; ruff and validate
+  clean; 90 kit/tools/docs files +12887/-1602; protocol staging/TSK-0120/merge-protocol.md
+  sections 1 to 13, round log staging/generation-3-streams.md'
+artifact_refs:
+- staging/TSK-0120/merge-protocol.md
+- staging/generation-3-streams.md
+run_command: python -B -m pytest tools/ -q (once, 57:45) + python -B -m pytest .claude/hooks/test_gates.py
+  -q (in full, 28:33) + the full runs of every suite reading the files changed after
+  the full run, listed in merge-protocol.md section 8 and 11 to 13
+run_scope: full
+revision: 1
+approval_ref: null
+created: '2026-09-04T02:49:08'

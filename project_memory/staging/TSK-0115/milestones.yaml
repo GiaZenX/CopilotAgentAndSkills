@@ -1,0 +1,36 @@
+# FR-0079 fixture (TYPE option): milestones as items of their own. The shape is what
+# mst-decision-proposal.md proposes -- title, due, derives_from (the goals the date is for), the
+# kernel-stamped fields as the kernel would write them. These four are invented for the mockup;
+# the goals they name are real roots of this repo's state (PR-0002, PR-0003).
+- id: MST-0001
+  title: Generation 2 merged as one release
+  due: '2026-08-31'
+  derives_from: [PR-0003]
+  status: REACHED
+  revision: 1
+  approval_ref: null
+  created: '2026-08-20T09:00:00'
+- id: MST-0002
+  title: Generation 3 streams merged
+  due: '2026-09-10'
+  derives_from: [PR-0003]
+  status: PLANNED
+  revision: 1
+  approval_ref: null
+  created: '2026-09-03T08:00:00'
+- id: MST-0003
+  title: This repo runs on the kernel alone -- no hand-written state left
+  due: '2026-08-30'
+  derives_from: [PR-0002]
+  status: PLANNED
+  revision: 1
+  approval_ref: null
+  created: '2026-08-10T09:00:00'
+- id: MST-0004
+  title: Release 2026.10 to the three pilot projects
+  due: '2026-10-15'
+  derives_from: [PR-0002, PR-0003]
+  status: PLANNED
+  revision: 1
+  approval_ref: null
+  created: '2026-09-03T08:00:00'

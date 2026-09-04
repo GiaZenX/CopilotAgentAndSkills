@@ -801,7 +801,14 @@ def test_cli_request_approval_opens_the_question_the_gate_will_pin(state, capsys
 # its own refusal, or this test would measure that refusal instead of the manifest. `proposal` is
 # such a key: `kernel.documents` only ever reads from the proposal area, so a bare name is refused
 # by `approvals.document_proposal_subject_manifest` (see its `_PROPOSAL_PREFIX`).
-SUBJECT_SAMPLES = {"proposal": "staging/TSK-0001/x.yaml"}
+SUBJECT_SAMPLES = {
+    "proposal": "staging/TSK-0001/x.yaml",
+    # A plan's subject is a LIST of goal records rather than a scalar (FR-0074), so the sample is
+    # shaped the way `approvals.plan_goals` builds one -- with the kernel's own key names, since a
+    # retyped key here would make this fixture describe a manifest the builder does not produce.
+    "goals": [{approvals.GOAL_ITEM_FIELD: "PR-0001", "title": "Checkout", "revision": 1,
+               approvals.GOAL_SCOPE_HASH_FIELD: "0" * 64}],
+}
 
 
 def test_cli_request_approval_offers_exactly_the_kinds_a_manifest_builder_exists_for(state, capsys):

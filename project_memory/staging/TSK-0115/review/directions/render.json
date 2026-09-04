@@ -1,0 +1,80 @@
+{
+  "rendered_at": "2026-09-03T09:03:30",
+  "drafts": {
+    "direction-a.html": {
+      "sha256": "5747527b649170bd8cce3ee597ab2e4223b0b065517e859109bdf80883da1544",
+      "images": [
+        "review/directions/a-1280.png",
+        "review/directions/a-1280-focus-blocked.png",
+        "review/directions/a-1280-focus-you.png",
+        "review/directions/a-1280-record.png",
+        "review/directions/a-390.png",
+        "review/directions/a-1280-dark.png",
+        "review/directions/a-1280-dark-focus-blocked.png",
+        "review/directions/a-1280-dark-focus-you.png",
+        "review/directions/a-390-dark.png"
+      ],
+      "errors": []
+    },
+    "direction-b.html": {
+      "sha256": "5deb6154e477caf64e8270652db905d1af20c5f26235241bd3894a15a578f9ff",
+      "images": [
+        "review/directions/b-1280.png",
+        "review/directions/b-1280-focus-blocked.png",
+        "review/directions/b-1280-focus-you.png",
+        "review/directions/b-1280-record.png",
+        "review/directions/b-390.png",
+        "review/directions/b-1280-dark.png",
+        "review/directions/b-1280-dark-focus-blocked.png",
+        "review/directions/b-1280-dark-focus-you.png",
+        "review/directions/b-390-dark.png"
+      ],
+      "errors": []
+    },
+    "direction-c.html": {
+      "sha256": "ec0733a2d334c82bb5810918d81d05176e1be09054424d1a0dda4f18eaea9e72",
+      "images": [
+        "review/directions/c-1280.png",
+        "review/directions/c-1280-focus-blocked.png",
+        "review/directions/c-1280-focus-you.png",
+        "review/directions/c-1280-record.png",
+        "review/directions/c-390.png",
+        "review/directions/c-1280-dark.png",
+        "review/directions/c-1280-dark-focus-blocked.png",
+        "review/directions/c-1280-dark-focus-you.png",
+        "review/directions/c-390-dark.png"
+      ],
+      "errors": []
+    },
+    "direction-d.html": {
+      "sha256": "172f1bd7ae41015613fdec87c27a9e5e4d4aa6c4909b84589dc636f85016ea10",
+      "images": [
+        "review/directions/d-1280.png",
+        "review/directions/d-1280-focus-blocked.png",
+        "review/directions/d-1280-focus-you.png",
+        "review/directions/d-1280-record.png",
+        "review/directions/d-390.png",
+        "review/directions/d-1280-dark.png",
+        "review/directions/d-1280-dark-focus-blocked.png",
+        "review/directions/d-1280-dark-focus-you.png",
+        "review/directions/d-390-dark.png"
+      ],
+      "errors": []
+    },
+    "direction-e.html": {
+      "sha256": "80b5f4572b17560de18d9ba3fd59a3abc48364eb8e6574da69efc090f716bd22",
+      "images": [
+        "review/directions/e-1280.png",
+        "review/directions/e-1280-focus-blocked.png",
+        "review/directions/e-1280-focus-you.png",
+        "review/directions/e-1280-record.png",
+        "review/directions/e-390.png",
+        "review/directions/e-1280-dark.png",
+        "review/directions/e-1280-dark-focus-blocked.png",
+        "review/directions/e-1280-dark-focus-you.png",
+        "review/directions/e-390-dark.png"
+      ],
+      "errors": []
+    }
+  }
+}

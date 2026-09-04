@@ -1,0 +1,19 @@
+request_id: 480d6be0a59746b9bc507d383a47ddaf
+kind: scope
+item: BUG-0084
+revision: 1
+subject_manifest:
+  acceptance_criteria:
+  - id: AC-1
+    text: an approval whose subject manifest is empty cannot be minted -- red-first
+  - id: AC-2
+    text: no item type can be approved that APPROVAL_TRANSITIONS does not list, measured
+      across all three kits automata
+  - id: AC-3
+    text: the QA-debt filter covers every kit root type by derivation
+  item: BUG-0084
+  revision: 1
+subject_manifest_hash: dd7cfaf59ade32f117bf41439301262ce9e601c6c5471cc692c8669130cb8890
+created: '2026-09-03T07:05:19'
+expires_at_epoch: 1788498319.8864226
+mint_code: f59853

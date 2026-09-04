@@ -46,7 +46,7 @@ from .approvals import (
     approved_statuses,
     assert_apr_in_force,
     consumed_request,
-    item_subject_manifest,
+    has_expired,
     required_approval_kinds,
 )
 from .backlog_types import (
@@ -54,6 +54,7 @@ from .backlog_types import (
     AREA_SEPARATOR,
     ACTIVE_DIRS,
     AUTOMATA,
+    BLOCKED_REASON_FIELD,
     DEC_SUPERSEDES_FIELD,
     DECLARED_REQUIRED_FIELDS,
     FR_RESULT_FIELD,
@@ -63,6 +64,7 @@ from .backlog_types import (
     area_segments,
     PARENT_FIELDS,
     PARTIAL_RUN_SCOPE,
+    PASSING_RESULT,
     QA_EVIDENCE_KINDS,
     REFERENCE_LIST_FIELDS,
     ROOT_TYPE_BY_KIT,
@@ -71,7 +73,7 @@ from .backlog_types import (
     parse_id,
     single_value_offences,
 )
-from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash, subject_manifest_hash
+from .hashing import HASH_SCHEMA_VERSION, hook_bundle_hash
 from .lock import LOCK_SCHEMA_VERSION, PORTABLE_PATH_MAX_CHARS, ext_path
 from .schemas import validate
 from .state import CONFIRMING_EVIDENCE, STAGING_DIRNAME, ProjectState, _now_iso
@@ -242,9 +244,11 @@ def generate_session_brief(
                     request = state._read_yaml(os.path.join(pending_dir, name))
                 except Exception:
                     continue
-                if time.time() > float(request.get("expires_at_epoch", 0)):
+                if has_expired(request):
                     # an expired request can never mint -- never show it as
-                    # open (Fable-Check 9/NIT-8), only count it
+                    # open (Fable-Check 9/NIT-8), only count it. WHY THE RULE IS ASKED AND NOT
+                    # SPELLED: this used to compare the clock itself, and so did the board once
+                    # FR-0075 gave it the same question -- three spellings of one rule, `H126`.
                     expired_requests += 1
                     continue
                 pending.append({
@@ -473,29 +477,23 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                     "manually written approvals never count -- re-run the approval flow",
                 ))
                 continue
-            if apr.get("revoked"):
-                findings.append(_finding(
-                    "error", item_id, "approval %s is revoked" % apr_ref,
-                    "obtain a fresh approval",
-                ))
-            if apr.get("revision") != item.get("revision"):
-                findings.append(_finding(
-                    "error", item_id,
-                    "revision %s no longer matches approval revision %s"
-                    % (item.get("revision"), apr.get("revision")),
-                    "out-of-band edit invalidated approval; re-approve or revert (D/4)",
-                ))
-            elif apr.get("kind") in ("scope", "acceptance", "delivery"):
-                try:
-                    current = subject_manifest_hash(item_subject_manifest(item, apr["kind"]))
-                except Exception:
-                    current = None
-                if current != apr.get("subject_manifest_hash"):
-                    findings.append(_finding(
-                        "error", item_id,
-                        "content hash no longer matches approval %s" % apr_ref,
-                        "out-of-band edit invalidated approval; re-approve or revert (D/4)",
-                    ))
+            # WHETHER THE PRESENTED APPROVAL STILL GRANTS ANYTHING IS ONE QUESTION WITH ONE
+            # ANSWER, and this used to be a second one. `assert_apr_in_force` is what
+            # `assert_transition_approved` and the dispatch route decide on -- revoked, provenance,
+            # which item it binds to, the clock, and the content hash for the kinds that carry one
+            # -- and this block recomputed two of those five for itself. That copy went wrong the
+            # moment a kind arrived whose binding is not one item: a `plan` approval carries
+            # `item: None` and `revision: None` by construction (its subject is the goal LIST), so
+            # the private comparison read every goal it covers as an out-of-band edit and
+            # `gate_memory_complete` closed merge and push on it -- measured as a process, rc 0
+            # before the plan approval and rc 2 after it, with a remedy that named a change nobody
+            # had made. Asked here, the plan branch is the same branch the transition walked.
+            # `tools/test_report.py::test_a_plan_approved_goal_is_not_reported_as_an_out_of_band_edit`
+            # and `tools/test_hooks.py::test_a_plan_approval_does_not_close_the_merge_gate`.
+            try:
+                assert_apr_in_force(state, apr, item)
+            except ApprovalError as exc:
+                findings.append(_approval_integrity_finding(item_id, exc))
     findings.extend(_check_consumed_requests_diff_clean(state))
     findings.extend(_check_approval_expiry_agrees(state, active_items))
     findings.extend(_check_task_origins(state, active_items))
@@ -1043,6 +1041,23 @@ def record_scan_coverage(state: ProjectState) -> dict:
             "deposits": [rel for rel, _why in migrate.deposit_notes(coverage)]}
 
 
+
+def _approval_integrity_finding(item_id: str, exc) -> dict:
+    """One `ApprovalError` as a validator finding, message and remedy kept apart.
+
+    THE SENTENCE IS THE KERNEL'S, not a second wording of it: every branch of
+    `assert_apr_in_force` writes a fact and then its own `Remedy:`, and the branch that refused is
+    the only place that knows which of the five it was. Splitting on that word is what lets this
+    surface keep its two columns without inventing a third text -- and a branch that ever carries
+    no remedy gets the honest fallback rather than an empty column.
+    """
+    message = str(exc)
+    fact, marker, remedy = message.partition("Remedy:")
+    return _finding(
+        "error", item_id, fact.strip().rstrip(".") if marker else message,
+        remedy.strip() if marker else
+        "re-run the approval flow for the current content; a hand-written approval never counts")
+
 def _check_dispatch_approval_presented(state: ProjectState, active_items: dict) -> list:
     """WARN when a root presents a non-dispatching approval while a dispatching one is in force.
 
@@ -1442,8 +1457,8 @@ def _delivery_evidence(state: ProjectState):
     asymmetry is the argument and not a half-measure: a run over part of the work can show a
     defect, so a `fail` from a selection stays a fail and still closes the gate; it cannot show
     the absence of one, so its pass opens nothing. Until this line, `EVIDENCE_RESULTS`' own
-    comment and `gate_git`'s refusal text both told the reader that a partial run is not merge
-    evidence while nothing anywhere read a scope.
+    vocabulary comment as it then stood, and `gate_git`'s refusal text, both told the reader that a
+    partial run is not merge evidence while nothing anywhere read a scope.
 
     WHAT IT DOES NOT REACH, said because the field is optional: a record that declares NO scope
     is treated exactly as before. The declaration cannot be made mandatory on this type without
@@ -1480,17 +1495,24 @@ def _delivery_evidence(state: ProjectState):
         if evidence.get("kind") not in QA_EVIDENCE_KINDS:
             continue
         if (evidence.get("run_scope") == PARTIAL_RUN_SCOPE
-                and evidence.get("result") == "pass"):
+                and evidence.get("result") == PASSING_RESULT):
             continue
         yield evidence, (str(evidence.get("created") or ""), number)
 
 
 def _newest_per_kind(records) -> dict:
-    """{kind: {id, result, created}} keeping the newest record of each kind.
+    """{kind: {id, result, created, blocked_reason}} keeping the newest record of each kind.
 
     A kind's newest evidence is its CURRENT verdict: a re-run supersedes its predecessor,
     and a FAIL recorded after a PASS is a regression that must close the gate again --
     which "any pass wins" could not express.
+
+    THE BLOCKING SENTENCE TRAVELS WITH THE VERDICT (FR-0082), and it is carried here rather than
+    re-read by the caller for the reason this function exists at all: the merge gate is not allowed
+    a second reader of the Evidence store, so anything it has to SAY about a verdict has to arrive
+    with it. It is `None` for every result that is not `BLOCKED_RESULT` -- the kernel refuses to
+    store the sentence under any other result (`state.capture_preflight`), so the key is empty
+    exactly where there is nothing to say.
     """
     verdicts = {}
     for evidence, order in records:
@@ -1498,7 +1520,9 @@ def _newest_per_kind(records) -> dict:
         if kind in verdicts and order <= verdicts[kind]["_order"]:
             continue
         verdicts[kind] = {"id": evidence.get("id"), "result": evidence.get("result"),
-                          "created": evidence.get("created"), "_order": order}
+                          "created": evidence.get("created"),
+                          BLOCKED_REASON_FIELD: evidence.get(BLOCKED_REASON_FIELD),
+                          "_order": order}
     for entry in verdicts.values():
         del entry["_order"]
     return verdicts
@@ -1636,7 +1660,7 @@ def closed_by_delivery(state: ProjectState, by_subject: dict = None) -> dict:
         if subject_type not in AUTOMATA:
             continue
         results = {(entry or {}).get("result") for entry in verdicts.values()}
-        if results == {"pass"}:
+        if results == {PASSING_RESULT}:
             closed[subject] = sorted(str((entry or {}).get("id")) for entry in verdicts.values())
     return closed
 
@@ -1720,7 +1744,7 @@ def contradicted_confirmations(state: ProjectState, active_items: dict = None) -
             continue
         contradicted[item_id] = sorted(
             str((entry or {}).get("id")) for entry in verdicts.values()
-            if (entry or {}).get("result") != "pass")
+            if (entry or {}).get("result") != PASSING_RESULT)
     return contradicted
 
 
@@ -2011,7 +2035,7 @@ def accepted_without_a_verdict(state: ProjectState, active_items: dict = None) -
     for task_id in tasks:
         verdicts = by_subject.get(task_id, {})
         missing = sorted(kind for kind in QA_EVIDENCE_KINDS
-                         if (verdicts.get(kind) or {}).get("result") != "pass")
+                         if (verdicts.get(kind) or {}).get("result") != PASSING_RESULT)
         if missing:
             owed[task_id] = missing
     return owed
@@ -3043,10 +3067,16 @@ def _hook_bundle_hash(repo_root: str):
 
 
 def _mint_is_hook_only() -> bool:
-    """Does `approvals.mint` still refuse every caller but the PostToolUse hook?
+    """Does `approvals.mint` still refuse every caller outside its recognised routes?
 
     A property of the SHIPPED code, not of configuration: `_assert_minting_caller` is the last
     check inside `mint`, and it is the whole reason a hand-written approval proves nothing.
+
+    THE NAME IS OLDER THAN THE ANSWER: since FR-0083 there are two recognised routes -- the
+    approval hook and `kernel.sdk_approval` -- so what this asks is that the check is still there,
+    not that the hook is the only caller. It is also why the check this function performs (is the
+    attribute callable) is NOT what `capability_matrix` reports provenance on: that verdict is
+    `False` with a reason, see `approval_provenance` there.
     """
     try:
         from . import approvals

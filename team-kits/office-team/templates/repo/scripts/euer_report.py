@@ -46,6 +46,164 @@ def sign_of(entry):
     return -1 if entry.get("doc_type") in NEGATIVE_DOC_TYPES else 1
 
 
+# WHERE THE FORM'S LINE NUMBERS COME FROM, and there is no second answer in this file: the project's
+# own `project_memory/master_data.yaml`. It carries the form YEAR, the line NUMBER per category and
+# the GWG threshold, so a renumbered Anlage EÜR is one edit in a project file and never a kit update
+# (FR-0076). This script therefore contains no line number, no form year and no threshold of its own.
+VOCABULARY_REL = os.path.join("project_memory", "master_data.yaml")
+# A category maps to a form line exactly when its `euer_line` is a WHOLE NUMBER. A caption, a range,
+# a note or nothing all mean the same thing -- this category names no line -- and their sums are
+# reported under `UNMAPPED` rather than attached to a line nobody chose.
+UNMAPPED = "ohne Zeile"
+# THE SENTENCE THE AfA HINT SAYS, written once because both readers say it: this report and the
+# dashboard's EÜR tab (`tools/finance_dashboard.py` imports it from here, the way it imports the
+# sign convention). It hands the question on and answers nothing -- that is the whole of FR-0076's
+# third half.
+ASSET_HINT = "Anlagegut — mit der Steuerberatung klären"
+
+
+def form_year_suffix(vocabulary):
+    """` 2025`, or a sentence saying the vocabulary names no form year -- never a guessed year."""
+    return (" %s" % vocabulary["year"] if vocabulary["year"] not in (None, "")
+            else " (Formularjahr steht nicht im Vokabular)")
+
+
+def line_number(value):
+    """The form line this value names, or None. `True` is not a line: YAML reads `yes` as a bool."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def read_vocabulary(root):
+    """{"lines": {category key: (line, caption)}, "year", "gwg_limit_net", "problems": [sentence]}.
+
+    NEVER RAISES AND NEVER REFUSES THE REPORT. The per-category sums, the VAT figures and the open
+    items do not depend on this file, so a missing PyYAML, a missing or unreadable `master_data.yaml`
+    costs the per-line summary and the AfA hint and nothing else -- and it costs them VISIBLY: the
+    reason travels in `problems` and is printed where the summary would have stood. A report that
+    silently dropped a section the Steuerberater was told to expect is the failure this avoids.
+    """
+    found = {"lines": {}, "year": None, "source": "", "gwg_limit_net": None, "no_hint": set(),
+             "problems": []}
+    path = os.path.join(root, VOCABULARY_REL)
+    if not os.path.isfile(path):
+        found["problems"].append("%s fehlt — ohne das Vokabular kennt dieser Bericht keine "
+                                 "Zeilennummern." % VOCABULARY_REL.replace(os.sep, "/"))
+        return found
+    try:
+        import yaml
+    except ImportError as problem:
+        found["problems"].append("PyYAML fehlt (%s), also konnte %s nicht gelesen werden: pip "
+                                 "install -r requirements-office.txt"
+                                 % (problem, VOCABULARY_REL.replace(os.sep, "/")))
+        return found
+    try:
+        with open(path, encoding="utf-8") as handle:
+            document = yaml.safe_load(handle) or {}
+    except Exception as problem:            # noqa: BLE001 — any parse failure is one sentence
+        found["problems"].append("%s ist nicht lesbar (%s)."
+                                 % (VOCABULARY_REL.replace(os.sep, "/"), problem))
+        return found
+    if not isinstance(document, dict):
+        found["problems"].append("%s enthält keine Zuordnung."
+                                 % VOCABULARY_REL.replace(os.sep, "/"))
+        return found
+    form = document.get("euer_form") or {}
+    if isinstance(form, dict):
+        found["year"] = form.get("year")
+        found["source"] = str(form.get("source") or "")
+        found["gwg_limit_net"] = form.get("gwg_limit_net")
+    categories = document.get("categories") or {}
+    if not isinstance(categories, dict):
+        categories = {}
+    unmapped = []
+    for direction in ("income", "expense"):
+        for entry in categories.get(direction) or []:
+            if not isinstance(entry, dict) or not entry.get("key"):
+                continue
+            # THE USER'S LEVER ON THE AfA HINT, spelled the way `second_reading` is spelled in the
+            # same file: only the boolean `false` switches it off, so a typo cannot quietly silence
+            # a category. What it is FOR: in a trading business every wholesale invoice is above the
+            # GWG threshold and none of them is an asset, so a hint that fires on all of them is a
+            # hint nobody reads. Which categories those are is the owner's answer about their own
+            # business and never a list in this script.
+            if entry.get("afa_hint") is False:
+                found["no_hint"].add(str(entry["key"]))
+            line = line_number(entry.get("euer_line"))
+            if line is None:
+                unmapped.append(str(entry.get("key")))
+                continue
+            found["lines"][str(entry["key"])] = (
+                line, str(entry.get("euer_line_label") or "").strip())
+    if unmapped:
+        found["problems"].append(
+            "Ohne Zeilennummer im Vokabular: %s — ihre Beträge stehen unter %r."
+            % (", ".join(sorted(unmapped)), UNMAPPED))
+    return found
+
+
+def by_form_line(entries, vocabulary):
+    """[(sort key, heading, income, expense)] — the paid entries grouped by Anlage-EÜR line.
+
+    THE SUMS ARE THE LEDGER'S, UNREDUCED. No cap, quota or share the form applies to a particular
+    line is applied here (a partly deductible line is summed whole), because that arithmetic is the
+    Steuerberatung's answer and this report performs none of it. The line printed beside every sum
+    is what makes that checkable in the form itself.
+    """
+    grouped = defaultdict(lambda: [0.0, 0.0])
+    captions = {}
+    for entry in entries:
+        line, caption = vocabulary["lines"].get(entry.get("category") or "", (None, ""))
+        key = UNMAPPED if line is None else line
+        if caption and key not in captions:
+            captions[key] = caption
+        index = 0 if entry.get("direction") == "income" else 1
+        grouped[key][index] = round(
+            grouped[key][index] + float(entry["gross"]) * sign_of(entry), 2)
+    rows = []
+    for key in sorted(grouped, key=lambda k: (1, 0) if k == UNMAPPED else (0, k)):
+        heading = (UNMAPPED if key == UNMAPPED
+                   else "Zeile %d%s" % (key, " — " + captions[key] if captions.get(key) else ""))
+        rows.append((key, heading, grouped[key][0], grouped[key][1]))
+    return rows
+
+
+def asset_hints(entries, limit, silenced=()):
+    """The paid bookings this report FLAGS as possible Anlagegüter — a hint, never a calculation.
+
+    THE PROPERTY, and it is the whole rule (FR-0076): an ACQUISITION whose NET exceeds the GWG
+    threshold. An acquisition is an expense booking that is not a correction — a credit note or a
+    refund gives money back and buys nothing, so the sign convention decides this too rather than a
+    second reading of `doc_type`. Nothing here depreciates, writes an asset register or looks at the
+    legal form; the flag says one sentence and hands the question to the Steuerberatung.
+
+    IT IS COARSE BY CONSTRUCTION and both readers say so where they print it: a ledger row is a
+    DOCUMENT total, not a line item, so one invoice over a hundred small parts looks exactly like
+    one machine. `silenced` is the user's answer to that for whole categories
+    (`afa_hint: false` in the vocabulary); everything else is left to the person reading the hint.
+    """
+    if limit is None:
+        return []
+    try:
+        threshold = float(limit)
+    except (TypeError, ValueError):
+        return []
+    flagged = []
+    for entry in entries:
+        if entry.get("direction") != "expense" or sign_of(entry) < 0:
+            continue
+        if (entry.get("category") or "") in silenced:
+            continue
+        try:
+            net = float(entry["net"])
+        except (TypeError, ValueError, KeyError):
+            continue
+        if net > threshold:
+            flagged.append((entry, net))
+    return flagged
+
+
 def quarter_range(year, quarter):
     start = datetime.date(year, 3 * (quarter - 1) + 1, 1)
     end_month = 3 * quarter
@@ -121,7 +279,57 @@ def main():
              "## Nach Kategorie", "", "| Kategorie | Einnahmen | Ausgaben |", "|---|---|---|"]
     for cat in sorted(by_cat):
         lines.append("| %s | %.2f | %.2f |" % (cat, by_cat[cat][0], by_cat[cat][1]))
-    lines += ["", "## Umsatzsteuer (nur informativ)", "",
+
+    # THE SECOND GROUPING, and it is the one the form asks for (FR-0076). The per-category table
+    # above is what the owner steers by; this one is what the Steuerberater maps 1:1, because the
+    # Anlage EÜR is coarser than a business's own bookkeeping and several categories land on one
+    # line. Both come from the SAME paid entries and the same sign convention, so the two tables
+    # sum to the same money -- `tools/test_finance_dashboard.py::
+    # test_the_per_line_sums_and_the_per_category_sums_are_the_same_money` measures that.
+    vocabulary = read_vocabulary(ROOT)
+    lines += ["", "## Nach Zeile der Anlage EÜR%s" % form_year_suffix(vocabulary), ""]
+    if vocabulary["source"]:
+        lines += ["Herkunft der Zeilennummern: %s. Die Zuordnung steht in "
+                  "`project_memory/master_data.yaml` und wird dort korrigiert, nicht im Skript."
+                  % vocabulary["source"], ""]
+    for problem in vocabulary["problems"]:
+        lines += ["> %s" % problem, ""]
+    by_line = by_form_line(paid, vocabulary)
+    if by_line:
+        lines += ["| Zeile | Einnahmen | Ausgaben |", "|---|---|---|"]
+        for _key, heading, income_sum, expense_sum in by_line:
+            lines.append("| %s | %.2f | %.2f |" % (heading, income_sum, expense_sum))
+        lines += ["", "Die Beträge sind die des Belegjournals, ungekürzt: keine Quote und keine "
+                      "Obergrenze, die das Formular auf eine einzelne Zeile anwendet, ist hier "
+                      "eingerechnet.", ""]
+    else:
+        lines += ["keine bezahlte Buchung in diesem Quartal", ""]
+
+    # AfA AS A HINT AND NOTHING MORE (FR-0076, the user's own boundary: "ich will kein Gerüst für
+    # ein Haus bauen das noch nicht existiert"). No asset register, no depreciation arithmetic, no
+    # branch on the legal form -- one flagged row and the sentence that hands it on.
+    hints = asset_hints(paid, vocabulary["gwg_limit_net"], vocabulary["no_hint"])
+    lines += ["## Mögliche Anlagegüter (Hinweis, keine Abschreibung)", ""]
+    if vocabulary["gwg_limit_net"] is None:
+        lines += ["Keine GWG-Grenze im Vokabular (`euer_form.gwg_limit_net`), also prüft dieser "
+                  "Bericht darauf nicht.", ""]
+    elif not hints:
+        lines += ["Keine bezahlte Ausgabe über %s EUR netto in diesem Quartal."
+                  % vocabulary["gwg_limit_net"], ""]
+    else:
+        lines += ["| Beleg | Gegenpartei | Netto | Hinweis |", "|---|---|---|---|"]
+        for entry, net in sorted(hints, key=lambda pair: -pair[1]):
+            lines.append("| %s %s | %s | %.2f EUR | %s |"
+                         % (entry.get("id"), entry.get("invoice_no") or "",
+                            entry.get("counterparty"), net, ASSET_HINT))
+        lines += ["", "Grenze: %s EUR netto (§ 6 Abs. 2 EStG, aus "
+                      "`project_memory/master_data.yaml`). Gemessen wird der BELEG, nicht die "
+                      "einzelne Position — eine Rechnung über viele kleine Teile steht hier "
+                      "genauso wie eine Maschine. Dieser Bericht schreibt kein "
+                      "Anlagenverzeichnis und rechnet keine Abschreibung."
+                  % vocabulary["gwg_limit_net"], ""]
+
+    lines += ["## Umsatzsteuer (nur informativ)", "",
               "Vereinnahmte USt (Einnahmen, standard): %.2f EUR · Vorsteuer (Ausgaben, standard): "
               "%.2f EUR · Reverse-Charge-Belege (§ 13b, netto=brutto): %d"
               % (vat_out, vat_in, len(reverse_charge))]

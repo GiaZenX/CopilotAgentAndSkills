@@ -53,7 +53,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "e508dbbdc4d38f81",
+        "digest": "278f749a157fc60f",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -128,15 +128,15 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "eab41eb630cc2663",
+        "digest": "c38b9da920862418",
         "hooks": []
       },
       "5. Phase model": {
-        "digest": "c374454d5d368c7b",
+        "digest": "72df9c713f42e4f0",
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "8c6de26fde3bdb53",
+        "digest": "4b228bb252a32122",
         "hooks": [
           "gate_design_sighted",
           "gate_write_scope",
@@ -145,7 +145,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "ee285afa96295681",
+        "digest": "a025754bfc5c3df2",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output",
@@ -161,7 +161,7 @@
         "hooks": []
       },
       "9. IDs & status automata (ONE definition, in code)": {
-        "digest": "766cfd1f864f7d7b",
+        "digest": "1ee2ca07f3531420",
         "hooks": []
       }
     },
@@ -178,7 +178,7 @@
         "hooks": []
       },
       "1. What each mechanism refuses": {
-        "digest": "1f89a5e3ff9aa420",
+        "digest": "c1f5c6714e351992",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -250,7 +250,7 @@
         "hooks": []
       },
       "Ownership, status and git — one place each": {
-        "digest": "cd6e5ae4a5899ba3",
+        "digest": "7b6cf6799e941655",
         "hooks": []
       },
       "Retro (read-only feedback)": {
@@ -268,11 +268,12 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "a3972b0bb09942f2",
+        "digest": "0167f10ac9a6b7fd",
         "hooks": [
           "gate_design_sighted",
           "gate_dispatch",
-          "gate_git"
+          "gate_git",
+          "gate_write_scope"
         ]
       }
     }
@@ -318,7 +319,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "af844e6cf8aa7e41",
+        "digest": "1ad2012fe36fea11",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -331,11 +332,11 @@
         ]
       },
       "1a. FR / CR / BUG — one question decides which": {
-        "digest": "cddfdd70a1e1f3a2",
+        "digest": "a0b87cfa05998964",
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "e55d462cc4f13b5f",
+        "digest": "f19ba0640fae5fcc",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -377,7 +378,7 @@
         ]
       },
       "4a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "712dc33d85110e30",
+        "digest": "72ff545882c3fb4c",
         "hooks": [
           "gate_write_scope",
           "guard_agent_spawn",
@@ -385,14 +386,14 @@
         ]
       },
       "5. Roles (presets: `core` = records-clerk + filing-reviewer + bookkeeper; `commerce` adds": {
-        "digest": "0eb934d129966350",
+        "digest": "e2803677240df386",
         "hooks": [
           "gate_second_reading",
           "gate_write_scope"
         ]
       },
       "6. Items + ownership (the kernel WRITES the items; these roles own the CONTENT)": {
-        "digest": "8ae6b8c2912edabc",
+        "digest": "15f75ba1aaac6842",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output"
@@ -487,7 +488,7 @@
         "hooks": []
       },
       "What you OWN (the content — the kernel writes it)": {
-        "digest": "6c0d8dc514c74ba1",
+        "digest": "2bbfb8a66bf8d6a4",
         "hooks": []
       },
       "Wishes that arrive, runs that go wrong": {
@@ -495,9 +496,10 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "e25d07af0dcba347",
+        "digest": "9c8e8a5a4b4b1617",
         "hooks": [
           "gate_proc_approved",
+          "gate_write_scope",
           "session_status"
         ]
       }
@@ -554,7 +556,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "6d8b904f2c6db18a",
+        "digest": "32acbc0a8a3ef435",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -630,15 +632,15 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "181867502a257c77",
+        "digest": "483a3e599d8c4227",
         "hooks": []
       },
       "5. Phase model": {
-        "digest": "9133624d659ee0c0",
+        "digest": "9623e5c4e91b74cb",
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "5ac5154acc9f102a",
+        "digest": "e4fd9be70ed3aeaa",
         "hooks": [
           "gate_write_scope",
           "guard_agent_spawn",
@@ -646,7 +648,7 @@
         ]
       },
       "6. Items + ownership (the kernel WRITES; these roles own the CONTENT)": {
-        "digest": "e1656655d2dce833",
+        "digest": "08bd5e8501ff3bf4",
         "hooks": [
           "gate_dispatch",
           "gate_subagent_output"
@@ -661,7 +663,7 @@
         "hooks": []
       },
       "9. IDs & status automata (ONE definition, in code)": {
-        "digest": "c033252d9b000a44",
+        "digest": "344b4b115544b3b6",
         "hooks": []
       }
     },
@@ -761,12 +763,13 @@
         "hooks": []
       },
       "What you OWN (the content — the kernel writes it)": {
-        "digest": "afd0fdb1f953999c",
+        "digest": "59e4fa92fedde6e8",
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "fccbb45d1464ba5b",
+        "digest": "7d638e70584ea751",
         "hooks": [
+          "gate_write_scope",
           "guard_yaml_valid"
         ]
       }

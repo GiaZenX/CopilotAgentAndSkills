@@ -41,6 +41,10 @@ from .backlog_types import (
     AREA_MAX_DEPTH,
     ACTIVE_DIRS,
     AUTOMATA,
+    BLOCKED_REASON_FIELD,
+    BLOCKED_RESULT,
+    DATE_FIELDS,
+    EVIDENCE_RESULT_FIELD,
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
     HASHED_FIELDS,
@@ -49,8 +53,10 @@ from .backlog_types import (
     LEGACY_FIELD,
     NON_AUTOMATON_STATUSES,
     NONEMPTY_FIELDS,
+    OPTIONAL_FIELDS,
     area_segments,
     PARENT_FIELDS,
+    PASSING_RESULT,
     REQUIRED_FIELDS,
     RUN_RECORD_FIELDS,
     RUN_SCOPES,
@@ -64,11 +70,13 @@ from .backlog_types import (
     invalidation_target,
     is_terminal,
     map_v1_status,
+    normalised_date,
     parse_id,
+    replanning_route,
     single_value_offences,
 )
 from .lock import KernelLock, ext_path
-from . import board
+from . import board, plan_diagram
 
 _KERNEL_SET = ("id", "status", "revision", "approval_ref", "created")
 
@@ -159,6 +167,69 @@ def names_a_drive(text) -> bool:
 # path refuses the edge without `approved_retry=True`, and `migration_writable_statuses` may not
 # count it as an edge a session walks on its own. `_transition_locked` is the enforcing reader.
 RETRY_APPROVAL_EDGE = ("TSK", "FAILED", "READY")
+
+
+def _dates_in(item_type: str, fields: dict, operation: str) -> dict:
+    """{field: the canonical day} for every declared date field this payload carries -- or raise.
+
+    ONE FUNCTION, TWO VERBS. `capture` and `update` are both writers of a stored item, so a rule
+    only one of them enforces is a rule with a second door: measured as a process before this
+    existed, `update MST-0001 {"due": "Weihnachten"}` was rc 0 and stored, `{"due": "20261225"}`
+    stored a second spelling of a day the store already held as `2026-12-25`, and `{"due": null}`
+    put back exactly the `None` the capture path had just been taught to refuse. The check and the
+    normalisation travel together for the same reason: what was READ is what gets STORED, so no
+    caller can validate one spelling and write another.
+
+    PRESENCE AND NOT TRUTHINESS decides whether a field is judged -- a key the payload does not
+    carry belongs to the required-field loop (or is an optional date simply not given), while a key
+    that IS there is judged whatever it holds.
+
+    `operation` is the verb in the refusal, because a role meets this mid-command and "capture"
+    would be the wrong word half the time.
+    `tools/test_state.py::test_a_date_field_that_is_not_a_date_is_refused_at_capture` and
+    `tools/test_state.py::test_the_update_path_reads_a_date_field_exactly_as_capture_does`.
+    """
+    canonical = {}
+    for field in DATE_FIELDS.get(item_type, ()):
+        if field not in fields:
+            continue
+        try:
+            canonical[field] = normalised_date(fields[field])
+        except (TypeError, ValueError):
+            raise StateError(
+                "%s %s: %s is %r, which is not a calendar date. Remedy: write it as "
+                "YYYY-MM-DD -- everything that reads this field reads it as a day, and a value "
+                "nothing can parse shows up as no date at all in every view of it."
+                % (operation, item_type, field, fields[field])
+            ) from None
+    return canonical
+
+
+def _replanning_remedy(item_id: str, item_type: str, status: str, planning_status: str) -> str:
+    """The walkable half of a frozen-field refusal, composed from `replanning_route` (BUG-0089).
+
+    EVERY MOVE THIS SENTENCE NAMES IS AN EDGE THE AUTOMATON HAS, at the moment of the refusal.
+    The sentence it replaced named a transition back to DRAFT that no `TSK` status can walk -- an
+    edge into the initial status does not exist on the shipped automaton -- so a role that followed
+    the remedy met a second refusal telling it the opposite. `replanning_route` is the reader; this
+    only turns its two answers into a line, and says the honest thing when the first one is empty.
+
+    THE LAST CLAUSE IS NOT A ROUTE AND DOES NOT PRETEND TO BE: with no edge back to the planning
+    status and no terminal within reach, there is nothing this kernel can offer but the fact, which
+    is better than an instruction that cannot be followed.
+    `tools/test_state.py::test_a_frozen_field_refusal_names_only_walkable_transitions` measures the
+    three shapes against the running automata.
+    """
+    route = replanning_route(item_type, status)
+    moves = ["transition %s back to %s to re-plan it" % (item_id, target)
+             for target in route["replan"]]
+    moves += ["transition %s to %s and capture a new task with the corrected work order"
+              % (item_id, target) for target in route["close"]]
+    if not moves:
+        return ("%s has no transition out of %s that this kernel can offer -- neither back to %s "
+                "nor into a terminal status -- so the work order cannot be re-planned from here"
+                % (item_id, status, planning_status))
+    return ", or ".join(moves)
 
 
 def migration_writable_statuses(item_type: str) -> frozenset:
@@ -790,6 +861,11 @@ class ProjectState:
                 "same claim as leaving the field out. Remedy: %s"
                 % (item_type, ", ".join(hollow), _NONEMPTY_REMEDY[item_type])
             )
+        # A DATE FIELD HAS TO BE A DATE (DEC-0064) -- `_dates_in` is the reader, and it is the SAME
+        # one the edit path asks, so what a role may capture and what it may update cannot come
+        # apart. What counts as a date is the standard library's answer rather than a pattern this
+        # kernel would keep; which fields are asked is the type's own `DATE_FIELDS`.
+        _dates_in(item_type, fields, "capture")
         # ONE STATEMENT, DECLARED WHOLE (FR-0040, DEC-0061):
         # `run_scope` is what the merge reads and
         # `run_command` is what an auditor re-runs it against, so half of the pair is either an
@@ -803,6 +879,35 @@ class ProjectState:
                 "it can be checked against. Remedy: pass both, or neither."
                 % (item_type, ", ".join(partial),
                    ", ".join(name for name in RUN_RECORD_FIELDS if name not in partial)))
+        # A `blocked` VERDICT OWES ITS SENTENCE, AND THE SENTENCE OWES ITS VERDICT (FR-0082).
+        # `blocked` says that the run did not happen -- so the record has to say WHAT stopped it,
+        # or a later reader has a red verdict in front of him that looks exactly like a checked
+        # one. The other direction is refused for the mirror reason: a sentence about what blocked,
+        # filed under a `pass` or a `fail`, describes a run whose result claims it happened.
+        # WHICH TYPES ARE ASKED is derived from the field contract -- the types whose `OPTIONAL_FIELDS`
+        # carry the field -- rather than from the type name, so a second type that ever records a
+        # verdict arrives with the rule instead of without it.
+        if BLOCKED_REASON_FIELD in OPTIONAL_FIELDS.get(item_type, ()):
+            blocked = fields.get(EVIDENCE_RESULT_FIELD) == BLOCKED_RESULT
+            explained = bool(str(fields.get(BLOCKED_REASON_FIELD) or "").strip())
+            if blocked != explained:
+                raise StateError(
+                    "capture %s: %s. `%s` is the value for a run that did NOT happen, so the record "
+                    "has to name what stopped it -- without that sentence the next reader takes it "
+                    "for a checked fact, and with it under any other result the record claims a run "
+                    "it also reports as done. Remedy: %s."
+                    % (item_type,
+                       "%s is %r and %s is empty"
+                       % (EVIDENCE_RESULT_FIELD, BLOCKED_RESULT, BLOCKED_REASON_FIELD)
+                       if blocked else
+                       "%s says what blocked while %s is %r"
+                       % (BLOCKED_REASON_FIELD, EVIDENCE_RESULT_FIELD,
+                          fields.get(EVIDENCE_RESULT_FIELD)),
+                       BLOCKED_RESULT,
+                       "pass --%s '<what stopped the run>'" % BLOCKED_REASON_FIELD.replace("_", "-")
+                       if blocked else
+                       "record the result as %r, or drop --%s" % (BLOCKED_RESULT,
+                                                                  BLOCKED_REASON_FIELD.replace("_", "-"))))
         # THE OUTLINE STAYS AN OUTLINE (FR-0017). Two levels is what the field is for -- a
         # document holds headings, a heading holds requirements -- and a third one is refused
         # here rather than tidied away later, because an outline nobody can take in at a glance
@@ -824,6 +929,12 @@ class ProjectState:
             item_id = self.allocate_id(item_type)
             item = {"id": item_id}
             item.update(fields)
+            # ...AND A DATE FIELD IS STORED AS THE DAY IT WAS READ AS -- out of the same reader that
+            # refused, so the value checked and the value written are one. Without it two records of
+            # the same day sort against each other lexically, because `date.fromisoformat` accepts
+            # more than one spelling; `backlog_types.normalised_date` says what stays the
+            # interpreter's.
+            item.update(_dates_in(item_type, item, "capture"))
             if item_type in _AUTOMATON_TYPES:
                 item["status"] = initial_status(item_type)
             elif item_type in _NON_AUTOMATON_INITIAL_STATUS:
@@ -1053,21 +1164,29 @@ class ProjectState:
         _assert_closed_vocabularies(item_type, changes)
         _assert_single_value_fields(item_type, changes)
         self._assert_origins_resolve(item_type, changes)
-        if item_type == "TSK" and item.get("status") != "DRAFT":
+        # THE SAME DATE READER AS THE CAPTURE PATH, and applied to `changes` BEFORE the hashed-field
+        # comparison below: a re-spelling of the day the item already carries (`20261225` for a
+        # stored `2026-12-25`) is then not a change at all, so it neither bumps a revision nor
+        # invalidates an approval for a value that did not move.
+        changes = dict(changes, **_dates_in(item_type, changes, "update"))
+        planning_status = initial_status(item_type) if item_type == "TSK" else None
+        if planning_status is not None and item.get("status") != planning_status:
             # ... and closing the vocabulary is not enough on its own: a
             # vocabulary-LEGAL re-type dodges the design gate just as well, and
             # widening allowed_scope on a LEASED, BOUND task hands a running
             # specialist the whole repo. The work-order contract is frozen once
-            # the task leaves DRAFT (see TSK_PLAN_FIELDS).
+            # the task leaves the status it was PLANNED in (see TSK_PLAN_FIELDS).
+            # THE PLANNING STATUS IS THE AUTOMATON'S INITIAL ONE, asked rather than spelled, for
+            # BUG-0089's reason: the remedy below is derived from the same fact, so the condition
+            # and the advice cannot come to disagree about which status frees the fields.
             frozen = sorted(set(changes) & TSK_PLAN_FIELDS)
             if frozen:
                 raise StateError(
-                    "%s is %s -- its work-order fields (%s) are frozen outside "
-                    "DRAFT because gates read them (allowed_scope is the "
-                    "write-scope gate's only input). Remedy: transition the task "
-                    "back to DRAFT to re-plan it, or CANCEL it and create a new "
-                    "one -- re-planning has to be visible, not a field write."
-                    % (item_id, item.get("status"), ", ".join(frozen))
+                    "%s is %s -- its work-order fields (%s) are frozen outside %s because gates "
+                    "read them (allowed_scope is the write-scope gate's only input). Remedy: %s -- "
+                    "re-planning has to be visible, not a field write."
+                    % (item_id, item.get("status"), ", ".join(frozen), planning_status,
+                       _replanning_remedy(item_id, item_type, item.get("status"), planning_status))
                 )
         hashed = set(HASHED_FIELDS.get(item_type, ()))
         touches_hashed = any(
@@ -1185,8 +1304,16 @@ class ProjectState:
         # DEFERRED import: `approvals` imports this module at its own module scope, so a top-level
         # import here would be a cycle. By the time any transition runs, both halves are loaded.
         from . import approvals
-        approvals.assert_transition_approved(self, item, item_type, from_status, to_status)
+        apr = approvals.assert_transition_approved(self, item, item_type, from_status, to_status)
         self._assert_confirmed(item_id, item_type, from_status, to_status)
+        # THE APPROVAL THIS ITEM NOW PRESENTS. `mint` stamps `approval_ref` itself before it walks
+        # its own edge, so for that path this is already true and writes nothing. It matters for
+        # the edge a PLAN approval commits (FR-0074): nothing mints per goal there, so without
+        # this line a goal would walk to APPROVED presenting no approval at all -- and
+        # `dispatch._assert_root_approval_locked` reads exactly that field, so every task under
+        # the goals a plan covers would be refused for want of an approval that exists.
+        if apr is not None and item.get("approval_ref") != apr.get("id"):
+            item["approval_ref"] = apr["id"]
         item["status"] = to_status
         self._write_yaml_atomic(self.active_path(item_id), item)
         # A DISPATCH LEASE IS BOUND TO THE STATUS IT SERVES. Deferred import for the same reason
@@ -1218,7 +1345,7 @@ class ProjectState:
             return
         from . import report
         verdict = report.qa_verdicts(self, item_id).get(kind)
-        if verdict and verdict.get("result") == "pass":
+        if verdict and verdict.get("result") == PASSING_RESULT:
             return
         raise TransitionError(
             "%s %s -> %s needs a %r Evidence that PASSES and covers %s; %s. The regression test "
@@ -1345,11 +1472,33 @@ class ProjectState:
                   "board, until the next state write succeeds."
                   % (self.generated_path(board.FILENAME), type(exc).__name__, exc,
                      self.generated_path("index.yaml")), file=sys.stderr)
+        # THE DIAGRAMS ARE THE SAME REPORT OF THE SAME ENTRIES and are written here, fail-soft for
+        # the reason above -- but in a `try` OF THEIR OWN, because the message above names the
+        # board, and a board that WAS rebuilt must not be reported as lost by a picture that was
+        # not. Until TSK-0120 nothing in a running project called `plan_diagram` at all: the module
+        # had no caller outside its tests, which is the half of `H127` that closes with this line.
+        # Both ends:
+        # `tools/test_plan_diagram.py::test_a_state_write_leaves_both_diagrams_beside_the_board`.
+        try:
+            for name, text in plan_diagram.render_all(entries):
+                self._write_text_atomic(self.generated_path(name), text, errors="replace")
+        except Exception as exc:                  # noqa: BLE001 -- as above
+            print("[plan] the diagrams beside %s were NOT rebuilt (%s: %s); the state write itself "
+                  "went through and %s is current. The pictures keep their previous content — read "
+                  "the board, not them, until the next state write succeeds."
+                  % (self.generated_path(board.FILENAME), type(exc).__name__, exc,
+                     self.generated_path("index.yaml")), file=sys.stderr)
 
 
-_AUTOMATON_TYPES = frozenset(
-    ("PR", "RQ", "FR", "CR", "BUG", "SR", "TSK", "PROC", "HYP", "EXP")
-)
+# THE TYPES THAT CARRY AN AUTOMATON, asked of the map that IS the automata rather than listed
+# beside it. This was a hand-written tuple of ten names that happened to equal `AUTOMATA`'s keys,
+# and the day an eleventh type arrived (`MST`, DEC-0064) the two came apart in the quietest
+# possible way: `capture` wrote the item with NO status at all, `archive` then read it as
+# non-terminal, and nothing raised. Measured before the change, in a pilot outside the repo --
+# `capture("MST", ...)` returned an item whose `status` key did not exist.
+# `tools/test_state.py::test_every_type_with_an_automaton_is_captured_with_its_initial_status`
+# holds it from both ends.
+_AUTOMATON_TYPES = frozenset(AUTOMATA)
 
 # status-bearing types WITHOUT an automaton (spec II.2 Pflichtfelder): the FIRST value of each
 # vocabulary in `backlog_types.NON_AUTOMATON_STATUSES`, derived rather than retyped -- the two

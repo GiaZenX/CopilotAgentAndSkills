@@ -423,7 +423,7 @@ def relocating(move):
 
 
 def _walk(command, bases):
-    """[(invocation text, tokens, bases in effect)] — one entry per invocation, in order.
+    """[(invocation text, tokens, bases in effect, separator before it)] — in order.
 
     A wrapper payload is lifted first, so `bash -lc "mv … archive/…"` is read as the `mv` it is;
     the unwrapping is `_compat`'s, the same one the git gates use. An audit already recorded `-lc`
@@ -434,14 +434,25 @@ def _walk(command, bases):
 
     This is also the ONE place a working-directory change is applied, which is what makes the
     position of a later token in the same command line readable at all.
+
+    THE SEPARATOR TRAVELS WITH EACH INVOCATION -- the operator the shell wrote BEFORE it, `""` for
+    the first -- because "what does this invocation do" and "does the shell actually get there" are
+    two questions and the second one has no answer inside a single invocation. It is read off the
+    same decomposition rather than from a second scan: `INVOCATION_RX` already says where an
+    invocation ends, so what lies between two of them IS the operator. Its reader is
+    `changes_the_calling_shell` below; the gap it closes is `H144`.
     """
     walked = []
     current = list(bases)
     normalised = _compat.unwrap_shell_payload(_compat.join_line_continuations(command))
-    for invocation in INVOCATION_RX.findall(normalised):
+    end_of_previous = 0
+    for match in INVOCATION_RX.finditer(normalised):
+        invocation = match.group(0)
         tokens = _tokens(invocation)
-        walked.append((invocation, tokens, list(current)))
+        walked.append((invocation, tokens, list(current),
+                       normalised[end_of_previous:match.start()]))
         current = _bases_after(tokens, current, bases)
+        end_of_previous = match.end()
     return walked
 
 
@@ -460,7 +471,7 @@ def _arguments(tokens, verbs):
 def moves(command, bases):
     """Every relocation/copy the command performs, each with the bases its invocation ran in."""
     found = []
-    for _text, tokens, current in _walk(command, bases):
+    for _text, tokens, current, _sep in _walk(command, bases):
         move = _move(tokens, current)
         if move is not None:
             found.append(move)
@@ -481,8 +492,51 @@ def invocations(command, bases):
 
     Public because it is the same walk both readers already share, offered whole rather than
     filtered; the filtering stays with whoever knows which verbs matter to it.
+
+    FOUR FIELDS since TSK-0120, the fourth being the separator the shell wrote BEFORE this
+    invocation (`""` for the first). `changes_the_calling_shell` is what reads it; see there.
     """
     return list(_walk(command, bases))
+
+
+def changes_the_calling_shell(separator_before, separator_after):
+    """Does an invocation between these two separators change the CALLING shell's own state?
+
+    A `cd` only moves the directory a LATER invocation on the same line runs in when both halves
+    hold, and each half is a property of shell grammar rather than a spelling to remember:
+
+    * it is certain to run at all -- so the operator in front of it may carry neither `&` nor `|`.
+      `;` and a newline always run what follows; `&&` and `||` run it only if the invocation before
+      succeeded, and nothing that reads a command line can know that. "Not certain" is therefore
+      "false" HERE -- but this answer alone is not fail-closed, and saying it was cost the merge
+      round a blocking finding: the caller used to keep its old position when this said no, and a
+      stale position is only harmless while the ignored change leads AWAY from a tray. Leading back
+      (`cd outbox && cd .. && rm -rf .`) it left a harmless base standing and the sweep was ALLOW.
+      What is fail-closed is what `guard_fs_tripwire.read_the_line` does with the answer: an
+      uncertain change ADDS a possible position instead of replacing one, and the sweep is refused
+      if ANY of them holds a tray of record;
+    * it runs in THIS shell and not a child -- so the operator behind it may not be the one-
+      character `|` (pipeline) or `&` (background). Those two put the invocation in a subshell,
+      whose directory dies with it. Their doubled forms `&&`/`||` are logical operators and do
+      nothing of the kind, which is why the length is the deciding property and not the character.
+
+    Measured before it existed, through all eight registered office hooks as processes, with
+    `rm -rf .` alone at rc 2: `false && cd outbox ; rm -rf .`, `ls | cd outbox ; rm -rf .`,
+    `cd outbox | rm -rf .` and `cd outbox & rm -rf .` were all rc 0 -- the sweep base had been
+    advanced into a tray-free directory by a `cd` the shell never performs there. That is `H144`.
+
+    THE PRICE, and it is an over-refusal in two shapes: `true && cd outbox ; rm -rf .` is refused
+    although that shell really is in `outbox`, and so is `cd outbox ; cd .. | true ; rm -rf .`,
+    where the uncertain change back to the root joins the candidates rather than replacing them.
+    Both ends of the rule and both prices are
+    `tools/test_hooks.py::test_a_directory_change_the_shell_never_performs_does_not_move_the_sweep`
+    and `tools/test_hooks.py::test_a_change_the_shell_may_not_have_made_leaves_both_positions_open`.
+    """
+    before = "".join(str(separator_before or "").split())
+    after = "".join(str(separator_after or "").split())
+    if "&" in before or "|" in before:
+        return False
+    return not (len(after) == 1 and after in "|&")
 
 
 def move_of(tokens, bases):
@@ -580,7 +634,7 @@ def created(command, bases):
     in its own.
     """
     out = []
-    for invocation, tokens, current in _walk(command, bases):
+    for invocation, tokens, current, _sep in _walk(command, bases):
         move = _move(tokens, current)
         if move is not None and move.destination:
             token = move.destination
@@ -637,7 +691,7 @@ def landings(command, bases):
     `tools/test_hooks.py::test_a_move_into_a_folder_is_judged_on_the_name_the_document_keeps`.
     """
     out = []
-    for invocation, tokens, current in _walk(command, bases):
+    for invocation, tokens, current, _sep in _walk(command, bases):
         move = _move(tokens, current)
         if move is not None and move.destination:
             if move.destination_is_directory or names_a_directory(current, move.destination):
@@ -664,7 +718,7 @@ def redirect_targets(command):
     `"ledger"/x.csv`, a target past a `\\`+newline, `>| ledger.csv` and a target inside a `bash -lc`
     payload all named the same file and all slipped past it (BUG-0003).
     """
-    return [target for invocation, _tokens, _current in _walk(command, [""])
+    return [target for invocation, _tokens, _current, _sep in _walk(command, [""])
             for target in _redirect_targets_in(invocation)]
 
 
@@ -676,7 +730,7 @@ def named_by(command, bases, verbs):
     read with quotes kept whole, and the working directory the invocation actually ran in.
     """
     out = []
-    for _text, tokens, current in _walk(command, bases):
+    for _text, tokens, current, _sep in _walk(command, bases):
         arguments = _arguments(tokens, verbs)
         if arguments is not None:
             out += [(token, current) for token in _operands(arguments)]
