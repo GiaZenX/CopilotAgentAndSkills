@@ -1,0 +1,27 @@
+id: BUG-0197
+title: Das Fristenregister kennt kein „erledigt" (neu, TSK-0107, FR-0034)
+related_pr: PR-0003
+observed: '**Mechanismus.** Das Register leitet ab, was GESCHULDET ist. Ob es GETAN
+  wurde, hält im Kit nichts
+
+  fest: es gibt keinen Datensatz „diese Voranmeldung ist abgegeben", keinen „dieses
+  Aufbewahrungsjahr
+
+  ist geprüft" und keinen „diese Rechnung wurde angemahnt". Zwei der fünf Zuflüsse
+  haben deshalb keine
+
+  eigene Abschaltbedingung und stehen, bis ihre QUELLE sich ändert:'
+severity: low
+hole_number: H113
+source: docs/holes/H113.md
+limits: 'das Fristenregister kennt kein „erledigt": nichts im Kit hält fest, dass
+  eine Voranmeldung abgegeben oder ein Aufbewahrungsjahr geprüft wurde, also steht
+  ein Eintrag, bis seine QUELLE sich ändert. Über-Meldung, nicht Schweigen. Ein „erledigt"
+  wäre kanonischer Zustand, also Kernel'
+regression_tests:
+- tools/test_office_duties.py::test_a_rule_with_many_years_past_retention_is_one_duty_that_names_the_oldest_and_the_count
+- tools/test_office_duties.py::test_no_feed_can_take_every_slot_of_the_briefing_from_another
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:26:13'

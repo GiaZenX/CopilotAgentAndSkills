@@ -1,0 +1,49 @@
+id: BUG-0135
+title: Was der Kernel selbst schreibt, lag außerhalb der Feldmenge, die der Sweep
+  abgeleitet hat — GESCHLOSSEN (TSK-0059)
+related_pr: PR-0003
+observed: '**Mechanismus, als Eigenschaft und nicht als Liste:** der AC-4-Sweep dieser
+  Runde leitet seine
+
+  Feldmenge aus der Oberfläche **eines Kommandos** ab — `migrate.parse_field_map:1145-1153`
+  lässt nur
+
+  Felder aus `REQUIRED_FIELDS ∪ OPTIONAL_FIELDS` zu, und `_item_fields:1177` kopiert
+  über dieselbe
+
+  Vereinigung. Das ist die Menge der Felder, die ein **Aufrufer** an `capture` übergibt.
+  Der Zustand
+
+  hat aber einen zweiten Schreiber: den Kernel selbst (`state._update_item_locked`,
+
+  `staging.freeze_*`), und die Felder, die nur der setzt, stehen in keinem der beiden
+  Tupel. Für das
+
+  Instrument waren sie damit nicht existent — nicht „sicher", sondern **ungemessen**.
+  Dieselbe
+
+  Buchstaben-Iteration kann dort also stehen, und sie steht dort.'
+severity: low
+hole_number: H43
+source: docs/holes/H43.md
+limits: 'die Grenze ist jetzt abgeleitet statt unsichtbar: `backlog_types.REFERENCE_LIST_FIELDS`
+  nennt die Felder, die kein Capture-Vertrag deklariert und deren Elemente der Kernel
+  auflöst, mit einem Stolperdraht über die laufenden Quellen an beiden Enden; alle
+  sieben Lesestellen gehen durch `field_elements` (gemessen: 2 statt 35 Einträge im
+  aktiven PR, Dispatch von REFUSED auf ALLOWED, `validate` von 17 auf 3 Befunde).
+  Reste: der Skalar wird benannt statt abgewiesen, ein bereits beschädigtes Item wird
+  gemeldet statt geheilt, und die Ableitung sieht keinen Leser hinter einem Rückgabe-Objekt
+  — je im Eintrag'
+regression_tests:
+- tools/test_backlog_types.py::test_the_reference_list_fields_are_what_the_kernel_reads_elementwise
+- tools/test_backlog_types.py::test_every_kernel_read_of_a_reference_list_field_goes_through_field_elements
+- tools/test_staging_cli.py::test_a_scalar_design_ref_survives_the_freeze_as_one_reference
+- tools/test_report.py::test_a_scalar_supersedes_retires_the_decision_it_names
+- tools/test_report.py::test_a_scalar_premise_recheck_is_one_recheck_not_its_letters
+- tools/test_report.py::test_validate_names_a_scalar_reference_list_field
+- tools/test_report.py::test_validate_names_design_refs_that_resolve_to_nothing
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:31'
+closed_at: '2026-09-05T20:23:31'

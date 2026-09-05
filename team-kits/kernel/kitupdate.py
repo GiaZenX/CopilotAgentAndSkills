@@ -47,7 +47,7 @@ import re
 import subprocess
 import sys
 
-from . import approvals, presets, trays
+from . import approvals, presets, references, trays
 from .hashing import BundleSourceMissing, hook_bundle_hash, kit_hash, modified_bundle_files
 from .state import ProjectState, StateError
 
@@ -982,6 +982,115 @@ def _pending_templates(root: str) -> str:
                "the file's own and an entry may already match again)"))
 
 
+# -- role memory an update leaves behind (BUG-0088) ---------------------------------------------
+
+# WHERE A ROLE'S MEMORY TREE LIES. The same directory name the kit hook that polices its budget
+# uses (`guard_memory_budget.MEMORY_DIR`), and the kernel cannot borrow that one: it ships BESIDE
+# the kit hooks, not under them, and a project's copy of them is exactly what an update replaces.
+# So the name stands here once and the two are held together by
+# `tools/test_kitupdate.py::test_the_memory_directory_this_command_reads_is_the_one_the_kit_hook_polices`,
+# which reads both out of the running modules rather than out of this sentence.
+MEMORY_DIR = os.path.join(".claude", "agent-memory")
+# The frontmatter key whose PRESENCE is what makes a provider load that tree for a role.
+MEMORY_KEY = "memory"
+
+
+def memory_residue(root: str) -> dict:
+    """`{"orphaned": [(role, why, files)], "read": bool}` -- memory trees no installed role declares.
+
+    THE SUBJECT IS A PROPERTY, NOT A LIST OF ROLE NAMES: a directory under the memory tree is
+    residue when the role definition INSTALLED RIGHT NOW does not declare `memory:` -- either
+    because no definition of that name is installed any more, or because none could be read out of
+    the one that is. Stream E of generation 3 removed the key from three roles (FR-0064) and the
+    trees an older kit wrote stayed; no installer, scaffold or kernel path named `agent-memory` at
+    all, measured over all of them (BUG-0088).
+
+    `read` IS THE THIRD ANSWER, and it is `pending_entries`' reason one storey up: a memory tree
+    that EXISTS and could not be listed has no entries to report, and a caller that read the empty
+    list as "nothing left here" would say so. An ABSENT tree is `read` True with nothing orphaned --
+    that is the ordinary case and it is not the same answer.
+
+    THE ROLE FILE IS READ THROUGH `references._frontmatter`, the kernel's one frontmatter reader,
+    so a role definition and a skill definition are read by the same code. Its `None` is folded into
+    "no `memory:` declaration could be read", which is what the sentence says -- never "the role
+    dropped the key", because a file this process could not parse says nothing about what the role
+    declares.
+    """
+    directory = os.path.join(root, MEMORY_DIR)
+    try:
+        names = sorted(one for one in os.listdir(directory)
+                       if os.path.isdir(os.path.join(directory, one)))
+    except FileNotFoundError:
+        return {"orphaned": [], "read": True}       # no memory tree here at all
+    except OSError:
+        return {"orphaned": [], "read": False}      # it exists and could not be listed
+    agents = os.path.join(root, presets.AGENTS_DIR)
+    orphaned = []
+    for name in names:
+        role_file = os.path.join(agents, name + presets.ROLE_SUFFIX)
+        if not os.path.isfile(role_file):
+            why = "no role definition of that name is installed any more"
+        else:
+            front = references._frontmatter(role_file)
+            if front is not None and MEMORY_KEY in front:
+                continue
+            why = ("the installed %s%s carries no `%s:` this command could read"
+                   % (name, presets.ROLE_SUFFIX, MEMORY_KEY))
+        held = 0
+        for _base, _subdirs, files in os.walk(os.path.join(directory, name)):
+            held += len(files)
+        orphaned.append((name, why, held))
+    return {"orphaned": orphaned, "read": True}
+
+
+def _memory_residue_note(root: str) -> str:
+    """One sentence about role memory this update did not touch -- a READING, never a promise.
+
+    IT LISTS AND REMOVES NOTHING, and that is a decision with a reason rather than an omission.
+    Three of them, and the first is the one that decides: whether a provider still loads an existing
+    tree for a role that no longer declares the key is UNMEASURED (BUG-0088 AC-2), so removal would
+    be an irreversible act on an unmeasured premise -- the direction DEC-0056 (c) keeps its care for,
+    and the content is the user's own craft knowledge, not this harness's record. Second, the only
+    restorable quarantine a project has is the installer's snapshot under `.claude/backups/`, which
+    the two `scaffold_team` twins own and write the restore set of; a tree moved there by this
+    command would sit outside that set and a rollback would not put it back. Third, what the user
+    can do about it -- delete it, or put the key back -- is a decision about their own material.
+    The open half is `H160` in `docs/POST_V2_WISHLIST.md`.
+    """
+    found = memory_residue(root)
+    where = MEMORY_DIR.replace(os.sep, "/")
+    if not found["read"]:
+        return ("%s exists here and could NOT be listed, so whether a role memory tree survived "
+                "this update is unknown -- report it and name the directory; a permission denial "
+                "and a cloud placeholder that is not downloaded both look like this" % where)
+    if not found["orphaned"]:
+        return ""
+    return ("%d role memory tree(s) under %s are not declared by any role this project now "
+            "installs and were LEFT AS THEY ARE (%s) -- nothing here removes them: what a provider "
+            "does with such a tree is not measured, and the content is the user's own craft notes. "
+            "Tell the user, and let them decide between deleting the directory and putting the "
+            "role's `%s:` back"
+            % (len(found["orphaned"]), where,
+               "; ".join("%s: %d file(s), %s" % (name, held, why)
+                         for name, why, held in found["orphaned"]),
+               MEMORY_KEY))
+
+
+def _follow_up(root: str) -> str:
+    """Everything this run leaves for somebody to act on, in the one line the caller prints.
+
+    IT TRAVELS IN THE `pending_templates` KEY and keeps that name because `kernel/cli.py`'s
+    `update-kit` branch is what prints it, and this module does not own that file. Said here rather
+    than left to be found: a second sentence under a second key would need a change to `cli.py` to
+    reach anybody, and a report the user never gets is not a report.
+    `tools/test_kitupdate.py::test_the_update_report_names_a_memory_tree_no_installed_role_declares`
+    runs the real command and reads its OUTPUT, so a renamed key reddens there instead of going
+    quiet.
+    """
+    return "; ".join(part for part in (_pending_templates(root), _memory_residue_note(root))
+                     if part)
+
+
 # -- the previous bundle, and how it is replayed (FR-0041) --------------------------------------
 
 # WHERE THE INSTALLER PUTS THE BUNDLE IT REPLACES, and the one file inside a snapshot that says
@@ -1161,7 +1270,7 @@ def apply(state: ProjectState) -> dict:
         return {"kit": plan["kit"], "from": _shown(plan["from"]), "to": _shown(plan["to"]),
                 "installed": _describe(now),
                 "marker": ensure_restart_is_forced(root, plan["kit"]),
-                "pending_templates": _pending_templates(root)}
+                "pending_templates": _follow_up(root)}
 
 
 # -- the installer's own pre-flight, as a process (FR-0044) -------------------------------------

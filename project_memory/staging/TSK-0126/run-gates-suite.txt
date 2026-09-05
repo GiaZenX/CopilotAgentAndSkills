@@ -1,0 +1,249 @@
+........................................................................ [ 13%]
+........................................................................ [ 26%]
+........................................................................ [ 39%]
+........................................................................ [ 52%]
+........................................................................ [ 65%]
+......................FFFFFFF........................................... [ 78%]
+........................................................................ [ 91%]
+............................................                             [100%]
+================================== FAILURES ===================================
+____ test_every_hole_states_a_verdict_and_an_unclosed_one_names_its_limit _____
+
+    def test_every_hole_states_a_verdict_and_an_unclosed_one_names_its_limit():
+        """The rule the hole list carried in prose, applied to the items that replaced it.
+    
+        THE VERDICT IS THE STATUS. A row of a summary table and a sentence inside an entry could
+        disagree -- three of them did, measured 2026-08-05 -- and the whole reason a hole is an item is
+        that a record has ONE status. So there is nothing left to compare here; what is measured is
+        that every hole stands in a status its type's automaton really has.
+    
+        AND AN UNCLOSED HOLE NAMES WHAT TAKES THE PLACE OF THE PROTECTION. "Unclosed" is derived from
+        the automaton and not from a list of words: a status that is not one of the type's TERMINALS is
+        a hole still standing open. `ACCEPTED_EXCEPTION` is a terminal and carries the duty anyway --
+        that is `backlog_types.STATUS_DEPENDENT_FIELDS`, enforced by the kernel and by
+        `report.validate_state`, and this asserts the same thing from the outside so a store that
+        slipped past both is still caught.
+        """
+        backlog_types, _state, holes = _holes()
+>       assert holes, (
+            "no hole item in %s. The hole list is migrated by `python tools/migrate_holes.py --root "
+            "project_memory --related-pr <goal> --apply`, and this test is the reader that replaced "
+            "the document" % STATE_ROOT)
+E       AssertionError: no hole item in c:\Offline Repos\AgentAndSkills\project_memory. The hole list is migrated by `python tools/migrate_holes.py --root project_memory --related-pr <goal> --apply`, and this test is the reader that replaced the document
+E       assert {}
+
+.claude\hooks\test_gates.py:4537: AssertionError
+_______________ test_every_test_a_hole_names_is_one_that_exists _______________
+
+    def test_every_test_a_hole_names_is_one_that_exists():
+        """A hole that claims to be closed names what would notice a relapse, and the name resolves.
+    
+        READ OFF THE ITEM (`backlog_types.HOLE_TEST_FIELD`), which is the move FR-0087 (c) asked for:
+        the predecessor of this test parsed markdown code spans, and its own docstring had to name
+        three things it could not read -- a citation inside a fenced block, a module abbreviated to an
+        ellipsis, a summary row whose cell carried the column separator. A list on the item has none of
+        those readings.
+    
+        THE CORPUS IS WHERE THE TESTS LIVE, and that is not one file: a hole closes a defect anywhere
+        in this repo, and the test that would notice a reopening lives where the defect lived -- under
+        `tools/` for the kits and the kernel, here for the four gates.
+    
+        Names are matched loosely on purpose, exactly as before: the items carry the abbreviations the
+        entries used, so the name is looked up EXACTLY first and only as a substring when nothing
+        answers exactly.
+        """
+        backlog_types, _state, holes = _holes()
+>       assert holes, "no hole item in %s -- see the sibling test for the migration command" % STATE_ROOT
+E       AssertionError: no hole item in c:\Offline Repos\AgentAndSkills\project_memory -- see the sibling test for the migration command
+E       assert {}
+
+.claude\hooks\test_gates.py:4638: AssertionError
+______ test_the_hole_index_in_the_document_is_the_one_the_items_generate ______
+
+    def test_the_hole_index_in_the_document_is_the_one_the_items_generate():
+        """The document carries a GENERATED index, and a hand edit is what this reports.
+    
+        REGENERATED AND COMPARED, not checked against a digest written beside it: a digest is a second
+        statement of the same fact, and a number in two places is what the whole migration exists to
+        end. The generator is the shipped `tools/migrate_holes.py`, imported rather than restated --
+        a second rendering here would answer a different question than the one the run writes.
+        """
+        tools = os.path.join(ROOT, "tools")
+        if tools not in sys.path:
+            sys.path.insert(0, tools)
+        import migrate_holes
+    
+        _backlog_types, state, holes = _holes()
+>       assert holes, "no hole item in %s -- see the judges test for the migration command" % STATE_ROOT
+E       AssertionError: no hole item in c:\Offline Repos\AgentAndSkills\project_memory -- see the judges test for the migration command
+E       assert {}
+
+.claude\hooks\test_gates.py:4678: AssertionError
+____________ test_a_hole_states_the_over_refusal_the_table_carries ____________
+
+    def test_a_hole_states_the_over_refusal_the_table_carries():
+        """What a hole claims about the check set is GENERATED out of the check set.
+    
+        Measured 2026-08-07, and the claim had been corrected by hand one round earlier: the entry named
+        the descriptor duplication and the words the kits' reader steps over, and neither has an
+        over-refusal cell at all. It left four moves unnamed that are exactly half of the count it
+        stated. Only the two numbers were right.
+    
+        THE PROSE IS WHERE IT ALWAYS WAS, one file further on: the item carries identity, verdict and
+        limit, and the measured chain lives in the file its `source` names. That is the split
+        CLAUDE.md already prescribes for a wish, and the reason the item cannot carry it is measured --
+        three entries of this list are larger than the 12 KB an active item may be.
+        """
+>       body = _hole_prose(OVER_REFUSAL_HOLE)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.claude\hooks\test_gates.py:4738: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+number = 'H30'
+
+    def _hole_prose(number):
+        """The full text of one hole -- the file the item's `source` points at."""
+        _backlog_types, _state, holes = _holes()
+>       item = holes[number]
+               ^^^^^^^^^^^^^
+E       KeyError: 'H30'
+
+.claude\hooks\test_gates.py:4698: KeyError
+________ test_every_cell_a_closed_hole_names_is_one_the_table_carries _________
+
+    def test_every_cell_a_closed_hole_names_is_one_the_table_carries():
+        """A hole that leans on the cross table names the VALUES of it that carry its chain.
+    
+        THE HAND-WRITTEN AXES HAD NO TRIPWIRE. `test_the_words_the_kits_reader_steps_over_are_all
+        _crossed` and `test_the_shells_this_reader_knows_are_the_ones_the_registration_names` bind the
+        axes that are GENERATED out of the reader; the positions, the moves, the bases and the loose
+        shapes are typed here, and deleting them costs nothing -- measured 2026-08-07, cut down to 100
+        of 1440 cells with every other test in this file still green, and what was silently removable
+        was exactly the values that carry closed holes.
+    
+        BOTH ENDS. A value a hole names and the table no longer carries is the cut; a hole that leans
+        on the table and names no value at all is the tripwire being dropped instead of the cell. Which
+        holes owe one is read off the ITEM -- those whose `regression_tests` cite the table's test --
+        rather than off a substring search over prose.
+        """
+        backlog_types, _state, holes = _holes()
+        values = set(POSITIONS) | set(MOVES) | set(BASES) | set(LOOSE_SHAPES)
+        owed, wrong, named = [], [], 0
+        for number, item in sorted(holes.items()):
+            cited = [re.sub(r"\s+", "", str(one))
+                     for one in backlog_types.field_elements(item.get(backlog_types.HOLE_TEST_FIELD))]
+            if not any(TABLE_TEST in one for one in cited):
+                continue
+            found = CELLS_RX.search(_hole_prose(number))
+            spans = [re.sub(r"\s+", " ", span).strip()
+                     for span in re.findall(r"`([^`]+)`", found.group(1), re.DOTALL)] if found else []
+            if not spans:
+                owed.append(number)
+                continue
+            for span in spans:
+                named += 1
+                if span not in values and span not in LINE_SHAPES:
+                    wrong.append("%s names `%s`, and no value of the cross table is spelled that way"
+                                 % (number, span))
+        assert not owed, (
+            "these holes say the cross table is what would notice their defect and name no value of "
+            "it, so the values they stand on can be deleted without anything going red: %s" % owed)
+        assert not wrong, "\n".join(wrong)
+>       assert named, (
+            "no hole leans on %s any more, so this test measured nothing" % TABLE_TEST)
+E       AssertionError: no hole leans on test_gate1_refuses_a_line_exactly_where_the_shell_would_write any more, so this test measured nothing
+E       assert 0
+
+.claude\hooks\test_gates.py:4796: AssertionError
+__ test_every_tilde_subject_a_closed_hole_names_is_one_the_check_set_carries __
+
+    def test_every_tilde_subject_a_closed_hole_names_is_one_the_check_set_carries():
+        """A hole leaning on the tilde check set states its SIZE and the values of its quoting axis.
+    
+        GENERATED OUT OF THE SET AND COMPARED WITH IT, in both directions, which is what the same
+        treatment of the cross table (`test_a_hole_states_the_over_refusal_the_table_carries`) exists
+        for: a number that goes stale says nothing, and an axis named in prose that the set no longer
+        carries says less. The set equality is the half that matters here -- the defect that round
+        closed was an axis the check set did not have at all, so a hole that names its values cannot be
+        satisfied by a set they were dropped from.
+        """
+        backlog_types, _state, holes = _holes()
+        owed, named = [], 0
+        prefixes = len(_tilde_prefixes(_reader()))
+        for number, item in sorted(holes.items()):
+            cited = [re.sub(r"\s+", "", str(one))
+                     for one in backlog_types.field_elements(item.get(backlog_types.HOLE_TEST_FIELD))]
+            if not any(TILDE_TEST in one for one in cited):
+                continue
+            found = SUBJECTS_RX.search(_hole_prose(number))
+            if not found:
+                owed.append(number)
+                continue
+            said = found.group(1)
+            # the numbers OUTSIDE the backticks: the values of the axis carry digits of their own
+            numbers = [int(number_) for number_ in re.findall(r"\d+", re.sub(r"`[^`]*`", " ", said))]
+            assert numbers[:3] == [len(TILDE_SUBJECTS), len(TILDE_STATES), prefixes], (
+                "%s says the tilde check set is %s; it is %d subjects out of %d states and %d prefixes"
+                % (number, " / ".join(str(one) for one in numbers[:3]),
+                   len(TILDE_SUBJECTS), len(TILDE_STATES), prefixes))
+            spans = {re.sub(r"\s+", " ", span).strip()
+                     for span in re.findall(r"`([^`]+)`", said, re.DOTALL)}
+            assert spans == set(TILDE_QUOTINGS), (
+                "%s names quotings the check set does not carry: %s -- and leaves these unnamed: %s"
+                % (number, sorted(spans - set(TILDE_QUOTINGS)), sorted(set(TILDE_QUOTINGS) - spans)))
+            named += 1
+        assert not owed, (
+            "these holes say the tilde check set is what would notice their defect and state nothing "
+            "about it, so it can be cut back to what they were measured against: %s" % owed)
+>       assert named, (
+            "no hole leans on %s any more, so this test measured nothing" % TILDE_TEST)
+E       AssertionError: no hole leans on test_gate1_places_a_tilde_word_where_the_shell_puts_it any more, so this test measured nothing
+E       assert 0
+
+.claude\hooks\test_gates.py:4847: AssertionError
+_____________ test_every_reference_to_a_measurement_leads_to_one ______________
+
+project = 'c:\\harness-gates-mbk8bxvd\\project'
+
+    def test_every_reference_to_a_measurement_leads_to_one(project):
+        """A reference that names a document has to lead to one that carries what it is cited for.
+    
+        Measured 2026-08-05: the hole list assigned entries to the two measurement protocols by NUMBER
+        RANGE, and three of the entries in the range were in neither document. A range is a claim about
+        a file nobody checks; a reference beside the entry is one that can be. Measured again in the
+        round after that: a docstring cited a protocol for six line shapes, three of which were in a
+        DIFFERENT protocol -- because this half of the test asked only whether the file existed.
+    
+        BOTH DIRECTIONS ARE READ THE SAME WAY, and that is what this round adds: the entries of the
+        hole list, and the apparatus itself, whose docstrings, refusal texts and comments point at
+        protocols and at the hole list. A reference has to name what it is citing -- an entry (`H<n>`)
+        for the hole list, a section for a measurement protocol -- and the document has to carry it.
+        Which anchors a document has is read off the document (`_anchors`); a document that carries
+        neither kind is cited by its name alone, because there is nothing finer to check it against.
+        """
+        # THE HOLES' OWN PROSE, one file per entry since the migration (FR-0087): the item carries
+        # identity, verdict and limit, and the measured chain -- which is what cites a protocol -- lives
+        # in the file its `source` names.
+        #
+        # THE `assert` IS NOT DECORATION. Without it this test walked an empty loop over an unmigrated
+        # store and passed while its five siblings failed -- measured 2026-09-05, "6 failed, 1 passed":
+        # a named test that cannot fail, which is the class this repo calls dearer than no test. The
+        # local name is `carried` and not `holes` for the same round's reason: `_anchors` hands back a
+        # variable of that name below, and the shadowed one was what the second half asserted on.
+        _backlog_types, _state, carried = _holes()
+>       assert carried, (
+            "no hole item in %s -- see the judges test for the migration command" % STATE_ROOT)
+E       AssertionError: no hole item in c:\Offline Repos\AgentAndSkills\project_memory -- see the judges test for the migration command
+E       assert {}
+
+.claude\hooks\test_gates.py:4918: AssertionError
+=========================== short test summary info ===========================
+FAILED .claude/hooks/test_gates.py::test_every_hole_states_a_verdict_and_an_unclosed_one_names_its_limit
+FAILED .claude/hooks/test_gates.py::test_every_test_a_hole_names_is_one_that_exists
+FAILED .claude/hooks/test_gates.py::test_the_hole_index_in_the_document_is_the_one_the_items_generate
+FAILED .claude/hooks/test_gates.py::test_a_hole_states_the_over_refusal_the_table_carries
+FAILED .claude/hooks/test_gates.py::test_every_cell_a_closed_hole_names_is_one_the_table_carries
+FAILED .claude/hooks/test_gates.py::test_every_tilde_subject_a_closed_hole_names_is_one_the_check_set_carries
+FAILED .claude/hooks/test_gates.py::test_every_reference_to_a_measurement_leads_to_one
+7 failed, 541 passed in 916.85s (0:15:16)

@@ -18,6 +18,7 @@ Run it explicitly:  python -B -m pytest .claude/hooks/test_gates.py -q
 """
 import ast
 import concurrent.futures
+import glob as globmodule
 import hashlib
 import inspect
 import io
@@ -67,6 +68,11 @@ def build_project(base):
     _copy(TEAM_KITS, os.path.join(base, "team-kits"), ignore)
     _copy(os.path.join(ROOT, "tools", "bump_kit_version.py"),
           os.path.join(base, "tools", "bump_kit_version.py"))
+    # gate 5 decides on this DECLARATION and on nothing else, so a stand-in without it is a
+    # project that declares no test surface -- and every gate-5 case would measure that instead
+    # (`gate_test_scope.declaration` returns None and the gate stands down).
+    _copy(os.path.join(ROOT, "tools", "test_surface.json"),
+          os.path.join(base, "tools", "test_surface.json"))
     _copy(os.path.join(ROOT, "project_memory"), os.path.join(base, "project_memory"), ignore)
     _copy(HOOKS, os.path.join(base, ".claude", "hooks"), ignore)
     _copy(os.path.join(ROOT, ".claude", "settings.json"),
@@ -409,6 +415,11 @@ def _registered_tools(settings_path):
 #   gate 2  -- clause 2: the spawn tools.
 #   gate 3  -- clause 3: recording history is a shell act.
 #   gate 4  -- clause 4: the list tool.
+#   gate 5  -- NOT an SR-0009 clause: `gate_test_scope.py` enforces the cost rule of DEC-0050 that
+#              CLAUDE.md says no gate could enforce, because the place is `.claude/` -- closed to
+#              the session agent, open to an implementer under an item (FR-0086). Its subject is a
+#              command line, so it sits on the two shells, and on both for the reason gate 3 does:
+#              a line reaches the runner through either.
 #   gate_approval -- NOT an SR-0009 gate and not this repo's file: it is the KIT's approval hook,
 #              registered here so that a user's answer can mint what the kernel refuses without
 #              one (H39). The kits pair its two events and so does this repo; the tool name is the
@@ -423,6 +434,7 @@ EXPECTED_TOOLS = {
     "gate_spawn_needs_item.py": {("PreToolUse", "Agent"), ("PreToolUse", "Task")},
     "gate_commit_evidence.py": {("PreToolUse", "Bash"), ("PreToolUse", "PowerShell")},
     "gate_todo_items.py": {("PreToolUse", "TodoWrite")},
+    "gate_test_scope.py": {("PreToolUse", "Bash"), ("PreToolUse", "PowerShell")},
     "gate_approval.py": {("PreToolUse", "AskUserQuestion"), ("PostToolUse", "AskUserQuestion")},
 }
 
@@ -445,6 +457,10 @@ def _refusable(project, script, tool):
         return payload
     if script == "gate_commit_evidence.py":
         return bash_payload(project, "git commit -m wip", tool=tool)
+    if script == "gate_test_scope.py":
+        # A bare run of a declared surface -- the shortest refusable shape, and it needs no state
+        # planted: `tools/test_surface.json` travels with the stand-in project.
+        return bash_payload(project, "python -B -m pytest tools/ -q", tool=tool)
     if script == "gate_approval.py":
         # A question that CLAIMS to be an approval for a request this project does not hold. The
         # marker is what makes the hook look at all (a markerless question is none of its
@@ -4459,182 +4475,81 @@ def test_a_separator_this_reader_cannot_place_refuses_the_line(project, tmp_path
         "with that separator in the tuple, a write behind it stopped being judged")
 
 
-# -- the hole list keeps its own rule (TSK-0013 F5, F6, F7) --------------------
+# -- the holes keep their own rule -- now as ITEMS (TSK-0013 F5/F6/F7, FR-0087, DEC-0073) -------
+#
+# WHAT CHANGED AND WHY. Until 2026-09-04 this block read the hole list as a DOCUMENT: it
+# found entries by their heading, judged them against a summary table, and fished cited test names
+# out of markdown code spans. Every limit of that reader was a claim nobody checked -- a name behind
+# a fence, a name wrapped across two lines, a span showing a span, a table cell carrying the column
+# separator. The holes are items now (`BUG` with `hole_number`), so the same three questions are
+# asked of parsed records: the verdict IS the status, the limit IS a field, and the tests an entry
+# names ARE a list. The document keeps a generated pointer index and nothing else.
 
 HOLE_LIST = os.path.join(ROOT, "docs", "POST_V2_WISHLIST.md")
-# The section of it that judges these four gates, opened by this heading and closed by the next
-# heading of the same level.
-HOLE_SECTION = "## 12."
-# What the third column of the summary table must NOT be for an entry that is not closed: the rule
-# stated in the section itself says an open entry names what takes the place of the protection.
-NOTHING_SAID = ("", "-", "—", "–", "?")
+STATE_ROOT = os.path.join(ROOT, "project_memory")
+HOLES_PROSE = os.path.join(ROOT, "docs", "holes")
 
 
-def _hole_section():
-    """The lines of the hole list that judge these gates, and only those."""
-    with open(HOLE_LIST, encoding="utf-8") as handle:
-        lines = handle.read().splitlines()
-    start = next(index for index, line in enumerate(lines) if line.startswith(HOLE_SECTION))
-    end = next((index for index, line in enumerate(lines[start + 1:], start + 1)
-                if line.startswith("## ")), len(lines))
-    return lines[start:end]
+def _kernel():
+    """The kernel this repo runs its own state with -- imported, never re-implemented."""
+    team_kits = os.path.join(ROOT, "team-kits")
+    if team_kits not in sys.path:
+        sys.path.insert(0, team_kits)
+    from kernel import backlog_types
+    from kernel.state import ProjectState
+    return backlog_types, ProjectState(STATE_ROOT)
 
 
-def _hole_entries(lines):
-    """{H<n>: the lines of its entry} -- the entries this section actually carries."""
-    out, current = {}, None
-    for line in lines:
-        found = re.match(r"### (H\d+)\b", line)
-        if found:
-            current = found.group(1)
-            out[current] = []
-        elif current:
-            out[current].append(line)
-    return out
+def _holes():
+    """{H number: item} for every hole the store carries, active and archived.
 
-
-def _hole_rows(lines):
-    """[(entries named in the first cell, state, what takes the place)] of the summary table."""
-    rows = []
-    for line in lines:
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) != 3 or not re.search(r"H\d+", cells[0]) or set(cells[1]) <= set("- "):
-            continue
-        rows.append((re.findall(r"H\d+", cells[0]), cells[1], cells[2]))
-    return rows
-
-
-# What a bold span looks like, and what the ENTRY's own verdict line opens with. The judgement of
-# an entry is the last one it states -- an entry may record what a round decided and then what the
-# full rule makes of it -- and it is the BOLD part of that line: what follows the bold span is
-# reasoning, and reasoning names the other verdicts too.
-BOLD_RX = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
-VERDICT_RX = re.compile(r"\*\*(Urteil\b.+?)\*\*", re.DOTALL)
-# The one word that turns a verdict into its opposite. A row may not claim a state its entry denies.
-NEGATION = "nicht"
-
-
-def _stated_verdict(body):
-    """The verdict an entry states about itself, as the words of its last `**Urteil ...**` span.
-
-    THE SPAN, NOT THE LINE: where the text wraps is a property of the editor, and a verdict that
-    happened to break across two lines was read here as no verdict at all. What follows the bold
-    span is reasoning, and reasoning names the other verdicts too -- so it stays outside.
+    Read through the KERNEL's own iteration over stored items, so "which files are items" has one
+    answer here and in every other reader. A hole is recognised by the field the kernel stamps and
+    a caller cannot hand in (`state.capture` refuses a body carrying it), which is why this needs
+    no marker of its own.
     """
-    stated = VERDICT_RX.findall("\n".join(body))
-    return re.findall(r"\w+", stated[-1].lower()) if stated else None
+    backlog_types, state = _kernel()
+    found = {}
+    with state.lock:
+        for item in state._iter_every_stored_item():
+            number = str(item.get(backlog_types.HOLE_NUMBER_FIELD) or "")
+            if number:
+                found[number] = item
+    return backlog_types, state, found
 
 
-def test_the_hole_list_judges_every_entry_it_carries():
-    """The section's own rule, applied to the section: every entry is in the table, the table says
-    what the entry says, and every open one names what takes the place of the protection.
+def test_every_hole_states_a_verdict_and_an_unclosed_one_names_its_limit():
+    """The rule the hole list carried in prose, applied to the items that replaced it.
 
-    THE SUBJECT HERE IS THE TEXT, so reading the text is reading the thing under test -- and what is
-    read is its STRUCTURE (headings, table rows, the bold span of a verdict line), not a sentence
-    somebody could satisfy by quoting it. Measured 2026-08-05: two entries appeared under no row at
-    all, so the column that has to name the replacement was empty for them without anything saying
-    so; and the state column itself was checked by nothing -- three entries whose row and whose body
-    said different things stayed green, and one of them escaped the replacement column entirely by
-    being called closed.
+    THE VERDICT IS THE STATUS. A row of a summary table and a sentence inside an entry could
+    disagree -- three of them did, measured 2026-08-05 -- and the whole reason a hole is an item is
+    that a record has ONE status. So there is nothing left to compare here; what is measured is
+    that every hole stands in a status its type's automaton really has.
+
+    AND AN UNCLOSED HOLE NAMES WHAT TAKES THE PLACE OF THE PROTECTION. "Unclosed" is derived from
+    the automaton and not from a list of words: a status that is not one of the type's TERMINALS is
+    a hole still standing open. `ACCEPTED_EXCEPTION` is a terminal and carries the duty anyway --
+    that is `backlog_types.STATUS_DEPENDENT_FIELDS`, enforced by the kernel and by
+    `report.validate_state`, and this asserts the same thing from the outside so a store that
+    slipped past both is still caught.
     """
-    lines = _hole_section()
-    entries = _hole_entries(lines)
-    rows = _hole_rows(lines)
-    assert entries and rows, "the hole list section was not found where this test looks for it"
-    judged = [name for names, _state, _replacement in rows for name in names]
-    assert sorted(judged) == sorted(set(judged)), (
-        "an entry is judged twice in the table: %s" % sorted(judged))
-    assert set(judged) == set(entries), (
-        "entries with no row: %s -- rows with no entry: %s"
-        % (sorted(set(entries) - set(judged)), sorted(set(judged) - set(entries))))
-    for names, state, replacement in rows:
-        claimed = BOLD_RX.search(state)
-        assert claimed, "the row over %s states no verdict: %r" % (", ".join(names), state)
-        word = re.findall(r"\w+", claimed.group(1).lower())[0]
-        for name in names:
-            spoken = _stated_verdict(entries[name])
-            assert spoken, "%s states no verdict of its own (`**Urteil ...**`)" % name
-            assert word in spoken, (
-                "the table calls %s %r and the entry itself says %r" % (name, word, " ".join(spoken)))
-            assert NEGATION not in spoken[:spoken.index(word)], (
-                "the table calls %s %r while its own verdict denies it: %r"
-                % (name, word, " ".join(spoken)))
-        if "GESCHLOSSEN" in state:
-            continue
-        assert replacement not in NOTHING_SAID, (
-            "%s is not closed and its row does not say what takes the place of the protection"
-            % ", ".join(names))
-
-
-# A FENCE LINE IS NOTHING BUT ITS MARKER, plus the optional info string a fence may carry: three or
-# more backticks or three or more tildes, and after that run no marker of the same kind on the same
-# line -- because a line that carries its marker twice is a long inline code span, a SENTENCE and
-# not a block. Reading such a line as a fence made the shift depend on how many of them an entry
-# happens to hold: an odd number was loud and an EVEN number silent (measured 2026-09-03, plant
-# A7). The tilde form is read for the same reason the backtick form is; before this it was
-# invisible, which is the harmless direction and still a spelling the reader did not know.
-_FENCE_LINE_RX = re.compile(r"^(`{3,}|~{3,})(.*)$")
-
-
-# A CODE SPAN IS A RUN OF BACKTICKS, CONTENT, AND A RUN OF THE SAME LENGTH -- the rule markdown
-# itself uses, and not "one backtick, text, one backtick". A run of three inside a SENTENCE is the
-# short way to write a span that contains backticks, and reading it as two ordinary delimiters
-# shifted every pairing behind it: measured 2026-09-03 (plant A7), two such lines around a planted
-# ghost and the reader stayed silent -- an ODD number of them was loud, an EVEN number was not.
-_CODE_SPAN_RX = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.DOTALL)
-
-
-def _fence_marker(line):
-    """The character a line opens or closes a fenced block with, or None."""
-    found = _FENCE_LINE_RX.match(line.strip())
-    if not found or found.group(1)[0] in found.group(2):
-        return None
-    return found.group(1)[0]
-
-
-def _prose_of(body):
-    """The lines of an entry that carry PROSE -- its fenced blocks cut out.
-
-    A fence line opens a block and the next fence line OF THE SAME MARKER closes it; what stands
-    between them is a transcript, not a sentence, and it carries no spans. Without this cut the
-    third backtick of a fence opened a span of its own and everything after it in the entry paired
-    against the wrong delimiter, so a name behind a fence was looked up by nobody -- measured
-    2026-09-02 (H121): a planted name that does not exist is reported BEFORE a fence and passes
-    silently after one, and the live instance was H46's own citation.
-    """
-    kept, opened = [], None
-    for line in body:
-        marker = _fence_marker(line)
-        if marker and (opened is None or marker == opened):
-            opened = None if opened else marker
-            continue
-        if opened is None:
-            kept.append(line)
-    assert opened is None, "an entry opens a fenced block it never closes"
-    return "\n".join(kept)
-
-
-def _hole_citation_sources():
-    """{H<n>: the lines that cite FOR it} -- its entry AND the summary row that judges it.
-
-    THE TABLE CITES TOO: the row over an entry says what would notice a relapse, and rows carry
-    such names today. `_hole_entries` starts an entry at its `### H<n>` heading, so every one of
-    those citations went unread -- a ghost planted in a row passed (measured 2026-09-03, plant A6).
-
-    A CORPUS OF ITS OWN AND NOT A WIDER `_hole_entries`, because four other readers ask
-    entry-shaped questions of that one: `_stated_verdict` takes the last `**Urteil ...**` span of a
-    body, and `test_the_hole_list_judges_every_entry_it_carries` compares a ROW against that span.
-    Folding the row into the body would put both sides of that comparison in one place.
-    """
-    lines = _hole_section()
-    sources = {name: list(body) for name, body in _hole_entries(lines).items()}
-    for line in lines:
-        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) != 3 or not re.search(r"H\d+", cells[0]) or set(cells[1]) <= set("- "):
-            continue
-        for name in re.findall(r"H\d+", cells[0]):
-            sources.setdefault(name, []).append(line)
-    return sources
+    backlog_types, _state, holes = _holes()
+    assert holes, (
+        "no hole item in %s. The hole list is migrated by `python tools/migrate_holes.py --root "
+        "project_memory --related-pr <goal> --apply`, and this test is the reader that replaced "
+        "the document" % STATE_ROOT)
+    automaton = backlog_types.AUTOMATA["BUG"]
+    unlimited = []
+    for number, item in sorted(holes.items()):
+        status = str(item.get("status") or "")
+        assert status in automaton.states, (
+            "%s (%s) stands in %r, which is no status of its type" % (number, item["id"], status))
+        closed = status in automaton.terminals and status != backlog_types.HOLE_EXCEPTION_STATUS
+        if not closed and not str(item.get(backlog_types.HOLE_LIMIT_FIELD) or "").strip():
+            unlimited.append("%s (%s, %s)" % (number, item["id"], status))
+    assert not unlimited, (
+        "these holes are not closed and say nothing about what takes the place of the protection: "
+        "%s" % unlimited)
 
 
 def _tests_by_module():
@@ -4702,67 +4617,98 @@ def _cited_test(span):
     return os.path.splitext(os.path.basename(qualifier.replace("\\", "/")))[0], tail
 
 
-def test_every_test_the_hole_list_names_is_one_that_exists():
-    """A closed entry names the test that goes red without its fix. That name is checkable.
+def test_every_test_a_hole_names_is_one_that_exists():
+    """A hole that claims to be closed names what would notice a relapse, and the name resolves.
 
-    THE CLAIM AN ENTRY MAKES ABOUT ITSELF is "this is closed, and here is what would notice if it
-    were reopened". A name that no longer resolves turns that into a claim nothing checks -- the
-    same rot the constitution's prose had, one document further on.
+    READ OFF THE ITEM (`backlog_types.HOLE_TEST_FIELD`), which is the move FR-0087 (c) asked for:
+    the predecessor of this test parsed markdown code spans, and its own docstring had to name
+    three things it could not read -- a citation inside a fenced block, a module abbreviated to an
+    ellipsis, a summary row whose cell carried the column separator. A list on the item has none of
+    those readings.
 
-    Names are matched loosely on purpose (`…refuses_a_line…`): the entries abbreviate long test
-    names, and demanding the full spelling would make the entries harder to read without checking
-    anything more. So the name is looked up EXACTLY first and only as a substring when nothing
-    answers exactly -- over one file a prefix was unambiguous by luck, over the whole corpus a
-    name that is the beginning of a longer one is not.
+    THE CORPUS IS WHERE THE TESTS LIVE, and that is not one file: a hole closes a defect anywhere
+    in this repo, and the test that would notice a reopening lives where the defect lived -- under
+    `tools/` for the kits and the kernel, here for the four gates.
 
-    THE CORPUS IS THE ENTRY AND ITS SUMMARY ROW (`_hole_citation_sources`), because the row cites
-    too and every one of those names went unread until 2026-09-03.
-
-    WHAT THIS STILL DOES NOT READ, and all three are named rather than claimed away. A citation
-    INSIDE a fenced block is not a span here -- the remedy is a writing rule and not code, cite the
-    test in prose and leave the fence for what ran. A module abbreviated to an ellipsis is looked
-    up in every test file of this repo, so it can resolve against a file the writer did not mean.
-    And a summary ROW is only read when it falls into exactly three cells: a cell carrying the
-    column separator inside a code span makes four of them, and `_hole_citation_sources` drops such
-    a row without a word. Measured 2026-09-03 against the shipped list: no row has that shape, so
-    the blind field is empty today rather than merely small -- and the writing rule is the same
-    kind as the other two, a table cell carries no column separator.
+    Names are matched loosely on purpose, exactly as before: the items carry the abbreviations the
+    entries used, so the name is looked up EXACTLY first and only as a substring when nothing
+    answers exactly.
     """
+    backlog_types, _state, holes = _holes()
+    assert holes, "no hole item in %s -- see the sibling test for the migration command" % STATE_ROOT
     defined = _tests_by_module()
     assert defined, "no test file in this repo defines a test at all"
     named, wrong = 0, []
-    for entry, body in sorted(_hole_citation_sources().items()):
-        # WITH THE LINE BREAKS TAKEN OUT: the entries wrap long names across lines, and a name read
-        # as two halves resolves to nothing.
-        spans = {re.sub(r"\s+", "", found.group(2))
-                 for found in _CODE_SPAN_RX.finditer(_prose_of(body))}
-        for span in sorted(spans):
-            citation = _cited_test(span)
+    for number, item in sorted(holes.items()):
+        for span in backlog_types.field_elements(item.get(backlog_types.HOLE_TEST_FIELD)):
+            citation = _cited_test(re.sub(r"\s+", "", str(span)))
             if citation is None:
+                wrong.append("%s carries %r in %s, which is no test citation at all"
+                             % (number, span, backlog_types.HOLE_TEST_FIELD))
                 continue
             module, cited = citation
-            stem = cited.strip("_.…")
+            stem = cited.strip("_.\u2026")
             matching = sorted(name for name, where in defined.items()
                               if (name == stem or (stem not in defined and stem in name))
                               and (module is None or module in where))
             named += 1
             if len(matching) != 1:
                 wrong.append("%s names `%s`, and %d tests answer to it in %s"
-                             % (entry, span, len(matching), module or "any test file of this repo"))
+                             % (number, span, len(matching), module or "any test file of this repo"))
     assert not wrong, "\n".join(wrong)
     assert named >= 5, (
-        "the hole list names %d test(s) -- an entry that claims to be closed and "
-        "names nothing that would notice is the claim this test exists for" % named)
+        "the holes name %d test(s) -- a hole that claims to be closed and names nothing that would "
+        "notice is the claim this test exists for" % named)
 
 
-# The entry that says what the cross table's OVER-REFUSAL is made of, and the paragraph it says it
+def test_the_hole_index_in_the_document_is_the_one_the_items_generate():
+    """The document carries a GENERATED index, and a hand edit is what this reports.
+
+    REGENERATED AND COMPARED, not checked against a digest written beside it: a digest is a second
+    statement of the same fact, and a number in two places is what the whole migration exists to
+    end. The generator is the shipped `tools/migrate_holes.py`, imported rather than restated --
+    a second rendering here would answer a different question than the one the run writes.
+    """
+    tools = os.path.join(ROOT, "tools")
+    if tools not in sys.path:
+        sys.path.insert(0, tools)
+    import migrate_holes
+
+    _backlog_types, state, holes = _holes()
+    assert holes, "no hole item in %s -- see the judges test for the migration command" % STATE_ROOT
+    lines, start, end = migrate_holes.read_section(HOLE_LIST)
+    carried = lines[start:end]
+    generated = migrate_holes.render_index(state)
+    assert carried == generated, (
+        "the hole index in %s is not the one the items generate -- either a hole was captured "
+        "without regenerating it, or the section was edited by hand. Remedy: `python "
+        "tools/migrate_holes.py --root project_memory --reindex`, which rewrites this "
+        "section from the store and writes nothing else -- from a shell OUTSIDE Claude "
+        "Code, because gate 1 refuses every tool write into the state tree.\n"
+        "first difference at line %d:\n  document: %r\n  items:    %r"
+        % (HOLE_LIST,
+           next((i for i, (a, b) in enumerate(zip(carried, generated)) if a != b), 0),
+           next((a for a, b in zip(carried, generated) if a != b), "<length differs>"),
+           next((b for a, b in zip(carried, generated) if a != b), "<length differs>")))
+
+
+def _hole_prose(number):
+    """The full text of one hole -- the file the item's `source` points at."""
+    _backlog_types, _state, holes = _holes()
+    item = holes[number]
+    path = os.path.join(ROOT, str(item.get("source") or "").replace("/", os.sep))
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+# The hole that says what the cross table's OVER-REFUSAL is made of, and the paragraph it says it
 # in. The claim is generated out of the table here rather than read as prose: it stood wrong in both
 # directions at once -- two things named that had no such cell, four moves unnamed that were half of
 # them -- and it had been corrected by hand the round before that.
-OVER_REFUSAL_ENTRY = "H30"
+OVER_REFUSAL_HOLE = "H30"
 COMPOSITION_RX = re.compile(r"\*\*Zusammensetzung[^*]*\*\*(.*?)(?=\n\n|\Z)", re.DOTALL)
 
-# What a closed entry has to name when the cross table is what would notice its defect: the VALUES
+# What a closed hole has to name when the cross table is what would notice its defect: the VALUES
 # of that table it stands on. Nothing tied the two together before -- measured 2026-08-07, the
 # hand-written axes can be cut until 100 of 1440 cells are left and every other test in this file
 # stays green, because the tripwires cover the GENERATED axes and not the written-out values.
@@ -4776,41 +4722,41 @@ def _over_refusal():
             if LINE_SHAPES[label][1] is False and LINE_SHAPES[label][2]}
 
 
-def test_the_hole_list_states_the_over_refusal_the_table_carries():
-    """What an entry claims about the check set is GENERATED out of the check set.
+def test_a_hole_states_the_over_refusal_the_table_carries():
+    """What a hole claims about the check set is GENERATED out of the check set.
 
     Measured 2026-08-07, and the claim had been corrected by hand one round earlier: the entry named
     the descriptor duplication and the words the kits' reader steps over, and neither has an
-    over-refusal cell at all -- the second has cells whose shell column is UNCLAIMED, which is a
-    different thing. It left four moves unnamed that are exactly half of the count it stated. Only
-    the two numbers were right.
+    over-refusal cell at all. It left four moves unnamed that are exactly half of the count it
+    stated. Only the two numbers were right.
 
-    BOTH DIRECTIONS FALL OUT OF ONE COMPARISON, which is why it is a set equality and not a
-    containment: a move named without cells and a move with cells left unnamed are the two ways the
-    sentence went wrong, and neither can be written into the document again.
+    THE PROSE IS WHERE IT ALWAYS WAS, one file further on: the item carries identity, verdict and
+    limit, and the measured chain lives in the file its `source` names. That is the split
+    CLAUDE.md already prescribes for a wish, and the reason the item cannot carry it is measured --
+    three entries of this list are larger than the 12 KB an active item may be.
     """
-    body = "\n".join(_hole_entries(_hole_section())[OVER_REFUSAL_ENTRY])
+    body = _hole_prose(OVER_REFUSAL_HOLE)
     found = COMPOSITION_RX.search(body)
     assert found, (
-        "%s no longer states what the over-refusal in the cross table is made of, so the claim this "
-        "test generates has nowhere to be compared with" % OVER_REFUSAL_ENTRY)
+        "%s no longer states what the over-refusal in the cross table is made of, so the claim "
+        "this test generates has nowhere to be compared with" % OVER_REFUSAL_HOLE)
     said = found.group(1)
     numbers = [int(number) for number in re.findall(r"\d+", said)]
     friction = _over_refusal()
     assert numbers[:2] == [len(friction), len(LINE_SHAPES)], (
         "%s says %s of the table's cells are over-refusal; the table has %d of %d"
-        % (OVER_REFUSAL_ENTRY, " of ".join(str(number) for number in numbers[:2]),
+        % (OVER_REFUSAL_HOLE, " of ".join(str(number) for number in numbers[:2]),
            len(friction), len(LINE_SHAPES)))
     named = {re.sub(r"\s+", " ", span).strip()
              for span in re.findall(r"`([^`]+)`", said, re.DOTALL)}
     moves = {label.split(" -- ")[0] for label in friction}
     assert named == moves, (
         "%s names moves that have no over-refusal cell: %s -- and leaves these unnamed: %s"
-        % (OVER_REFUSAL_ENTRY, sorted(named - moves), sorted(moves - named)))
+        % (OVER_REFUSAL_HOLE, sorted(named - moves), sorted(moves - named)))
 
 
 def test_every_cell_a_closed_hole_names_is_one_the_table_carries():
-    """An entry that leans on the cross table names the VALUES of it that carry its chain.
+    """A hole that leans on the cross table names the VALUES of it that carry its chain.
 
     THE HAND-WRITTEN AXES HAD NO TRIPWIRE. `test_the_words_the_kits_reader_steps_over_are_all
     _crossed` and `test_the_shells_this_reader_knows_are_the_ones_the_registration_names` bind the
@@ -4819,36 +4765,39 @@ def test_every_cell_a_closed_hole_names_is_one_the_table_carries():
     of 1440 cells with every other test in this file still green, and what was silently removable
     was exactly the values that carry closed holes.
 
-    BOTH ENDS. A value an entry names and the table no longer carries is the cut; an entry that
-    leans on the table and names no value at all is the tripwire being dropped instead of the cell.
-    Which entries owe one is read off the entries themselves -- those that cite the table's test.
+    BOTH ENDS. A value a hole names and the table no longer carries is the cut; a hole that leans
+    on the table and names no value at all is the tripwire being dropped instead of the cell. Which
+    holes owe one is read off the ITEM -- those whose `regression_tests` cite the table's test --
+    rather than off a substring search over prose.
     """
+    backlog_types, _state, holes = _holes()
     values = set(POSITIONS) | set(MOVES) | set(BASES) | set(LOOSE_SHAPES)
     owed, wrong, named = [], [], 0
-    for entry, body in sorted(_hole_entries(_hole_section()).items()):
-        text = "\n".join(body)
-        if TABLE_TEST not in re.sub(r"\s+", "", text):
+    for number, item in sorted(holes.items()):
+        cited = [re.sub(r"\s+", "", str(one))
+                 for one in backlog_types.field_elements(item.get(backlog_types.HOLE_TEST_FIELD))]
+        if not any(TABLE_TEST in one for one in cited):
             continue
-        found = CELLS_RX.search(text)
+        found = CELLS_RX.search(_hole_prose(number))
         spans = [re.sub(r"\s+", " ", span).strip()
                  for span in re.findall(r"`([^`]+)`", found.group(1), re.DOTALL)] if found else []
         if not spans:
-            owed.append(entry)
+            owed.append(number)
             continue
         for span in spans:
             named += 1
             if span not in values and span not in LINE_SHAPES:
                 wrong.append("%s names `%s`, and no value of the cross table is spelled that way"
-                             % (entry, span))
+                             % (number, span))
     assert not owed, (
-        "these entries say the cross table is what would notice their defect and name no value of "
+        "these holes say the cross table is what would notice their defect and name no value of "
         "it, so the values they stand on can be deleted without anything going red: %s" % owed)
     assert not wrong, "\n".join(wrong)
     assert named, (
-        "no entry of the hole list leans on %s any more, so this test measured nothing" % TABLE_TEST)
+        "no hole leans on %s any more, so this test measured nothing" % TABLE_TEST)
 
 
-# What an entry has to state when the TILDE check set is what would notice its defect: how big that
+# What a hole has to state when the TILDE check set is what would notice its defect: how big that
 # set is and what the axis it gained is made of. Same reason as `CELLS_RX` above and a worse case --
 # the set was not merely shrinkable, it was already too narrow: measured 2026-08-07, none of its
 # 471 subjects carried quoting in the target word, and the shape that did was rc 0 through the real
@@ -4858,43 +4807,45 @@ TILDE_TEST = "test_gate1_places_a_tilde_word_where_the_shell_puts_it"
 
 
 def test_every_tilde_subject_a_closed_hole_names_is_one_the_check_set_carries():
-    """An entry leaning on the tilde check set states its SIZE and the values of its quoting axis.
+    """A hole leaning on the tilde check set states its SIZE and the values of its quoting axis.
 
     GENERATED OUT OF THE SET AND COMPARED WITH IT, in both directions, which is what the same
-    treatment of the cross table (`test_the_hole_list_states_the_over_refusal_the_table_carries`)
-    exists for: a number that goes stale says nothing, and an axis named in prose that the set no
-    longer carries says less. The set equality is the half that matters here -- the defect this
-    round closed was an axis the check set did not have at all, so an entry that names its values
-    cannot be satisfied by a set they were dropped from.
+    treatment of the cross table (`test_a_hole_states_the_over_refusal_the_table_carries`) exists
+    for: a number that goes stale says nothing, and an axis named in prose that the set no longer
+    carries says less. The set equality is the half that matters here -- the defect that round
+    closed was an axis the check set did not have at all, so a hole that names its values cannot be
+    satisfied by a set they were dropped from.
     """
+    backlog_types, _state, holes = _holes()
     owed, named = [], 0
     prefixes = len(_tilde_prefixes(_reader()))
-    for entry, body in sorted(_hole_entries(_hole_section()).items()):
-        text = "\n".join(body)
-        if TILDE_TEST not in re.sub(r"\s+", "", text):
+    for number, item in sorted(holes.items()):
+        cited = [re.sub(r"\s+", "", str(one))
+                 for one in backlog_types.field_elements(item.get(backlog_types.HOLE_TEST_FIELD))]
+        if not any(TILDE_TEST in one for one in cited):
             continue
-        found = SUBJECTS_RX.search(text)
+        found = SUBJECTS_RX.search(_hole_prose(number))
         if not found:
-            owed.append(entry)
+            owed.append(number)
             continue
         said = found.group(1)
         # the numbers OUTSIDE the backticks: the values of the axis carry digits of their own
-        numbers = [int(number) for number in re.findall(r"\d+", re.sub(r"`[^`]*`", " ", said))]
+        numbers = [int(number_) for number_ in re.findall(r"\d+", re.sub(r"`[^`]*`", " ", said))]
         assert numbers[:3] == [len(TILDE_SUBJECTS), len(TILDE_STATES), prefixes], (
             "%s says the tilde check set is %s; it is %d subjects out of %d states and %d prefixes"
-            % (entry, " / ".join(str(number) for number in numbers[:3]),
+            % (number, " / ".join(str(one) for one in numbers[:3]),
                len(TILDE_SUBJECTS), len(TILDE_STATES), prefixes))
         spans = {re.sub(r"\s+", " ", span).strip()
                  for span in re.findall(r"`([^`]+)`", said, re.DOTALL)}
         assert spans == set(TILDE_QUOTINGS), (
             "%s names quotings the check set does not carry: %s -- and leaves these unnamed: %s"
-            % (entry, sorted(spans - set(TILDE_QUOTINGS)), sorted(set(TILDE_QUOTINGS) - spans)))
+            % (number, sorted(spans - set(TILDE_QUOTINGS)), sorted(set(TILDE_QUOTINGS) - spans)))
         named += 1
     assert not owed, (
-        "these entries say the tilde check set is what would notice their defect and state nothing "
+        "these holes say the tilde check set is what would notice their defect and state nothing "
         "about it, so it can be cut back to what they were measured against: %s" % owed)
     assert named, (
-        "no entry of the hole list leans on %s any more, so this test measured nothing" % TILDE_TEST)
+        "no hole leans on %s any more, so this test measured nothing" % TILDE_TEST)
 
 
 def _anchors(path):
@@ -4905,7 +4856,12 @@ def _anchors(path):
     """
     with open(path, encoding="utf-8") as handle:
         text = handle.read()
-    return (set(re.findall(r"^### (H\d+)\b", text, re.M)),
+    # TWO SPELLINGS OF THE SAME ANCHOR, and the second is what the migration left: a hole used to
+    # be an `### H<n>` heading in this document and is now a row of the GENERATED pointer index
+    # (`[H<n>](docs/holes/H<n>.md)`). Both are read, so a citation resolves before and after the
+    # migration and nothing here has to know which of the two the document is in today.
+    return (set(re.findall(r"^### (H\d+)\b", text, re.M))
+            | set(re.findall(r"^\| \[(H\d+)\]\(", text, re.M)),
             set(re.findall(r"^## (\d+)\.", text, re.M)))
 
 
@@ -4949,9 +4905,21 @@ def test_every_reference_to_a_measurement_leads_to_one(project):
     Which anchors a document has is read off the document (`_anchors`); a document that carries
     neither kind is cited by its name alone, because there is nothing finer to check it against.
     """
-    entries = _hole_entries(_hole_section())
-    for name, body in sorted(entries.items()):
-        for relative in re.findall(r"docs/reviews/[A-Za-z0-9._-]+\.md", "\n".join(body)):
+    # THE HOLES' OWN PROSE, one file per entry since the migration (FR-0087): the item carries
+    # identity, verdict and limit, and the measured chain -- which is what cites a protocol -- lives
+    # in the file its `source` names.
+    #
+    # THE `assert` IS NOT DECORATION. Without it this test walked an empty loop over an unmigrated
+    # store and passed while its five siblings failed -- measured 2026-09-05, "6 failed, 1 passed":
+    # a named test that cannot fail, which is the class this repo calls dearer than no test. The
+    # local name is `carried` and not `holes` for the same round's reason: `_anchors` hands back a
+    # variable of that name below, and the shadowed one was what the second half asserted on.
+    _backlog_types, _state, carried = _holes()
+    assert carried, (
+        "no hole item in %s -- see the judges test for the migration command" % STATE_ROOT)
+    for name in sorted(carried):
+        body = _hole_prose(name)
+        for relative in re.findall(r"docs/reviews/[A-Za-z0-9._-]+\.md", body):
             path = os.path.join(ROOT, *relative.split("/"))
             assert os.path.isfile(path), "%s points at %s, which does not exist" % (name, relative)
             with open(path, encoding="utf-8") as handle:
@@ -5115,8 +5083,8 @@ def test_every_check_this_apparatus_claims_in_its_own_prose_is_one_that_exists()
     pointed at `…however_the_line_spells_it` for the reason it is a function rather than a fixture,
     and no test of that name has existed for rounds -- the one that needs a path with a space is
     `test_gate1_refuses_a_protected_path_spelled_absolutely_through_a_space`. Nothing noticed,
-    because the hole list's pointers were checked (`test_every_test_the_hole_list_names_is_one_that
-    _exists`) and the apparatus's own were not.
+    because the holes' pointers were checked (`test_every_test_a_hole_names_is_one_that_exists`,
+    which read the document then and reads the items now) and the apparatus's own were not.
 
     BOTH ENDS, AND NEITHER OF THEM IS THIS DIRECTORY'S OWN TEXT: the reader is driven with
     statements built out of names this file really defines and one it cannot define, so a reader
@@ -6554,6 +6522,19 @@ def test_gate3_answers_before_its_registration_however_costly_the_line_is_to_jud
 
     BOTH ENDS UNDER THE SAME REGISTRATION: a gate that answered "too slow" to everything would
     pass the first half, so an ordinary line still has to be judged.
+
+    "HOST TOO NOISY" AND "GATE TOO SLOW" ARE DIFFERENT OUTCOMES HERE (BUG-0033). The last
+    assertion compares a wall time this suite took from OUTSIDE the process against the
+    registration, and what stands between the two is the part of a process start the gate cannot
+    see -- interpreter, imports, payload down a pipe. The reserve exists to cover exactly that, so
+    the run is a measurement only while this host's own start FITS in the reserve. Where it does
+    not, the same red means "the machine was busy" as often as it means "the gate planned past its
+    deadline", and a suite that is red for the first reason hides the second (five occurrences in
+    generation 3). So on an overrun the vantage cost is measured AT THAT MOMENT through
+    `_cost_of_a_gate_that_answers_at_once` -- the same floor the sister gate-1 test uses -- and the
+    outcome is a SKIP naming the figures where it has eaten the reserve, a failure where it has
+    not. Nothing here is compared against a typed number: `seconds` and `reserve` are derived from
+    the registration `_harness` reads, and the margin is measured on the host.
     """
     ordinary, measured = _registrations(project, tmp_path)
     assert ordinary, ("no registration on this host leaves room for an ordinary verdict: %s"
@@ -6564,20 +6545,28 @@ def test_gate3_answers_before_its_registration_however_costly_the_line_is_to_jud
     # `seconds - reserve` and the process ends a full `reserve` below `seconds`, rather than the
     # read finishing right as the guard fires (a race the first cut of this test lost under load).
     # THE MARGIN IS `reserve` (the floor, ~1.5 s here) MINUS this suite's own vantage cost -- the
-    # interpreter start and 100+ KB of payload down a pipe, which the provider's own clock does not
-    # see. Under heavy PARALLEL load that vantage cost can spike and eat the margin; that is
-    # BUG-0033's timing class, not a defect in the gate (the rc-2 "registration allows" assertion
-    # above already proves the guard fired inside the budget). If this line reddens, re-run it as
-    # the only load before treating it as real.
+    # interpreter start and 100+ KB of payload down a pipe, which `_harness`'s own clock does not
+    # see because it starts after them. Under heavy PARALLEL load that vantage cost spikes and eats
+    # the margin; that is BUG-0033's timing class, not a defect in the gate (the rc-2 "registration
+    # allows" assertion below already proves the guard fired inside the budget), and which of the
+    # two it is, is measured below rather than left to the reader.
     share, floor = _reserve_numbers()
     seconds = ordinary + floor
     reserve = max(seconds * (1.0 - share), floor)
     work = str(tmp_path / "gate3-deadline")
     shutil.copytree(project, work)
     _set_registered_timeout(work, seconds)
+    # THE LINE IS BUILT BEFORE THE CLOCK STARTS, and standing inside it was the whole of BUG-0033
+    # on this host: `_a_git_line_too_costly_to_judge_in` reads 1500 invocations through the real
+    # reader to size the line, which costs 1.03-1.19 s here (measured over five runs, against 0.03 s
+    # for the gate-1 sibling's cheaper sizing) -- work no gate process ever does, charged to the
+    # gate's registration. `elapsed` then ran 4.54-4.62 s against a 4.50 s registration in an
+    # otherwise IDLE run, while the same gate answered in 3.26-3.31 s when the line was built
+    # outside the span. A quantity that is not what its name says is not made honest by a wider
+    # margin, so the margin below stayed and the quantity moved.
+    payload = bash_payload(work, _a_git_line_too_costly_to_judge_in(seconds))
     started = time.monotonic()
-    rc, err = run(work, "gate_commit_evidence.py",
-                  bash_payload(work, _a_git_line_too_costly_to_judge_in(seconds)))
+    rc, err = run(work, "gate_commit_evidence.py", payload)
     elapsed = time.monotonic() - started
     assert rc == 2, (
         "a line this gate could not judge inside its budget was waved through: rc=%d after %.2fs"
@@ -6585,9 +6574,922 @@ def test_gate3_answers_before_its_registration_however_costly_the_line_is_to_jud
     assert "registration allows" in err, (
         "refused after %.2fs, but not for the deadline -- so the line was cheap enough to judge "
         "and nothing about the budget was measured: %s" % (elapsed, err[:300]))
-    assert elapsed < seconds, (
-        "the gate answered after %.2fs while its registration gives it %.2fs (budget guard should "
-        "have fired ~%.2fs earlier) -- if this is a solo run it is a real regression, under "
-        "parallel load it is BUG-0033 (%s)" % (elapsed, seconds, reserve, measured))
+    if elapsed >= seconds:
+        # ASKED NOW, NOT BEFORE THE RUN: what decides is the load this run met, and a floor taken
+        # while the machine was quiet would answer about a different minute. `bare` is the worst of
+        # its samples and `noise` their spread, so the pair is this host's start cost at its
+        # unluckiest -- which is the quantity the reserve has to cover for `elapsed < seconds` to
+        # be about the gate at all.
+        bare, noise = _cost_of_a_gate_that_answers_at_once(project, tmp_path)
+        if bare + noise >= reserve:
+            pytest.skip(
+                "not measured here: a gate process needs %.2fs on this host before its own first "
+                "line (noise %.2fs over %d runs) and the budget guard only reserves %.2fs of the "
+                "%.2fs registration for it, so the %.2fs this run took says the machine was busy "
+                "and cannot say the gate was slow (BUG-0033; %s)"
+                % (bare, noise, SAMPLES, reserve, seconds, elapsed, measured))
+        pytest.fail(
+            "the gate answered after %.2fs while its registration gives it %.2fs (budget guard "
+            "should have fired ~%.2fs earlier), and this host's own process start is %.2fs with "
+            "%.2fs of noise -- that FITS in the reserve, so the overrun is the gate's and not the "
+            "machine's (%s)" % (elapsed, seconds, reserve, bare, noise, measured))
     assert run(work, "gate_commit_evidence.py", bash_payload(work, "git status"))[0] == 0, (
         "under the same registration the gate turned into one that refuses everything")
+
+
+# =============================================================================
+# GATE 5 -- the SCOPE of a test run (FR-0086, the cost clause of DEC-0050).
+# A block of its own: this file is a seam of generation 4 and G4-2 / G4-4 write their own tests
+# into it. Everything gate 5 measures lives here and nowhere above.
+# =============================================================================
+
+GATE5 = "gate_test_scope.py"
+
+
+def _surface_module():
+    """The gate under test, imported ONLY for its constants -- every verdict below is a process."""
+    sys.path.insert(0, HOOKS)
+    import gate_test_scope
+    return gate_test_scope
+
+
+def _declaration_path(project):
+    return os.path.join(project, *_surface_module().DECLARATION.split("/"))
+
+
+def _declaration(project):
+    with open(_declaration_path(project), encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _declared_roots(project):
+    """The surface roots this repo declares -- READ, never typed, so a change to the declaration
+    changes what these tests drive rather than leaving them measuring a stale pair."""
+    return [entry["root"] for entry in _declaration(project)["surfaces"]]
+
+
+class _declaring(object):
+    """The project's declaration replaced for one test, and put back afterwards.
+
+    The `project` fixture is session-scoped, so a test that edits the declaration and does not
+    restore it decides every later one. `finally`, and the file is written back BYTE for byte from
+    what was read -- reading and writing binary is how the generation-3 CRLF incident is kept out.
+    """
+
+    def __init__(self, project, data):
+        self._path = _declaration_path(project)
+        self._data = data
+        self._before = None
+
+    def __enter__(self):
+        with open(self._path, "rb") as handle:
+            self._before = handle.read()
+        with open(self._path, "wb") as handle:
+            handle.write(json.dumps(self._data).encode("utf-8"))
+        return self
+
+    def __exit__(self, *_exc):
+        with open(self._path, "wb") as handle:
+            handle.write(self._before)
+        return False
+
+
+def _an_open_item(project):
+    """An id that resolves, can carry work and is not terminal -- the property, looked up.
+
+    The same lookup the `open_item` fixture makes, as a FUNCTION, because the test that needs it
+    needs it against a COPY of the project rather than against the session-scoped one.
+    """
+    import yaml
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.backlog_types import ACTIVE_DIRS, AUTOMATA
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(project, "project_memory"))
+    for item_type in sorted(set(AUTOMATA) & set(ACTIVE_DIRS)):
+        for stem, path in state.iter_active_items(item_type):
+            with open(path, encoding="utf-8") as handle:
+                item = yaml.safe_load(handle) or {}
+            if str(item.get("status") or "") not in AUTOMATA[item_type].terminals:
+                return str(item.get("id") or stem)
+    raise AssertionError("no open item in %s" % project)
+
+
+def _record_full_run(project, item, line, result):
+    """Record the run this gate allowed, the way DEC-0061 says a delivery run is recorded."""
+    done = subprocess.run(
+        [sys.executable, "-B", "-m", "kernel.cli", "--root", "project_memory", "evidence",
+         "--kind", "test", "--result", result, "--related", item,
+         "--summary", "full run", "--artifact-ref", "staging/x/run.log",
+         "--run-scope", "full", "--run-command", line],
+        cwd=project, env=dict(os.environ, PYTHONPATH=os.path.join(project, "team-kits")),
+        capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr[-600:]
+    return done.stdout.split()[0]
+
+
+@pytest.mark.parametrize("tool", sorted(SHELL_TOOLS))
+def test_gate5_refuses_a_bare_full_run_of_every_declared_surface(project, tool):
+    """A line that runs the whole of a declared surface, with nothing on it that says why.
+
+    DRIVEN OVER EVERY DECLARED SURFACE and over both shells, because a gate that refuses the first
+    root and not the second is the shape the round after this one deletes half of: the roots come
+    out of the declaration, so a surface added there is measured the day it is added.
+    """
+    for root in _declared_roots(project):
+        rc, err = run(project, GATE5,
+                      bash_payload(project, "python -B -m pytest %s -q" % root, tool=tool))
+        assert rc == 2, "a bare full run of %s was allowed as %s" % (root, tool)
+        assert "WHOLE declared test surface" in err and root in err, err[:400]
+        assert "DEC-0050" in err, "the refusal does not carry the rule it enforces: %s" % err[:400]
+
+
+@pytest.mark.parametrize("shape", ["%s/test_hooks.py", "%s/test_hooks.py::test_x", "%s -k a_name",
+                                   "%s -m slow", "%s --collect-only"])
+def test_gate5_lets_a_selection_through(project, shape):
+    """A selection is not judged at all -- the sub-path, the node id and the filter options."""
+    root = _declared_roots(project)[0]
+    rc, err = run(project, GATE5, bash_payload(project, "python -B -m pytest " + shape % root))
+    assert rc == 0, "a selection was refused: %s" % err[:400]
+
+
+def test_gate5_does_not_judge_a_line_that_only_names_the_runner(project):
+    """`grep pytest tools/` runs grep. The runner has to be the VERB or the word `-m` hands it --
+    without that boundary every line mentioning the word would be a full run."""
+    root = _declared_roots(project)[0]
+    for command in ("grep -rn pytest %s" % root, "ls %s" % root, "echo pytest %s" % root):
+        rc, err = run(project, GATE5, bash_payload(project, command))
+        assert rc == 0, "%r was judged as a test run: %s" % (command, err[:300])
+
+
+def test_gate5_reads_the_module_flag_as_the_interpreters_and_the_runners_own(project):
+    """`-m` belongs to two programs at once, and the boundary between them is what decides.
+
+    `python -B -m pytest tools/ -q` is this repo's own documented full-run line: read over the
+    whole stage, its `-m` is a declared narrowing option and the line came out as a selection --
+    measured, rc 0 where the refusal belongs. `pytest tools/ -m slow` is the same two characters
+    doing the other job and must stay a selection.
+    """
+    root = _declared_roots(project)[0]
+    assert run(project, GATE5, bash_payload(project, "python -B -m pytest %s -q" % root))[0] == 2
+    assert run(project, GATE5,
+               bash_payload(project, "python -B -m pytest %s -m slow" % root))[0] == 0
+
+
+@pytest.mark.parametrize("tool", sorted(SHELL_TOOLS))
+def test_gate5_lets_the_delivery_prefix_through_in_both_shells(project, open_item, tool):
+    """The way through the refusal, in the spelling each shell has for it.
+
+    A POSIX shell puts the assignment in front of the program; PowerShell writes it as a command of
+    its own. Both are driven, because the gate is registered on both and a prefix only one of them
+    can write is a remedy the other half of this repo cannot use.
+    """
+    marker = _surface_module().DELIVERY_MARKER
+    line = "python -B -m pytest %s -q" % _declared_roots(project)[0]
+    prefixed = ('$env:%s="%s"; %s' % (marker, open_item, line) if tool == "PowerShell"
+                else "%s=%s %s" % (marker, open_item, line))
+    rc, err = run(project, GATE5, bash_payload(project, prefixed, tool=tool))
+    assert rc == 0, "the delivery run was refused as %s: %s" % (tool, err[:400])
+
+
+def test_gate5_prints_a_delivery_line_the_kernel_accepts_as_a_full_run(project, tmp_path):
+    """The remedy is EXECUTED, not read -- the same standard gate 3's remedy is held to.
+
+    Two halves, and the second is DEC-0061's coupling: the line the refusal prints has to pass this
+    gate once its `<ITEM-ID>` is filled in, AND the kernel has to accept exactly that line as the
+    Evidence the merge reads (`run_scope: full`). A remedy that passes the gate but that no
+    Evidence can name would leave the allowed run unrecordable.
+
+    On a COPY, because the second half WRITES an Evidence into the store, and one recorded against
+    the session-scoped project would close the round for every test after it.
+    """
+    work = str(tmp_path / "gate5-remedy")
+    shutil.copytree(project, work)
+    item = _an_open_item(work)
+    line = "python -B -m pytest %s -q" % _declared_roots(work)[0]
+    _rc, err = run(work, GATE5, bash_payload(work, line))
+    printed = [one.strip() for one in err.splitlines()
+               if one.strip().startswith(_surface_module().DELIVERY_MARKER + "=")]
+    assert printed, "the refusal printed no delivery line: %s" % err[:600]
+    filled = printed[0].replace("<ITEM-ID>", item)
+    assert run(work, GATE5, bash_payload(work, filled))[0] == 0, (
+        "the line this gate prints as the way through is one it refuses: %s" % filled)
+    _record_full_run(work, item, line, "pass")
+
+
+def test_gate5_refuses_a_delivery_prefix_that_leads_no_open_work(project):
+    """A prefix that names nothing is a full run with a word in front of it.
+
+    Both halves of "nothing": an id no store resolves, and one that resolves onto a FINISHED item.
+    The second is the one that rots quietly -- last round's prefix keeps working.
+    """
+    line = "python -B -m pytest %s -q" % _declared_roots(project)[0]
+    marker = _surface_module().DELIVERY_MARKER
+    finished = _a_finished_item(project)
+    for named in ("TSK-9999", "not-an-id", finished):
+        rc, err = run(project, GATE5, bash_payload(project, "%s=%s %s" % (marker, named, line)))
+        assert rc == 2, "%r bought a full run" % named
+        assert "leads no open work" in err, err[:400]
+
+
+def _a_finished_item(project):
+    """An id that RESOLVES and is terminal -- looked up, so no test spells a status out."""
+    import yaml
+    sys.path.insert(0, TEAM_KITS)
+    from kernel.backlog_types import ACTIVE_DIRS, AUTOMATA
+    from kernel.state import ProjectState
+    state = ProjectState(os.path.join(project, "project_memory"))
+    for item_type in sorted(set(AUTOMATA) & set(ACTIVE_DIRS)):
+        for stem, path in state.iter_active_items(item_type):
+            with open(path, encoding="utf-8") as handle:
+                item = yaml.safe_load(handle) or {}
+            if str(item.get("status") or "") in AUTOMATA[item_type].terminals:
+                return str(item.get("id") or stem)
+    pytest.skip("this store holds no terminal item, so the stale-prefix half cannot be measured")
+
+
+@pytest.mark.parametrize("result,expected", [("pass", 2), ("fail", 0)])
+def test_gate5_refuses_the_second_full_run_of_a_round_but_not_after_findings(
+        project, tmp_path, result, expected):
+    """DEC-0063 (4): the full run happens once, and a second one is the alternative, not the default.
+
+    On a COPY, because both cases write Evidence into the store. The two cases are the whole rule:
+    a PASSING record closes the round's full run, a FAILING one is exactly the case DEC-0063 (4)
+    sends back into the suites and must close nothing.
+    """
+    marker = _surface_module().DELIVERY_MARKER
+    work = str(tmp_path / ("gate5-second-" + result))
+    shutil.copytree(project, work)
+    item = _an_open_item(work)
+    line = "python -B -m pytest %s -q" % _declared_roots(work)[0]
+    prefixed = "%s=%s %s" % (marker, item, line)
+    assert run(work, GATE5, bash_payload(work, prefixed))[0] == 0, (
+        "the FIRST delivery run of %s was already refused" % item)
+    recorded = _record_full_run(work, item, line, result)
+    rc, err = run(work, GATE5, bash_payload(work, prefixed))
+    assert rc == expected, (
+        "after a %r full run (%s) the next one came back rc=%d (%s)"
+        % (result, recorded, rc, err[:300]))
+    if expected == 2:
+        assert "DEC-0063" in err and recorded in err, err[:400]
+
+
+def test_gate5_says_nothing_where_a_project_declares_no_test_surface(project):
+    """PR-0004's first invariant, as the gate's own answer: a runner nobody declared is not judged.
+
+    The declaration is REMOVED rather than emptied, because those are two states and only one of
+    them is "this project declares nothing" -- an unreadable file is the third and is refused.
+    """
+    path = _declaration_path(project)
+    with open(path, "rb") as handle:
+        before = handle.read()
+    line = "python -B -m pytest %s -q" % _declared_roots(project)[0]
+    try:
+        os.remove(path)
+        assert run(project, GATE5, bash_payload(project, line))[0] == 0, (
+            "a project that declares no test surface was still judged")
+        # EVERY SHAPE A JSON PARSER TAKES AND THIS GATE CANNOT USE, not only a syntax error.
+        # Measured before the fix (verifier round 1, F5): `[]`, `"tools"`, `7`, `null`, `{}` and
+        # `{"surfaces": "tools"}` were each rc 0 -- ALLOWED -- while the docstring promised that a
+        # gate which cannot read its own rule refuses. `{}` is the one case that stays an ALLOW and
+        # is right: an object with no `surfaces` declares no surface, which is the absent case.
+        for body, expected in ((b"{ not json", 2), (b"[]", 2), (b'["tools"]', 2),
+                               (b'"tools"', 2), (b"7", 2), (b"null", 2),
+                               (b'{"surfaces": "tools"}', 2), (b"{}", 0)):
+            with open(path, "wb") as handle:
+                handle.write(body)
+            rc, err = run(project, GATE5, bash_payload(project, line))
+            assert rc == expected, (
+                "a declaration holding %r came back rc=%d: %s" % (body, rc, err[:300]))
+            if expected == 2:
+                assert "could not be judged" in err, (body, err[:300])
+    finally:
+        with open(path, "wb") as handle:
+            handle.write(before)
+    assert run(project, GATE5, bash_payload(project, line))[0] == 2, (
+        "the declaration was not put back -- every later test in this block would measure a "
+        "project that declares nothing")
+
+
+def test_gate5_charges_nothing_to_a_project_whose_suite_runs_in_seconds(project):
+    """AC-4, DEC-0056's cost clause, measured rather than argued.
+
+    The threshold is data, so this drives it: with the declared duration UNDER
+    `judged_above_seconds` the same line that is refused above is not judged at all. That is what a
+    project whose whole suite runs in seconds pays -- nothing -- and it is the reason the number
+    lives in the declaration and not in the gate.
+    """
+    data = _declaration(project)
+    line = "python -B -m pytest %s -q" % data["surfaces"][0]["root"]
+    cheap = dict(data, surfaces=[dict(one, seconds=1) for one in data["surfaces"]])
+    with _declaring(project, cheap):
+        assert run(project, GATE5, bash_payload(project, line))[0] == 0, (
+            "a surface declared cheaper than the threshold was still refused")
+    assert run(project, GATE5, bash_payload(project, line))[0] == 2, (
+        "the declaration was not put back")
+
+
+def test_every_test_file_of_this_repo_lies_under_a_declared_surface():
+    """The declaration is compared with the TREE, at both ends.
+
+    A declaration is a claim about what this repo's test surface IS, and a claim nothing compares
+    rots in two directions: a suite added outside every declared root is a surface this gate does
+    not judge (and the class FR-0086 exists for comes back), and a declared root with no test file
+    under it is an entry that has outlived its suite. Both are asked here.
+
+    `team-kits/` is out on purpose and it is not an omission: what a kit SHIPS into a project is
+    that project's suite, not one this repo runs -- the kit half of FR-0086 is measured in
+    `tools/test_hooks.py`, against a scaffolded pilot.
+    """
+    with open(os.path.join(ROOT, "tools", "test_surface.json"), encoding="utf-8") as handle:
+        roots = [entry["root"] for entry in json.load(handle)["surfaces"]]
+    found = {root: 0 for root in roots}
+    orphans = []
+    for base, directories, names in os.walk(ROOT):
+        directories[:] = [one for one in directories
+                          if one not in {".git", "__pycache__", "node_modules", "archive"}]
+        for name in names:
+            if not (name.startswith("test_") and name.endswith(".py")):
+                continue
+            relative = os.path.relpath(os.path.join(base, name), ROOT).replace("\\", "/")
+            if relative.startswith("team-kits/"):
+                continue
+            owners = [root for root in roots
+                      if relative == root or relative.startswith(root.rstrip("/") + "/")]
+            if owners:
+                for root in owners:
+                    found[root] += 1
+            else:
+                orphans.append(relative)
+    assert not orphans, (
+        "these suites lie under no declared surface, so gate 5 judges no run of them: %s" % orphans)
+    empty = [root for root, count in found.items() if not count]
+    assert not empty, "these declared surfaces hold no test file at all: %s" % empty
+
+
+# The two-ended tripwire on the ONE enumeration this gate decides on. `options_that_narrow` cannot
+# be a property of the text -- what `--deselect` does to a run is a fact about the runner -- so it
+# is declared, and both ends of that declaration are measured here.
+
+
+def _declared_options(project, runner="pytest"):
+    return list((_declaration(project).get("options_that_narrow") or {}).get(runner) or ())
+
+
+def test_every_declared_narrowing_option_is_one_the_runner_still_has(project):
+    """END ONE, the dead entry: an option the installed runner no longer knows.
+
+    ASKED OF THE RUNNER, not of a table -- `--help` is the runner's own inventory and it costs no
+    collection, which is the whole reason this gate exists. An option that has been renamed or
+    dropped would otherwise sit here forever, quietly turning every line that carries it into an
+    allowed selection.
+    """
+    done = subprocess.run([sys.executable, "-B", "-m", "pytest", "--help"],
+                          cwd=project, capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stderr[-400:]
+    inventory = done.stdout + done.stderr
+    missing = [one for one in _declared_options(project) if one not in inventory]
+    assert not missing, (
+        "these options are declared as ones that narrow a run, and the installed runner does not "
+        "list them any more: %s" % missing)
+
+
+def test_every_declared_narrowing_option_earns_its_place(project):
+    """END TWO, the entry that would not have been needed: one that changes no verdict.
+
+    Driven per option through the REAL gate process: the same line without it must be refused and
+    with it must pass. An entry that leaves both answers equal is decorating a list rather than
+    deciding anything -- and a list nobody can shrink is how the next enumeration defect gets in.
+    """
+    root = _declared_roots(project)[0]
+    bare = "python -B -m pytest %s -q" % root
+    assert run(project, GATE5, bash_payload(project, bare))[0] == 2, (
+        "the line these options are measured against is not refused without them")
+    idle = []
+    for option in _declared_options(project):
+        # a value for the ones that take one; a runner reads `-k=x` and `-k x` alike, and the
+        # `=` form needs no second word, so one shape drives both kinds
+        line = "python -B -m pytest %s -q %s=probe" % (root, option)
+        if run(project, GATE5, bash_payload(project, line))[0] != 0:
+            idle.append(option)
+    assert not idle, (
+        "these options are declared as ones after which the line no longer runs the whole surface, "
+        "and the gate refuses the line anyway: %s" % idle)
+
+
+# The target is a PATH, not a piece of text (verifier round 1, B2).
+#
+# `_covers` compared the raw word, so every spelling that means the declared root without SPELLING
+# it walked past the gate: `tools/.`, `tools/../tools`, `..`, and the ABSOLUTE path -- which is the
+# spelling gate 1 pushes every caller into ("Remedy: spell the path absolutely and without a tilde
+# prefix"). `..` is literally the case `_covers`'s own docstring promises to cover.
+B2_SPELLINGS = [
+    "%s/.",
+    "%s/./",
+    "./%s/.",
+    "%s/../%s",
+    "..",
+]
+# `%s/../../%s` is NOT in that list, and the reason is the point of the round-2 fix: two levels up
+# and down again lands on a `tools` directory OUTSIDE this repo, which is a different place. It is
+# measured as the unplaceable case below instead.
+
+
+@pytest.mark.parametrize("shape", B2_SPELLINGS)
+def test_gate5_reads_a_target_as_a_path_and_not_as_text(project, shape):
+    """Every spelling that HANDS the runner the whole declared surface is one, however written."""
+    root = _declared_roots(project)[0]
+    target = shape % ((root,) * shape.count("%s"))
+    rc, err = run(project, GATE5, bash_payload(project, "python -B -m pytest %s -q" % target))
+    assert rc == 2, "%r reaches the whole of %r and was allowed" % (target, root)
+    assert "WHOLE declared test surface" in err, err[:300]
+
+
+def test_gate5_reads_an_absolute_target_the_way_gate_1_makes_a_caller_spell_it(project):
+    """The absolute path, because that is the spelling the other gates of this repo REQUIRE.
+
+    `gate_lead_write_scope` ends every refusal with "Remedy: spell the path absolutely and without a
+    tilde prefix". A caller who follows it must not thereby step around gate 5 -- so the word is
+    relativised against the payload's own `cwd` before it is compared.
+    """
+    root = _declared_roots(project)[0]
+    absolute = os.path.join(project, *root.split("/")).replace("\\", "/")
+    rc, err = run(project, GATE5, bash_payload(project, 'python -B -m pytest "%s" -q' % absolute))
+    assert rc == 2, "the absolute spelling of %r was allowed: %s" % (root, err[:200])
+    assert "WHOLE declared test surface" in err, err[:300]
+
+
+def test_gate5_says_so_when_it_cannot_place_a_target_at_all(project):
+    """F8: the fail-closed branch gets its OWN sentence, because the ordinary one would be false.
+
+    A word on another drive, a UNC share or a path that resolves outside this repo does not run
+    `tools`; saying it does sends the reader to `judged_above_seconds` for a problem that is not
+    there. The refusal still REFUSES -- what this gate cannot place, it does not wave through.
+    """
+    root = _declared_roots(project)[0]
+    # `%s/../../%s` is NOT here since the round-3 narrowing: two levels up and down lands on a
+    # place this reader CAN find, and a place that is not this repository is a selection, not an
+    # unplaceable word. It is measured as such in
+    # `test_gate5_lets_a_rig_run_a_suite_that_lies_outside_this_repository`'s sibling below.
+    elsewhere = [
+        "D:/other-project/tests/test_x.py",
+        "//server/share/proj/tests/test_x.py",
+        "C:%s" % root,                       # drive-relative: the shell's per-drive directory
+    ]
+    for target in elsewhere:
+        rc, err = run(project, GATE5,
+                      bash_payload(project, 'python -B -m pytest "%s"' % target))
+        assert rc == 2, "%r was waved through" % target
+        assert "could not be placed against this repository" in err, (target, err[:300])
+        assert "WHOLE declared test surface" not in err, (
+            "the refusal claims this line runs %r, which it does not: %s" % (root, err[:300]))
+
+
+def test_gate5_still_lets_a_selection_through_however_it_is_spelled(project):
+    """The other direction, because a path reader that refuses everything is worth as little as one
+    that refuses nothing: a sub-path stays a selection through the same normalisation."""
+    root = _declared_roots(project)[0]
+    for target in ("%s/./test_hooks.py" % root, "./%s/test_hooks.py" % root,
+                   "%s/../%s/test_hooks.py" % (root, root)):
+        rc, err = run(project, GATE5, bash_payload(project, "python -B -m pytest %s -q" % target))
+        assert rc == 0, "%r is a selection and was refused: %s" % (target, err[:200])
+
+
+def test_gate5_reads_a_positional_glob_as_what_the_shell_makes_of_it(project):
+    """A word the SHELL expands narrows nothing, and this gate has the same filesystem it has.
+
+    MEASURED AS A PROCESS BEFORE THIS EXISTED (merge round TSK-0126, verifier round 1, B2):
+    `python -m pytest tools/test_*.py -q` was rc 0 while the root held 40 matching files and the
+    surface is declared at 3465 s -- 42 minutes waved through, because the reader placed the word
+    as ONE path, found it inside the root, and read "inside the root" as "narrows the run".
+
+    BOTH DIRECTIONS, because a reader that refuses every glob is worth as little as one that
+    refuses none: the glob that takes every declared member is a full run, and one that takes a
+    strict subset is a selection. The subject is READ from the declaration, so a members line that
+    moves moves these cases with it.
+    """
+    declaration = _declaration(project)
+    entry = next(one for one in declaration["surfaces"] if one.get("members"))
+    root, members = entry["root"], entry["members"]
+    # A GLOB IS ANSWERED BY THE FILESYSTEM, so the members have to be there: the pilot carries the
+    # declaration but no suite under the root, and an expansion of nothing is neither direction.
+    planted = [os.path.join(str(project), *root.split("/"), name)
+               for name in ("test_alpha.py", "test_beta.py")]
+    for one in planted:
+        os.makedirs(os.path.dirname(one), exist_ok=True)
+        with open(one, "wb") as handle:
+            handle.write(b"def test_x():\n    assert True\n")
+    try:
+        everything = "%s/%s" % (root, members)
+        rc, err = run(project, GATE5,
+                      bash_payload(project, "python -B -m pytest %s -q" % everything))
+        assert rc == 2, "a glob over every declared member ran unrefused: %s" % err[:200]
+        assert "WHOLE declared test surface" in err, err[:300]
+
+        narrow = "%s/test_a*.py" % root
+        rc, err = run(project, GATE5, bash_payload(project, "python -B -m pytest %s -q" % narrow))
+        assert rc == 0, "%r takes a strict subset and was refused: %s" % (narrow, err[:300])
+
+        rc, err = run(project, GATE5, bash_payload(
+            project, "DELIVERY_RUN=%s python -B -m pytest %s -q"
+            % (_an_open_item(project), everything)))
+        assert rc == 0, "the delivery prefix did not open the glob: %s" % err[:300]
+    finally:
+        for one in planted:
+            os.remove(one)
+
+
+def test_gate5_reads_the_brace_expansion_a_shell_would_perform(project):
+    """The SECOND expansion, and the three answers it has.
+
+    MEASURED WITH THE REAL SHELL (merge verify round 2, R2-B4, a `python` shim on PATH that logged
+    the runner's argv): `pytest <root>/{test_*,conftest}.py -q` hands the runner 41 `.py` paths --
+    the whole declared surface plus one -- and the gate was rc 0, because `glob.has_magic` knows
+    `*`, `?` and `[` and not `{`.
+
+    Three cases, all against members this test plants, so the subject is the reading and not the
+    repository's own file list: a brace whose expansion COVERS the members, one that takes a strict
+    subset, and one this reader cannot expand at all (a range), which is not a selection.
+    """
+    declaration = _declaration(project)
+    entry = next(one for one in declaration["surfaces"] if one.get("members"))
+    root = entry["root"]
+    planted = [os.path.join(str(project), *root.split("/"), name)
+               for name in ("test_alpha.py", "test_beta.py")]
+    for one in planted:
+        os.makedirs(os.path.dirname(one), exist_ok=True)
+        with open(one, "wb") as handle:
+            handle.write(b"def test_x():\n    assert True\n")
+    try:
+        covering = "%s/{test_*,conftest}.py" % root
+        rc, err = run(project, GATE5, bash_payload(project, "python -B -m pytest %s -q" % covering))
+        assert rc == 2, "a brace whose expansion covers every member ran unrefused: %s" % err[:200]
+        assert "WHOLE declared test surface" in err, err[:300]
+
+        narrow = "%s/test_{alpha,gamma}.py" % root
+        rc, err = run(project, GATE5, bash_payload(project, "python -B -m pytest %s -q" % narrow))
+        assert rc == 0, "%r takes a strict subset and was refused: %s" % (narrow, err[:300])
+
+        unreadable = "%s/test_{1..9}.py" % root
+        rc, err = run(project, GATE5,
+                      bash_payload(project, "python -B -m pytest %s -q" % unreadable))
+        assert rc == 2, "a word this reader cannot expand was waved through: %s" % err[:200]
+        assert "cannot compute that expansion" in err, err[:300]
+    finally:
+        for one in planted:
+            os.remove(one)
+
+
+def test_gate5_says_so_when_a_surface_declares_no_members_for_a_glob(project):
+    """The fail-closed direction, and its own sentence.
+
+    Without `members` this reader cannot tell `<root>/test_x*.py` from the whole surface -- so it
+    refuses, and it says THAT rather than claiming the line runs everything, which would be a claim
+    it has not made. The declaration is put back by `_declaring` byte for byte.
+    """
+    declaration = _declaration(project)
+    entry = next(one for one in declaration["surfaces"] if one.get("members"))
+    root = entry["root"]
+    stripped = json.loads(json.dumps(declaration))
+    for one in stripped["surfaces"]:
+        one.pop("members", None)
+    with _declaring(project, stripped):
+        rc, err = run(project, GATE5, bash_payload(
+            project, "python -B -m pytest %s/test_h*.py -q" % root))
+    assert rc == 2, "a glob under a surface with no members was waved through: %s" % err[:200]
+    assert "says nothing about which files" in err, err[:300]
+    assert "WHOLE declared test surface" not in err, (
+        "the fail-closed branch borrowed the sentence of the other one: %s" % err[:300])
+
+
+def test_the_declared_members_are_the_files_the_runner_really_collects():
+    """The tripwire on `members`, and it asks the RUNNER rather than this gate or this test.
+
+    `members` is a fact about what pytest collects out of a directory, and a fact about a runner
+    that only this repo's prose knows is one that rots: a members glob grown too narrow lets the
+    whole surface through as a "selection" again, one grown too wide refuses a real selection. So
+    the comparison is with the runner's own collection -- `--collect-only`, whose file parts are
+    the files it would run -- and both directions are asserted.
+
+    Cheap enough to keep: measured 2026-09-05, `pytest tools/ --collect-only -q` answers in 8.7 s
+    for 4697 tests.
+    """
+    with open(os.path.join(ROOT, "tools", "test_surface.json"), encoding="utf-8") as handle:
+        surfaces = json.load(handle)["surfaces"]
+    judged = [entry for entry in surfaces if entry.get("members")]
+    assert judged, "no surface declares `members`, so this tripwire measures nothing"
+    for entry in judged:
+        root = os.path.join(ROOT, *str(entry["root"]).split("/"))
+        assert os.path.isdir(root), "%s declares members and its root is not a directory" % entry
+        collected = subprocess.run(
+            [sys.executable, "-B", "-m", "pytest", entry["root"], "--collect-only", "-q"],
+            cwd=ROOT, capture_output=True, text=True, timeout=900)
+        assert collected.returncode == 0, collected.stdout[-2000:] + collected.stderr[-2000:]
+        runs = {os.path.normcase(os.path.abspath(os.path.join(ROOT, line.split("::")[0])))
+                for line in collected.stdout.splitlines() if "::" in line}
+        assert runs, "the runner collected nothing under %s" % entry["root"]
+        declared = {os.path.normcase(os.path.abspath(one))
+                    for one in globmodule.glob(
+                        os.path.join(root, *str(entry["members"]).split("/")))}
+        missing = sorted(os.path.relpath(one, ROOT) for one in runs - declared)
+        extra = sorted(os.path.relpath(one, ROOT) for one in declared - runs)
+        assert not missing, (
+            "`members` of surface %r misses %d file(s) the runner really runs, so a glob over the "
+            "declared members reads as a selection while it runs them: %s"
+            % (entry["root"], len(missing), missing[:5]))
+        assert not extra, (
+            "`members` of surface %r names %d file(s) the runner does not run, so a real full run "
+            "can fail to cover them and reads as a selection: %s"
+            % (entry["root"], len(extra), extra[:5]))
+
+
+# The tripwire that measures the PROPERTY, not the list (verifier round 1, B1).
+#
+# The first cut had two ends and neither asked what an option DOES: one grepped `pytest --help`,
+# the other asked the gate about the list the gate itself decides from -- a tautology, and the
+# verifier's counter-mutation (declaring `-v`, `--tb`, `--durations`) left it green. Seven declared
+# entries narrowed nothing, and `python -B -m pytest tools/ --ff` was rc 0 against a surface
+# declared at 3465 s: exactly the error class this gate exists for.
+
+PROBE_SUITE = (
+    "import os\n"
+    "import pytest\n"
+    "\n"
+    "def _mark(name):\n"
+    "    with open(os.environ['PROBE_LOG'], 'a', encoding='utf-8') as handle:\n"
+    "        handle.write(name + chr(10))\n"
+    "\n"
+    "def test_alpha():\n"
+    "    _mark('alpha')\n"
+    "\n"
+    "@pytest.mark.slow\n"
+    "def test_beta():\n"
+    "    _mark('beta')\n"
+    "\n"
+    "def test_gamma():\n"
+    "    _mark('gamma')\n")
+
+
+def _probe_project(base):
+    """A three-test suite whose tests RECORD that they ran, outside this repo.
+
+    The count is read off a file the tests append to, not off pytest's summary prose: a summary
+    line is a rendering that changes with the runner's version, and what this measures is whether
+    the tests were EXECUTED.
+    """
+    os.makedirs(os.path.join(base, "tests"), exist_ok=True)
+    with open(os.path.join(base, "tests", "test_probe.py"), "w", encoding="utf-8") as handle:
+        handle.write(PROBE_SUITE)
+    with open(os.path.join(base, "pytest.ini"), "w", encoding="utf-8") as handle:
+        handle.write("[pytest]\nmarkers =\n    slow: a marker the probe uses\n")
+    return base
+
+
+def _executed(base, option=None):
+    """How many of the probe's tests actually ran with `option` on the line."""
+    log = os.path.join(base, "probe-log.txt")
+    if os.path.exists(log):
+        os.remove(log)
+    cache = os.path.join(base, ".pytest_cache")
+    if os.path.isdir(cache):
+        shutil.rmtree(cache, ignore_errors=True)
+    subprocess.run([sys.executable, "-B", "-m", "pytest", "tests"] + ([option] if option else []),
+                   cwd=base, capture_output=True, text=True, timeout=300,
+                   env=dict(os.environ, PROBE_LOG=log))
+    if not os.path.exists(log):
+        return 0
+    with open(log, encoding="utf-8") as handle:
+        return len([one for one in handle.read().splitlines() if one.strip()])
+
+
+def test_every_declared_narrowing_option_really_makes_the_runner_run_fewer_tests(
+        project, outside_the_home_directory):
+    """THE property, asked of the RUNNER: with this option, fewer tests are executed.
+
+    This is the end the first cut did not have. `--ff`/`--nf` reorder and narrow nothing;
+    `--lf`/`--sw` narrow only when a cache of failures exists -- measured, three of three tests ran
+    under each of them, and the gate let `pytest tools/ --ff` through against a surface declared at
+    3465 s.
+
+    An entry with no probe value is red too, and that is what keeps the two tables complete in both
+    directions: a new option cannot be declared without saying what it would narrow ON.
+    """
+    declaration = _declaration(project)
+    declared = declaration["options_that_narrow"]["pytest"]
+    probes = declaration.get("probe_values", {}).get("pytest", {})
+    base = _probe_project(os.path.join(outside_the_home_directory, "narrowing-probe"))
+    bare = _executed(base)
+    assert bare > 1, "the probe suite ran %d tests, so nothing here could narrow" % bare
+    unprobed = [one for one in declared if one not in probes]
+    assert not unprobed, (
+        "these options are declared as narrowing and carry no probe value, so nothing can measure "
+        "what they narrow: %s" % unprobed)
+    idle = []
+    for option in declared:
+        ran = _executed(base, option + probes[option])
+        if ran >= bare:
+            idle.append("%s%s ran %d of %d" % (option, probes[option], ran, bare))
+    assert not idle, (
+        "these options are declared as ones after which the line no longer runs the whole surface, "
+        "and the runner executed just as many tests with them as without: %s" % idle)
+
+
+@pytest.mark.parametrize("empty", ['-k ""', "-k=", '-m ""', "-m="])
+def test_gate5_reads_an_empty_selector_value_as_no_selection(project, empty):
+    """`-k ""` selects nothing away -- three of three fixture tests still ran (measured).
+
+    So the line still runs the whole declared surface and is refused. Read on the VALUE and not on
+    the option name, which is what the first cut did.
+    """
+    root = _declared_roots(project)[0]
+    rc, err = run(project, GATE5,
+                  bash_payload(project, "python -B -m pytest %s -q %s" % (root, empty)))
+    assert rc == 2, "%r bought a full run" % empty
+    assert "WHOLE declared test surface" in err, err[:300]
+
+
+@pytest.mark.parametrize("ordering", ["--ff", "--nf", "--lf", "--sw", "--failed-first",
+                                      "--new-first", "--stepwise", "--last-failed"])
+def test_gate5_refuses_a_full_run_carrying_only_an_ordering_or_cache_option(project, ordering):
+    """The measured error class: an ordinary flag somebody types, and the whole suite runs.
+
+    These are not bypass spellings. `pytest tools/ --ff` is what a reader types who wants the last
+    failures first, and until this round it was rc 0 against a surface declared at 3465 s.
+    """
+    root = _declared_roots(project)[0]
+    rc, err = run(project, GATE5,
+                  bash_payload(project, "python -B -m pytest %s %s" % (root, ordering)))
+    assert rc == 2, "%r bought a full run of %s" % (ordering, root)
+    assert "WHOLE declared test surface" in err, err[:300]
+
+
+def _payload_from(project, command, cwd):
+    """A shell payload whose `cwd` is somewhere else than the project root.
+
+    The provider sends the shell's OWN working directory, and in this project that is routinely a
+    worktree or a scratch tree one level above the repo -- so the base a target is attached to and
+    the base the declared surfaces are relative to are two different things.
+    """
+    return {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd,
+            "tool_input": {"command": command}}
+
+
+def test_gate5_measures_the_declared_root_against_the_REPO_and_not_against_the_shells_cwd(project):
+    """B2' of verifier round 2: the declared roots are repo-relative, so the repo root is the base.
+
+    Measured before this: with a payload `cwd` one level ABOVE the repo,
+    `pytest "<abs>/tools"` and `pytest <name>/tools` were both rc 0 against a surface declared at
+    3465 s, while the same two lines from inside the repo were rc 2. A shell one level above the
+    repo is the ordinary case here, and the absolute spelling is the one gate 1's every refusal
+    asks for -- so this was a full run nobody was told about.
+    """
+    outside = os.path.dirname(project)
+    name = os.path.basename(project)
+    root = _declared_roots(project)[0]
+    for command in ('python -B -m pytest "%s"' % os.path.join(project, root).replace("\\", "/"),
+                    "python -B -m pytest %s/%s" % (name, root)):
+        rc, err = run(project, GATE5, _payload_from(project, command, outside))
+        assert rc == 2, "from a shell above the repo, %r was allowed" % command
+        assert "WHOLE declared test surface" in err, err[:300]
+    # ...and from INSIDE the surface, where a bare `.` is the whole of it
+    inside = os.path.join(project, *root.split("/"))
+    if os.path.isdir(inside):
+        rc, _err = run(project, GATE5, _payload_from(project, "python -B -m pytest .", inside))
+        assert rc == 2, "from inside the declared surface, `.` was allowed"
+
+
+def test_gate5_asks_the_filesystem_which_place_a_target_is(project):
+    """B2'' of verifier round 2: "the same place" is what the filesystem says, not what text says.
+
+    This repo answered that question once already, for gate 1: `_harness.under` compares the
+    IDENTITY of the deepest existing ancestor. Gate 5 had built a text normaliser of its own and
+    inherited none of it -- measured against the real runner, `pytest TOOLS` collected the same
+    4627 node ids as `pytest tools` and was rc 0 here. The reader is REUSED now, so a case variant
+    and a junction are the place they are.
+
+    The junction half is skipped where this host cannot make one; the case half is skipped where
+    the filesystem really is case-sensitive, because there `TOOLS` IS another place.
+    """
+    root = _declared_roots(project)[0]
+    target = os.path.join(project, *root.split("/"))
+    if os.path.isdir(target) and os.path.isdir(os.path.join(project, root.upper())):
+        rc, err = run(project, GATE5,
+                      bash_payload(project, "python -B -m pytest %s" % root.upper()))
+        assert rc == 2, "a case variant of the declared root was allowed: %s" % err[:200]
+    link = os.path.join(project, "surface-junction")
+    # BYTES, not text: `mklink` answers in the console codepage, and decoding it as cp1252 raised
+    # inside pytest's own thread hook. Nothing here reads the output -- only the exit code and
+    # whether the link is there.
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", link, target],
+                          capture_output=True) if os.name == "nt" else None
+    if made is None or made.returncode != 0 or not os.path.isdir(link):
+        pytest.skip("this host cannot make a junction, so the identity half cannot be measured")
+    try:
+        rc, err = run(project, GATE5,
+                      bash_payload(project, "python -B -m pytest surface-junction"))
+        assert rc == 2, (
+            "a junction over the declared surface was allowed -- the reader is comparing text "
+            "again: %s" % err[:200])
+    finally:
+        os.rmdir(link)
+
+
+@pytest.mark.parametrize("line", ["%s -k alpha -k \"\"", "%s -k alpha -k=",
+                                  "%s -m slow -m \"\""])
+def test_gate5_lets_the_LAST_occurrence_of_an_option_decide(project, line):
+    """B1' of verifier round 2: argparse keeps the last value, so the last occurrence decides.
+
+    Measured on the three-test probe: `-k alpha -k ""` runs three of three tests -- the second
+    occurrence cancels the first -- while this gate read the FIRST hit and answered rc 0.
+    """
+    root = _declared_roots(project)[0]
+    rc, err = run(project, GATE5,
+                  bash_payload(project, "python -B -m pytest " + line % root))
+    assert rc == 2, "%r bought a full run" % (line % root)
+    assert "WHOLE declared test surface" in err, err[:300]
+
+
+def test_gate5_still_reads_a_narrowing_last_occurrence_as_a_selection(project):
+    """The other direction of the same rule: `-k "" -k alpha` really does narrow."""
+    root = _declared_roots(project)[0]
+    rc, err = run(project, GATE5,
+                  bash_payload(project, 'python -B -m pytest %s -k "" -k alpha' % root))
+    assert rc == 0, "a line whose last -k selects was refused: %s" % err[:300]
+
+
+def _suite_outside(base, name="pytestprobe"):
+    """A little pytest suite that lies OUTSIDE the project under test.
+
+    This is the shape CLAUDE.md prescribes for every red-first rig -- "restore the defect in a clone
+    OUTSIDE the repo, see red" -- so it is also the shape gate 5 must not refuse: a place this
+    reader can find and that is not this repository is decidably not the declared surface.
+    """
+    suite = os.path.join(base, name, "suite")
+    os.makedirs(suite, exist_ok=True)
+    with open(os.path.join(suite, "test_1.py"), "w", encoding="utf-8") as handle:
+        handle.write("def test_a():\n    pass\n")
+    return suite
+
+
+def test_gate5_lets_a_rig_run_a_suite_that_lies_outside_this_repository(
+        project, outside_the_home_directory):
+    """F10 of verifier round 3: a place the reader CAN find and that is not this repo is a selection.
+
+    Measured before this: `pytest "<scratch>/suite"` and even a single file in it came back rc 2 as
+    UNPLACEABLE -- so once gate 5 is registered, every red-first rig this repo's own CLAUDE.md
+    prescribes was refused through the Bash tool. Three shapes, because a rig runs all three.
+    """
+    suite = _suite_outside(outside_the_home_directory)
+    root = _declared_roots(project)[0]
+    for target in (suite, os.path.join(suite, "test_1.py"),
+                   os.path.join(suite, "test_1.py") + "::test_a",
+                   # the same property from the other side: two levels up and down lands on a
+                   # `tools` that is NOT this repo's, and the reader can find where it is
+                   os.path.join(project, "%s/../../%s" % (root, root))):
+        rc, err = run(project, GATE5,
+                      bash_payload(project, 'python -B -m pytest "%s"'
+                                   % target.replace("\\", "/")))
+        assert rc == 0, "a rig run outside this repo was refused (%r): %s" % (target, err[:300])
+
+
+def test_gate5_still_sees_a_link_from_outside_into_the_declared_surface(
+        project, outside_the_home_directory):
+    """The claim the narrowing rests on, measured rather than argued.
+
+    Narrowing "outside the repo" to a selection would open a door if a word outside could REACH the
+    surface -- a junction is exactly that. It does not: the identity reader answers before the
+    outside-ness question is ever asked, so the link is the surface it points at.
+    """
+    root = _declared_roots(project)[0]
+    target = os.path.join(project, *root.split("/"))
+    link = os.path.join(outside_the_home_directory, "into-the-surface")
+    if os.path.isdir(link):
+        os.rmdir(link)
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", link, target],
+                          capture_output=True) if os.name == "nt" else None
+    if made is None or made.returncode != 0 or not os.path.isdir(link):
+        pytest.skip("this host cannot make a junction, so this claim cannot be measured here")
+    try:
+        rc, err = run(project, GATE5,
+                      bash_payload(project, 'python -B -m pytest "%s"' % link.replace("\\", "/")))
+        assert rc == 2, "a junction from outside INTO the declared surface was allowed"
+        assert "WHOLE declared test surface" in err, err[:300]
+    finally:
+        os.rmdir(link)
+
+
+def test_gate5_keeps_refusing_only_what_it_really_cannot_place(project):
+    """What stays unplaceable after the narrowing -- the H153 list, driven.
+
+    Each of these climbs to a filesystem root without finding anything, or names a position this
+    reader cannot compute at all. They stay rc 2 with the unplaceable sentence, which is the
+    fail-closed direction: what this gate cannot place, it does not wave through.
+    """
+    root = _declared_roots(project)[0]
+    for target in ("C:%s" % root,                       # drive-relative: per-drive shell state
+                   "/c/Offline Repos/AgentAndSkills/%s" % root,   # a shell's path, not Windows'
+                   "//server/share/proj/tests",         # a share nobody serves
+                   "Q:/not-mounted/tests"):             # a drive that is not there
+        rc, err = run(project, GATE5,
+                      bash_payload(project, 'python -B -m pytest "%s"' % target))
+        assert rc == 2, "%r was waved through" % target
+        assert "could not be placed against this repository" in err, (target, err[:300])

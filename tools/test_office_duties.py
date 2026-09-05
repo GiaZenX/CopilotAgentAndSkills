@@ -650,6 +650,29 @@ def test_a_filing_plan_that_names_a_place_outside_the_project_is_not_walked(tmp_
         % ordinary)
 
 
+def _the_filesystem_puts_this_on_the_root(root, prefix):
+    """Does THIS platform's filesystem put `<root>/<prefix>` on `root` itself? None = cannot ask.
+
+    ASKED OF THE FILESYSTEM, never of `os.path.abspath`, and that is the whole point of the detour:
+    `abspath` is the primitive `_duties._same_place` answers with, so an expectation derived from it
+    would agree with the code under test by construction and no mutation of the guard could go red.
+    A directory is really made and `os.path.samefile` decides -- the operating system's own answer
+    to "are these two names one place".
+
+    Measured 2026-09-04 with `....`: on Windows the directory is the parent (trailing dots are
+    dropped before the call ever reaches the filesystem, `samefile` True, the parent stays empty),
+    on Linux it is a real child named `....` (`samefile` False, the parent lists it).
+    """
+    probe = os.path.join(root, "place-probe")
+    os.makedirs(probe, exist_ok=True)
+    target = os.path.join(probe, *prefix.split("/")) if prefix else probe
+    try:
+        os.makedirs(target, exist_ok=True)
+        return os.path.samefile(target, probe)
+    except OSError:
+        return None
+
+
 def test_a_filing_plan_that_resolves_to_the_project_ROOT_is_not_walked(tmp_path):
     """The other half of containment, and the half a string comparison got wrong.
 
@@ -662,13 +685,39 @@ def test_a_filing_plan_that_resolves_to_the_project_ROOT_is_not_walked(tmp_path)
     MEASURED: `....//<year>/` resolved to the root WITH A TRAILING SEPARATOR, and the guard compared
     raw strings, so `candidate == base` was False and the walk went ahead. Both ends here -- the
     resolver refuses it, and the feed over a project that really has such a folder stays quiet.
+
+    THAT PAIR IS A WINDOWS STATEMENT, and saying so is the point rather than a caveat: the guard's
+    ROOT branch is only REACHABLE where a spelling survives `_literal_prefix` and still lands on the
+    root, and on POSIX there is none -- `./<year>/` and `<year>/` come back with an empty prefix and
+    `_project_directory` returns before the guard, while `....` names a real child there. So on
+    POSIX the first end is vacuous and the second is empty too (no `<root>/....` is ever created).
+    Removing `candidate == base` from `_duties._project_directory` reddens this node on Windows and
+    leaves it green on Linux -- measured in the first verification round of TSK-0125.
+
+    WHICH SPELLING LANDS ON THE ROOT IS THE PLATFORM'S ANSWER, NOT THIS TABLE'S, and asserting the
+    table's was a red on ubuntu-latest that no local run reproduced (BUG-0069, run 33717432166):
+    `....` is a root spelling only where trailing dots are dropped from a path component, which is
+    Windows and not POSIX -- there it names a real child, and refusing it as "the root" would be the
+    guard over-reaching. So each spelling is asked of the filesystem first, and BOTH answers are
+    assertions: a spelling that lands on the root must be refused, one that does not must resolve.
     """
     duties = duties_module()
     root = str(tmp_path)
-    for template in ("....//<year>/", "./<year>/", "<year>/"):
-        assert duties._project_directory(root, template) is None, (
-            "%r was placed at the project root, whose every four-digit folder then reads as an "
-            "archive year" % template)
+    # each spelling with the literal prefix `_literal_prefix` takes out of it -- written here rather
+    # than read from the module, so the platform question stays independent of the code under test
+    for template, prefix in (("....//<year>/", "...."), ("./<year>/", "."), ("<year>/", "")):
+        placed = duties._project_directory(root, template)
+        on_the_root = _the_filesystem_puts_this_on_the_root(root, prefix)
+        if on_the_root is None:
+            continue          # this platform will not make the directory -- nothing to hold it to
+        if on_the_root:
+            assert placed is None, (
+                "%r was placed at the project root, whose every four-digit folder then reads as an "
+                "archive year" % template)
+        else:
+            assert placed is not None, (
+                "%r names a real directory on this platform, not the project root, so refusing it "
+                "as the root takes a legitimate filing rule away" % template)
     project(tmp_path, plan="""
 rules:
   - id: FP-ROOT

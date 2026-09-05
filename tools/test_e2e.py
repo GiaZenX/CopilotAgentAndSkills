@@ -347,6 +347,7 @@ def _leased_task(repo):
         "contract": "200 + JSON-Liste für den eigenen Account, 403 für fremde",
         "affected_components": ["api"],
     })
+    state.transition(sr["id"], "ACCEPTED")   # the architect step the lease owes (FR-0085)
     task = dispatch.create_task(state, {
         "product_requirement": pr["id"], "derives_from": sr["id"], "type": "implementation",
         "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"],

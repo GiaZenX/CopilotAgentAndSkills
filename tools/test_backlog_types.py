@@ -744,3 +744,131 @@ def test_every_declared_date_field_is_a_field_its_type_really_has():
         for field in fields:
             assert field in contract, (item_type, field)
     assert date.fromisoformat("2026-10-01")
+
+
+# -- the inbox and the hole (BUG-0091/DEC-0066, FR-0087/DEC-0073) ---------------
+
+def test_the_inbox_types_are_the_ones_whose_triage_names_a_result():
+    """`TRIAGE_RESULT_LINK` is a contract, so both of its ends are held to the automata.
+
+    A type is an INBOX type when its lifecycle can end by naming the item it BECAME. What makes it
+    a contract and not a derivation is that no shape of an automaton tells a triage outcome from
+    any other terminal -- it is a fact about what the outcome means. So the tripwire holds it to
+    what CAN go stale: every terminal named here is one its type really has, and the field named
+    here is one the type may carry.
+    """
+    import kernel.backlog_types as bt
+
+    assert bt.TRIAGE_RESULT_LINK, "no type is the inbox any more, so nothing is refused under one"
+    contract = bt._contract_fields()
+    for item_type, (terminals, field) in sorted(bt.TRIAGE_RESULT_LINK.items()):
+        automaton = bt.AUTOMATA[item_type]
+        assert terminals <= automaton.terminals, (item_type, sorted(terminals))
+        assert terminals, "%s is in the map and names no outcome" % item_type
+        assert bt.is_inbox_type(item_type)
+        # the field is a duty rather than a capture field, so it is enough that nothing else
+        # already claims the name for this type
+        assert field not in contract.get(item_type, ()), (item_type, field)
+    for item_type in bt.AUTOMATA:
+        assert bt.is_inbox_type(item_type) == (item_type in bt.TRIAGE_RESULT_LINK), item_type
+
+
+def test_every_status_dependent_duty_names_a_status_its_type_really_has():
+    """`STATUS_DEPENDENT_FIELDS` is the map the validator's duty loop reads -- both ends measured.
+
+    A duty keyed on a status the automaton does not have is a rule that can never fire, which is
+    the shape a renamed status leaves behind. A duty naming a field the type may not carry is the
+    other end: it would be a demand no body could satisfy.
+    """
+    import kernel.backlog_types as bt
+
+    assert bt.STATUS_DEPENDENT_FIELDS
+    contract = bt._contract_fields()
+    for (item_type, status), field in sorted(bt.STATUS_DEPENDENT_FIELDS.items()):
+        assert item_type in bt.AUTOMATA, item_type
+        assert status in bt.AUTOMATA[item_type].states, (item_type, status)
+        declared = set(contract.get(item_type, ()))
+        elsewhere = set().union(*contract.values()) - declared
+        assert field in declared or field not in elsewhere, (
+            "%s owes %r in %s, and that field belongs to another type's contract"
+            % (item_type, field, status))
+
+
+def test_the_hole_contract_is_a_subset_of_the_contract_its_type_declares():
+    """A hole owes LESS than its type, and never something its type does not know.
+
+    `HOLE_REQUIRED_FIELDS` is what `required_fields_of` holds a hole to instead of the full `BUG`
+    contract, because a hole is a defect nobody is closing -- `expected`, `repro` and
+    `acceptance_criteria` would be a form filled in for a fix that is not planned. What must hold
+    is that every field it DOES demand is one a `BUG` may carry, or the demand could not be met.
+    """
+    import kernel.backlog_types as bt
+
+    declared = set(bt._contract_fields()["BUG"])
+    assert set(bt.HOLE_REQUIRED_FIELDS) <= declared, (
+        sorted(set(bt.HOLE_REQUIRED_FIELDS) - declared))
+    assert set(bt.HOLE_REQUIRED_FIELDS) < set(bt.DECLARED_REQUIRED_FIELDS["BUG"]), (
+        "the hole contract is not narrower than its type's, so it buys nothing")
+    for field in (bt.HOLE_NUMBER_FIELD, bt.HOLE_LIMIT_FIELD, bt.HOLE_TEST_FIELD):
+        assert field in bt.OPTIONAL_FIELDS["BUG"], field
+        assert field not in bt.REQUIRED_FIELDS["BUG"], (
+            "%s is required of every BUG, which turns 91 stored records into validator errors"
+            % field)
+
+    # ...and the switch really switches: a BUG carrying a hole number is held to the hole contract
+    assert bt.required_fields_of("BUG", {bt.HOLE_NUMBER_FIELD: "H1"}) == bt.HOLE_REQUIRED_FIELDS
+    assert bt.required_fields_of("BUG", {}) == bt.DECLARED_REQUIRED_FIELDS["BUG"]
+    assert bt.required_fields_of("PR", {bt.HOLE_NUMBER_FIELD: "H1"}) == \
+        bt.DECLARED_REQUIRED_FIELDS["PR"]
+
+
+def test_the_hole_exception_ending_is_reachable_only_from_a_judged_hole():
+    """The ending FR-0087 asked for, held to the automaton rather than to this sentence.
+
+    A user accepts an exception for a gap somebody has LOOKED at -- never for one nobody has read
+    (`OPEN`) and never for one already fixed. And it is a TERMINAL: nothing walks out of it, so an
+    acceptance cannot be edited into something the user never said; a falling exception (DEC-0069
+    (3)) is a new item with its own measurement.
+    """
+    import kernel.backlog_types as bt
+
+    automaton = bt.AUTOMATA["BUG"]
+    status = bt.HOLE_EXCEPTION_STATUS
+    assert status in automaton.terminals
+    sources = {src for src, dst in automaton.allowed if dst == status}
+    assert sources == {"TRIAGED"}, sources
+    assert not [edge for edge in automaton.allowed if edge[0] == status]
+
+
+def test_the_hole_contract_is_the_reading_side_and_capture_still_asks_the_full_one(tmp_path):
+    """Where the narrower hole contract applies -- measured on both surfaces, not assumed.
+
+    `required_fields_of` is what `report.validate_state` holds a STORED item to, and
+    `state.capture_migrated_hole` writes past the field contract like every migration door. But
+    `state.capture` asks `REQUIRED_FIELDS` through `capture_preflight`, so `capture --hole` still
+    owes the full `BUG` contract. The comment at `HOLE_REQUIRED_FIELDS` described one half as the
+    whole until the round-1 verification measured the other.
+    """
+    import kernel.backlog_types as bt
+    from kernel.state import ProjectState, StateError
+
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    state.capture("PR", {"title": "goal", "class": "normal", "problem": "p", "goal": "g",
+                         "acceptance_criteria": [{"id": "AC-1", "text": "t"}], "invariants": [],
+                         "out_of_scope": [], "priority": "high", "user_story": "As the lead"})
+    thin = {"title": "a gap", "related_pr": "PR-0001", "observed": "measured", "severity": "low"}
+
+    with pytest.raises(StateError) as refusal:
+        state.capture("BUG", dict(thin), hole=True)
+    for field in ("expected", "repro", "acceptance_criteria"):
+        assert field in str(refusal.value), (field, str(refusal.value))
+
+    # ...while the migration door writes the same body, and the validator judges it by the narrower
+    # contract rather than reporting three missing fields
+    stored = state.capture_migrated_hole(dict(thin, **{bt.HOLE_NUMBER_FIELD: "H1"}), "TRIAGED")
+    from kernel import report
+    assert not [f for f in report.validate_state(state)
+                if f["item"] == stored["id"] and "missing" in f["message"]], (
+        "the validator asked a stored hole for the fields the hole contract does not demand")

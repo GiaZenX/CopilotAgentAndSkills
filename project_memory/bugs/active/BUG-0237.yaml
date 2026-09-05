@@ -1,0 +1,45 @@
+id: BUG-0237
+title: Die Zielklasse ist Freitext, also haengt die SR-Pflicht an einer Ausnahmeliste
+  (neu, TSK-0122)
+related_pr: PR-0003
+observed: '**Mechanismus.** FR-0085 wollte die SR-Pflicht an der `class` eines Wurzelziels
+  aufhaengen
+
+  („small: kein SR; normal/large: mindestens ein ACCEPTED SR"). Gemessen, bevor sie
+  gebaut wurde:
+
+  `class` hat in diesem Kernel keine Vokabel — kein Schema, kein Validator, keine
+  Erfassung
+
+  schraenkt den Wert ein.'
+severity: medium
+hole_number: H155
+source: docs/holes/H155.md
+limits: 'das Feld `class` eines Wurzelziels hat in diesem Kernel KEINE Vokabel: kein
+  Schema, kein Validator und keine Erfassung schraenkt den Wert ein, und die ausgelieferte
+  Suite allein erfasst `feature`, `normal`, `research`, `exploratory` und `technical_enabler`.
+  Die SR-Pflicht haengt deshalb an einer AUSNAHMEliste (`dispatch.SR_EXEMPT_CLASSES`)
+  statt an einer Pflichtliste, damit ein unbekannter Wert gefragt wird statt uebersprungen.
+  Was das kostet: ein Tippfehler in einer Klassenbezeichnung verlangt eine Architektenrunde,
+  die niemand schuldete -- Reibung, kein Loch, und die Abhilfe ist ein `capture SR`
+  plus `transition ACCEPTED`. Was NICHT begrenzt ist: dass `class` ueberhaupt Freitext
+  bleibt; eine geschlossene Vokabel waere eine Vertragsaenderung mit Migration fuer
+  jedes gespeicherte Ziel. Rot ohne den Fix: `tools/test_approvals_dispatch.py::test_a_goal_of_an_unknown_class_is_asked_for_the_architect_step`.
+  ZWEITE Restklasse, gemessen (Pruefung Runde 2/3): die Befreiung von der Pflicht
+  fragt den TYP des Ursprungs, nicht den WERT. Ein `BUG` mit `acceptance_criteria:
+  []` befreit — und weil das Universum, gegen das `validate_dispatch` aufloest, WURZEL,
+  Ursprung und genehmigte Amendments umfasst (`_known_acceptance_ids_locked`), loest
+  eine Referenz auf, die nur an der WURZEL existiert. Am ausgelieferten Kit-Haken
+  als Prozess gemessen — die LEASE wird in allen drei Faellen erteilt, verweigert
+  wird am SPAWN: ohne Referenz → rc 2, mit einer nirgends existierenden Referenz →
+  rc 2, mit einer Referenz DER WURZEL → **rc 0**. Der Auftrag wird also gegen die
+  Kriterien genau des Ziels gemessen, dessen Architektenschritt fehlt. Begrenzt durch:
+  die beiden rc-2-Faelle, also trifft es nur die eine Schreibweise. Nicht geschlossen,
+  weil eine Wertpruefung an dieser Stelle ein zweiter Leser derselben Frage waere'
+regression_tests:
+- tools/test_approvals_dispatch.py::test_a_goal_of_an_unknown_class_is_asked_for_the_architect_step
+- tools/test_approvals_dispatch.py::test_an_empty_origin_excuses_the_step_while_the_root_criteria_measure_it
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:28:06'

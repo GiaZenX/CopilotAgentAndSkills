@@ -8,5 +8,18 @@
 # (The kit content hash normalizes CRLF itself -- kernel.hashing.kit_hash -- so it is unaffected
 # either way; the size check is the one that reads raw on-disk bytes.)
 * text=auto eol=lf
-# The one binary kind in the tree; `binary` (later rule wins) keeps git from touching these bytes.
+# WHICH FILES ARE BINARY IS DECIDED BY BYTES, and `text=auto` above is what decides it: git looks
+# for a NUL in the first 8000 bytes of the content. That the heuristic and a plain NUL scan agree
+# over this whole tree, AND that the pin above really reaches every text file, is measured by
+# `tools/test_repo_hygiene.py::test_git_decides_binary_by_bytes_and_pins_every_text_file_to_lf` --
+# which asks `git check-attr` for the EFFECT, because everything else in that section reads the
+# working tree and a working tree stays LF even after this pin is deleted. How many files each side
+# holds today is in the round protocol, not here: a count in a comment is a second one to age.
+# The lines below are the belt beside that brace, for the one direction that is expensive: a binary
+# whose first 8000 bytes happen to hold no NUL would be line-ending converted and corrupted, while
+# an over-pinned text file merely keeps its own bytes. They are an ENUMERATION, so both of their
+# ends are measured rather than trusted -- an entry that names no binary kind in the tree, and a
+# binary kind no entry names -- by
+# `tools/test_repo_hygiene.py::test_every_binary_pin_names_a_kind_the_tree_has_and_every_kind_is_pinned`.
 *.woff2 binary
+*.png binary

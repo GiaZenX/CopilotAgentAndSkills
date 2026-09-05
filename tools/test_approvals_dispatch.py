@@ -2,7 +2,9 @@
 import ast
 import contextlib
 import inspect
+import io
 import os
+import pathlib
 import sys
 import time
 
@@ -11,9 +13,15 @@ import pytest
 TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits")
 sys.path.insert(0, TEAM_KITS)
 
-from conftest import approve, drive_task_to, mint_via_hook  # noqa: E402 -- shared suite helpers
+from conftest import (  # noqa: E402 -- shared suite helpers
+    approve,
+    drive_task_to,
+    mint_via_hook,
+    satisfy_the_architect_step,
+)
 from kernel import approvals, backlog_types, checkpoints, dispatch, hashing, staging  # noqa: E402
 from kernel.approvals import ApprovalError  # noqa: E402
+from kernel.backlog_types import ACTIVE_DIRS  # noqa: E402
 from kernel.dispatch import DispatchError  # noqa: E402
 from kernel.state import ProjectState, names_a_drive  # noqa: E402
 
@@ -44,6 +52,17 @@ TSK_FIELDS = {
 
 @pytest.fixture
 def state(tmp_path):
+    """A bare state directory -- and since DEC-0079 that is a project the architect step IS asked of.
+
+    THE DUTY IS READ OFF THE KIT'S DELIVERY, not off this directory: no scaffold record here names
+    a kit, so the reader cannot say which kit runs, and it fails CLOSED. That is why every test in
+    this file about the duty still meets it. A first cut of DEC-0074 asked the project's own stock
+    and this fixture created `system/active` for it; that line is gone, because it would teach the
+    next reader a rule the kernel does not have (merge verify round 2, R2-B1/R2-B2).
+
+    Both directions of the rule that IS built have their own node:
+    `test_the_architect_step_is_owed_by_the_kits_delivery_not_the_projects_stock`.
+    """
     root = tmp_path / "project_memory"
     root.mkdir()
     return ProjectState(str(root))
@@ -54,11 +73,28 @@ def approve_scope(state, item_id):
 
 
 
+def a_scope_of_its_own(state):
+    """A writable scope no other order in this store owns.
+
+    SINCE C-2 (PR-0005 AC-5) two LIVE leases over one path are refused, and most tests in this file
+    are about something else entirely -- the approval routes, the bind window, the idle findings.
+    Giving each order its own subdirectory keeps them measuring what they are about; the tests that
+    measure the overlap rule itself set their scopes deliberately
+    (`tools/test_parallel_streams.py::test_the_second_lease_is_refused_when_the_scopes_overlap`).
+    """
+    return ["src/order-%d/**" % (len(list(state.iter_active_items("TSK"))) + 1)]
+
+
 def make_ready_task(state):
     pr = state.capture("PR", dict(PR_FIELDS))
     approve_scope(state, pr["id"])
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=pr["id"],
+                                            allowed_scope=a_scope_of_its_own(state)))
     state.transition(task["id"], "READY")
+    # ...and the architect step the goal's class asks for (FR-0085) -- through the kernel's own
+    # predicate, so this helper cannot walk past a duty `create_lease` cannot walk past.
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     return pr, state.read_item(task["id"])
 
 
@@ -589,6 +625,7 @@ def test_task_without_acceptance_refs_is_not_dispatchable(state):
     task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
                                             acceptance_refs=[]))
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     header = dispatch.parse_header(dispatch.dispatch_header(lease))
     with pytest.raises(DispatchError, match="acceptance_refs"):
@@ -612,13 +649,15 @@ def _ui_task(state, **overrides):
     frozen = staging.freeze_design(state, pr["id"], "DSN-0001", pr["id"], "preview.html")
     approve_scope(state, pr["id"])
     fields = dict(TSK_FIELDS, product_requirement=pr["id"], type="ui",
-                  assigned_role="frontend-developer")
+                  assigned_role="frontend-developer",
+                  allowed_scope=a_scope_of_its_own(state))
     fields.update(overrides)
     if fields.get("design_ref") == "DSN-0001":
         # the task references what the freezer actually wrote, not the bare id
         fields["design_ref"] = frozen["root"]["design_refs"][0]
     task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     return dispatch.parse_header(dispatch.dispatch_header(lease))
 
@@ -645,10 +684,12 @@ def test_a_dangling_design_ref_does_not_satisfy_the_design_gate(state):
 
 
 def _dispatchable(state, root_id, **task_overrides):
-    fields = dict(TSK_FIELDS, product_requirement=root_id)
+    fields = dict(TSK_FIELDS, product_requirement=root_id,
+                  allowed_scope=a_scope_of_its_own(state))
     fields.update(task_overrides)
     task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(root_id))
     lease = dispatch.create_lease(state, task["id"])
     return dispatch.parse_header(dispatch.dispatch_header(lease))
 
@@ -775,6 +816,7 @@ def test_acceptance_refs_must_point_at_criteria_that_exist(state):
     task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
                                             acceptance_refs=["AC-1", "AC-does-not-exist"]))
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     header = dispatch.parse_header(dispatch.dispatch_header(lease))
     with pytest.raises(DispatchError, match="exist nowhere"):
@@ -787,6 +829,7 @@ def test_non_ui_task_needs_no_design_ref(state):
     approve_scope(state, pr["id"])
     task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"]))
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     header = dispatch.parse_header(dispatch.dispatch_header(lease))
     assert dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
@@ -801,10 +844,12 @@ def _analysis_task(state, **overrides):
     # origin is ANOTHER root is refused at creation, and in a test that captures a second root
     # first the helper was building exactly that (`report.origin_root_conflict`).
     fields = dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"],
-                  type="analysis", assigned_role="software-architect")
+                  type="analysis", assigned_role="software-architect",
+                  allowed_scope=a_scope_of_its_own(state))
     fields.update(overrides)
     task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     return pr, task
 
 
@@ -905,6 +950,7 @@ def _audit_task(state, **overrides):
     fields.update(overrides)
     task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     return state.read_item(pr["id"]), state.read_item(task["id"])
 
 
@@ -1341,8 +1387,11 @@ def test_the_routine_route_leaves_the_other_three_alone(state):
     mint_via_hook(state, approvals.create_pending_request(state, "scope", delivered["id"]))
     mint_via_hook(state, approvals.create_pending_request(state, "delivery", delivered["id"]))
     second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=delivered["id"],
-                                              derives_from=delivered["id"]))
+                                              derives_from=delivered["id"],
+                                              allowed_scope=a_scope_of_its_own(state)))
     state.transition(second["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(second["id"]),
+                               state.read_item(delivered["id"]))
     assert approvals.read_apr(
         state, state.read_item(delivered["id"])["approval_ref"])["kind"] == "delivery"
     assert dispatch.create_lease(state, second["id"])
@@ -1431,7 +1480,9 @@ def test_a_dispatched_tasks_work_order_is_frozen(state):
                          ("dependencies", []), ("type", "implementation")):
         with pytest.raises(Exception, match="frozen outside"):
             state.update_item(task_id, {field: value})
-    assert state.read_item(task_id)["allowed_scope"] == ["src/"]
+    # the value the FIXTURE gave this order, not a literal: `a_scope_of_its_own` hands out one
+    # per order since C-2, and what is measured here is that the frozen field did not move
+    assert state.read_item(task_id)["allowed_scope"] == _task["allowed_scope"]
 
 
 def test_a_draft_task_can_still_be_re_planned(state):
@@ -1488,7 +1539,8 @@ def test_two_same_role_dispatches_refuse_to_guess(state):
     two concurrent same-role dispatches cannot be told apart. Binding the wrong one would run
     one specialist under another's allowed_scope -- a silent hole in gate layer 3."""
     _pr, first = make_ready_task(state)
-    second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
+    second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
+                                              allowed_scope=a_scope_of_its_own(state)))
     state.transition(second["id"], "READY")
     for task_id in (first["id"], second["id"]):
         dispatch.create_lease(state, task_id)
@@ -1501,7 +1553,8 @@ def test_different_roles_in_parallel_bind_cleanly(state):
     """The restriction is same-role only; parallel batches across roles must keep working."""
     _pr, backend = make_ready_task(state)
     frontend = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
-                                                assigned_role="frontend-developer"))
+                                                assigned_role="frontend-developer",
+                                                allowed_scope=a_scope_of_its_own(state)))
     state.transition(frontend["id"], "READY")
     for task_id in (backend["id"], frontend["id"]):
         dispatch.create_lease(state, task_id)
@@ -1728,9 +1781,16 @@ def test_the_gated_edges_are_exactly_the_ones_the_mint_walks(state):
         accepting a technical contract under a root looks like something a user should sign, but
         no APR kind has a manifest that describes an SR. Gating it needs a KIND first, which is a
         spec decision;
-      * a terminal edge (REJECTED / SUPERSEDED / CANCELLED / DUPLICATE / ABORTED / MERGED /
-        CONVERTED / RETIRED) is never gated -- abandoning work is not approving it. The cost is
-        named where a role reads it: the supervised party can still drop a requirement;
+      * an ABANDONMENT edge is never gated -- dropping work is not approving it. What counts as
+        abandonment is DERIVED and no longer a list of status words: a terminal reachable from
+        SEVERAL statuses at once is the shape of "closed because it was given up" (REJECTED,
+        SUPERSEDED, CANCELLED, DUPLICATE, ABORTED, RETIRED), which is the same distinction
+        `backlog_types.confirming_edge` draws one level up. The list this line used to carry had
+        already been patched once with a bare `target != "ACCEPTED"`, and it was the second
+        outcome terminal (`ACCEPTED_EXCEPTION`, FR-0087) that showed the enumeration for what it
+        was;
+      * an OUTCOME terminal -- one with exactly one incoming edge -- MAY be gated, and which ones
+        are is a decision, so both ends of that set are held below;
       * `DEC`/`INV` have no automaton at all, so the question never reaches the approval check.
     """
     gated = set(_gated_edges())
@@ -1740,11 +1800,18 @@ def test_the_gated_edges_are_exactly_the_ones_the_mint_walks(state):
             assert bool(kinds) == ((item_type, source, target) in gated)
             if item_type == "TSK":
                 assert not kinds, "a TSK edge became approval-bound: %s -> %s" % (source, target)
-            if target in automaton.terminals and target != "ACCEPTED":
+            sources = {src for src, dst in automaton.allowed if dst == target}
+            if target in automaton.terminals and len(sources) > 1:
                 assert not kinds, (
-                    "%s %s -> %s is a terminal edge and is now gated -- abandoning work is not "
-                    "approving it, and an item that cannot be abandoned is the other failure"
-                    % (item_type, source, target))
+                    "%s %s -> %s ends in a terminal several statuses reach, which is what "
+                    "abandonment looks like, and it is now gated -- an item that cannot be "
+                    "abandoned is the other failure" % (item_type, source, target))
+    # BOTH ENDS of the outcome half: an outcome terminal that quietly stopped being gated is as
+    # much a change as one that quietly became gated, and each of these two was a user decision.
+    outcomes = {edge for edge in gated
+                if edge[2] in backlog_types.AUTOMATA[edge[0]].terminals}
+    assert outcomes == {("PR", "DELIVERED", "ACCEPTED"), ("RQ", "DELIVERED", "ACCEPTED"),
+                        ("BUG", "TRIAGED", "ACCEPTED_EXCEPTION")}, sorted(outcomes)
     assert not approvals.required_approval_kinds("SR", "PROPOSED", "ACCEPTED"), (
         "SR acceptance became approval-bound -- if an APR kind now describes an SR, delete this "
         "assertion and say so in the docstring above")
@@ -1919,6 +1986,18 @@ def _possible_statuses(node, constants=None):
     constants = constants or {}
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return {node.value}
+    # A SIXTH SHAPE, and it is the one that produces NO status at all: a string REPEATED. The only
+    # thing such an expression can be is a filler of a length -- `migrate.item_size` builds a body
+    # to measure and throws it away, and it needs a placeholder that can never be shorter than the
+    # real value. Reading it as unbounded made a MEASUREMENT an offender the day `widest_status()`
+    # first returned an approval-bound word (`ACCEPTED_EXCEPTION`, FR-0087); reading it as the
+    # empty set is the honest answer -- no status of any type is `"x" * n`, so this writer can
+    # produce none. The bound is on the SHAPE and not on the callee's name, so it does not excuse
+    # one function.
+    if (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult)
+            and any(isinstance(side, ast.Constant) and isinstance(side.value, str)
+                    for side in (node.left, node.right))):
+        return set()
     if isinstance(node, ast.Name) and node.id in constants:
         return {constants[node.id]}
     if isinstance(node, ast.IfExp):
@@ -3653,7 +3732,8 @@ def _another_dispatch(state, agent_id=None, prompt_id="prompt-2"):
     `agent_id=None` leaves it UNBOUND -- the shape whose child no record can identify, which is a
     different thing from a dispatch nobody has spawned against yet.
     """
-    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
+                                            allowed_scope=a_scope_of_its_own(state)))
     state.transition(task["id"], "READY")
     lease = dispatch.create_lease(state, task["id"])
     header = dispatch.parse_header(dispatch.dispatch_header(lease))
@@ -4043,8 +4123,13 @@ def test_every_approval_kind_is_classified_as_takeable_back_or_not():
     """
     assert approvals.IRREVERSIBLE_KINDS <= set(approvals.APR_KINDS)
     revisable = set(approvals.APR_KINDS) - approvals.IRREVERSIBLE_KINDS
+    # `hole_exception` is revisable, judged 2026-09-04 (FR-0087/DEC-0073): accepting a measured gap
+    # changes nothing outside this project -- the item is a record of a decision, the approval is
+    # revocable like any other, and a fallen exception (DEC-0069 (3)) is a NEW item with its own
+    # measurement. So it is a QUESTION and not an irreversible act, which is DEC-0068 (3)'s own
+    # reading for the kinds that are themselves a question.
     assert revisable == {"analysis", "scope", "delivery", "acceptance", "routine",
-                         approvals.PLAN_KIND}, (
+                         approvals.HOLE_EXCEPTION_KIND, approvals.PLAN_KIND}, (
         "a new approval kind has to be judged: can this project take the act back out of its own "
         "resources? If not it belongs in IRREVERSIBLE_KINDS; if so, add it to this list with the "
         "reason in the round's protocol.")
@@ -4182,3 +4267,446 @@ def test_every_reader_of_the_expiry_rule_asks_this_one(state):
             approvals.mint(state, "r1", "whatever")
         assert approvals.open_requests(state) == []
         os.remove(path)
+
+
+# -- BUG-0091/DEC-0066, FR-0085/DEC-0072, FR-0087/DEC-0073 ---------------------
+
+def test_a_work_order_under_an_inbox_item_is_refused_at_creation(state):
+    """BUG-0091: a wish is not a goal, and a task under one is a DEAD END, not a mislabel.
+
+    MEASURED on the kernel before this refusal existed: `create_task` with an `FR` in both parent
+    fields returned rc 0 and a DRAFT order; `approvals.create_pending_request(state, "scope", FR)`
+    then refused ("this type carries no user approval") because `FR` is in no row of
+    `APPROVAL_TRANSITIONS`; and `create_lease` refused the order with "no user approval authorises
+    dispatching". A task's fields are frozen outside DRAFT, so nothing repairs it afterwards --
+    which is why this is refused at creation, exactly as a cross-root origin is.
+
+    THE REMEDY NAMES THE TRIAGE ROUTE, because a refusal a role cannot act on is half a refusal.
+    """
+    wish = state.capture("FR", {"title": "a wish", "request_text": "please"})
+    pr = state.capture("PR", dict(PR_FIELDS))
+    approve_scope(state, pr["id"])
+
+    for field in ("product_requirement", "derives_from"):
+        fields = dict(TSK_FIELDS, product_requirement=pr["id"], derives_from=pr["id"])
+        fields[field] = wish["id"]
+        with pytest.raises(DispatchError) as refusal:
+            dispatch.create_task(state, fields)
+        message = str(refusal.value)
+        assert field in message and wish["id"] in message, message
+        assert "CONVERTED" in message and "resulting_item" in message, (
+            "the refusal does not name the triage route: %s" % message)
+
+    # ...and a task under the GOAL is untouched
+    assert dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=pr["id"]))["status"] == "DRAFT"
+
+
+def test_the_architect_step_is_owed_by_the_kits_delivery_not_the_projects_stock(tmp_path,
+                                                                                 monkeypatch):
+    """DEC-0074 as DEC-0079 corrected it: the KIT's delivery decides, and a live directory does not.
+
+    MEASURED ON SCAFFOLDED PILOTS (TSK-0126, merge round): an office order under its `PROC` root and
+    a research order under its `RQ` root were refused with "no SR in status ACCEPTED hangs from that
+    goal", and the remedy named `capture SR` and "the architect" -- neither kit's texts carry either
+    word. The first cut asked the PROJECT's stock, and the verifier measured what that costs: the
+    office kit's own CLI accepts `capture SR` (rc 0) and creates `system/active`, and a bare `mkdir`
+    does the same -- from then on the duty was on again in the very kit the decision exempted.
+
+    THREE CASES, one store, no kit name in the assertions: a kit whose template SHIPS the home, one
+    that does not, and -- the case the correction exists for -- the second one with the directory
+    made by hand inside the project. The kit names come out of the store this test builds, so the
+    subject is the property and not today's catalogue.
+    """
+    home = tmp_path / "home"
+    store = home / ".claude" / "team-kits"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    (store / "with-the-step" / "templates" / "project_memory" / ACTIVE_DIRS["SR"]).mkdir(
+        parents=True)
+    (store / "without-the-step" / "templates" / "project_memory" / "product" / "active").mkdir(
+        parents=True)
+
+    def project(kit, name):
+        repo = tmp_path / name
+        (repo / ".claude").mkdir(parents=True)
+        with io.open(repo / ".claude" / "team_kit_roles.txt", "w", encoding="utf-8",
+                     newline="\n") as handle:
+            handle.write("# agents-and-skills:team-kit-roles v1 team=%s count=1\nproject-manager\n"
+                         % kit)
+        root = repo / "project_memory"
+        root.mkdir()
+        state = ProjectState(str(root))
+        pr = state.capture("PR", dict(PR_FIELDS, **{"class": "normal"}))
+        approve_scope(state, pr["id"])
+        task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                                derives_from=pr["id"]))
+        state.transition(task["id"], "READY")
+        return state, state.read_item(task["id"]), state.read_item(pr["id"])
+
+    shipped, task, root = project("with-the-step", "asked")
+    assert dispatch.architect_step_owed(shipped, task, root), (
+        "a kit that ships the home is not asked for the step")
+    with pytest.raises(DispatchError) as refusal:
+        dispatch.create_lease(shipped, task["id"])
+    assert "SR" in str(refusal.value) and "ACCEPTED" in str(refusal.value), refusal.value
+
+    spared, task, root = project("without-the-step", "not-asked")
+    assert not dispatch.architect_step_owed(spared, task, root), (
+        "a kit that ships no home for the step was asked for it anyway")
+    assert dispatch.create_lease(spared, task["id"])["task_id"] == task["id"]
+
+    # THE CORRECTION ITSELF: the directory made by hand inside the project changes nothing.
+    (pathlib.Path(spared.root) / ACTIVE_DIRS["SR"]).mkdir(parents=True)
+    second = dispatch.create_task(spared, dict(TSK_FIELDS, product_requirement=root["id"],
+                                               derives_from=root["id"],
+                                               allowed_scope=["frontend/"],
+                                               expected_outputs=["frontend/x.tsx"]))
+    spared.transition(second["id"], "READY")
+    assert not dispatch.architect_step_owed(spared, spared.read_item(second["id"]), root), (
+        "a directory created inside the project switched the duty back on (R2-B1)")
+    assert dispatch.create_lease(spared, second["id"])["task_id"] == second["id"]
+
+
+def test_a_project_that_names_no_kit_is_asked_for_the_architect_step(tmp_path, monkeypatch):
+    """The fail-closed direction of DEC-0079 (4), and the reason the whole suite still meets the duty.
+
+    A tree with no scaffold record cannot say which kit it runs, and a kit that is not staged on
+    this machine cannot say what it ships. Both are "this reader does not know", and the answer is
+    to ASK -- a question costs a step, a skip loses one.
+    """
+    monkeypatch.setenv("HOME", str(tmp_path / "empty-home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "empty-home"))
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    pr = state.capture("PR", dict(PR_FIELDS, **{"class": "normal"}))
+    approve_scope(state, pr["id"])
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=pr["id"]))
+    state.transition(task["id"], "READY")
+    assert dispatch.architect_step_owed(state, state.read_item(task["id"]),
+                                        state.read_item(pr["id"])), (
+        "a project whose kit this reader cannot name was excused the step")
+
+    # and the second half of the same branch: a record naming a kit nobody staged
+    (tmp_path / ".claude").mkdir()
+    with io.open(tmp_path / ".claude" / "team_kit_roles.txt", "w", encoding="utf-8",
+                 newline="\n") as handle:
+        handle.write("# agents-and-skills:team-kit-roles v1 team=no-such-kit count=1\n"
+                     "project-manager\n")
+    assert dispatch.architect_step_owed(state, state.read_item(task["id"]),
+                                        state.read_item(pr["id"])), (
+        "a kit that is not staged on this machine was read as one that ships no step")
+
+
+def test_a_project_whose_kit_delivery_cannot_be_read_says_so(tmp_path, monkeypatch):
+    """DEC-0079 (4): the fail-closed branch ASKS, and the refusal says WHY it had to.
+
+    MEASURED BEFORE THIS EXISTED (merge verify round 3, R3-B1): all three unreadable cases -- a
+    record naming a kit the store does not hold, no record at all, and a kit store that is not
+    under the running HOME -- printed the ORDINARY refusal, which sends the reader to
+    `capture SR` and to "the architect". In an office or research project those are two words the
+    kit does not have, and ending exactly that dead end is what DEC-0074 and DEC-0079 were decided
+    for. The store path is the RUNNING home's (`presets.staging_root`), so a project on a second
+    machine, another account or a CI runner meets this branch without doing anything unusual.
+
+    BOTH SENTENCES ARE ASSERTED, because a refusal that says nothing wrong is not yet one that says
+    the right thing: the unreadable project gets the reason and no `capture`, and a project whose
+    kit delivery IS readable and owes the step still gets the ordinary remedy.
+    """
+    home = tmp_path / "home"
+    store = home / ".claude" / "team-kits"
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    (store / "with-the-step" / "templates" / "project_memory" / ACTIVE_DIRS["SR"]).mkdir(
+        parents=True)
+
+    def project(name, kit):
+        repo = tmp_path / name
+        (repo / ".claude").mkdir(parents=True)
+        if kit is not None:
+            with io.open(repo / ".claude" / "team_kit_roles.txt", "w", encoding="utf-8",
+                         newline="\n") as handle:
+                handle.write("# agents-and-skills:team-kit-roles v1 team=%s count=1\n"
+                             "project-manager\n" % kit)
+        root = repo / "project_memory"
+        root.mkdir()
+        state = ProjectState(str(root))
+        pr = state.capture("PR", dict(PR_FIELDS, **{"class": "normal"}))
+        approve_scope(state, pr["id"])
+        task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                                derives_from=pr["id"]))
+        state.transition(task["id"], "READY")
+        return state, task
+
+    for name, kit, expected in (("unstaged", "no-such-kit", "is not in the kit store"),
+                                ("recordless", None, "no readable scaffold record")):
+        state, task = project(name, kit)
+        with pytest.raises(DispatchError) as refusal:
+            dispatch.create_lease(state, task["id"])
+        message = str(refusal.value)
+        assert "could not be read" in message and expected in message, message
+        assert "scripts/harness.py capture" not in message, (
+            "the fail-closed refusal hands over the ordinary remedy -- capturing an item whose "
+            "very existence in this kit is what could not be read: %s" % message)
+        assert str(store) in message or ".claude" in message, (
+            "the refusal does not name the store it could not read: %s" % message)
+
+    readable, task = project("readable", "with-the-step")
+    with pytest.raises(DispatchError) as refusal:
+        dispatch.create_lease(readable, task["id"])
+    message = str(refusal.value)
+    assert "could not be read" not in message, message
+    assert "scripts/harness.py capture" in message and "ACCEPTED" in message, (
+        "a project whose kit delivery IS readable lost the ordinary remedy: %s" % message)
+
+
+def test_a_goal_of_an_unknown_class_is_asked_for_the_architect_step(state):
+    """FR-0085/DEC-0072: the EXEMPTION is the closed set, and an unknown class is asked.
+
+    MEASURED before this was written: `class` has no vocabulary anywhere in this kernel -- the
+    shipped suite alone captures roots with `feature`, `normal`, `research`, `exploratory` and
+    `technical_enabler`, and no schema constrains the value. A rule spelled as "class in (normal,
+    large)" would therefore SKIP the duty for every value nobody thought of, which is the failure
+    an unrecognised value always is: it does not fail a check, it skips one.
+
+    So this asks with a class no map knows, and the refusal has to name the architect step.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS, **{"class": "a class nobody declared"}))
+    approve_scope(state, pr["id"])
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=pr["id"]))
+    state.transition(task["id"], "READY")
+
+    with pytest.raises(DispatchError) as refusal:
+        dispatch.create_lease(state, task["id"])
+    message = str(refusal.value)
+    # THE ASK IS THE MEASUREMENT here, not which of the two sentences it wears: this
+    # fixture builds a project with no scaffold record, so since DEC-0079 (4) the refusal is
+    # the fail-closed one. What an exempt class produces is NO refusal at all, and that is
+    # what this node is about; the two sentences are held against each other in
+    # `test_a_project_whose_kit_delivery_cannot_be_read_says_so`.
+    assert "could not be read" in message or ("SR" in message and "ACCEPTED" in message), (
+        message)
+    assert state.read_item(task["id"])["status"] == "READY", "the refused order was moved anyway"
+
+    # ...and the step, taken through the kernel, opens it
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
+    assert dispatch.create_lease(state, task["id"])["task_id"] == task["id"]
+
+
+def test_a_small_goal_is_not_asked_and_neither_is_a_bugfix_order(state):
+    """The other end of the same rule -- three cases DEC-0072 settled, each for its own reason.
+
+    `small` is FR-0085's own word for the size that pays nothing. `technical_enabler` carries no
+    product content at all (the kernel already lets it omit the user story). And an order deriving
+    from a BUG carries its criteria there: FR-0085 says in as many words that it does not want an
+    SR for every bugfix task.
+    """
+    for klass in sorted(dispatch.SR_EXEMPT_CLASSES):
+        exempt = state.capture("PR", dict(PR_FIELDS, title="goal %s" % klass,
+                                          **{"class": klass}))
+        approve_scope(state, exempt["id"])
+        # a scope of its own per case: two live leases over one path are refused now (C-2), and
+        # this test is about the architect step and not about that rule
+        task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=exempt["id"],
+                                                derives_from=exempt["id"],
+                                                allowed_scope=["src/%s/**" % klass]))
+        state.transition(task["id"], "READY")
+        assert dispatch.create_lease(state, task["id"]), klass
+
+    asked = state.capture("PR", dict(PR_FIELDS, title="an asked goal"))
+    approve_scope(state, asked["id"])
+    bug = state.capture("BUG", {"title": "a defect", "related_pr": asked["id"], "observed": "o",
+                                "expected": "e", "repro": "r", "severity": "low",
+                                "acceptance_criteria": [{"id": "AC-1", "text": "t"}]})
+    fix = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=asked["id"],
+                                           derives_from=bug["id"], type="bugfix",
+                                           allowed_scope=["src/the-fix/**"]))
+    state.transition(fix["id"], "READY")
+    assert not dispatch.architect_step_owed(state, state.read_item(fix["id"]),
+                                            state.read_item(asked["id"]))
+    assert dispatch.create_lease(state, fix["id"])["task_id"] == fix["id"]
+
+
+def test_the_hole_exception_edge_needs_a_user_minted_approval(state):
+    """FR-0087/DEC-0073: a status the supervised party can set itself is no acceptance.
+
+    An accepted exception is a USER statement about risk, so the edge into `ACCEPTED_EXCEPTION` is
+    bound to a mint -- a kind of its own, because a kind binds exactly one edge and `scope` already
+    binds BUG's TRIAGED -> APPROVED. One approval given for a fix must not walk an item into an
+    exception instead.
+
+    THE MANIFEST CARRIES WHAT IS BEING ACCEPTED, which is why the acceptance dies when the gap's
+    description or its limit is edited past the kernel: both are in the hash.
+    """
+    goal = state.capture("PR", dict(PR_FIELDS))
+    hole = state.capture("BUG", {
+        "title": "a measured gap", "related_pr": goal["id"], "observed": "the chain runs",
+        "expected": "it should not", "repro": "run it", "severity": "medium",
+        "acceptance_criteria": [{"id": "AC-1", "text": "closed or accepted"}],
+        "limits": "the role says so, no gate"}, hole=True)
+    state.transition(hole["id"], "TRIAGED")
+
+    with pytest.raises(Exception):
+        state.transition(hole["id"], "ACCEPTED_EXCEPTION")
+    assert state.read_item(hole["id"])["status"] == "TRIAGED"
+
+    kinds = approvals.required_approval_kinds("BUG", "TRIAGED", "ACCEPTED_EXCEPTION")
+    assert kinds == frozenset({approvals.HOLE_EXCEPTION_KIND}), kinds
+    manifest = approvals.item_subject_manifest(state.read_item(hole["id"]),
+                                               approvals.HOLE_EXCEPTION_KIND)
+    assert manifest["limits"] == "the role says so, no gate"
+    assert manifest["hole_number"] == hole["hole_number"]
+
+    mint_via_hook(state, approvals.create_pending_request(
+        state, approvals.HOLE_EXCEPTION_KIND, hole["id"]))
+    assert state.read_item(hole["id"])["status"] == "ACCEPTED_EXCEPTION"
+
+
+def test_an_order_deriving_from_a_proposed_requirement_is_still_asked(state):
+    """F1 of the round-1 verification: the exemption was "anything but the root", and that is not
+    what it means.
+
+    MEASURED before this was bound to a property: the same task, the same goal, the same PROPOSED
+    `SR` -- deriving from the goal it was REFUSED, deriving from the requirement it was GRANTED, and
+    `derives_from` at 75a00d1 names an `SR` 29 times against the goal 3 times. The dev-team
+    developer skills prescribe the `SR` spelling by name, so in a kit project the duty would never
+    have fired.
+
+    BOTH ENDS: a PROPOSED requirement excuses nothing, and the ACCEPTED one satisfies the duty
+    without a branch of its own -- it simply IS the accepted architect step the scan looks for.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    approve_scope(state, pr["id"])
+    requirement = state.capture("SR", {
+        "title": "the technical contract", "derives_from": pr["id"],
+        "contract": "what the goal needs", "affected_components": ["src"]})
+    task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=requirement["id"],
+                                            allowed_scope=a_scope_of_its_own(state)))
+    state.transition(task["id"], "READY")
+
+    with pytest.raises(DispatchError, match="architect step"):
+        dispatch.create_lease(state, task["id"])
+    # ...and the same order with the goal AND the requirement named is no way round it either
+    both = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                            derives_from=[pr["id"], requirement["id"]],
+                                            allowed_scope=a_scope_of_its_own(state)))
+    state.transition(both["id"], "READY")
+    with pytest.raises(DispatchError, match="architect step"):
+        dispatch.create_lease(state, both["id"])
+
+    state.transition(requirement["id"], "ACCEPTED")
+    assert dispatch.create_lease(state, task["id"])["task_id"] == task["id"]
+
+
+def test_only_an_origin_that_carries_criteria_excuses_the_architect_step():
+    """The property the exemption is bound to, read off the field contracts rather than a name list.
+
+    `validate_dispatch` resolves `acceptance_refs` against the ORIGIN and looks in
+    `dispatch.CRITERIA_FIELDS`; a type declaring none of those fields cannot carry a work order's
+    criteria, so an order under it is not "measured elsewhere" and the duty stands. BOTH ENDS, so
+    neither a type that gained a criteria field nor one that lost it can pass unnoticed.
+    """
+    from kernel.backlog_types import _contract_fields
+
+    contract = _contract_fields()
+    excusing = {item_type for item_type in contract
+                if dispatch._carries_its_own_criteria(item_type)}
+    assert excusing == {"PR", "RQ", "BUG", "CR", "EXP"}, sorted(excusing)
+    assert dispatch.ARCHITECT_STEP_TYPE not in excusing, (
+        "the type the duty is ABOUT would excuse itself, which is what F1 measured")
+    for item_type in excusing:
+        assert any(field in contract[item_type] for field in dispatch.CRITERIA_FIELDS), item_type
+
+
+def test_the_remedy_for_an_already_triaged_wish_names_what_it_became(state):
+    """A remedy that cannot be executed is half a refusal (the class BUG-0089 records).
+
+    An `FR` that already reached `CONVERTED` has no outgoing edge left, so telling its author to
+    `transition` it is an instruction the automaton refuses. Measured in the round-1 verification:
+    the same text was printed either way. Now the wish's own `resulting_item` answers.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    wish = state.capture("FR", {"title": "a wish", "request_text": "please"})
+    state.transition(wish["id"], "TRIAGED")
+    state.update_item(wish["id"], {"triage_result": "converted", "resulting_item": pr["id"]})
+    state.transition(wish["id"], "CONVERTED")
+
+    with pytest.raises(DispatchError) as refused:
+        dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=wish["id"],
+                                         derives_from=wish["id"]))
+    message = str(refused.value)
+    assert "already been triaged and became %s" % pr["id"] in message, message
+    assert "transition %s TRIAGED" % wish["id"] not in message, (
+        "the remedy still asks for a transition out of a terminal: %s" % message)
+
+    # ...and an untriaged wish still gets the triage route
+    fresh = state.capture("FR", {"title": "another wish", "request_text": "please"})
+    with pytest.raises(DispatchError) as untriaged:
+        dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=fresh["id"],
+                                         derives_from=fresh["id"]))
+    assert "CONVERTED" in str(untriaged.value) and "resulting_item" in str(untriaged.value)
+
+
+def test_an_empty_origin_excuses_the_step_while_the_root_criteria_measure_it(state):
+    """The remainder H155 carries, written as a test so it rots visibly instead of quietly.
+
+    THE CHAIN, and it is the one the round-3 verification measured through the shipped hook rather
+    than the one the comment first claimed. `_carries_its_own_criteria` asks the TYPE, so a `BUG`
+    with an EMPTY criteria list excuses the architect step. What then measures the order is
+    `validate_dispatch`, and the universe it resolves against is `_known_acceptance_ids_locked` --
+    the root, the origin AND the approved amendments together. So a reference that exists only on
+    the ROOT resolves, and the order is dispatched against the criteria of exactly the goal whose
+    architect step is missing.
+
+    THE TWO CASES THAT DO NOT GET THROUGH are asserted here too, because they are what BOUNDS the
+    remainder: no reference at all, and a reference that exists nowhere.
+
+    THIS TEST IS WRITTEN TO GO RED. The day the exemption asks the VALUE instead of the type -- or
+    the resolution is narrowed to the origin -- the first assertion fails, and H155's second class
+    is the paragraph to correct.
+    """
+    pr = state.capture("PR", dict(PR_FIELDS))
+    approve_scope(state, pr["id"])
+    hollow = state.capture("BUG", {
+        "title": "a defect with no criteria of its own", "related_pr": pr["id"], "observed": "o",
+        "expected": "e", "repro": "r", "severity": "low", "acceptance_criteria": []})
+
+    def order(refs, scope):
+        task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
+                                                derives_from=hollow["id"], type="bugfix",
+                                                acceptance_refs=list(refs),
+                                                allowed_scope=[scope]))
+        state.transition(task["id"], "READY")
+        return task
+
+    # the exemption itself: the TYPE excuses, whatever the list holds
+    assert not dispatch.architect_step_owed(
+        state, state.read_item(order(["AC-1"], "src/probe/**")["id"]), state.read_item(pr["id"]))
+
+    # ...and no ACCEPTED SR exists anywhere in this store
+    assert not list(state.iter_active_items("SR"))
+
+    # WHERE THE CRITERIA ARE RESOLVED IS THE SPAWN, not the lease: `create_lease` grants in all
+    # three cases and `validate_dispatch` is what refuses two of them. That split is part of the
+    # measured chain -- the verifier read it off the shipped hook, which goes through
+    # `validate_dispatch` -- and stating it as "the lease refuses" would be a claim the code does
+    # not build.
+    def spawn(task):
+        lease = dispatch.create_lease(state, task["id"])
+        header = dispatch.parse_header(dispatch.dispatch_header(lease))
+        return dispatch.validate_dispatch(state, header, TSK_FIELDS["assigned_role"])
+
+    # case 1: no reference at all -- the lease is granted, the spawn is refused
+    with pytest.raises(DispatchError, match="carries no acceptance_refs"):
+        spawn(order([], "src/none/**"))
+    # case 2: a reference that exists nowhere -- same
+    with pytest.raises(DispatchError, match="exist nowhere"):
+        spawn(order(["AC-9"], "src/ghost/**"))
+    # case 3: a reference that exists ON THE ROOT -- granted through both. This is the remainder.
+    assert spawn(order(["AC-1"], "src/remainder/**")), (
+        "H155's second class no longer holds -- correct the entry, this is not a defect in the "
+        "test")

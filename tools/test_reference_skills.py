@@ -37,7 +37,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM_KITS = os.path.join(ROOT, "team-kits")
 sys.path.insert(0, TEAM_KITS)
 
-from conftest import approve, drive_task_to  # noqa: E402 -- shared suite helpers
+from conftest import (approve, drive_task_to,  # noqa: E402 -- shared suite helpers
+                      satisfy_the_architect_step)
 from kernel import backlog_types, dispatch, references  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
 
@@ -222,6 +223,13 @@ def _route_mentions(kit_dir):
     that form reports three built-ins as missing skills in every kit. The path form names a skill
     directory and can name nothing else, which is what makes it readable at all. The cost is
     stated rather than hidden: a file that offers only the slash spelling is not covered here.
+
+    A FILE IS NAMED RELATIVE TO THE KIT IT WAS FOUND IN, and that start is expressible by
+    construction -- the walk begins at `kit_dir`, so every hit lies under it. `ROOT` is not: the
+    hosted Windows runner keeps the workspace on `D:` while `tmp_path` is on `C:`, and
+    `os.path.relpath` across two mounts raises `ValueError` instead of naming anything
+    (BUG-0069 class B, the same decision `_pinned_files` took). The caller already prefixes the
+    kit's own name, so the report reads the same.
     """
     out = {}
     for path in sorted(glob.glob(os.path.join(kit_dir, "**", "*"), recursive=True)):
@@ -233,7 +241,8 @@ def _route_mentions(kit_dir):
         except OSError:
             continue
         for hit in _CODEX_ROUTE.finditer(text):
-            out.setdefault(hit.group(1), []).append(os.path.relpath(path, ROOT))
+            out.setdefault(hit.group(1), []).append(
+                os.path.relpath(path, kit_dir).replace(os.sep, "/"))
     return out
 
 
@@ -273,6 +282,12 @@ def test_the_route_reader_finds_the_spelling_it_claims_and_leaves_the_slash_form
 
     The last two probes are the measured reason the slash form is out of scope — those are the
     provider's own commands, and reading them would report a missing skill in all three kits.
+
+    THE NAMES ARE ASSERTED, NOT ONLY THE KEYS, and that half is what holds the reader's start to
+    the kit. Named from `ROOT` this comes back as a climb out of the repo, and on a two-mount host
+    as a `ValueError` -- the hosted windows-latest run 33717432166 died exactly there, workspace on
+    `D:` and `tmp_path` on `C:` (BUG-0069). Reproduced here with
+    `--basetemp=//localhost/C$/...`, which is a real second mount on a one-drive host.
     """
     kit = tmp_path / "probe-team"
     (kit / "agents").mkdir(parents=True)
@@ -284,7 +299,7 @@ def test_the_route_reader_finds_the_spelling_it_claims_and_leaves_the_slash_form
     (kit / "agents" / "two.md").write_text(
         "Codex reads .agents/skills/ghost/SKILL.md\n", encoding="utf-8")
     found = _route_mentions(str(kit))
-    assert sorted(found) == ["alpha", "ghost"], found
+    assert found == {"alpha": ["agents/one.md"], "ghost": ["agents/two.md"]}, found
     assert "hooks" not in found and "model" not in found, found
 
 
@@ -431,6 +446,8 @@ def test_a_skill_file_that_is_not_utf8_never_reaches_the_dispatch(tmp_path):
     approve(state, pr["id"], "scope")
     task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
     drive_task_to(state, task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     assert lease[dispatch.REFERENCES_KEY] == ["good"], lease
 
@@ -498,6 +515,8 @@ def _project(tmp_path, task_fields):
     approve(state, pr["id"], "scope")
     task = dispatch.create_task(state, dict(task_fields, product_requirement=pr["id"]))
     drive_task_to(state, task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     return state, task
 
 
@@ -546,6 +565,8 @@ def test_a_project_without_installed_skills_dispatches_silently(tmp_path):
     approve(state, pr["id"], "scope")
     task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"]))
     drive_task_to(state, task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     assert dispatch.REFERENCES_KEY not in lease, lease
 

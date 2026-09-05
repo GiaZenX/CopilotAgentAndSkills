@@ -24,6 +24,7 @@ open remainder H37 Rest 2 in `docs/POST_V2_WISHLIST.md`, and the repair belongs 
 tracked-and-ignored OUTSIDE that tree is a new tool trace that must be untracked.
 """
 import ast
+import fnmatch
 import glob
 import io
 import os
@@ -41,6 +42,11 @@ RESEARCH = os.path.join(ROOT, "docs", "research")
 
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 from test_model_pins import under_an_agents_directory  # noqa: E402 -- ONE role predicate, shared
+# THE CHECK AND ITS REMEDY SHARE THIS PREDICATE, they do not each carry one. The first cut had
+# the exclusion here and not in the tool, so the sweep excused canonical state while
+# `--apply` would have rewritten it -- a protection the round protocol claimed and the code
+# did not build. It lives with the remedy because that is the side that acts.
+from normalise_line_endings import repairable  # noqa: E402
 
 
 def _tracked_and_ignored():
@@ -84,6 +90,344 @@ def test_the_known_out_of_scope_trace_is_still_the_only_exception():
         "the project_memory/ exclusion in test_git_tracks_no_ignored_file_outside_canonical_state "
         "no longer covers exactly the audit log H37 names -- update the exclusion and H37: %s"
         % excused)
+
+
+# ---------------- the checkout obeys .gitattributes (BUG-0025) --------------------------------
+
+# WHY GIT IS ASKED AND NOTHING IS SCANNED. `.gitattributes` pins `* text=auto eol=lf`, and whether a
+# given file is TEXT under that rule is decided by BYTES -- git looks for a NUL in the first 8000 of
+# them. `git ls-files --eol` is that resolution running: `i/` is what the index holds, `w/` what the
+# file on disk carries, and `-text` is git saying "binary, I do not convert this". A scan of our own
+# would be a second answer to the question the tool under test already answers, and it would have to
+# invent the binary rule this repo has decided to take from git. The one place a scan of our OWN
+# belongs is where the AGREEMENT between the two is the property being held:
+# `test_git_decides_binary_by_bytes_and_pins_every_text_file_to_lf` measures it, and the figures
+# behind it live in the round protocol rather than in a comment that ages.
+
+
+# What binary looks like to git under `text=auto`, and the window it looks in: one NUL byte in
+# the first 8000. Spelled here because the readings below are the one place in this suite that
+# answers that question itself instead of asking git.
+NUL = b"\x00"
+NUL_WINDOW = 8000
+# `git check-attr --stdin` reads one path per record; the separator is stated so no reader of
+# this file has to know which one a text-mode pipe would have substituted for it.
+SEPARATOR = "\n"
+
+
+def _binary_by_bytes():
+    """(binary, text) as the BYTES decide -- a NUL in the first `NUL_WINDOW` of a tracked file.
+
+    The one reading in this section that is deliberately NOT git's, because the property it serves
+    is the AGREEMENT of the two. Everything else here asks git.
+    """
+    binary, plain = set(), set()
+    for relative in _tracked_files():
+        full = os.path.join(ROOT, relative.replace("/", os.sep))
+        if not os.path.isfile(full):
+            continue
+        with open(full, "rb") as handle:
+            (binary if NUL in handle.read(NUL_WINDOW) else plain).add(relative)
+    return binary, plain
+
+
+def _attributes(paths, *names):
+    """{path: {attribute: value}} straight out of `git check-attr` -- the resolution a checkout runs.
+
+    One process for the whole set, and BYTES down the pipe, for the reason the binary tripwire below
+    carries: in text mode this interpreter rewrites the record separator, git then reads a path with
+    a trailing CR and answers about a file nobody has.
+    """
+    resolved = subprocess.run(["git", "check-attr", "--stdin"] + list(names), cwd=ROOT,
+                              input=(SEPARATOR.join(sorted(paths)) + SEPARATOR).encode("utf-8"),
+                              capture_output=True, timeout=180)
+    assert resolved.returncode == 0, resolved.stderr.decode("utf-8", "replace")
+    answer = {}
+    for line in resolved.stdout.decode("utf-8", "replace").splitlines():
+        if ": " not in line:
+            continue
+        parts = line.rsplit(": ", 2)
+        if len(parts) == 3:
+            answer.setdefault(parts[0], {})[parts[1]] = parts[2]
+    return answer
+
+
+def test_git_decides_binary_by_bytes_and_pins_every_text_file_to_lf():
+    """The line the whole of BUG-0025 rests on -- `* text=auto eol=lf` in .gitattributes -- measured.
+
+    WHY THIS EXISTS BESIDE THE SWEEP, and it is the gap the first verification round found: the
+    sweep and the binary tripwire both read the WORKING TREE (`git ls-files --eol`, column `w/`),
+    and that stays LF when the pin disappears, because the files on disk are already LF. Both went
+    green with the pin deleted, while a fresh clone on a `core.autocrlf=true` host then checks out
+    CRLF again -- so the line everything else in this section depends on was carried by nothing.
+
+    THE EFFECT IS ASKED, NOT THE TEXT. `git check-attr` is the resolution a checkout performs, so
+    this is red for a pin that is gone, for one a later line shadows, and for one that never
+    matched -- none of which a search over the file would notice.
+
+    THE TWO READINGS DO NOT SEE THE SAME BYTES, and pretending they did was the defect of the first
+    cut: this file stops at `NUL_WINDOW`, git reads the whole blob. For a binary whose first NUL
+    sits BEYOND that window the two disagree -- and that is not an edge, it is literally the class
+    the `binary` lines exist for. Measured on a fixture of 8500 filler bytes and then a NUL: without
+    a pin the tripwire below demands one ("no binary line covers them"), with the pin this
+    assertion refused it, so NO state of `.gitattributes` made both green. Git's own answer is
+    therefore taken off the text side FIRST, and such a file is REPORTED at the end rather than
+    asserted about -- which is what the sentence about it always said.
+
+    TWO HALVES, ONE SUBJECT -- the tracked files that both readings call text:
+
+      * every one of them resolves to `text: auto` AND `eol: lf`, and BOTH attributes are asserted
+        because each catches a different mutation: deleting the pin leaves both unspecified, while a
+        blanket `* binary` leaves `eol: lf` standing and only `text` turns to `unset` -- measured, a
+        `binary` attribute does not take the eol answer away;
+      * every tracked file that is BINARY BY BYTES is one git also refuses to convert (`-text`).
+        Only that direction: the reverse is the `binary` lines doing their work, and it is reported.
+    """
+    _require_git()
+    binary, plain = _binary_by_bytes()
+    assert binary and plain, (
+        "the byte reading found no text or no binary at all -- it stopped matching the tree")
+    endings = _worktree_line_endings()
+    # WHAT GIT READS AS BINARY CONTENT IS NOT THIS ASSERTION'S SUBJECT, whatever the first
+    # `NUL_WINDOW` bytes said -- see the docstring. This is the `w/` column, i.e. git's reading of
+    # the CONTENT, not of the attribute: a text file pinned `binary` still reports `w/lf` and stays
+    # in the subject, which is why pinning one turns this red rather than hiding it. Kept for the
+    # report at the end, because a file that lands here is the one the `binary` lines were added for.
+    pinned_without_a_nul = sorted(path for path in plain if endings.get(path) == "-text")
+    subject = plain - set(pinned_without_a_nul)
+    assert subject, (
+        "not one tracked file is text to BOTH readings, so the pin has nothing to be measured on: "
+        "every file with no NUL in its first %d bytes is one git reports as `w/-text`. Either this "
+        "tree carries no text at all, or one of the two readings stopped matching." % NUL_WINDOW)
+    attributes = _attributes(subject, "text", "eol")
+    unpinned = sorted(path for path in subject
+                      if attributes.get(path, {}).get("eol") != "lf"
+                      or attributes.get(path, {}).get("text") != "auto")
+    assert not unpinned, (
+        "%d tracked file(s) carry no NUL in their first %d bytes -- text by the rule this repo took "
+        "from git -- and git resolves them to something other than `text: auto` / `eol: lf`, so a "
+        "clone on a core.autocrlf=true host checks them out with CRLF and BUG-0025 is back. The "
+        "line that pins them is `* text=auto eol=lf` in .gitattributes. Files: %s"
+        % (len(unpinned), NUL_WINDOW, unpinned[:20]))
+    convertible = sorted(path for path in binary if endings.get(path) != "-text")
+    assert not convertible, (
+        "git is prepared to line-ending-convert these files although their first %d bytes carry a "
+        "NUL, which is what binary looks like here -- a conversion would corrupt them: %s"
+        % (NUL_WINDOW, convertible[:20]))
+    if pinned_without_a_nul:
+        warnings.warn(
+            "git treats these as binary although their first %d bytes carry no NUL -- that is "
+            "either a `binary` line doing work the heuristic alone would not do, or a file that "
+            "still needs one (the tripwire below is the half that says which): %s"
+            % (NUL_WINDOW, pinned_without_a_nul[:20]), UserWarning)
+
+
+def _worktree_line_endings():
+    """{tracked path: git's `w/` reading} -- `lf`, `crlf`, `mixed`, `none` or `-text` (binary)."""
+    result = subprocess.run(["git", "ls-files", "--eol"], cwd=ROOT, capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", timeout=120)
+    assert result.returncode == 0, result.stderr
+    reading = {}
+    for line in result.stdout.splitlines():
+        if "\t" not in line:
+            continue
+        fields, path = line.split("\t", 1)
+        for field in fields.split():
+            if field.startswith("w/"):
+                reading[path] = field[2:]
+    assert reading, "git listed no line endings at all -- the reader stopped matching its output"
+    return reading
+
+
+def test_no_tracked_text_file_checks_out_with_crlf():
+    """BUG-0025: `.gitattributes` says LF and this host's git config says otherwise -- who won?
+
+    `core.autocrlf=true` stands in this repo's LOCAL config and in the host's SYSTEM config
+    (measured 2026-09-04), and `eol=lf` overrides it on CHECKOUT -- but nothing overrides an editor,
+    a generator or a shell redirection that writes CRLF into a tracked file afterwards. That is not
+    cosmetic here: `lead_package.size` and the mirror comparison in `tools/validate.py` read raw
+    on-disk bytes, so one such file inflates the lead instruction package past its recorded size and
+    `install.sh` aborts before it installs a single hook -- which is BUG-0025 end to end.
+
+    THE FILE IS NAMED, because "somewhere in this tree" is not a repair anyone can carry out; the
+    remedy is one command and it stands in the message. `docs/line-endings.md` carries the cause and
+    what this repo deliberately does NOT do about it.
+
+    WHAT IT EXCUSES IT REPORTS. The canonical part of `project_memory/` is left out because no tool
+    write reaches it (`_repairable`), and an exclusion that is also silent is how a set grows -- so
+    those files are warned about here, in the same fail-open shape `_report_stale` uses one section
+    down, and never blocked on.
+    """
+    _require_git()
+    endings = _worktree_line_endings()
+    drifted = sorted(path for path, ending in endings.items() if ending in ("crlf", "mixed"))
+    excused = [path for path in drifted if not repairable(path)]
+    if excused:
+        warnings.warn(
+            "these files carry CRLF in canonical state, which no tool write reaches (gate 1), so "
+            "the sweep below cannot ask for them -- they are repaired where they are written, in "
+            "the kit: %s" % excused, UserWarning)
+    offenders = [path for path in drifted if repairable(path)]
+    assert not offenders, (
+        "%d tracked text file(s) carry CRLF on disk while .gitattributes pins every text file to "
+        "eol=lf, so a byte-size or byte-identity check reads a number no LF checkout can "
+        "reproduce (BUG-0025). Remedy: `python tools/normalise_line_endings.py --apply`, which "
+        "rewrites only files whose normalised bytes equal the committed blob exactly. Files: %s"
+        % (len(offenders), offenders))
+
+
+def test_the_line_ending_sweep_excuses_canonical_state_and_nothing_else():
+    """The floor under `normalise_line_endings.repairable`, so the exclusion cannot quietly widen.
+
+    It is the SAME function the remedy filters with, imported at the top of this file -- so this
+    floor holds the tool's behaviour and not a second copy of the rule.
+
+    It is a floor and NOT a claim that the exclusion still earns its keep: whether a canonical-state
+    file carries CRLF right now depends on the checkout (a fresh clone of this repo has none, this
+    developer host has one), so a test that asserted the exception is still needed would be red for
+    the checkout rather than for the repo. What can be held is the shape: staging is inside the
+    sweep, the canonical part is outside it, and nothing above `project_memory/` is touched.
+    """
+    assert repairable("project_memory/staging/TSK-0125/note.md"), (
+        "staging holds proposals that are ordinary files -- it must stay inside the sweep")
+    assert repairable("docs/note.md") and repairable("team-kits/dev-team/VERSION"), (
+        "the exclusion has grown past the tree gate 1 refuses a tool write to")
+    assert not repairable("project_memory/.audit/hook_events.jsonl"), (
+        "canonical state is what the exclusion is for")
+
+
+def test_a_crlf_blob_in_head_is_not_reported_as_an_uncommitted_change(tmp_path, monkeypatch):
+    """The remedy must not name a cause `git status` refutes (BUG-0025, verification round 1).
+
+    When the blob in `HEAD` carries CRLF ITSELF, the working tree is not what is wrong: the file is
+    unchanged, `git status` is empty for it, and normalising it would differ from the blob for a
+    reason that has nothing to do with an edit. The first cut answered "it carries a real
+    uncommitted change" there -- a sentence the tool cannot support and the caller cannot act on.
+    What needs rewriting is the INDEX, and the command for that is `git add --renormalize`.
+
+    AND THE TWO ARE NOT EXCLUSIVE. A CRLF blob PLUS a hand edit is a real state, and the second cut
+    answered it with the renormalise sentence alone -- while `git status` does report such a file
+    and `git add --renormalize` would take the foreign edit into the index with it. That case is the
+    fourth below, and it is why the tool compares against the blob AS NORMALISED instead of ordering
+    two questions as if only one could be true.
+
+    THE CLASS IS EMPTY IN THIS REPO TODAY, which is why the wrong sentence could stand unnoticed
+    twice, and why this is measured here instead of on the tree: `_committed` is the one door to
+    `HEAD` and it is the door this test stands in. Red without either fix -- the verdict then reads
+    "uncommitted change" for a file nobody changed, or the renormalise sentence for a file somebody
+    did change.
+    """
+    import normalise_line_endings as tool
+
+    drifted = tmp_path / "keeps-its-crlf.md"
+    drifted.write_bytes(b"one\r\ntwo\r\n")
+    monkeypatch.setattr(tool, "ROOT", str(tmp_path))
+    monkeypatch.setattr(tool, "_committed", lambda path: b"one\r\ntwo\r\n")
+    verdict, normalised = tool._verdict("keeps-its-crlf.md")
+    assert normalised is None, "a file whose blob carries CRLF must not be rewritten by this tool"
+    assert "the blob HEAD holds carries CRLF itself" in verdict, verdict
+    assert "git add --renormalize" in verdict, (
+        "the refusal names no remedy the caller can carry out: %s" % verdict)
+    assert "uncommitted change" not in verdict, (
+        "the refusal still claims a change git would not report: %s" % verdict)
+
+    monkeypatch.setattr(tool, "_committed", lambda path: b"one\ntwo\nthree\n")
+    changed, normalised = tool._verdict("keeps-its-crlf.md")
+    assert normalised is None and "uncommitted change" in changed, (
+        "the ordinary refusal lost its own reason: %s" % changed)
+
+    monkeypatch.setattr(tool, "_committed", lambda path: b"one\ntwo\n")
+    ok, normalised = tool._verdict("keeps-its-crlf.md")
+    assert ok == "ok" and normalised == b"one\ntwo\n", (
+        "the accepting branch is gone, so the two refusals above hold over nothing: %r" % ok)
+
+    # BOTH AT ONCE, which is the state an ordered pair of questions answers with the wrong half:
+    # the blob carries CRLF *and* the file has an edit the blob does not know.
+    drifted.write_bytes(b"one\r\ntwo\r\nTHREE-a-real-edit\r\n")
+    monkeypatch.setattr(tool, "_committed", lambda path: b"one\r\ntwo\r\n")
+    both, normalised = tool._verdict("keeps-its-crlf.md")
+    assert normalised is None, "a file with an uncommitted edit must not be rewritten either"
+    assert "TWO things are wrong at once" in both, (
+        "the combination is answered with one of the two single reasons: %s" % both)
+    assert "git status` DOES report it" in both and "neither command is the answer on its own" in both, (
+        "the combination still recommends a command that would swallow the other change: %s" % both)
+    assert "says nothing about this file" not in both, (
+        "the combination still claims git would be silent about a file git reports: %s" % both)
+
+
+def test_the_remedy_leaves_canonical_state_to_the_place_that_writes_it(tmp_path, monkeypatch):
+    """`drifted_files` splits by the same predicate the sweep excuses with -- and says so.
+
+    Red without the fix: the tool took every drifting path, so `--apply` offered to rewrite
+    `project_memory/.audit/hook_events.jsonl`, which gate 1 refuses to any caller. Nothing but that
+    file's size stopped it.
+    """
+    import normalise_line_endings as tool
+
+    # THE RECORD SHAPE IS GIT'S OWN, copied off a real `git ls-files --eol` line of this repo
+    # (`i/none  w/lf    attr/text=auto eol=lf <TAB>docs/line-endings.md`): the columns are separated
+    # by SPACES and exactly one TAB stands in front of the path. A stub with tabs throughout made
+    # the parser find nothing and this test pass over a shape the tool never meets.
+    listing = ("i/lf    w/crlf   attr/text=auto eol=lf \tdocs/note.md\n"
+               "i/lf    w/crlf   attr/text=auto eol=lf \tproject_memory/.audit/hook_events.jsonl\n"
+               "i/lf    w/mixed  attr/text=auto eol=lf \tproject_memory/staging/TSK-0125/p.md\n")
+    monkeypatch.setattr(tool, "_git", lambda *argv: listing)
+    mine, out_of_reach = tool.drifted_files()
+    assert mine == ["docs/note.md", "project_memory/staging/TSK-0125/p.md"], mine
+    assert out_of_reach == ["project_memory/.audit/hook_events.jsonl"], out_of_reach
+
+
+_BINARY_PIN_RX = re.compile(r"(?m)^\s*(\S+)\s+binary\s*$")
+
+
+def _binary_pins():
+    """The patterns `.gitattributes` pins to `binary`, out of the file git itself reads."""
+    with io.open(os.path.join(ROOT, ".gitattributes"), encoding="utf-8") as handle:
+        return _BINARY_PIN_RX.findall(handle.read())
+
+
+def test_every_binary_pin_names_a_kind_the_tree_has_and_every_kind_is_pinned():
+    """The two-ended tripwire on the one enumeration `.gitattributes` carries.
+
+    `* text=auto` already decides binary BY BYTES, so these lines are insurance for the expensive
+    direction only -- a binary whose first 8000 bytes hold no NUL. Insurance written as a list of
+    extensions goes wrong in two ways, and both are measured here rather than trusted: an entry
+    that names nothing in this tree any more (`*.woff2` stood alone while every `.png` beside it was
+    binary, which is the state this test was written into), and a binary kind no entry names.
+
+    THE EFFECT IS ASKED OF GIT, not of the pattern: `git check-attr binary` is the resolution the
+    checkout runs, so a pattern that matches nothing because of where it stands in the file shows up
+    here. What is read out of the file is only WHICH patterns to hold to that answer -- the same
+    division `tools/test_ci_lint_pinned.py` makes between parsing `ruff.toml` and running ruff.
+    """
+    _require_git()
+    pins = _binary_pins()
+    assert pins, ".gitattributes pins nothing to `binary` -- this test's subject is gone"
+    binaries = sorted(path for path, ending in _worktree_line_endings().items()
+                      if ending == "-text")
+    assert binaries, "git calls no tracked file binary -- the reader stopped matching"
+    # BYTES down the pipe, not text: in text mode this interpreter translates every `\n` into the
+    # platform's line separator, and git then reads a path with a trailing CR and answers about a
+    # file nobody has (measured here -- every `.png` of the tree came back "unspecified" under names ending in
+    # `\r`). The one place in this suite where a line ending decides an answer is the one this
+    # section is about.
+    resolved = subprocess.run(["git", "check-attr", "--stdin", "binary"], cwd=ROOT,
+                              input=("\n".join(binaries) + "\n").encode("utf-8"),
+                              capture_output=True, timeout=120)
+    assert resolved.returncode == 0, resolved.stderr.decode("utf-8", "replace")
+    answers = resolved.stdout.decode("utf-8", "replace").splitlines()
+    unpinned = sorted(line.rsplit(": binary: ", 1)[0] for line in answers
+                      if line.strip() and not line.endswith(": binary: set"))
+    assert not unpinned, (
+        "git reads these files as binary by their bytes, but no `binary` line in .gitattributes "
+        "covers them, so they rely on the NUL heuristic alone and a line-ending conversion would "
+        "corrupt them: %s" % unpinned[:20])
+    dead = [pin for pin in pins
+            if not any(fnmatch.fnmatch(path, pin) or fnmatch.fnmatch(os.path.basename(path), pin)
+                       for path in binaries)]
+    assert not dead, (
+        "these `binary` lines match no binary file this repo carries any more, so they are a claim "
+        "about a tree that has moved on -- drop them: %s" % dead)
 
 
 # ---------------- nothing a client parses from byte zero may start with a BOM ------------------
@@ -667,6 +1011,23 @@ def test_the_decision_pointer_reader_can_tell_a_citation_from_a_literal():
 # is a claim answered for by a TEST; a constant cited that way points at something this reader has
 # no business resolving.
 _NODE_ID_RX = re.compile(r"\A(?P<path>[\w./-]*test_[\w-]+\.py)::(?P<name>test_\w*)\Z")
+# THE CONTINUATION FORM, and it is the shape the sentences this round landed are written in:
+# a first citation gives the file, every further one gives only `::<name>`. Measured
+# 2026-09-05 (merge verify round 1, M1): with the file part demanded, mutating
+# `::test_a_seam_both_orders_declare_lets_the_second_lease_through` to a name that does not
+# exist left the sweep green, so the arbiter the merge protocol names covered half of what
+# it claimed.
+#
+# WHAT IT IS READ AGAINST is the last file citation ANYWHERE ABOVE IT IN THE SAME FILE, not in
+# the same sentence or paragraph -- there is no paragraph boundary in this reader, and saying
+# there was one was this comment's own error (merge verify round 2, R2-M2). The cost of the
+# wider carry is over-refusal: a continuation far below an unrelated citation is resolved
+# against that file and reports as unresolved when the name lives elsewhere. It can also read
+# a citation as resolved when the carried file happens to define the same name -- so a shipped
+# text that writes the form keeps it next to the citation it continues.
+# A span of this form with NO file citation before it stays unread, which is the same line the
+# module comment above draws for a bare name.
+_CONTINUATION_RX = re.compile(r"\A::(?P<name>test_\w*)\Z")
 # A CODE SPAN THAT MAY CROSS LINES, which is why `_DELIMITED_RX` above is not reused: that one is
 # line-bounded, and a line-bounded reader is blind to the wrapped citation -- which is the shape the
 # one real offender of this round was written in. Measured: with the line-bounded span the sweep
@@ -693,12 +1054,18 @@ def _test_citations(text):
     restatement.
     """
     found = []
+    carried = None
     for span in _CODE_SPAN_RX.finditer(text):
         glued = re.sub(r"[\s#]+", "", span.group(1))
         glued = re.sub(r"\[[^\]]*\]\Z", "", glued).rstrip(".,;:)")
         hit = _NODE_ID_RX.match(glued)
         if hit:
-            found.append((span.start(), hit.group("path"), hit.group("name")))
+            carried = hit.group("path")
+            found.append((span.start(), carried, hit.group("name")))
+            continue
+        more = _CONTINUATION_RX.match(glued)
+        if more and carried:
+            found.append((span.start(), carried, more.group("name")))
     return found
 
 
@@ -802,6 +1169,13 @@ def test_the_test_pointer_reader_reads_the_shapes_a_kit_file_writes():
         "an unqualified name is the half this reader does not judge -- see the comment above")
     assert read("`test_gates.py::RESERVED_WORD_CELLS` is a table") == [], (
         "a module-qualified constant is not a test pointer")
+    second = (one[0], "test_the_session_start_hook_names_the_tax_deadline_the_profile_declares")
+    assert read("held by `%s::%s` and `::%s`" % (one[0], one[1], second[1])) == [one, second], (
+        "the CONTINUATION form -- a second citation in one statement that gives only `::<name>` "
+        "-- is the shape the constitutions and the parallel-streams skills write, and it went "
+        "unread until 2026-09-05 (merge verifier round 1, M1)")
+    assert read("held by `::%s`" % one[1]) == [], (
+        "a continuation with no file citation before it names no file, so it stays unread")
     assert one[1] in _defined_in(one[0])
     assert _defined_in("test_gates.py"), "a bare suite file name must resolve in a suite directory"
     assert _defined_in("tools/test_no_such_suite.py") is None

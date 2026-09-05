@@ -1,0 +1,26 @@
+id: BUG-0161
+title: Die Gates dieses Repos erben die halbe CR-Härtung der Kits — offen, Werkbank,
+  `DEC-0022` (TSK-0084)
+related_pr: PR-0003
+observed: '**Mechanismus:** `TSK-0084` hat zwei verschiedene Defekte derselben Zeichenfamilie
+  geschlossen.
+
+  Die Gates dieses Repos teilen sich mit den Kits die Vorbereitung (`_compat`), aber
+  nicht die Tür,
+
+  an der die zweite Hälfte hängt:'
+severity: medium
+hole_number: H69
+source: docs/holes/H69.md
+limits: 'die Gates dieses Repos erben die CR-Härtung der Kits nur zur Hälfte: der
+  Trenner-Teil sitzt in `_compat` und greift mit (rc 0 → rc 2), die **Verschweißung**
+  unter dem Bash-Werkzeug hängt an `_kernel.payload`, durch das `_harness` nicht geht.
+  Gemessen: `echo poison > project_mem<CR>ory/generated/index.yaml` → Gate rc 0 →
+  `index.yaml` 37 318 → 7 Byte (Kopie außerhalb des Repos, HEAD-identisch). Nicht
+  gebaut, weil der einzige Akteur hier ein Agent ist, dessen Irrtum den naheliegenden
+  Weg nimmt — begrenzt durch die Versionsverwaltung und dadurch, dass die Datei aus
+  den Items neu erzeugbar ist; in den ausgelieferten Kits sind **beide** Hälften zu'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:24:37'

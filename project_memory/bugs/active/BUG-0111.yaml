@@ -1,0 +1,25 @@
+id: BUG-0111
+title: Ein Kandidat, der einen VORFAHREN eines geschützten Baums nennt (neu, TSK-0011)
+related_pr: PR-0003
+observed: '**Mechanismus:** die Zugehörigkeitsprüfung antwortet in **beide** Richtungen,
+  und sie muss das:
+
+  `rm -rf team-kits` nennt jede geschützte Datei darunter, ohne eine davon zu buchstabieren.
+  Die
+
+  Kehrseite ist, dass ein Kandidat, der einen Vorfahren nennt — ein einzelnes `..`,
+  ein bloßer
+
+  Laufwerksbuchstabe, die Repo-Wurzel selbst —, als Schreibzugriff auf **alles darunter**
+  gelesen
+
+  wird. Ein `_PATHISH`-Treffer, der nur aus `/` oder `\` besteht, reicht dafür aus.'
+severity: low
+hole_number: H19
+source: docs/holes/H19.md
+limits: jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt
+  Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:32'

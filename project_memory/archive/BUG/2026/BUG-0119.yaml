@@ -1,0 +1,29 @@
+id: BUG-0119
+title: Die Kindschaft eines Verzeichnisverbs hatte eine Schreibweise — GESCHLOSSEN
+  (TSK-0013, duale Hälfte TSK-0098)
+related_pr: PR-0003
+observed: '**Mechanismus:** ein Verzeichnisverb, das die Shell in einem **Kind** ausführt,
+  lässt die Shell
+
+  selbst stehen. Gezählt wurde das pro Pipeline und nur an der Klammer: hinter einem
+  Listentrenner
+
+  fing der Zähler wieder bei null an, obwohl die Klammer offen war, und die asynchrone
+  Liste wie das
+
+  Pipelineglied kamen im Zähler überhaupt nicht vor.'
+severity: low
+hole_number: H27
+source: docs/holes/H27.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+- test_the_shell_writes_where_the_table_of_line_shapes_says
+- test_gate1_refuses_maintaining_a_hook_file_from_a_shell
+- test_gate1_refuses_starting_a_hook_from_every_caller
+- test_gate1_comes_back_out_of_a_group_it_walked_into
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:52'
+closed_at: '2026-09-05T20:22:52'

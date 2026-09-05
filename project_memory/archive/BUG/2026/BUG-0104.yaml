@@ -1,0 +1,29 @@
+id: BUG-0104
+title: Ein Subagent kann sich die Ausnahme von Gate 2 selbst ausstellen
+related_pr: PR-0003
+observed: '**Mechanismus:** Gate 2 liest die Ausnahme (`harness_item: none`) aus der
+  Frontmatter der gespawnten
+
+  Rolle, und liest sie bei **jedem** Aufruf frisch — es ist nicht der Provider, der
+  eine Rolle beim
+
+  Sitzungsstart lädt, sondern der Hook, der eine Datei öffnet. Gate 1 schützt `.claude/`
+  nur gegen den
+
+  **Sitzungsagenten**; ein Subagent muss dort schreiben dürfen, weil der Auftrag des
+  Umsetzers
+
+  regelmäßig `.claude/hooks/**` nennt und dieses Repo keinen Dispatch hat, gegen den
+  sich ein
+
+  Subagent-Scope prüfen ließe.'
+severity: medium
+hole_number: H12
+source: docs/holes/H12.md
+limits: nichts liest heute einen `allowed_scope`; wer `.claude/` schreiben darf, schreibt
+  auch die Gates — ebenfalls **sozial**
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:16'
+closed_at: '2026-09-05T20:22:16'

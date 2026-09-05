@@ -48,6 +48,9 @@ from .backlog_types import (
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
     HASHED_FIELDS,
+    HOLE_LIMIT_FIELD,
+    HOLE_NUMBER_FIELD,
+    HOLE_NUMBER_PREFIX,
     IMMUTABLE_TYPES,
     IMPORT_MARK,
     LEGACY_FIELD,
@@ -60,12 +63,14 @@ from .backlog_types import (
     REQUIRED_FIELDS,
     RUN_RECORD_FIELDS,
     RUN_SCOPES,
+    STATUS_DEPENDENT_FIELDS,
     TASK_TYPES,
     TSK_PLAN_FIELDS,
     TransitionError,
     assert_transition,
     confirming_edge,
     format_id,
+    hole_type,
     initial_status,
     invalidation_target,
     is_terminal,
@@ -922,13 +927,91 @@ class ProjectState:
         _assert_single_value_fields(item_type, fields)
         self._assert_origins_resolve(item_type, fields, also_existing)
 
-    def capture(self, item_type: str, fields: dict) -> dict:
-        """Create a new item: kernel assigns id/status/revision/approval_ref/created."""
+    def _max_hole_number_locked(self) -> int:
+        """The highest hole number the store carries, active and archived -- 0 when it carries none.
+
+        A MAX-SCAN, exactly like `allocate_id`, and for the same reason: the store is the register.
+        A counter kept beside it would be a second statement of what has been handed out, and the
+        defect FR-0087 was written for is precisely a register that lived beside the items (a lead
+        reserving numbers by message; two of them existed in no item at all).
+
+        Archived holes are scanned too -- a CLOSED hole keeps its number forever, and reusing it
+        would make every citation of that number ambiguous.
+        """
+        highest = 0
+        for item in self._iter_every_stored_item():
+            number = str(item.get(HOLE_NUMBER_FIELD) or "")
+            if number.startswith(HOLE_NUMBER_PREFIX) and number[1:].isdigit():
+                highest = max(highest, int(number[1:]))
+        return highest
+
+    def _iter_every_stored_item(self):
+        """Every readable item file under this state root -- active and archive alike."""
+        for base in (self.root,):
+            for directory, _dirs, names in os.walk(ext_path(base)):
+                for name in sorted(names):
+                    if not name.endswith(".yaml"):
+                        continue
+                    try:
+                        item = self._read_yaml(os.path.join(directory, name))
+                    except Exception:  # noqa: BLE001 -- an unreadable file is the validator's finding
+                        continue
+                    if isinstance(item, dict) and item.get("id"):
+                        yield item
+
+    def next_hole_number(self) -> str:
+        """The number the next hole would get -- the same answer `capture(hole=True)` stamps."""
+        with self.lock:
+            return "%s%d" % (HOLE_NUMBER_PREFIX, self._max_hole_number_locked() + 1)
+
+    def assert_capturable_as_hole(self, item_type: str) -> None:
+        """Refuse to file anything but a hole as one -- the check both surfaces ask.
+
+        HERE AND NOT IN THE CLI, because the CLI is one caller of two: `capture TSK` never reaches
+        `capture` at all (it goes through `dispatch.create_task`), so a check that lived only in
+        the parser would have to know that, and a check that lived only in `capture` would let
+        `--hole` be silently ignored on a work order. So the command surface asks this before it
+        chooses a producer, and `capture` asks it again for every other caller.
+
+        WHAT IT IS ASKED OF is `backlog_types.hole_type()` -- the derivation, not a name repeated
+        here.
+        """
+        wanted = hole_type()
+        if item_type != wanted:
+            raise StateError(
+                "a hole is a %s and %s is not one: a measured, open gap is a defect with a named "
+                "limit, which is the shape %s carries (its automaton has the accepted-exception "
+                "ending, and the `%s` duty is written for it). Filing another type as a hole burns "
+                "a hole number nothing can free and leaves the hole judge reading a record whose "
+                "status its own automaton does not have. Remedy: capture the gap as %s, or capture "
+                "this item without the hole flag."
+                % (wanted, item_type, wanted, HOLE_LIMIT_FIELD, wanted))
+
+    def capture(self, item_type: str, fields: dict, hole: bool = False) -> dict:
+        """Create a new item: kernel assigns id/status/revision/approval_ref/created.
+
+        `hole=True` says the item is a MEASURED, OPEN GAP (FR-0087, DEC-0073) and makes the kernel
+        stamp `HOLE_NUMBER_FIELD`. The caller says THAT it is a hole and never WHICH number it
+        gets: a number chosen by a caller is the hand-reserved number FR-0087 exists to end, and a
+        body that carries the field is refused for the same reason a body carrying `status` is.
+        """
+        if hole:
+            self.assert_capturable_as_hole(item_type)
+        if HOLE_NUMBER_FIELD in fields:
+            raise StateError(
+                "%s is kernel-set: a hole's number is allocated by max-scan over the store, never "
+                "handed in -- hand-reserved numbers are the defect FR-0087 was written for. "
+                "Remedy: drop the field and capture with the hole flag; the migration door "
+                "`capture_migrated_hole` is the one place a HISTORICAL number is carried over."
+                % HOLE_NUMBER_FIELD)
         self.capture_preflight(item_type, fields)
         with self.lock:
             item_id = self.allocate_id(item_type)
             item = {"id": item_id}
             item.update(fields)
+            if hole:
+                item[HOLE_NUMBER_FIELD] = "%s%d" % (HOLE_NUMBER_PREFIX,
+                                                    self._max_hole_number_locked() + 1)
             # ...AND A DATE FIELD IS STORED AS THE DAY IT WAS READ AS -- out of the same reader that
             # refused, so the value checked and the value written are one. Without it two records of
             # the same day sort against each other lexically, because `date.fromisoformat` accepts
@@ -948,6 +1031,95 @@ class ProjectState:
             # subdirectory -- item io, not state scaffolding (the state ROOT
             # must already exist; only the installer bootstrap creates it)
             self._write_yaml_atomic(self.active_path(item_id), item)
+            self._regenerate_index_locked()
+            return item
+
+    def hole_by_number(self, number: str):
+        """The stored hole carrying `number`, or None -- the register read back.
+
+        THE IDEMPOTENCE OF THE MIGRATION IS THIS FUNCTION and not a marker file: a run that finds
+        the number already stored writes nothing, so a second run over the same document is a
+        no-op whatever happened in between, and a half-finished run resumes where it stopped.
+        WHAT IT DOES NOT DECIDE is whether the entry is the SAME one -- two streams can reserve one
+        number, and telling a resumption from a collision is `tools/migrate_holes.py`'s job
+        (`_assert_it_is_the_same_hole`), because only the caller holds the entry to compare with.
+        `tools/test_migrate_holes.py::test_a_second_run_over_the_same_document_writes_nothing`
+        """
+        wanted = str(number or "")
+        if not wanted:
+            return None
+        with self.lock:
+            for item in self._iter_every_stored_item():
+                if str(item.get(HOLE_NUMBER_FIELD) or "") == wanted:
+                    return item
+        return None
+
+    def capture_migrated_hole(self, fields: dict, status: str, year: int = None) -> dict:
+        """Write ONE hole-list entry into the store at the status its verdict already had.
+
+        WHY A DOOR AT ALL, measured rather than assumed (DEC-0073, sub-question 3): about half the
+        entries of the shipped hole list are CLOSED, and a closed hole is a `BUG` at `VERIFIED`.
+        `migration_writable_statuses("BUG")` does not reach `VERIFIED` -- the scope approval stands
+        in front of it -- so walking those entries through the ordinary edges would need one
+        user-minted approval and one test Evidence PER ENTRY. The user chose this door over leaving
+        the closed half in the document as a second list.
+
+        THE FOUR BOLTS ON IT, written as what this code CHECKS:
+          * it writes a HOLE and nothing else -- the body must carry `HOLE_NUMBER_FIELD`, which
+            `capture` refuses to accept from a caller at all, so this is the only way a historical
+            number enters the store;
+          * it never writes a number the store already carries (`hole_by_number`), which is what
+            makes a second run a no-op;
+          * the status must be one the type's own automaton HAS, and a TERMINAL one goes to the
+            archive while a non-terminal one goes to `active/` -- so nothing is written into a
+            place its status does not belong in;
+          * the status-dependent duty holds here too: an `ACCEPTED_EXCEPTION` without
+            `HOLE_LIMIT_FIELD` is refused, because that field is the whole content of an accepted
+            exception.
+
+        WHAT THE DOOR STILL WIDENS, named as a hole with its own number rather than argued away:
+        it writes a terminal status -- `VERIFIED` among them -- without the confirming Evidence
+        `_assert_confirmed` demands on the walked edge, and without the approval that stands in
+        front of it. That is `H154` in `docs/POST_V2_WISHLIST.md`, and what LIMITS it is stated
+        there and built here: the record lands in the archive, `report.validate_state` judges the
+        ACTIVE items, no gate reads an archived item as an authorisation, and the door cannot
+        overwrite anything -- an existing number is refused rather than replaced.
+        `tools/test_state.py::test_the_migration_door_writes_a_hole_and_refuses_everything_else`
+        """
+        item_type = hole_type()
+        number = str(fields.get(HOLE_NUMBER_FIELD) or "")
+        if not number:
+            raise StateError(
+                "the hole migration door writes holes only: this body carries no `%s`. Remedy: "
+                "use `capture(..., hole=True)`, which allocates one." % HOLE_NUMBER_FIELD)
+        automaton = AUTOMATA[item_type]
+        if status not in automaton.states:
+            raise StateError(
+                "%r is no status of %s (states: %s). Remedy: map the entry's verdict onto one of "
+                "them." % (status, item_type, ", ".join(sorted(automaton.states))))
+        owed = STATUS_DEPENDENT_FIELDS.get((item_type, status))
+        if owed and not fields.get(owed):
+            raise StateError(
+                "a hole written at %s owes `%s` -- what takes the place of the protection. "
+                "Remedy: carry the entry's own limit over into that field." % (status, owed))
+        existing = self.hole_by_number(number)
+        if existing is not None:
+            return existing
+        self._assert_capture_shape(item_type, fields)
+        with self.lock:
+            item_id = self.allocate_id(item_type)
+            item = {"id": item_id}
+            item.update(fields)
+            item["status"] = status
+            item["revision"] = 1
+            item["approval_ref"] = None
+            item["created"] = _now_iso()
+            if status in automaton.terminals:
+                item["closed_at"] = item["created"]
+                path = self.archive_path(item_id, int(year or int(item["created"][:4])))
+            else:
+                path = self.active_path(item_id)
+            self._write_yaml_atomic(path, item)
             self._regenerate_index_locked()
             return item
 
@@ -1333,8 +1505,18 @@ class ProjectState:
         whole point of routing through it: it already answers "which Evidence covers this item"
         (`evidence_covers`, including the indirect hop from a task to its root) and "which of
         several counts" (newest per kind supersedes). A second reader of the same store would be a
-        second answer to the same question -- and the merge gate reads THIS one, so a BUG that
-        cannot be VERIFIED here is exactly a BUG whose merge `gate_git` would also refuse.
+        second answer to the same question.
+
+        IT ASKS THE CONFIRMATION QUESTION AND NOT THE DELIVERY ONE (BUG-0090, DEC-0071). Measured on the
+        shipped kernel: a `pass` that declared `run_scope: selection` and named the BUG was dropped
+        by the delivery filter, so this edge refused with "there is none" -- while its own remedy
+        below asks for the regression run, which is a selection by nature; the SAME run recorded
+        without the declaration walked, so the record that said more about itself was the one
+        punished. The two questions and why only one of them filters a passing selection are at
+        `report.DELIVERY_QUESTION`. The merge gate keeps the delivery reading, so a passing
+        selection still opens no merge -- and a BUG that reaches VERIFIED on one is therefore no
+        longer the same thing as a merge `gate_git` would let through.
+        `tools/test_state.py::test_a_declared_regression_run_confirms_the_bug_it_names`
 
         It is lock-safe from inside `_transition_locked` because `report._delivery_evidence` takes
         no lock, by its own design note; the kernel lock is not reentrant, so a reader that did
@@ -1344,7 +1526,7 @@ class ProjectState:
         if not kind or (from_status, to_status) != confirming_edge(item_type):
             return
         from . import report
-        verdict = report.qa_verdicts(self, item_id).get(kind)
+        verdict = report.qa_verdicts(self, item_id, report.CONFIRMATION_QUESTION).get(kind)
         if verdict and verdict.get("result") == PASSING_RESULT:
             return
         raise TransitionError(

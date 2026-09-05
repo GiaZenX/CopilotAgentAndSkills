@@ -1,0 +1,39 @@
+id: BUG-0125
+title: Die erweiternde Antwort kam von einer Funktion, die eine andere Frage beantwortet
+  (neu, TSK-0021)
+related_pr: PR-0003
+observed: '**Nachtrag TSK-0098:** die Tilde ist nicht mehr die einzige Konstruktion,
+  die ein Wort
+
+  unplatzierbar macht. `_harness._UNRESOLVED` gibt dieselbe Antwort für ein Wort,
+  das eine Shell aus
+
+  einer Expansion oder aus dem Dateisystem erst baut — und einige der Zeichen, die
+  dieser Eintrag als
+
+  harmlose Vorsätze vor einer Tilde führt (`*`, `[`, `{`, `?`), sind genau jene. Ein
+  Wort wie
+
+  `*~/team-kits/kernel/state.py` wird darum jetzt verweigert, obwohl die Tilde darin
+  nicht am Anfang
+
+  steht; `test_gate1_answers_for_a_tilde_that_does_not_start_its_word` fragt beide
+  Leser statt nur
+
+  diesen einen. Wo bash das Muster auf nichts abbildet und das Wort literal lässt,
+  ist das eine
+
+  Über-Verweigerung — und die fail-closed-Richtung, aus demselben Grund wie hier.'
+severity: low
+hole_number: H33
+source: docs/holes/H33.md
+limits: —
+regression_tests:
+- test_gate1_answers_for_a_tilde_that_does_not_start_its_word
+- test_gate1_places_a_tilde_word_where_the_shell_puts_it
+- test_every_tilde_subject_a_closed_hole_names_is_one_the_check_set_carries
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:07'
+closed_at: '2026-09-05T20:23:07'

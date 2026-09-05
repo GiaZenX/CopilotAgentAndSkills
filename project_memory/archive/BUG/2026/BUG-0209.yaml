@@ -1,0 +1,48 @@
+id: BUG-0209
+title: Die Lösch-Regel des Archiv-Wächters war eine Verbliste, und jedes Verb daneben
+  ging durch — GESCHLOSSEN (TSK-0114 gemessen, TSK-0116 behoben)
+related_pr: PR-0003
+observed: '**Mechanismus, wie er bis TSK-0116 stand.** `guard_fs_tripwire` entschied
+  „ist das eine
+
+  Löschung?" an einer AUFZÄHLUNG: `DELETE_VERBS = ("rm", "rmdir", "del", "erase",
+  "rd",
+
+  "remove-item", "ri")`. Das war eine Liste von Schreibweisen, kein Begriff, und sie
+  trug keinen
+
+  Stolperdraht an ihren Enden — nichts maß, ob ein Verb fehlt, und nichts maß, ob
+  ein
+
+  gelistetes Verb noch etwas fängt.'
+severity: low
+hole_number: H125
+source: docs/holes/H125.md
+limits: 'die Lösch-Regel des Archiv-Wächters stand auf einer AUFZÄHLUNG von sieben
+  Verben; jedes andere zerstörende Verb ging durch. An ihre Stelle tritt eine Eigenschaft:
+  die REICHWEITE einer Zerstörung trifft ein Fach von Rang, gelesen in BEIDEN Richtungen
+  — die Position liegt IM Fach, oder ein Fach liegt IN der Position. Am Piloten gegen
+  alle acht auf Bash und PowerShell registrierten Office-Haken als Prozesse gemessen,
+  HEAD e45c0ca gegen diese Runde: `unlink`, `git clean -fdx` (mit und ohne Pfad),
+  `Clear-Content`, `clc`, `find -delete` und `tar --remove-files` von **ALLOW** auf
+  **rc 2**; die VORFAHREN-Form ebenso — `git clean -fdx .`, `git clean -fdx ./`, `git
+  clean -fdx -e docs`, `rm -rf .`, `find . -delete`, `Remove-Item -Recurse -Force
+  .` (auch als PowerShell) und `shred .`, alle acht von ALLOW auf rc 2 (Nacharbeit
+  1, Prüferbefund B1). Die zwei Kontrollen bleiben rc 2; acht Über-Verweigerungs-Kontrollen
+  bleiben rc 0, darunter `git clean -fdx` in einem Projekt OHNE Fach von Rang, dieselbe
+  Zeile mit `cwd=docs` und `cd docs && git clean -fdx`. Rot ohne den Fix: `tools/test_hooks.py::test_a_destruction_that_names_an_ANCESTOR_of_a_tray_is_the_same_destruction`.
+  Geschlossen ist die BENANNTE und die VORFAHREN-Form; **nicht gedeckt** und im Eintrag
+  einzeln gemessen: Operanden, die eine Pipe übergibt (`xargs rm -rf`), ein Verzeichnis-LINK
+  auf ein Fach, die GLOB-Schreibweise (`rm -rf *`), ein Verzeichniswechsel, der landet
+  aber nicht wirkt (`H144`), und die Vokabelliste der zerstörenden Wortstämme (`H129`)'
+regression_tests:
+- tools/test_hooks.py::test_the_archive_guard_refuses_a_destruction_that_is_not_spelled_rm
+- tools/test_hooks.py::test_a_destruction_that_names_an_ANCESTOR_of_a_tray_is_the_same_destruction
+- tools/test_hooks.py::test_an_exclusion_flag_does_not_narrow_a_sweep
+- tools/test_hooks.py::test_a_sweep_is_refused_only_where_a_tray_of_record_lies_under_it
+- tools/test_hooks.py::test_every_destroying_stem_is_load_bearing_at_both_ends
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:26:46'
+closed_at: '2026-09-05T20:26:46'

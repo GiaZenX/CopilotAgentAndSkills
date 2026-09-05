@@ -1,0 +1,51 @@
+id: DEC-0075
+title: 'Rechnungs-Anwendung entschieden: ein eigenes Produkt mit dem Entwickler-Kit
+  (Oberflaeche fuer den Nutzer UND Befehlsschnittstelle fuer die Buero-Rollen), nicht
+  ein Skript im Buero-Kit; das Buero-Kit baut nur die Andockstelle'
+context: 'USER DECISION 2026-09-05 while planning generation 5. FR-0073 (an invoice
+  WRITER for the office kit) described a script producing one norm-conformant e-invoice
+  from ledger and master data. The user''s real wish is larger: a product catalogue,
+  two businesses as separate tenants with their own sequential number ranges, importers
+  for eBay / Kaufland / Shopify orders and invoices (each marketplace delivers different
+  data; Kaufland issues NO invoice, eBay issues an ugly one with confused numbers
+  in the seller''s name, Shopify generates its own), designed invoice templates, a
+  usable UI, PDF and e-invoice output, legally sound (unbroken numbers per range,
+  paragraph 14 UStG mandatory fields, GoBD immutability). Key design question named
+  by the lead: a ''nicer'' version of an invoice eBay already issued must NOT be a
+  second invoice with a new number (paragraph 14c UStG double tax) -- create (Kaufland),
+  reformat-or-cancel-and-reissue (eBay) and import-only (Shopify) are three different
+  cases. Three options were put to the user: (A) own product with the dev-team kit,
+  office kit as consumer; (B) minimal script in the office kit as FR-0073 stood; (C)
+  defer entirely. The user chose (A) and asked whether the kit itself should be able
+  to run it or only the user -- answer: both, UI for the user and a command surface
+  for the office roles.'
+decision: '(1) The invoice application is its own project: a new repo, dev-team kit,
+  the usual entry interview (masterplan with the user, product-designer for invoice
+  layout and UI), its own goals and generations -- planned after generation 5 or in
+  parallel, as the user says. (2) It exposes two surfaces: a UI for the user and a
+  command-line/API surface so office-kit roles can drive it headless (orders in, invoices
+  out). (3) The office kit does NOT produce outgoing invoices; PR-0009 (G5-3) builds
+  the DOCKING POINT instead: intake of an invoice file the app produced, validation
+  (norm rules, reconciling triple, number-range continuity per business), filing through
+  the sanctioned document route, booking -- and writes the interface contract down
+  for the app project. (4) FR-0073 is re-read as that docking point; its original
+  writer scope is superseded by the app project. (5) Non-negotiable in the app''s
+  masterplan: the three marketplace cases are separated by law, not by taste (create
+  / cancel-and-reissue / import-only), and every number range is unbroken and immutable
+  once issued.'
+consequences: 'Generation 5''s office package shrinks to what the kit owns (correspondence,
+  chart of accounts, takeovers, four bugs, the docking point) and stays one stream.
+  The invoice application is several generations of its own project with the user
+  in the interview seat; it is not on the generation-5 clock. Cost of the decision:
+  two products to keep in step through one written interface contract (file shape,
+  drop location, kit answer). Rejected: (B) would have shipped a writer nobody uses
+  because it lacks catalogue, importers, numbering and design; (C) leaves the user
+  issuing invoices by hand on two marketplaces.'
+source: user messages 2026-09-05 ('Das tool muss aber wirklich gut sein und durchdacht
+  sein ... ebay rechnungen reinwerfe und kaufland rechnungen und shopify rechnungen');
+  AskUserQuestion answer 'Eigenes Projekt (Empfohlen)'; FR-0073; FR-0033; PR-0009;
+  staging/generation-5/update_pr0009_no_invoice_writer.py
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-05T10:34:29'

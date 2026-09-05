@@ -1,0 +1,29 @@
+id: BUG-0123
+title: Eine Erweiterung, die die Quotierung unterdrückt (neu, TSK-0019)
+related_pr: PR-0003
+observed: '**Mechanismus:** eine Shell **erweitert** ein Wort und entfernt **danach**
+  dessen Quotierung. Der
+
+  Leser bekommt von `_compat.shell_readings` das Ergebnis des zweiten Schritts — das
+  Wort, wie das
+
+  Programm es sieht — und erweiterte darauf. Damit machte er genau die Erweiterung,
+  die die
+
+  Quotierung verhindert hatte. Nicht die Tilde ist der Mechanismus, sondern die **Reihenfolge**:
+  jede
+
+  Erweiterung, die eine Shell wegen der Quotierung unterlässt, gehört in dieselbe
+  Klasse.'
+severity: low
+hole_number: H31
+source: docs/holes/H31.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+- test_gate1_answers_for_a_tilde_that_does_not_start_its_word
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:02'
+closed_at: '2026-09-05T20:23:02'

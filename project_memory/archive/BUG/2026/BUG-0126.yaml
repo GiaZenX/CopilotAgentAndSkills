@@ -1,0 +1,39 @@
+id: BUG-0126
+title: Die Prosa-Entfernung löscht eine quotierte Spanne hinter einer Flagschreibweise,
+  unabhängig vom Verb (neu, TSK-0021)
+related_pr: PR-0003
+observed: '**Mechanismus:** beide Gates lesen den Befehlstext erst, nachdem die **Prosa-Entfernung
+  der Kits**
+
+  darüber gelaufen ist (`_harness._prose_removed` → `gate_write_scope._MESSAGE_ARG_RX`).
+  Diese sucht
+
+  eine von mehreren **Flagschreibweisen** und löscht die quotierte Spanne dahinter
+  — **irgendwo auf
+
+  der Zeile und ohne das Verb anzusehen**. Damit verschwindet nicht nur eine Commit-Nachricht,
+  sondern
+
+  jeder quotierte Operand, der zufällig hinter einer dieser Schreibweisen steht. Bis
+  2026-08-07 stand
+
+  diese Lücke als „eine Ersetzung in einem quotierten Nachrichtenargument" in H32,
+  also mit der
+
+  Schreibweise statt dem Mechanismus.'
+severity: low
+hole_number: H34
+source: docs/holes/H34.md
+limits: 'die Prosa-Entfernung der Kits ist an das **Verb** gebunden (`gate_write_scope._VerbBoundMessageRemoval`/`_stage_takes_a_message`)
+  statt an die Flagschreibweise; der Datenverlust-Kern (`rm -f "geschützt"`, `cp -b
+  "geschützt"`) ist zu, und weil `_harness._prose_removed` dasselbe Objekt importiert,
+  auch das Repo-Gate, das DEC-0001 löschte. Rest: die Ersetzung IN einer echten Nachricht
+  bleibt H32; sie zu lesen wäre die Drift H15'
+regression_tests:
+- tools/test_hooks_v2.py::test_a_write_verbs_quoted_operand_is_a_path_not_a_removable_message
+- tools/test_hooks_v2.py::test_a_message_bearing_verb_keeps_its_prose_exemption
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:09'
+closed_at: '2026-09-05T20:23:09'

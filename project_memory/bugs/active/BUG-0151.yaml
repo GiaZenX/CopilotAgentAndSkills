@@ -1,0 +1,25 @@
+id: BUG-0151
+title: Nichts treibt ein Projekt in die Phasen 6–9 — offen, die Leere ist jetzt gesagt
+  (neu, TSK-0082)
+related_pr: PR-0003
+observed: '**Mechanismus:** Die evidence-Schublade hat zwei Forderer, und beide sitzen
+  hinter Stellen, die
+
+  ein kleines Projekt nie erreicht: `gate_git` fordert beim MERGE (ein Solo-Projekt
+  auf `main`
+
+  merged nie), und die `DONE → VALIDATED`-Kante wird nicht begangen (H58). Kein Gate
+  zwingt den
+
+  PM zum QA-Schritt.'
+severity: medium
+hole_number: H59
+source: docs/holes/H59.md
+limits: 'nichts treibt ein Projekt in die Phasen 6–9 — der Merge ist der einzige gebaute
+  Forderer der evidence-Schublade, und ein Solo-Projekt auf `main` merged nie (Pilot
+  3: 11 DONE/0 Evidence; Pilot 4 H2: 0). Die Leere ist seit TSK-0082 bei jedem Sitzungsstart
+  GESAGT statt unsichtbar; ob das reicht, misst der Live-Testlauf'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:24:12'

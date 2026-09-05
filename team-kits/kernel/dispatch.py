@@ -35,11 +35,14 @@ from .approvals import (
     read_apr,
 )
 from .backlog_types import (
+    ACTIVE_DIRS,
     AMENDMENT_TYPES,
     AUTOMATA,
     PARENT_FIELDS,
+    TRIAGE_RESULT_LINK,
     UI_TASK_TYPES,
     field_elements,
+    is_inbox_type,
     parse_id,
 )
 from . import references
@@ -131,6 +134,7 @@ def create_task(state: ProjectState, fields: dict) -> dict:
         raise DispatchError(
             "TSK needs product_requirement (the PR/RQ root id). Remedy: set it."
         )
+    _assert_the_origins_are_not_inbox_items(state, fields)
     with state.lock:
         root = state.read_item(root_id)
         _assert_origins_belong_to_root_locked(state, root, fields)
@@ -139,6 +143,69 @@ def create_task(state: ProjectState, fields: dict) -> dict:
     # TOCTOU note: capture below takes a SECOND lock hold -- a root-revision
     # change in between is caught fail-closed by create_lease's revision check
     return state.capture("TSK", task_fields)
+
+
+def _triage_remedy(state: ProjectState, origin: str, item_type: str) -> str:
+    """The way out, read off the wish's OWN state rather than composed once for every case.
+
+    A wish that has already been triaged has nothing left to transition -- its terminals have no
+    outgoing edge -- and telling its author to walk one is a remedy that cannot be executed, which
+    is the class `backlog_types.replanning_route` exists for one level up. So a wish that already
+    names the item it became is answered with THAT item, and only an untriaged one is answered with
+    the triage.
+    `tools/test_approvals_dispatch.py::test_the_remedy_for_an_already_triaged_wish_names_what_it_became`
+    """
+    terminals, result_field = TRIAGE_RESULT_LINK[item_type]
+    try:
+        wish, _archived = _read_item_any(state, origin)
+    except Exception:  # noqa: BLE001 -- an unreadable wish is the validator's finding
+        wish = None
+    became = str((wish or {}).get(result_field) or "")
+    if became:
+        return ("%s has already been triaged and became %s -- create the task under %s."
+                % (origin, became, became))
+    return ("triage the wish -- `transition %s TRIAGED`, then %s with `%s` = the goal it became "
+            "-- and create the task under that goal."
+            % (origin, " or ".join("`transition %s %s`" % (origin, status)
+                                   for status in sorted(terminals)), result_field))
+
+
+def _assert_the_origins_are_not_inbox_items(state: ProjectState, fields: dict) -> None:
+    """A work order hangs from a GOAL, never from a wish that has not been triaged (BUG-0091).
+
+    WHAT AN INBOX TYPE IS, is `backlog_types.is_inbox_type` and not a type name here: a type whose
+    lifecycle can end by naming the item it BECAME is a waiting room, and the item it becomes is
+    what work hangs from. The same contract gives `report._check_fr_result_link` its duty.
+
+    REFUSED AT CREATION, for the reason `_assert_origins_belong_to_root_locked` gives one frame
+    down and with a sharper measurement behind it: this is not a mislabel, it is a DEAD END.
+    Measured on 75a00d1 in a state directory outside the repo -- `create_task` with an `FR` in both
+    fields returns rc 0 and a DRAFT order; `approvals.create_pending_request(state, "scope", FR)`
+    then refuses ("this type carries no user approval"), because `FR` is in no row of
+    `APPROVAL_TRANSITIONS`; and `create_lease` refuses the order with "no user approval authorises
+    dispatching". The order's fields are frozen outside DRAFT, so nothing can repair it afterwards.
+    21 of this repository's 120 work orders are in that state (DEC-0066 keeps them: they are
+    history, and `report.tasks_under_an_inbox_item` is what counts a relapse).
+
+    BOTH PARENT FIELDS, read through `backlog_types.PARENT_FIELDS`, because the binding a work
+    order has to its origin is what that map IS -- naming the two here would be a second list of
+    the fields the tree already walks.
+    """
+    for field in PARENT_FIELDS.get("TSK", ()):
+        for one in field_elements(fields.get(field)):
+            try:
+                item_type, _ = parse_id(str(one))
+            except ValueError:
+                continue          # an unparseable reference is `capture`'s refusal, not this one's
+            if not is_inbox_type(item_type):
+                continue
+            terminals, result_field = TRIAGE_RESULT_LINK[item_type]
+            raise DispatchError(
+                "%s %s is an inbox item, not a goal -- a work order under an untriaged wish is "
+                "refused at creation (BUG-0091, DEC-0066). Nothing could dispatch it either: %s "
+                "is in no row of the approval table, so no user approval exists for it and "
+                "`create_lease` refuses every task under one. Remedy: %s"
+                % (field, one, item_type, _triage_remedy(state, one, item_type)))
 
 
 def _assert_origins_belong_to_root_locked(state: ProjectState, root: dict, fields: dict) -> None:
@@ -184,7 +251,97 @@ def _assert_origins_belong_to_root_locked(state: ProjectState, root: dict, field
             )
 
 
-def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_TTL) -> dict:
+# THE TREE A LEASE WAS GRANTED FOR (stream D's C-3). Until this field a lease named a task and
+# nothing else, so no reader could say which checkout an order was being worked in -- the
+# "one tree per order" rule of the parallel-streams procedure was carried by the lead's memory and
+# by nothing in the state. It is written on EVERY lease, so "no worktree" and "the tree the state
+# lives in" are not the same envelope; the caller may name another one, which is the case the rule
+# exists for -- a stream working in its own checkout against the shared state directory.
+# `tools/test_parallel_streams.py::test_the_lease_carries_the_tree_it_was_granted_for`
+WORKTREE_FIELD = "worktree"
+
+
+def _lease_worktree(state: ProjectState, worktree=None) -> str:
+    """The checkout this lease is granted for -- the caller's, or the tree the state directory is in.
+
+    DERIVED AND NEVER EMPTY: a default of "wherever the state lives" is the true answer for every
+    project that runs in one tree, and it is the one the kernel can compute rather than be told.
+
+    A NAMED TREE HAS TO EXIST, and that is the whole check. A path nobody can stand in records a
+    dispatch nobody can perform, and the field exists to be READ -- by a lead asking which checkout
+    an order is in. What is deliberately NOT checked, said rather than implied: whether the path is
+    a git checkout, whether it is the tree this state directory belongs to, and whether another
+    lease already names it. The last one is not a defect -- several orders in ONE tree is the
+    ordinary case, and what keeps them apart is the scope rule above, not the tree. The remainder
+    is carried with its measurement as `H156` in `docs/POST_V2_WISHLIST.md`.
+    `tools/test_parallel_streams.py::test_a_worktree_nobody_can_stand_in_is_refused`
+    """
+    if worktree is None:
+        return os.path.abspath(os.path.dirname(os.path.abspath(state.root)))
+    named = os.path.abspath(str(worktree))
+    if not os.path.isdir(named):
+        raise DispatchError(
+            "no directory at %r, so a lease naming it would record a dispatch nobody can perform. "
+            "Remedy: name the checkout the specialist really works in, or leave the flag out -- "
+            "the tree the state directory lives in is then recorded." % str(worktree))
+    return named
+
+
+def _assert_no_running_lease_owns_the_same_file_locked(state: ProjectState, task_id: str) -> None:
+    """No second lease over a file a RUNNING one already owns (stream D's C-2).
+
+    THE PREDICATE IS `kernel.scopes`, imported and asked rather than restated: it folds both sides
+    through the shipped `gate_write_scope._norm` and asks that gate's own `_matches`, so what this
+    refuses is what the specialists really meet. A second spelling here would refuse pairs the gate
+    grants and grant pairs it refuses. The seam both orders declare (`scopes.SEAM_FIELD`) is
+    subtracted by `scopes.overlaps` before the verdict, and a declaration that leaves one order
+    owning nothing of its own is not subtracted at all -- both rules live there, once.
+
+    ONLY AGAINST LEASES THAT ARE STILL RUNNING, and the reason is what a lease IS: an expired one
+    grants nothing, and `sweep_expired_leases` is what removes it. Comparing against a lease whose
+    TTL has run out would refuse work on the strength of a claim nobody holds.
+
+    IT COSTS NOTHING WHEN NOTHING ELSE RUNS: the whole check -- the gate import, the `git ls-files`
+    of `scopes.tracked_files` -- sits behind the early return below, so the ordinary single-stream
+    dispatch does not pay for it.
+
+    WHAT IT DOES NOT REACH is `scopes`' own limit and not a second one: a region no witness lands
+    in and no file exists in yet (`H135` in `docs/POST_V2_WISHLIST.md`), and a seam narrower than
+    the overlap (`H143`).
+    `tools/test_parallel_streams.py::test_the_second_lease_is_refused_when_the_scopes_overlap`
+    """
+    now = time.time()
+    running = sorted({str(lease["task_id"]) for lease in _iter_leases(state)
+                      if float(lease.get("created_epoch") or 0) + float(lease.get("ttl") or 0) > now
+                      and str(lease["task_id"]) != task_id})
+    if not running:
+        return
+    from . import scopes
+
+    matches, gate = scopes.matcher()
+    orders = scopes.open_orders(state, set(running) | {task_id})
+    files = scopes.tracked_files(os.path.dirname(os.path.abspath(state.root)))
+    for pair in scopes.overlaps(matches, orders, files):
+        if task_id not in (pair["a"], pair["b"]):
+            continue
+        shared = pair["files"] + pair["witnesses"]
+        if not shared:
+            continue
+        other = pair["b"] if pair["a"] == task_id else pair["a"]
+        raise DispatchError(
+            "%s and %s -- which holds a running lease -- both own %s (and %d more), so a second "
+            "dispatch would put two specialists on one file. Refused (DEC-0062 (1), stream D C-2); "
+            "the path predicate is the shipped %s, the same one gate layer 3 enforces "
+            "`allowed_scope` with. Remedy: wait for %s to finish (`python scripts/harness.py "
+            "sweep-leases` says how long it has left), move the shared paths out of one of the two "
+            "`allowed_scope`s, or declare them in `%s` on BOTH orders if they are shared on purpose."
+            % (task_id, other, ", ".join(shared[:scopes.PATHS_SHOWN]),
+               max(0, len(shared) - scopes.PATHS_SHOWN), gate, other, scopes.SEAM_FIELD)
+        )
+
+
+def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_TTL,
+                 worktree: str = None) -> dict:
     """READY -> LEASED with a nonce lease. Validates root approval + revision."""
     with state.lock:
         task = state.read_item(task_id)
@@ -196,6 +353,7 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
             )
         root = state.read_item(task["product_requirement"])
         _assert_dispatch_authorised_locked(state, task, root)
+        _assert_the_architect_step_happened_locked(state, task, root)
         if root.get("revision") != task.get("root_revision"):
             raise DispatchError(
                 "task %s was planned against root revision %s but %s is now at "
@@ -210,6 +368,7 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
                 % (task_id, blocked)
             )
         _assert_dependencies_met_locked(state, task)
+        _assert_no_running_lease_owns_the_same_file_locked(state, task_id)
         lease_path = _lease_path(state, task_id)
         if os.path.exists(lease_path):
             # THE WAIT IS NAMED, and so is the command that ends it. This said "wait for the lease
@@ -237,6 +396,7 @@ def create_lease(state: ProjectState, task_id: str, ttl: float = DEFAULT_LEASE_T
             "created_epoch": time.time(),
             "ttl": float(ttl),
             "agent_id": None,
+            WORKTREE_FIELD: _lease_worktree(state, worktree),
         }
         # THE ADOPTION OFFER IS MADE HERE, at the one moment a dispatch is composed, so that what
         # the specialist receives says whether there is anything to resume -- and says it ONLY when
@@ -634,6 +794,7 @@ def validate_dispatch(state: ProjectState, header: dict, subagent_type: str,
                 % (task_id, task.get("root_revision"), root["id"], root.get("revision"))
             )
         _assert_dispatch_authorised_locked(state, task, root)
+        _assert_the_architect_step_happened_locked(state, task, root)
         _assert_dependencies_met_locked(state, task)
         if task.get("blocked_by"):
             raise DispatchError(
@@ -1805,6 +1966,274 @@ def _assert_dependencies_met_locked(state: ProjectState, task: dict) -> None:
             "Remedy: finish the dependencies first."
             % (task["id"], ", ".join(open_deps))
         )
+
+
+# WHICH GOALS ARE NOT ASKED FOR THE ARCHITECT STEP (FR-0085, DEC-0072). The wish asked for the duty to hang
+# off the `class` field a root already carries -- "small: no SR; normal/large: at least one ACCEPTED
+# SR". MEASURED before it was built: `class` has NO vocabulary anywhere in this kernel. The shipped
+# suite alone captures roots with `feature`, `normal`, `research`, `exploratory` and
+# `technical_enabler`, and no schema, no validator and no capture check constrains the value. A rule
+# spelled as "class in (normal, large)" would therefore SKIP the duty for every value nobody
+# thought of, which is the failure `EVIDENCE_KINDS` names one file away: an unrecognised value does
+# not fail a check, it skips one.
+#
+# So the EXEMPTION is the closed set and everything else is asked, unknown values included. Two
+# members, each with its own reason: `small` is FR-0085's own word for the size that pays nothing;
+# `technical_enabler` is the class this kernel already treats as carrying no product content
+# (`REQUIRED_FIELDS` lets it omit the user story, `report._check_ui_delivery_sequence` lets it run
+# alongside), and there is no user-facing design for an architect to derive.
+#
+# WHAT IT COSTS AND IN WHICH DIRECTION IT FAILS: a typo in a class name asks for an architect round
+# that was not owed -- friction, and recoverable by one `capture SR`. The opposite spelling would
+# hand out work under a goal nobody designed, which is what the wish is about. The free-text nature
+# of the field is carried as a hole with its measurement, not papered over here.
+# `tools/test_approvals_dispatch.py::test_a_goal_of_an_unknown_class_is_asked_for_the_architect_step`
+SR_EXEMPT_CLASSES = frozenset(("small", "technical_enabler"))
+# The status in which a technical requirement has been ACCEPTED rather than merely proposed --
+# derived from the type's own chain so a renamed status moves the duty with it, and it is the LAST
+# chain status because that is what "accepted" is on a two-step automaton (PROPOSED -> ACCEPTED).
+ARCHITECT_STEP_TYPE = "SR"
+
+
+def _accepted_requirement_status() -> str:
+    return AUTOMATA[ARCHITECT_STEP_TYPE].chain[-1]
+
+
+def _carries_its_own_criteria(item_type: str) -> bool:
+    """CAN an item of this type hold the criteria a work order is measured against?
+
+    THE QUESTION IS ABOUT THE TYPE AND NOT ABOUT THE VALUE, and the wording matters because the
+    first cut of this sentence said the origin "brings" its criteria while the code asks whether
+    its type CAN carry them. Measured 2026-09-05 (round-2 verification, R3): a `BUG` with
+    `acceptance_criteria: []` excuses the architect step, and the shipped kit hook lets that spawn
+    through with rc 0.
+
+    IT STAYS AT THE TYPE LEVEL, with the reason rather than by default: this predicate answers "is
+    this order measured somewhere other than the goal", which is a fact about where its criteria
+    LIVE. Whether the list at that place is filled is a different question with a different owner
+    and a different MOMENT: `validate_dispatch` -- the spawn, not the lease -- refuses a task that
+    names no criterion at all and one whose criteria exist nowhere. Answering it here would put a
+    second reader on it, one lifecycle step early.
+
+    WHAT THE TWO TOGETHER DO NOT CATCH, measured through the shipped kit hook as a process rather
+    than derived: the universe `validate_dispatch` resolves against is NOT the origin alone. It is
+    `_known_acceptance_ids_locked` -- the root, the origin AND the approved amendments -- so a
+    reference that exists only on the ROOT resolves. An order whose origin is a `BUG` with an EMPTY
+    criteria list and whose `acceptance_refs` name a criterion of the goal is therefore excused from
+    the architect step by THIS predicate and then measured against the GOAL's criteria -- the very
+    goal whose architect step is missing. Measured through the shipped kit hook as a process, and
+    the LEASE is granted in all three: empty criteria + no refs -> spawn rc 2 ("carries no
+    acceptance_refs"); empty criteria + a ref that exists nowhere -> spawn rc 2; empty criteria + a
+    ref that exists on the root -> spawn rc 0. That last line is the remainder, and it is `H155` in
+    `docs/POST_V2_WISHLIST.md`.
+    `tools/test_approvals_dispatch.py::test_an_empty_origin_excuses_the_step_while_the_root_criteria_measure_it`
+
+    DERIVED FROM THE FIELD CONTRACT, not from a list of type names: `validate_dispatch` looks for a
+    task's criteria in `CRITERIA_FIELDS`, so a type whose contract declares one of those fields is
+    a place criteria can live and a type that declares none is not, whatever its name. Measured
+    over the shipped contracts that picks out PR, RQ, BUG, CR and EXP and leaves out SR, PROC, HYP,
+    MST and TSK -- and the one that matters is `SR`, which is exactly the type the duty below is
+    ABOUT.
+    `tools/test_approvals_dispatch.py::test_only_an_origin_that_carries_criteria_excuses_the_architect_step`
+    """
+    from .backlog_types import _contract_fields
+
+    declared = _contract_fields().get(item_type, ())
+    return any(field in declared for field in CRITERIA_FIELDS)
+
+
+def _the_kit_ships_the_architect_step(state: ProjectState) -> bool:
+    """Does the KIT this project runs SHIP a home for `ARCHITECT_STEP_TYPE`? (DEC-0074, DEC-0079)
+
+    THE DUTY BELONGS TO A KIT THAT HAS THE STEP, and until DEC-0074 it was asked of every project
+    the shared kernel serves. Measured on scaffolded pilots outside the repo (TSK-0126): an office
+    work order under its `PROC` root and a research work order under its `RQ` root both hit
+    "no SR in status ACCEPTED hangs from that goal", and the remedy sent them to `capture SR` and to
+    "the architect" -- two words that appear in neither kit's constitution, skills or phase model.
+    The office kit's texts do not contain the string `SR` at all.
+
+    WHAT IS READ, AND WHY IT IS THE KIT'S DELIVERY AND NOT THE PROJECT'S STOCK -- this is DEC-0079,
+    and it is the correction of a first cut that asked `os.path.isdir(state.root / ...)`. Measured
+    as processes on scaffolded pilots (merge verify round 2, R2-B1): the office kit's OWN command
+    line accepts `capture SR` with rc 0, which creates `system/active`, and a bare `mkdir` does the
+    same -- and from that moment every order under a `PROC` was refused at the lease AND at the
+    spawn. A rule a project can switch on by accident is not the rule the user decided. So the
+    subject is what the KIT DELIVERS: the scaffold's own ownership record says which kit installed
+    this project (`presets.installation`), the kit store says what that kit ships
+    (`presets.kit_dir`), and the question is whether its `templates/project_memory` carries
+    `ACTIVE_DIRS[ARCHITECT_STEP_TYPE]`. Of the three shipped kits only dev-team's does. A kit that
+    GAINS the type falls under the duty the day its template ships that home, and one that loses it
+    falls out -- with no line here to edit. An enumeration of kit names was option (C) of DEC-0074
+    and was rejected for the reason CLAUDE.md gives: the next kit without the type walks into it
+    again.
+
+    IT FAILS CLOSED. A tree with no scaffold record and a kit that is not staged on this machine
+    are both "this reader cannot say", and then the duty is ASKED -- the direction that costs a
+    question rather than the one that skips a step. That is also why the whole test suite, whose
+    state directories are built key by key and carry no kit record, keeps meeting the duty.
+
+    THE OTHER HALF (DEC-0079 (1b)) IS THE RULE THAT WAS ALREADY THERE: an origin that BRINGS the
+    criteria excuses the step (`_carries_its_own_criteria`), which is what leaves a research order
+    deriving from an `EXP` unasked even where the home exists.
+
+    `tools/test_approvals_dispatch.py::test_the_architect_step_is_owed_by_the_kits_delivery_not_the_projects_stock`
+    """
+    return _the_kit_delivery_of_the_architect_step(state)[0]
+
+
+def _the_kit_delivery_of_the_architect_step(state: ProjectState):
+    """(owed, why_it_could_not_be_read) -- one reader, two callers, one answer.
+
+    THE SECOND HALF IS THE REFUSAL'S, and it is why this returns a reason instead of a bool.
+    `DEC-0079` (4) says the fail-closed direction is "stated in the remedy"; measured on scaffolded
+    pilots (merge verify round 3, R3-B1) the refusal printed the ORDINARY sentence in all three
+    unreadable cases, so an office project whose kit store this process cannot reach was sent to
+    `capture SR` and to "the architect" -- the two words H163 exists because that kit does not have.
+
+    WHERE THE STORE PATH COMES FROM, said rather than implied: `presets.staging_root()`, which is
+    the RUNNING home directory. The scaffold record names the kit, not a path, so a project moved
+    to a machine, an account or a runner whose home carries no kit store is exactly the case this
+    branch answers -- and there the honest answer is "this could not be read", not "derive an SR".
+
+    `tools/test_approvals_dispatch.py::test_a_project_whose_kit_delivery_cannot_be_read_says_so`
+    """
+    from . import presets
+
+    repo = os.path.dirname(os.path.abspath(state.root))
+    try:
+        kit = presets.installation(repo)["kit"]
+    except Exception:  # noqa: BLE001 -- an absent or broken record is an answer, not a crash
+        return True, ("this project carries no readable scaffold record (%s), so which kit it runs "
+                      "-- and therefore whether that kit has an architect step at all -- could not "
+                      "be read" % presets.ROLES_MANIFEST.replace(os.sep, "/"))
+    try:
+        directory = presets.kit_dir(kit)
+    except Exception:  # noqa: BLE001 -- the kit is not in the store this process can reach
+        return True, ("the kit %r this project records is not in the kit store this process can "
+                      "reach (%s), so what that kit DELIVERS could not be read"
+                      % (kit, presets.staging_root()))
+    template = os.path.join(directory, "templates", "project_memory")
+    if not os.path.isdir(template):
+        return True, ("the kit %r in the store at %s ships no templates/project_memory, so what it "
+                      "delivers could not be read" % (kit, directory))
+    return os.path.isdir(
+        os.path.join(template, *ACTIVE_DIRS[ARCHITECT_STEP_TYPE].split("/"))), None
+
+
+def presets_staging_root() -> str:
+    """The kit store this process reads, for a refusal that has to name it."""
+    from . import presets
+
+    return presets.staging_root()
+
+
+def architect_step_owed(state: ProjectState, task: dict, root: dict) -> bool:
+    """Does this work order still owe the architect step? -- the predicate, asked in two places.
+
+    THE REFUSAL BELOW AND THE SUITE'S OWN DISPATCH FIXTURE (`tools/conftest.drive_task_to`) ask
+    THIS, so a fixture that walks a task to a lease satisfies the rule the way it already mints an
+    approval on a gated edge -- rather than re-deciding for itself what the rule is. A second
+    spelling in the fixture would let the suite walk past a duty production cannot walk past, which
+    is the one thing a fixture must never be able to do.
+
+    WHAT EXCUSES AN ORDER, as a property and no longer as "anything but the root". The first cut of
+    this returned False for EVERY origin other than the root, and the verifier measured what that
+    came to: a task deriving from a `PROPOSED` SR under the same goal was granted a lease while the
+    identical task deriving from the goal was refused, and `derives_from` at 75a00d1 names an SR 29
+    times against the goal 3 times -- the dev-team developer skills PRESCRIBE the SR spelling
+    ("Your `TSK` -- `derives_from` names the SR"), so in a kit project the duty would never have
+    fired at all.
+
+    The exemption is now bound to what it MEANS: an origin excuses the architect step when its
+    type is a place a work order's criteria can LIVE (`_carries_its_own_criteria`) -- a defect, a
+    change request, an experiment. Such an order is measured against that item and is the case FR-0085 rules out ("not
+    wanted: an SR for every bugfix task"). An `SR` origin carries no criteria field, so it excuses
+    nothing by itself; it satisfies the duty exactly when it IS the accepted architect step, which
+    the scan below already answers -- one rule, no second branch for the type the rule is about.
+    """
+    owed, _why = _the_kit_delivery_of_the_architect_step(state)
+    if not owed:
+        return False        # DEC-0074/DEC-0079: the kit ships no home for the step, so no duty
+    if str(root.get("class") or "") in SR_EXEMPT_CLASSES:
+        return False
+    for origin in field_elements(task.get("derives_from")):
+        origin = str(origin)
+        if origin == str(root.get("id")):
+            continue
+        try:
+            origin_type, _ = parse_id(origin)
+        except ValueError:
+            continue      # an unparseable origin is refused at creation, not weighed here
+        if _carries_its_own_criteria(origin_type):
+            return False
+    from .report import origin_root_conflict
+
+    accepted = _accepted_requirement_status()
+    for stem, path in state.iter_active_items(ARCHITECT_STEP_TYPE):
+        try:
+            item = state._read_yaml(path)
+        except Exception:  # noqa: BLE001 -- an unreadable item is the validator's finding
+            continue
+        if not isinstance(item, dict) or item.get("status") != accepted:
+            continue
+        if not origin_root_conflict(state, str(item.get("id") or stem), root["id"]):
+            return False
+    return True
+
+
+def _assert_the_architect_step_happened_locked(state: ProjectState, task: dict, root: dict) -> None:
+    """No work order under a goal that has no ACCEPTED technical requirement (FR-0085).
+
+    THE MEASUREMENT THAT ASKED FOR IT: the constitutions name the chain FR -> PR -> SR -> TSK and
+    the PM skill hands an approved goal to the architect, while the kernel knew nothing about it --
+    measured in a state directory outside the repo, a `normal`, a `large` AND a `small` goal each
+    got a lease with zero SR items in the project. How lopsided the ratio of requirements to work
+    orders is in a given store is a measurement of the round that asks, not a count this comment
+    can keep.
+
+    WHERE IT ASKS: at the LEASE, because that is where a dispatch is minted. `validate_dispatch`
+    asks again at the spawn, the way it re-asks the approval, the dependencies and the blocker, so
+    a lease that predates this rule does not carry a spawn past it.
+
+    WHOM IT ASKS: every order under the goal EXCEPT one whose origin brings its own criteria --
+    the property is `_carries_its_own_criteria` and the argument is there. An order deriving from a
+    technical requirement is asked like any other, and is answered by that requirement being
+    ACCEPTED. A goal of an exempt class is never asked -- see `SR_EXEMPT_CLASSES` for which, and
+    why the exemption rather than the duty is the closed set.
+
+    WHAT COUNTS AS THE STEP HAVING HAPPENED: an `SR` in the accepted status of its own automaton
+    that hangs from this root, read through the same reference walk the validator uses
+    (`report.origin_root_conflict` over `backlog_types.PARENT_FIELDS`) -- a second spelling of
+    "hangs from" would refuse what `validate` calls fine.
+    """
+    if not architect_step_owed(state, task, root):
+        return
+    unreadable = _the_kit_delivery_of_the_architect_step(state)[1]
+    if unreadable:
+        # ITS OWN SENTENCE, because the ordinary one would be FALSE here: this order is asked not
+        # because its goal lacks a design step but because this reader could not find out whether
+        # the kit HAS one. Sending a kit without `SR` to `capture SR` is the dead end DEC-0074 and
+        # DEC-0079 were decided to end (merge verify round 3, R3-B1).
+        raise DispatchError(
+            "%s hangs from %s, and whether this project's kit runs an architect step at all could "
+            "not be read: %s. The duty is therefore ASKED rather than skipped, which is the "
+            "fail-closed direction of DEC-0079 (4) -- a question costs a step, a wrong skip loses "
+            "one. Remedy: make the kit's own delivery readable again -- restore the scaffold "
+            "record, or put the kit back in the store this process reads (%s); the kit store is "
+            "the RUNNING home directory's, so a project moved to another machine or account needs "
+            "its kit staged there. Do NOT capture a technical requirement to get past this: "
+            "whether this kit has that item type at all is exactly what could not be read."
+            % (task["id"], root["id"], unreadable, presets_staging_root()))
+    accepted = _accepted_requirement_status()
+    raise DispatchError(
+        "%s hangs from %s (class %r), and no %s in status %s hangs from that goal -- the architect "
+        "step has not happened, so this work order would be built against a goal nobody designed "
+        "(FR-0085). Remedy: have the architect derive the technical requirement -- `python "
+        "scripts/harness.py capture %s` with `derives_from: %s`, then `transition <id> %s` -- or, "
+        "if this goal really needs none, capture it in a class the duty does not ask (%s)."
+        % (task["id"], root["id"], root.get("class"), ARCHITECT_STEP_TYPE, accepted,
+           ARCHITECT_STEP_TYPE, root["id"], accepted, ", ".join(sorted(SR_EXEMPT_CLASSES)))
+    )
 
 
 def _assert_dispatch_authorised_locked(state: ProjectState, task: dict, root: dict) -> None:

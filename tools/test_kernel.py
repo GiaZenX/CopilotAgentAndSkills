@@ -374,7 +374,7 @@ def test_every_kernel_writer_lands_inside_the_declared_area(tmp_path):
     import sys as _sys
 
     _sys.path.insert(0, TEAM_KITS_DIR)
-    from conftest import approve, mint_via_hook
+    from conftest import approve, mint_via_hook, satisfy_the_architect_step
     from kernel import approvals, dispatch, layout
     from kernel.state import ProjectState
 
@@ -390,6 +390,7 @@ def test_every_kernel_writer_lands_inside_the_declared_area(tmp_path):
         "expected_outputs": [], "dependencies": [],
     })
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item("PR-0001"))
     lease = dispatch.create_lease(state, task["id"])
     dispatch.bind_agent(state, task["id"], "agent-1")
     dispatch.spawn_outcome(state, task["id"], ok=True)
@@ -639,10 +640,10 @@ def _leasable_task(state):
     import sys as _sys
 
     _sys.path.insert(0, TEAM_KITS_DIR)
-    from conftest import approve
+    from conftest import approve, satisfy_the_architect_step
     from kernel import dispatch
 
-    state.capture("PR", _pr_fields())
+    root = state.capture("PR", _pr_fields())
     approve(state, "PR-0001", "scope")
     task = dispatch.create_task(state, {
         "product_requirement": "PR-0001", "derives_from": "PR-0001", "type": "implementation",
@@ -651,6 +652,8 @@ def _leasable_task(state):
         "expected_outputs": [], "dependencies": [],
     })
     state.transition(task["id"], "READY")
+    # the architect step the goal's class asks for (FR-0085), through the kernel's own predicate
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(root["id"]))
     return task["id"]
 
 

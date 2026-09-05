@@ -1,0 +1,23 @@
+id: BUG-0114
+title: Die Read-only-Klassifikation gilt pro Stufe, der Pfad reist weiter (neu, TSK-0011)
+related_pr: PR-0003
+observed: '**Mechanismus:** ob eine Stufe schreibt, beantwortet die Klassifikation
+  der Kits **pro Stufe**, und
+
+  die Wörter einer lesenden Stufe fallen damit als Schreibkandidaten weg. Eine Pipe,
+  eine
+
+  Kommandosubstitution und eine Patch-Datei tragen den Pfad aber über diese Grenze:
+  die lesende Stufe
+
+  **nennt** ihn, die schreibende **benutzt** ihn, und keine der beiden zeigt beides.'
+severity: medium
+hole_number: H22
+source: docs/holes/H22.md
+limits: '**nichts Technisches**, dieselbe Begrenzung wie H11 — die Reparaturstelle
+  liegt in der Read-only-Klassifikation der Kits'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:40'
+closed_at: '2026-09-05T20:22:40'

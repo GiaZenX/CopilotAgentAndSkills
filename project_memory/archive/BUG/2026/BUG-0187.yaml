@@ -1,0 +1,38 @@
+id: BUG-0187
+title: Die Ursprungsprüfung des Dispatchs fiel bei MEHRDEUTIGER Elternschaft offen
+  aus, in allen Kits — GESCHLOSSEN (TSK-0106)
+related_pr: PR-0003
+observed: '**Mechanismus:** `report._root_of` gibt `None` zurück, sobald ein Item
+  **mehr als ein**
+
+  Bindungsfeld gefüllt hat (`report.py:934-941`, `parents[0] if len(parents) == 1
+  else None`).
+
+  `dispatch._assert_task_origin_matches_root` prüft `if origin_root and origin_root
+  != root["id"]`
+
+  (`dispatch.py:176-177`) — bei `None` wird die Prüfung stillschweigend übersprungen.
+  Die Prüfung,
+
+  die verhindern soll, dass eine Aufgabe gegen die Kriterien einer **fremden** Wurzel
+  gemessen wird,
+
+  fällt also nicht zu, sondern auf.'
+severity: low
+hole_number: H95
+source: docs/holes/H95.md
+limits: 'Mehrdeutigkeit fällt ZU: ein Ursprung gehört zur Wurzel nur, wenn JEDER Elternpfad
+  dort endet; die Verweigerung nennt den Elternteil, der wegführt. Miterledigt: ein
+  Ursprung ganz OHNE Bindung (ein fremdes Wurzel-Item) wurde ebenso durchgelassen.
+  Rot ohne den Fix: `test_kernel.test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation`,
+  `test_kernel.test_a_task_may_not_derive_from_a_ROOT_item_of_another_tree`'
+regression_tests:
+- test_kernel.test_an_origin_with_a_parent_outside_the_root_is_refused_at_creation
+- test_kernel.test_a_task_may_not_derive_from_a_ROOT_item_of_another_tree
+- test_report.test_an_origin_that_reaches_the_root_through_only_one_of_its_parents_is_refused
+- test_kernel.test_an_origin_whose_parents_all_hang_from_the_root_is_still_creatable
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:46'
+closed_at: '2026-09-05T20:25:46'

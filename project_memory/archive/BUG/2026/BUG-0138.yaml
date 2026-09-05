@@ -1,0 +1,36 @@
+id: BUG-0138
+title: '`>&datei` ist eine bytehaltende Umleitung, die Gate 1 nicht als Schreibzugriff
+  sah — GESCHLOSSEN (TSK-0070, über die Kit-Leih-Mechanik mitgeheilt)'
+related_pr: PR-0003
+observed: '**Mechanismus:** Der Umleitungs-Erkenner von Gate 1 (`.claude/hooks/_harness`,
+  dieselbe
+
+  Regex-Klasse `_REDIRECT_RX` wie im Kit-Gate) liest hinter `>` nur `>`, `|` oder
+  Zeilenende. Die
+
+  Schreibweise `>&WORT` ist im Bash aber genau dann **keine** Deskriptor-Verdopplung,
+  sondern die
+
+  csh-Form von `&>datei` (beide Ströme in die Datei), wenn `WORT` **keine** Zahl und
+  nicht `-` ist.
+
+  Der Lexer liefert `>&` als ein Token, das Muster verwirft es, das Folgewort wird
+  nie als Ziel
+
+  verbucht — und damit läuft **jede** Pfadregel dieses Gates ins Leere, nicht nur
+  eine.'
+severity: low
+hole_number: H46
+source: docs/holes/H46.md
+limits: '`>&datei` ist im Bash eine bytehaltende Umleitung (csh-Form von `&>`), die
+  der Umleitungs-Erkenner nicht als Ziel verbuchte; der B1-Fix (`_output_redirect_targets`,
+  Deskriptor nur bei Zahl/`-` verworfen) hat über die Kit-Leih-Mechanik (`_from_kit`)
+  auch das Repo-Gate geheilt — gemessen `echo x >& …` rc 0 → rc 2 an `gate_lead_write_scope.py`,
+  `>&2` bleibt rc 0. Kein Schritt außerhalb der Sitzung nötig'
+regression_tests:
+- test_hooks_v2.test_a_descriptor_duplication_is_a_redirect_but_a_file_after_gt_amp_is_a_write
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:39'
+closed_at: '2026-09-05T20:23:39'

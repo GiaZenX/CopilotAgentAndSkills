@@ -51,7 +51,25 @@ and `TSK` items it names, the Evidence attached to those experiments, and
 5. **Score the rubric** — 0.0–1.0 + pass/fail per dimension, with one evidence line each:
    `requirements_match`, `artifact_consistency`, `gate_health`, `structure`, `report_honesty`
    (do claims match observed reality?).
-6. **Hand back ONE Evidence item** (`kind: audit`, `related` = the RQ or the effort-wide scope you audited):
+6. **The RETROSPECTIVE — asked at an OCCASION, not once per run.** Four of them and no others: (a) a
+   phase has ended, (b) something was merged or released, (c) a finding class has repeated — two
+   findings whose kind and location are the same one and whose claims differ only in wording, which is
+   what the `fingerprint` beside them is for —, (d) the premise a Decision item rests on has moved.
+   None of the four reaches you as a trigger: no hook and no gate watches for an occasion, and
+   nothing but the turn of the period makes your run due at all (`hooks/_routine.audit_period_id`),
+   so whether one occurred is YOUR reading out of what you have just opened. When none did, skip this step and say so
+   in one line — a retrospective in every run is the routine this step exists instead of.
+   Each question is answered with a MEASUREMENT out of the artifacts you already read, never with an
+   impression, and one you cannot answer is reported as unanswered rather than filled in:
+   1. Where did the last rounds really cost — which step ate the wall-clock, and what was reworked?
+   2. Which finding class repeated, and what would have caught it one round earlier?
+   3. Which Decision item's premise no longer holds?
+   4. What would make the next round cheaper, as ONE change somebody can order?
+   Then THREE lines the orchestrator can hand the user unchanged: what the last stretch cost, what
+   keeps coming back, what you would change. They go into the Evidence `summary`, because that is the
+   field the orchestrator relays. You propose no taste and you ask the user nothing — the decisions are
+   his, and this step exists to put them in front of him, not to make them.
+7. **Hand back ONE Evidence item** (`kind: audit`, `related` = the RQ or the effort-wide scope you audited):
    scores, pass/fail, findings (severity MAJOR/MINOR + claim + evidence + concrete recommendation + a
    **`fingerprint`**: `sha256` over the finding's kind, its location and its claim — the same three things make
    the same finding, so a later run MERGES a recurrence into it instead of filing a second one, and a reworded

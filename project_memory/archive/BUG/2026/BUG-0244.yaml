@@ -1,0 +1,45 @@
+id: BUG-0244
+title: Die Last-Hälfte des Gate-3-Zeittests ist ungemessen; das Rig ist umgebaut und
+  wartet auf ein Fenster (neu, TSK-0125, BUG-0033)
+related_pr: PR-0003
+observed: '**Mechanismus.** `PR-0007` AC-4 verlangt die Messung des Gate-3-Zeitknotens
+  **solo und unter Last**.
+
+  Die Solo-Hälfte ist gemessen (rot vor dem Fix, grün danach, Zahlen im Protokoll
+
+  `project_memory/staging/TSK-0125/stream-protocol.md`). Die Last-Hälfte ist es **nicht**:
+  das erste
+
+  Rig startete 16 Brenner mit Normalpriorität auf einem 16-Thread-Host und ohne Deckel,
+  drei Läufe
+
+  wurden vom Host abgeschnitten, und zwei der vier harten Abschaltungen dieses Tages
+  (Windows
+
+  Kernel-Power 41 um 17:38, 22:58, 23:06, 23:14) folgten einem Start dieses Rigs um
+  3 min 27 s und
+
+  1 min 21 s, während drei andere Ströme Suiten fuhren. Das ist **kein** Kausalitätsbeweis
+  und wird
+
+  hier nicht als einer geführt — es ist der Grund für den Umbau.'
+severity: low
+hole_number: H162
+source: docs/holes/H162.md
+limits: 'die Last-Haelfte von `PR-0007` AC-4 war ungemessen: das erste Lastrig fuhr
+  16 Brenner mit Normalpriorität ohne Deckel, drei Laeufe wurden vom Host abgeschnitten,
+  und zwei der vier harten Abschaltungen des 2026-09-04 folgten einem Start um 3 min
+  27 s bzw. 1 min 21 s (kein Kausalitaetsbeweis, aber der Grund fuer den Umbau). `_round-scratch/TSK-0125/under_load.py`
+  ist neu gebaut: hoechstens die HAELFTE der logischen CPUs (8 von 16, abgeleitet),
+  unter-normale Prioritaet, Deckel <= 120 s ab dem ersten Brenner, ein Fenster, ohne
+  das es nicht startet, und ein Start, der eine liegengebliebene PID-Liste VERWEIGERT
+  statt nach Nummer zu toeten -- alle vier Verweigerungen gemessen. Im Fenster des
+  Leads am 2026-09-05 04:28 EINMAL gefahren: der Knoten ist unter 8 unter-normalen
+  Brennern **gruen** (`1 passed in 16.31s`), der Host war 20,1 s der erlaubten 120
+  s belegt, danach kein Brenner uebrig. Rest: gemessen ist DIESE Lastklasse, nicht
+  die 16-Brenner-Klasse mit Normalprioritaet, die den Umbau ausgeloest hat'
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:28:26'
+closed_at: '2026-09-05T20:28:26'

@@ -11,6 +11,7 @@ import yaml
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "team-kits"))
 
 from conftest import approve  # noqa: E402 -- the ONE minting helper for the suite
+from conftest import satisfy_the_architect_step  # noqa: E402 -- the dispatch duty
 from kernel import approvals, cli, dispatch, report, staging  # noqa: E402
 from conftest import walk_to_status  # noqa: E402
 from kernel.backlog_types import ACTIVE_DIRS, TransitionError  # noqa: E402
@@ -686,6 +687,7 @@ def _approved_ready_task(state):
                    "--assigned-role", "backend-developer", "--acceptance-ref", "AC-1",
                    "--allowed-scope", "src/") == 0
     state.transition("TSK-0001", "READY")
+    satisfy_the_architect_step(state, state.read_item("TSK-0001"), state.read_item(pr["id"]))
     return pr, state.read_item("TSK-0001")
 
 
@@ -1261,6 +1263,8 @@ def test_a_design_ref_that_names_nothing_does_not_open_a_spawn(state):
         "required_inputs": [], "allowed_scope": ["src/"], "forbidden_scope": [],
         "expected_outputs": [], "dependencies": [], "design_ref": "DSN-9999"})
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     header = dispatch.parse_header(
         dispatch.dispatch_header(dispatch.create_lease(state, task["id"])))
     with pytest.raises(dispatch.DispatchError, match="exist nowhere"):
@@ -1519,16 +1523,25 @@ def test_freeze_design_is_the_only_thing_that_can_fill_design_refs(state, capsys
              "assigned_role": "frontend-developer", "acceptance_refs": ["AC-1"],
              "allowed_scope": ["frontend/"], "forbidden_scope": [], "required_inputs": [],
              "expected_outputs": [], "dependencies": []}
-    wrong = dispatch.create_task(state, dict(order, design_ref="DSN-9999"))
+    # DISJOINT SCOPES, because both leases run at once here and the kernel now refuses a
+    # second dispatch onto a file a running order owns (DEC-0062 (1)). The scope is
+    # incidental to what this test measures -- the design_ref is the subject.
+    wrong = dispatch.create_task(state, dict(order, design_ref="DSN-9999",
+                                            allowed_scope=["frontend/wrong/"]))
     state.transition(wrong["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(wrong["id"]),
+                               state.read_item(pr["id"]))
     header = json.loads(dispatch.dispatch_header(
         dispatch.create_lease(state, wrong["id"])).split(" ", 1)[1])
     with pytest.raises(dispatch.DispatchError) as refused:
         dispatch.validate_dispatch(state, header, order["assigned_role"])
     assert "design_ref" in str(refused.value)
 
-    good = dispatch.create_task(state, dict(order, design_ref=frozen[0]))
+    good = dispatch.create_task(state, dict(order, design_ref=frozen[0],
+                                           allowed_scope=["frontend/good/"]))
     state.transition(good["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(good["id"]),
+                               state.read_item(pr["id"]))
     header = json.loads(dispatch.dispatch_header(
         dispatch.create_lease(state, good["id"])).split(" ", 1)[1])
     assert dispatch.validate_dispatch(state, header, order["assigned_role"])
@@ -1575,6 +1588,8 @@ def test_a_scalar_design_ref_survives_the_freeze_as_one_reference(state, capsys)
         "allowed_scope": ["frontend/"], "forbidden_scope": [], "required_inputs": [],
         "expected_outputs": [], "dependencies": [], "design_ref": reference})
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     header = json.loads(dispatch.dispatch_header(
         dispatch.create_lease(state, task["id"])).split(" ", 1)[1])
     assert dispatch.validate_dispatch(state, header, "frontend-developer")

@@ -1,0 +1,49 @@
+id: BUG-0227
+title: Die Verengung folgt einem Verzeichniswechsel, der landet, aber nicht wirkt
+  (neu, TSK-0116, FR-0050)
+related_pr: PR-0003
+observed: '**Mechanismus.** Damit `git clean -fdx` in einem Unterverzeichnis kein
+  Fehlalarm ist, misst die
+
+  Reichweite einer Zerstörung gegen das Verzeichnis, in dem die Zeile wirklich läuft
+
+  (`guard_fs_tripwire.where_it_runs`, `moves_the_working_directory`; `H125`, Befund
+  M1). Diese
+
+  Fortschreibung fragt seit Nacharbeit 3, ob das Kommandowort ein Wechsel ist, ob
+  das Ziel berechenbar
+
+  ist und ob es als Verzeichnis INNERHALB des Projekts existiert. Was sie nicht fragen
+  kann, ist, ob
+
+  der Wechsel für die nächste Aufrufung überhaupt WIRKT: ein `&&` kann kurzschließen,
+  und
+
+  ein `cd` in einer Pipe-Stufe oder hinter `&` läuft in einer Subshell und lässt die
+  Shell
+
+  stehen, wo sie war.'
+severity: low
+hole_number: H144
+source: docs/holes/H144.md
+limits: 'die Verengung, die das Fegen gegen das wirkliche Arbeitsverzeichnis misst
+  (`H125`, `M1`), folgt auch einem Verzeichniswechsel, der zwar LANDET, aber für die
+  nächste Aufrufung nicht wirkt: ein `&&`, das kurzschließt, und ein `cd` in einer
+  Pipe-Stufe oder hinter `&` (beides Subshells). Gemessen über alle acht registrierten
+  Office-Haken, mit `rm -rf .` allein bei rc 2: `false && cd outbox ; rm -rf .`, `ls`
+  in eine Pipe an `cd outbox` mit folgendem `rm -rf .`, `cd outbox` in eine Pipe an
+  `rm -rf .` und `cd outbox & rm -rf .` sind **rc 0**. Begrenzt durch: die Formen,
+  in denen der Wechsel gar nicht landet, sind geschlossen (`cd nichtda`, ein Tippfehler,
+  `cd ..` → rc 2), die Gegenrichtung ist unberührt (ein wirklicher `cd` verengt weiter,
+  `cd archive && rm -rf .` bleibt rc 2), und nach `DEC-0056` ist der Gegner der IRRTUM
+  — ein Tippfehler schreibt kein `& ` vor sein `rm`'
+regression_tests:
+- tools/test_hooks.py::test_a_directory_change_that_never_lands_does_not_move_the_sweep
+- tools/test_hooks.py::test_a_change_the_shell_may_not_have_made_leaves_both_positions_open
+- tools/test_hooks.py::test_a_directory_change_the_shell_never_performs_does_not_move_the_sweep
+- tools/test_hooks.py::test_a_relative_change_is_computed_from_every_position_it_could_start_in
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:37'
+closed_at: '2026-09-05T20:27:37'

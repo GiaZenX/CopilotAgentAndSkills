@@ -1,0 +1,27 @@
+id: BUG-0093
+title: Der Digest beschreibt den Baum vor der Zeile, nicht den, den der Commit aufzeichnet
+  — GESCHLOSSEN
+related_pr: PR-0003
+observed: '**Mechanismus:** ein `PreToolUse`-Hook wird *vor* der Zeile gefragt. Jede
+  Befehlszeile, die vor dem
+
+  `commit` noch irgendetwas am Baum tut, lässt den Commit einen Zustand aufzeichnen,
+  den kein Urteil
+
+  je gesehen hat. Nicht `&&` ist der Mechanismus, sondern **jede** Verkettung, jede
+  Umleitung, jeder
+
+  schreibfähige Befehl davor.'
+severity: low
+hole_number: H1
+source: docs/holes/H1.md
+limits: —
+regression_tests:
+- test_gate3_refuses_a_line_that_moves_the_tree_before_it_commits
+- test_gate3_sees_what_the_kits_classification_calls_a_write_and_no_more
+- test_the_constitution_names_only_code_that_exists
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:21:50'
+closed_at: '2026-09-05T20:21:50'

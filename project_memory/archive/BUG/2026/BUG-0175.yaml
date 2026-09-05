@@ -1,0 +1,37 @@
+id: BUG-0175
+title: Ein Referenz-Skill erreichte nur Projekte auf dem Preset `all` — GESCHLOSSEN
+  (TSK-0104), beide Ketten, mit benanntem Rest
+related_pr: PR-0003
+observed: '**Mechanismus (Stand vor TSK-0104).** Die Skill-Schleife beider Scaffold-Zwillinge
+  filterte
+
+  Skill-VERZEICHNISSE über die Preset-Rollenliste: `scaffold_team.sh` ruft `in_preset
+  "$name" || continue`, `scaffold_team.ps1`
+
+  prüft `$presetRoles -notcontains $_.Name`. Beides ist richtig für ein Rollen-Skill,
+  dessen Name
+
+  eine Rolle IST — und falsch für ein Referenz-Skill, das per Definition zu keiner
+  Rolle gehört
+
+  (Verfassung §1a). Bei `PRESET_ROLES=""` (das Preset `team`, intern `all`) trifft
+  der Filter nicht,
+
+  darum fällt es nur unter `solo` und `duo` auf.'
+severity: low
+hole_number: H83
+source: docs/holes/H83.md
+limits: 'Scaffold und Codex-Spiegel kopieren/erzeugen ein Skill-Verzeichnis jetzt
+  nach der Eigenschaft „gehört keiner Rolle" statt nach der Preset-Rollenliste; gemessen
+  am echten Installer in beiden Zwillingen über `team`/`duo`/`solo` und am erzeugten
+  `.agents/skills`. Rest: das subtraktive Entfernen läuft weiter über die Rollenliste,
+  ein zurückgezogenes Referenz-Skill bliebe im Projekt stehen'
+regression_tests:
+- tools/test_reference_skills.py::test_the_codex_mirror_is_generated_per_skill_directory
+- tools/test_reference_skills.py::test_a_reference_skill_reaches_every_preset_and_not_only_team
+- ::test_the_codex_mirror_is_generated_per_skill_directory
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:14'
+closed_at: '2026-09-05T20:25:14'

@@ -1105,3 +1105,173 @@ def test_a_date_field_that_is_not_a_date_is_refused_at_capture(state):
     state.transition(milestone["id"], "REACHED")
     with pytest.raises(TransitionError):
         state.transition(milestone["id"], "MISSED")
+
+
+# -- BUG-0090/DEC-0071 and FR-0087/DEC-0073 ------------------------------------
+
+def test_a_declared_regression_run_confirms_the_bug_it_names(tmp_path):
+    """BUG-0090, measured against the running kernel and not against a docstring.
+
+    THE DEFECT: `state._assert_confirmed` routed through the DELIVERY reading of the evidence
+    store, which drops every passing Evidence that declares `run_scope: selection` (DEC-0061 (b),
+    written for the merge). So a BUG at FIXED with an honest regression record was refused with
+    "there is none", while the SAME run recorded WITHOUT the declaration walked -- the record that
+    said more about itself was the one punished, and the refusal's own remedy asks for exactly the
+    run it dropped.
+
+    BOTH HALVES ARE ASSERTED HERE, because the fix is a split and not a removal: the edge walks on
+    the declared selection, and the merge reading of the very same record is unchanged.
+    """
+    from kernel import report
+
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    goal = state.capture("PR", dict(PR_FIELDS))
+    bug = state.capture("BUG", {"title": "a defect", "related_pr": goal["id"], "observed": "o",
+                                "expected": "e", "repro": "r", "severity": "low",
+                                "acceptance_criteria": [{"id": "AC-1", "text": "t"}]})
+    walk_to_status(state, bug, "FIXED")
+    state.capture("EVD", {"kind": "test", "result": "pass", "related": [bug["id"]],
+                          "summary": "the regression run", "artifact_refs": ["staging/x/run.log"],
+                          "run_command": "python -m pytest tools/test_x.py -k the_defect",
+                          "run_scope": "selection"})
+
+    assert report.qa_verdicts(state, bug["id"]) == {}, (
+        "the merge reading changed -- a passing selection must still open nothing")
+    assert state.transition(bug["id"], "VERIFIED")["status"] == "VERIFIED"
+
+
+def test_the_kernel_hands_out_the_hole_number_and_never_the_caller(tmp_path):
+    """FR-0087 (b): ids by the kernel, never reserved by hand.
+
+    The defect this ends was measured in generation 3: the lead handed H numbers out per stream by
+    message, and one stream's verifier found two of them in no frozen item at all. So a caller says
+    THAT an item is a hole and the kernel says WHICH number -- a body carrying the field is refused
+    the way a body carrying `status` is, and the allocation is a max-scan over the store, so a
+    closed hole's number is never handed out twice.
+    """
+    from kernel.backlog_types import HOLE_NUMBER_FIELD
+
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    state.capture("PR", dict(PR_FIELDS))
+    body = {"title": "a gap", "related_pr": "PR-0001", "observed": "measured", "expected": "closed",
+            "repro": "run it", "severity": "low",
+            "acceptance_criteria": [{"id": "AC-1", "text": "closed"}]}
+
+    assert state.next_hole_number() == "H1"
+    first = state.capture("BUG", dict(body), hole=True)
+    second = state.capture("BUG", dict(body, title="another gap"), hole=True)
+    assert (first[HOLE_NUMBER_FIELD], second[HOLE_NUMBER_FIELD]) == ("H1", "H2")
+
+    plain = state.capture("BUG", dict(body, title="an ordinary defect"))
+    assert HOLE_NUMBER_FIELD not in plain, "an ordinary defect was stamped as a hole"
+
+    with pytest.raises(StateError, match=HOLE_NUMBER_FIELD):
+        state.capture("BUG", dict(body, **{HOLE_NUMBER_FIELD: "H99"}))
+
+    # ...and an archived hole keeps its number out of circulation
+    state.transition(first["id"], "TRIAGED")
+    state.transition(first["id"], "REJECTED")
+    state.archive(first["id"])
+    assert state.next_hole_number() == "H3"
+
+
+def test_the_migration_door_writes_a_hole_and_refuses_everything_else(tmp_path):
+    """DEC-0073 (3a): the door, and the four bolts on it.
+
+    It exists because `migration_writable_statuses("BUG")` does not reach VERIFIED -- the scope
+    approval stands in front of it -- so the closed half of the hole list could otherwise only be
+    migrated with one user-minted approval and one test Evidence per entry.
+
+    WHAT IT WIDENS is written down as `H154` with its limit and is not asserted away here; what is
+    asserted is that it is BOUNDED: only a body carrying a hole number, only a status the automaton
+    has, terminal into the archive and non-terminal into `active/`, the status-dependent duty
+    enforced, and an existing number returned rather than overwritten.
+    """
+    from kernel.backlog_types import HOLE_LIMIT_FIELD, HOLE_NUMBER_FIELD
+    from kernel.lock import ext_path
+
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    state.capture("PR", dict(PR_FIELDS))
+    body = {"title": "a closed gap", "related_pr": "PR-0001", "observed": "measured",
+            "severity": "low", HOLE_NUMBER_FIELD: "H1"}
+
+    closed = state.capture_migrated_hole(dict(body), "VERIFIED")
+    assert closed["status"] == "VERIFIED"
+    assert os.path.isfile(state.archive_path(closed["id"], int(closed["created"][:4]))), (
+        "a terminal hole was not written into the archive")
+    assert not os.path.exists(ext_path(state.active_path(closed["id"])))
+
+    open_hole = state.capture_migrated_hole(
+        dict(body, title="an open gap", **{HOLE_NUMBER_FIELD: "H2",
+                                           HOLE_LIMIT_FIELD: "the lead reads it"}), "TRIAGED")
+    assert os.path.isfile(ext_path(state.active_path(open_hole["id"]))), (
+        "an OPEN hole was hidden in the archive, where no validator judges it")
+
+    # a body with no hole number is not this door's business at all
+    with pytest.raises(StateError, match="holes only"):
+        state.capture_migrated_hole({"title": "x", "related_pr": "PR-0001"}, "TRIAGED")
+    # ...nor is a status the automaton does not have
+    with pytest.raises(StateError, match="no status of BUG"):
+        state.capture_migrated_hole(dict(body, **{HOLE_NUMBER_FIELD: "H3"}), "SHIPPED")
+    # ...and an accepted exception owes what limits instead
+    with pytest.raises(StateError, match="takes the place of the protection"):
+        state.capture_migrated_hole(dict(body, **{HOLE_NUMBER_FIELD: "H4"}), "ACCEPTED_EXCEPTION")
+
+    # a number already in the store is returned, never written a second time
+    again = state.capture_migrated_hole(dict(body, title="a different text"), "VERIFIED")
+    assert again["id"] == closed["id"] and again["title"] == closed["title"]
+    assert state.next_hole_number() == "H3"
+
+
+def test_only_the_type_a_hole_is_can_be_captured_as_one(tmp_path):
+    """The derivation behind the refusal, held at both ends.
+
+    `backlog_types.hole_type()` reads the contract -- exactly one type declares the hole number
+    field, because that is what "this type can carry one" means -- and `state.capture` refuses
+    every other type from that one answer. A list here would be the second spelling the round-2
+    verification found in the CLI.
+    """
+    import kernel.backlog_types as bt
+    from kernel.backlog_types import HOLE_NUMBER_FIELD, hole_type
+
+    # THE CONTRACT IS BOTH HALVES, and this guard reads the same one the derivation reads. It used
+    # to read `OPTIONAL_FIELDS` alone, which is exactly the half `hole_type()` was corrected FROM --
+    # so reverting the derivation left every suite green and the correction was measured by nothing
+    # (round-4 verification, N3').
+    carriers = [item_type for item_type, fields in bt._contract_fields().items()
+                if HOLE_NUMBER_FIELD in fields]
+    assert carriers == [hole_type()], carriers
+
+    # ...and the case that separates the two halves: a SECOND type declaring the field as REQUIRED.
+    # Read off the optional half alone this is invisible; read off the contract it is a store whose
+    # "what is a hole" has two answers, and the derivation has to say so rather than pick one.
+    patched = dict(bt.REQUIRED_FIELDS)
+    patched["PROC"] = tuple(patched["PROC"]) + (HOLE_NUMBER_FIELD,)
+    original = bt.REQUIRED_FIELDS
+    bt.REQUIRED_FIELDS = patched
+    try:
+        with pytest.raises(AssertionError, match="no single answer"):
+            hole_type()
+    finally:
+        bt.REQUIRED_FIELDS = original
+    assert hole_type() == "BUG", "the patch leaked out of its own block"
+
+    root = tmp_path / "project_memory"
+    root.mkdir()
+    state = ProjectState(str(root))
+    state.capture("PR", dict(PR_FIELDS))
+    for other in sorted(set(REQUIRED_FIELDS) - {hole_type()}):
+        with pytest.raises(StateError, match="a hole is a %s" % hole_type()):
+            state.assert_capturable_as_hole(other)
+    assert state.assert_capturable_as_hole(hole_type()) is None
+
+    # ...and the refusal really stands between a caller and the store
+    with pytest.raises(StateError, match="a hole is a"):
+        state.capture("FR", {"title": "a wish", "request_text": "please"}, hole=True)
+    assert state.next_hole_number() == "H1", "a refused capture still moved the counter"

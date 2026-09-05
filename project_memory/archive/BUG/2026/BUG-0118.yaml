@@ -1,0 +1,38 @@
+id: BUG-0118
+title: Ein Trenner, den der Leser nicht als Trenner las — GESCHLOSSEN (TSK-0013, erweitert
+  TSK-0015)
+related_pr: PR-0003
+observed: '**Mechanismus:** wo ein Befehl endet, beantwortete Gate 1 mit der Trennerliste
+  der Kits
+
+  (`gate_write_scope._PIPELINE_SEPARATORS`: `&&`, `||`, `;`). Der asynchrone Trenner
+  steht dort
+
+  nicht, und `shlex` liefert **aneinandergrenzende** Satzzeichen als EIN Token (`);`,
+  `)&&`), das
+
+  keiner Schreibweise gleicht. Beides hat dieselbe Folge: das Zeilenende gehört zum
+  Verb davor — und
+
+  ein lesendes Verb sammelt keine Schreibkandidaten. Es braucht dafür keinen Verzeichniswechsel.
+
+  **Dieselbe Ursache im eigenen Leser, gefunden 2026-08-05:** der Stufenschnitt war
+  ein VERGLEICH mit
+
+  `|` statt einer Frage an die Zeichen, also traf er `)|` nicht; und `_cuts` las jeden
+  Lauf mit einem
+
+  `&` als asynchronen Trenner, also auch `|&` — die Pipe, die stderr mitnimmt.'
+severity: low
+hole_number: H26
+source: docs/holes/H26.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+- test_a_separator_this_reader_cannot_place_refuses_the_line
+- test_gate3_refuses_a_line_that_moves_the_tree_before_it_commits
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:49'
+closed_at: '2026-09-05T20:22:49'

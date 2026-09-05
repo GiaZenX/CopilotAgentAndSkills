@@ -31,7 +31,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM_KITS = os.path.join(ROOT, "team-kits")
 sys.path.insert(0, TEAM_KITS)
 
-from conftest import approve, walk_to_status  # noqa: E402 -- the sanctioned walkers
+from conftest import (approve, satisfy_the_architect_step,  # noqa: E402 -- the walkers
+                      walk_to_status)
 from kernel import backlog_tree, board  # noqa: E402
 from kernel.backlog_types import ACTIVE_DIRS, AUTOMATA  # noqa: E402
 from kernel.state import ProjectState  # noqa: E402
@@ -811,6 +812,8 @@ def test_an_expired_lease_puts_the_task_back_on_the_board_as_ready(tmp_path):
     task = state.capture("TSK", dict(TSK_FIELDS, product_requirement=pr["id"],
                                      derives_from=pr["id"]))
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"], ttl=-1)     # already expired
     assert _read_board(state).where(task["id"]) == ("TSK", "LEASED")
     with pytest.raises(dispatch.DispatchError):

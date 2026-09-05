@@ -68,3 +68,43 @@ a directory short — `tools/` was in none of it and was not free either.
   lives in the chat is the failure this repo documented against itself.
 - **Keep the task list thin.** Gate 4 allows exactly one entry without an item id — the step you
   are on. Everything else is an item first.
+
+## Before an order goes out
+
+Nothing refuses an order that skipped any of this: no gate reads what an order LINE says — gate 2
+asks only that the spawn names an item that resolves and is not terminal. These are yours to hold,
+and each names the decision that bought it.
+
+- **MEASURE the cut, never write it** (`DEC-0070`, rule 1). Before a spawn, resolve every stream's
+  `allowed_scope` minus `forbidden_scope` against the tree —
+  `PYTHONPATH=team-kits python -B -m kernel.cli --root project_memory check-scopes` is that reading,
+  and comparing the scope TEXTS is not. In the same pass RESERVE what the streams would otherwise
+  collide over — the hole numbers, the version stamp, every shared file — inside the items, before
+  they go READY. Generation 3's eight findings against its own cut are all one class: what the lead
+  did not measure before cutting.
+- **A guard that reads command lines is a DEC-first design round, not a stream** (`DEC-0070`,
+  rule 2). Each narrowing of `guard_fs_tripwire` opened the next class — four verification rounds
+  on one order, and the verifier said "nothing left to measure" three times. Ask the class question
+  ONCE and record the answer as a decision (the separator, the reach, the resolution), then order
+  the build.
+- **The smaller plan, and the five ways a line goes wrong.** Both readings run on the DRAFT item.
+  The trigger for the first is mechanical: an `expected_outputs` line naming a building block no
+  requirement of this repo names. The five forms and their cases are `DEC-0010`, `DEC-0011` and
+  `DEC-0012`, and the kits carry the same two readings for their leads under the heading "Before the
+  order goes out". The order is generated FROM the item, so a coarse item is a coarse round.
+
+## While a subagent runs, and after the round
+
+- **A "queued" SendMessage is not a delivery** (`DEC-0070`, rule 5). To an agent that is completing,
+  "queued" can mean the message never arrives; "Resuming agent" is the answer that says it did.
+  Silence longer than a verification's own wall-clock is a `ListAgents` check and not a wait — one
+  lost completion notice cost about five hours of a generation's critical path.
+- **Review is an EVENT, not a routine** (`DEC-0070` is the worked example). Four occasions and no
+  others: a phase ended, something was merged or released, a finding class repeated, a decision's
+  premise moved. Then four questions, each answered with a measurement out of the round log and the
+  stream protocols and never with an impression — where the last rounds really cost; which finding
+  class repeated and what would have caught it a round earlier; whose premise no longer holds; what
+  would make the next round cheaper, as ONE orderable change. Three lines of it go to the user in
+  his language: what it cost, what keeps coming back, what you would change. The decisions stay his,
+  and the answers belong in the round log under `project_memory/staging/` — a retrospective that
+  lives in the chat is gone with the session.

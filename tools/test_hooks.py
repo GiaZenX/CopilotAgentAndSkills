@@ -2880,8 +2880,10 @@ def _own_child_limit(kit, gate_name):
 
     WHAT IT DOES NOT SEE, said rather than implied, because it decides how far the rule below
     reaches: time a gate spends inside its OWN process (a long loop, a slow filesystem) is bounded
-    by nothing this can read -- `_compat.HOOK_DEADLINE_SECONDS` is the budget the hooks give
-    themselves and nothing enforces it. And a call that takes `run_captured`'s default (60 s)
+    by nothing THIS reader can see. It is not unbounded any more, which is the correction of
+    2026-09-05: `_kernel.start_the_deadline` derives a budget from the registered window (or
+    from the provider's measured default when the entry names none) and refuses when it is
+    spent. What stays outside both is a single call into C that keeps the interpreter. And a call that takes `run_captured`'s default (60 s)
     passes no keyword, so it is not counted; measured 2026-08-23 as real processes, the slowest of
     the office kit's 28 registered entries answered in 0.405 s, which is what makes that omission
     harmless today rather than by argument.
@@ -14196,6 +14198,27 @@ def _mint_in_project(repo, kind, item_id):
     return _mint_question_in_project(repo, _approval_question(repo, kind, item_id))
 
 
+def _architect_step_in_project(repo, root_id):
+    """Give `root_id` the ACCEPTED `SR` a dispatch under it now owes (FR-0085, DEC-0072).
+
+    Through the installed entry point and not into the state directly, for the reason
+    `_mint_in_project` mints through the hook: a fixture that wrote the item would prove the
+    dispatch on a path no project takes. The id comes out of the kernel's own line, so a store that
+    already holds requirements still gets the one this call captured.
+    """
+    captured = _entry_point(repo, "capture", "SR", body=json.dumps({
+        "title": "technical requirement for %s" % root_id,
+        "derives_from": root_id,
+        "contract": "what the goal needs from the system, derived by the architect",
+        "affected_components": ["src"]}))
+    assert captured.returncode == 0, captured.stdout + captured.stderr
+    found = re.search(r"\bSR-\d{4}\b", captured.stdout)
+    assert found, captured.stdout
+    accepted = _entry_point(repo, "transition", found.group(0), "ACCEPTED")
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
+    return found.group(0)
+
+
 def _mint_question_in_project(repo, question):
     """Pin a question the KERNEL composed, then mint it through the project's own hook.
 
@@ -14283,6 +14306,7 @@ def test_the_four_commands_spec_ii4_named_are_runnable_by_the_role_that_needs_th
     assert "no subagent without a user approval" in unapproved.stderr, unapproved.stderr
 
     _mint_in_project(repo, "scope", "PR-0001")
+    _architect_step_in_project(repo, "PR-0001")
     leased = _entry_point(repo, "dispatch", "TSK-0001")
     assert leased.returncode == 0, leased.stdout + leased.stderr
     assert leased.stdout.strip().startswith("HARNESS_DISPATCH "), leased.stdout
@@ -14465,6 +14489,7 @@ def test_a_shell_less_specialists_result_reaches_the_kernel(tmp_path):
     assert planned.returncode == 0, planned.stdout + planned.stderr
     _entry_point(repo, "transition", "TSK-0001", "READY")
     _mint_in_project(repo, "scope", "PR-0001")
+    _architect_step_in_project(repo, "PR-0001")
     leased = _entry_point(repo, "dispatch", "TSK-0001")
     assert leased.returncode == 0, leased.stdout + leased.stderr
 
@@ -14594,6 +14619,7 @@ def test_a_role_writes_its_own_craft_memory_and_only_its_own(tmp_path):
     assert planned.returncode == 0, planned.stdout + planned.stderr
     _entry_point(repo, "transition", "TSK-0001", "READY")
     _mint_in_project(repo, "scope", "PR-0001")
+    _architect_step_in_project(repo, "PR-0001")
     leased = _entry_point(repo, "dispatch", "TSK-0001")
     assert leased.returncode == 0, leased.stdout + leased.stderr
     state = ProjectState(os.path.join(str(repo), "project_memory"))
@@ -17234,9 +17260,17 @@ def _dispatch_in_session(repo, session_id):
     task = dispatch.create_task(state, {
         "product_requirement": pr["id"], "derives_from": pr["id"], "type": "implementation",
         "assigned_role": "backend-developer", "acceptance_refs": ["AC-1"], "required_inputs": [],
-        "allowed_scope": ["src/"], "forbidden_scope": ["secrets/"],
-        "expected_outputs": ["src/checkout.py"], "dependencies": []})
+        # A SCOPE OF ITS OWN PER CALL, derived from the goal this call captured: the tests
+        # below dispatch twice against one repo, and the kernel refuses a second lease onto
+        # a file a running order owns (DEC-0062 (1)). What they measure is the session on a
+        # dispatch record, so the path is free to differ.
+        "allowed_scope": ["src/%s/" % pr["id"].lower()],
+        "forbidden_scope": ["secrets/"],
+        "expected_outputs": ["src/%s/checkout.py" % pr["id"].lower()],
+        "dependencies": []})
     state.transition(task["id"], "READY")
+    conftest.satisfy_the_architect_step(state, state.read_item(task["id"]),
+                                        state.read_item(pr["id"]))
     header = dispatch.dispatch_header(dispatch.create_lease(state, task["id"]))
     spawn = {"hook_event_name": "PreToolUse", "tool_name": "Agent", "cwd": str(repo),
              "session_id": session_id, "prompt_id": "prompt-1",
@@ -17579,3 +17613,856 @@ def test_a_plan_approval_does_not_close_the_merge_gate(tmp_path):
     for line in lines:
         result = run_hook_process("gate_memory_complete.py", _bash(tmp_path, line), tmp_path)
         assert result.returncode == 0, result.stderr
+
+
+# ---------------- gate_test_scope: the SCOPE of a test run (FR-0086 / FR-0057, PR-0004 AC-1) ----
+# A block of its own: `tools/test_hooks.py` is a generation-4 seam. Everything this gate measures
+# lives here.
+
+# What a project DECLARES about its test surface -- the shape the hook reads, written once so no
+# test below spells a key twice. `seconds` sits well above `judged_above_seconds`, because a
+# surface at or under the threshold is deliberately not judged at all (that branch has its own
+# test).
+TEST_SURFACE = {
+    "judged_above_seconds": 60,
+    "surfaces": [{"runner": "pytest", "root": "tests", "seconds": 900}],
+    "options_that_narrow": {"pytest": ["-k", "-m", "--deselect", "--collect-only"]},
+}
+
+
+def _scoped_repo(repo, value=None):
+    """A project that declares a test surface, through the kernel like every other knob."""
+    capture_invariant(repo, "test_surface",
+                      value=TEST_SURFACE if value is None else value)
+    return repo
+
+
+def _scope_hook(repo, command, tool="Bash", hooks_dir=None):
+    payload = {"hook_event_name": "PreToolUse", "tool_name": tool,
+               "tool_input": {"command": command}, "cwd": str(repo)}
+    return run_hook_process("gate_test_scope.py", payload, repo, hooks_dir=hooks_dir)
+
+
+def _full_run_evidence(repo, item, result):
+    """Record the run the gate allowed, the way DEC-0061 says a delivery run is recorded."""
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.cli import main as harness
+    assert harness(["--root", os.path.join(str(repo), "project_memory"), "evidence",
+                    "--kind", "test", "--result", result, "--related", item,
+                    "--summary", "full run", "--artifact-ref", "staging/x/run.log",
+                    "--run-scope", "full", "--run-command", "python -m pytest tests/ -q"]) == 0
+
+
+@pytest.mark.parametrize("kit_hooks", [HOOKS, OFFICE_HOOKS, RESEARCH_HOOKS])
+def test_gate_test_scope_refuses_a_bare_full_run_in_every_kit(prd_repo, kit_hooks):
+    """The whole declared surface with nothing on the line that says why -- in all three kits.
+
+    Driven per kit rather than once, because this hook is MIRRORED: a copy that is byte-identical
+    proves the bytes, not that the kit around it can start the file. Measured against the office
+    kit that ships no `gate_git` and no `_root` root type, which is exactly the kind of difference
+    a dev-only run would not see.
+    """
+    _scoped_repo(prd_repo)
+    result = _scope_hook(prd_repo, "python -m pytest tests/ -q", hooks_dir=kit_hooks)
+    assert result.returncode == 2, (kit_hooks, result.stdout, result.stderr)
+    assert "WHOLE declared test surface" in result.stderr, result.stderr[:400]
+    assert "delivery run" in result.stderr, result.stderr[:400]
+
+
+@pytest.mark.parametrize("command", [
+    "python -m pytest tests/test_one.py -q",
+    "python -m pytest tests/test_one.py::test_x",
+    "python -m pytest tests/ -k a_name",
+    "python -m pytest tests/ -m slow",
+    "python -m pytest tests/ --collect-only",
+    "grep -rn pytest tests/",
+    "ls tests/",
+    "npm test",
+])
+def test_gate_test_scope_lets_everything_that_is_not_a_full_run_through(prd_repo, command):
+    """A selection, a line that only NAMES the runner, and a runner nobody declared.
+
+    The last two are the applicability half and they are the expensive half to get wrong: a gate
+    that reads `grep pytest tests/` as a test run refuses ordinary work, and one that judges `npm
+    test` in a project declaring only pytest judges a runner nobody declared.
+    """
+    _scoped_repo(prd_repo)
+    result = _scope_hook(prd_repo, command)
+    assert result.returncode == 0, (command, result.stderr[:400])
+
+
+def test_gate_test_scope_reads_the_module_flag_as_the_interpreters_and_the_runners_own(prd_repo):
+    """`-m` belongs to two programs at once, and the boundary between them is what decides.
+
+    `python -m pytest tests/ -q` is the ordinary full-run line: read over the whole stage its `-m`
+    is a declared narrowing option, and the line comes out as a selection -- measured, rc 0 where
+    the refusal belongs. `pytest tests/ -m slow` is the same two characters doing the other job and
+    must stay a selection.
+    """
+    _scoped_repo(prd_repo)
+    assert _scope_hook(prd_repo, "python -m pytest tests/ -q").returncode == 2
+    assert _scope_hook(prd_repo, "pytest tests/ -m slow").returncode == 0
+
+
+@pytest.mark.parametrize("tool", ["Bash", "PowerShell"])
+def test_gate_test_scope_lets_the_delivery_prefix_through_in_both_shells(prd_repo, tool):
+    """The way through, in the spelling each shell has for it -- an environment prefix in a POSIX
+    shell, a command of its own in PowerShell. Both, because the hook is registered on both."""
+    _scoped_repo(prd_repo)
+    line = "python -m pytest tests/ -q"
+    prefixed = ('$env:DELIVERY_RUN="PR-0001"; ' + line if tool == "PowerShell"
+                else "DELIVERY_RUN=PR-0001 " + line)
+    result = _scope_hook(prd_repo, prefixed, tool=tool)
+    assert result.returncode == 0, (tool, result.stderr[:400])
+
+
+def test_gate_test_scope_refuses_a_prefix_that_names_no_open_item(prd_repo):
+    """A prefix that names nothing is a full run with a word in front of it."""
+    _scoped_repo(prd_repo)
+    for named in ("PR-9999", "not-an-id"):
+        result = _scope_hook(prd_repo, "DELIVERY_RUN=%s python -m pytest tests/ -q" % named)
+        assert result.returncode == 2, named
+        assert "not an open item" in result.stderr, result.stderr[:300]
+
+
+@pytest.mark.parametrize("result_field,expected", [("pass", 2), ("fail", 0)])
+def test_gate_test_scope_refuses_the_second_full_run_but_not_after_findings(
+        prd_repo, result_field, expected):
+    """DEC-0063 (4): the whole surface runs once, and a second run is the alternative, not the
+    default -- unless the first one FAILED, which is what sends the work back into the tests."""
+    _scoped_repo(prd_repo)
+    line = "DELIVERY_RUN=PR-0001 python -m pytest tests/ -q"
+    assert _scope_hook(prd_repo, line).returncode == 0, "the FIRST delivery run was refused"
+    _full_run_evidence(prd_repo, "PR-0001", result_field)
+    outcome = _scope_hook(prd_repo, line)
+    assert outcome.returncode == expected, (result_field, outcome.stderr[:400])
+    if expected == 2:
+        assert "already has a PASSING full run" in outcome.stderr, outcome.stderr[:400]
+
+
+def test_gate_test_scope_judges_nothing_where_a_project_declares_no_surface(prd_repo):
+    """PR-0004's first invariant as the hook's own answer, and the cost side of DEC-0056 with it.
+
+    Three states, and they are three and not two: no declaration at all (a project that never
+    thought about it), a declaration whose surface is CHEAPER than its own threshold (a project
+    whose whole suite runs in seconds), and the declared expensive one that is refused. The middle
+    one is what makes the threshold data rather than a constant.
+    """
+    line = "python -m pytest tests/ -q"
+    assert _scope_hook(prd_repo, line).returncode == 0, "an undeclared surface was judged"
+    cheap = dict(TEST_SURFACE,
+                 surfaces=[dict(one, seconds=1) for one in TEST_SURFACE["surfaces"]])
+    _scoped_repo(prd_repo, cheap)
+    assert _scope_hook(prd_repo, line).returncode == 0, (
+        "a surface declared cheaper than its own threshold was still refused")
+
+
+def test_gate_test_scope_costs_the_ordinary_shell_line_next_to_nothing(prd_repo):
+    """AC-4: what this gate charges the legitimate path, as real processes rather than as a claim.
+
+    Every ordinary shell call of a kit project pays this hook, so the number that matters is the
+    one for a line it has nothing to say about. The bound asserted is deliberately loose -- this
+    measures that the hook answers in the order of the other gates of the same chain, not a
+    stopwatch reading that would go red on a loaded machine. The round protocol carries the medians.
+    """
+    _scoped_repo(prd_repo)
+    slowest = 0.0
+    for command in ("git status --short", "ls -la", "python -m pytest tests/test_one.py -q"):
+        started = time.time()
+        assert _scope_hook(prd_repo, command).returncode == 0, command
+        slowest = max(slowest, time.time() - started)
+    assert slowest < 20.0, (
+        "an ordinary shell line waited %.1fs on this hook; it starts no child and reads two "
+        "bounded item directories, so anything in that range is a regression in what it reads"
+        % slowest)
+
+
+# ---------------- the kit's own deadline: a killed gate is an ALLOW (PR-0004 AC-2) --------------
+# The gap this closes is one the measurement itself named:
+# `tools/provider_observations.json` -> `hook_deadlines.what_follows_for_the_kits` ends with "The
+# kits have no in-process deadline: nothing in `_compat` stops a gate before it is killed... that is
+# what the harness's own construction closes and what no kit hook does."
+
+
+def _kernel_constant(hooks_dir, name):
+    """A module-level number of a kit's `_kernel.py`, read off the AST.
+
+    PARSED, never imported: importing `_kernel` installs its standard-library guard into whatever
+    process does it, and a test process is not a hook process. The house rule this satisfies is the
+    other one -- a check reads the part that RUNS, and a module-level assignment is that.
+    """
+    tree = ast.parse(open(os.path.join(hooks_dir, "_kernel.py"), encoding="utf-8").read())
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and target.id == name:
+                return float(node.value.value)
+    raise AssertionError("%s states no %s" % (hooks_dir, name))
+
+
+def _kit_hook_constants(hooks_dir, name):
+    """The module-level numbers of a kit hook, read off the AST rather than imported."""
+    tree = ast.parse(open(os.path.join(hooks_dir, name), encoding="utf-8").read())
+    out = {}
+    for node in tree.body:
+        if not (isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)):
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name) and isinstance(node.value.value, (int, float)):
+                out[target.id] = node.value.value
+    return out
+
+
+def _register_with_window(repo, gate, window):
+    """A project whose `.claude/settings.json` registers `gate` with (or without) a window.
+
+    The file the PROVIDER reads, and the file `_kernel.registered_window` reads -- so what is
+    measured below is the registration, not a keyword argument.
+    """
+    entry = {"type": "command",
+             "command": 'python -B "${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py" ' + gate}
+    if window is not None:
+        entry["timeout"] = window
+    write(os.path.join(str(repo), ".claude", "settings.json"), json.dumps(
+        {"hooks": {"PreToolUse": [{"matcher": "Bash|PowerShell", "hooks": [entry]}]}}))
+    return repo
+
+
+def test_the_kit_deadline_reader_carries_the_measured_default_window():
+    """The one number the kits cannot read out of the workshop's record, pinned against it.
+
+    A registration that names no window still has one -- the provider's own, measured at 2026-08-23
+    as bracketed rather than pinned: 310 s and 560 s survived, 900 s was killed. `_kernel` judges
+    against the LONGEST SURVIVING run, because that is the earliest the kill may already have come,
+    and it has to carry that figure itself: a kit is installed without `tools/`. Two copies of one
+    measurement is exactly the shape this repo keeps finding a defect in, so they are compared here.
+    """
+    with open(os.path.join(ROOT, "tools", "provider_observations.json"), encoding="utf-8") as fh:
+        measured = json.load(fh)["hook_deadlines"]["no_timeout_key"]
+    survived = float(measured["longest_run_that_was_not_killed_seconds"])
+    for kit in KITS:
+        hooks_dir = os.path.join(ROOT, "team-kits", kit, "hooks")
+        stated = _kernel_constant(hooks_dir, "DEFAULT_WINDOW_SECONDS")
+        assert stated == survived, (
+            "%s judges an unwindowed registration against %gs while the measurement's longest "
+            "surviving run is %gs" % (kit, stated, survived))
+        assert _kernel_constant(hooks_dir, "DEADLINE_RESERVE_SECONDS") < survived, kit
+
+
+@pytest.mark.parametrize("kit_hooks", [HOOKS, OFFICE_HOOKS, RESEARCH_HOOKS])
+def test_a_window_the_gate_cannot_answer_inside_is_refused_with_a_sentence(prd_repo, kit_hooks):
+    """AC-2's second clause: the kit's own deadline reader refuses such an entry, and says why.
+
+    A window at or under the reserve leaves this gate no time to answer at all. Racing it would end
+    in a KILL, and a killed hook is read as an allow -- measured: an entry with `timeout: 5` whose
+    hook needed 20 s was killed and the refused command RAN. So the entry is refused outright, and
+    the refusal names the file to change.
+    """
+    _scoped_repo(prd_repo)
+    reserve = _kernel_constant(kit_hooks, "DEADLINE_RESERVE_SECONDS")
+    _register_with_window(prd_repo, "gate_test_scope.py", reserve)
+    # a line this gate would otherwise say NOTHING about, so the refusal can only be the deadline's
+    result = _scope_hook(prd_repo, "git status --short", hooks_dir=kit_hooks)
+    assert result.returncode == 2, (kit_hooks, result.stdout, result.stderr)
+    assert "not enough time" in result.stderr, result.stderr[:400]
+    assert "settings.json" in result.stderr, result.stderr[:400]
+
+
+def test_a_window_already_spent_by_the_gates_own_start_refuses_before_it_decides(prd_repo):
+    """The budget gone before the decision begins -- answered synchronously, not by the watchdog.
+
+    A window a hair above the reserve leaves a budget the gate's own imports have already spent by
+    the time it could decide anything. Racing the watchdog for that verdict is what the first cut
+    did, and it was measured FLAKY in exactly the dangerous direction: the gate finished its cheap
+    decision first and returned rc 0 under a window it could never have honoured (measured
+    2026-09-04, `git status --short`, rc 0). So the spent budget is answered where it is noticed.
+    """
+    _scoped_repo(prd_repo)
+    reserve = _kernel_constant(HOOKS, "DEADLINE_RESERVE_SECONDS")
+    _register_with_window(prd_repo, "gate_test_scope.py", reserve + 0.001)
+    result = _scope_hook(prd_repo, "git status --short")
+    assert result.returncode == 2, (result.stdout, result.stderr)
+    assert "before it had read anything at all" in result.stderr, result.stderr[:400]
+
+
+def test_a_gate_that_runs_past_its_window_mid_decision_refuses_instead_of_being_killed(prd_repo):
+    """The watchdog itself: the budget runs out while the gate is still reading.
+
+    THE DECISION IS MADE GENUINELY SLOW rather than the budget made impossibly small, because
+    those measure two different things and only this one measures the thread. The delivery-prefix
+    path reads the Evidence store, so the store is filled to the scan cap -- six items just under
+    `ITEM_MAX_BYTES`, measured at ~3 s to parse on this host -- while the window leaves under a
+    second. rc 2 with the sentence is the refusal; a kill would be rc 1 or no exit at all, with an
+    empty stderr, which is precisely what the provider reads as "hook error, carry on".
+    """
+    pytest.importorskip("yaml")
+    _scoped_repo(prd_repo)
+    gate = _kit_hook_constants(HOOKS, "gate_test_scope.py")
+    per_item = int(gate["ITEM_MAX_BYTES"]) - 4096
+    count = int(gate["SCAN_MAX_BYTES"]) // per_item + 2
+    evidence = os.path.join(str(prd_repo), "project_memory", "evidence")
+    for index in range(count):
+        # ONE long scalar, not many lines -- `write` opens in text mode, so on Windows every
+        # newline costs a second byte and a line-counted payload lands ABOVE the per-item cap
+        # instead of just under it (the same trap `test_the_invariant_scan_of_a_blocking_gate_is
+        # _bounded` documents).
+        write(os.path.join(evidence, "EVD-%04d.yaml" % (index + 1)),
+              "id: EVD-%04d\nkind: test\nrelated: [PR-0001]\nresult: pass\n"
+              "summary: %s\n" % (index + 1, "x" * (per_item - 200)))
+    reserve = _kernel_constant(HOOKS, "DEADLINE_RESERVE_SECONDS")
+    _register_with_window(prd_repo, "gate_test_scope.py", reserve + 0.6)
+    started = time.time()
+    result = _scope_hook(prd_repo, "DELIVERY_RUN=PR-0001 python -m pytest tests/ -q")
+    elapsed = time.time() - started
+    assert result.returncode == 2, (elapsed, result.stdout, result.stderr)
+    assert "while it was still reading" in result.stderr, (
+        "the refusal did not come from the watchdog: the two positions of the deadline print "
+        "different clauses on purpose, and this is the other one -- %s" % result.stderr[:400])
+    assert elapsed < 60, (
+        "the refusal took %.1fs -- the watchdog is not what ended this process" % elapsed)
+
+
+def test_the_declaration_is_found_even_when_its_scope_key_sits_past_the_head(prd_repo):
+    """The fail-closed half of the cheap lookup: "cannot say" is answered by reading in full.
+
+    `_could_declare` reads only the first bytes of an item so that an ordinary shell call does not
+    pay for parsing the whole invariant store (~3 s at the shipped cap, measured). An item whose
+    head shows NO top-level `scope:` is undecided, and an undecided item is parsed rather than
+    skipped -- otherwise a declaration written in an unusual field order would silently turn this
+    gate off, which is the fail-OPEN direction.
+    """
+    pytest.importorskip("yaml")
+    gate = _kit_hook_constants(HOOKS, "gate_test_scope.py")
+    head = int(gate["SCOPE_HEAD_BYTES"])
+    invariants = os.path.join(str(prd_repo), "project_memory", "invariants", "active")
+    write(os.path.join(invariants, "INV-0001.yaml"),
+          "id: INV-0001\nsource: PR-0001\ncheck: {kind: test, ref: \"t.py::t\"}\n"
+          "status: unverified\nnote: %s\nscope: test_surface\nvalue: %s\n"
+          % ("x" * (head + 1000), json.dumps(TEST_SURFACE)))
+    result = _scope_hook(prd_repo, "python -m pytest tests/ -q")
+    assert result.returncode == 2, (
+        "a declaration whose `scope:` sits past the head was not found, so the gate stood down: %s"
+        % result.stderr[:300])
+
+
+def test_an_ordinary_window_and_no_window_at_all_leave_the_gate_deciding(prd_repo):
+    """Both directions of the same reader: a deadline that refuses everything is worth as little as
+    none. A generous window and an entry that names none both leave the gate answering normally."""
+    _scoped_repo(prd_repo)
+    for window in (120, None):
+        _register_with_window(prd_repo, "gate_test_scope.py", window)
+        assert _scope_hook(prd_repo, "git status --short").returncode == 0, window
+        assert _scope_hook(prd_repo, "python -m pytest tests/ -q").returncode == 2, window
+
+
+QE_SKILL = os.path.join(ROOT, "team-kits", "dev-team", "skills", "quality-engineer", "SKILL.md")
+
+
+def _backticked(path):
+    """Every backticked span of a shipped text, as candidate command lines."""
+    with open(path, encoding="utf-8") as handle:
+        return re.findall(r"`([^`\n]+)`", handle.read())
+
+
+def test_the_run_scope_procedure_the_qe_skill_teaches_is_one_the_apparatus_accepts(prd_repo):
+    """AC-2: the rule is a PROCEDURE in the role text, and the procedure is EXECUTED here.
+
+    NOT A STRING SEARCH OVER A FILE, which is the shape two tests in this repo were once satisfied
+    by. The text is read only to LIFT the two lines it teaches; what is asserted is that those lines
+    work: the delivery line passes the real gate process, and the Evidence flags are ones the real
+    kernel takes. A role text that teaches a line the apparatus refuses is worse than one that
+    teaches nothing -- the reader follows it and is stopped.
+
+    The placeholders are the text's own (`<TSK-nnnn>`, `<your test command>`), so a rewrite that
+    changes them makes this red rather than silently measuring a line nobody is taught.
+    """
+    _scoped_repo(prd_repo)
+    spans = _backticked(QE_SKILL)
+    taught = [one for one in spans if one.startswith("DELIVERY_RUN=")]
+    assert taught, (
+        "the quality-engineer skill teaches no delivery-run line, so the run-scope rule is prose "
+        "there and not a procedure")
+    line = taught[0].replace("<TSK-nnnn>", "PR-0001").replace(
+        "<your test command>", "python -m pytest tests/ -q")
+    assert "<" not in line, (
+        "a placeholder in %r is not one this test knows how to fill -- the text and this "
+        "measurement have drifted apart" % taught[0])
+    result = _scope_hook(prd_repo, line)
+    assert result.returncode == 0, (
+        "the delivery line the QE skill teaches is refused by the gate that prints it: %s"
+        % result.stderr[:400])
+
+    flags = [one for one in spans if "--run-scope" in one]
+    assert flags, "the QE skill teaches no way to record that run as a full one (DEC-0061)"
+    sys.path.insert(0, os.path.join(ROOT, "team-kits"))
+    from kernel.cli import main as harness
+    assert harness(["--root", os.path.join(str(prd_repo), "project_memory"), "evidence",
+                    "--kind", "test", "--result", "pass", "--related", "PR-0001",
+                    "--summary", "delivery run", "--artifact-ref", "staging/x/run.log",
+                    "--run-scope", "full", "--run-command", line]) == 0
+    # ...and the same procedure closes the round: the second whole-surface run is now refused, which
+    # is the half of the text that would otherwise be a promise nothing keeps.
+    assert _scope_hook(prd_repo, line).returncode == 2
+
+
+def test_the_qe_skill_names_the_knob_the_gate_really_reads(prd_repo):
+    """A knob a role text names must be one the apparatus reads, under that exact scope.
+
+    Measured by DECLARING the knob under the name the text gives it and then driving the gate: if
+    the text named a scope the hook does not read, the gate would stand down and the bare full run
+    would pass. That is the failure this catches, and it is the one direction a reader cannot see.
+    """
+    spans = _backticked(QE_SKILL)
+    named = [one for one in spans if one == "test_surface"]
+    assert named, "the QE skill names no test-surface knob, so nothing tells a project to declare one"
+    capture_invariant(prd_repo, named[0], value=TEST_SURFACE)
+    assert _scope_hook(prd_repo, "python -m pytest tests/ -q").returncode == 2, (
+        "the scope the QE skill teaches is not the one gate_test_scope reads")
+
+
+# ---------------- H139: the design standards on the BUILT app (PR-0004 AC-3) --------------------
+# The BUILD half of FR-0077. Until this round C1/C2/C3 ran on the STAGED design revision only
+# (`kit_design_render.py`, TSK-0119); a build that dropped them was caught by nothing, and the
+# reason was file ownership rather than difficulty -- `kit_browser_checks.py` ships byte-identical
+# into dev-team and research-team, and that stream owned only one of them.
+
+# ONE clean built app, and every case below is this string with exactly ONE property broken. It
+# carries every shape the three rules look at -- a token sheet, a transition, a focus rule, a
+# reduced-motion block, a button and a link -- because a case that has to ADD the shape it breaks
+# would also be testing that the shape was added. `#root` is non-empty, so the mount check that
+# stands in front of these three passes and the design verdicts are reached at all.
+BUILT_APP = """<!doctype html><html lang="de"><head><meta charset="utf-8"><title>App</title><style>
+:root { --bg:#ffffff; --fg:#1a1a1a; --brand:#0b5fff; --line:#d0d0d0; }
+body { background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; }
+.card { border:1px solid var(--line); transition: transform 180ms ease-out; }
+a:focus-visible, button:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0ms !important; animation-duration: 0ms !important; }
+}
+</style></head><body>
+<div id="root"><h1>Rechnungen</h1>
+<div class="card">Eine Karte</div>
+<button>Rechnung anlegen</button>
+<a href="#hilfe">Hilfe</a>
+</div></body></html>"""
+
+APP_FOCUS_RULE = ("a:focus-visible, button:focus-visible { outline: 3px solid var(--brand); "
+                  "outline-offset: 2px; }")
+APP_REDUCED_BLOCK = ("@media (prefers-reduced-motion: reduce) {\n"
+                     "  * { transition-duration: 0ms !important; animation-duration: 0ms "
+                     "!important; }\n}")
+APP_HELP_LINK = '<a href="#hilfe">Hilfe</a>'
+
+# (case, the built index.html, the rule that must FAIL, a sentence its message must carry). The
+# sentence is asserted and not only the rule name: with the rule alone every case would stay green
+# on the wrong finding, and the round that swaps two rules would not notice.
+PLANTED_BUILDS = [
+    ("C1 contrast under the WCAG floor",
+     BUILT_APP.replace("--fg:#1a1a1a", "--fg:#bbbbbb"),
+     "C1", "where 4.5:1 is required"),
+    ("C2 something the mouse can click and the keyboard cannot reach",
+     BUILT_APP.replace('<div class="card">', '<div class="card" style="cursor:pointer">'),
+     "C2", "is in no tab order"),
+    ("C2 a positive tabindex",
+     BUILT_APP.replace(APP_HELP_LINK, '<a href="#hilfe" tabindex="3">Hilfe</a>'),
+     "C2", "overrides the document order"),
+    ("C2 a focus nobody can see",
+     BUILT_APP.replace(APP_FOCUS_RULE, "a:focus, button:focus { outline: none; }"),
+     "C2", "pixel for pixel"),
+    ("C3 an animation that ignores reduced motion",
+     BUILT_APP.replace(APP_REDUCED_BLOCK, ""),
+     "C3", "keep animating when the system asks for reduced motion"),
+    ("C3 no :focus-visible rule at all",
+     BUILT_APP.replace(APP_FOCUS_RULE, ""),
+     "C3", "no :focus-visible rule"),
+]
+
+# What `vite preview` is asked to do here, done by something this suite controls. The SHIPPED
+# function starts `npx --no-install vite preview --port <p> --strict-port` in `frontend/`; a shim
+# on PATH answers that call by serving `frontend/dist` on the port it was given. What is measured
+# is therefore the shipped code end to end -- its readiness probe, its delivery-freshness hash and
+# its Playwright run all against a real server and a real Chromium. A node/vite install would
+# measure the machine instead, and the office kit ships no frontend at all.
+NPX_SHIM = """import functools, sys
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+args = sys.argv[1:]
+port = int(args[args.index("--port") + 1]) if "--port" in args else 4173
+# SERVED IN THIS PROCESS, and not by handing the interpreter to os.execv: on Windows execv does
+# not quote what it joins into a command line, so an interpreter path containing a space is split
+# in two. Measured 2026-09-04: the shim started 'C:/Program' with
+# `Files/Python313/python.exe` as its script, `vite preview` was reported as exiting immediately,
+# and every case below failed on a server that had never come up.
+ThreadingHTTPServer(("127.0.0.1", port),
+                    functools.partial(SimpleHTTPRequestHandler,
+                                      directory="dist")).serve_forever()
+"""
+
+
+def _npx_on_path(tmp_path, monkeypatch):
+    """A directory holding an `npx` the shipped smoke can really start, prepended to PATH."""
+    home = tmp_path / "shim"
+    write(str(home / "npx_shim.py"), NPX_SHIM)
+    launcher = '@echo off\r\npython "%s" %%*\r\n' % str(home / "npx_shim.py")
+    # CRLF, written WITHOUT newline translation: `write` opens in text mode and would double the
+    # carriage return, which cmd reads as part of the path it is about to start.
+    with open(str(home / "npx.cmd"), "w", encoding="utf-8", newline="") as handle:
+        handle.write(launcher)
+    posix = '#!/bin/sh\nexec "%s" "%s" "$@"\n' % (sys.executable, str(home / "npx_shim.py"))
+    write(str(home / "npx"), posix)
+    os.chmod(str(home / "npx"), 0o755)
+    monkeypatch.setenv("PATH", str(home) + os.pathsep + os.environ.get("PATH", ""))
+    return str(home)
+
+
+def _smoke_a_build(tmp_path, monkeypatch, html, name="pilot"):
+    """Run the SHIPPED browser_smoke over a built app, and return what it reported."""
+    pytest.importorskip("playwright")
+    _npx_on_path(tmp_path, monkeypatch)
+    repo = tmp_path / name
+    write(str(repo / "frontend" / "dist" / "index.html"), html)
+    mod = _browser_checks_mod()
+    calls, ok, fail, warn = _collector()
+    mod.browser_smoke(str(repo), ok, fail, warn)
+    return calls, mod
+
+
+def _needs_chromium(calls):
+    """Skip only where this machine has no browser, never where the check found something."""
+    for _name, message in calls["warn"]:
+        if "Playwright browser not installed" in message or "playwright" in message.lower():
+            pytest.skip("no Chromium on this machine -- the build half cannot be measured here")
+
+
+def test_the_built_app_is_judged_on_c1_c2_c3_and_each_is_red_on_its_own_violation(
+        tmp_path, monkeypatch):
+    """H139 closed: the three design rules reach the BUILT app, and each one can fail on its own.
+
+    THE CLEAN BUILD IS A CASE. A check that refuses everything is worth as little as one that
+    refuses nothing, and on a build -- unlike on a frozen design revision -- that direction is the
+    expensive one: a rule that fires on every real app is a rule every project switches off.
+
+    The verdicts are read off the SHIPPED reporting callbacks, so a rule that is checked and not
+    REPORTED is not the same as one that passed.
+    """
+    calls, mod = _smoke_a_build(tmp_path, monkeypatch, BUILT_APP, name="clean")
+    _needs_chromium(calls)
+    assert not calls["fail"], calls["fail"]
+    for rule in (mod.C1, mod.C2, mod.C3):
+        assert rule in calls["ok"], (
+            "the clean build was not judged on %r at all -- %s" % (rule, calls))
+
+
+@pytest.mark.parametrize("case,html,rule,sentence", PLANTED_BUILDS,
+                         ids=[one[0].replace(" ", "-") for one in PLANTED_BUILDS])
+def test_each_planted_violation_of_the_built_app_makes_its_own_rule_fail(
+        tmp_path, monkeypatch, case, html, rule, sentence):
+    """One property broken, one rule red, and the message says WHICH property.
+
+    Per rule and not per run: a build that breaks two of the three has to say which two, or the
+    round that fixes one reads the remaining refusal as the same finding.
+    """
+    calls, mod = _smoke_a_build(tmp_path, monkeypatch, html,
+                                name="planted%d" % PLANTED_BUILDS.index(
+                                    (case, html, rule, sentence)))
+    _needs_chromium(calls)
+    named = {mod.C1: "C1", mod.C2: "C2", mod.C3: "C3"}
+    failed = {named[one]: message for one, message in calls["fail"] if one in named}
+    assert rule in failed, (
+        "%s was not reported as a %s finding; failures were %s" % (case, rule, calls["fail"]))
+    assert sentence in failed[rule], (case, failed[rule][:400])
+
+
+def test_a_project_without_a_built_frontend_pays_nothing_for_the_design_rules(tmp_path):
+    """AC-4's cost side for AC-3, measured: no `frontend/dist`, no browser, no verdict.
+
+    The shipped degradation is a WARN and an immediate return, so a backend-only or office project
+    never starts a preview server, never launches Chromium and is never judged on a design rule it
+    has no subject for. This is the whole of what such a project pays.
+    """
+    mod = _browser_checks_mod()
+    calls, ok, fail, warn = _collector()
+    started = time.time()
+    mod.browser_smoke(str(tmp_path), ok, fail, warn)
+    assert not calls["fail"] and not calls["ok"], calls
+    assert any("dist missing" in message for _n, message in calls["warn"]), calls["warn"]
+    assert time.time() - started < 5, "a project with no UI waited on something"
+
+
+def test_the_build_half_leaves_out_the_two_rules_a_build_cannot_answer(tmp_path, monkeypatch):
+    """The over-refusal direction, stated in the module docstring and measured here.
+
+    A build legitimately ships CSS nobody wrote as design tokens, and it carries no `data-view`
+    contract -- so the colour-literal rule and the one-primary-action rule of the design reader are
+    deliberately NOT applied to it. Both are planted here at once: a build that breaks them and
+    nothing else must come back clean, or the docstring's claim is prose.
+    """
+    html = BUILT_APP.replace("border:1px solid var(--line)", "border:1px solid #dddddd")
+    calls, mod = _smoke_a_build(tmp_path, monkeypatch, html, name="literals")
+    _needs_chromium(calls)
+    assert not calls["fail"], (
+        "a rule the build half does not carry was applied to a build anyway: %s" % calls["fail"])
+    assert mod.C1 in calls["ok"] and mod.C3 in calls["ok"], calls
+
+
+# The target is a PATH, not a piece of text -- the kit half of verifier round 1, B2. Measured on a
+# scaffolded pilot before the fix: `pytest tests/` rc 2 while `tests/.`, `tests/../tests`, `..` and
+# the ABSOLUTE path were rc 0.
+# `tests/../../tests` is NOT here: two levels up and down again lands on a `tests` directory
+# OUTSIDE the project, which is a different place. It is measured as the unplaceable case in
+# `test_gate_test_scope_says_so_when_it_cannot_place_a_target_at_all` instead.
+KIT_PATH_SPELLINGS = ["tests/.", "tests/./", "./tests/.", "tests/../tests", ".."]
+
+
+@pytest.mark.parametrize("target", KIT_PATH_SPELLINGS)
+def test_gate_test_scope_reads_a_target_as_a_path_and_not_as_text(prd_repo, target):
+    """Every spelling that HANDS the runner the whole declared surface is one, however written."""
+    _scoped_repo(prd_repo)
+    result = _scope_hook(prd_repo, "python -m pytest %s -q" % target)
+    assert result.returncode == 2, "%r reaches the whole surface and was allowed" % target
+    assert "WHOLE declared test surface" in result.stderr, result.stderr[:300]
+
+
+def test_gate_test_scope_reads_an_absolute_target_against_the_calls_own_cwd(prd_repo):
+    """The absolute spelling, and the fail-closed answer when it cannot be placed.
+
+    Two halves in one test because they are one rule: an absolute word IS relativised against the
+    payload's `cwd`, and a word that cannot be relativised at all (here: no `cwd` in the payload)
+    counts as covering, because what this gate cannot place may be the whole surface.
+    """
+    _scoped_repo(prd_repo)
+    absolute = os.path.join(str(prd_repo), "tests").replace("\\", "/")
+    assert _scope_hook(prd_repo, 'python -m pytest "%s" -q' % absolute).returncode == 2, (
+        "the absolute spelling of the declared surface was allowed")
+    payload = {"hook_event_name": "PreToolUse", "tool_name": "Bash",
+               "tool_input": {"command": 'python -m pytest "%s" -q' % absolute}}
+    unplaceable = run_hook_process("gate_test_scope.py", payload, prd_repo)
+    assert unplaceable.returncode == 2, (
+        "a payload that carries no cwd left the word unplaceable, and unplaceable is not allowed")
+
+
+def test_gate_test_scope_still_lets_a_selection_through_however_it_is_spelled(prd_repo):
+    """The other direction: a path reader that refuses everything is worth as little as none."""
+    _scoped_repo(prd_repo)
+    for target in ("tests/./test_one.py", "./tests/test_one.py", "tests/../tests/test_one.py"):
+        result = _scope_hook(prd_repo, "python -m pytest %s -q" % target)
+        assert result.returncode == 0, "%r is a selection and was refused: %s" % (
+            target, result.stderr[:200])
+
+
+def test_the_smallest_NAMED_window_answers_when_one_entry_states_none(prd_repo):
+    """F4 of verifier round 1: a silent entry must not discard a stated one.
+
+    The reader's own rule is "the smallest applying window answers". The first cut stated it and
+    then returned None -- i.e. the 560 s default -- as soon as ONE applying entry was silent, so a
+    1 s registration was read as 560 s and the gate decided under a window it would be killed in.
+    Measured on a pilot with exactly that pair; here it is driven through the real hook process.
+
+    The two entries are for the SAME gate on the same tool, which is the case the docstring is
+    about: any of them can be the one the provider asks with.
+    """
+    _scoped_repo(prd_repo)
+    entry = {"type": "command",
+             "command": 'python -B "${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py" '
+                        "gate_test_scope.py"}
+    write(os.path.join(str(prd_repo), ".claude", "settings.json"), json.dumps(
+        {"hooks": {"PreToolUse": [
+            {"matcher": "Bash|PowerShell", "hooks": [dict(entry, timeout=1.0)]},
+            {"matcher": "Bash|PowerShell", "hooks": [dict(entry)]}]}}))
+    result = _scope_hook(prd_repo, "git status --short")
+    assert result.returncode == 2, (
+        "one entry gives this gate 1 s and the reader took the other entry's silence for the "
+        "provider default, so the call was judged under a window the gate cannot keep")
+    assert "not enough time for it to answer at all" in result.stderr, result.stderr[:400]
+    assert "1s" in result.stderr, (
+        "the refusal does not name the window it was judged against: %s" % result.stderr[:300])
+
+
+def test_two_silent_entries_still_leave_the_gate_deciding(prd_repo):
+    """The other direction of the same reader: silence is the DEFAULT window, not a refusal.
+
+    Every shipped kit registration is silent, and rightly so -- a window over a gate that bounds no
+    child of its own can only kill it mid-decision. So two silent entries must behave exactly like
+    one, and the gate must still answer.
+    """
+    _scoped_repo(prd_repo)
+    entry = {"type": "command",
+             "command": 'python -B "${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py" '
+                        "gate_test_scope.py"}
+    write(os.path.join(str(prd_repo), ".claude", "settings.json"), json.dumps(
+        {"hooks": {"PreToolUse": [
+            {"matcher": "Bash|PowerShell", "hooks": [dict(entry)]},
+            {"matcher": "Bash", "hooks": [dict(entry)]}]}}))
+    assert _scope_hook(prd_repo, "git status --short").returncode == 0
+    assert _scope_hook(prd_repo, "python -m pytest tests/ -q").returncode == 2
+
+
+@pytest.mark.parametrize("empty", ['-k ""', "-k=", '-m ""', "-m="])
+def test_gate_test_scope_reads_an_empty_selector_value_as_no_selection(prd_repo, empty):
+    """`-k ""` selects nothing away, so the line still runs the whole declared surface.
+
+    Measured on the runner rather than reasoned: with `-k ""` and with `-m ""` three of three
+    fixture tests still ran (2026-09-05). Read on the VALUE and not on the option name, which is
+    what the first cut did -- and what let a whole-surface run through with an ordinary flag.
+    """
+    _scoped_repo(prd_repo)
+    result = _scope_hook(prd_repo, "python -m pytest tests/ -q %s" % empty)
+    assert result.returncode == 2, "%r bought a full run" % empty
+    assert "WHOLE declared test surface" in result.stderr, result.stderr[:300]
+
+
+def _scope_payload(repo, command, cwd):
+    return {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": str(cwd),
+            "tool_input": {"command": command}}
+
+
+def test_gate_test_scope_measures_against_the_PROJECT_root_and_not_the_shells_cwd(prd_repo):
+    """B2' of verifier round 2, kit half: the declared roots are project-relative.
+
+    Measured on a pilot before this: with a payload `cwd` one level above the project,
+    `pytest "<abs>/tests"` and `pytest <name>/tests` were rc 0 while the same lines from inside
+    were rc 2.
+    """
+    _scoped_repo(prd_repo)
+    outside = os.path.dirname(str(prd_repo))
+    name = os.path.basename(str(prd_repo))
+    for command in ('python -m pytest "%s"' % os.path.join(str(prd_repo), "tests").replace(
+                        "\\", "/"),
+                    "python -m pytest %s/tests" % name):
+        result = run_hook_process("gate_test_scope.py",
+                                  _scope_payload(prd_repo, command, outside), prd_repo)
+        assert result.returncode == 2, "from a shell above the project, %r was allowed" % command
+        assert "WHOLE declared test surface" in result.stderr, result.stderr[:300]
+
+
+def test_gate_test_scope_asks_the_filesystem_which_place_a_target_is(prd_repo):
+    """B2'' of verifier round 2, kit half: a case variant and a junction are the place they are."""
+    _scoped_repo(prd_repo)
+    target = os.path.join(str(prd_repo), "tests")
+    # the declared surface has to EXIST for this question to be about identity at all -- a junction
+    # cannot be made over a directory that is not there, and the first cut skipped for that reason
+    write(os.path.join(target, "test_one.py"), "def test_one():\n    pass\n")
+    if os.path.isdir(os.path.join(str(prd_repo), "TESTS")):
+        assert _scope_hook(prd_repo, "python -m pytest TESTS").returncode == 2, (
+            "a case variant of the declared root was allowed")
+    link = os.path.join(str(prd_repo), "tests-junction")
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", link, target],
+                          capture_output=True) if os.name == "nt" else None
+    if made is None or made.returncode != 0 or not os.path.isdir(link):
+        pytest.skip("this host cannot make a junction, so the identity half cannot be measured")
+    try:
+        assert _scope_hook(prd_repo, "python -m pytest tests-junction").returncode == 2, (
+            "a junction over the declared surface was allowed -- text again")
+    finally:
+        os.rmdir(link)
+
+
+def test_the_kit_reader_and_the_workshops_agree_on_what_one_place_is(tmp_path):
+    """The pin against drift: a kit ships without `_harness`, so the property exists twice.
+
+    Two implementations of one question is the shape this repo keeps finding a defect in, so the
+    two are compared HERE over the spellings that separate a text reader from an identity reader --
+    a case variant, a junction, a node id under the root, a sibling, and the root itself. Both are
+    imported and CALLED; nothing about either is read as a string.
+    """
+    sys.path.insert(0, os.path.join(ROOT, ".claude", "hooks"))
+    import _harness
+    kit = load_kit_module("kit_scope_reader", os.path.join(HOOKS, "gate_test_scope.py"))
+    base = tmp_path / "project"
+    (base / "tests").mkdir(parents=True)
+    (base / "tests" / "test_one.py").write_text("def test_one():\n    pass\n", encoding="utf-8")
+    (base / "src").mkdir()
+    cases = [str(base / "tests"), str(base / "TESTS"), str(base / "tests" / "test_one.py"),
+             str(base / "tests" / "test_one.py") + "::test_one", str(base / "src"), str(base),
+             str(base.parent)]
+    link = base / "tests-junction"
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(base / "tests")],
+                          capture_output=True) if os.name == "nt" else None
+    if made is not None and made.returncode == 0:
+        cases.append(str(link))
+    target = str(base / "tests")
+    disagreements = [one for one in cases
+                     if _harness.under(target, one) != kit.under(target, one)]
+    assert not disagreements, (
+        "the kit's identity reader and the workshop's disagree about these places, so one of the "
+        "two answers a question the other does not: %s" % disagreements)
+
+
+@pytest.mark.parametrize("tail", ['-k alpha -k ""', "-k alpha -k=", '-m slow -m ""'])
+def test_gate_test_scope_lets_the_LAST_occurrence_of_an_option_decide(prd_repo, tail):
+    """B1' of verifier round 2, kit half: argparse keeps the last value."""
+    _scoped_repo(prd_repo)
+    result = _scope_hook(prd_repo, "python -m pytest tests/ %s" % tail)
+    assert result.returncode == 2, "%r bought a full run" % tail
+    assert "WHOLE declared test surface" in result.stderr, result.stderr[:300]
+
+
+def test_gate_test_scope_says_so_when_it_cannot_place_a_target_at_all(prd_repo):
+    """F8, kit half: the fail-closed branch carries its own sentence."""
+    _scoped_repo(prd_repo)
+    # `tests/../../tests` is NOT here since the round-3 narrowing: it lands on a place this reader
+    # CAN find, and a place that is not this project is a selection, not an unplaceable word.
+    for target in ("D:/other-project/tests/test_x.py", "//server/share/proj/tests", "C:tests"):
+        result = _scope_hook(prd_repo, 'python -m pytest "%s"' % target)
+        assert result.returncode == 2, "%r was waved through" % target
+        assert "could not be placed against this project" in result.stderr, (
+            target, result.stderr[:300])
+        assert "WHOLE declared test surface" not in result.stderr, (
+            "the refusal claims this line runs the declared surface, which it does not: %s"
+            % result.stderr[:300])
+
+
+def _provably_outside(prd_repo, tmp_path, name):
+    """A directory that is NOT inside the project, asserted rather than assumed.
+
+    `prd_repo` IS `tmp_path` (the fixture returns it), so `tmp_path / x` lies INSIDE the project
+    and every question about "outside" asked from there is a different question. Measured
+    2026-09-05 (verifier round 4, N1): with the outside test pulled in front of the identity
+    reader, the real kit half let a junction from outside through (rc 0) while the test that
+    claims to guard exactly that stayed green -- because its link lay inside. The containment is
+    asserted here so the mistake cannot come back silently.
+    """
+    outside = tmp_path.parent / name
+    outside.mkdir(parents=True, exist_ok=True)
+    project = os.path.realpath(str(prd_repo))
+    assert os.path.commonpath([os.path.realpath(str(outside)), project]) != project, (
+        "%s lies inside the project, so nothing measured from it is about being outside"
+        % outside)
+    return outside
+
+
+def test_gate_test_scope_lets_a_rig_run_a_suite_that_lies_outside_the_project(prd_repo, tmp_path):
+    """F10, kit half: a place the reader can find and that is not this project is a selection."""
+    _scoped_repo(prd_repo)
+    suite = _provably_outside(prd_repo, tmp_path, "elsewhere") / "suite"
+    suite.mkdir(parents=True)
+    write(str(suite / "test_1.py"), "def test_a():\n    pass\n")
+    for target in (str(suite), str(suite / "test_1.py"),
+                   str(suite / "test_1.py") + "::test_a", "tests/../../tests"):
+        result = _scope_hook(prd_repo, 'python -m pytest "%s"' % str(target).replace(chr(92), "/"))
+        assert result.returncode == 0, "a run outside the project was refused (%r): %s" % (
+            target, result.stderr[:300])
+
+
+def test_gate_test_scope_still_sees_a_link_from_outside_into_the_declared_surface(prd_repo,
+                                                                                 tmp_path):
+    """The claim the narrowing rests on: a junction from outside INTO the surface is the surface.
+
+    THE LINK HAS TO LIE OUTSIDE THE PROJECT, or this measures nothing: `prd_repo` IS `tmp_path`,
+    so the first cut laid it inside and stayed green under the very mutation it exists to catch
+    (verifier round 4, N1). `_provably_outside` asserts the containment.
+    """
+    _scoped_repo(prd_repo)
+    target = os.path.join(str(prd_repo), "tests")
+    write(os.path.join(target, "test_one.py"), "def test_one():\n    pass\n")
+    link = str(_provably_outside(prd_repo, tmp_path, "outside-the-project") / "into-the-surface")
+    made = subprocess.run(["cmd", "/c", "mklink", "/J", link, target],
+                          capture_output=True) if os.name == "nt" else None
+    if made is None or made.returncode != 0 or not os.path.isdir(link):
+        pytest.skip("this host cannot make a junction, so this claim cannot be measured here")
+    try:
+        result = _scope_hook(prd_repo, 'python -m pytest "%s"' % link.replace(chr(92), "/"))
+        assert result.returncode == 2, "a junction from outside INTO the surface was allowed"
+        assert "WHOLE declared test surface" in result.stderr, result.stderr[:300]
+    finally:
+        os.rmdir(link)

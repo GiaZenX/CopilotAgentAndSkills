@@ -1,0 +1,15 @@
+id: BUG-0098
+title: Eine Nutzlast, die ein Gate nicht lesen kann, war ein Ja — GESCHLOSSEN, Erreichbarkeit
+  ungemessen
+related_pr: PR-0003
+observed: '**Mechanismus:** drei frühe `return`s lasen „nichts zu prüfen" statt „konnte
+  nicht geprüft werden".'
+severity: low
+hole_number: H6
+source: docs/holes/H6.md
+limits: —
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:02'
+closed_at: '2026-09-05T20:22:02'

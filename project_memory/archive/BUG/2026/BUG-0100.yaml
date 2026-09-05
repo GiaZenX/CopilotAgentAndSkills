@@ -1,0 +1,17 @@
+id: BUG-0100
+title: Acht Tests hingen am Status *eines* Items — GESCHLOSSEN
+related_pr: PR-0003
+observed: '**Mechanismus:** `TSK-0003` stand als Literal in Gate-2-, Gate-3- und Gate-4-Tests.
+  Damit war der
+
+  Status eines einzelnen Items eine **Vorbedingung der Messung** — und Items werden
+  abgenommen.'
+severity: low
+hole_number: H8
+source: docs/holes/H8.md
+limits: —
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:07'
+closed_at: '2026-09-05T20:22:07'

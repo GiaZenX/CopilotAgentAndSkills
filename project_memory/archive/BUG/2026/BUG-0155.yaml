@@ -1,0 +1,23 @@
+id: BUG-0155
+title: Das Ledger-Gate verweigert seine eigene beworbene Remedy — GESCHLOSSEN (TSK-0083,
+  `BUG-0064`)
+related_pr: PR-0003
+observed: '**Geschlossen am 2026-08-24.** Der Wortlaut unten beschreibt den Befund;
+  wie er geschlossen
+
+  wurde und was die Schließung gekostet hat, steht direkt darunter.'
+severity: low
+hole_number: H63
+source: docs/holes/H63.md
+limits: 'das Gate verweigerte die Remedy, die sein eigener Text bewirbt. Geschlossen,
+  indem die Ausnahme im Validator-Verzeichnis auf ihren Grund verengt wurde: dort
+  ist der **blanke Name** die kanonische Datei, und befreit wird nur ein **Lauf**
+  davon, nicht seine Nennung. `cd scripts && python ledger_add.py --validate ../ledger/2026.csv
+  && git commit -m x` HEAD rc 2 → jetzt rc 0, gemessen an beiden Zwillingen; die Schließung
+  selbst hat drei Löcher aufgemacht, die in derselben Runde geschlossen wurden (Prüfbericht
+  Runde 4, V1–V3)'
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:24:22'
+closed_at: '2026-09-05T20:24:22'

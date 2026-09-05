@@ -333,7 +333,7 @@ authority: today `doctor`, `validate`, `generate-index`, `verify-invariants`,
 `request-approval`, `create-task`, `dispatch`, `submit-result`, `evidence`, `transition`, `update`,
 `archive`, `check-scopes`, `sweep-leases`, `sweep-requests`, `checkpoint`, `checkpoint-status`, `set-preset`, `update-kit`, `add-filing-rule`, `apply-proposal`, `revise-document`,
 `freeze-architecture`, `freeze-wireframe`, `freeze-design`, `freeze-report`,
-`migrate`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of the twelve
+`migrate`, `migrate-holes`, `report-gap`, `pin-kit`, `unpin-kit`, `rollback-kit`. Of the twelve
 spec II.4 asks for, one is absent under that name: `approve` is SPLIT —
 `request-approval <kind> <ITEM-ID>` opens the kernel-generated question (phase 1), and the USER mints it
 by ANSWERING, which is the whole of why the approval is provable; no command mints, and the mint also

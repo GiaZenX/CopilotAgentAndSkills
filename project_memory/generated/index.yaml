@@ -1,4 +1,4 @@
-generated_at: '2026-09-04T05:55:39'
+generated_at: '2026-09-05T20:28:35'
 items:
 - id: APR-0001
   type: APR
@@ -671,6 +671,683 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: BUG-0092
+  type: BUG
+  title: team-kits/model_tiers.yaml carries a dead pricing comment and a dead watch
+    date (Sonnet 5 'intro $2/$10 until 2026-08-31') -- flagged by the radar watcher
+    three times, fixed by nobody because the fix fell between the roles
+  status: OPEN
+  revision: 1
+  approval_ref: null
+- id: BUG-0102
+  type: BUG
+  title: Codehälften ohne rote Mutation — ZWEI GESCHLOSSEN, keine erschöpfende Suche
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0105
+  type: BUG
+  title: Der Produzent ist als DATEI geschützt, nicht als Verzeichnis
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0106
+  type: BUG
+  title: Gate 3 druckt den Befehl, der es aufhebt
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0107
+  type: BUG
+  title: Gate 1 hängt jetzt an privaten Helfern eines Kit-Hooks (neu, Preis desselben
+    Fixes)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0110
+  type: BUG
+  title: Das Repo als Operand eines Kopier- oder Archivbefehls gilt als Schreibzugriff
+    (TSK-0008, korrigiert TSK-0011)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0111
+  type: BUG
+  title: Ein Kandidat, der einen VORFAHREN eines geschützten Baums nennt (neu, TSK-0011)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0115
+  type: BUG
+  title: Ein unerreichbarer Pfad kostet die Beurteilung, nicht mehr die Frist (neu,
+    TSK-0011)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0128
+  type: BUG
+  title: Ein einzelner Aufruf nach C gibt den Interpreter nicht zurück (neu, TSK-0021)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0133
+  type: BUG
+  title: Vier gemessene Grenzen des Zeiger-Wächters (neu, TSK-0009)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0136
+  type: BUG
+  title: Vier gemessene Grenzen der Amendment-Ableitung (neu, TSK-0062)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0137
+  type: BUG
+  title: Zwei Grenzen der Arbiter-Härtung der Gate-Suite (neu, TSK-0063)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0139
+  type: BUG
+  title: 'Das Repo-Gate leiht den Ziel-Leser des Kits, aber nicht dessen Zeilen-Zuweisungskarte:
+    `F=…; > $F` schreibt kanonischen Zustand an Gate 1 vorbei — OFFEN (neu, TSK-0070)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0140
+  type: BUG
+  title: Ein offener Lesehandle friert das Board für die Dauer der Sitzung ein; das
+    einzige aktive Signal ist eine im Hook-Pfad praktisch ungelesene stderr-Zeile
+    — OFFEN als bewusster Tausch (neu, TSK-0071)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0141
+  type: BUG
+  title: Die zweite Vertragsverletzung eines Subagenten läuft ungebremst durch (neu,
+    TSK-0075)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0142
+  type: BUG
+  title: Ein gebundenes Kind ohne `SubagentStop` ist nach dem TTL-Sweep unsichtbar
+    — OFFEN als bewusster Tausch (neu, TSK-0080)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0143
+  type: BUG
+  title: Nach der einen Verweigerung schweigt der Melder für denselben Befund — offen
+    (neu, TSK-0080)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0144
+  type: BUG
+  title: Ein Zombie-Dispatch hält rollengleiche id-lose Zuordnungen dauerhaft still
+    — offen (neu, TSK-0080)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0145
+  type: BUG
+  title: Die Lebensdauer von `stop_hook_active` ist ungemessen — offen (neu, TSK-0080)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0146
+  type: BUG
+  title: Ein ungebunden laufendes Kind wird als „nie verfolgt" gemeldet — offen, nicht
+    blockierend (neu, TSK-0080)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0147
+  type: BUG
+  title: Die Alt-Bestand-Brücke läuft ohne gemintete Freigabe, und ein Subagent erreicht
+    sie — offen (neu, TSK-0081)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0148
+  type: BUG
+  title: Ein abgebrochener Brückenlauf lässt ein gemischtes Bündel stehen — offen,
+    erholbar (neu, TSK-0081)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0149
+  type: BUG
+  title: Ein Interpreter-Heredoc ist vor `gate_ledger_valid` unsichtbar (neu, Preis
+    des TSK-0081-Fixes)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0150
+  type: BUG
+  title: '`TSK DONE → VALIDATED` fordert keine Evidence — offen als Semantik-Entscheidung
+    (neu, TSK-0082)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0151
+  type: BUG
+  title: Nichts treibt ein Projekt in die Phasen 6–9 — offen, die Leere ist jetzt
+    gesagt (neu, TSK-0082)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0152
+  type: BUG
+  title: '`document_sources` erzwingt nichts — offen, doppelt begrenzt (neu, TSK-0082)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0153
+  type: BUG
+  title: Kein Kit-Hook merkt, dass sein Fenster abläuft — offen, Schließrichtung gebaut
+    (neu, TSK-0082)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0154
+  type: BUG
+  title: Die Köder-Prüfung des Ledger-Gates urteilt segmentweit — offen, Kandidat
+    gemessen und zurückgestellt (neu, TSK-0083)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0156
+  type: BUG
+  title: Jedes `>` eines Segments ist dem Ledger-Gate eine Umleitung, auch quotierte
+    Prosa — offen, Über-Verweigerung als bewusster Preis (neu, TSK-0083)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0157
+  type: BUG
+  title: Ein Wort, das die Shell erst durch Expansion herstellt, sieht dieser Leser
+    nicht — offen, Loch, vorbestehend (benannt TSK-0083)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0158
+  type: BUG
+  title: '`shell_readings` sagt „jede Lesart" zu und liefert nur die POSIX-Lesart
+    — offen, Loch, vorbestehend (benannt TSK-0083)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0159
+  type: BUG
+  title: Köder und Geschwister werden nur befragt, wenn dieselbe Zeile schon blockiert
+    — offen, Loch, vorbestehend (benannt TSK-0083)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0160
+  type: BUG
+  title: Zwei Schreibweisen, die verweigert werden, ohne zu schreiben — offen, Über-Verweigerung,
+    naheliegender Fix gemessen falsch (TSK-0083)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0161
+  type: BUG
+  title: Die Gates dieses Repos erben die halbe CR-Härtung der Kits — offen, Werkbank,
+    `DEC-0022` (TSK-0084)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0162
+  type: BUG
+  title: Der Vollständigkeits-Draht des Ledger-Gates fragt nach MUSTERN, also sieht
+    er eine Ausnahme ohne Muster nicht — offen, Messlücke des Instruments (TSK-0083/TSK-0084)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0163
+  type: BUG
+  title: Was der Leser der Merge-Rückstandsliste NICHT entscheiden kann — offen, vier
+    gemessene Grenzen (TSK-0086)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0164
+  type: BUG
+  title: Was die Vier-Augen-Wand NICHT bindet — offen, gemessene Grenzen der Zweitlesungs-Mechanik
+    (TSK-0087)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0165
+  type: BUG
+  title: Was die Entscheidungs-zuerst-Runde NICHT misst — offen, drei gemessene Grenzen
+    (TSK-0089)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0166
+  type: BUG
+  title: Was die schnellere Gate-Suite NICHT schützt — offen, gemessene Grenzen (TSK-0090)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0167
+  type: BUG
+  title: Was der E-Rechnungs-Leser NICHT prüft — offen, gemessene Grenzen des Geldpfads
+    (TSK-0091)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0168
+  type: BUG
+  title: Was der neue Dokument-Schreibweg NICHT bindet — offen, gemessene Grenzen
+    (TSK-0092)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0169
+  type: BUG
+  title: Was die Wertsprache-Regel NICHT hält — offen, gemessene Grenzen (TSK-0093)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0170
+  type: BUG
+  title: Ein Startmodus, der die Projekteinstellungen nicht lädt, entfernt den ganzen
+    Durchsetzungsapparat — offen, von innen nicht schließbar (TSK-0094)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0171
+  type: BUG
+  title: Was die Besitz-Ableitung der Dokument-Schreibroute NICHT bindet — offen,
+    gemessene Grenzen (TSK-0096)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0173
+  type: BUG
+  title: 'Der Mint-Leser irrt in BEIDE Richtungen: eine unzerlegbare Zeile warnt zu
+    viel, eine fehlende Datei zu wenig (neu, TSK-0097)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0174
+  type: BUG
+  title: Was die interne Sicht-Schleife für Design-Entwürfe NICHT bindet — offen,
+    gemessene Grenzen (TSK-0099)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0176
+  type: BUG
+  title: Was die Ableitung der Referenz-Skills NICHT bindet — offen, gemessene Grenzen
+    (TSK-0100)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0177
+  type: BUG
+  title: Was die Herkunfts- und Bündelprüfungen NICHT sehen — offen, gemessene Grenzen
+    (TSK-0100)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0178
+  type: BUG
+  title: Was die Bestandsklassifikation NICHT sieht — offen, gemessene Grenzen (TSK-0101)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0180
+  type: BUG
+  title: Der Rollback ist byte-gleich nur über die aufgezeichnete Menge, und ältere
+    Sicherungen tragen keine — offen, gemessen (TSK-0101)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0181
+  type: BUG
+  title: Ohne `git` kann die Vier-Augen-Buchung alte von neuen Zeilen nicht unterscheiden
+    und tritt zurück (neu, TSK-0102, FR-0065)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0182
+  type: BUG
+  title: Zwei identische Buchungen EINES Belegs teilen sich ein Lesepaar (neu, TSK-0102,
+    FR-0065)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0183
+  type: BUG
+  title: Der gerenderte Aktenplan-Baum zeigt den PLAN, nicht die Platte (neu, TSK-0102,
+    FR-0031)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0186
+  type: BUG
+  title: Der gerenderte Forschungsbericht hatte keinen Schreibweg, während der Merge
+    auf ihm bestand — Weg gebaut (TSK-0106), Verfassungszeile offen
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0190
+  type: BUG
+  title: 'Der Umfang eines QS-Laufs ist Prosa: kein Feld und kein Hook zählt, ob die
+    Suite einmal oder zehnmal lief (neu, TSK-0105, FR-0057)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0191
+  type: BUG
+  title: 'Der Design-Brief trennt das ZIEL von der SCHREIBWEISE nur als Prosa: eine
+    Prozessregel im Brief fängt nichts (neu, TSK-0105, FR-0069)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0192
+  type: BUG
+  title: Eine Evidenz, die ihren Laufumfang GAR NICHT erklärt, zählt weiter als Volllauf
+    (neu, TSK-0106, FR-0040)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0193
+  type: BUG
+  title: '„Sammelbar" ist geparst und nicht gefahren: ein übersprungener Test gilt
+    als vorhanden (neu, TSK-0106, FR-0039)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0194
+  type: BUG
+  title: Einen Check, den der Kernel nicht lesen kann, beantwortet er mit UNENTSCHIEDEN
+    (neu, TSK-0106, FR-0039)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0195
+  type: BUG
+  title: Die Freigabe, auf der die Auditor-Routine reitet, hat in keinem Kit einen
+    Erzeuger (neu, TSK-0107, FR-0038)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0196
+  type: BUG
+  title: Der Laufdatensatz der Routine ist ein Nebenprodukt und sagt nicht, was er
+    zu sagen scheint (neu, TSK-0107, FR-0038)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0197
+  type: BUG
+  title: Das Fristenregister kennt kein „erledigt" (neu, TSK-0107, FR-0034)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0198
+  type: BUG
+  title: Nach `/cd` läuft die Registrierung des ZIELVERZEICHNISSES, aber die Hook-DATEIEN
+    des Startverzeichnisses (neu, TSK-0108, FR-0059)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0199
+  type: BUG
+  title: '`/cd` bringt die Subagenten und die `agent:`-Bindung des Ziels NICHT mit,
+    obwohl der Changelog „agents" nennt (neu, TSK-0108, FR-0059)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0201
+  type: BUG
+  title: 'Nichts startet den Generator: eine Buchung bewegt die Seite nicht (neu,
+    TSK-0109, FR-0032)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0202
+  type: BUG
+  title: Das Alter offener Posten und jeder Mahnstempel entstehen erst im Browser
+    (neu, TSK-0109, FR-0032)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0203
+  type: BUG
+  title: Keine Herkunft, und dem Ledger-Gate ist der Generator kein Bericht (neu,
+    TSK-0109, FR-0032)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0206
+  type: BUG
+  title: Der Melder über ungelesene Prosa fragt, was git TRÄGT, und nicht, was auf
+    der Platte liegt (neu, TSK-0110, FR-0036)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0207
+  type: BUG
+  title: Eine Löschung mit einer FLAGGE kommt am Archiv-Wächter vorbei — seit TSK-0116
+    nur noch, wenn sie im ZIEL löscht (TSK-0113, FR-0050)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0208
+  type: BUG
+  title: Die Fristenmeldung liest eine Uhr, die keinem Feld dieses Kits gehört (neu,
+    TSK-0113, FR-0034)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0210
+  type: BUG
+  title: Die Ablaufregel für eine offene Anfrage steht dreimal, und die drei Leser
+    stehen auf zwei Uhren (neu, TSK-0115, FR-0075)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0211
+  type: BUG
+  title: Eine Handänderung an einem erzeugten Diagramm sieht zwischen zwei Zustandsschreibvorgängen
+    niemand (neu, TSK-0115, FR-0080)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0212
+  type: BUG
+  title: Was eine Zerstörung ist, bleibt eine Vokabelliste (neu, TSK-0116, FR-0050)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0213
+  type: BUG
+  title: Die leere Aufbewahrung ist über `add-filing-rule` nicht erreichbar (neu,
+    TSK-0116, FR-0049)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0214
+  type: BUG
+  title: Die Zeilennummern der Anlage EÜR stammen nicht aus dem amtlichen Vordruck
+    (neu, TSK-0116, FR-0076)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0215
+  type: BUG
+  title: Eine Antwort autorisiert jetzt N Ziele statt eines (neu, TSK-0117, FR-0074)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0216
+  type: BUG
+  title: Der SDK-Weg prägt ohne die dritte Bedingung, und jedes Programm, das die
+    Brücke ruft, prägt (neu, TSK-0117, FR-0083)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0217
+  type: BUG
+  title: '`blocked` ist ein Zustand, keine Messung (neu, TSK-0117, FR-0082)'
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0218
+  type: BUG
+  title: Der Zeugen-Halbteil der Überlappungsprüfung ist eine Stichprobe, keine Sprache
+    (neu, TSK-0118, FR-0021)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0220
+  type: BUG
+  title: Ein Haken-Docstring nennt einen Takt, den keine Verfassung mehr nennt (neu,
+    TSK-0118, N2)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0222
+  type: BUG
+  title: Die BUILD-Hälfte der Standard-Härtung ist nicht gebaut, weil ihre beiden
+    Wirtsdateien in ein fremdes Kit gespiegelt sind (neu, TSK-0119, FR-0077)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0223
+  type: BUG
+  title: Die Rangfolge-Prüfung urteilt über das, was der Entwurf DEKLARIERT, und der
+    Kontrast schweigt über das, was er nicht ausrechnen kann (neu, TSK-0119, FR-0077/FR-0078)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0224
+  type: BUG
+  title: Der Takt-Leser ist eine Aufzählung von Adverbien (neu, TSK-0118 Nacharbeit
+    1, N2)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0225
+  type: BUG
+  title: Eine genannte Route, die auflöst und trotzdem kein Paar ergibt, bleibt rc
+    0 (neu, TSK-0118 Nacharbeit 1, FR-0021)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0226
+  type: BUG
+  title: Eine Naht, die einen TEIL der Überlappung deckt, deckt ihn weiterhin zu (neu,
+    TSK-0118 Nacharbeit 1, FR-0021)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0230
+  type: BUG
+  title: Welche Datums-Schreibweisen ein Meilenstein annimmt, entscheidet der Interpreter
+    (neu, TSK-0117 Nacharbeit 1, DEC-0064)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0231
+  type: BUG
+  title: Eine Naht kann noch immer breiter sein als das, was zwei Aufträge wirklich
+    teilen (neu, TSK-0117 Nacharbeit 1, DEC-0062)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0233
+  type: BUG
+  title: Die Erklärung, auf der Gate 5 entscheidet, liegt ausserhalb seines eigenen
+    Schutzbereichs (neu, TSK-0121, PR-0004 AC-1)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0234
+  type: BUG
+  title: Was eine Option dem Läufer antut, entscheidet kein Text (neu, TSK-0121; nach
+    Prüfung 1 und 2 korrigiert)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0235
+  type: BUG
+  title: Was der Leser nicht platzieren kann, und was er gar nicht erst sieht (neu,
+    TSK-0121; nach Prüfung 3 erweitert)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0236
+  type: BUG
+  title: Die Migrationstuer schreibt einen Endzustand ohne die Evidenz, die die Kante
+    verlangt (neu, TSK-0122)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0237
+  type: BUG
+  title: Die Zielklasse ist Freitext, also haengt die SR-Pflicht an einer Ausnahmeliste
+    (neu, TSK-0122)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0238
+  type: BUG
+  title: Die Dispatch-Verweigerung sieht nur LAUFENDE Leases (neu, TSK-0122)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0239
+  type: BUG
+  title: Kein Leser urteilt über den WORTLAUT einer Auftragszeile (neu, TSK-0123,
+    FR-0005/FR-0010)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0240
+  type: BUG
+  title: Die Rückschau hat keinen Ereignis-Auslöser; der Pflichtenmelder kennt nur
+    die Periode (neu, TSK-0123, FR-0084)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0241
+  type: BUG
+  title: Der Zeigerleser der drei Rollentexte sieht nur Backticks und nur Item-Ids
+    (neu, TSK-0123, DEC-0070)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0242
+  type: BUG
+  title: Ein Kit-Update MELDET den Gedächtnisbaum, den keine Rolle mehr deklariert,
+    und entfernt ihn nicht (neu, TSK-0125, BUG-0088)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0243
+  type: BUG
+  title: Der Schwestertest von Gate 1 misst seine eigene Dimensionierung mit (neu,
+    TSK-0125, BUG-0033)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
+- id: BUG-0246
+  type: BUG
+  title: Ein Modulname in Backticks wird als Testzitat in ein Loch-Item geschrieben
+    (neu, TSK-0126, DEC-0073)
+  status: TRIAGED
+  revision: 1
+  approval_ref: null
 - id: DEC-0002
   type: DEC
   title: ADR-Datensaetze werden DEC-Items, nicht getragene Belege
@@ -1146,6 +1823,82 @@ items:
     for four of five streams, not for the seam-reading guard; the repeated finding
     class is the unrequested full suite run; the merge round found eleven findings
     no stream could see; three orchestrator failures cost more than any stream'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0071
+  type: DEC
+  title: 'BUG-0090 entschieden: die BESTAETIGENDE Kante liest eine ehrlich erklaerte
+    Auswahl, der Merge nicht -- eine Ableitung, zwei Fragen, weil ein bestandener
+    Teillauf ueber genau EIN benanntes Item etwas anderes belegt als ueber eine Lieferung'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0072
+  type: DEC
+  title: 'FR-0085 entschieden: die SR-Pflicht haengt an der KLASSE des Produktziels
+    und wird dort verweigert, wo eine Lease entsteht (Kernel), nicht im Dispatch-Haken
+    der Kits'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0073
+  type: DEC
+  title: 'FR-0087 entschieden: ein gemessenes, offenes Loch ist ein BUG mit einer
+    statusabhaengigen Pflicht `limits` und einem Endzustand ACCEPTED_EXCEPTION, den
+    nur eine nutzergemintete Freigabe geht -- kein eigener Typ; die Migration der
+    140 Eintraege laeuft EINMAL durch den Kernel'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0074
+  type: DEC
+  title: 'H163 entschieden: die Architekturschritt-Pflicht (DEC-0072) gilt nur in
+    einem Kit, dessen Vertrag den Typ SR kennt UND dessen Wurzeltyp die Abnahmekriterien
+    nicht selbst traegt -- abgeleitet aus dem Kit-Vertrag, keine Ausnahmeliste'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0075
+  type: DEC
+  title: 'Rechnungs-Anwendung entschieden: ein eigenes Produkt mit dem Entwickler-Kit
+    (Oberflaeche fuer den Nutzer UND Befehlsschnittstelle fuer die Buero-Rollen),
+    nicht ein Skript im Buero-Kit; das Buero-Kit baut nur die Andockstelle'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0076
+  type: DEC
+  title: 'Modell-Leitern entschieden: DREI Sprossen je Anbieter -- Claude fable /
+    opus / sonnet, Codex astra / sol / terra (kein Luna, keine haiku-Sprosse) -- Aufwand
+    standardmaessig high, grosse Aufgaben xhigh; gebaut von PR-0010'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0077
+  type: DEC
+  title: 'Zwei Achsen statt Mischleiter: Stufe haengt an Rolle und Kit-Endpunkt, Aufwand
+    an der Aufgabengroesse -- und die Eskalationsmechanik aus DEC-0034 wird JETZT
+    gebaut (PR-0010), nach 26 Tagen ohne Item; Gen-5-Stufen: Fable oder Opus je Umfang,
+    Pruefer Opus'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0078
+  type: DEC
+  title: 'Buero-Kit laeuft bewusst die niedrigere Leiter: kein fable ausser fuer den
+    office-developer, sonst opus / sonnet mit Aufwand medium (Standard) / high (grosse
+    Ziele) statt high / xhigh -- Verfeinerung von DEC-0047 und DEC-0077'
+  status: VALID
+  revision: 1
+  approval_ref: null
+- id: DEC-0079
+  type: DEC
+  title: 'DEC-0074 praezisiert: die Architekturschritt-Pflicht gilt genau dann, wenn
+    das KIT (seine ausgelieferte Vorlage, nicht der lebende Projektbestand) eine Heimat
+    fuer SR mitbringt UND der Ursprung des Auftrags seine Kriterien nicht selbst traegt
+    -- ein lebendes Verzeichnis oder ein einzelner `capture SR` schaltet die Pflicht
+    in einem Kit ohne SR nicht ein'
   status: VALID
   revision: 1
   approval_ref: null
@@ -1790,6 +2543,14 @@ items:
   status: OPEN
   revision: 1
   approval_ref: null
+- id: FR-0088
+  type: FR
+  title: 'OpenAI ladder in model_tiers.yaml is a generation behind: map Astra (Fable-equivalent)
+    / Sol / Terra to lead / worker / light for the codex provider, measured first
+    by a codex-watcher run that has never happened'
+  status: OPEN
+  revision: 1
+  approval_ref: null
 - id: PR-0001
   type: PR
   title: Migrationsweg V1 -> V2
@@ -1841,6 +2602,34 @@ items:
   status: APPROVED
   revision: 1
   approval_ref: APR-0005
+- id: PR-0008
+  type: PR
+  title: 'G5-1 Bestandsbereinigung: every open BUG and wish of this repo measured
+    against the running code and closed through the kernel or kept with its chain
+    (FR-0058), plus a derivable notion of ''done'' so the stock cannot lie upward
+    again'
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: PR-0009
+  type: PR
+  title: 'G5-3 Office package: correspondence capability (FR-0033), the docking point
+    for the external invoice application (intake, validation, filing, booking), a
+    year-versioned chart of accounts with EUeR mapping (FR-0081), the eight takeovers
+    from a real operation (FR-0002), and the four open office bugs (BUG-0070/0071/0072/0079)'
+  status: DRAFT
+  revision: 1
+  approval_ref: null
+- id: PR-0010
+  type: PR
+  title: 'G5-2 Watchers, ladders and escalation: the radar/codex watcher duo runs
+    on a real trigger, the first codex report exists, the ladders are three rungs
+    per provider (fable/opus/sonnet = astra/sol/terra, DEC-0076), effort is high by
+    default and xhigh for large goals, and DEC-0034''s escalation mechanic is BUILT
+    in the dispatcher (two axes, from state)'
+  status: DRAFT
+  revision: 1
+  approval_ref: null
 - id: SR-0001
   type: SR
   title: 'Abschlusskriterium: keine V1-Form ausserhalb von archive/ und legacy/'
@@ -1888,5 +2677,41 @@ items:
   title: 'This repo''s enforcement: four gates, a bound session agent, and no history
     record without a verdict'
   status: ACCEPTED
+  revision: 1
+  approval_ref: null
+- id: TSK-0121
+  type: TSK
+  title: null
+  status: CANCELLED
+  revision: 1
+  approval_ref: null
+- id: TSK-0122
+  type: TSK
+  title: null
+  status: CANCELLED
+  revision: 1
+  approval_ref: null
+- id: TSK-0123
+  type: TSK
+  title: null
+  status: CANCELLED
+  revision: 1
+  approval_ref: null
+- id: TSK-0124
+  type: TSK
+  title: null
+  status: CANCELLED
+  revision: 1
+  approval_ref: null
+- id: TSK-0125
+  type: TSK
+  title: null
+  status: CANCELLED
+  revision: 1
+  approval_ref: null
+- id: TSK-0126
+  type: TSK
+  title: null
+  status: READY
   revision: 1
   approval_ref: null

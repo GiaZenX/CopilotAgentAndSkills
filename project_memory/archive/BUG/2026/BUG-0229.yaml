@@ -1,0 +1,26 @@
+id: BUG-0229
+title: 'Der Kontrast sah zwei Sorten Text nicht: verblasste Elemente und erzeugten
+  Text — GESCHLOSSEN bis auf die Gruppen-Komposition (neu, Prüfung TSK-0119, FR-0077)'
+related_pr: PR-0003
+observed: '**Mechanismus.** Zwei Blindstellen der ersten Kontrastfassung, beide in
+  der stillen Richtung:'
+severity: low
+hole_number: H146
+source: docs/holes/H146.md
+limits: 'der Kontrast rechnete `0 < opacity < 1` als deckend (`.card { opacity: .05
+  }` → **rc 0**, falsch grün) und sah erzeugten Text nie (`::before { content }` →
+  **rc 0**). Jetzt wird die kumulierte Deckkraft in die Alpha gefaltet und `::before`/`::after`
+  mitgemessen. Offen: ein verblasstes Element MIT eigenem Hintergrund ist `UNDECIDED`,
+  weil die Gruppe als Einheit komponiert wird'
+regression_tests:
+- tools/test_design_conformance.py::test_a_faded_element_is_judged_on_the_colour_the_reader_gets
+- tools/test_design_conformance.py::test_text_a_pseudo_element_generates_is_text
+- tools/test_design_conformance.py::test_a_pseudo_element_nobody_can_see_is_not_judged_either
+- tools/test_design_conformance.py::test_a_pseudo_element_inside_a_hidden_element_stays_unjudged
+- tools/test_design_conformance.py::test_the_text_of_a_placeholder_is_text
+- tools/test_design_conformance.py::test_the_bullet_of_a_list_is_text
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:43'
+closed_at: '2026-09-05T20:27:43'

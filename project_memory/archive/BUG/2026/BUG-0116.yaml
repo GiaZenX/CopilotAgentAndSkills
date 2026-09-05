@@ -1,0 +1,27 @@
+id: BUG-0116
+title: Ein Verzeichnisverb, das der Leser nicht als Verb der Zeile sieht (neu, TSK-0013)
+related_pr: PR-0003
+observed: '**Mechanismus:** ob die Basis sich bewegt, entscheidet Gate 1 am **Verb
+  der Pipeline**, und welches
+
+  Wort das ist, beantwortet der Leser der Kits (`gate_write_scope._stage_verb`). Steht
+  das
+
+  Verzeichnisverb hinter einem reservierten Wort oder hinter einer **Array**-Zuweisung,
+  meldet der
+
+  Leser ein anderes Wort als Verb — `do`, das erste Element der Klammer — und ein
+  Wort, das kein
+
+  Verzeichnisverb ist, bewegt nichts.'
+severity: low
+hole_number: H24
+source: docs/holes/H24.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:44'
+closed_at: '2026-09-05T20:22:44'

@@ -1,0 +1,25 @@
+id: BUG-0096
+title: Ein Pfad hat mehr als einen Namen — GESCHLOSSEN, in zwei Stufen
+related_pr: PR-0003
+observed: '**Mechanismus:** der geschützte Bereich wurde als **Text** verglichen.
+  Jede zweite Schreibweise
+
+  desselben Pfades ist damit ein Weg daran vorbei — und Windows kennt mehrere, keine
+  davon mit
+
+  Sonderrechten: eine Verzeichnisverbindung (`mklink /J`), die Langpfad-Form `\\?\`,
+  die
+
+  Administrativ-Freigabe `\\localhost\C$\`, deren `\\?\UNC\`-Form und der 8.3-Aliasname.'
+severity: low
+hole_number: H4
+source: docs/holes/H4.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_protected_path_however_the_filesystem_spells_it
+- test_gate1_reads_a_free_path_as_free_in_every_spelling
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:21:57'
+closed_at: '2026-09-05T20:21:57'

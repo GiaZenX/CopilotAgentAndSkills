@@ -1,0 +1,62 @@
+id: DEC-0071
+title: 'BUG-0090 entschieden: die BESTAETIGENDE Kante liest eine ehrlich erklaerte
+  Auswahl, der Merge nicht -- eine Ableitung, zwei Fragen, weil ein bestandener Teillauf
+  ueber genau EIN benanntes Item etwas anderes belegt als ueber eine Lieferung'
+context: 'USER DECISION 2026-09-04 on the proposal of stream G4-2 (TSK-0122, file
+  staging/TSK-0122/dec-regression-evidence.json). PR-0005 AC-1, absorbiert aus BUG-0090.
+  GEMESSEN am Stand 75a00d1 im Worktree g4-kernel, Rig `_round-scratch/TSK-0122/m1_bug0090.py`
+  (echte Kernel-Aufrufe, Zustandsverzeichnis ausserhalb des Repos): ein BUG auf FIXED,
+  dazu eine EVD `kind=test result=pass related=[BUG-0001] run_scope=selection run_command="python
+  -m pytest tools/test_x.py -k the_defect"` -- `report.qa_verdicts(state, BUG-0001)`
+  liefert `{}` und `transition BUG-0001 VERIFIED` verweigert woertlich mit ''needs
+  a test Evidence that PASSES and covers BUG-0001; there is none''. DERSELBE Lauf,
+  noch einmal erfasst OHNE `run_command`/`run_scope`, laesst die Kante sofort durch
+  (im selben Rig gemessen: ''RESULT 2: transition WALKED -> VERIFIED''). Die Ursache
+  ist eine Ableitung mit EINEM Leser: `state._assert_confirmed` fragt `report.qa_verdicts`,
+  das ueber `report._delivery_evidence` laeuft, und dort faellt jede bestandene EVD
+  mit `run_scope == PARTIAL_RUN_SCOPE` heraus -- die Regel, die DEC-0061 (b) fuer
+  den MERGE geschrieben hat. Zugleich verlangt der Verweigerungstext derselben Stelle
+  ''run the test that fails before the fix and passes after it'': ein Regressionslauf
+  ist seiner Natur nach eine Auswahl. Der Datensatz, der MEHR ueber seinen Lauf sagt,
+  wird also bestraft; H108 nennt die Gegenrichtung derselben Optionalitaet.'
+options: '(A) DIE KANTE LAUFEN LASSEN. `report.qa_verdicts` bekommt ein benanntes
+  Argument fuer die FRAGE, die gestellt wird -- Lieferurteil (Vorgabe, unveraendert)
+  oder Bestaetigung EINES benannten Defekts --, und nur die erste Frage laesst einen
+  bestandenen Teillauf fallen. Kosten: die BUG-Kante akzeptiert kuenftig einen Beleg,
+  der nicht die ganze Suite gefahren ist. Was das begrenzt, ist gemessen und nicht
+  behauptet: `report.evidence_covers` bleibt unveraendert, der Beleg muss das Item
+  also weiterhin nennen oder etwas, das darunter haengt; der Merge liest die Vorgabe,
+  also oeffnet dieselbe Auswahl weiterhin keinen Merge; `tools/test_report.py::test_a_pass_from_a_partial_run_is_not_merge_evidence_and_a_fail_still_is`
+  bleibt gruen und ist der Stolperdraht dafuer. (B) DIE TEXTE KORRIGIEREN. Die Kante
+  bleibt, wie sie ist, und der Verweigerungstext von `state._assert_confirmed` sowie
+  die Hilfe von `harness.py evidence` hoeren auf, einen gezielten Lauf als Abhilfe
+  zu beschreiben; stattdessen sagen beide, dass die Bestaetigung eines BUG einen VOLLLAUF
+  verlangt. Kosten: jede Kit-Rolle und jede Verfassungszeile, die einen Regressionslauf
+  als Weg von FIXED nach VERIFIED lehrt, wird falsch und ist eine Naht zu G4-3; und
+  die Praxis dieses Repos -- ein BUG wird an seinem eigenen roten Test verifiziert
+  -- verlangt danach je Bugfix einen Suitenlauf von 35 bis 39 Minuten (DEC-0050 misst
+  diese Zeiten), also genau die Klasse, die DEC-0070 (1) als teuersten Wiederholbefund
+  der Generation 3 nennt.'
+decision: 'ENTSCHIEDEN: (A), vom Nutzer gewaehlt 2026-09-04 (AskUserQuestion, drei
+  Fragen in einem Zug, je die Empfehlung des Umsetzers). mit dieser Begruendung: die
+  Asymmetrie aus DEC-0061 (b) ist ein Satz ueber ABWESENHEIT (''ein Teillauf kann
+  einen Defekt zeigen, nicht seine Abwesenheit''), und genau diese Abwesenheit ist
+  bei einer Lieferung unbegrenzt und bei EINEM benannten Defekt der ganze Gegenstand
+  des Laufs. Zwei Fragen an eine Ableitung ist nicht dasselbe wie zwei Leser desselben
+  Speichers: der Scan, die Deckungsregel und das Neueste-je-Art bleiben eine Stelle;
+  nur der Filter haengt an der gestellten Frage. Die Invariante von PR-0005 (''two
+  readers of the same store are one derivation, never two spellings'') ist damit gewahrt.'
+consequences: 'Bei (A): gebaut in `report._delivery_evidence`/`report.qa_verdicts`
+  (die Frage als benanntes Argument) und `state._assert_confirmed` (der einzige Aufrufer,
+  der die zweite Frage stellt); die Nummer dieser Entscheidung steht an beiden Stellen.
+  Der Merge-Leser (`gate_git`, `report.validate_state`, das Board) bleibt buchstaeblich
+  unveraendert, weil er die Vorgabe benutzt. Nachbarn: DEC-0061 (die Regel, deren
+  zweite Frage hier ergaenzt wird), H108 (die Gegenrichtung derselben Optionalitaet),
+  DEC-0050. Bei (B): Nahtzeilen fuer G4-3 in drei Verfassungen und der PM-Skill, plus
+  die Hilfe des `evidence`-Kommandos.'
+source: User 2026-09-04 (chat); PR-0005 AC-1; BUG-0090; Messung TSK-0122 (Rig _round-scratch/TSK-0122/m1_bug0090.py,
+  Stand 75a00d1); DEC-0061; DEC-0050
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-04T17:54:21'

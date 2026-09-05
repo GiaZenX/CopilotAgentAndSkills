@@ -30,7 +30,7 @@ import sys
 import pytest
 
 import conftest
-from conftest import drive_task_to, walk_to_status
+from conftest import drive_task_to, satisfy_the_architect_step, walk_to_status
 from test_reference_skills import _kit_dirs, _reference_skills  # noqa: E402 -- one derivation
 
 ROOT = conftest.ROOT
@@ -85,8 +85,15 @@ def orders_project(tmp_path, scopes, files=(), status="READY"):
                                          forbidden_scope=list(forbidden),
                                          root_revision=root["revision"]))
         ids.append(task["id"])
+    # The architect step the goal's class asks for (FR-0085, DEC-0072), through the kernel's own
+    # predicate: one ACCEPTED SR under the root covers every order under it, and without it no
+    # order here could be leased at all. Before the walk, so a caller asking for READY gets orders
+    # that a later `create_lease` can actually take.
+    if ids:
+        satisfy_the_architect_step(state, state.read_item(ids[0]), state.read_item(root["id"]))
+    for task_id in ids:
         if status != "DRAFT":
-            drive_task_to(state, task["id"], status)
+            drive_task_to(state, task_id, status)
     return repo, state, ids
 
 
@@ -323,39 +330,83 @@ def test_the_checker_leaves_no_bytecode_in_the_kit_tree_it_imports():
     assert switched, "check_scope_overlap.py no longer switches bytecode writing off"
 
 
-# ================================================== 2. the claim the kit texts make
-def test_nothing_shipped_refuses_two_tasks_whose_scopes_overlap(tmp_path):
-    """Three constitutions and the parallel-streams skill say the disjointness is the lead's
-    reading and that nothing enforces it. This is that sentence, measured.
+# ================================================== 2. what the kernel now enforces (C-2/C-3)
+def test_the_second_lease_is_refused_when_the_scopes_overlap(tmp_path):
+    """PR-0005 AC-5 / stream D's C-2, and it replaces the sentence this file used to measure.
 
-    Two work orders with the SAME `allowed_scope` are driven through the real dispatch lifecycle --
-    `conftest.drive_task_to` mints the leases through `kernel.dispatch.create_lease`, the only
-    route there is -- and both arrive at `LEASED`. The kernel refuses a second lease for the same
-    TASK and has no opinion about two tasks.
+    UNTIL 2026-09-04 THIS TEST ASSERTED THE OPPOSITE. It was called
+    `test_nothing_shipped_refuses_two_tasks_whose_scopes_overlap` and it drove two orders with the
+    SAME `allowed_scope` to LEASED to show that the kernel had no opinion about two tasks -- the
+    claim three constitutions and the parallel-streams skill make. It was written to go red the day
+    a refusal was built, and this is that day; the paragraphs it stood for are the seam handed to
+    G4-3.
 
-    THIS TEST IS WRITTEN TO GO RED. The day a refusal is built (the requirement handed to the
-    kernel stream), the second `create_lease` raises and this fails -- which is exactly when the
-    three constitution paragraphs and the skill stop being true and have to be corrected. A test
-    that could not fail here would let those sentences rot silently.
-    """
-    _repo, state, ids = orders_project(
-        tmp_path, [(["src/**"], []), (["src/**"], [])], files=["src/a.py"], status="LEASED")
-    assert [state.read_item(one)["status"] for one in ids] == ["LEASED", "LEASED"]
-
-
-def test_the_lease_carries_no_tree_of_its_own(tmp_path):
-    """The other half of the same honesty: "one tree per order" is carried by the lead and by
-    nothing in the state. A lease names a task, never a checkout -- so no reader can tell which
-    tree an order is working in. Read off the lease the kernel really writes; the field this test
-    asks for is the requirement handed to the kernel stream, and the day it exists this goes red
-    and the "no knowledge of a second tree" paragraph of the skill is the one to correct.
+    THE REAL LIFECYCLE AND NOTHING ELSE: the leases are minted through
+    `kernel.dispatch.create_lease`, the only route to one there is, over a real git tree under
+    `tmp_path`. The refusal has to NAME the shared path, because "you collide" without the file is
+    not a repair anybody can act on.
     """
     from kernel import dispatch
+
     _repo, state, ids = orders_project(
-        tmp_path, [(["src/**"], [])], files=["src/a.py"], status="LEASED")
-    lease = dispatch._read_lease(state, ids[0])
-    assert not [key for key in lease if "tree" in key or "worktree" in key or "checkout" in key], \
-        lease
+        tmp_path, [(["src/**"], []), (["src/**"], [])], files=["src/a.py"], status="READY")
+    first = dispatch.create_lease(state, ids[0])
+    assert first["task_id"] == ids[0]
+    with pytest.raises(Exception) as refusal:
+        dispatch.create_lease(state, ids[1])
+    assert "src/a.py" in str(refusal.value), refusal.value
+    assert ids[0] in str(refusal.value), refusal.value
+    assert state.read_item(ids[1])["status"] == "READY", "the refused order was moved anyway"
+
+
+def test_a_seam_both_orders_declare_lets_the_second_lease_through(tmp_path):
+    """The other end of the same rule, so the refusal cannot be satisfied by refusing everything.
+
+    A path BOTH orders declare in `seam_scope` is shared on purpose and applied in the merge round
+    (DEC-0062 (5)), so it is subtracted before the verdict -- by `kernel.scopes`, which is where
+    that rule lives, and not by a second reading inside `dispatch`. Each order still owns a file of
+    its own, which is what keeps the declaration a seam rather than a scope handed over
+    (`kernel.scopes.owns_anything_outside`).
+    """
+    from kernel import dispatch
+    from kernel.scopes import SEAM_FIELD
+
+    _repo, state, ids = orders_project(
+        tmp_path, [(["src/**", "notes/holes.md"], []), (["lib/**", "notes/holes.md"], [])],
+        files=["src/a.py", "lib/b.py", "notes/holes.md"], status="DRAFT")
+    for one in ids:
+        state.update_item(one, {SEAM_FIELD: ["notes/holes.md"]})
+        drive_task_to(state, one, "READY")
+    dispatch.create_lease(state, ids[0])
+    assert dispatch.create_lease(state, ids[1])["task_id"] == ids[1]
+
+
+def test_the_lease_carries_the_tree_it_was_granted_for(tmp_path):
+    """PR-0005 AC-5 / stream D's C-3, and it replaces `test_the_lease_carries_no_tree_of_its_own`.
+
+    That test asserted that no key of a lease names a checkout, which was the honest reading while
+    "one tree per order" lived in the lead's head: a lease named a task and nothing else, so no
+    reader could say which tree an order was being worked in. It was written to go red the day the
+    field existed.
+
+    BOTH ENDS, because a field that always carries the same value answers nothing: the DEFAULT is
+    the tree the state directory lives in -- true for every project that runs in one -- and a
+    caller working in its own checkout against a shared state directory names that one, which is
+    the case the field exists for. Read off the lease the kernel really writes.
+    """
+    from kernel import dispatch
+
+    repo, state, ids = orders_project(
+        tmp_path, [(["src/**"], []), (["lib/**"], [])], files=["src/a.py", "lib/b.py"],
+        status="READY")
+    default = dispatch.create_lease(state, ids[0])
+    assert os.path.normcase(default[dispatch.WORKTREE_FIELD]) == os.path.normcase(str(repo))
+
+    elsewhere = tmp_path / "second-checkout"
+    os.makedirs(str(elsewhere), exist_ok=True)
+    named = dispatch.create_lease(state, ids[1], worktree=str(elsewhere))
+    assert os.path.normcase(named[dispatch.WORKTREE_FIELD]) == os.path.normcase(str(elsewhere))
+    assert named[dispatch.WORKTREE_FIELD] != default[dispatch.WORKTREE_FIELD]
 
 
 def test_a_work_order_carries_exactly_one_product_requirement(tmp_path):
@@ -591,3 +642,32 @@ def test_the_workshop_tool_carries_no_predicate_of_its_own():
                         and getattr(getattr(scopes, name), "__module__", "") == scopes.__name__}
     assert not shared, shared
     assert importlib.util.find_spec("kernel.scopes") is not None
+
+
+def test_a_worktree_nobody_can_stand_in_is_refused(tmp_path):
+    """The one half of `--worktree` that can be checked, and the halves that cannot -- both named.
+
+    A lease records the checkout an order is granted for so a reader can SAY which tree it is being
+    worked in. A path that is not a directory records a dispatch nobody can perform, and the
+    round-1 verification measured that such a path was taken without a word.
+
+    WHAT IS NOT CHECKED and is deliberately still granted: a tree INSIDE the repo (that is the
+    ordinary single-tree case) and a second lease naming the same tree (several orders in one tree
+    is normal -- what keeps them apart is the scope rule, not the tree). `H156` carries the
+    remainder.
+    """
+    from kernel import dispatch
+
+    repo, state, ids = orders_project(
+        tmp_path, [(["src/**"], []), (["lib/**"], [])], files=["src/a.py", "lib/b.py"],
+        status="READY")
+    with pytest.raises(Exception, match="no directory at"):
+        dispatch.create_lease(state, ids[0], worktree=str(tmp_path / "nothing-here"))
+    assert state.read_item(ids[0])["status"] == "READY", "the refused order was moved anyway"
+
+    inside = os.path.join(str(repo), "src")
+    granted = dispatch.create_lease(state, ids[0], worktree=inside)
+    assert os.path.normcase(granted[dispatch.WORKTREE_FIELD]) == os.path.normcase(inside)
+    second = dispatch.create_lease(state, ids[1], worktree=inside)
+    assert second[dispatch.WORKTREE_FIELD] == granted[dispatch.WORKTREE_FIELD], (
+        "two orders in one tree are the ordinary case and stay granted")

@@ -1,0 +1,34 @@
+id: BUG-0184
+title: Der Wurzel-Leser des Kernels löste EINEN Sprung auf, die Forschungskette ist
+  zwei tief — GESCHLOSSEN (TSK-0106)
+related_pr: PR-0003
+observed: '**Mechanismus:** `report._root_of` beantwortet „woran hängt dieses Item"
+  mit dem **einen
+
+  unmittelbaren Elternteil** (`parents[0] if len(parents) == 1 else None`), während
+
+  `report._hangs_from` dieselbe Frage **transitiv** beantwortet.
+
+  `dispatch._assert_task_origin_matches_root` benutzt den ersten. Damit ist die Hierarchie,
+  die die
+
+  research-Verfassung §4 vorschreibt — `RQ → HYP → EXP → TSK` — nicht anlegbar: der
+  Ursprung `EXP`
+
+  hat für die Prüfung die Wurzel `HYP`, für jede andere Stelle die Wurzel `RQ`.'
+severity: low
+hole_number: H92
+source: docs/holes/H92.md
+limits: '`report.origin_root_conflict` beurteilt einen Ursprung TRANSITIV: er gehört
+  zur Wurzel, wenn jeder seiner Elternpfade dort endet. `RQ → HYP → EXP → TSK` legt
+  an und dispatcht end-to-end; der Pin-Test ist invertiert. Rot ohne den Fix: `test_kernel.test_a_task_may_derive_from_an_experiment_two_levels_under_its_root`,
+  `test_report.test_a_task_on_an_origin_two_levels_under_its_root_is_fine`'
+regression_tests:
+- test_kernel.test_a_task_may_derive_from_an_experiment_two_levels_under_its_root
+- test_report.test_a_task_on_an_origin_two_levels_under_its_root_is_fine
+- test_a_task_may_name_an_experiment_two_levels_under_the_question_it_serves
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:38'
+closed_at: '2026-09-05T20:25:38'

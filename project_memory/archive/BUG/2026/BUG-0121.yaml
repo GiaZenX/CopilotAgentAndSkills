@@ -1,0 +1,33 @@
+id: BUG-0121
+title: Eine Operandenliste, die dieser Leser nicht verbuchen kann (neu, TSK-0015)
+related_pr: PR-0003
+observed: '**Mechanismus:** ob die Basis sich bewegt, hängt jetzt auch daran, dass
+  der Leser die **Wörter
+
+  hinter dem Verzeichnisverb** vollständig verbucht. Er kann genau eines: das Ziel.
+  Welche Optionen
+
+  ein eingebautes Verb annimmt, weiß nur dieses Verb — eine Liste von Flags hier wäre
+  eine Behauptung
+
+  über `bash`, die niemand prüft —, also ist **jedes** als Option angebotene Wort
+  und jedes zweite
+
+  Wort eine Liste, die er nicht verbuchen kann, und dann bleibt die Basis stehen.
+  Dasselbe gilt für
+
+  einen Dateideskriptor, der als eigenes Wort vor einer Umleitung steht (`cd <ziel>
+  2> log`), und für
+
+  die Deskriptor-Verdopplung (`2>&1`).'
+severity: low
+hole_number: H29
+source: docs/holes/H29.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:56'
+closed_at: '2026-09-05T20:22:56'

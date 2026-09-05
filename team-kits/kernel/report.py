@@ -56,9 +56,6 @@ from .backlog_types import (
     AUTOMATA,
     BLOCKED_REASON_FIELD,
     DEC_SUPERSEDES_FIELD,
-    DECLARED_REQUIRED_FIELDS,
-    FR_RESULT_FIELD,
-    FR_RESULT_TERMINALS,
     HASHED_FIELDS,
     NON_AUTOMATON_STATUSES,
     area_segments,
@@ -68,8 +65,12 @@ from .backlog_types import (
     QA_EVIDENCE_KINDS,
     REFERENCE_LIST_FIELDS,
     ROOT_TYPE_BY_KIT,
+    STATUS_DEPENDENT_FIELDS,
+    TRIAGE_RESULT_LINK,
     confirming_edge,
     field_elements,
+    is_inbox_type,
+    required_fields_of,
     parse_id,
     single_value_offences,
 )
@@ -353,7 +354,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
         # made this loop run zero times for `ARC`, `WFR` and `DSN` -- the three types whose duties
         # live in `kernel/schemas/` -- so a hand-written architecture companion with no
         # `derives_from` was reported by nobody, the finding spec II.8 names outright.
-        for field in DECLARED_REQUIRED_FIELDS.get(item_type, ()):
+        for field in required_fields_of(item_type, item):
             if field not in item:
                 findings.append(_finding(
                     "error", item_id, "missing required field %r" % field,
@@ -373,12 +374,14 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
                 "terminal item (%s) awaiting archive" % item.get("status"),
                 "run `python scripts/harness.py archive %s`" % item_id,
             ))
-        # status-dependent duties (Fable-Check 7/NIT-1)
+        # status-dependent duties (Fable-Check 7/NIT-1) -- the map, so a new duty is a row in
+        # `backlog_types.STATUS_DEPENDENT_FIELDS` and not another branch here
         status = item.get("status")
-        if item_type == "FR" and status == "TRIAGED" and not item.get("triage_result"):
+        owed = STATUS_DEPENDENT_FIELDS.get((item_type, status))
+        if owed and not item.get(owed):
             findings.append(_finding(
-                "error", item_id, "TRIAGED without triage_result",
-                "record the triage result",
+                "error", item_id, "%s without %s" % (status, owed),
+                "record `%s` -- %s owes it in this status and in no other" % (owed, item_type),
             ))
         # THE APPROVAL STAMP, judged for PRESENCE and for TRUTH. Which statuses carry the duty is
         # asked of `approved_statuses` (the automaton plus `APPROVAL_TRANSITIONS`) rather than
@@ -497,6 +500,7 @@ def validate_state(state: ProjectState, _locked: bool = False) -> list:
     findings.extend(_check_consumed_requests_diff_clean(state))
     findings.extend(_check_approval_expiry_agrees(state, active_items))
     findings.extend(_check_task_origins(state, active_items))
+    findings.extend(_check_tasks_under_an_inbox_item(active_items))
     findings.extend(_check_bug_system_link(state, active_items))
     findings.extend(_check_invariant_checks(state, active_items))
     findings.extend(_check_accepted_tasks_carry_a_verdict(state, active_items))
@@ -1440,7 +1444,28 @@ def evidence_covers(state: ProjectState, evidence: dict, target_id: str) -> bool
     return any(_hangs_from(state, str(ref), target_id, set()) for ref in related)
 
 
-def _delivery_evidence(state: ProjectState):
+# THE TWO QUESTIONS ONE EVIDENCE STORE IS ASKED, and the only thing that separates them is what a
+# PASSING run has to have covered to answer.
+#
+# `DELIVERY_QUESTION` -- "does this body of work ship?". Its subject is everything that hangs from
+# the item, so the absence a pass has to show is unbounded, and a run that declares itself a
+# selection cannot show it.
+# `CONFIRMATION_QUESTION` -- "is the ONE defect this item names measured gone?". Its subject is that
+# defect, and the run that answers it is a regression run: a selection BY NATURE. The shipped
+# refusal at `state._assert_confirmed` asks for exactly that run.
+#
+# A NAMED QUESTION AND NOT A SECOND READER (PR-0005 invariant: two readers of one store are one
+# derivation, never two spellings). The scan, the coverage walk and the newest-per-kind rule stay
+# in one place below; only the pass-side filter is bound to the question, because only the question
+# decides what a pass had to cover. DECISION: DEC-0071, beside DEC-0061; the defect is BUG-0090,
+# measured on the shipped kernel -- an honestly declared regression run refused the very edge whose
+# refusal text demands it, while the same run recorded WITHOUT the declaration walked.
+DELIVERY_QUESTION = "delivery"
+CONFIRMATION_QUESTION = "confirmation"
+EVIDENCE_QUESTIONS = (DELIVERY_QUESTION, CONFIRMATION_QUESTION)
+
+
+def _delivery_evidence(state: ProjectState, question: str = DELIVERY_QUESTION):
     """Every ACTIVE Evidence of a delivery-judging kind, as (item, ordering key).
 
     The one scan both verdict functions below share, so "which files are verdicts and in
@@ -1450,15 +1475,27 @@ def _delivery_evidence(state: ProjectState):
     `audit` Evidence judges the project (II.10a), so it can neither open nor close the
     merge of one item.
 
-    AND A PASS FROM A PARTIAL RUN DOES NOT COUNT (FR-0040; the decision this embodies is
-    DEC-0061). An Evidence may declare what its run
+    AND A PASS FROM A PARTIAL RUN DOES NOT ANSWER THE DELIVERY QUESTION (FR-0040; the decision this
+    embodies is DEC-0061). An Evidence may declare what its run
     covered (`backlog_types.RUN_SCOPES`); one that declares `PARTIAL_RUN_SCOPE` and passed is
-    dropped here, so the merge falls back to the newest FULL verdict or to none at all. The
+    dropped for `DELIVERY_QUESTION`, so the merge falls back to the newest FULL verdict or to none
+    at all. The
     asymmetry is the argument and not a half-measure: a run over part of the work can show a
     defect, so a `fail` from a selection stays a fail and still closes the gate; it cannot show
     the absence of one, so its pass opens nothing. Until this line, `EVIDENCE_RESULTS`' own
     vocabulary comment as it then stood, and `gate_git`'s refusal text, both told the reader that a
     partial run is not merge evidence while nothing anywhere read a scope.
+
+    FOR `CONFIRMATION_QUESTION` THE SAME RECORD COUNTS, and the argument is the same asymmetry read
+    on its other side: the absence that question asks about is bounded by ONE named item, while a
+    delivery's is not. HOW WIDE THAT BOUND REALLY IS, said rather than implied: `evidence_covers`
+    is untouched, so a record naming something that HANGS FROM the item -- the task under the bug --
+    confirms it too. That is the same reach the delivery question has always had, and it is the one
+    DEC-0071 describes; it is not "the one item the caller names", and writing that here would be a
+    narrower promise than the code keeps. See the two constants above for the questions and
+    BUG-0090 for the measurement that separated them.
+    `tools/test_report.py::test_a_selection_that_passes_confirms_the_item_it_names_and_ships_nothing`
+    holds both ends of the split.
 
     WHAT IT DOES NOT REACH, said because the field is optional: a record that declares NO scope
     is treated exactly as before. The declaration cannot be made mandatory on this type without
@@ -1480,6 +1517,11 @@ def _delivery_evidence(state: ProjectState):
     -- a second acquisition on that event is the interaction that turns a slow validate
     into a blocked push (see the note in that gate).
     """
+    if question not in EVIDENCE_QUESTIONS:
+        raise ValueError(
+            "unknown evidence question %r -- the store answers %s. Remedy: ask one of them; a "
+            "third question is a contract decision, not a call-site argument."
+            % (question, ", ".join(EVIDENCE_QUESTIONS)))
     # through `iter_active_items` like every other "what is active" reader. `EVD` is not stored
     # per revision today, so this changes nothing measurable -- it is here because a private
     # listing of an active directory is the shape that produced disposition row 6.5, and this was
@@ -1494,7 +1536,8 @@ def _delivery_evidence(state: ProjectState):
             continue
         if evidence.get("kind") not in QA_EVIDENCE_KINDS:
             continue
-        if (evidence.get("run_scope") == PARTIAL_RUN_SCOPE
+        if (question == DELIVERY_QUESTION
+                and evidence.get("run_scope") == PARTIAL_RUN_SCOPE
                 and evidence.get("result") == PASSING_RESULT):
             continue
         yield evidence, (str(evidence.get("created") or ""), number)
@@ -1528,8 +1571,13 @@ def _newest_per_kind(records) -> dict:
     return verdicts
 
 
-def qa_verdicts(state: ProjectState, target_id: str) -> dict:
+def qa_verdicts(state: ProjectState, target_id: str,
+                question: str = DELIVERY_QUESTION) -> dict:
     """The CURRENT QA verdict per Evidence kind FOR ONE item, as {kind: {id, result, created}}.
+
+    `question` says WHICH of the two questions above is being asked and defaults to the delivery
+    one, so every caller that had none keeps the reading it had. The only caller that asks the
+    other is `state._assert_confirmed`; see the constants for why the two differ at all.
 
     THE definition the merge gate reads, and the reason it lives here rather than in the
     hook: "has QA passed for this item" is a question about canonical state, and a hook
@@ -1545,7 +1593,7 @@ def qa_verdicts(state: ProjectState, target_id: str) -> dict:
     `_newest_per_kind`; which files are verdicts at all is `_delivery_evidence`.
     """
     return _newest_per_kind(
-        (evidence, order) for evidence, order in _delivery_evidence(state)
+        (evidence, order) for evidence, order in _delivery_evidence(state, question)
         if evidence_covers(state, evidence, target_id))
 
 
@@ -1964,6 +2012,98 @@ def _check_task_origins(state: ProjectState, active_items: dict) -> list:
     return findings
 
 
+def tasks_under_an_inbox_item(state: ProjectState) -> dict:
+    """{task id: the inbox item it hangs from} over the WHOLE store -- active and archived.
+
+    THE RELAPSE DETECTOR BUG-0091 ASKS FOR, and it reads the whole store rather than the active map
+    for a measured reason: every such work order this repository holds is ARCHIVED, so a reader of
+    the active items alone answers "none" about a practice that is exactly what DEC-0066 was
+    written against. How many there are is a measurement of a round and lives in that round's
+    report, not in a second copy here -- one written into this comment was wrong about this very
+    function within a day, because it counted one parent field and the function reads both.
+
+    WHICH TYPES ARE THE INBOX is `backlog_types.is_inbox_type`, the same contract
+    `dispatch._assert_the_origins_are_not_inbox_items` refuses a new one from and
+    `_check_fr_result_link` takes its duty from.
+
+    ARCHIVED ORDERS ARE HISTORY AND STAY VALID -- DEC-0066 (4) says so in as many words -- which is
+    why this COUNTS rather than judges. It is deliberately NOT what `validate_state` calls: that
+    runs on the merge and push line, and an archive walk of every item file there is the shape
+    `_delivery_evidence` records as having turned a slow validate into a blocked push. The
+    validator's finding below reads the active map it already holds; both read `_inbox_origins_of`,
+    so the counter and the finding cannot disagree about what an inbox origin is.
+    `tools/test_report.py::test_the_inbox_counter_sees_an_archived_work_order_and_the_validator_only_a_live_one`
+    """
+    found = {}
+    for item_type, _stem, item, _path, exc in _iter_active(state):
+        if exc or item_type != "TSK" or not isinstance(item, dict):
+            continue
+        found.update(_inbox_origins_of(item))
+    for item_type, item in _iter_archived_items(state):
+        if item_type == "TSK":
+            found.update(_inbox_origins_of(item))
+    return found
+
+
+def _inbox_origins_of(task: dict) -> dict:
+    """{task id: the first inbox item it names} -- both parent fields, one reading."""
+    for field in PARENT_FIELDS.get("TSK", ()):
+        for one in field_elements(task.get(field)):
+            try:
+                item_type, _ = parse_id(str(one))
+            except ValueError:
+                continue
+            if is_inbox_type(item_type):
+                return {str(task.get("id")): str(one)}
+    return {}
+
+
+def _iter_archived_items(state: ProjectState):
+    """(type, item) for every archived item file the store holds -- the half `_iter_active` misses."""
+    archive = ext_path(state.archive_root())
+    if not os.path.isdir(archive):
+        return
+    for base, _dirs, names in os.walk(archive):
+        for name in sorted(names):
+            stem = os.path.splitext(name)[0]
+            try:
+                item_type, _ = parse_id(stem)
+            except ValueError:
+                continue
+            try:
+                item = state._read_yaml(os.path.join(base, name))
+            except Exception:  # noqa: BLE001 -- an unreadable archived file is nobody's finding
+                continue
+            if isinstance(item, dict):
+                yield item_type, item
+
+
+def _check_tasks_under_an_inbox_item(active_items: dict) -> list:
+    """The finding for a LIVE work order hanging from a wish -- see `tasks_under_an_inbox_item`.
+
+    A WARNING AND NOT AN ERROR: DEC-0066 (4) keeps the orders that already exist valid, and
+    `dispatch` is what refuses a NEW one, so an error here would block the merge of a repository
+    for a history its own decision protects. What it costs is stated rather than assumed -- such an
+    order is undispatchable anyway, so the warning names a dead end rather than inventing one.
+    """
+    origins = {}
+    for item_id, (item_type, item) in sorted(active_items.items()):
+        if item_type == "TSK":
+            origins.update(_inbox_origins_of(item))
+    return [
+        _finding(
+            "warning", task_id,
+            "hangs from %s, which is an inbox item and not a root -- a wish is what waits for the "
+            "triage that turns it into a goal, and no user approval exists for its type, so this "
+            "order cannot be dispatched at all" % origin,
+            "triage %s (TRIAGED, then CONVERTED with `%s` = the new goal, or MERGED into an "
+            "existing one) and derive the work order from that goal"
+            % (origin, TRIAGE_RESULT_LINK[parse_id(origin)[0]][1]),
+        )
+        for task_id, origin in sorted(origins.items())
+    ]
+
+
 def _root_type_of(item: dict) -> str:
     """The TYPE of the item a task hangs from, read off its id, or "".
 
@@ -2141,25 +2281,31 @@ def _check_fr_result_link(state: ProjectState, active_items: dict) -> list:
 
     BACKWARD-COMPATIBLE by construction: the duty binds only in those two terminal states, so every
     OPEN/TRIAGED request -- which is every FR in the store today -- owes nothing.
+
+    WHICH TYPES OWE IT is read off `backlog_types.TRIAGE_RESULT_LINK` rather than named here, and
+    that is the same map `dispatch` refuses a work order under an inbox item from (BUG-0091). The
+    duty and the refusal are then two readings of one contract instead of two spellings of it.
     """
     findings = []
     for item_id, (item_type, item) in sorted(active_items.items()):
-        if item_type != "FR" or item.get("status") not in FR_RESULT_TERMINALS:
+        outcome = TRIAGE_RESULT_LINK.get(item_type)
+        if outcome is None or item.get("status") not in outcome[0]:
             continue
-        result = item.get(FR_RESULT_FIELD)
+        _result_terminals, result_field = outcome
+        result = item.get(result_field)
         if not result:
             findings.append(_finding(
                 "error", item_id,
                 "%s without %s -- the request became another item, but the state does not say "
-                "which" % (item.get("status"), FR_RESULT_FIELD),
-                "record the item this request became in `%s`" % FR_RESULT_FIELD,
+                "which" % (item.get("status"), result_field),
+                "record the item this request became in `%s`" % result_field,
             ))
             continue
         if str(result) not in active_items and not _in_archive(state, str(result)):
             findings.append(_finding(
                 "error", item_id,
-                "%s names %s, which no item carries" % (FR_RESULT_FIELD, result),
-                "point `%s` at the id of the item this request became" % FR_RESULT_FIELD,
+                "%s names %s, which no item carries" % (result_field, result),
+                "point `%s` at the id of the item this request became" % result_field,
             ))
     return findings
 

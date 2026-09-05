@@ -1,0 +1,66 @@
+id: BUG-0245
+title: Die Architektenschritt-Pflicht fragt das office-Kit nach einem `SR`, den es
+  nicht kennt (neu, TSK-0126, DEC-0072)
+related_pr: PR-0003
+observed: '**Mechanismus.** `dispatch.architect_step_owed` entscheidet ueber zwei
+  Fragen: die `class` des
+
+  Wurzelziels (`SR_EXEMPT_CLASSES`) und ob ein Ursprung die Kriterien selbst traegt
+
+  (`_carries_its_own_criteria`, abgeleitet aus dem Feldvertrag). Der TYP des Wurzelziels
+  kommt in
+
+  keiner der beiden vor. Das office-Kit haengt seine Arbeitsauftraege an ein `PROC`;
+  `PROC`
+
+  deklariert kein Kriterienfeld, also traegt es die Kriterien nicht, und seine Klasse
+  ist entweder
+
+  `feature` oder gar nicht gesetzt. Damit schuldet jeder office-Arbeitsauftrag den
+  Schritt — in
+
+  einem Kit, dessen Verfassung, Skills und Phasenmodell das Wort `SR` an keiner Stelle
+  fuehren.'
+severity: low
+hole_number: H163
+source: docs/holes/H163.md
+limits: 'die Architektenschritt-Pflicht dieser Generation fragte JEDES Projekt nach
+  einem `SR` — auch die beiden Kits, deren Hierarchie den Typ nicht kennt. Gemessen
+  als Prozesse an Piloten aus den Kit-Vorlagen (`_round-scratch/TSK-0126/redfirst_dec0079.py`,
+  Log `redfirst-dec0079.log`): ein `TSK` unter `PROC-0001` (office) und eines unter
+  `RQ-0001` (research, Ursprung Wurzel oder `HYP`) bekamen „no SR in status ACCEPTED
+  hangs from that goal“, und die Abhilfe nannte `capture SR` und „den Architekten“
+  — Wörter, die in office-Texten 0 mal vorkommen. GESCHLOSSEN durch `DEC-0079` (die
+  Präzisierung von `DEC-0074`): `dispatch._the_kit_ships_the_architect_step` fragt,
+  ob das KIT eine Heimat für `ARCHITECT_STEP_TYPE` AUSLIEFERT — Kit aus dem Scaffold-Datensatz
+  (`presets.installation`), Vorlage aus dem Kit-Store (`presets.kit_dir`) — und nicht,
+  ob das Verzeichnis im lebenden Projekt liegt. Beide Richtungen gemessen, ausgeliefert
+  gegen mutiert: dev mit UND ohne lebendes `system/active` REFUSED; office „not asked“
+  auch nach `mkdir` und nach einem echt erfassten `SR`; research „not asked“ aus Wurzel,
+  `HYP` und `EXP`; ohne die Ableitung sind office, research-Wurzel und research-`HYP`
+  alle REFUSED. Gehalten von `tools/test_approvals_dispatch.py::test_the_architect_step_is_owed_by_the_kits_delivery_not_the_projects_stock`
+  und `::test_a_project_that_names_no_kit_is_asked_for_the_architect_step`; die Pflicht
+  selbst von `::test_a_goal_of_an_unknown_class_is_asked_for_the_architect_step` und
+  `::test_an_order_deriving_from_a_proposed_requirement_is_still_asked`. **Kein Rest
+  mehr in der ersten Fassung dieses Eintrags:** der dort genannte (ein dev-Projekt
+  ohne `system/active` werde still nicht gefragt) ist mit `DEC-0079` verschwunden
+  — gemessen `live=rmdir` → REFUSED. REST, gemessen: der Store-Pfad hängt am LAUFENDEN
+  HOME (`presets.staging_root`), nicht am Scaffold-Datensatz — auf einer zweiten Maschine,
+  einem anderen Konto oder einem CI-Runner ist die Auslieferung des Kits nicht lesbar,
+  und dann wird fail-CLOSED GEFRAGT. In einem Kit ohne `SR` heisst das: jeder Auftrag
+  dort wird verweigert, und die Frage ist in den eigenen Kit-Texten nicht beantwortbar;
+  die Reparatur ist der Store, nicht der Dispatcher. Begrenzt durch den SATZ: die
+  Verweigerung nennt seit der Merge-Prüfrunde 3 den Fall (kein lesbarer Datensatz
+  / Kit nicht im erreichbaren Store `<Pfad>` / Vorlage fehlt), den Grund und die passende
+  Abhilfe — und niemals `capture SR`; gemessen an drei Piloten, gehalten von `tools/test_approvals_dispatch.py::test_a_project_whose_kit_delivery_cannot_be_read_says_so`'
+regression_tests:
+- tools/test_approvals_dispatch.py::test_a_goal_of_an_unknown_class_is_asked_for_the_architect_step
+- ::test_an_order_deriving_from_a_proposed_requirement_is_still_asked
+- ::test_the_architect_step_is_owed_by_the_kits_delivery_not_the_projects_stock
+- ::test_a_project_that_names_no_kit_is_asked_for_the_architect_step
+- tools/test_approvals_dispatch.py::test_a_project_whose_kit_delivery_cannot_be_read_says_so
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:28:29'
+closed_at: '2026-09-05T20:28:29'

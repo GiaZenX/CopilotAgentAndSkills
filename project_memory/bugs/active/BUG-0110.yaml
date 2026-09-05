@@ -1,0 +1,30 @@
+id: BUG-0110
+title: Das Repo als Operand eines Kopier- oder Archivbefehls gilt als Schreibzugriff
+  (TSK-0008, korrigiert TSK-0011)
+related_pr: PR-0003
+observed: '**Mechanismus:** ob eine Stufe lesend ist, beantwortet die Klassifikation
+  der **Kits**
+
+  (`gate_write_scope._stage_is_read_only`), und `cp`, `robocopy`, `xcopy` und `tar`
+  sind dort nicht
+
+  lesend — zu Recht, denn sie schreiben ihr Ziel. Gate 1 sammelt daraufhin **alle**
+  Wörter der Stufe.
+
+  Der Eintrag hieß bis 2026-08-05 „das Repo als **Quelle**"; das war zu eng. Betroffen
+  ist **jeder**
+
+  Operand, der einen geschützten Baum berührt — auch das **Ziel**: `cp -r docs ..`
+  hat keine
+
+  geschützte Quelle, und der Zielpfad ist ein **Vorfahre** des Repos. Diese zweite
+  Hälfte ist H19.'
+severity: low
+hole_number: H18
+source: docs/holes/H18.md
+limits: jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt
+  Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:30'

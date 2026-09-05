@@ -1,0 +1,44 @@
+id: BUG-0232
+title: Ein Verzeichniswechsel, den niemand ausrechnen kann, ließ die Fege-Basis stehen
+  (neu, Merge-Prüfung TSK-0120, N1)
+related_pr: PR-0003
+observed: '**Mechanismus.** Die Reichweite einer Zerstörung wird gegen das Verzeichnis
+  gemessen, in dem die
+
+  Zeile wirklich läuft. `moves_the_working_directory` fragt dafür `_filing.directory_change`,
+  und die
+
+  antwortet auf `popd`, ein bares `cd` oder `cd $DIR` mit „nicht berechenbar" — es
+  gibt kein Ziel,
+
+  dem man folgen könnte. Bis zur Nacharbeit dieser Runde hieß das für den Aufrufer:
+  die Position
+
+  bleibt, wo sie war. Das ist genau so lange richtig, wie die Position, die stehen
+  bleibt, die
+
+  gefährlichere ist. Bringt der unberechenbare Wechsel die Shell ZURÜCK zu einem Fach
+  von Rang, ist
+
+  die stehen gebliebene die harmlose — und die Zerstörung wird gegen sie gemessen.'
+severity: low
+hole_number: H150
+source: docs/holes/H150.md
+limits: 'ein Verzeichniswechsel, den der Leser nicht AUSRECHNEN kann und der die Shell
+  zu einem Fach von Rang zurückbringt, ließ die Fege-Basis harmlos stehen: `pushd
+  outbox > /dev/null ; popd ; rm -rf .` fegte die Projektwurzel bei **rc 0**, während
+  `rm -rf .` allein rc 2 ist — gemessen über jeden auf `Bash` registrierten Office-Haken
+  als Prozess, an `e45c0ca` ebenso wie am gemergten Baum. `_filing.directory_change`
+  meldet `popd` als „nicht berechenbar“ und gibt kein Ziel heraus, also gab es nichts,
+  was die Position hätte bewegen können. Geschlossen mit derselben Mechanik wie `H144`:
+  eine unberechenbare Änderung macht die Position UNBEKANNT, und die Projektwurzel
+  — die jedes Fach enthält — tritt als Kandidat neben die alte. Begrenzt durch: der
+  Preis, `cd outbox ; cd $X ; rm -rf .` und `cd outbox ; cd ; rm -rf .` sind rc 2,
+  obwohl diese Shell wirklich außerhalb jedes Fachs stehen kann'
+regression_tests:
+- tools/test_hooks.py::test_a_change_the_shell_may_not_have_made_leaves_both_positions_open
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:52'
+closed_at: '2026-09-05T20:27:52'

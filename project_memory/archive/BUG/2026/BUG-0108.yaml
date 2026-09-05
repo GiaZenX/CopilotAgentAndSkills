@@ -1,0 +1,23 @@
+id: BUG-0108
+title: Der Pfad steht in einer Variablen, das Gate liest den Text (neu, TSK-0008)
+related_pr: PR-0003
+observed: '**Mechanismus:** Gate 1 liest eine Befehlszeile als **Text**. Eine Shell
+  setzt Variablen aber erst
+
+  beim Ausführen ein. Steht der geschützte Pfad in einer Variablen, sieht das Gate
+  `$R/team-kits/…`
+
+  und löst das gegen das Arbeitsverzeichnis auf — ein Pfad, den nichts schützt. Das
+  ist dieselbe
+
+  Klasse wie H11: nicht das Vokabular fehlt, sondern der Zustand der Shell zum Ausführungszeitpunkt.'
+severity: medium
+hole_number: H16
+source: docs/holes/H16.md
+limits: 'dieselbe Lage wie H11: **sozial, nicht technisch**. Die Pfad-Hälfte ist offen;
+  von der `cd`-Hälfte ist die Bewegung geschlossen, nicht der Pfad in der Variablen'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:25'
+closed_at: '2026-09-05T20:22:25'

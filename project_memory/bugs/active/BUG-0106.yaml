@@ -1,0 +1,21 @@
+id: BUG-0106
+title: Gate 3 druckt den Befehl, der es aufhebt
+related_pr: PR-0003
+observed: '**Mechanismus:** die Abhilfe des Gates ist `kernel.cli evidence --result
+  pass --summary <digest>`,
+
+  und genau die *darf* der Sitzungsagent ausführen — er muss es, denn er zeichnet
+  das Urteil des
+
+  Prüfers auf.'
+severity: low
+hole_number: H14
+source: docs/holes/H14.md
+limits: jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt
+  Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht
+regression_tests:
+- test_gate3_remedy_is_executable_and_opens_the_commit
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:20'

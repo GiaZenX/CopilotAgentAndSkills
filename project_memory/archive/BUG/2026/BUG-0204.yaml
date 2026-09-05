@@ -1,0 +1,55 @@
+id: BUG-0204
+title: Die Haken-Spiegelregel hat keine Präsenz-Hälfte; für die Haken entscheidet
+  die Registrierung, und das halten zwei Nachbartests (neu, TSK-0111)
+related_pr: PR-0003
+observed: '**Mechanismus.** `tools/test_hooks._assert_mirrored` beantwortet für einen
+  Namen genau eine Frage:
+
+  sind die Kopien in den Kits, die ihn liefern, byte-gleich — oder nennt `KIT_SPECIFIC_HOOKS`
+  einen
+
+  Grund? Ob ein Kit den Namen überhaupt liefert, fragt keine seiner beiden Schleifen:
+  der Zweig
+
+  `if len(copies) < 2 or name in exceptions: continue` überspringt einen Namen, den
+  nur ein Kit
+
+  liefert, und die Ausnahmeschleife prüft nur, ob eine gelistete Ausnahme noch nötig
+  ist. Präsenz
+
+  ist damit in beide Richtungen unbeurteilt — ein fehlendes Kit ist kein Befund, ein
+  zusätzliches
+
+  auch nicht. Genau dieser Schnitt saß bis TSK-0111 auch in der Skill-Spiegelregel
+  und war dort ein
+
+  Befund (B1 des Prüfers: eine `references/extra.md` in EINER Kopie eines geteilten
+  Skills, sechs
+
+  Suiten grün); dort ist die Präsenz-Hälfte seither gebaut
+
+  (`test_shared_skill_contract._assert_one_directory`, gegen die Menge der liefernden
+  Kits). Für die
+
+  Haken ist sie **nicht** gebaut, und dieser Eintrag sagt, warum das kein Loch mit
+  Kette ist.'
+severity: low
+hole_number: H120
+source: docs/holes/H120.md
+limits: die Haken-Spiegelregel `test_hooks._assert_mirrored` fragt für einen Namen
+  nur, ob die Kopien der liefernden Kits gleich sind — ob ein Kit ihn gar nicht liefert,
+  fragt keine ihrer beiden Schleifen. `format_on_write.py` (dev und research, nicht
+  office) ist dort kein Befund, mit Absicht. Präsenz entscheidet die Registrierung,
+  und zwei Nachbartests halten beide Richtungen (gemessen, Eintrag unten). Für die
+  Skills ist die Präsenz-Hälfte gebaut (`tools/test_shared_skill_contract.py`)
+regression_tests:
+- test_hooks_v2.test_every_registered_hook_script_is_shipped_by_its_kit
+- test_hooks.test_shared_kit_files_identical
+- test_hooks.test_every_hook_documented_in_its_constitution
+- test_hooks.test_every_hook_an_entry_gate_names_is_shipped_by_every_kit_in_that_blocks_scope
+- test_hooks_v2.test_the_shipped_lead_packages_are_within_their_own_record
+status: REJECTED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:26:32'
+closed_at: '2026-09-05T20:26:32'

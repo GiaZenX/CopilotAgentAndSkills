@@ -1,0 +1,100 @@
+id: PR-0010
+title: 'G5-2 Watchers, ladders and escalation: the radar/codex watcher duo runs on
+  a real trigger, the first codex report exists, the ladders are three rungs per provider
+  (fable/opus/sonnet = astra/sol/terra, DEC-0076), effort is high by default and xhigh
+  for large goals, and DEC-0034''s escalation mechanic is BUILT in the dispatcher
+  (two axes, from state)'
+class: large
+user_story: As the user who relies on the weekly radar to keep this harness current,
+  I want both watchers to actually run each week without me remembering them, the
+  OpenAI half to produce its first report, and the model ladders to reflect the lineup
+  that ships today (Astra as the Fable-equivalent top, then Sol, then Terra) -- so
+  that the kits pin models that exist and the table's two maintainers exist in fact.
+problem: 'Measured 2026-09-05: radar/ holds 11 claude reports and 0 codex reports;
+  no cron job exists in the session and nothing in the repo schedules either watcher
+  -- radar/README.md''s ''a scheduled watcher duo runs once a week'' is a claim without
+  a mechanism; the radar runs happened when a human started them. team-kits/model_tiers.yaml
+  still carries the July OpenAI ladder (gpt-5.6 Sol / Terra / Luna, GA 2026-07-09)
+  and a dead Sonnet-5 price comment with a watch date in the past that three reports
+  flagged and nobody fixed (BUG-0092: the watcher reports only, the lead may not write
+  kit files, no item carried it). The user states a new top model Astra exists (FR-0088)
+  -- unmeasured until the codex watcher runs.'
+goal: A trigger mechanism decided DEC-first (session-start routine of the lead vs
+  an OS-level weekly task running the watchers headless -- measured for what survives
+  a session end) starts both watchers weekly and is itself tested; the codex watcher
+  produces its first dated report measuring the OpenAI lineup at the vendor's pages
+  (ids, GA dates, prices, effort vocabulary incl. ultra); the codex ladder in model_tiers.yaml
+  and the .codex overlay move to Astra (lead) / Sol (worker) / Terra (light) with
+  the measured ids, one ordered ladder per provider (DEC-0034), the pin tests asserting
+  every pin resolves (FR-0047 lineage); the dead price comment and watch date are
+  gone and a test refuses a past watch date; the MAINTENANCE header names the route
+  from a watcher finding to a change (an item, never a journal line).
+acceptance_criteria:
+- id: AC-1
+  text: 'Trigger (FR-0088): a DEC records the chosen mechanism with the rejected alternative;
+    after it is built, both watchers run on the trigger without a human -- measured
+    once end to end (a run started by the mechanism writes a dated report into radar/),
+    and a test refuses a watcher definition or README sentence that claims a schedule
+    the repo does not build'
+- id: AC-2
+  text: 'Codex report (FR-0088): the first report exists (radar/2026-09-05-codex.md,
+    manual trigger); the round''s own trigger produces the next one in the shipped
+    shape; the `max` vs `ultra` effort ceiling of Sol/Terra/Astra is measured against
+    the CLI, not copied from the contradicting docs; findings triaged into radar/decided.md
+    with items where a change follows'
+- id: AC-3
+  text: 'Ladders (DEC-0076): model_tiers.yaml carries exactly three rungs per provider
+    -- claude fable / opus / sonnet, codex astra / sol / terra with the measured ids
+    -- no `light` alias, no haiku or luna row; the generator refuses a `light`/`haiku`
+    pin with a sentence naming DEC-0076; the .codex overlay and the constitutions''
+    ladder sentences consistent; every pin resolving in a test (FR-0047 lineage);
+    red-first'
+- id: AC-4
+  text: 'BUG-0092 (both providers): the Sonnet-5 comment and the OpenAI price anchors
+    reworded to the measured current prices, dead watch dates removed, a shipped test
+    red on any watch date in the past inside model_tiers.yaml (red-first with today''s
+    file), the MAINTENANCE header naming the finding-to-item route'
+- id: AC-5
+  text: 'Rollout line: the protocol states how the changed ladder and the mechanic
+    reach the user''s projects (release stamp -> global store install -> update-kit
+    at the projects'' next session start) and what a project sees if its pinned model
+    no longer exists'
+- id: AC-6
+  text: 'Escalation mechanic (DEC-0034 rules 1-5, two axes -- DEC-0077, office refinement
+    DEC-0078): at spawn the dispatcher (kernel create_lease and the kit dispatch path)
+    derives the RUNG from the role pin and the kit''s declared endpoints and the EFFORT
+    from the state -- dev/research: high by default, xhigh when the goal''s class
+    is large, climb to fable; office: medium by default, high when the goal''s class
+    is large, top rung opus for every role except the office-developer (which climbs
+    to fable), sonnet-LOW filing floor as the named exception; EVERY kit declares
+    its OWN ladder (rungs, endpoints, effort pair, exceptions) beside its constitution
+    and the dispatcher READS it -- no per-kit branch and no default ladder in the
+    kernel, a kit without a declaration is refused at dispatch; dev and research each
+    declare theirs; rule 2: an order that FAILED climbs one rung per failure (T0 ->
+    T1 -> T2 -> T3) with the threshold a config value carrying its DEC line and a
+    default measured on a pilot; rule 1/3: planning and architecture start on the
+    kit''s top rung and the build falls to the build rung once scope approval is minted
+    and the architecture frozen / SR accepted, a CR touching the architecture lifts
+    back for that CR; rule 4/5: design starts above the build rung, QA never below
+    T1; the chosen rung and effort are written on the lease and shown in the session
+    brief; measured as a process on a scaffolded pilot per kit; red-first per rule'
+- id: AC-7
+  text: 'Decided-vs-built: DEC-0034, DEC-0047, DEC-0076 and the two-axes DEC are cited
+    by the code that implements them, the three constitutions'' ladder paragraphs
+    say what is BUILT (no sentence claims a climb the dispatcher does not make), and
+    the model_tiers.yaml header stops calling the mechanic an open work item'
+invariants:
+- A claim of automation is a mechanism the repo builds and a test reads, never a sentence
+- A model pin resolves in model_tiers.yaml or the test is red; the ladder is one ordered
+  list per provider (DEC-0034)
+- A watcher finding becomes an item under the open goal at triage; journal lines carry
+  pointers, not decisions
+out_of_scope:
+- Changing the Claude rung names (fable / opus / sonnet stay)
+- A six-rung ladder or any escalation that is not derived from state (rejected by
+  the two-axes DEC)
+priority: high
+status: DRAFT
+revision: 1
+approval_ref: null
+created: '2026-09-05T10:11:09'

@@ -840,6 +840,170 @@ def test_a_lead_can_update_the_kit_end_to_end(tmp_path):
                          and ".audit" not in name}, "the installer touched project state"
 
 
+# -- role memory an update leaves behind (BUG-0088) ---------------------------------------------
+
+def _plant_memory(repo, role, files=("MEMORY.md", "re-gate-by-baseline-diff.md")):
+    """A role memory tree in the shape a real project carries one.
+
+    The names are the user's real `Canyon_3.4.0` project's, which is where BUG-0088 was measured --
+    12 files under `.claude/agent-memory/quality-engineer/`.
+    """
+    directory = os.path.join(str(repo), kitupdate.MEMORY_DIR, role)
+    for name in files:
+        _write(os.path.join(directory, name), "# craft note\n")
+    return directory
+
+
+def _kit_hook_module(kit, name):
+    """One shipped kit hook, IMPORTED -- the running module, not its text."""
+    import importlib.util
+
+    hooks = os.path.join(TEAM_KITS, kit, "hooks")
+    sys.path.insert(0, hooks)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "kit_hook_%s_%s" % (kit.replace("-", "_"), name), os.path.join(hooks, name + ".py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+    finally:
+        sys.path.remove(hooks)
+
+
+def test_the_memory_directory_this_command_reads_is_the_one_the_kit_hook_polices():
+    """The tripwire on the one name `kernel.kitupdate` cannot borrow from the kit that owns it.
+
+    `guard_memory_budget` is a KIT hook: it ships beside the kernel, not under it, and a project's
+    copy of it is exactly what an update replaces -- so the kernel may not import it, and the
+    directory name stands in both places. Both are read out of the RUNNING modules here (the hook is
+    imported, the constant is asked of the object), in every kit that ships the hook, so a kit that
+    moved its memory tree turns this red instead of leaving `update-kit` reading an empty directory
+    and reporting nothing.
+    """
+    seen = 0
+    for kit in KITS:
+        if not os.path.isfile(os.path.join(TEAM_KITS, kit, "hooks", "guard_memory_budget.py")):
+            continue
+        seen += 1
+        hook = _kit_hook_module(kit, "guard_memory_budget")
+        assert os.path.basename(kitupdate.MEMORY_DIR) == hook.MEMORY_DIR, (
+            "%s polices %r while kernel.kitupdate reads %r, so an update would look for a memory "
+            "tree where the kit does not keep one"
+            % (kit, hook.MEMORY_DIR, os.path.basename(kitupdate.MEMORY_DIR)))
+    assert seen, "no kit ships guard_memory_budget any more -- this test's subject is gone"
+
+
+def test_a_memory_tree_is_residue_exactly_where_no_installed_role_declares_the_key(tmp_path):
+    """The reader's three answers, and the counter-end that keeps it from calling everything residue.
+
+    Stream E dropped `memory:` from three roles and the trees an older kit wrote stayed (BUG-0088).
+    What makes a tree residue is the INSTALLED definition, so all four shapes are arranged here: a
+    role that still declares the key (must stay silent), one whose definition dropped it, one whose
+    definition is gone altogether, and a memory directory that exists and cannot be listed -- which
+    is `read` False and never an empty "nothing here".
+    """
+    repo = tmp_path / "project"
+    agents = repo / presets.AGENTS_DIR
+    _write(str(agents / "backend-developer.md"), "---\nname: backend-developer\nmemory: project\n---\nbody\n")
+    _write(str(agents / "quality-engineer.md"), "---\nname: quality-engineer\n---\nbody\n")
+    for role in ("backend-developer", "quality-engineer", "long-gone-role"):
+        _plant_memory(repo, role)
+
+    answer = kitupdate.memory_residue(str(repo))
+    assert answer["read"] is True
+    named = {role: (why, held) for role, why, held in answer["orphaned"]}
+    assert sorted(named) == ["long-gone-role", "quality-engineer"], (
+        "the residue is not exactly the roles whose installed definition declares no memory: %s"
+        % sorted(named))
+    assert named["quality-engineer"][1] == 2, "the file count is the tree's own"
+    assert "no role definition of that name is installed any more" in named["long-gone-role"][0]
+
+    note = kitupdate._memory_residue_note(str(repo))
+    assert "quality-engineer" in note and "long-gone-role" in note, note
+    assert "backend-developer" not in note, "a role that still declares memory: was reported"
+    assert kitupdate.MEMORY_DIR.replace(os.sep, "/") in note, "the note does not say where"
+
+    empty = tmp_path / "no-memory-tree"
+    _write(str(empty / "placeholder"), "x")
+    assert kitupdate.memory_residue(str(empty)) == {"orphaned": [], "read": True}, (
+        "a project with no memory tree at all is not the same answer as one that could not be read")
+    assert kitupdate._memory_residue_note(str(empty)) == "", "silence is the ordinary outcome"
+
+
+def test_a_memory_tree_that_cannot_be_listed_is_never_reported_as_nothing(tmp_path, monkeypatch):
+    """`read` False, and it is `pending_entries`' reason: an unreadable tree has no entries.
+
+    A caller that read the empty list as "no residue here" would print the silence a project with no
+    memory tree gets, over a tree it never opened. The denial is arranged at the reading itself
+    rather than with an ACL, because what is measured is the ANSWER to an `OSError`, and a
+    filesystem that grants the test process access anyway (an administrator on Windows) would turn
+    this into a test of the host.
+    """
+    repo = tmp_path / "project"
+    _plant_memory(repo, "quality-engineer")
+    real = os.listdir
+
+    def denied(path, *args, **kwargs):
+        if os.path.basename(str(path)) == "agent-memory":
+            raise PermissionError(13, "denied")
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "listdir", denied)
+    answer = kitupdate.memory_residue(str(repo))
+    assert answer == {"orphaned": [], "read": False}
+    note = kitupdate._memory_residue_note(str(repo))
+    assert "could NOT be listed" in note and "unknown" in note, note
+
+
+def test_the_update_report_names_a_memory_tree_no_installed_role_declares(tmp_path):
+    """BUG-0088 on a real pilot: the scaffold installs, a tree is left, and the USER is told.
+
+    The same real run as `test_a_lead_can_update_the_kit_end_to_end` -- this repo's kits staged in a
+    fake home, the PowerShell scaffold, the shipped entry point, the real approval hook -- with two
+    memory trees planted before the update: `quality-engineer`, whose shipped definition carries no
+    `memory:` (the FR-0064 state BUG-0088 was raised on), and `backend-developer`, whose definition
+    does. It reads the command's OUTPUT and not its return value, so the whole chain including
+    `kernel/cli.py`'s printing of it is what is measured -- the key this sentence travels in belongs
+    to a file `kernel/kitupdate.py` does not own.
+
+    Red without the fix: the run reports the release and the restart and says nothing about either
+    tree, which is the state every installer, scaffold and kernel path was measured in.
+    """
+    if os.name != "nt" or not shutil.which("powershell"):
+        pytest.skip("the scaffold's PowerShell twin runs on Windows")
+    pytest.importorskip("yaml")
+    home, repo, environment = _scaffolded(tmp_path)
+    _write(str(repo / ".claude" / "kit_version"), _stamp(OLD, "a" * 64))
+    os.remove(str(repo / ".claude" / "HANDOVER_PENDING"))
+    installed = presets.installation(str(repo))["roles"]
+    assert {"quality-engineer", "backend-developer"} <= set(installed), (
+        "this preset no longer installs the two roles the pilot needs: %s" % installed)
+    orphan = _plant_memory(repo, "quality-engineer")
+    kept = _plant_memory(repo, "backend-developer")
+
+    opened = _harness(repo, environment, "request-approval", kitupdate.KIND)
+    assert opened.returncode == 0, opened.stderr
+    question = json.loads(opened.stdout)
+    payload = {"hook_event_name": "PostToolUse", "tool_name": "AskUserQuestion", "cwd": str(repo),
+               "tool_input": {"questions": [question]},
+               "tool_response": {"answers": {question["question"]: question["options"][0]["label"]},
+                                 "questions": [question]}}
+    minted = _hook(os.path.join(str(repo), ".claude", "hooks", "gate_approval.py"), payload, repo,
+                   env={"HOME": str(home), "USERPROFILE": str(home)})
+    assert "recorded for %s" % kitupdate.KIND in minted.stderr, minted.stderr + minted.stdout
+
+    applied = _harness(repo, environment, kitupdate.COMMAND)
+    assert applied.returncode == 0, applied.stderr
+    assert "quality-engineer" in applied.stdout, (
+        "the update left a memory tree no installed role declares and told nobody:\n%s"
+        % applied.stdout)
+    assert kitupdate.MEMORY_DIR.replace(os.sep, "/") in applied.stdout, applied.stdout
+    assert "backend-developer" not in applied.stdout, (
+        "a tree whose role still declares memory: was reported as residue:\n%s" % applied.stdout)
+    assert os.path.isdir(orphan) and os.path.isdir(kept), (
+        "this command reports and removes nothing -- see kitupdate._memory_residue_note")
+
+
 # -- the bootstrap for a stock that predates this command (BUG-0059) -----------------------------
 
 BRIDGE = os.path.join(ROOT, "user", "bridge", "update_kit.py")

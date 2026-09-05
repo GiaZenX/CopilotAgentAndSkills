@@ -1,0 +1,32 @@
+id: BUG-0153
+title: Kein Kit-Hook merkt, dass sein Fenster abläuft — offen, Schließrichtung gebaut
+  (neu, TSK-0082)
+related_pr: PR-0003
+observed: '**Mechanismus:** Weder das ≈600-s-Default-Fenster noch ein registriertes
+  `timeout` wird von
+
+  irgendeinem Kit-Hook zur Laufzeit bemerkt — die ganze TSK-0082-Konstruktion ruht
+  darauf, dass
+
+  jede Gate-Laufzeit weit unter dem Fenster bleibt. Das ist heute gemessen wahr und
+  wird von
+
+  nichts erzwungen: ein Gate, dessen Aufwand mit fremdem Input wächst (die Wrapper-Options-Kurve
+
+  in `_compat.py` nennt 65 s bei 26 Wörtern), läuft in genau dieses Fenster, und ein
+  Kill dort
+
+  ist ein stiller Durchlass (L9-Messung).'
+severity: medium
+hole_number: H61
+source: docs/holes/H61.md
+limits: 'kein Kit-Hook merkt selbst, dass sein Fenster abläuft — jede Grenze in einem
+  Kit-Hook ist ein Versprechen des Hooks, keine Durchsetzung; die Konstruktion, die
+  schließt, existiert im Harness (`.claude/hooks/_harness.py::Deadline` liest die
+  registrierte Frist und verweigert DAVOR) und fehlt in den Kits. Begrenzt: alle beobachteten
+  Gate-Laufzeiten ≤0,405 s und die größte eigene Kindgrenze außer gate_pipeline 20
+  s, beides weit unter dem ≈600-s-Fenster — als Messung, nicht als Schranke'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:24:17'

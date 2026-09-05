@@ -1,0 +1,53 @@
+id: BUG-0134
+title: '`INV.scope` als Liste geschrieben schaltete die Testabdeckungs-Regel still
+  ab — GESCHLOSSEN (TSK-0060)'
+related_pr: PR-0003
+observed: '**Mechanismus:** der Vertrag der Typen, die `capture` erzeugt (`REQUIRED_FIELDS`/`OPTIONAL_FIELDS`),
+
+  nennt Feld**namen** und keine Formen — jedes dieser Felder kann also als Skalar
+  **und** als Liste
+
+  ankommen. (Die andere Vertragshälfte, `kernel/schemas/*.yaml`, deklariert sehr wohl
+  `type:` je Feld;
+
+  sie gilt für die eingefrorenen ARC/WFR/DSN, nicht für `INV`.) `BUG-0015` war die
+  eine Richtung (ein
+
+  Skalar, das ein Leser buchstabenweise iteriert); dies ist die andere. Vier Leser
+  lesen `INV.scope`
+
+  als **einen** Pfad bzw. **einen** Namen: `dev-team/hooks/gate_test_coverage.py:177`
+
+  (`str(item.get("scope") or "")`), `dev-team/hooks/guard_guidelines.py:128-129` sammelt
+  den Wert
+
+  **roh** ein und `:154` (`_governs`) macht daraus `str(scope or "").strip()`, und
+
+  `dev-team/templates/repo/scripts/kit_checks.py:171` (dort als Konfigurationsschlüssel)
+  sowie `:189`.
+
+  Eine Liste ergibt dort die Zeichenkette `"[''compounder/'']"`, die auf keinen Pfad
+  passt.'
+severity: low
+hole_number: H42
+source: docs/holes/H42.md
+limits: 'der Vertrag ist entschieden statt normalisiert: `INV.scope` regiert genau
+  einen Bereich, `backlog_types.SINGLE_VALUE_FIELDS` deklariert das, `state._assert_single_value_fields`
+  verweigert die Mehrere-Dinge-Form an beiden Türen in den aktiven Zustand und `report._check_single_value_fields`
+  meldet sie als Fehler (gemessen: capture/update verweigert, `validate` 0 → 1 Fehler,
+  `gate_memory_complete` rc 0 → rc 2). Die vier Leser sind unverändert. Reste: ein
+  schon geschriebenes Item wird gemeldet statt geheilt, die Archiv-Tür nimmt die Form
+  weiter an (DEC-0009), die Deklaration ist nicht abgeleitet, und im `office-team`
+  schützt sie keinen Leser'
+regression_tests:
+- tools/test_state.py::test_a_several_things_inv_scope_is_refused_at_capture_and_on_the_edit_path
+- tools/test_report.py::test_validate_names_an_inv_scope_spelled_as_several_things
+- tools/test_hooks.py::test_the_shipped_readers_of_a_single_value_field_still_read_one_value
+- tools/test_backlog_types.py::test_the_single_value_fields_are_contract_fields_nothing_resolves_elementwise
+- tools/test_state.py::test_the_archive_door_still_takes_a_record_the_active_door_refuses
+- tools/test_state.py::test_the_migration_can_produce_no_inv_so_the_archive_boundary_is_for_the_next_entry
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:29'
+closed_at: '2026-09-05T20:23:29'

@@ -1,0 +1,57 @@
+id: BUG-0172
+title: Der Freigabe-Haken ließ sich in dieser Werkstatt von Hand fahren — GESCHLOSSEN
+  (TSK-0098), mit benannten Resten
+related_pr: PR-0003
+observed: '**Mechanismus:** `approvals.mint` nimmt nur einen Aufrufer an — den Freigabe-Haken,
+  als sich selbst
+
+  gestartet (`_assert_minting_caller`). Dass *nur der Provider* diesen Haken startet,
+  kann
+
+  Bibliothekscode nicht feststellen; das steht im Docstring des Kernels und ist als
+  `known_hole`
+
+  erfasst. In den Kits schließt eine ZWEITE Wand diese Tür: `gate_write_scope` verweigert
+  jede
+
+  Befehlszeile, die den Durchsetzungsapparat in einer schreibfähigen Stufe nennt.
+  Die Gates dieses
+
+  Repos hatten diese Wand nicht: `gate_lead_write_scope` stufte eine Stufe, die eine
+  Datei
+
+  AUSFÜHRT, als lesend ein — für den Sitzungsagenten wie für jeden Subagenten.'
+severity: low
+hole_number: H80
+source: docs/holes/H80.md
+limits: 'eine Befehlszeile hat jetzt eine START-Position, und eine Datei aus einem
+  **Haken-Verzeichnis** dort zu starten ist **jedem** Aufrufer verweigert (`_harness.Executed`
+  + `ProtectedArea.hand_driven`, Verzeichnisse abgeleitet über `kit_hooks_directories`).
+  Nach drei Prüfrunden, die je eine eigene Kette bis `APPROVED` gegen die Vorfassung
+  gefahren haben, ist Schritt 3 in **jeder** gemessenen Form rc 2 — beide Shells,
+  beide Aufrufer, 63 Formen im Haupt-Rig plus 17 Subshell-Formen —, während alle dokumentierten
+  Tageszeilen rc 0 bleiben; die Kit-Regel hätte vier von neun verweigert, darum der
+  engere Schnitt. Mit geschlossen: dieselbe Unplatzierbarkeit in der SCHREIB-Richtung,
+  dort seit dem Bau der Shell-Hälfte offen. Zweite Hälfte: der Freigabe-Haken der
+  Kits ist auf beiden `AskUserQuestion`-Ereignissen registriert, der ehrliche Weg
+  in einer Kopie Ende zu Ende gefahren. Rest mit Shell-Zeugen: ein selbst geschriebenes
+  Skript prägt weiter (H11, in den Kits genauso), und ein Subagent darf ein Kit-Haken*verzeichnis*
+  rekursiv kopieren. Die Subshell-Klasse ist zu, ihre Schreib-Hälfte steht bei H27'
+regression_tests:
+- test_gate1_refuses_a_word_it_cannot_resolve_in_the_write_position
+- test_gates.py::test_gate1_refuses_starting_a_hook_from_every_caller
+- …::test_gate1_refuses_a_word_it_cannot_resolve
+- …::test_gate1_refuses_a_powershell_call_operator_starting_a_hook
+- …::test_gate1_refuses_the_line_that_minted_an_approval_nobody_gave
+- …::test_a_start_shape_really_starts_a_program
+- …::test_an_unresolved_word_really_changes_in_a_shell
+- …::test_the_powershell_call_operator_really_starts_a_program
+- …::test_gate1_leaves_a_file_outside_the_hook_directories_startable
+- …::test_gate1_leaves_a_wrapped_module_run_alone
+- …::test_gate1_does_not_read_a_bare_verb_as_a_file_in_the_working_directory
+- …::test_gate1_does_not_read_a_directory_as_a_started_file
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:06'
+closed_at: '2026-09-05T20:25:06'

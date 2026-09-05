@@ -1,0 +1,30 @@
+id: BUG-0127
+title: Was das Lesen einer Zeile kostet, war durch keine Frist begrenzt (neu, TSK-0021)
+related_pr: PR-0003
+observed: '**Mechanismus:** `_harness.substituted_lines` prüfte das Budget des Gates
+  **einmal je Aufruf** und
+
+  sagte im eigenen Docstring, es sei dadurch begrenzt. Die Arbeit steckt aber **in**
+  einem Aufruf: die
+
+  Kosten wachsen mit dem Produkt aus Vorkommen und Länge, weil jedes Vorkommen zwei
+  Lesarten
+
+  (`_closings`) erzeugt und beide rekursiv weitergehen. Zwischen zwei Prüfungen lag
+  also die ganze
+
+  Zeit. Ein Gate, das noch entscheidet, wenn der Provider aufhört zuzuhören, wird
+  getötet — und ein
+
+  getöteter Hook ist ein **Durchlass**.'
+severity: low
+hole_number: H35
+source: docs/holes/H35.md
+limits: —
+regression_tests:
+- test_gate1_answers_before_its_registration_however_long_the_line_takes_to_read
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:12'
+closed_at: '2026-09-05T20:23:12'

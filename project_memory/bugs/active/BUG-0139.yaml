@@ -1,0 +1,32 @@
+id: BUG-0139
+title: 'Das Repo-Gate leiht den Ziel-Leser des Kits, aber nicht dessen Zeilen-Zuweisungskarte:
+  `F=…; > $F` schreibt kanonischen Zustand an Gate 1 vorbei — OFFEN (neu, TSK-0070)'
+related_pr: PR-0003
+observed: '**Mechanismus:** TSK-0070 hat kit-seitig zwei Dinge gebaut — den `>&`-Ziel-Leser
+  (B1, den Gate 1
+
+  über `_from_kit` leiht, siehe H46) **und** die Variablen-Auflösung (B2: `_line_assignments`
+
+  baut die `NAME=value`-Karte der ganzen Zeile, `_resolve` substituiert `$NAME` vor
+  dem Urteil).
+
+  Die Auflösung sitzt aber im **Regel-5-Leadprüfer des Kits**, nicht im geteilten
+  Ziel-Leser. Gate 1
+
+  hat seinen **eigenen** `_subjects`-Weg und baut **keine** Zuweisungskarte — also
+  leiht es B1 mit,
+
+  B2 nicht.'
+severity: medium
+hole_number: H47
+source: docs/holes/H47.md
+limits: 'dieselbe Klasse wie H46, aber die **Variablen**-Variante: Gate 1 leiht den
+  Ziel-Leser des Kits, nicht dessen Zeilen-Zuweisungskarte, also ist `F=team-kits/kernel/state.py;
+  echo x > $F` am Repo-Gate rc 0 (am Kit-Gate seit B2 rc 2). Vorbestehend, von TSK-0070
+  sichtbar gemacht. Schließrichtung (a): Auflösung in den geteilten Leser ziehen →
+  Kit-Fix heilt mit; (b): Gate 1 baut die Karte selbst → Fix außerhalb der Sitzung.
+  Welche greift, ist zu messen; der Nutzer entscheidet danach'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:41'

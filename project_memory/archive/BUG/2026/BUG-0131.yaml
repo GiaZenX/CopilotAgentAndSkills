@@ -1,0 +1,48 @@
+id: BUG-0131
+title: 'Endzustände, die dieses Repo nicht ehrlich erreichen kann: TSK `DONE`, BUG
+  `VERIFIED` (neu, TSK-0055)'
+related_pr: PR-0003
+observed: '**Mechanismus:** zwei Kernel-Wächter setzen Bedingungen voraus, die nur
+  ein installiertes Kit
+
+  erfüllt, und dieses Repo betreibt bewusst keins (DEC-0003). Erstens verweigert
+
+  `state.py::_transition_locked` jeden direkten Übergang IN einen lease-gestützten
+  Zustand
+
+  (`dispatch.assert_lease_backed_transition_locked`); die TSK-Kette führt über `LEASED`
+  und
+
+  `IN_PROGRESS`, also sind `DONE` und `VALIDATED` ohne echtes Dispatch unerreichbar.
+  Zweitens bindet
+
+  `approvals.APPROVAL_TRANSITIONS` die Kante `BUG TRIAGED→APPROVED` an eine Freigabe
+  in Kraft;
+
+  gemünzt wird die über den PostToolUse-Haken der Kits auf der AskUserQuestion-Antwort.
+  **Bis
+
+  TSK-0098 führte die Registrierung dieses Repos nur die eigenen Gates**, und die
+  gedruckte Abhilfe
+
+  der Verweigerung („Frage weiterreichen, die Antwort münzt") hatte hier keinen Zuhörer;
+  seit
+
+  TSK-0098 steht der Haken der Kits auf beiden AskUserQuestion-Ereignissen — wirksam
+  ab dem nächsten
+
+  Sitzungsstart, siehe den Absatz am Ende dieses Eintrags.'
+severity: medium
+hole_number: H39
+source: docs/holes/H39.md
+limits: 'die Freigabe-Hälfte war eine Erreichbarkeitslücke, weil dieses Repo keinen
+  Freigabe-Haken registrierte; seit TSK-0098 registriert es ihn, `approval_mint_is_wired`
+  meldet `True`, und der Zusatzsatz an der Verweigerung fällt weg. Die REGISTRIERUNG
+  bindet aber erst beim Sitzungsstart: bis der Nutzer neu startet, liest kein Prozess
+  die Antwort. `DONE`/`VALIDATED` für `TSK` hängen weiter am Dispatch-Lease, das diese
+  Werkstatt nicht fährt — dafür gilt DEC-0041 unverändert'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:21'
+closed_at: '2026-09-05T20:23:21'

@@ -81,12 +81,25 @@ AUTOMATA = {
         terminals=("APPLIED", "REJECTED"),
         terminal_from={"REJECTED": ("DRAFT", "APPROVED")},
     ),
+    # A DEFECT, AND SINCE DEC-0073 ALSO A HOLE. A measured, open gap in a guard carries exactly
+    # this type's fields -- observed, expected, repro, severity, acceptance criteria -- plus one
+    # duty (`limits`: what takes the place of the protection) and one ending this automaton did not
+    # have: a gap the USER has accepted as a named exception. `ACCEPTED_EXCEPTION` is that ending.
+    # ONLY FROM TRIAGED, and that is the whole placement: an exception is accepted for a gap
+    # somebody has LOOKED at, never for one nobody has read yet (OPEN) and never for one already
+    # fixed (FIXED). It is a terminal, so nothing walks out of it again -- a gap whose exception
+    # falls (DEC-0069 (3) names that moment) is a NEW item with its own measurement, which is what
+    # keeps the record of the acceptance from being edited into something the user never said.
+    # WHO MAY WALK IT is not this table's answer but `approvals.APPROVAL_TRANSITIONS`': the pair
+    # (BUG, hole_exception) binds this edge to a user-minted approval, because a status the
+    # supervised party can set itself is a status no gate may read as an acceptance.
     "BUG": _Automaton(
         chain=("OPEN", "TRIAGED", "APPROVED", "FIXED", "VERIFIED"),
-        terminals=("VERIFIED", "REJECTED", "DUPLICATE"),
+        terminals=("VERIFIED", "REJECTED", "DUPLICATE", "ACCEPTED_EXCEPTION"),
         terminal_from={
             "REJECTED": ("OPEN", "TRIAGED", "APPROVED", "FIXED"),
             "DUPLICATE": ("OPEN", "TRIAGED", "APPROVED", "FIXED"),
+            "ACCEPTED_EXCEPTION": ("TRIAGED",),
             # VERIFIED only via the chain (FIXED -> VERIFIED)
         },
     ),
@@ -446,7 +459,10 @@ REQUIRED_FIELDS = {
 #
 # ONLY THE PASS SIDE IS FILTERED (`report._delivery_evidence`), and the asymmetry is the argument:
 # a run over part of the work can show a defect, so a `fail` from a selection is a fail; it cannot
-# show the absence of one, so a `pass` from a selection opens nothing.
+# show the absence of one over a whole DELIVERY, so a `pass` from a selection opens no merge.
+# IT DOES CONFIRM A NAMED DEFECT, and that is DEC-0071: the absence a regression run has to show is
+# bounded by the item it names, so the confirming edge reads the very record the merge drops. Two
+# questions, one derivation -- `report.DELIVERY_QUESTION` is where the split is argued.
 # DECISION: DEC-0061. FR-0040 asked for the decision FIRST, and a built file that embodies one
 # names its number (CLAUDE.md) -- so a reader who arrives here through the code lands on the same
 # record as one who greps the decisions.
@@ -472,6 +488,126 @@ BLOCKED_REASON_FIELD = "blocked_reason"
 EVIDENCE_RESULT_FIELD = "result"
 
 
+# -- a HOLE: a measured gap the project does not close (FR-0087, DEC-0073) -----
+#
+# WHAT A HOLE IS, AND WHY IT IS NOT ITS OWN TYPE. It is a defect with a named limit -- the same
+# five things a `BUG` already carries (observed, expected, repro, severity, acceptance criteria)
+# plus one field and one ending. DEC-0073 decided the `BUG` shape against a type of its own, on a
+# cost measured rather than guessed: a new entry in `ACTIVE_DIRS` turns
+# `tools/test_hooks.py::test_no_adhoc_covers_every_item_type` and
+# `tools/test_board.py::test_every_type_that_moves_through_a_lifecycle_is_placed_by_a_backlog_view`
+# red, and the first of those two is repaired in `team-kits/*/hooks/guard_no_adhoc.py`, three
+# mirrored copies outside this stream's reach -- while the second contract would repeat `BUG`'s
+# field list word for word to add one field.
+#
+# THE NUMBER IS ALLOCATED BY THE KERNEL (`state.capture`), never by hand. Hand-reserved H numbers
+# are the measured defect FR-0087 was written for: generation 3 handed them out per stream by
+# message, and the verifier of stream E found two of them in no frozen item at all. A caller says
+# THAT the item is a hole; WHICH number it gets is not a caller's decision.
+# `tools/test_state.py::test_the_kernel_hands_out_the_hole_number_and_never_the_caller`
+HOLE_NUMBER_FIELD = "hole_number"
+HOLE_NUMBER_PREFIX = "H"
+# WHAT TAKES THE PLACE OF THE PROTECTION -- the sentence a hole owes and an ordinary defect does
+# not. Required in `ACCEPTED_EXCEPTION` and in no other status: see `STATUS_DEPENDENT_FIELDS`.
+HOLE_LIMIT_FIELD = "limits"
+# The tests that go RED without the fix an entry claims. A FIELD and not a sentence in the prose,
+# and that is the whole move FR-0087 (c) asks for: the shipped judge used to fish these names out
+# of a markdown document with a code-span reader, and every limit of that reader -- a name behind a
+# fence, a wrapped name, a span showing a span -- was a citation nobody checked. Read off the item,
+# the question "does this name resolve" is asked of a parsed list.
+HOLE_TEST_FIELD = "regression_tests"
+
+# WHAT A HOLE OWES *ONCE IT IS STORED*, and it is NOT its type's full contract. A `BUG` owes
+# `expected`, `repro` and `acceptance_criteria` because it is a defect somebody is going to CLOSE;
+# a hole is a defect nobody is closing -- that is what makes it a hole -- so those three would be a
+# form filled in for a fix that is not planned. Measured over the shipped hole list before this was
+# written: every entry states a verdict, most state a mechanism, and well under two thirds state a
+# measured chain, so a contract demanding a repro of each could only be met by inventing them.
+#
+# WHERE IT APPLIES, said exactly rather than as a whole: `report.validate_state` judges STORED
+# items through `required_fields_of`, and `state.capture_migrated_hole` writes past the field
+# contract like every migration door. `state.capture` does NOT use it -- it asks
+# `REQUIRED_FIELDS[type]` through `capture_preflight`, so filing a hole with `capture --hole` still
+# owes the full `BUG` contract. That is the honest split and it is deliberate: a gap somebody is
+# measuring TODAY can say what should happen instead and how it was reproduced, while a fifteen-
+# month-old document entry cannot be made to. `tools/test_backlog_types.py::test_the_hole_contract
+# _is_the_reading_side_and_capture_still_asks_the_full_one` holds both halves.
+# `tools/test_backlog_types.py::test_the_hole_contract_is_a_subset_of_the_contract_its_type_declares`
+HOLE_REQUIRED_FIELDS = ("title", "related_pr", "observed", "severity")
+
+
+def hole_type() -> str:
+    """The type a HOLE IS -- derived from the contract, never spelled a second time.
+
+    A hole is a defect with a named limit, so it is the type this kernel already holds a defect in
+    (DEC-0073 decided that against a type of its own, with the cost measured). WHICH type that is
+    is read off the field contract: exactly one type declares `HOLE_NUMBER_FIELD`, because that is
+    what "this type can carry a hole number" means. Every other reader takes it from here --
+    `state.capture`'s refusal, `state.capture_migrated_hole`'s target, `required_fields_of` below --
+    so the answer exists once.
+
+    THE DEFECT THAT ASKED FOR IT: the CLI checked the type as an enumeration of ONE (`!= "TSK"`)
+    while the definition lay beside it, so `capture DEC --hole` stamped a hole number on a decision,
+    burnt a number nothing can free, and left the hole judge permanently red -- one rc-0 command,
+    repairable only from outside the session (`project_memory/` takes no tool write).
+    `tools/test_state.py::test_only_the_type_a_hole_is_can_be_captured_as_one`
+    """
+    # `_contract_fields()` and not `OPTIONAL_FIELDS`: the sentence above says "the field
+    # contract", and the contract is BOTH halves -- what a type must carry and what it may. Reading
+    # only the optional half meant a second type declaring the field as REQUIRED slipped past the
+    # loud abort without a word (measured 2026-09-05: contract carriers ['BUG', 'PROC'],
+    # `hole_type()` still answered BUG).
+    carriers = sorted(item_type for item_type, fields in _contract_fields().items()
+                      if HOLE_NUMBER_FIELD in fields)
+    if len(carriers) != 1:
+        raise AssertionError(
+            "%d types declare %s, so what a hole IS has no single answer: %s. A hole is one type's "
+            "shape (DEC-0073); declaring the field on a second type is a contract decision that "
+            "needs its own DEC, not a widening this derivation can absorb."
+            % (len(carriers), HOLE_NUMBER_FIELD, carriers))
+    return carriers[0]
+
+
+def required_fields_of(item_type: str, item: dict) -> tuple:
+    """The fields THIS item owes -- its type's contract, or the hole contract when it is a hole.
+
+    ONE reader (`report.validate_state`'s field-duty loop), so "what does this item owe" has one
+    answer. The hole is recognised by the field the kernel stamps and no caller may hand in
+    (`HOLE_NUMBER_FIELD`), which is why the narrower contract cannot be claimed by a body that
+    simply says so.
+    """
+    if item_type == hole_type() and (item or {}).get(HOLE_NUMBER_FIELD):
+        return HOLE_REQUIRED_FIELDS
+    # `__getattr__` and not the bare name: `DECLARED_REQUIRED_FIELDS` is one of the DERIVED maps
+    # this module computes on first access (see `_DERIVED`), so the name is bound for an importer
+    # and NOT inside the module. Written as a plain reference first, this raised `NameError` in
+    # `report.validate_state` -- measured 2026-09-04 against a migrated store, where every single
+    # validate died before its first finding.
+    return __getattr__("DECLARED_REQUIRED_FIELDS").get(item_type, ())
+
+# What an item owes ONLY while it stands in ONE status: {(type, status): field}.
+#
+# A MAP AND NOT A BRANCH PER CASE, because the validator's loop then gains a row rather than an
+# `if`, and because the two ends can be measured against the automata:
+# `tools/test_backlog_types.py::test_every_status_dependent_duty_names_a_status_its_type_really_has`
+# holds every key to `AUTOMATA` and every field to a name its type's readers use.
+#
+# WHY THE DUTY IS NARROW. `HOLE_LIMIT_FIELD` binds in `ACCEPTED_EXCEPTION` alone and not from
+# TRIAGED on, and the reason is the cost DEC-0061 (a) measured for a wider duty on a stored type:
+# a duty on a status the stored records already stand in turns every one of them into a validator
+# error on the day of the rule, with no command that repairs it -- `gate_memory_complete` blocks
+# every merge and push on such an error. How many that is in a given store is a measurement of the
+# round that asks, not a number this comment can keep.
+STATUS_DEPENDENT_FIELDS = {
+    ("FR", "TRIAGED"): "triage_result",
+    ("BUG", "ACCEPTED_EXCEPTION"): HOLE_LIMIT_FIELD,
+}
+
+# The terminal a hole reaches when the USER has accepted it as a named exception. Spelled once,
+# read by the automaton comment above, by `approvals.APPROVAL_TRANSITIONS` and by the migration.
+HOLE_EXCEPTION_STATUS = "ACCEPTED_EXCEPTION"
+
+
 OPTIONAL_FIELDS = {
     "PR": ("user_story",),      # optional for class == technical_enabler
     "FR": ("related_pr",),
@@ -481,7 +617,12 @@ OPTIONAL_FIELDS = {
     # stored item changes and no migration is forced -- and a parent binding
     # (`_BINDING_FIELD_NAMES`), which is what makes the system tree place the bug under the SR
     # instead of under the root, and what makes `report._check_bug_system_link` judge it.
-    "BUG": ("related_sr",),
+    # `related_sr` (FR-0054) and the two fields a HOLE carries (FR-0087, DEC-0073). All three are
+    # optional for one reason: an item already stored may not become a validator error the day a
+    # field is added. `HOLE_NUMBER_FIELD` is what makes a defect a hole and is kernel-set
+    # (`state.capture(hole=True)`); `HOLE_LIMIT_FIELD` is owed in `ACCEPTED_EXCEPTION` alone --
+    # `STATUS_DEPENDENT_FIELDS` is where that duty lives, and the only place.
+    "BUG": ("related_sr", HOLE_NUMBER_FIELD, HOLE_LIMIT_FIELD, HOLE_TEST_FIELD),
     "PROC": ("derives_from",),
     # `design_ref` required only when the UI scope has a frozen design; `seam_scope` is the
     # DECLARED SHARE (DEC-0062 (5), stream D requirement C-4): the paths this order knowingly
@@ -843,6 +984,36 @@ UI_TASK_TYPES = frozenset(("ui",))
 FR_RESULT_TERMINALS = frozenset(("CONVERTED", "MERGED"))
 FR_DISCARD_TERMINALS = frozenset(("REJECTED",))
 FR_RESULT_FIELD = "resulting_item"
+
+# -- the INBOX property (BUG-0091, DEC-0066) -----------------------------------
+#
+# {type: (the terminals that leave a result, the field that names it)} -- the types whose lifecycle
+# can end by naming the item they BECAME. That is what "inbox" means as a property rather than as a
+# type name: such an item is not a thing the project builds, it is a thing waiting for the triage
+# that turns it into one, and the item it turns into is what work hangs from.
+#
+# WHY IT IS A CONTRACT AND NOT A DERIVATION: no shape of an automaton tells a triage outcome from
+# any other terminal -- it is a fact about what the outcome MEANS, which is the same argument
+# `FR_RESULT_TERMINALS` above and `SINGLE_VALUE_FIELDS` below already carry. What is derived is
+# everything downstream: `report._check_fr_result_link` takes the duty from here, and
+# `dispatch._assert_the_origins_are_not_inbox_items` takes the refusal from here, so a type added
+# to this map arrives with both and neither is a second list.
+#
+# THE DEFECT (BUG-0091, measured 2026-09-03, re-measured on 75a00d1): `create-task` accepted an FR
+# as `product_requirement` and as `derives_from` without a word -- 21 of 120 work orders in this
+# repository hang from one. What that produced is a DEAD END rather than a difference of taste:
+# `FR` is in no row of `approvals.APPROVAL_TRANSITIONS`, so no scope approval exists for it at all
+# (`create_pending_request` refuses: "this type carries no user approval"), and `create_lease` then
+# refuses the task with "no user approval authorises dispatching". A task under a wish is
+# undispatchable BY CONSTRUCTION, and its fields are frozen outside DRAFT -- the same class as the
+# cross-root origin `dispatch._assert_origins_belong_to_root_locked` refuses at creation.
+# `tools/test_backlog_types.py::test_the_inbox_types_are_the_ones_whose_triage_names_a_result`
+TRIAGE_RESULT_LINK = {"FR": (FR_RESULT_TERMINALS, FR_RESULT_FIELD)}
+
+
+def is_inbox_type(item_type: str) -> bool:
+    """Does this type's lifecycle end by naming the item it BECAME? -- see `TRIAGE_RESULT_LINK`."""
+    return item_type in TRIAGE_RESULT_LINK
 
 # -- DEC supersession: the one lifecycle link a decision has (BUG-0009) --------
 #

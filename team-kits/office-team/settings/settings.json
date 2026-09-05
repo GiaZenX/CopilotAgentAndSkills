@@ -87,6 +87,10 @@
           {
             "type": "command",
             "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_shell_hygiene.py"
+          },
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/_gate.py\" gate_test_scope.py"
           }
         ]
       },

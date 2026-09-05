@@ -1,0 +1,22 @@
+id: BUG-0122
+title: Ein Wort, das die Shell nicht als dieses Verb ausführt, und ein Pop ohne sichere
+  Richtung (neu, TSK-0017)
+related_pr: PR-0003
+observed: '**Mechanismus, eine Eigenschaft mit drei Gesichtern:** der Leser fragte
+  nie, ob die Shell das Wort
+
+  als **das Verb ausführt, für das er es hält**.'
+severity: low
+hole_number: H30
+source: docs/holes/H30.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+- test_the_words_the_kits_reader_steps_over_are_all_crossed
+- test_the_shells_this_reader_knows_are_the_ones_the_registration_names
+- test_a_hole_states_the_over_refusal_the_table_carries
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:59'
+closed_at: '2026-09-05T20:22:59'

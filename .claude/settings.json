@@ -40,6 +40,11 @@
             "type": "command",
             "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_commit_evidence.py\"",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "python -B \"${CLAUDE_PROJECT_DIR}/.claude/hooks/gate_test_scope.py\"",
+            "timeout": 120
           }
         ]
       },

@@ -1,0 +1,31 @@
+id: BUG-0094
+title: Nur das Literal `commit` — GESCHLOSSEN (TSK-0056, BUG-0034), mit benannten
+  Resten
+related_pr: PR-0003
+observed: '**Mechanismus (war):** Gate 3 fragte `Invocation.runs("commit")`. Die Eigenschaft,
+  um die es geht,
+
+  ist aber „**diese Zeile kann einen Commit in die Branch-History autorieren oder
+  installieren**", und
+
+  die trifft auch `merge`, `revert`, `cherry-pick`, `am`, `rebase`, `pull`, `stash`,
+  die Klempnerei
+
+  (`commit-tree`, `hash-object -t commit`, `fast-import`) und jede Kette, die eines
+  davon per
+
+  Kommandoersetzung mit einem Ref-Move verbindet.'
+severity: low
+hole_number: H2
+source: docs/holes/H2.md
+limits: 'Gate 3 urteilt über die Eigenschaft „autoriert/installiert einen Commit"
+  statt über das Wort `commit`; Vertrag zuerst (`SR-0006`→`SR-0009`, DEC-0042); Aufzählung
+  mit Stolperdraht gegen das installierte git; Reste: Import-Objekt (mehrschrittig,
+  kein Ein-Aufruf-Loch), Über-Verweigerungen mit Weg durch, H11-Interpreterklasse'
+regression_tests:
+- test_gate3_answers_before_its_registration_however_costly…
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:21:52'
+closed_at: '2026-09-05T20:21:52'

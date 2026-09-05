@@ -1,0 +1,22 @@
+id: BUG-0188
+title: 'H11 hebt die Vier-Augen-Buchung mit auf: ein Skript trägt eine ungelesene
+  Zeile nach `HEAD` und prägt die zweite Lesung (neu, TSK-0102, FR-0065)'
+related_pr: PR-0003
+observed: '**Mechanismus.** `gate_second_booking` ruht auf zwei Annahmen, und beide
+  sind Ableitungen aus
+
+  `H11`s Interpreter-Ausnahme, nicht aus einer eigenen Schranke:'
+severity: medium
+hole_number: H99
+source: docs/holes/H99.md
+limits: '`H11`s Interpreterklasse hebt die Vier-Augen-Buchung mit auf: ein Skript
+  trägt eine ungelesene Zeile nach `HEAD` (dauerhaft ausgenommen) und prägt die zweite
+  Lesung. Begrenzt durch: die Fehlklasse, für die `FR-0065` gebaut ist (Versehen),
+  läuft vollständig durch die Schicht; das Vehikel ist eine Datei im Arbeitsbaum und
+  damit im Commit sichtbar; und der Buchungs-Store ist erste-Zeile-gewinnt, eine Prägung
+  verlangt also drei bewusste Schritte'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:49'
+closed_at: '2026-09-05T20:25:49'

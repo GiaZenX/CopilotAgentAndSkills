@@ -1,0 +1,19 @@
+id: BUG-0095
+title: '`project_memory/` war für Werkzeuge offen — GESCHLOSSEN, mit einer benannten
+  Resthälfte'
+related_pr: PR-0003
+observed: '**Mechanismus:** Gate 3 urteilt anhand eines `EVD`-Items, das *im Zustand*
+  liegt. War der Zustand
+
+  mit Werkzeugen schreibbar, schreibt sich der Urteilende sein Urteil selbst.'
+severity: low
+hole_number: H3
+source: docs/holes/H3.md
+limits: 'die Hälfte, die bleibt, ist der Fixpunkt der Konstruktion und im Eintrag
+  beschrieben: der Digest schließt `project_memory/` aus, weil ein Urteil sonst den
+  Baum decken müsste, in den es geschrieben wird'
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:21:55'
+closed_at: '2026-09-05T20:21:55'

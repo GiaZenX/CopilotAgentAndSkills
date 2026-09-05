@@ -1,0 +1,40 @@
+id: BUG-0221
+title: 'Die Konformitätsbefunde des Renderers verweigern nichts: der Datensatz beantwortet
+  eine andere Frage (neu, TSK-0119, FR-0077/FR-0078)'
+related_pr: PR-0003
+observed: '**Mechanismus.** `kit_design_render.py` prüft den gerenderten Entwurf seit
+  TSK-0119 gegen den
+
+  mechanisch entscheidbaren Anteil der Design-Standards und meldet Befunde mit **rc
+  3**. Der
+
+  Datensatz `review/render.json` wird dabei **trotzdem** geschrieben, und `gate_design_sighted`
+  liest
+
+  genau ihn — der Haken fragt „wurde dieser Entwurf gerendert", nicht „ist er in Ordnung".
+  Eine Rolle,
+
+  die den Rückgabewert ignoriert, präsentiert also einen Entwurf mit Befunden, ohne
+  dass irgendetwas
+
+  verweigert.'
+severity: medium
+hole_number: H138
+source: docs/holes/H138.md
+limits: 'die Konformitätsbefunde von `kit_design_render.py` verweigern nichts: der
+  Renderer meldet sie mit **rc 3** und schreibt `review/render.json` trotzdem, und
+  `gate_design_sighted` liest genau diesen Datensatz — der Haken fragt „wurde gerendert“,
+  nicht „ist er in Ordnung“. Gemessen: Entwurf mit Kontrast 1,92:1 → Renderer rc 3,
+  Haken **rc 0**. Begrenzt durch: Rückgabewert + gedruckter Befund, die drei Rückgabewerte
+  einzeln in der `product-designer`-SKILL-Zeile, und die ENFORCEMENT-Zeile, die das
+  Nicht-Urteil ausdrücklich sagt. Kein Gate, weil `DEC-0056` (b) für diese Fehlklasse
+  keinen gemessenen Fall kennt. Der Nutzer hat die Ausnahme am 2026-09-03 erteilt
+  (`DEC-0069`) („melden reicht vorerst“); sie FÄLLT beim ersten echten Fall, in dem
+  ein Entwurf MIT Befunden trotzdem gebaut oder eingefroren wurde'
+regression_tests:
+- tools/test_design_conformance.py::test_a_record_is_written_even_when_the_checks_find_something_and_the_sighting_gate_still_opens
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:20'
+closed_at: '2026-09-05T20:27:20'

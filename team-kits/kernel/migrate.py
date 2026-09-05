@@ -1256,7 +1256,16 @@ def item_size(fields: dict, v2_type: str = RECEIPT_TYPE):
     placeholders being one byte short; see `_too_large` for what they are now.
     """
     shape = dict(fields)
-    shape.update({"id": format_id(v2_type, 9999), "status": widest_status(), "revision": 1,
+    # A LENGTH, NOT A STATUS. What this needs is a placeholder that can never be shorter than the
+    # real value; what it must NOT be is a status word, because then this line reads as a direct
+    # status write. The reader that bounds every such write against the statuses a user approval
+    # commits lives in `tools/test_approvals_dispatch.py` and is named
+    # `test_no_direct_status_write_can_produce_a_status_an_approval_commits`; the day
+    # `widest_status()` first returned an approval-bound word (`ACCEPTED_EXCEPTION`, FR-0087) this
+    # measurement was reported as a writer of it. Nothing here is stored: the body is dumped to be
+    # counted and thrown away.
+    shape.update({"id": format_id(v2_type, 9999), "status": "x" * len(widest_status()),
+                  "revision": 1,
                   "approval_ref": None, "created": "0000-00-00T00:00:00"})
     dumped = yaml.safe_dump(shape, sort_keys=False, allow_unicode=True)
     return len(dumped.encode("utf-8")), dumped.count("\n")

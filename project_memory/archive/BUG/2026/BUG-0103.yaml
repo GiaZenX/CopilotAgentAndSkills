@@ -1,0 +1,31 @@
+id: BUG-0103
+title: Ein Interpreter führt Code aus, den kein Gate lesen kann (neu, Preis des Fixes
+  zu F2)
+related_pr: PR-0003
+observed: '**Mechanismus:** Gate 1s Shell-Hälfte erkennt einen Schreibzugriff an drei
+  Positionen einer
+
+  Befehlszeile. Eine Ausnahme war unvermeidbar, sonst hätte das Gate die dokumentierten
+  Befehle dieses
+
+  Repos verweigert (`PYTHONPATH=team-kits python -B -m kernel.cli …`,
+
+  `python -B -m pytest .claude/hooks/test_gates.py`, `python tools/bump_kit_version.py`):
+  die Operanden
+
+  eines **Interpreters** gelten als Programm, nicht als Ziel. Der Inline-Text (`python
+  -c …`) ist von
+
+  der Ausnahme ausgenommen und wird verweigert.'
+severity: medium
+hole_number: H11
+source: docs/holes/H11.md
+limits: '**nichts Technisches.** Gemessen 2026-08-05: `.claude/settings.json` `permissions`
+  trägt genau `deny: ["Agent(harness-lead)"]` und begrenzt die Shell nicht. Die Begrenzung
+  ist **sozial** — Rollentrennung und Item. Eine wirksame Berechtigungshaltung wäre
+  der Schnitt, ist aber eine Nutzerentscheidung und heute nicht gebaut'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:14'
+closed_at: '2026-09-05T20:22:14'

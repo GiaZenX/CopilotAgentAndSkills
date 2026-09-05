@@ -1,0 +1,32 @@
+id: BUG-0112
+title: Wo das Gate einer Bewegung nicht folgen kann, bleibt es stehen (neu, TSK-0011)
+related_pr: PR-0003
+observed: '**Mechanismus:** die Basis des Gates bewegt sich nur dorthin, wo eine Shell
+  wirklich landet, und
+
+  sie tut es nur, wenn die Shell den Wechsel selbst ausführt. Was der Leser nicht
+  auflösen kann (eine
+
+  Variable, ein Wort, das erst zur Laufzeit entsteht), was er nicht als Befehl der
+  Shell selbst
+
+  belegen kann (ein Verzeichnisverb, das die Kits als anderes Verb melden — hinter
+  `if`, hinter `do`,
+
+  hinter einer Array-Zuweisung) und was er nicht als Operandenliste verbuchen kann
+  (H29) bewegt sie
+
+  **nicht**. Ist die Shell in Wahrheit doch gegangen, urteilt das Gate an der falschen
+  Stelle.'
+severity: low
+hole_number: H20
+source: docs/holes/H20.md
+limits: —
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+- test_gate1_does_not_read_a_bare_verb_as_a_file_in_the_working_directory
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:35'
+closed_at: '2026-09-05T20:22:35'

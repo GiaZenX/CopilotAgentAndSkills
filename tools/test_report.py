@@ -15,7 +15,12 @@ TEAM_KITS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file_
 REPO_ROOT = os.path.dirname(TEAM_KITS)
 sys.path.insert(0, TEAM_KITS)
 
-from conftest import drive_task_to, mint_via_hook, walk_to_status  # noqa: E402 -- ONE mint helper for the suite
+from conftest import (  # noqa: E402 -- ONE mint helper for the suite
+    drive_task_to,
+    mint_via_hook,
+    satisfy_the_architect_step,
+    walk_to_status,
+)
 from kernel import approvals, cli, dispatch, report, staging  # noqa: E402
 from kernel.hashing import hook_bundle_hash  # noqa: E402 -- THE definition of the bundle hash
 from kernel import state as kernel_state  # noqa: E402 -- the module, for its naming rule
@@ -623,6 +628,7 @@ def test_doctor_reports_lock_leases_and_findings(state):
         "expected_outputs": [], "dependencies": [],
     })
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]), state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"], ttl=0.01)
     expires_at = float(lease["created_epoch"]) + float(lease["ttl"])
     while time.time() <= expires_at:
@@ -1398,6 +1404,76 @@ def test_a_pass_from_a_partial_run_is_not_merge_evidence_and_a_fail_still_is(sta
     evd(state, kind="review", result="pass", related=(root["id"],))
     assert report.qa_verdicts(state, root["id"])["review"]["result"] == "pass", (
         "an Evidence that declares no scope stopped counting -- that is a contract change")
+
+
+def test_a_selection_that_passes_confirms_the_item_it_names_and_ships_nothing(state):
+    """BUG-0090 / DEC-0071: ONE derivation, two questions -- and both ends of the split.
+
+    The delivery question is unchanged (the sibling test above is the tripwire for that half); this
+    measures the OTHER question, the one `state._assert_confirmed` asks. A passing Evidence that
+    declares `run_scope: selection` and names the item answers "is the defect this item names gone"
+    and does NOT answer "does this body of work ship".
+
+    AND THE COVERAGE RULE IS UNTOUCHED, which is what keeps the confirmation question from being a
+    hole: the same record does not confirm an item it never named.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    other = state.capture("PR", dict(PR_FIELDS, title="Another goal"))
+    partial = dict(run_command="python -m pytest tools/test_x.py -k the_defect",
+                   run_scope="selection")
+    evd(state, kind="test", result="pass", related=(root["id"],), **partial)
+
+    assert "test" not in report.qa_verdicts(state, root["id"]), (
+        "a passing selection opened the merge -- the delivery reading moved")
+    confirming = report.qa_verdicts(state, root["id"], report.CONFIRMATION_QUESTION)
+    assert confirming["test"]["result"] == "pass", (
+        "a passing selection that names the item did not confirm it")
+    assert report.qa_verdicts(state, other["id"], report.CONFIRMATION_QUESTION) == {}, (
+        "the confirmation question stopped asking whether the evidence covers the item")
+
+    with pytest.raises(ValueError, match="unknown evidence question"):
+        report.qa_verdicts(state, root["id"], "whatever")
+
+
+def test_the_inbox_counter_sees_an_archived_work_order_and_the_validator_only_a_live_one(state):
+    """BUG-0091 / DEC-0066: the relapse detector, and the reason it has two readers of one rule.
+
+    MEASURED ON THIS REPO before it was built: 21 of 120 work orders hang from an `FR`, and every
+    one of them is ARCHIVED -- so a reader of the active items alone answers "none" about exactly
+    the practice DEC-0066 was written against. `report.tasks_under_an_inbox_item` therefore counts
+    over the whole store, while `validate_state` -- which runs on the merge and push line -- judges
+    only what is live. Both read `_inbox_origins_of`, so they cannot disagree about what an inbox
+    origin is.
+
+    THE ARCHIVED ORDER STAYS VALID, which is the other end: DEC-0066 (4) keeps the history, so the
+    validator must NOT report it.
+    """
+    root = state.capture("PR", dict(PR_FIELDS))
+    walk_to_status(state, root, "APPROVED")
+    wish = state.capture("FR", {"title": "a wish", "request_text": "please"})
+
+    # a work order under the wish -- captured directly, the way the 21 historical ones were, since
+    # `dispatch.create_task` refuses this shape now
+    stale = make_task(state, wish["id"], wish["id"])
+    healthy = make_task(state, root["id"], root["id"])
+
+    counted = report.tasks_under_an_inbox_item(state)
+    assert counted == {stale["id"]: wish["id"]}, counted
+    assert healthy["id"] not in counted, "a task under a goal was counted as inbox work"
+
+    findings = [f for f in report.validate_state(state) if f["item"] == stale["id"]
+                and "inbox item" in f["message"]]
+    assert len(findings) == 1 and findings[0]["severity"] == "warning", findings
+    assert "CONVERTED" in findings[0]["remedy"] or "resulting_item" in findings[0]["remedy"], (
+        "the remedy does not name the triage route: %r" % findings[0]["remedy"])
+
+    state.transition(stale["id"], "CANCELLED")
+    state.archive(stale["id"])
+    assert report.tasks_under_an_inbox_item(state) == {stale["id"]: wish["id"]}, (
+        "the counter lost the archived order -- which is where all 21 of this repo's are")
+    assert not [f for f in report.validate_state(state) if f["item"] == stale["id"]
+                and "inbox item" in f["message"]], (
+        "the validator reports an ARCHIVED order, and DEC-0066 (4) keeps those valid")
 
 
 def test_qa_verdicts_ignores_audit_evidence_and_other_items(state):

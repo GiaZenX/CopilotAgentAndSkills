@@ -1,0 +1,52 @@
+id: BUG-0247
+title: Ein positionaler GLOB innerhalb einer erklaerten Wurzel verengte nichts (neu,
+  TSK-0126 Merge, Pruefrunde 1 B2)
+related_pr: PR-0003
+observed: '**Mechanismus.** `gate_test_scope` platzierte ein positionales Wort als
+  EINEN Pfad. Lag es
+
+  innerhalb der erklaerten Wurzel, las der Leser das als Verengung — der Satz im Kopf
+  der Datei sagt
+
+  das auch so. Ein Glob verengt aber nichts: die Shell ersetzt ihn durch alles, was
+  er trifft, und
+
+  `tools/test_*.py` trifft jede Suitendatei der Flaeche.'
+severity: low
+hole_number: H165
+source: docs/holes/H165.md
+limits: 'ein positionaler GLOB innerhalb einer erklärten Wurzel verengte nichts und
+  wurde als Auswahl gelesen: `python -m pytest tools/test_*.py -q` war **rc 0** bei
+  40 passenden Dateien und einer mit 3465 s erklärten Fläche; dieselbe Klasse als
+  KLAMMER-Expansion (`tools/{test_*,conftest}.py`, mit der echten Shell und einem
+  argv-schreibenden `python`-Shim gemessen: 41 übergebene `.py`-Pfade) war nach dem
+  ersten Fix immer noch **rc 0**, weil `glob.has_magic` `*?[` kennt und `{` nicht.
+  GESCHLOSSEN: der Leser führt beide Expansionen aus, die eine Shell auf ein positionales
+  Pfadwort anwendet — erst Klammer (`_brace_expanded`, rekursiv, mit den Top-Level-Kommas
+  als Trenner), dann Pfadname — und jede Schreibweise bekommt die Frage, die zu ihr
+  gehört: eine ohne Glob-Zeichen den gewöhnlichen Leser, eine mit den Vergleich gegen
+  die `members` der Erklärung; das WORT deckt, wenn irgendeine Schreibweise deckt.
+  Gemessen als Prozess nach dem Fix: `tools/test_*.py`, `tools/test_[a-z]*.py`, `tools/*`,
+  `tools/{test_*,conftest}.py` und `{tools,docs}` **rc 2**; `tools/test_x*.py`, `tools/test_re*.py`,
+  `tools/test_{board,state}.py` und ein nicht deckendes Nest `tools/{test_{a,b}*,conftest}.py`
+  **rc 0**; mit `DELIVERY_RUN=` **rc 0**. **ZWEI ÜBER-VERWEIGERUNGEN, benannt statt
+  behauptet:** (1) eine Klammergruppe ohne Top-Level-Komma — ein Bereich wie `{1..9}`
+  — kann dieser Leser nicht ausrechnen und ist damit keine Auswahl: `tools/test_{1..9}.py`
+  ist **rc 2** mit eigenem Satz, obwohl die Shell daraus neun Namen macht, von denen
+  keiner existiert; (2) ein QUOTIERTER Glob ist **rc 2**, obwohl die Shell dem Läufer
+  EIN literales Wort übergibt und pytest nicht globbt — gemessen mit dem Shim: 4 Wörter,
+  1 Pfad, die Zeile fährt nichts. Der Leser sieht die Quotierung nicht, weil `_harness`
+  sie vor ihm entfernt; die Richtung ist die sichere. Dazu unverändert: eine Fläche
+  ohne `members` bekommt für jeden Glob fail-closed mit eigenem Satz, und die Kits
+  liefern gar keine Erklärung aus. Gehalten von `.claude/hooks/test_gates.py::test_gate5_reads_the_brace_expansion_a_shell_would_perform`,
+  `::test_gate5_reads_a_positional_glob_as_what_the_shell_makes_of_it`, `::test_gate5_says_so_when_a_surface_declares_no_members_for_a_glob`
+  und `::test_the_declared_members_are_the_files_the_runner_really_collects`; rot
+  ohne den Fix in einer Kopie ausserhalb des Repos: Zweig entfernt 3 failed, Klammerhälfte
+  entfernt 1 failed, `members` entfernt 3 failed, `members` verengt 1 failed'
+regression_tests:
+- .claude/hooks/test_gates.py::test_the_declared_members_are_the_files_the_runner_really_collects
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:28:35'
+closed_at: '2026-09-05T20:28:35'

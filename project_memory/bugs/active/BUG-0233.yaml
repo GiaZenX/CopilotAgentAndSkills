@@ -1,0 +1,45 @@
+id: BUG-0233
+title: Die Erklärung, auf der Gate 5 entscheidet, liegt ausserhalb seines eigenen
+  Schutzbereichs (neu, TSK-0121, PR-0004 AC-1)
+related_pr: PR-0003
+observed: '**Mechanismus.** `gate_test_scope` (Gate 5 dieses Repos) entscheidet auf
+  `tools/test_surface.json`:
+
+  welche Flächen erklärt sind, ab welcher gemessenen Dauer sie überhaupt beurteilt
+  werden, und
+
+  welche Optionen die Zeile verengen. `_harness.decision_inputs` leitet den geschützten
+  Bereich von
+
+  Gate 1 aus den MODULEN ab, die ein Gate beim Entscheiden geladen hat — eine JSON-Datei
+  ist kein
+
+  Modul. `CLAUDE.md` sagt dieselbe Sache schon allgemein („`tools/` ist damit nicht
+  mehr pauschal
+
+  frei — geschützt ist die Datei, aus der abgeleitet wird, nicht das Verzeichnis.
+  Ein *neues* File
+
+  neben ihr bleibt schreibbar"); dies ist der erste Fall, in dem eine solche Datei
+  eine
+
+  Gate-Entscheidung trägt.'
+severity: medium
+hole_number: H151
+source: docs/holes/H151.md
+limits: 'die Erklärung, auf der Gate 5 entscheidet (`tools/test_surface.json`), liegt
+  ausserhalb seines eigenen Schutzbereichs: `_harness.decision_inputs` leitet ihn
+  aus den geladenen MODULEN ab, und eine JSON-Datei ist keines. Gemessen als Prozesse
+  gegen ein Stellvertreterprojekt: `judged_above_seconds` über die erklärte Dauer
+  gesetzt macht dieselbe Zeile von **rc 2** zu **rc 0**, und `gate_lead_write_scope`
+  lässt einen `Write` auf die Datei mit **rc 0** durch. Begrenzt durch: die Änderung
+  steht im Arbeitsbaum-Diff, über den Gate 3 urteilt; die Schwelle IST der Knopf,
+  den AC-4 verlangt; und `test_gates.py::test_every_test_file_of_this_repo_lies_under_a_declared_surface`
+  wird rot, sobald eine Wurzel keine Testdatei mehr deckt'
+regression_tests:
+- .claude/hooks/test_gates.py::test_gate5_charges_nothing_to_a_project_whose_suite_runs_in_seconds
+- test_gates.py::test_every_test_file_of_this_repo_lies_under_a_declared_surface
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:54'

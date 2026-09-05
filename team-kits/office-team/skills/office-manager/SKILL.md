@@ -118,6 +118,8 @@ Occasion: `BUG-0073`.
    files to read, and the scope it may write. Verify outputs against REALITY
    (the archive tree against `filing_plan.yaml`, catalog entries, register entries) — never trust "done"
    strings. Parallelize only independent work and await every required result before advancing.
+   **Before this order goes out it gets ONE reading**, and it is the section below —
+   "Before the order goes out: a smaller plan, and the five ways a line goes wrong".
    On Claude set **`run_in_background: false`** unless you deliberately parallelize — a background
    specialist's messages arrive in THIS session while it works, so its English work narration can land
    in the stream the user reads (measured on the SDK stream; what a terminal client collapses of it is
@@ -157,6 +159,64 @@ Occasion: `BUG-0073`.
 **Outbound boundary:** Claude can deny `mcp__*`; Codex has no exact project-local wildcard deny. Refuse
 outbound calls, avoid every configured known mutation tool, and rely on external server/tool or admin
 policy when stronger enforcement is required.
+
+## Before the order goes out: a smaller plan, and the five ways a line goes wrong
+
+A work order is an artifact with the same failure rate as the work it orders, and it has had exactly
+one reader: whoever wrote it. So the DRAFT gets two readings before the spawn, both against the draft
+and never against the finished package. Nothing refuses an order that skipped them: no gate reads the
+WORDING of a line — `gate_dispatch` validates the dispatch header against the lease, and free prompt
+prose is evidence of nothing — so this is a duty of yours, like the cut in the delegate step.
+
+**(1) A SMALLER plan, put beside the first one.** The trigger is mechanical and not a mood: the draft
+names in `expected_outputs` a building block that NO approved goal of yours names. That is the shape
+a real round produced — a write route with no contract behind it reached the package, and the
+reviewer rejected the ORDER as too coarse rather than the work. When it fires, write the smaller plan
+out: against the same acceptance criteria, with what it does NOT cover. Then you compare two plans
+instead of receiving an opinion. Three conditions keep this from becoming theatre:
+- It presents a PLAN, never a verdict. Anyone asked "is this too big?" finds something every time —
+  the same defect class as a test that cannot fail.
+- "The plan is already minimal" is an allowed and expected answer, with its reason. A critic that
+  never agrees is worth nothing.
+- It argues against the CONTRACT — the acceptance criteria — never against taste. The question is:
+  what is the smallest change that satisfies these criteria, and why is the planned one larger? Taste
+  is the user's and is asked of the user, and this stays ONE reading rather than a role of its own
+  for the reason `DEC-0056` records: no scaffold larger than the house.
+
+RECORD THE CHOICE as a Decision item (`DEC`) — which plan went out, what the other one would not have
+covered, why. Otherwise the same question is asked again next round with no memory of its answer.
+
+**(2) The five ways a line goes wrong.** Read every line of the draft against these. Each was found
+by a reviewer and none by the author, and each carries the case that produced it:
+1. **An enumeration instead of a property.** Can you write the line without naming a verb, a tool or
+   a spelling? If not it is a symptom, not an expected output: it forces the specialist to enumerate,
+   and everything outside the list drops out of the standard — for the specialist AND for the
+   reviewer. The case: the one line of an order that had to list four verb names was also the one the
+   specialist refuted by measurement (`DEC-0010`).
+2. **A solution instead of a requirement.** Does the line name a data structure or a case count
+   ("three states", "a variable that tracks X")? Then it prescribes HOW and stops asking WHAT. The
+   case: a line prescribed a three-state machine, the specialist built exactly that, and because the
+   prescription never used the word "succeeds" the built code did not either — six command lines went
+   through afterwards, four of them opened by that very fix (`DEC-0010`).
+3. **A parenthesis with examples.** Examples appended to a property are an enumeration in better
+   camouflage: the parenthesis becomes the checklist, and what is not in it nobody checks — neither
+   the specialist nor the reviewer, because both read the same standard. The case: four examples in a
+   parenthesis, four built readers, a fifth position in the document that no reader sees, and a
+   comment above it calling that case impossible by construction (`DEC-0011`).
+4. **Mutation coverage without class coverage.** A line demanding that every branch can be turned red
+   measures whether the built thing is NECESSARY, never whether it is ENOUGH. It needs its other
+   half: the red tests cover the PROPERTY, not the list of lines somebody measured. The case: every
+   branch fell under mutation, the suite was green, and seven lines still went through the gap
+   between the property and the built solution (`DEC-0012`).
+5. **Quantified over the wrong thing.** "Every sentence claims only what a test runs" quantifies over
+   SENTENCES where it means ASSURANCES: an assurance ("X cannot happen") needs a test, a LIMIT ("Y is
+   open") needs a place to be written down. Read literally, that line forbids every honest limit —
+   which another line of the same order demanded (`DEC-0012`).
+
+A line that, read literally, contradicts another line of the SAME order is wrong and not open to
+interpretation; read every line against every other one before you send it. And when a specialist
+comes back and refutes a line with a measurement, the line was wrong — that is the outcome this
+section buys earlier and cheaper, never an argument to win.
 
 ## Wishes that arrive, runs that go wrong
 WHICH of `FR` / `CR` / `BUG` something is, `./AGENTS.md` §1a decides — never the directory that looks

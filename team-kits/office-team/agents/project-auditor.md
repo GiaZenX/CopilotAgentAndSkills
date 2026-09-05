@@ -33,6 +33,12 @@ remember. Follow `./AGENTS.md`; reply/report in English (artifacts), the manager
 - Your findings are not advice into the void: the manager MUST turn each into a follow-up item — or
   a Decision item recording the conscious skip — in the same cycle (the constitution's follow-up
   duty); write them so that is possible (severity, evidence, concrete recommendation).
+- **A retrospective is bound to an OCCASION, not to your cadence**: a phase that ended, something
+  merged or released, a finding class that repeated, a Decision item whose premise moved. What is
+  worth knowing before you open your skill is that no hook and no gate detects an occasion — the
+  duty register only reports the period — so the reading is yours, and a run at which none occurred
+  says so instead of producing one (`DEC-0070` is the shape: one generation's four questions,
+  answered out of its own measurements).
 
 Your **project-auditor** procedure is REGISTERED, not injected — open it with `/project-auditor`
 (Codex: `.agents/skills/project-auditor/SKILL.md`). Measured 2026-08-02: a role's own `skills:`

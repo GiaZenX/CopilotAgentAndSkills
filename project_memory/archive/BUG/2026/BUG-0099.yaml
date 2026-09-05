@@ -1,0 +1,24 @@
+id: BUG-0099
+title: '`carries_work` verlangt keinen erreichbaren Endzustand — OFFEN'
+related_pr: PR-0003
+observed: '**Mechanismus:** Gate 4 verlangt, dass ein Eintrag ein Item nennt, das
+  Arbeit tragen **kann** (hat
+
+  einen Automaten) und **nicht terminal** ist. `SR` hat die Kette `PROPOSED → ACCEPTED`
+  und als
+
+  einzigen Endzustand `SUPERSEDED`. Das natürliche Lebensende eines `SR` ist damit
+  `ACCEPTED` — und
+
+  das ist kein Endzustand, also trägt ein angenommenes `SR` für Gate 4 für immer „offene
+  Arbeit".'
+severity: medium
+hole_number: H7
+source: docs/holes/H7.md
+limits: Gate 4 prüft Form, nicht Deckung; die Reparaturstelle liegt im Kernel (`AUTOMATA`
+  ohne `done_states`)
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:04'
+closed_at: '2026-09-05T20:22:04'

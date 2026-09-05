@@ -1,0 +1,22 @@
+id: BUG-0105
+title: Der Produzent ist als DATEI geschützt, nicht als Verzeichnis
+related_pr: PR-0003
+observed: '**Mechanismus:** `_harness.decision_inputs` schützt genau die Dateien,
+  aus denen die Antwort des
+
+  Gates **berechnet** wurde (gemessen über `sys.modules`, nicht getippt). Ein *neues*
+  File neben
+
+  `tools/bump_kit_version.py` fällt nicht darunter, ebenso wenig ein Modul, das der
+  Stempler nur in
+
+  einem Zweig lazy importiert, den dieses Gate nie betritt.'
+severity: low
+hole_number: H13
+source: docs/holes/H13.md
+limits: jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt
+  Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:18'

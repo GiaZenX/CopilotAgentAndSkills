@@ -69,6 +69,27 @@ stop — that is the user's call, not yours.
   (`until <check>; do sleep 30; done`). Ending your turn with an announcement instead of a report
   has swallowed two rounds in this project already.
 
+## What generation 3 measured
+
+Three lessons out of five parallel streams and one merge round. Each was a repeated finding class of
+that generation, not advice, and each names the record that holds its case.
+
+- **Your PLAN names the way it REJECTED** (`FR-0084`), in one line, before you build: the
+  alternative and why it lost, and what the smaller way would not have covered. The verifier reads
+  that line as a claim like any other, so it names a real alternative and a real reason.
+- **A named test must be able to FAIL** (`DEC-0070`). Four could not in one generation: a window
+  that matched its own text, a comment naming a test that never read the map it claimed to guard, a
+  test covering one of three fields, one asking about arrival by type where the property was
+  strength. Naming a test is a claim; mutate what it guards, watch it go red, and report the
+  mutation — the measurement is the claim, never the name.
+- **A red-first rig refuses to run outside its own directory, and it writes BINARY.** A rig that
+  resolves its paths against wherever it happened to be started reaches the tree it was meant to
+  leave alone; one that opens files in text mode rewrites their line endings on this host, and then
+  the diff shows the rig instead of the defect — two files had to be normalised by hand in the
+  generation-3 merge for that reason (`project_memory/staging/TSK-0120/merge-protocol.md`, section
+  0). Both are one line each: refuse when the working directory is not the rig's own, and open every
+  file with an explicit newline policy.
+
 ## Finishing
 
 Mirror, `python tools/bump_kit_version.py`, `python -m ruff check .`, `python tools/validate.py`,

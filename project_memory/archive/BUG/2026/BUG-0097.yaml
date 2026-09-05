@@ -1,0 +1,16 @@
+id: BUG-0097
+title: '`settings.local.json` war ungeschützt — GESCHLOSSEN'
+related_pr: PR-0003
+observed: '**Mechanismus:** der Vertrag zählt `.claude/hooks/` und `.claude/settings.json`
+  auf. Der Provider
+
+  liest aber **das Verzeichnis** — Berechtigungs-Overlay und Rollendefinitionen eingeschlossen.'
+severity: low
+hole_number: H5
+source: docs/holes/H5.md
+limits: —
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:21:59'
+closed_at: '2026-09-05T20:21:59'

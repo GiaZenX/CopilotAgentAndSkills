@@ -1,0 +1,31 @@
+id: BUG-0120
+title: Ein Verzeichnis, das existiert und nicht betretbar ist — GESCHLOSSEN (TSK-0013,
+  korrigiert TSK-0015)
+related_pr: PR-0003
+observed: '**Mechanismus:** die Basis folgte einem `cd`, sobald das Ziel ein existierendes
+  Verzeichnis war.
+
+  Ein Verzeichnis, dessen Betreten verweigert wird, existiert aber — die Shell bleibt
+  trotzdem
+
+  stehen. **Betreten und Auflisten sind zwei Rechte**, und jede Frage, die nicht das
+  Betreten selbst
+
+  ist, beantwortet das andere: mit entzogenem Durchsuchrecht (`icacls /deny <user>:(X)`)
+  antworten
+
+  `os.path.isdir`, `os.stat`, `os.stat` des `.` darin, `os.access(X_OK)` **und** `os.scandir`
+  mit ja,
+
+  während `os.chdir` und `bash` `Permission denied` sagen.'
+severity: low
+hole_number: H28
+source: docs/holes/H28.md
+limits: —
+regression_tests:
+- test_gate1_follows_a_move_a_process_can_make_and_no_other
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:54'
+closed_at: '2026-09-05T20:22:54'

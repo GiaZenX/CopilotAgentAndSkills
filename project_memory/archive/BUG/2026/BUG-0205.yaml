@@ -1,0 +1,54 @@
+id: BUG-0205
+title: Der Leser der Löcherliste kennt keinen Code-Zaun; jedes Zitat hinter einem
+  Zaun ist ungeprüft (neu, TSK-0111)
+related_pr: PR-0003
+observed: '**Mechanismus.** `test_gates.test_every_test_a_hole_names_is_one_that_exists`
+  sammelt die
+
+  Zitate eines Eintrags, indem es den ganzen Rumpf mit `re.findall` nach Paaren von
+  Backticks
+
+  absucht, über Zeilengrenzen hinweg (`re.DOTALL`). Ein Code-Zaun ist für Markdown
+  ein Block, für
+
+  diese Suche aber **drei Begrenzer**: der erste öffnet, der zweite schließt eine
+  leere Spanne, der
+
+  dritte öffnet erneut — und schließt erst am nächsten Backtick, also am ersten Zitat
+  NACH dem Zaun.
+
+  Der Rumpf des Blocks wird damit selbst zu einer Spanne, und ab dort ist die Paarung
+  um eins
+
+  verschoben: was der Autor als Zitat geschrieben hat, liest der Test als Zwischentext,
+  und was
+
+  Zwischentext ist, liest er als Zitat. Beide Zaun-Hälften tun das — die öffnende
+  wie die
+
+  schließende —, weshalb die Verschiebung nach dem ersten Zaun bestehen bleibt und
+  nicht am zweiten
+
+  zurückspringt. Ein nackter, nicht auflösender Testname hinter einem Zaun wird deshalb
+  **nicht**
+
+  gemeldet: falsches Grün.'
+severity: low
+hole_number: H121
+source: docs/holes/H121.md
+limits: 'der Leser der Löcherliste (`test_gates._hole_entries` plus die Backtick-Suche
+  in `test_gates.test_every_test_a_hole_names_is_one_that_exists`) kannte keinen Code-Zaun:
+  drei Backticks waren ihm drei Begrenzer, also paarte alles hinter dem ersten Zaun
+  eines Eintrags gegen den falschen — jedes Zitat dort war UNGEPRÜFT, ein falsches
+  Grün. `_prose_of` schneidet die Zäune jetzt vor der Paarung heraus, `_tests_by_module`
+  löst einen Namen auch gegen `tools/test_*.py` auf (der Nachbarbefund aus TSK-0109),
+  und H46 trägt sein Präfix. Rot ohne den Fix: `test_gates.test_every_test_a_hole_names_is_one_that_exists`
+  mit einem Geist-Namen hinter einem Zaun (vorher 1 passed, nachher 1 failed)'
+regression_tests:
+- test_gates.test_every_test_a_hole_names_is_one_that_exists
+- test_reference_skills.test_the_codex_mirror_is_generated_per_skill_directory
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:26:35'
+closed_at: '2026-09-05T20:26:35'

@@ -1,0 +1,52 @@
+id: DEC-0076
+title: 'Modell-Leitern entschieden: DREI Sprossen je Anbieter -- Claude fable / opus
+  / sonnet, Codex astra / sol / terra (kein Luna, keine haiku-Sprosse) -- Aufwand
+  standardmaessig high, grosse Aufgaben xhigh; gebaut von PR-0010'
+context: 'USER DECISION 2026-09-05 after the first codex radar report (radar/2026-09-05-codex.md):
+  Astra is GA (gpt-6-astra, 2026-09-03, $10/$50/$1) above Sol; the vendor ladder has
+  four rungs with Luna still active. The user: ''Ne luna garnicht. wir nutzen ja auch
+  nur fable opus und sonnet mit verschiedenen efforts. Und ich wuerde den effort auf
+  hoch setzen standardmaessig und fuer grosse tasks auf extra hoch ansetzen.'' MEASURED
+  state of team-kits/model_tiers.yaml: aliases lead=opus / worker=sonnet / light=haiku;
+  tiers.claude lead opus / worker sonnet / light haiku; tiers.codex lead gpt-5.6-sol
+  / worker gpt-5.6-terra / light gpt-5.6-luna; fable accepted as a pin above lead
+  without an alias; price anchors of 2026-07 with a dead watch date. Role pins in
+  the three kits: project-manager (dev, research) = fable; architects / methodologist
+  / reviewer / office-manager / office-developer = lead; every other role = worker;
+  NO role pins haiku or light (the light rung is unused); effort pins: 25 roles high,
+  2 low (the office filing floor of DEC-0047); this repo''s own implementer/verifier:
+  opus, high. DEC-0034 drafted the escalation ladder T0 sonnet-high / T1 opus-high
+  / T2 opus-xhigh / T3 fable-high (mechanic still unbuilt); DEC-0047 made its endpoints
+  per kit (dev/research climb to fable; office tops at opus-high with a sonnet-LOW
+  reading floor).'
+decision: '(1) Every provider ladder has exactly THREE rungs, named by the reference
+  vocabulary: top = fable, lead = opus, worker = sonnet; Codex translates them to
+  astra / sol / terra (measured ids from the codex radar; the round re-measures before
+  it writes). Luna and haiku are not rungs; the `light` alias and the `light` tier
+  rows leave the table, and the generator refuses a `light`/`haiku` pin with a sentence
+  naming this decision. (2) Effort: the default of every role is `high`; a task the
+  kernel classes as LARGE runs at `xhigh` on its rung -- what ''large'' is, is derived
+  from state the kernel already has (the goal''s `class`: large) and NOT from a role
+  name or a hand flag; DEC-0034''s T2 rung (opus-xhigh) is this rule made concrete;
+  the office filing floor (sonnet-LOW, DEC-0047) stays as an effort exception with
+  its measured reason. (3) The Codex effort ceiling (`max` vs `ultra`, vendor docs
+  contradict) is measured against the CLI in the round before any note claims it.
+  (4) Built by PR-0010 (G5-2): model_tiers.yaml, the aliases, the generator''s pin
+  check, the .codex overlay, the FR-0047 pin tests, the price anchors (BUG-0092 both
+  providers), the DEC-0034 / DEC-0047 references updated to name this decision; the
+  escalation MECHANIC (a dispatcher picking rung and effort from the state) stays
+  DEC-0034''s open item unless PR-0010''s DEC-first design proposal shows it is one
+  predicate away. (5) Re-tiering reaches projects on the next restamp as a user-approved
+  proposal, never an automatic bump (model_tiers.yaml header rule kept).'
+consequences: 'Fewer moving parts: three rungs, one effort default, one derivation
+  for xhigh. Cost: every project that pinned `light` (none today in the shipped kits)
+  would be refused at generation with a sentence; office keeps its low-effort reading
+  floor. Rejected: keeping Luna as a fourth rung (nothing in the kits uses a fourth);
+  a per-role xhigh list (an enumeration where the goal class already says it).'
+source: user messages 2026-09-05; radar/2026-09-05-codex.md; radar/decided.md codex-0905-astra-ga;
+  team-kits/model_tiers.yaml (read 2026-09-05); DEC-0034; DEC-0047; FR-0047; FR-0088;
+  PR-0010
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-05T10:53:05'

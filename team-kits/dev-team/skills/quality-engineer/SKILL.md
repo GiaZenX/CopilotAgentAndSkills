@@ -35,6 +35,9 @@ Two things the gates depend on:
   re-read. Write the raw output to that path FIRST, then record the Evidence naming it.
 The NEWEST Evidence of a kind covering an item is that kind's current verdict, so a re-run supersedes your
 earlier one and a `fail` you record after a pass closes the merge gate again.
+- **A run over your whole test surface EXPLAINS itself**: add `--run-scope full --run-command "<the line you ran, verbatim>"`. The two are one sentence and the kernel refuses either half alone — a scope without a command is a claim with no evidence, a
+  command without a scope is a record the merge cannot read. This is the record `gate_test_scope`
+  reads when it decides whether your item has already had its one full run.
 - **The merge waits for ALL of them.** `gate_git` opens a merge of the PR only when every delivery kind —
   `review`/`test`/`acceptance` — has a current verdict covering it and none of them is a `fail`. A kind you
   left unanswered closes the merge exactly as a `fail` does, and the refusal names which one is missing.
@@ -69,7 +72,11 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    component's `criticality` + `test_strategy` in the `SR` that owns it, and the test-approach/domain
    Decision item. Then pin the rules that must keep holding as
    `INV` items with their test reference. Those same items carry the tuning knobs: an `INV` with a `value` IS
-   a knob, found by its `scope` — `coverage_gate` (`{threshold: n}`, used by `scripts/quality.py`). An extra
+   a knob, found by its `scope` — `coverage_gate` (`{threshold: n}`, used by `scripts/quality.py`) and `test_surface`
+   (`{judged_above_seconds, surfaces: [{runner, root, seconds}], options_that_narrow}`, used by
+   `gate_test_scope`) — **declare `test_surface` as soon as a full run of this project costs
+   minutes**, because that declaration is the only thing that lets a hook tell your delivery run
+   from the whole-suite run nobody asked for. An extra
    SOURCE AREA needs no knob: an `INV` whose `scope` names a directory of the repo makes it one, and
    `gate_test_coverage` then demands tests for it. Capture these only to move off the defaults. The
    Architect picks which tools add value; YOU guarantee every component is actually covered.
@@ -87,6 +94,15 @@ earlier one and a `fail` you record after a pass closes the merge gate again.
    the background** (`run_in_background: true` on the shell call) and write your review/report sections
    while it runs — but NEVER edit code or tests during the run (that would invalidate the verdict), and
    collect the result before issuing it (a real gate sat blocked 45 of 45 minutes just watching tests).
+   **That ONE full run says on the LINE that it is the delivery run.** `gate_test_scope` refuses a
+   bare run over the whole declared test surface while the work is still going on, and its refusal
+   prints the line to use instead: `DELIVERY_RUN=<TSK-nnnn> <your test command>` (PowerShell:
+   `$env:DELIVERY_RUN="<TSK-nnnn>"; <your test command>`). Record exactly that line with
+   `--run-scope full --run-command`. It is allowed ONCE per item: a second whole-surface run is
+   refused unless the first one FAILED — findings are what send the work back into the tests, and
+   what runs then are the tests that READ the changed files, in full, not the whole surface again.
+   The gate judges nothing until the project declares its surface (step 2), so an undeclared
+   project is one where this discipline rests on you alone.
    **Flake protocol:** on a red→green suspicion NEVER re-run the full suite as "proof" — isolate the
    suspect test and run IT 10–30× in a loop + `--lf` for the rest, and record the repetition statistics in
    your test Evidence (a real re-QA burned 4 full ~10-minute e2e runs on 2 infra flakes; the exemplary

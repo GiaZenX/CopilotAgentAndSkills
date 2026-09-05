@@ -1,0 +1,35 @@
+id: BUG-0228
+title: Ein Blatt, dessen Regeln das Dokument nicht lesen darf, war für die Prüfung
+  ein leeres Blatt — GESCHLOSSEN bis auf die verbleibende Unentscheidbarkeit (neu,
+  Prüfung TSK-0119, FR-0077)
+related_pr: PR-0003
+observed: '**Mechanismus.** Die Sonde von `kit_design_render.py` läuft über `document.styleSheets`
+  und fragt
+
+  jedes Blatt nach `cssRules`. Unter `file://` wirft ein VERLINKTES Blatt dabei einen
+  `SecurityError`.
+
+  Der erste Bau hat diesen Wurf stumm verschluckt — das Blatt zählte damit als leer,
+  während seine
+
+  Regeln vollständig in Kraft waren. Das erzeugte zwei Fehler auf einmal, in beide
+  Richtungen.'
+severity: low
+hole_number: H145
+source: docs/holes/H145.md
+limits: 'ein verlinktes Blatt wirft unter `file://` beim Lesen von `cssRules`, und
+  der stumme `catch` machte daraus ein leeres Blatt: Farbliteral nur dort → **rc 0**,
+  `:focus-visible` nur dort → **rc 3** mit „declares no :focus-visible rule at all“
+  — eine Anschuldigung über eine wirkende Regel. Jetzt `UNDECIDED` mit dem Namen des
+  Blattes, und die Absage-Aussage wird unterdrückt. Offen bleibt: die Regeln des Blattes
+  sind nicht beurteilbar'
+regression_tests:
+- tools/test_design_conformance.py::test_a_stylesheet_this_document_may_not_read_is_undecided_and_never_an_accusation
+- tools/test_design_conformance.py::test_an_unreadable_sheet_does_not_buy_a_draft_out_of_the_focus_rule_finding
+- tools/test_design_conformance.py::test_an_imported_sheet_this_document_may_not_read_is_recorded_like_any_other
+- tools/test_design_conformance.py::test_an_imported_sheet_that_can_be_read_is_read
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:40'
+closed_at: '2026-09-05T20:27:40'

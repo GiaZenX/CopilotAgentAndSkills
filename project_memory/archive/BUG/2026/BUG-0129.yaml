@@ -1,0 +1,45 @@
+id: BUG-0129
+title: Die Messvorrichtung selbst schreibt den Baum, den sie misst (neu, TSK-0022)
+related_pr: PR-0003
+observed: '**Mechanismus:** jede Zeile beider Prüfmengen nennt ihr Ziel **relativ**
+
+  (`test_gates.RELATIVE_WRITE`), und was sie vom echten Arbeitsbaum fernhält, war
+  **allein** das
+
+  `cwd=` an einer Stelle (`_changes_the_protected_file`). Eine Tilde löst aber nicht
+  gegen `cwd` auf,
+
+  sondern gegen den **eigenen Zustand der Shell**, und zwei Teile davon kommen über
+  die **Umgebung**
+
+  herein: `~+` liest `PWD`, `~-` liest `OLDPWD`. Eine Suite, die im Baum gestartet
+  wird, den sie
+
+  misst — genau so, wie `CLAUDE.md` es vorschreibt —, reicht diesen Baum in `OLDPWD`
+  weiter, und `~-`
+
+  ist ein Subjekt der Prüfmenge. Damit schreibt eine Zeile mit **völlig richtigem**
+  `cwd` in den
+
+  echten Baum.'
+severity: low
+hole_number: H37
+source: docs/holes/H37.md
+limits: 'für den Mechanismus des Eintrags steht Code (`.claude/hooks/_sandbox.py`,
+  drei Tests). Die Reste liegen sämtlich in der **Messvorrichtung**, nicht im Schutz
+  der Gates, und jeder nennt seine Begrenzung: Rest 1 (nicht importiert = unbewacht),
+  Rest 2 (`_audit.record_event` der Kits schreibt `project_memory/.audit/` dieses
+  Repos — Reparaturstelle im Kit, Begrenzung **sozial**), Rest 3 (die Namensliste
+  bleibt eine Aufzählung; `BASH_ENV` gemessen offen), Rest 4 (`watch` sieht keine
+  Neuanlage), Rest 5 (`_inside` kanonisiert die Win32-Namensräume nicht — Gate 1 selbst
+  ist nicht betroffen)'
+regression_tests:
+- test_the_arbiter_cannot_be_pointed_out_of_its_sandbox_by_the_state_a_tilde_reads
+- test_the_measurement_sandbox_leaves_a_child_shell_no_directory_word_that_names_another_tree
+- test_the_measurement_watch_list_is_the_area_the_gate_protects
+- test_an_index_restore_refuses_a_target_outside_the_pinned_sandbox
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:16'
+closed_at: '2026-09-05T20:23:16'

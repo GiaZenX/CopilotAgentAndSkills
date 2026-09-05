@@ -1,0 +1,46 @@
+id: BUG-0219
+title: Die Vor-Dispatch-Prüfung hat in einem Kit-Projekt keinen ausführbaren Weg (neu,
+  TSK-0118, FR-0021)
+related_pr: PR-0003
+observed: '**Mechanismus.** `gate_write_scope` verweigert jede Befehlszeile, die die
+  Durchsetzungsschicht
+
+  nennt und in einer schreibfähigen Stufe steht — unabhängig davon, ob sie wirklich
+  schreibt. Ein
+
+  Skill wird vom Scaffold nach `.claude/skills/<name>/` kopiert und vom Codex-Generator
+  nach
+
+  `.agents/skills/<name>/` gespiegelt. Beide Pfade nennen die Schicht. Ein Prüfskript
+  IM Skill — der
+
+  einzige Ort, an dem es aus dem `allowed_scope` dieses Items überhaupt landen könnte
+  — ist damit
+
+  eine Zeile, die niemand ausführen darf.'
+severity: low
+hole_number: H136
+source: docs/holes/H136.md
+limits: 'die Vor-Dispatch-Prüfung hat in einem Kit-Projekt KEINEN ausführbaren Weg:
+  `gate_write_scope` verweigert jede schreibfähige Zeile, die die Durchsetzungsschicht
+  nennt, und ein Skill-Verzeichnis wird nach `.claude/skills/` installiert. Am ausgelieferten
+  Haken als Prozess über einem dev-team-Projekt gemessen (`_round-scratch/TSK-0118/probe_cmdline.py`,
+  `probe_cmdline2.py`): `python .claude/skills/parallel-streams/check_scope_overlap.py`
+  **rc 2**, dieselbe Zeile mit `.agents/skills/...` **rc 2**, `python scripts/kit_checks.py`
+  rc 0, `python scripts/harness.py check-scopes` rc 0. Der Kit-Text behauptet darum
+  nichts Falsches: seit der Generation-4-Naht (TSK-0126) sagen Verfassungsabsatz und
+  Skill, dass der Kernel die Überlappung verweigert, die er SEHEN kann — den Konflikt
+  mit einer LAUFENDEN Lease, die deklarierte Naht vorher abgezogen —, und dass zwei
+  Aufträge, die nie gleichzeitig laufen, weiter die Lesart vor dem Schnitt brauchen
+  (`tools/test_parallel_streams.py::test_the_second_lease_is_refused_when_the_scopes_overlap`,
+  `::test_a_seam_both_orders_declare_lets_the_second_lease_through`; der Rest ist
+  `H156`). Begrenzt durch: genau diese Ehrlichkeit — der Weg, der rc 0 bleibt, ist
+  ein Kernel-Verb hinter `scripts/harness.py`, und das ist die wörtliche Anforderung
+  an den Kernel-Strom'
+regression_tests:
+- tools/test_parallel_streams.py::test_the_second_lease_is_refused_when_the_scopes_overlap
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:14'
+closed_at: '2026-09-05T20:27:14'

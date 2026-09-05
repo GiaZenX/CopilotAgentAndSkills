@@ -1,0 +1,36 @@
+id: BUG-0220
+title: Ein Haken-Docstring nennt einen Takt, den keine Verfassung mehr nennt (neu,
+  TSK-0118, N2)
+related_pr: PR-0003
+observed: '**Mechanismus.** Der Takt des Auditors steht im Code: `_routine.audit_period_id`
+  beantwortet „ist
+
+  er in dieser Periode gelaufen?“ mit einer ISO-Wochen-Id, und der Rumpf der drei
+
+  `agents/project-auditor.md` sagt seit E3, der Takt stehe im Code und nicht ein zweites
+  Mal dort.
+
+  Der MODUL-Docstring derselben mitgelieferten Datei sagt daneben, jede Verfassung
+  reite die Rolle
+
+  auf einem wöchentlichen Rhythmus.'
+severity: low
+hole_number: H137
+source: docs/holes/H137.md
+limits: 'der Modul-Docstring von `hooks/_routine.py` sagt, jede Verfassung reite die
+  Auditor-Rolle auf einem wöchentlichen Rhythmus — das stimmt für keine der drei mehr:
+  dev und research nennen beim `project-auditor` gar keinen Takt, und die Office-Rollenzeile
+  hat ihn in dieser Runde verloren (N2). Der Takt steht damit an genau einer Stelle,
+  `_routine.audit_period_id` (eine ISO-Woche), und der Docstring behauptet einen zweiten
+  Ort. `team-kits/*/hooks/**` ist forbidden_scope dieses Items, die Datei ist dreifach
+  gespiegelt. Begrenzt durch: kein Verhalten hängt am Docstring, der Takt selbst ist
+  beidseitig gemessen (`tools/test_routine_feed.py::test_a_run_in_an_earlier_week_leaves_the_routine_due`),
+  und dass kein Rollen- oder Verfassungstext ihn ein zweites Mal nennt, ist `tools/test_parallel_streams.py::test_no_text_that_describes_the_audited_role_states_the_cadence_the_code_owns`'
+regression_tests:
+- tools/test_routine_feed.py::test_a_run_in_an_earlier_week_leaves_the_routine_due
+- tools/test_routine_feed.py::test_the_routine_is_due_again_on_the_monday_after_a_run
+- tools/test_parallel_streams.py::test_no_text_that_describes_the_audited_role_states_the_cadence_the_code_owns
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:27:17'

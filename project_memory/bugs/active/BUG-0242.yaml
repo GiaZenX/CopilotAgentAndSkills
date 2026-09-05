@@ -1,0 +1,35 @@
+id: BUG-0242
+title: Ein Kit-Update MELDET den Gedächtnisbaum, den keine Rolle mehr deklariert,
+  und entfernt ihn nicht (neu, TSK-0125, BUG-0088)
+related_pr: PR-0003
+observed: '**Mechanismus.** Entfernt eine Kit-Version den Schlüssel `memory:` aus
+  einer Rollendefinition, bleibt
+
+  der Baum liegen, den eine ältere Version unter `.claude/agent-memory/<rolle>/` geschrieben
+  hat. Bis zu
+
+  dieser Runde nannte **kein** Installer, **kein** Scaffold und **kein** Kernel-Pfad
+  das Verzeichnis
+
+  überhaupt (gemessen 2026-09-02 vom TSK-0105-Prüfer über `install.sh`, `install.ps1`,
+
+  `scaffold_team.sh`, `scaffold_team.ps1` und `team-kits/kernel/*.py`).'
+severity: medium
+hole_number: H160
+source: docs/holes/H160.md
+limits: 'ein Kit-Update, das `memory:` aus einer Rolle entfernt, laesst den Gedaechtnisbaum
+  liegen, den eine aeltere Version unter `.claude/agent-memory/<rolle>/` schrieb.
+  `team-kits/kernel/kitupdate.py` MELDET ihn jetzt mit Pfad, Dateizahl und Grund --
+  am echten Piloten gemessen, rot zuerst (`tools/test_kitupdate.py::test_the_update_report_names_a_memory_tree_no_installed_role_declares`).
+  ENTFERNT wird nichts, und zwar aus drei gemessenen Gruenden: ob ein Provider einen
+  Baum ohne den Schluessel noch laedt, ist ungemessen (BUG-0088 AC-2), die einzige
+  wiederherstellbare Quarantaene gehoert den `scaffold_team`-Zwillingen (ausserhalb
+  dieses Stroms), und der Inhalt ist Handwerkswissen des Nutzers -- `DEC-0056 (c)`'
+regression_tests:
+- tools/test_kitupdate.py::test_the_update_report_names_a_memory_tree_no_installed_role_declares
+- tools/test_kitupdate.py::test_a_memory_tree_is_residue_exactly_where_no_installed_role_declares_the_key
+- tools/test_kitupdate.py::test_a_memory_tree_that_cannot_be_listed_is_never_reported_as_nothing
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:28:20'

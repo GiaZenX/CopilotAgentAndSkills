@@ -1,0 +1,22 @@
+id: BUG-0109
+title: Die andere Schreibweise einer Funktionsdefinition — GESCHLOSSEN (TSK-0011)
+related_pr: PR-0003
+observed: '**Mechanismus:** `_stage_verb` liest den **deklarierten Namen** als Verb.
+  Ein Verb, das nichts
+
+  kennt, gilt als schreibfähig, also wurde jedes Wort des Rumpfes zum Schreibkandidaten
+  — und
+
+  `PYTHONPATH=team-kits` nennt den Kit-Baum. `_harness.stage_body` schnitt den Kopf
+  einer Deklaration
+
+  ab, prüfte aber nur, ob **irgendwo** im Kopf eine Klammer steht.'
+severity: low
+hole_number: H17
+source: docs/holes/H17.md
+limits: —
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:27'
+closed_at: '2026-09-05T20:22:27'

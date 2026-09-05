@@ -50,7 +50,8 @@ import sys
 import time
 
 from . import (approvals, board, checkpoints, dispatch, documents, filing, gaplog, hashing,
-               kitupdate, migrate, plan_diagram, presets, report, scopes, staging)
+               holes, kitupdate, migrate, plan_diagram, presets, report, scopes,
+               staging)
 from .backlog_types import (
     AREA_FIELD,
     AREA_SEPARATOR,
@@ -58,6 +59,8 @@ from .backlog_types import (
     BLOCKED_RESULT,
     EVIDENCE_KINDS,
     EVIDENCE_RESULTS,
+    HOLE_LIMIT_FIELD,
+    HOLE_NUMBER_FIELD,
     REQUIRED_FIELDS,
     RUN_SCOPES,
     TASK_TYPES,
@@ -538,6 +541,18 @@ def build_parser() -> argparse.ArgumentParser:
     capture = sub.add_parser(
         "capture", help="create a typed item from a JSON object on stdin")
     capture.add_argument("item_type", choices=sorted(REQUIRED_FIELDS))
+    # A MEASURED, OPEN GAP -- and the ONLY way to file one (FR-0087, DEC-0073). The flag says THAT
+    # this record is a hole; the kernel says WHICH number it gets, by a max-scan over the store.
+    # That split is the whole wish: hole numbers used to be handed out by hand and by message, and
+    # two of one generation's were found in no item at all. A body that carries `hole_number` is
+    # refused by `state.capture` for the same reason a body carrying `status` is, so there is no
+    # second route and no way to choose a number.
+    capture.add_argument("--hole", action="store_true",
+                         help="file this item as a measured, open gap: the kernel stamps the next "
+                              "free hole number (the number is never chosen by the caller). The "
+                              "record owes `%s` -- what takes the place of the protection -- from "
+                              "the moment a user accepts it as a named exception"
+                              % HOLE_LIMIT_FIELD)
     # The TSK work order as FLAGS. Same producer as `capture TSK` (both end in
     # `dispatch.create_task`), different surface: a work order is flat, it is the thing a role
     # types most often, and every one of its fields is a gate input worth naming on the line.
@@ -677,6 +692,14 @@ def build_parser() -> argparse.ArgumentParser:
     lease = sub.add_parser(
         "dispatch", help="lease a READY task and print its HARNESS_DISPATCH header")
     lease.add_argument("task_id")
+    # THE TREE THE ORDER IS GRANTED FOR (stream D's C-3). A flag and not a derivation, because the
+    # one case the field exists for is the one the kernel cannot see: several specialists working
+    # in separate checkouts against ONE state directory, where "where the state lives" is the same
+    # answer for all of them. Left out, the lease records that tree, which is the truth for every
+    # project that runs in one.
+    lease.add_argument("--worktree", metavar="PATH",
+                       help="the checkout this dispatch is granted for; default is the tree the "
+                            "state directory lives in")
     # THE CHECKPOINT PAIR (DEC-0044). Written and read through the kernel for the same reason the
     # result envelope is: the two digests that decide adoption later are MEASUREMENTS, and a record
     # whose integrity data the checked party supplied would verify itself (`kernel/checkpoints.py`).
@@ -937,6 +960,42 @@ def build_parser() -> argparse.ArgumentParser:
     migration.add_argument("--archive-year", type=int, metavar="YYYY",
                            help="the archive year for finished records that carry no date of "
                                 "their own; the dry run blocks and asks for it when it needs it")
+
+    # THE HOLE LIST AS ITEMS (FR-0087, DEC-0073), and it is a KERNEL command because it writes
+    # canonical state -- which gate 1 gives exactly one writer. As a tool under `tools/` its one
+    # writing run was a line no role inside a session could take: it had to be handed to the user
+    # for a shell outside Claude Code, and a remote user does not have one (TSK-0126, merge
+    # rework 3). `tools/migrate_holes.py` still exists and calls the same door, so there is one
+    # door and not two.
+    #
+    # WHAT IT PROMISES, in the same shape `migrate` above does: without `--apply` nothing is
+    # written and the plan is printed; the run is idempotent, because "is this number already in
+    # the store" is asked of the STORE (`state.hole_by_number`) and not of a marker file; a number
+    # two entries claim is a REFUSAL and not a silent second write; and `--reindex` writes the
+    # document's generated pointer index and nothing else, which is what a hole captured through
+    # `capture --hole` needs afterwards.
+    hole_migration = sub.add_parser(
+        "migrate-holes",
+        help="migrate the H-numbered hole list of docs/POST_V2_WISHLIST.md into typed items "
+             "(FR-0087/DEC-0073); without --apply nothing is written")
+    hole_migration.add_argument(
+        "--related-pr", metavar="PR-nnnn",
+        help="the product goal these holes are filed under; required unless --reindex, which "
+             "writes no item")
+    hole_migration.add_argument(
+        "--apply", action="store_true",
+        help="write the items, the prose files and the generated index; without it the run is a "
+             "plan and the state is untouched")
+    hole_migration.add_argument(
+        "--reindex", action="store_true",
+        help="rewrite the generated pointer index from the store and nothing else")
+    hole_migration.add_argument(
+        "--doc", metavar="PATH",
+        help="the hole document; by default the one beside this state directory "
+             "(../docs/POST_V2_WISHLIST.md)")
+    hole_migration.add_argument(
+        "--holes-dir", default=holes.DEFAULT_HOLES_DIR, metavar="REL",
+        help="where the full text of each entry goes, relative to the project root")
     return parser
 
 
@@ -1389,8 +1448,15 @@ def main(argv=None) -> int:
             # value, and the value decides whether a lease is allowed at all.
             near = report.similar_items(state, args.item_type, body)
             outline = report.standing_areas(state)
+            # ASKED BEFORE THE PRODUCER IS CHOSEN, because `capture TSK` does not go through
+            # `state.capture` at all -- the flag would be silently ignored there. The rule itself
+            # is the kernel's (`assert_capturable_as_hole`), so this surface carries none of its
+            # own; a type check written here was an enumeration of one beside the definition, and
+            # `capture DEC --hole` walked past it with rc 0.
+            if args.hole:
+                state.assert_capturable_as_hole(args.item_type)
             item = (dispatch.create_task(state, body) if args.item_type == "TSK"
-                    else state.capture(args.item_type, body))
+                    else state.capture(args.item_type, body, hole=args.hole))
             # FR-0017: an area nobody uses yet is a NEW outline level, and the FR's rule is that
             # one is invented only when nothing existing fits -- so the outline that already
             # exists is put in front of the writer at exactly that moment, and nowhere else.
@@ -1403,7 +1469,17 @@ def main(argv=None) -> int:
                 sys.stderr.write(
                     "[outline] %s is a new level; the backlog already carries: %s\n"
                     % (invented, ", ".join(outline) or "no outline at all"))
-            print("%s %s" % (item["id"], item.get("status") or "-"))
+            print("%s %s%s" % (item["id"], item.get("status") or "-",
+                                " " + str(item[HOLE_NUMBER_FIELD]) if args.hole else ""))
+            if args.hole:
+                # The generated index of the hole document is a VIEW of the store, so a new hole
+                # only appears in it once it is re-rendered. Said on stderr, at the one moment a
+                # caller can act on it, rather than left for a red test to report.
+                sys.stderr.write(
+                    "[hole] %s is %s. Regenerate the pointer index with `python "
+                    "scripts/harness.py migrate-holes --reindex`, which writes the index and "
+                    "nothing else.\n"
+                    % (item["id"], item[HOLE_NUMBER_FIELD]))
             # THE SOFT HALF OF FR-0018, and it is soft in three ways at once: it is computed
             # BEFORE the capture so the new item cannot match itself, it goes to stderr AFTER the
             # id has been printed to stdout, and it changes no exit code. A duplicate is a
@@ -1498,7 +1574,7 @@ def main(argv=None) -> int:
             # ONLY the header on stdout: it has to be copied into the spawn prompt character for
             # character (the gate compares the nonce), so anything else printed beside it is
             # something a role might copy along with it.
-            lease = dispatch.create_lease(state, args.task_id)
+            lease = dispatch.create_lease(state, args.task_id, worktree=args.worktree)
             print(dispatch.dispatch_header(lease))
             # ...AND THE CHECKPOINT VERDICT ON STDERR, for that same rule rather than despite it:
             # the reasons are for the human composing the dispatch, and putting them on stdout
@@ -1668,6 +1744,26 @@ def main(argv=None) -> int:
             print("left standing because they could not be read: %s"
                   % (", ".join(swept["unreadable"]) or "-"))
             return 0
+        if args.command == "migrate-holes":
+            if not args.reindex and not args.related_pr:
+                sys.stderr.write(
+                    "migrate-holes needs --related-pr <PR-nnnn>: every hole becomes an item, and "
+                    "an item hangs from a goal. --reindex is the one shape that writes no item "
+                    "and therefore asks for none.\n")
+                return 2
+            document = args.doc or holes.document_for(state)
+            if args.reindex:
+                print(holes.reindex(state, document, args.holes_dir))
+                return 0
+            # NOT named `report`: this function already reads the module of that name, and
+            # a local of the same spelling makes every earlier use of it an UnboundLocalError
+            # -- measured the moment this command landed.
+            outcome = holes.migrate(state, document, args.related_pr, args.holes_dir,
+                                    apply=args.apply)
+            for line in holes.render_report(outcome):
+                print(line)
+            return 0
+
         if args.command == "migrate":
             field_map = migrate.parse_field_map(args.field_map)
             plan = migrate.build_plan(state, field_map, args.archive_year)

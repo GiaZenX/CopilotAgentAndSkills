@@ -30,7 +30,7 @@ import sys
 import pytest
 
 import conftest
-from conftest import load_kit_module
+from conftest import load_kit_module, satisfy_the_architect_step
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TEAM_KITS = os.path.join(ROOT, "team-kits")
@@ -2468,6 +2468,8 @@ def dispatched_repo(tmp_path, **task_overrides):
     fields.update(task_overrides)               # a caller that wants another origin still gets it
     task = dispatch.create_task(state, fields)
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     return state, task, dispatch.dispatch_header(lease)
 
@@ -2516,6 +2518,8 @@ def amended_repo(tmp_path, approve_the_amendment=True):
     task = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement=pr["id"],
                                             acceptance_refs=["AC-11"]))
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     return state, cr, dispatch.dispatch_header(dispatch.create_lease(state, task["id"]))
 
 
@@ -2564,6 +2568,8 @@ def routine_dispatched_repo(tmp_path):
     task = dispatch.create_task(state, dict(AUDIT_TSK_FIELDS, product_requirement=pr["id"],
                                             derives_from=pr["id"]))
     state.transition(task["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     lease = dispatch.create_lease(state, task["id"])
     apr_id = state.read_item(pr["id"])["approval_ref"]
     return state, task, dispatch.dispatch_header(lease), apr_id
@@ -2660,8 +2666,12 @@ def test_two_same_role_dispatches_leave_the_child_unbound(tmp_path):
     SubagentStart cannot block (hooks reference: "Shows stderr to user only"), so the child does
     start. What protects the scope is that it starts UNBOUND."""
     state, _task, header = dispatched_repo(tmp_path)
-    second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
+    second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001",
+                                             allowed_scope=["services/"],
+                                             expected_outputs=["services/x.py"]))
     state.transition(second["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(second["id"]),
+                               state.read_item("PR-0001"))
     second_lease = dispatch.create_lease(state, second["id"])
     run_dispatch(tmp_path, spawn_payload(tmp_path, header))
     run_dispatch(tmp_path, spawn_payload(tmp_path, dispatch.dispatch_header(second_lease)))
@@ -2928,8 +2938,13 @@ def test_a_reconciled_claim_does_not_swallow_the_idle_finding_beside_it(tmp_path
     and the idle dispatch beside it is still refused over.
     """
     state, running = _running_dispatch(tmp_path)
-    never_started = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
+    never_started = dispatch.create_task(
+        state, dict(TSK_FIELDS, product_requirement="PR-0001",
+                    allowed_scope=["analytics/"],
+                    expected_outputs=["analytics/x.py"]))
     state.transition(never_started["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(never_started["id"]),
+                               state.read_item("PR-0001"))
     header = dispatch.dispatch_header(dispatch.create_lease(state, never_started["id"]))
     assert run_dispatch(tmp_path, spawn_payload(tmp_path, header)).returncode == 0
     _close_the_bind_window(state, never_started["id"])
@@ -3528,6 +3543,8 @@ def test_a_failed_spawn_does_not_poison_the_next_sequential_dispatch(tmp_path):
     run_dispatch(tmp_path, spawn_payload(tmp_path, header, event="PostToolUseFailure"))
     second = dispatch.create_task(state, dict(TSK_FIELDS, product_requirement="PR-0001"))
     state.transition(second["id"], "READY")
+    satisfy_the_architect_step(state, state.read_item(second["id"]),
+                               state.read_item("PR-0001"))
     second_header = dispatch.dispatch_header(dispatch.create_lease(state, second["id"]))
     assert run_dispatch(tmp_path, spawn_payload(tmp_path, second_header)).returncode == 0
     payload = {"hook_event_name": "SubagentStart", "cwd": str(tmp_path),
@@ -3631,6 +3648,8 @@ def test_a_hand_written_approval_authorises_nothing(tmp_path):
           "id: APR-0001\nkind: analysis\nitem: null\nrevision: null\n"
           "subject_manifest_hash: '%s'\nrequest_id: made-up\nmint_code: '000000'\n"
           "approved_at: '2026-07-25T00:00:00'\nexpires: null\nrevoked: false\n" % ("0" * 64))
+    satisfy_the_architect_step(state, state.read_item(task["id"]),
+                               state.read_item(pr["id"]))
     from kernel.dispatch import DispatchError
     with pytest.raises(DispatchError):
         dispatch.create_lease(state, task["id"])
@@ -12955,7 +12974,8 @@ def test_the_state_a_fresh_scaffold_leaves_behind_still_permits_delegation(tmp_p
 
     _run_trust_hook(repo)
     assert _kit_state(repo)["state"] == "active"
-    _state2, _task2, header2 = dispatched_repo(repo)   # a second PR + a fresh lease
+    _state2, _task2, header2 = dispatched_repo(     # a second PR + a fresh lease
+        repo, allowed_scope=["services/"], expected_outputs=["services/x.py"])
     assert run_dispatch(repo, spawn_payload(repo, header2)).returncode == 0
 
 
@@ -13289,7 +13309,8 @@ def test_a_project_with_no_trust_record_is_not_stopped_and_the_hole_is_named(tmp
     # FRESH lease: the run above got past the trust gate and CONSUMED the first one, so reusing
     # its header would fail on a spent claim and say nothing about trust.
     os.remove(state_file)
-    _state2, _task2, header2 = dispatched_repo(repo)
+    _state2, _task2, header2 = dispatched_repo(
+        repo, allowed_scope=["services/"], expected_outputs=["services/x.py"])
     assert run_dispatch(repo, spawn_payload(repo, header2)).returncode == 0
 
     kernel_bridge = load_kit_module(
@@ -14562,8 +14583,16 @@ def test_a_repo_tool_that_imports_the_kit_tree_leaves_no_bytecode_in_it(tmp_path
     for name in subjects:
         proc = subprocess.run([sys.executable, str(copy / "tools" / name)],
                               capture_output=True, text=True, env=env, cwd=str(copy))
-        # A tool that died on its way in would leave the tree clean for the wrong reason.
-        assert proc.returncode == 0, "%s: %s%s" % (name, proc.stdout, proc.stderr)
+        # A tool that died on its way IN would leave the tree clean for the wrong reason, so
+        # what has to hold is that the run got PAST its module-level imports -- and what says
+        # so is the absence of a traceback. A tool that refuses the arguments this call does
+        # not give it prints argparse's usage and exits 2, and by then every import has run;
+        # `tools/migrate_holes.py` is the first such tool in the tree and demanding rc 0 of it
+        # would mean an argument table here that grows with every new tool. Both directions of
+        # this reading are measured in
+        # `tools/test_hooks_v2.py::test_the_bytecode_check_still_notices_a_tool_that_dies_on_import`.
+        assert "Traceback (most recent call last)" not in proc.stderr, (
+            "%s died on its way in: %s%s" % (name, proc.stdout, proc.stderr))
         assert caches() == [], "%s cached bytecode into the kit tree: %s" % (name, caches())
 
     # THE CONTROL IS A TOOL WRITTEN THE ORDINARY WAY, and it carries the second claim as well as the
@@ -14588,6 +14617,51 @@ def test_a_repo_tool_that_imports_the_kit_tree_leaves_no_bytecode_in_it(tmp_path
     assert control.returncode == 0, control.stderr
     assert caches() != [], (
         "the control cached nothing either, so the assertions above prove nothing about the tools")
+
+
+def test_the_bytecode_check_still_notices_a_tool_that_dies_on_import(tmp_path):
+    """The reading the check above rests on, in both directions.
+
+    It stopped demanding rc 0 of the tools it runs, because `tools/migrate_holes.py` refuses a call
+    that names no `--root` and every module-level import has already run by then. What it demands
+    instead is that no traceback reached stderr, and that is only worth anything if the two cases
+    really look different. So: a tool that dies on its way IN prints one, a tool that refuses its
+    ARGUMENTS does not.
+
+    Written as two throwaway tools rather than against the shipped ones, because what is measured
+    is the property of the two failure modes and not today's tool list.
+    """
+    tools = tmp_path / "tools"
+    tools.mkdir()
+    dies = tools / "dies_on_import.py"
+    write(str(dies), "import a_module_no_interpreter_has  # noqa: F401\n")
+    refuses = tools / "refuses_its_arguments.py"
+    write(str(refuses),
+          "import argparse\n"
+          "parser = argparse.ArgumentParser()\n"
+          "parser.add_argument('--root', required=True)\n"
+          "parser.parse_args()\n")
+
+    env = dict(os.environ)
+    env.pop("PYTHONPYCACHEPREFIX", None)
+    env.pop("PYTHONDONTWRITEBYTECODE", None)
+
+    def run(path):
+        return subprocess.run([sys.executable, str(path)], capture_output=True, text=True,
+                              env=env, cwd=str(tmp_path))
+
+    died = run(dies)
+    assert died.returncode != 0, died.stdout + died.stderr
+    assert "Traceback (most recent call last)" in died.stderr, (
+        "a tool that dies on its way in leaves no traceback, so the check above cannot see it: %s"
+        % died.stderr)
+
+    refused = run(refuses)
+    assert refused.returncode == 2, refused.stdout + refused.stderr
+    assert "Traceback (most recent call last)" not in refused.stderr, (
+        "a tool that only refuses its arguments prints a traceback, so the check above would read "
+        "it as one that never got past its imports: %s" % refused.stderr)
+    assert "usage:" in refused.stderr, refused.stderr
 
 
 SHIPPED_TEXT_SUFFIXES = (".py", ".md", ".json", ".sh", ".ps1", ".yaml", ".yml", ".toml")

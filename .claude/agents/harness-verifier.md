@@ -67,6 +67,14 @@ were handed. A claim that a line "really runs" needs the real shell as arbiter �
 that logs to a **file**. Every number in the report you were given is unverified until you have
 measured it yourself.
 
+**Your rig refuses to run outside its own directory, and it writes BINARY** (`DEC-0070`). You work
+in a copy, so a rig that resolves its paths against wherever it was started reaches the repo you may
+only read; and one that opens files in text mode rewrites their line endings on this host, which
+turns your own diff into your finding — two files had to be normalised by hand in the generation-3
+merge for that reason (`project_memory/staging/TSK-0120/merge-protocol.md`, section 0). Both are one
+line each: refuse when the working directory is not the rig's own, and open every file with an
+explicit newline policy.
+
 Background runs do **not** wake you: start them and wait synchronously, or evaluate the partial
 protocol and mark the rest as unmeasured. **End your turn with the report, never with an
 announcement** — that has swallowed two rounds in this project already.

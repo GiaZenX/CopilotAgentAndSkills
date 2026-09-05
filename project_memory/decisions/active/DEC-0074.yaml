@@ -1,0 +1,48 @@
+id: DEC-0074
+title: 'H163 entschieden: die Architekturschritt-Pflicht (DEC-0072) gilt nur in einem
+  Kit, dessen Vertrag den Typ SR kennt UND dessen Wurzeltyp die Abnahmekriterien nicht
+  selbst traegt -- abgeleitet aus dem Kit-Vertrag, keine Ausnahmeliste'
+context: 'USER DECISION 2026-09-05 on the merge finding H163 of TSK-0126 (generation
+  4). MEASURED by the merge implementer on the real kernel outside the repo: a TSK
+  under PROC-0001 in an office-team project -> DispatchError whose remedy names ''capture
+  SR'' and ''the architect''; the office kit knows no SR in constitution, skills or
+  phase model, and PROC carries no acceptance criteria; both printed bounds work (class
+  small / technical_enabler -> rc 0; an ACCEPTED SR under the PROC -> rc 0). Also
+  measured: research-team orders derive from EXP, which carries the criteria, so research
+  is not asked today by the criteria rule of TSK-0122 rework 1 (an origin exempts
+  when it BRINGS the criteria). DEC-0072 named the duty by goal CLASS and the place
+  (kernel create_lease); it did not name the kits. Three options were put to the user:
+  (A) derive the duty from the kit contract; (B) keep DEC-0072 literal and let office
+  projects work around it (small / technical_enabler / capture an SR) with H163 left
+  open; (C) exempt office-team by name -- an enumeration, the class this repo carries
+  as a defect source (CLAUDE.md ''Definitionen statt Aufzaehlungen''). The user chose
+  (A).'
+decision: (1) The architect-step duty of DEC-0072 is owed only in a kit whose contract
+  (kernel backlog_types, read per kit) declares the type SR AND whose root type (ROOT_TYPE_BY_KIT)
+  does not carry the acceptance criteria itself; today that is dev-team alone. office-team
+  (no SR type) and research-team (EXP carries the criteria) are not asked. (2) The
+  rule is a DERIVATION in the kernel predicate that create_lease and validate_dispatch
+  already share (dispatch.architect_step_owed / _carries_its_own_criteria), not a
+  kit name and not a config flag; a kit that gains an SR type falls under the duty
+  without a code change, and a kit whose root type starts carrying criteria falls
+  out of it. (3) The remedy text names the architect step only where the duty is owed.
+  (4) Built in the merge round TSK-0126 as a rework with a red-first test per kit
+  class (dev asked, office not asked, research not asked), measured as a process on
+  scaffolded pilots of all three kits, and verified by the merge verifier; H163 is
+  closed by it or carries the measured remainder. (5) DEC-0072 stays valid; this decision
+  narrows its reach and is named beside it in the code comment that cites DEC-0072.
+consequences: 'Office projects are never asked for an SR; research projects are not
+  asked while their orders derive from EXP; dev projects keep the duty exactly as
+  DEC-0072 states it. Cost: one derivation more in the kernel predicate, three pilot
+  measurements in the merge round, one more verification round. Rejected: (B) leaves
+  an office remedy that names a role the kit does not have -- a sentence claiming
+  a step that does not exist there; (C) an enumeration that the next SR-less kit walks
+  into again.'
+source: project_memory/staging/generation-4-streams.md (merge report entry, H163);
+  project_memory/staging/TSK-0126/merge-protocol.md (H163 with the measured DispatchError
+  and both bounds); DEC-0072; TSK-0122 rework-round-1.md (the criteria rule); user
+  answer 2026-09-05 'Aus dem Kit-Vertrag ableiten'.
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-05T09:17:16'

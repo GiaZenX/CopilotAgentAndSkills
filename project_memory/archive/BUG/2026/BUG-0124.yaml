@@ -1,0 +1,30 @@
+id: BUG-0124
+title: Ein Befehl, den eine Ersetzung einführt (neu, TSK-0019)
+related_pr: PR-0003
+observed: '**Mechanismus:** eine **Kommandoersetzung** ist ein eigener Befehl in einem
+  Wort, und die Shell
+
+  führt ihn aus, bevor das Wort den Befehl erreicht, in dem es steht. Die Zerlegung
+  schnitt dort
+
+  nicht: sie kennt Listentrenner, Stufenschnitte und Klammern, und ein Befehl in einem
+  **Wort** kam in
+
+  ihr nicht vor. Damit war er beiden Gates unsichtbar — Gate 1 sah eine lesende Stufe
+  (`echo`), und
+
+  Gate 3 wirft die committende Stufe als Ganzes weg, in der die Ersetzung stand.'
+severity: medium
+hole_number: H32
+source: docs/holes/H32.md
+limits: 'geschlossen bis auf eine Hälfte, und die ist ein Sonderfall von H34: was
+  die Kits als Prosa entfernen, liest davor niemand. **Sozial** — Rollentrennung und
+  Item; die Reparaturstelle liegt im Kit'
+regression_tests:
+- test_gate1_refuses_a_line_exactly_where_the_shell_would_write
+- test_gate3_refuses_a_line_that_moves_the_tree_before_it_commits
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:23:04'
+closed_at: '2026-09-05T20:23:04'

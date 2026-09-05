@@ -1,0 +1,23 @@
+id: BUG-0113
+title: '`Push-Location`/`Pop-Location` fehlen im Verzeichnis-Vokabular (neu, TSK-0011)'
+related_pr: PR-0003
+observed: '**Mechanismus:** die Verben, die die Basis bewegen, sind `cd`, `pushd`,
+  `popd`, `set-location` —
+
+  in `_harness._DIRECTORY_VERBS` und, unabhängig davon, in `gate_write_scope._walk`
+  und der Zeile
+
+  daneben in `handle_shell`. Beide Aufzählungen kennen die **ausgeschriebenen** PowerShell-Formen
+
+  `Push-Location` und `Pop-Location` nicht.'
+severity: medium
+hole_number: H21
+source: docs/holes/H21.md
+limits: 'dieselbe Kette wie H16 und dieselbe Begrenzung: **sozial**. Ohne Variable
+  greift heute ein Nebengrund (die Zeile nennt den Repo-Pfad wörtlich), und ein Nebengrund
+  ist keine Maßnahme'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:37'
+closed_at: '2026-09-05T20:22:37'

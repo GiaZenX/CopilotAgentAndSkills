@@ -1,0 +1,53 @@
+id: DEC-0079
+title: 'DEC-0074 praezisiert: die Architekturschritt-Pflicht gilt genau dann, wenn
+  das KIT (seine ausgelieferte Vorlage, nicht der lebende Projektbestand) eine Heimat
+  fuer SR mitbringt UND der Ursprung des Auftrags seine Kriterien nicht selbst traegt
+  -- ein lebendes Verzeichnis oder ein einzelner `capture SR` schaltet die Pflicht
+  in einem Kit ohne SR nicht ein'
+context: 'Merge verify round 2 of TSK-0126 (2026-09-05), findings R2-B1 and R2-B2
+  -- both against the LEAD''s record, not the code alone. R2-B2: DEC-0074 decision
+  (1) says ''contract (kernel backlog_types, read per kit) declares SR'' -- there
+  is ONE shared contract and ACTIVE_DIRS[''SR''] exists for every kit, so that clause
+  names nothing per kit; and ''whose root type does not carry the acceptance criteria
+  itself'' is INVERTED: _carries_its_own_criteria(''PR'') is true, so by the wording
+  dev-team would be exempt too and the duty would hit no kit, while the same sentence
+  says ''today that is dev-team alone''. The merge built the project''s STOCK (os.path.isdir(state.root
+  / system/active)) instead. R2-B1: that stock rule switches itself ON in office/research
+  -- the office kit''s own CLI accepts `capture SR` (rc 0, creates system/active),
+  a bare mkdir does the same, and from then on every TSK under a PROC / RQ is refused
+  at lease and at spawn; H163 named only the opposite direction. The user''s decision
+  (A, ''aus dem Kit-Vertrag ableiten'') is unchanged; its WORDING was the lead''s
+  error.'
+decision: '(1) The architect-step duty (DEC-0072) is owed for an order iff (a) the
+  KIT the project runs ships a home for the architect step -- read from the kit''s
+  own delivered declaration: the kit''s templates/project_memory carries the directory
+  ACTIVE_DIRS[ARCHITECT_STEP_TYPE] (today: dev-team ships system/, office-team and
+  research-team do not); the kit is known from project_config.yaml, the template from
+  the kit store the project was scaffolded from -- NOT from whether the live project
+  directory exists; and (b) the order''s ORIGIN does not bring its own acceptance
+  criteria (the criteria rule of TSK-0122 rework 1: PR/RQ/BUG/CR/EXP exempt as origins,
+  an SR origin satisfies the duty only as the ACCEPTED architect step). Clause (b)
+  is about the ORIGIN of the order, not the root type of the kit. (2) A live system/active
+  in an office or research project (created by mkdir or by a stray `capture SR`) changes
+  nothing: the duty stays off, and the office/research CLI refuses `capture SR` with
+  a sentence naming this decision -- or the round records why it must stay capturable
+  there. (3) A dev project whose system/active was deleted is still asked (the kit
+  ships it): H163''s ''silently excused'' rest disappears. (4) Where the kit store
+  is not reachable at dispatch time, the derivation fails CLOSED (asked), stated in
+  the remedy. (5) Built in the merge rework 2 of TSK-0126 with red-first per kit as
+  processes (dev asked with and without a live system/active; office and research
+  not asked before and after mkdir / capture SR); the code comment names DEC-0074
+  and this decision. DEC-0074 stays valid as the user''s choice; this record supersedes
+  its clause (1) wording.'
+consequences: 'The duty''s reach is a property of the kit''s delivery, immutable from
+  inside a project; no accidental switch-on, no silent excuse. Cost: the dispatcher
+  needs the kit store path (the scaffold already records it) and one more refusal
+  in two kit CLIs. Rejected: the live-stock reading (switches on by mkdir, off by
+  rmdir -- both measured); a kit-name list (DEC-0074''s own rejection).'
+source: project_memory/staging/TSK-0126/verify-round-2.md R2-B1, R2-B2; DEC-0074;
+  DEC-0072; TSK-0122 rework-round-1.md (criteria rule); team-kits/kernel/dispatch.py:2069
+  as merged
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-05T14:34:16'

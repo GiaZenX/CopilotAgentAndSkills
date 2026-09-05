@@ -1,0 +1,34 @@
+id: BUG-0179
+title: Pin und Rollback hatten keinen Kernel-Befehl, und der Pin schwieg in der Sitzungsmeldung
+  — GESCHLOSSEN (TSK-0104), mit benanntem Rest
+related_pr: PR-0003
+observed: '**Anlass:** `FR-0041`/N8. Gebaut ist der MECHANISMUS: `.claude/kit_pin`
+  verweigert sowohl
+
+  `update-kit` als auch den von Hand gestarteten Installer, und `scaffold_team --rollback`
+  /
+
+  `-Rollback` spielt das vorige Bundle zurück. Nicht gebaut ist die BEDIENFLÄCHE,
+  und zwar aus einem
+
+  Auftragsgrund, nicht aus einem technischen: die Kommandofläche liegt in `team-kits/kernel/cli.py`,
+
+  und dieser Stream (`DEC-0057`, Strom B) darf keine andere Kernel-Datei als `kitupdate.py`
+  anfassen.'
+severity: low
+hole_number: H87
+source: docs/holes/H87.md
+limits: '`pin-kit`/`unpin-kit`/`rollback-kit` auf der Kommandofläche, ein `pinned`-Verdikt
+  in der Sitzungsmeldung, die Zeilen in `README.md` und den drei Verfassungen. Die
+  drei Kommandos DRUCKEN und handeln nicht — eine Sitzung darf einen Hebel ziehen,
+  der Verweigerung hinzufügt, nie einen, der sie wegnimmt. Rest by design: die Pin-Datei
+  legt der Nutzer an und löscht sie'
+regression_tests:
+- tools/test_kitupdate.py::test_the_kit_pin_routes_print_and_never_write
+- tools/test_kitupdate.py::test_a_pinned_project_hears_about_its_pin_instead_of_an_offer
+- tools/test_hooks.py::test_every_span_that_presents_the_command_surface_names_all_of_it
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:25'
+closed_at: '2026-09-05T20:25:25'

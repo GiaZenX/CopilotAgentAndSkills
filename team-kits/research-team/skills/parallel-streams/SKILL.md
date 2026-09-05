@@ -79,13 +79,15 @@ door and have to be one scope to you. Comparing the scope TEXTS instead is not t
 `src/**` and `src/api/handlers.py` share no characters and every file of the second lies in the
 first.
 
-**Nothing enforces this.** The kernel mints one lease per task and no kernel path and no shipped
-hook compares two of them; `gate_write_scope` holds each specialist inside its OWN order and has no
-opinion about the neighbour's. So the disjointness is your reading before the dispatch, and your
-reading is the only thing there is. The measurement behind that sentence is
-`tools/test_parallel_streams.py::test_nothing_shipped_refuses_two_tasks_whose_scopes_overlap`: two
-work orders with the same `allowed_scope` both reach `LEASED` through the real dispatch lifecycle.
-If that test ever goes red, a refusal has been built and this paragraph is the one to correct.
+**The kernel refuses the overlap it can SEE, and that is not all of it.** It mints one lease per
+order and refuses the second when that order owns a file a RUNNING order already owns, with the
+seam both orders declare subtracted first
+(`tools/test_parallel_streams.py::test_the_second_lease_is_refused_when_the_scopes_overlap`,
+`::test_a_seam_both_orders_declare_lets_the_second_lease_through`); `gate_write_scope` holds each
+specialist inside its OWN order and has no opinion about the neighbour's. What the refusal compares
+against are RUNNING leases only, so two orders that never run at the same time collide at the merge
+and nothing here sees them. Your reading before the dispatch is what answers THAT, and
+`python scripts/harness.py check-scopes` is the command that does it.
 
 Read the two orders side by side and answer three questions:
 

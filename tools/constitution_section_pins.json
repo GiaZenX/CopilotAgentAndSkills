@@ -53,7 +53,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "278f749a157fc60f",
+        "digest": "e80380d6e63f4fbe",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -93,7 +93,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip — these are the rules real runs broke)": {
-        "digest": "028b6828dd3c47f0",
+        "digest": "5354c7175394a0e0",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -108,6 +108,7 @@
           "gate_shell_hygiene",
           "gate_subagent_output",
           "gate_test_coverage",
+          "gate_test_scope",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_guidelines",
@@ -128,7 +129,7 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "c38b9da920862418",
+        "digest": "97b36901cce782e9",
         "hooks": []
       },
       "5. Phase model": {
@@ -136,7 +137,7 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "4b228bb252a32122",
+        "digest": "f8796ff5411f1410",
         "hooks": [
           "gate_design_sighted",
           "gate_write_scope",
@@ -178,7 +179,7 @@
         "hooks": []
       },
       "1. What each mechanism refuses": {
-        "digest": "c1f5c6714e351992",
+        "digest": "48d7a6b773681d17",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -193,6 +194,7 @@
           "gate_shell_hygiene",
           "gate_subagent_output",
           "gate_test_coverage",
+          "gate_test_scope",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_guidelines",
@@ -217,6 +219,12 @@
       "A question about WHY, or about the TARGET state — the decisions first, then the code": {
         "digest": "2dfde2b40f787931",
         "hooks": []
+      },
+      "Before the order goes out: a smaller plan, and the five ways a line goes wrong": {
+        "digest": "7e7bd725b1a4059b",
+        "hooks": [
+          "gate_dispatch"
+        ]
       },
       "Defects (bugs)": {
         "digest": "8a0116b4eab79404",
@@ -268,7 +276,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "0167f10ac9a6b7fd",
+        "digest": "bd27d7fcef51a1b5",
         "hooks": [
           "gate_design_sighted",
           "gate_dispatch",
@@ -319,7 +327,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "1ad2012fe36fea11",
+        "digest": "15a00a6c8ae857f6",
         "hooks": [
           "gate_write_scope",
           "guard_memory_budget"
@@ -332,11 +340,11 @@
         ]
       },
       "1a. FR / CR / BUG — one question decides which": {
-        "digest": "a0b87cfa05998964",
+        "digest": "dfd47c403acd2fe7",
         "hooks": []
       },
       "2. Hard rules (deterministic where possible)": {
-        "digest": "f19ba0640fae5fcc",
+        "digest": "dccac5f0d0692d4c",
         "hooks": [
           "clear_handover_marker",
           "gate_approval",
@@ -349,6 +357,7 @@
           "gate_second_reading",
           "gate_shell_hygiene",
           "gate_subagent_output",
+          "gate_test_scope",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_fs_tripwire",
@@ -378,7 +387,7 @@
         ]
       },
       "4a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "72ff545882c3fb4c",
+        "digest": "7c871eab34b9783b",
         "hooks": [
           "gate_write_scope",
           "guard_agent_spawn",
@@ -430,7 +439,7 @@
         "hooks": []
       },
       "1. What each mechanism refuses": {
-        "digest": "4526c32a39e6e7ee",
+        "digest": "b9728bdcbe2ca077",
         "hooks": [
           "_gate",
           "clear_handover_marker",
@@ -444,6 +453,7 @@
           "gate_second_reading",
           "gate_shell_hygiene",
           "gate_subagent_output",
+          "gate_test_scope",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_fs_tripwire",
@@ -471,6 +481,12 @@
         "digest": "2dfde2b40f787931",
         "hooks": []
       },
+      "Before the order goes out: a smaller plan, and the five ways a line goes wrong": {
+        "digest": "7e7bd725b1a4059b",
+        "hooks": [
+          "gate_dispatch"
+        ]
+      },
       "Kit updates": {
         "digest": "5543de19b80ef1dc",
         "hooks": [
@@ -496,7 +512,7 @@
         "hooks": []
       },
       "Work loop (every cycle)": {
-        "digest": "9c8e8a5a4b4b1617",
+        "digest": "c3851f58cc8e2b43",
         "hooks": [
           "gate_proc_approved",
           "gate_write_scope",
@@ -556,7 +572,7 @@
         "hooks": []
       },
       "0. Authority & who you are (READ FIRST)": {
-        "digest": "32acbc0a8a3ef435",
+        "digest": "a05d7717beb6b960",
         "hooks": [
           "gate_write_scope",
           "guard_harness_selfmod",
@@ -600,7 +616,7 @@
         "hooks": []
       },
       "2. Hard enforcement (NEVER skip)": {
-        "digest": "a9a2d59254c4ae03",
+        "digest": "b2ba9cc34aa3c8c2",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -612,6 +628,7 @@
           "gate_push_token",
           "gate_shell_hygiene",
           "gate_subagent_output",
+          "gate_test_scope",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_guidelines",
@@ -632,7 +649,7 @@
         "hooks": []
       },
       "4. Requirement hierarchy": {
-        "digest": "483a3e599d8c4227",
+        "digest": "d9693e19784e902e",
         "hooks": []
       },
       "5. Phase model": {
@@ -640,7 +657,7 @@
         "hooks": []
       },
       "5a. Your work loop — the SEQUENCE, and the duties that have no gate behind them": {
-        "digest": "e4fd9be70ed3aeaa",
+        "digest": "e8da7c412529f144",
         "hooks": [
           "gate_write_scope",
           "guard_agent_spawn",
@@ -680,7 +697,7 @@
         "hooks": []
       },
       "1. What each mechanism refuses": {
-        "digest": "37b4248659007da9",
+        "digest": "bb5b03c29a49b2e8",
         "hooks": [
           "clear_handover_marker",
           "format_on_write",
@@ -692,6 +709,7 @@
           "gate_push_token",
           "gate_shell_hygiene",
           "gate_subagent_output",
+          "gate_test_scope",
           "gate_write_scope",
           "guard_agent_spawn",
           "guard_guidelines",
@@ -716,6 +734,12 @@
       "A question about WHY, or about the TARGET state — the decisions first, then the code": {
         "digest": "2dfde2b40f787931",
         "hooks": []
+      },
+      "Before the order goes out: a smaller plan, and the five ways a line goes wrong": {
+        "digest": "7e7bd725b1a4059b",
+        "hooks": [
+          "gate_dispatch"
+        ]
       },
       "Defects, changes and the inbox": {
         "digest": "862a78b9935c2023",
@@ -767,7 +791,7 @@
         "hooks": []
       },
       "Work loop (every cycle — every \"capture\"/\"transition\" below runs through the kernel's entry point, `python scripts/harness.py <command>`; constitution §0 names which of those commands its surface actually HAS)": {
-        "digest": "7d638e70584ea751",
+        "digest": "abf71d10a433519d",
         "hooks": [
           "gate_write_scope",
           "guard_yaml_valid"

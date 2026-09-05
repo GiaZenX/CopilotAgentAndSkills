@@ -1,0 +1,26 @@
+id: BUG-0115
+title: Ein unerreichbarer Pfad kostet die Beurteilung, nicht mehr die Frist (neu,
+  TSK-0011)
+related_pr: PR-0003
+observed: '**Mechanismus:** eine Dateisystemfrage zu einem nicht erreichbaren Host
+  kostet auf diesem Host
+
+  42,1 s und lässt sich nicht abbrechen. Seit TSK-0011 ist die **Wartezeit** begrenzt:
+  `_harness`
+
+  liest die Frist aus der Registrierung und verweigert, wenn eine Frage nicht rechtzeitig
+
+  zurückkommt. Der Rest, der bleibt: eine Zeile, deren Kandidaten das Budget aufbrauchen,
+  wird
+
+  **verweigert statt beurteilt** — und sie braucht dafür bis zu vier Fünftel der registrierten
+  Zeit.'
+severity: low
+hole_number: H23
+source: docs/holes/H23.md
+limits: jeweils dort benannt; H18/H19/H23 sind Über-Verweigerungen, also Reibung statt
+  Loch, und H13/H14/H15 nennen in ihrem Eintrag, was an der Stelle steht
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:42'

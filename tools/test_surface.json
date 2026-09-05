@@ -1,0 +1,55 @@
+{
+  "_comment": "What this repo DECLARES as its test surface, and the one place the numbers behind that live. Read by .claude/hooks/gate_test_scope.py (gate 5, SR-0009's cost clause / FR-0086) and measured against the running runner and against the gate itself by the tripwire pair in .claude/hooks/test_gates.py named under `_options_that_narrow` below. Nothing here is a rule about pytest in general: a runner nobody declared is not judged, which is PR-0004's first invariant, and the gap that leaves is H153. WHY A FILE AND NOT A CONSTANT: FR-0086 asks for the threshold as a config value with its DEC line, because a project whose whole suite runs in seconds must not pay a refusal for running it (DEC-0056's cost clause). Lower `judged_above_seconds` below a surface's `seconds` and the gate stops judging it; that is the intended knob and it is why this file is data. WHAT IT IS NOT: protected. `_harness.decision_inputs` derives gate 1's protected area from the modules a gate LOADED, and a JSON file is not a module -- so whoever may write tools/ may switch this gate off without touching a protected path. Named as H151 with its chain rather than claimed away here; per DEC-0056 a gate guards against error, not against an insider who edits the declaration.",
+  "judged_above_seconds": 60,
+  "_judged_above_seconds": "Seconds a declared surface must cost before a full run of it is refused during a round. DEC-0050 measured the class this bounds -- six repetitions of one suite in one item's rounds, and no finding out of any of them; DEC-0056 is why the bound exists at all, because a refusal a project cannot benefit from is a gate that costs the legitimate path for nothing. A minute is the floor at which a repeated run stops being noise in a round and starts being the thing DEC-0050 measured.",
+  "surfaces": [
+    {
+      "runner": "pytest",
+      "root": "tools",
+      "members": "test_*.py",
+      "_members": "The glob, relative to `root`, that picks the files a bare run of this surface hands the runner. Read by gate 5 for ONE question and no other: a positional the shell EXPANDS (`tools/test_*.py`) narrows nothing, and without this the gate placed such a word as one path, found it inside the root and read that as a selection -- measured as a process 2026-09-05, rc 0 for a line that runs all 40 files and 42 minutes (merge verifier round 1, B2). It is data for the same reason `options_that_narrow` is: which files a runner collects out of a directory is a fact about the RUNNER, and this file is where the facts about it live. Both ends are measured against the running runner by `.claude/hooks/test_gates.py::test_the_declared_members_are_the_files_the_runner_really_collects`, which asks pytest itself which files it collects under the root and compares that set with this glob -- so a members line that grew too narrow (a file the runner runs and the glob misses) or too wide is red, not silently trusted. A surface that declares NONE gets the fail-closed direction: the gate refuses a glob under it and says so.",
+      "seconds": 3465,
+      "measured_in": "EVD-0080",
+      "_measured_in": "The TSK-0120 merge round recorded this run and its wall-clock in its own run_command field; the figure is read out of that record rather than restated, so a re-measurement lands in one place."
+    },
+    {
+      "runner": "pytest",
+      "root": ".claude/hooks/test_gates.py",
+      "seconds": 1380,
+      "measured_in": "DEC-0070",
+      "_measured_in": "Generation 3, stream B: the gate suite ran 23 min for two reading tests -- one of the five measured full-run breaches this goal closes."
+    }
+  ],
+  "options_that_narrow": {
+    "pytest": [
+      "-k",
+      "-m",
+      "--deselect",
+      "--ignore",
+      "--ignore-glob",
+      "--collect-only",
+      "--co",
+      "--fixtures",
+      "--markers",
+      "--version",
+      "--help"
+    ]
+  },
+  "_options_that_narrow": "ONE property, and it is a fact about the RUNNER, not about the text: with this option on the line the runner EXECUTES fewer tests than without it. AN ENUMERATION, because nothing in a command line says what a runner does with an option -- so it carries a tripwire at both ends in .claude/hooks/test_gates.py, and the second one measures the property itself: test_every_declared_narrowing_option_really_makes_the_runner_run_fewer_tests runs a three-test fixture suite with and without each entry and counts the tests that ACTUALLY RAN (each test appends a line to a file, so the count is not a parse of pytest's summary prose); test_every_declared_narrowing_option_is_one_the_runner_still_has asks the runner's own --help whether the option exists at all; test_every_declared_narrowing_option_earns_its_place asks this GATE whether the entry changes its verdict, which is the weakest of the three and is kept only because it catches an entry the gate cannot read. THE ORDERING AND CACHE OPTIONS ARE DELIBERATELY ABSENT: --ff/--nf reorder and narrow nothing, --lf/--sw narrow only when a cache of failures exists -- measured 2026-09-05, three of three tests still ran under each of --lf/--last-failed/--ff/--failed-first/--nf/--new-first/--sw/--stepwise/--sw-skip/--stepwise-skip. Two residues are named rather than claimed away, both in H152: an option that narrows and is NOT declared makes the line read as a full run (over-refusal, answerable on the line), and a declared option given a VALUE that happens to match nothing (`--deselect does::not::exist`, `--ignore=<a path that is not there>`) is read as a selection -- deciding that needs a collection, which is the cost this gate exists to avoid.",
+  "probe_values": {
+    "pytest": {
+      "-k": "=alpha",
+      "-m": "=slow",
+      "--deselect": "=tests/test_probe.py::test_beta",
+      "--ignore": "=tests/test_probe.py",
+      "--ignore-glob": "=*probe*",
+      "--collect-only": "",
+      "--co": "",
+      "--fixtures": "",
+      "--markers": "",
+      "--version": "",
+      "--help": ""
+    }
+  },
+  "_probe_values": "What the tripwire appends to each declared option so the runner has something to narrow ON. An entry of options_that_narrow with no probe here makes test_every_declared_narrowing_option_really_makes_the_runner_run_fewer_tests red, which is what keeps the pair complete in both directions."
+}

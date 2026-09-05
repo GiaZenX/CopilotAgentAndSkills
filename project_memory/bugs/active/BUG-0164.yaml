@@ -1,0 +1,33 @@
+id: BUG-0164
+title: Was die Vier-Augen-Wand NICHT bindet — offen, gemessene Grenzen der Zweitlesungs-Mechanik
+  (TSK-0087)
+related_pr: PR-0003
+observed: '**Anlass:** `FR-0035` verlangte den Vier-Augen-Mechanismus wörtlich („ein
+  Hook der das Verschieben
+
+  sperrt …"), `TSK-0087` hat ihn gebaut: kein Eintritt ins Archiv ohne zwei unabhängige,
+  an die
+
+  **Bytes** des Dokuments gebundene Lesungen; Uneinigkeit legt beide Lesungen dem
+  Nutzer vor. Der
+
+  Prüfer hat die Wand in zwei Runden mit über vierzig Linien angegriffen; was durchlief,
+  wurde
+
+  geschlossen (archivinterne Wäsche, Pfad-statt-Dokument-Bindung, `ARCHIVE/`-Faltung,
+
+  Freigabe-als-Waschgang). Diese Grenzen blieben, jede gemessen:'
+severity: low
+hole_number: H72
+source: docs/holes/H72.md
+limits: 'gemessene Grenzen der Vier-Augen-Wand, je im Eintrag: die Aufräum-Ausnahme
+  vergleicht Vorlage+Dateiname statt Ort (ein Platzhalterwechsel läuft ohne Lesung,
+  K7/K8 — Verschärfung wäre eine Nutzerentscheidung); Überschreiben eines Inbox-Dokuments
+  ist frei (die Folge ist per Byte-Bindung geschlossen, der Verlust sichtbar); drei
+  benannte Über-Verweigerungen; und die Verfahrens-Grenze (Blindheit, fremde Programme,
+  Lead als Zweitleser). Keine Kette erreicht mehr das Geschlossene: ein fremdes/getauschtes
+  Dokument unter doppelt gelesenem Namen'
+status: TRIAGED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:24:45'

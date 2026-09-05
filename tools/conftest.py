@@ -267,6 +267,32 @@ def walk_to_status(state, item, target):
     return state.read_item(item["id"])
 
 
+def satisfy_the_architect_step(state, task, root):
+    """Give `root` the ACCEPTED technical requirement a dispatch owes it, if the KERNEL says so.
+
+    ONE HELPER FOR EVERY FIXTURE THAT LEASES, and the condition is asked of
+    `dispatch.architect_step_owed` rather than restated here (FR-0085): a fixture with its own copy
+    of the duty is a fixture that can walk past it, which is the one thing the dispatch fixtures of
+    this suite are built never to do. `SR PROPOSED -> ACCEPTED` is in no row of
+    `approvals.APPROVAL_TRANSITIONS`, so it is a plain transition and no mint is involved.
+
+    Returns the requirement it created, or None when none was owed -- so a test can assert on the
+    difference instead of guessing.
+    """
+    sys.path.insert(0, TEAM_KITS)
+    from kernel import dispatch
+
+    if not dispatch.architect_step_owed(state, task, root):
+        return None
+    requirement = state.capture("SR", {
+        "title": "technical requirement for %s" % root["id"],
+        "derives_from": root["id"],
+        "contract": "what the goal needs from the system, derived by the architect",
+        "affected_components": ["src"]})
+    state.transition(requirement["id"], dispatch._accepted_requirement_status())
+    return state.read_item(requirement["id"])
+
+
 def drive_task_to(state, task_id, target):
     """Walk a TSK to `target` the HONEST way (DEC-0038): LEASED and IN_PROGRESS come from the real
     dispatch lifecycle, never from a bare transition, exactly as `walk_to_status` mints an approval
@@ -279,6 +305,14 @@ def drive_task_to(state, task_id, target):
     is deliberately no shortcut past `create_lease`, for the same reason `walk_to_status` has none
     past the mint: a fixture that hand-wrote a lease would prove the guard on a path production never
     takes.
+
+    AND IT WALKS THE ARCHITECT STEP THE SAME WAY (FR-0085): a lease under a goal whose class asks
+    for a technical requirement needs an ACCEPTED `SR` under that goal, so this captures and accepts
+    one when the KERNEL says the order still owes it (`dispatch.architect_step_owed`). Asked of the
+    kernel and never re-decided here, for the reason the mint above is not re-decided either -- a
+    fixture with its own copy of the rule is a fixture that can walk past it. A test that MEASURES
+    the duty calls `create_lease` itself; this one exists so ~100 tests about something else do not
+    each have to state the same precondition.
     """
     sys.path.insert(0, TEAM_KITS)
     from kernel import dispatch
@@ -297,6 +331,7 @@ def drive_task_to(state, task_id, target):
         root = state.read_item(state.read_item(task_id)["product_requirement"])
         if not root.get("approval_ref"):
             approve(state, root["id"], "scope")
+        satisfy_the_architect_step(state, state.read_item(task_id), root)
     if order[now()] < order["READY"] <= order[chain_target]:
         state.transition(task_id, "READY")
     if order[now()] < order["LEASED"] <= order[chain_target]:

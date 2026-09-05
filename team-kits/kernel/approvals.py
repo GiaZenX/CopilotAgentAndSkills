@@ -60,13 +60,29 @@ import time
 import unicodedata
 import uuid
 
-from .backlog_types import AUTOMATA, HASHED_FIELDS, ROOT_TYPE_BY_KIT, parse_id
+from .backlog_types import (
+    AUTOMATA,
+    HASHED_FIELDS,
+    HOLE_EXCEPTION_STATUS,
+    HOLE_LIMIT_FIELD,
+    HOLE_NUMBER_FIELD,
+    ROOT_TYPE_BY_KIT,
+    parse_id,
+)
 from .hashing import subject_manifest_hash
 from .state import ProjectState, StateError, _now_iso, names_a_drive
 
 APR_KINDS = ("analysis", "scope", "delivery", "acceptance", "routine", "push", "preset",
              "kit_update", "filing_correction", "filing_rule", "document_proposal",
-             "document_revision", "plan")
+             "document_revision", "plan", "hole_exception")
+# THE USER ACCEPTING A MEASURED GAP (FR-0087, DEC-0073). A hole that will not be closed ends in
+# `ACCEPTED_EXCEPTION`, and that ending is a USER statement about risk -- so it is bound to a mint
+# and not to a status the apparatus can set for itself. A kind of its own rather than `scope`,
+# because a kind binds exactly one edge and `scope` already binds BUG's TRIAGED -> APPROVED: one
+# kind on two edges would let an approval given for a fix walk an item into an exception instead.
+# Its manifest is item-derived (`item_subject_manifest`), so what the user signs is the gap's own
+# description AND the sentence that says what limits instead.
+HOLE_EXCEPTION_KIND = "hole_exception"
 # THE PLAN-LEVEL APPROVAL (FR-0074). One answer for the confirmed list of product goals, after
 # which the per-goal scope question is not asked again. Measured before it existed, over the
 # shipped automata: a root goal carries THREE user approvals -- `scope`, `delivery`, `acceptance`
@@ -189,6 +205,7 @@ APPROVAL_TRANSITIONS = {
     ("RQ", "acceptance"): ("DELIVERED", "ACCEPTED"),
     ("CR", "scope"): ("DRAFT", "APPROVED"),
     ("BUG", "scope"): ("TRIAGED", "APPROVED"),
+    ("BUG", HOLE_EXCEPTION_KIND): ("TRIAGED", HOLE_EXCEPTION_STATUS),
     ("PROC", "scope"): ("DRAFT", "APPROVED"),
     ("EXP", "delivery"): ("DESIGNED", "APPROVED"),
 }
@@ -902,6 +919,19 @@ def item_subject_manifest(item: dict, kind: str) -> dict:
             "delivered_commit": item.get("delivered_commit"),
             "evidence_refs": item.get("evidence_refs", []),
         }
+    if kind == HOLE_EXCEPTION_KIND:
+        # WHAT THE USER IS SIGNING, and it is deliberately more than the id: an acceptance of a gap
+        # is an acceptance of a described gap. The mechanism (`observed`), what should happen
+        # instead (`expected`), how serious it is (`severity`) and -- the field this kind exists
+        # for -- what takes the place of the protection (`HOLE_LIMIT_FIELD`) are all in the hash,
+        # so an edit to any of them past the kernel kills the acceptance rather than riding on it.
+        manifest = {field: item.get(field)
+                    for field in ("title", "observed", "expected", "severity",
+                                  HOLE_LIMIT_FIELD, HOLE_NUMBER_FIELD)
+                    if field in item}
+        manifest["item"] = item["id"]
+        manifest["revision"] = item.get("revision")
+        return manifest
     if kind == "delivery":
         return {
             "item": item["id"],
@@ -995,6 +1025,14 @@ def approved_statuses(item_type: str) -> frozenset:
         if typ != item_type:
             continue
         approved_targets.add(target)
+        # THE TARGET ITSELF, whether or not it lies on the chain. Until 2026-09-04 only chain
+        # targets were collected, because every approved edge then ended on one -- so the first
+        # approval committing an OFF-CHAIN status (`BUG` -> `ACCEPTED_EXCEPTION`, FR-0087) made
+        # this function answer "no approval put it there" about the one status a user had just
+        # signed for. That is the same contradiction of its own first sentence the paragraph above
+        # records for the blanket terminal subtraction, one edge shape further out.
+        # `tools/test_approvals_dispatch.py::test_a_status_an_approval_commits_is_an_approved_status`
+        reached.add(target)
         if target in auto.chain:
             reached.update(auto.chain[auto.chain.index(target):])
     return frozenset(reached) - (auto.terminals - approved_targets)

@@ -1,0 +1,38 @@
+id: BUG-0185
+title: Die Freigabe, auf die der genannte Ausweg zwang, gibt es laut Kernel und Verfassung
+  nicht, sie unterschrieb keinen Inhalt und sie starb nie — GESCHLOSSEN (TSK-0106)
+related_pr: PR-0003
+observed: '**Mechanismus:** Der Ausweg, den die H92-Verweigerung nennt („create the
+  task under HYP-0001"),
+
+  führt auf eine Aufgabe, deren Wurzel eine `HYP` ist. `dispatch` verlangt dafür eine
+  Scope-Freigabe
+
+  auf der `HYP`. Drei Stellen sagen, dass es die nicht gibt: die research-Verfassung
+  §4 („`HYP` rides
+
+  on the RQ''s scope approval and carries no approval of its own"),
+
+  `backlog_types.INVALIDATION_TARGET` („HYP deliberately absent") und
+
+  `approvals.APPROVAL_TRANSITIONS`, das kein `("HYP", …)`-Paar führt. `request-approval
+  scope
+
+  HYP-0001` läuft trotzdem, und der Haken prägt.'
+severity: low
+hole_number: H93
+source: docs/holes/H93.md
+limits: '`approvals._assert_the_pair_commits_an_edge` verweigert jede item-abgeleitete
+  Freigabe, deren `(Typ, Art)` in `APPROVAL_TRANSITIONS` fehlt — die `HYP`-Freigabe
+  ist damit nicht mehr anforderbar, und der Ausweg, der zu ihr zwang, existiert seit
+  H92 nicht mehr. Rot ohne den Fix: `test_approvals_dispatch.test_a_hypothesis_cannot_be_given_a_scope_approval`,
+  `test_approvals_dispatch.test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge`'
+regression_tests:
+- test_report.test_a_task_under_every_kit_root_is_asked_for_its_delivery_verdict
+- test_approvals_dispatch.test_a_hypothesis_cannot_be_given_a_scope_approval
+- test_approvals_dispatch.test_no_item_type_can_be_approved_on_a_kind_that_commits_no_edge
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:41'
+closed_at: '2026-09-05T20:25:41'

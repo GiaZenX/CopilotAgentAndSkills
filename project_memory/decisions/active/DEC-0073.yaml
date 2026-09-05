@@ -1,0 +1,89 @@
+id: DEC-0073
+title: 'FR-0087 entschieden: ein gemessenes, offenes Loch ist ein BUG mit einer statusabhaengigen
+  Pflicht `limits` und einem Endzustand ACCEPTED_EXCEPTION, den nur eine nutzergemintete
+  Freigabe geht -- kein eigener Typ; die Migration der 140 Eintraege laeuft EINMAL
+  durch den Kernel'
+context: 'USER DECISION 2026-09-04 on the proposal of stream G4-2 (TSK-0122, file
+  staging/TSK-0122/dec-holes-as-items.json). PR-0005 AC-4, absorbiert aus FR-0087.
+  WAS EXISTIERT, gemessen am Stand 75a00d1: `docs/POST_V2_WISHLIST.md` traegt in Abschnitt
+  12 genau 140 Eintraege `### H<n>` (Nummern H1 bis H150, zehn Nummern -- 96, 97,
+  98, 100..104, 128, 149 -- wurden nie vergeben), 120 Zeilen einer Zusammenfassungstabelle
+  und 6910 Zeilen Text; `.claude/hooks/test_gates.py` beurteilt sie mit fuenf Tests,
+  die den Text als Text lesen (`_hole_section`, `_hole_entries`, `_hole_rows`, `_stated_verdict`,
+  `_cited_test`). Drei Schnittbefunde der Generation 3 stehen dahinter: von Hand per
+  Nachricht reservierte Nummern (H141-H149 ausserhalb der eingefrorenen Items, der
+  Pruefer von Strom E fand H145/H146 nirgends), ein Loch hat die Form eines BUG plus
+  ein Feld ''was stattdessen begrenzt'', und eine nutzerakzeptierte Ausnahme musste
+  fuer H138 von Hand als DEC-0069 erfasst werden, weil die Annahme nur in Prosa lebte.
+  KOSTEN EINES EIGENEN TYPS, gemessen statt vermutet (Rig `_round-scratch/TSK-0122/m4_type_cost.py`:
+  ein Typ `HOL` in `AUTOMATA`, `ACTIVE_DIRS` und `REQUIRED_FIELDS` einer Wegwerf-Kopie):
+  `tools/test_hooks.py::test_no_adhoc_covers_every_item_type` wird ROT -- die Abhilfe
+  liegt in `team-kits/*/hooks/guard_no_adhoc.py`, dreimal gespiegelt und im forbidden_scope
+  dieses Stroms (G4-1); `tools/test_board.py::test_every_type_that_moves_through_a_lifecycle_is_placed_by_a_backlog_view`
+  wird ROT (Abhilfe in `kernel/backlog_tree.py`, im Strom); `test_each_kit_renders_the_types_its_own_template_ships`
+  und `tools/test_backlog_types.py` bleiben gruen. Dazu je eine Verfassungszeile in
+  drei Kits (G4-3). KOSTEN DER BUG-FORM: ein neuer Endzustand und eine neue Freigabeart
+  wirken auf JEDEN BUG in drei Kits, nicht nur auf Loecher.'
+options: '(A) BUG-FORM. `AUTOMATA["BUG"]` bekommt den Endzustand `ACCEPTED_EXCEPTION`,
+  erreichbar aus TRIAGED; `approvals.APPROVAL_TRANSITIONS` bekommt das Paar (BUG,
+  <neue Art>) fuer genau diese Kante, damit sie nur eine nutzergemintete Freigabe
+  geht (die Grundregel: einen Status, den die beaufsichtigte Seite selbst setzen kann,
+  liest kein Gate als Freigabe); `limits` wird ein statusabhaengiges Pflichtfeld --
+  gefordert genau in `ACCEPTED_EXCEPTION` und in keinem anderen Status, weil eine
+  breitere Pflicht die 91 BUG-Datensaetze dieses Repos am Tag der Regel zu Validator-Fehlern
+  machte, die kein Kommando repariert (dieselbe gemessene Kostenklasse wie DEC-0061
+  (a)). Ein Loch ist dann ein BUG, das ein Feld `hole_number` traegt; die Nummer vergibt
+  der Kernel und niemand von Hand. (B) EIGENER TYP. Ein Typ mit eigenem Automaten
+  (offen -> geschlossen, plus akzeptierte Ausnahme), der die BUG-Semantik unberuehrt
+  laesst. Kosten: die drei gemessenen roten Tests oben, davon einer nur in fremdem
+  Bereich reparierbar, plus drei Verfassungszeilen, plus eine vollstaendige zweite
+  Feldliste, die BUGs Vertrag (observed, expected, repro, severity, acceptance_criteria)
+  Wort fuer Wort wiederholt.'
+decision: 'ENTSCHIEDEN: (A, mit Teilfrage (3a) = Migrationstuer, alle 140 Eintraege
+  wandern), vom Nutzer gewaehlt 2026-09-04 (AskUserQuestion, drei Fragen in einem
+  Zug, je die Empfehlung des Umsetzers). aus zwei Gruenden. ERSTENS ist ein Loch inhaltlich
+  ein Defekt mit genau BUGs Feldern; was hinzukommt, ist EIN Feld und EIN Ausgang,
+  und ein eigener Typ waere eine zweite Schreibweise desselben Vertrags. ZWEITENS
+  ist der Ausgang ''als benannte Ausnahme akzeptiert'' fuer einen gewoehnlichen BUG
+  kein Widerspruch, sondern das, was DEC-0056 als ERWARTETEN Ausgang der Insider-Klasse
+  benennt und was BUG-0082 in diesem Repo heute in Prosa traegt. DREI TEILFRAGEN GEHOEREN
+  ZUR ENTSCHEIDUNG, und die dritte ist die teuerste: (1) HEISST DIE FREIGABEART `hole_exception`
+  oder wird eine bestehende benutzt? Empfehlung: eine eigene Art, weil `scope` an
+  BUGs TRIAGED->APPROVED-Kante schon vergeben ist und eine Art genau eine Kante bindet.
+  (2) WORAN ERKENNT EIN LESER EIN LOCH? Empfehlung: am Feld `hole_number`, das der
+  Kernel beim Erfassen vergibt (naechste freie Nummer ueber dem Bestand) -- damit
+  ist ''keine Nummer mehr von Hand'' eine Eigenschaft des Kernels und keine Verabredung.
+  (3) WELCHEN STATUS TRAEGT EIN GESCHLOSSENES LOCH, UND WIE SCHREIBT DIE MIGRATION
+  IHN? Gemessen: `state.migration_writable_statuses("BUG")` erreicht nur die Statuus
+  vor der Scope-Freigabe, also NICHT VERIFIED -- ein geschlossener Eintrag (rund die
+  Haelfte der 140) waere ueber die normalen Kanten nur mit je einer nutzergeminteten
+  Freigabe UND je einer Test-Evidenz erreichbar. Zwei Antworten stehen zur Wahl: (3a)
+  EINE MIGRATIONSTUER wie `state.capture_migrated_archive`, die den Datensatz direkt
+  nach `archive/BUG/<jahr>/` in einen ENDZUSTAND schreibt; sie weitet den Freigabebolzen,
+  und diese Weitung wird als Loch H154 mit ihrer Begrenzung gefuehrt (nur ein Endzustand,
+  nur in den Archivbaum, und ein zweiter Lauf schreibt nichts). (3b) NUR DIE OFFENEN
+  UND DIE AKZEPTIERTEN Eintraege werden Items, die geschlossenen bleiben, was sie
+  sind: Historie im Dokument. Kosten von (3b): das Dokument behaelt eine zweite Liste,
+  was FR-0087 ausdruecklich nicht will. Empfehlung des Umsetzers: (3a).'
+consequences: 'Bei (A) gebaut: `backlog_types.AUTOMATA`, `REQUIRED_FIELDS`/die statusabhaengige
+  Pflicht, `approvals.APR_KINDS` + `APPROVAL_TRANSITIONS`, die Nummernvergabe und
+  die Migrationstuer in `kernel/state.py`, ein Migrationsskript unter `tools/`, das
+  EINMAL durch `capture` schreibt und idempotent ist, ein GENERIERTER Zeigerindex
+  in `docs/POST_V2_WISHLIST.md` (wie das Board: eine Handkorrektur macht ihn ungueltig),
+  die fuenf Loecherlisten-Tests in `.claude/hooks/test_gates.py` auf ITEMS umgestellt
+  (geparst), und je ein Vorlagenverzeichnis in den drei Kits. WAS DIESER STROM NICHT
+  TUN KANN, und das ist keine Wahl: `project_memory/**` steht in seinem forbidden_scope,
+  der EINE schreibende Lauf gegen den kanonischen Zustand ist deshalb eine Merge-Handlung;
+  der Strom liefert das Skript, die Messung gegen eine Kopie ausserhalb des Repos
+  und die Item-Koerper unter `staging/TSK-0122/`. Solange dieser Lauf nicht stattgefunden
+  hat, lesen die umgestellten Tests einen leeren Bestand -- die Umstellung und der
+  Lauf gehoeren deshalb in DENSELBEN Merge, und das ist die Naht. Nachbarn: DEC-0069
+  (H138, die erste von Hand erfasste Annahme), DEC-0056, DEC-0064 (die Kostenliste
+  eines Typs), FR-0012, FR-0058.'
+source: User 2026-09-04 (chat); PR-0005 AC-4; FR-0087; Messungen TSK-0122 (Rigs _round-scratch/TSK-0122/probe_holes.py
+  und m4_type_cost.py, Stand 75a00d1); docs/POST_V2_WISHLIST.md Abschnitt 12; .claude/hooks/test_gates.py;
+  DEC-0064; DEC-0069
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-04T17:54:23'

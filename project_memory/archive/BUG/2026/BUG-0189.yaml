@@ -1,0 +1,50 @@
+id: BUG-0189
+title: Das Rollengedächtnis des Bookkeepers war ein Kanal zwischen erster und zweiter
+  Lesung, den `gate_second_booking` nicht sieht — GESCHLOSSEN (TSK-0105, FR-0064),
+  mit benanntem Rest
+related_pr: PR-0003
+observed: '**Mechanismus.** `gate_second_booking` zählt Lesungen je LAUF — zwei `booking_reading`-Datensätze
+  aus
+
+  zwei verschiedenen Läufen (office-Verfassung §2.3) —, und die zweite Lesung ist
+  ein zweiter Spawn
+
+  DERSELBEN Rolle. Ein Rollengedächtnis (`memory: project` im Frontmatter) lädt der
+  Provider zu Beginn
+
+  jedes Laufs dieser Rolle; was der erste Lauf hineinschreibt, hat der zweite gelesen,
+  bevor er das
+
+  Dokument öffnet. Das Gate vergleicht Läufe, nicht Aufmerksamkeiten — seine ENFORCEMENT-Zeile
+  sagt
+
+  das über sich selbst —, und dieser Kanal lag außerhalb seines Blicks. Bis zu dieser
+  Runde trug
+
+  `agents/bookkeeper.md` den Schlüssel, ebenso `quality-engineer.md` (dev) und `reviewer.md`
+
+  (research), deren Urteil die Frische aus demselben Grund braucht: ein Urteil, das
+  die Freigaben der
+
+  letzten Runde erinnert, ist keine frische Lesung (FR-0064; im echten Projekt Canyon_3.4.0
+  hielt das
+
+  Gedächtnis der QS-Rolle elf Themen, drei davon Gate-Entscheidungen).'
+severity: low
+hole_number: H105
+source: docs/holes/H105.md
+limits: 'das Rollengedächtnis war ein Kanal zwischen erster und zweiter Buchungslesung,
+  den `gate_second_booking` nicht sieht — der Schlüssel `memory:` ist aus jeder Rolle
+  entfernt, deren Lesung frisch sein muss (Verdict-Rollen und jede `writer_role` eines
+  Kernel-Schemas, abgeleitet, rot gemessen). Rest: die SCHREIBSEITE bleibt offen (sechs
+  Hook-Stufen rc 0 auch ohne Schlüssel); ein Gedächtnisbaum, den eine frühere Kit-Version
+  schrieb, bleibt beim Update liegen (kein Installer, Scaffold oder Kernel-Pfad nennt
+  `agent-memory`, gemessen), und ob der Provider ihn ohne Schlüssel lädt, ist nicht
+  gemessen — Naht: `kitupdate`'
+regression_tests:
+- tools/test_role_contracts.py::test_no_role_whose_reading_must_be_fresh_carries_a_craft_memory
+status: VERIFIED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:25:51'
+closed_at: '2026-09-05T20:25:51'

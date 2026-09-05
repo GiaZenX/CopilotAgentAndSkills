@@ -1,0 +1,24 @@
+id: BUG-0101
+title: Inhalt in diesem Auftrag nicht enthalten
+related_pr: PR-0003
+observed: 'Der Prüfbericht führt ein R9; **was es besagt, stand nicht im Auftrag**
+  — die Liste nennt „R9" ohne
+
+  Beschreibung. Es ist hier bewusst als **ungeprüft und ungeschlossen** vermerkt statt
+  geraten zu
+
+  werden: ein erfundener Eintrag wäre schlimmer als eine benannte Lücke. Nachzureichen
+  aus dem
+
+  Prüfbericht zu TSK-0003.'
+severity: low
+hole_number: H9
+source: docs/holes/H9.md
+limits: 'nichts, und das ist der Befund: ohne den Mechanismus aus dem Prüfbericht
+  zu TSK-0003 gibt es keine Kette, die man einordnen könnte. Der Eintrag wartet auf
+  diese Eingabe, nicht auf eine Entscheidung'
+status: REJECTED
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:09'
+closed_at: '2026-09-05T20:22:09'

@@ -1,0 +1,63 @@
+id: DEC-0077
+title: 'Zwei Achsen statt Mischleiter: Stufe haengt an Rolle und Kit-Endpunkt, Aufwand
+  an der Aufgabengroesse -- und die Eskalationsmechanik aus DEC-0034 wird JETZT gebaut
+  (PR-0010), nach 26 Tagen ohne Item; Gen-5-Stufen: Fable oder Opus je Umfang, Pruefer
+  Opus'
+context: 'USER DECISION 2026-09-05. Asked how rung and effort should interplay, the
+  user chose ''Zwei Achsen'' and asked: ''wieso wurde das nie gebaut? das muss auch
+  gebaut werden. und wann wird erhoeht? das haben wir ja auch mal festgehalten? wird
+  das nie gemacht??''. MEASURED answer: DEC-0034 (2026-08-10) drafted the ladder T0
+  sonnet-high / T1 opus-high / T2 opus-xhigh / T3 fable-high with five rules -- (1)
+  triggers from STATE not time: planning/architecture start on T3, after scope approval
+  + frozen architecture / accepted SRs the build falls to T0/T1; (2) after every FAIL
+  one rung up; (3) step down after the risky phase, a CR touching the architecture
+  lifts back to T3 for that CR; (4) design starts higher; (5) QA never below T1 --
+  and left the exact thresholds (''after how many failed attempts is a worker stuck'')
+  to be MEASURED in pilots. Its consequences said the mechanic is ''a wishlist work
+  item, built when dev-team reaches the wishlist (DEC-0033)''. No item ever carried
+  it: the items naming DEC-0034 are FR-0051/0052/0074 (adjacent), TSK-0078/0089/0117
+  (touched it in passing), FR-0088/PR-0010 (today). The pilots that were to measure
+  the thresholds never measured them. So the ladder is decided, written into three
+  constitutions and model_tiers.yaml, and enforced by nothing -- the decided-vs-built
+  drift CLAUDE.md''s answer rule exists for, and the ''decision without an item''
+  class of FR-0058. The user also decided the generation-5 tiers: ''merge nacharbeit
+  fable auf high bzw xhigh; stroeme in fable oder opus je nach umfang'' -- the lead
+  keeps the RUNNING merge rework (Opus, mid-flight) to its end and applies the tier
+  from the next spawn on.'
+decision: '(1) TWO AXES. The RUNG (sonnet / opus / fable; Codex terra / sol / astra,
+  DEC-0076) hangs on the role pin and the kit endpoint (DEC-0047) as today. The EFFORT
+  hangs on the task: `high` by default, `xhigh` when the goal''s `class` is large,
+  `low` only as the named office reading floor. There is no six-rung ladder. (2) ESCALATION
+  IS BUILT, not re-decided: DEC-0034''s rules 1-5 are the contract; the dispatcher
+  picks rung AND effort from the state at spawn (kernel create_lease / the kit''s
+  dispatch path, DEC-0072''s place) -- rule 1 from the goal''s phase (scope approval
+  minted, architecture frozen / SR accepted), rule 2 from the order''s FAILED count
+  (T0 -> T1 -> T2 -> T3), rule 3 from the phase falling back, rule 4/5 from the role
+  class; the thresholds DEC-0034 left open are CONFIG VALUES with their DEC line and
+  a default the round measures on a pilot, never constants in code. (3) Built in PR-0010
+  (G5-2), which therefore grows to class LARGE: model_tiers.yaml, the generator, the
+  watchers'' trigger, the ladder AND the escalation mechanic -- one owner for the
+  tier question. (4) Generation-5 tiers: implementers Fable 5.1 or Opus by stream
+  scope -- G5-3 office (large) Fable xhigh, G5-1 survey Fable high, G5-2 watchers/ladders/escalation
+  (now large) Fable xhigh; verifiers Opus high as the independent second reader on
+  another rung; merge reworks Fable high/xhigh from the next spawn on; the (g) table
+  of generation 5 measures the prose-overclaim class per tier (the DEC-0063 finding
+  on Fable 5.0) and the generation-5 retrospective decides the floor. (5) Rollout:
+  the mechanic reaches projects with the generation-5 restamp; a project sees the
+  chosen rung and effort in its session brief (the ''silent downgrade'' of FR-0047
+  made visible).'
+consequences: 'The ladder stops being prose: rung and effort become two derivations
+  the kernel makes at spawn, readable in the brief. Cost: PR-0010 doubles in size
+  (Fable xhigh instead of Opus high) and needs one pilot per kit for the thresholds;
+  DEC-0034 and DEC-0047 are cited by the code, not superseded. Rejected: a six-rung
+  ladder (every rung needs its own climb rule -- the open mechanic multiplied by six);
+  ''only high'' (large goals get no extra care); leaving the mechanic for ''when dev-team
+  reaches the wishlist'' (26 days measured that this never comes by itself).'
+source: user answers 2026-09-05 ('zwei achsen ...', 'merge nacharbeit fable auf high
+  bzw xhigh; stroeme in fable oder opus je nach umfang'); DEC-0034 (decision + consequences
+  read 2026-09-05); DEC-0047; DEC-0063; DEC-0076; item grep for DEC-0034 (no carrying
+  item); PR-0010; FR-0047; FR-0088
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-05T11:00:29'

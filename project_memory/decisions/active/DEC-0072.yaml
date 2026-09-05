@@ -1,0 +1,64 @@
+id: DEC-0072
+title: 'FR-0085 entschieden: die SR-Pflicht haengt an der KLASSE des Produktziels
+  und wird dort verweigert, wo eine Lease entsteht (Kernel), nicht im Dispatch-Haken
+  der Kits'
+context: 'USER DECISION 2026-09-04 on the proposal of stream G4-2 (TSK-0122, file
+  staging/TSK-0122/dec-sr-duty.json). PR-0005 AC-3, absorbiert aus FR-0085 (Nutzerfrage
+  2026-09-03: ''Und wieso wird nicht zwangsweise ein SR daraus?''). GEMESSEN am Stand
+  75a00d1, Rig `_round-scratch/TSK-0122/m3_sr_duty.py`: fuer ein PR der Klasse `normal`,
+  `large` UND `small` -- jeweils mit gemintetem Scope-Approval, ohne einen einzigen
+  SR im Zustandsverzeichnis -- erteilt `dispatch.create_lease` die Lease anstandslos
+  (drei von drei rc 0). Ebenfalls gemessen in diesem Repo: 9 SR-Dateien gegen 120
+  TSK-Dateien. Die Kette FR -> PR -> SR -> TSK steht in der Verfassung (Abschnitt
+  4) und im PM-Skill (Schritt 5); der Kernel kennt sie nicht -- `create-task --derives-from`
+  nennt in seiner Hilfe root/BUG/CR/EXP, SR steht nicht einmal darin.'
+options: '(A) IM KERNEL, an der Stelle, an der eine Lease entsteht. `dispatch.create_lease`
+  verweigert eine Lease fuer eine TSK unter einem PR/RQ der Klasse `normal` oder `large`,
+  solange unter genau diesem Ziel kein SR im Status ACCEPTED haengt; die Abhilfe nennt
+  den Architektenschritt. `dispatch.validate_dispatch` prueft dieselbe Bedingung noch
+  einmal (es prueft heute schon Approval, Abhaengigkeiten und Blocker doppelt), also
+  gilt die Regel auch fuer eine Lease, die vor der Regel entstanden ist. Kosten: EINE
+  Stelle, drei Kits, kein Haken; wirkt auch in diesem Repo, das kein Kit installiert
+  hat. Sie trifft jede READY-TSK unter einem normal/large-Ziel ohne ACCEPTED SR --
+  in diesem Repo heute alle, weshalb der Anwendungszeitpunkt Teil der Entscheidung
+  ist (siehe (c) unten). (B) IM HAKEN `gate_dispatch.py` der drei Kits. Kosten, gemessen
+  an dem, was der Haken tut: sein PreToolUse laeuft am SPAWN und ruft `dispatch.validate_dispatch`
+  -- die Lease ist zu diesem Zeitpunkt bereits gemintet, die TSK steht auf LEASED,
+  und die Verweigerung kaeme nach der Zustandsaenderung statt davor. Ausserdem ist
+  der Haken dreimal gespiegelt und in einem Repo ohne Kit (diesem) gar nicht geladen,
+  waehrend genau hier die Praxis gemessen wurde, die FR-0085 beanstandet.'
+decision: 'ENTSCHIEDEN: (A), vom Nutzer gewaehlt 2026-09-04 (AskUserQuestion, drei
+  Fragen in einem Zug, je die Empfehlung des Umsetzers). und zwar mit drei Festlegungen,
+  die zur Entscheidung gehoeren: (a) DIE KLASSE IST DER AUSLOESER, nicht eine Liste
+  von Zielen: die Pflicht gilt fuer die Klassen, die das Feld `class` eines Wurzelziels
+  traegt und die nicht `small` sind -- `small` wird nicht gefragt, `technical_enabler`
+  ebenfalls nicht, weil dort kein fachlicher Entwurf zu leisten ist; welche Werte
+  es gibt, sagt das Schema des Feldes und nicht diese Klammer. (b) ERFUELLT IST DIE
+  PFLICHT DURCH EINEN SR IM STATUS ACCEPTED, der unter demselben Wurzelziel haengt
+  -- gelesen ueber dieselbe Elternableitung (`backlog_types.PARENT_FIELDS`), die auch
+  `report.origin_root_conflict` benutzt, damit es keine zweite Schreibweise von ''haengt
+  darunter'' gibt. Der Status ACCEPTED und nicht PROPOSED, weil ein Vorschlag, den
+  niemand angenommen hat, kein Entwurf ist. (c) EIN BUGFIX WIRD NICHT GEFRAGT: die
+  Pflicht gilt nur, wenn die TSK von ihrem Wurzelziel selbst ableitet (`derives_from`
+  = das Ziel). Eine TSK, die von einem BUG, CR oder EXP ableitet, traegt ihre Kriterien
+  dort und ist genau der Fall, den FR-0085 ausdruecklich nicht will (''Nicht gewuenscht:
+  ein SR fuer jeden Bugfix-TSK'').'
+consequences: 'Bei (A): eine neue Verweigerung in `kernel/dispatch.py`, ein roter
+  Test dazu, kein Haken und keine Spiegelung. WAS SIE KOSTET, benannt statt weggeredet:
+  jedes laufende Projekt mit einem normal/large-Ziel ohne ACCEPTED SR kann seine naechste
+  TSK nicht mehr dispatchen, bis der Architektenschritt gelaufen ist -- das ist der
+  Sinn der Pflicht und zugleich ihr Preis, und er trifft dieses Repo selbst (PR-0004..PR-0007
+  tragen heute keinen ACCEPTED SR). Deshalb gehoert der ANWENDUNGSZEITPUNKT in die
+  Entscheidung: entweder ab sofort fuer jede neue Lease, oder erst fuer Ziele, die
+  nach dieser Entscheidung erfasst werden. Der Umsetzer empfiehlt: ab sofort, weil
+  eine Regel mit einem Stichtag ein Feld braucht, das niemand liest, und weil die
+  Abhilfe eine einzige `capture SR` plus `transition ACCEPTED` ist. Nachbarn: DEC-0066
+  (die Hierarchie), DEC-0067 (ein Strom ist ein Ziel), DEC-0056 (Kostenseite), BUG-0091
+  (dieselbe Kette eine Ebene hoeher).'
+source: User 2026-09-04 (chat); PR-0005 AC-3; FR-0085; Messung TSK-0122 (Rig _round-scratch/TSK-0122/m3_sr_duty.py,
+  Stand 75a00d1); team-kits/dev-team/constitution/AGENTS.md Abschnitt 4; kernel/dispatch.py
+  create_lease/validate_dispatch
+status: VALID
+revision: 1
+approval_ref: null
+created: '2026-09-04T17:54:22'

@@ -1,0 +1,31 @@
+id: BUG-0117
+title: Die Frist, die ein Gate sich zugesteht, und die, nach der es getötet wird (neu,
+  TSK-0013)
+related_pr: PR-0003
+observed: '**Mechanismus:** `_harness.registered_timeout` liest die Frist bei **jedem
+  Aufruf** aus
+
+  `.claude/settings.json`. Der Provider hat seine eigene beim **Sitzungsstart** gebunden.
+  Solange
+
+  eine Sitzung läuft, sind die beiden Zahlen entkoppelt: wer die Datei schreiben darf,
+  setzt die
+
+  Zahl hoch, die sich das Gate zugesteht, ohne die zu ändern, nach der getötet wird
+  — und ein Gate,
+
+  das noch entscheidet, wenn der Provider aufhört zuzuhören, wird getötet, was der
+  Provider als
+
+  „hook error, carry on", also als **Durchlass** liest.'
+severity: medium
+hole_number: H25
+source: docs/holes/H25.md
+limits: 'dieselbe Lage wie H12, von der sie abhängt: wer `.claude/` schreiben darf,
+  setzt die Frist hoch, die sich ein Gate zugesteht. **Sozial** — Rollentrennung und
+  Item'
+status: ACCEPTED_EXCEPTION
+revision: 1
+approval_ref: null
+created: '2026-09-05T20:22:47'
+closed_at: '2026-09-05T20:22:47'
